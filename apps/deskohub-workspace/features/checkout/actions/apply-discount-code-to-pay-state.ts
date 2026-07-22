@@ -3,13 +3,13 @@ import {
   buildFreshCheckoutPayPath,
   CheckoutPricingService,
   openPayState,
+  PayableReservationService,
   PayStateTokenError,
 } from "@/features/checkout/backend/checkout";
 import {
   DiscountCodeUnavailableError,
   normalizeSubmittedDiscountCode,
 } from "@/features/discounts";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 
@@ -25,7 +25,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
     Effect.gen(function* () {
       const botProtection = yield* BotProtectionService;
       const pricing = yield* CheckoutPricingService;
-      const reservations = yield* WorkspaceReservationRepository;
+      const payableReservations = yield* PayableReservationService;
 
       yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
 
@@ -57,8 +57,11 @@ export const applyDiscountCodeToPayState = Effect.fn(
           })
         )
       );
-      const reservation = yield* reservations.findById(state.orderId);
-      if (!reservation || reservation.activePaymentAttemptId) {
+      const reservation = yield* payableReservations.requireCurrent({
+        orderId: state.orderId,
+        checkoutSessionId: state.checkoutSessionId,
+      });
+      if (reservation.activePaymentAttemptId) {
         return { status: "unavailable" as const };
       }
 
@@ -69,8 +72,11 @@ export const applyDiscountCodeToPayState = Effect.fn(
         displayedQuote: state.quote,
         submittedCode,
       });
-      const currentReservation = yield* reservations.findById(state.orderId);
-      if (!currentReservation || currentReservation.activePaymentAttemptId) {
+      const currentReservation = yield* payableReservations.requireCurrent({
+        orderId: state.orderId,
+        checkoutSessionId: state.checkoutSessionId,
+      });
+      if (currentReservation.activePaymentAttemptId) {
         return { status: "unavailable" as const };
       }
 
@@ -104,6 +110,8 @@ export const applyDiscountCodeToPayState = Effect.fn(
         DiscountCodeUnavailableError: () =>
           Effect.succeed({ status: "unavailable" as const }),
         DiscountProviderError: () =>
+          Effect.succeed({ status: "unavailable" as const }),
+        PayableReservationUnavailableError: () =>
           Effect.succeed({ status: "unavailable" as const }),
       })
     )

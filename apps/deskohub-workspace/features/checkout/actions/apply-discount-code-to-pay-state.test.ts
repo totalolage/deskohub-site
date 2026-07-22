@@ -10,9 +10,9 @@ import {
   payStateTokenQueryParam,
   sealPayState,
 } from "@/features/checkout/backend/checkout/pay-state";
+import { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { DiscountCodeUnavailableError } from "@/features/discounts";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 
@@ -47,30 +47,40 @@ const runSubmission = async (input?: {
   readonly applyDiscountCode?: ReturnType<typeof mock>;
   readonly activePaymentAttemptId?: string;
   readonly activePaymentAttemptIdAfterPricing?: string;
+  readonly payableReservationUnavailableAt?: 1 | 2;
 }) => {
   const [
     { applyDiscountCodeToPayState },
-    { WorkspaceReservationRepository },
+    { PayableReservationService },
     { BotProtectionServiceMock },
   ] = await Promise.all([
     import("./apply-discount-code-to-pay-state"),
-    import("@/features/reservation/backend/workspace-reservation.repository"),
+    import("@/features/checkout/backend/checkout/payable-reservation.service"),
     import("@/shared/backend/bot-protection/bot-protection.service.mock"),
   ]);
   const verifyHuman = mock(() => Effect.void);
-  let reservationReadCount = 0;
-  const findById = mock(() => {
-    reservationReadCount += 1;
-    return Effect.succeed({
-      id: "reservation-id",
-      dotyposCustomerId: "customer-id",
-      activePaymentAttemptId:
-        reservationReadCount > 1
-          ? (input?.activePaymentAttemptIdAfterPricing ??
-            input?.activePaymentAttemptId ??
-            null)
-          : (input?.activePaymentAttemptId ?? null),
-    } as never);
+  let payableReservationReadCount = 0;
+  const getReservation = () => ({
+    id: "reservation-id",
+    dotyposCustomerId: "customer-id",
+    activePaymentAttemptId:
+      payableReservationReadCount > 1
+        ? (input?.activePaymentAttemptIdAfterPricing ??
+          input?.activePaymentAttemptId ??
+          null)
+        : (input?.activePaymentAttemptId ?? null),
+  });
+  const requireCurrent = mock(() => {
+    payableReservationReadCount += 1;
+    return input?.payableReservationUnavailableAt ===
+      payableReservationReadCount
+      ? Effect.fail(
+          new PayableReservationUnavailableError({
+            orderId: "reservation-id",
+            reason: "not_current",
+          })
+        )
+      : Effect.succeed(getReservation() as never);
   });
   const applyDiscountCode =
     input?.applyDiscountCode ??
@@ -85,9 +95,7 @@ const runSubmission = async (input?: {
       Layer.mergeAll(
         BotProtectionServiceMock({ verifyHuman }),
         CheckoutPricingServiceMock({ applyDiscountCode }),
-        Layer.succeed(WorkspaceReservationRepository, {
-          findById,
-        } as unknown as WorkspaceReservationRepositoryType)
+        Layer.succeed(PayableReservationService, { requireCurrent })
       )
     ),
     Effect.runPromise
@@ -95,7 +103,7 @@ const runSubmission = async (input?: {
 
   return {
     applyDiscountCode,
-    findById,
+    requireCurrent,
     payStateToken,
     result,
     verifyHuman,
@@ -143,7 +151,7 @@ describe("applyDiscountCodeToPayState", () => {
     const scenario = await runSubmission({ submittedCode: "not valid!" });
 
     expect(scenario.result).toEqual({ status: "unavailable" });
-    expect(scenario.findById).not.toHaveBeenCalled();
+    expect(scenario.requireCurrent).not.toHaveBeenCalled();
     expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
     await expect(
       Effect.runPromise(openPayState(scenario.payStateToken))
@@ -210,6 +218,26 @@ describe("applyDiscountCodeToPayState", () => {
 
     expect(scenario.result).toEqual({ status: "unavailable" });
     expect(scenario.applyDiscountCode).toHaveBeenCalledTimes(1);
-    expect(scenario.findById).toHaveBeenCalledTimes(2);
+    expect(scenario.requireCurrent).toHaveBeenCalledTimes(2);
+  });
+
+  test("does not reprice a reservation that is no longer payable", async () => {
+    const scenario = await runSubmission({
+      payableReservationUnavailableAt: 1,
+    });
+
+    expect(scenario.result).toEqual({ status: "unavailable" });
+    expect(scenario.applyDiscountCode).not.toHaveBeenCalled();
+    expect(scenario.requireCurrent).toHaveBeenCalledTimes(1);
+  });
+
+  test("discards repricing when the reservation stops being payable", async () => {
+    const scenario = await runSubmission({
+      payableReservationUnavailableAt: 2,
+    });
+
+    expect(scenario.result).toEqual({ status: "unavailable" });
+    expect(scenario.applyDiscountCode).toHaveBeenCalledTimes(1);
+    expect(scenario.requireCurrent).toHaveBeenCalledTimes(2);
   });
 });
