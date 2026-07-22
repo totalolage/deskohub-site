@@ -12,7 +12,7 @@ import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -102,16 +102,14 @@ async function CheckoutPayContent({
     ));
   }
 
-  const state = await WorkspaceEffect.run(
-    { operation: "checkout.pay.invalid-state" },
-    openPayState(payStateToken).pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning("Checkout pay state token could not be opened", {
-          cause,
-          reason: "openPayStateFailed",
-        }).pipe(Effect.as(undefined))
-      )
-    )
+  const state = await openPayState(payStateToken).pipe(
+    Effect.catch((cause) =>
+      Effect.logWarning("Checkout pay state token could not be opened", {
+        cause,
+        reason: "openPayStateFailed",
+      }).pipe(Effect.as(undefined))
+    ),
+    runWorkspaceEffect("checkout.pay.invalid-state")
   );
 
   if (!state || state.locale !== locale) {

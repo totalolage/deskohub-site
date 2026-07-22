@@ -2,8 +2,10 @@ import { Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { WorkspaceRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  defineWorkspaceRoute,
+  WorkspaceRouteFailure,
+} from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import {
   type CheckoutStatusReturnOutcome,
@@ -87,17 +89,21 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
 export const makeCheckoutPaymentReturnGet = (
   statusServiceLayer: Layer.Layer<CheckoutStatusService, unknown>
 ) =>
-  WorkspaceEffect.route(
+  defineWorkspaceRoute(
     {
       operation: "checkout.payment-return",
-      layer: statusServiceLayer,
-      mapFailure: (cause) =>
-        new WorkspaceRouteFailure({
-          statusCode: 500,
-          publicMessage: "Checkout status could not be refreshed",
-          cause,
-        }),
       cancellation: "continue-after-disconnect",
     },
-    handleCheckoutPaymentReturn
+    (request, context: LocalizedCheckoutPaymentRouteContext) =>
+      handleCheckoutPaymentReturn(request, context).pipe(
+        Effect.provide(statusServiceLayer),
+        Effect.mapError(
+          (cause) =>
+            new WorkspaceRouteFailure({
+              statusCode: 500,
+              publicMessage: "Checkout status could not be refreshed",
+              cause,
+            })
+        )
+      )
   );

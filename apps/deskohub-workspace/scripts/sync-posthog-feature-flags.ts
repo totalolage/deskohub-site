@@ -3,7 +3,7 @@ import {
   PostHogFeatureFlagError,
 } from "@deskohub/posthog/feature-flags/codegen";
 import { Effect, Schema } from "effect";
-import { StandaloneWorkspaceEffect } from "@/shared/backend/effect-boundary/standalone";
+import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_FEATURE_FLAGS_API_KEY: Schema.NonEmptyString,
@@ -51,8 +51,7 @@ const syncPostHogFeatureFlags = Effect.Do.pipe(
 );
 
 if (import.meta.main) {
-  await StandaloneWorkspaceEffect.run(
-    { operation: "feature-flags.sync" },
-    syncPostHogFeatureFlags
+  await syncPostHogFeatureFlags.pipe(
+    runStandaloneWorkspaceEffect("feature-flags.sync")
   );
 }

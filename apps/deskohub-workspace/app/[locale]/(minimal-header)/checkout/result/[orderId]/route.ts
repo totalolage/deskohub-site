@@ -8,7 +8,10 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  defineWorkspaceRoute,
+  mapWorkspaceInternalRouteFailure,
+} from "@/shared/backend/workspace-route";
 import type { SearchParamsRecord } from "@/shared/utils";
 
 export const maxDuration = 45;
@@ -55,28 +58,19 @@ const loadCheckoutStatusAttempt = (
     );
   });
 
-const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
-  const status = WorkspaceEffect.run(
-    {
-      operation: "checkout.result.refresh",
-      layer: CheckoutStatusServiceLiveWithDependencies,
-    },
-    Effect.gen(function* () {
-      const attempts = yield* Ref.make(0);
-      return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
-        Effect.repeat({
-          times: 3,
-          while: (attemptStatus) =>
-            !attemptStatus ||
-            attemptStatus.status === "created" ||
-            attemptStatus.status === "pending",
-        })
-      );
-    })
-  );
-
-  return status;
-};
+const loadCheckoutStatusWithBriefRetry = (orderId: string) =>
+  Effect.gen(function* () {
+    const attempts = yield* Ref.make(0);
+    return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
+      Effect.repeat({
+        times: 3,
+        while: (attemptStatus) =>
+          !attemptStatus ||
+          attemptStatus.status === "created" ||
+          attemptStatus.status === "pending",
+      })
+    );
+  });
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -117,17 +111,19 @@ const getCheckoutStatusRedirectPath = (input: {
 const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
   Object.fromEntries(url.searchParams);
 
-export async function GET(
+const handleCheckoutResult = Effect.fn("handleCheckoutResult")(function* (
   request: Request,
   { params }: LocalizedCheckoutResultRouteContext
-): Promise<NextResponse> {
-  const decodedParams = decodeCheckoutResultParams(await params);
+) {
+  const decodedParams = decodeCheckoutResultParams(
+    yield* Effect.promise(() => params)
+  );
   const routeParams = Option.getOrUndefined(decodedParams);
   if (!routeParams) return new NextResponse(null, { status: 404 });
 
   const { locale, orderId } = routeParams;
   const rawSearchParams = getSearchParamsRecord(new URL(request.url));
-  const status = await loadCheckoutStatusWithBriefRetry(orderId);
+  const status = yield* loadCheckoutStatusWithBriefRetry(orderId);
   const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
   if (retryOutcome) {
@@ -147,4 +143,20 @@ export async function GET(
   return NextResponse.redirect(
     new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
   );
-}
+});
+
+export const GET = defineWorkspaceRoute(
+  {
+    operation: "checkout.result.refresh",
+    cancellation: "continue-after-disconnect",
+  },
+  (request, context: LocalizedCheckoutResultRouteContext) =>
+    handleCheckoutResult(request, context).pipe(
+      Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+      Effect.mapError(
+        mapWorkspaceInternalRouteFailure(
+          "Checkout status could not be refreshed"
+        )
+      )
+    )
+);

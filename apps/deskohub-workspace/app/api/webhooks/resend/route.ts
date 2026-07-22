@@ -5,7 +5,7 @@ import {
   ResendWebhookService,
   ResendWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/fulfillment";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
   function* (request: Request) {
@@ -71,11 +71,10 @@ const handleResendWebhookProcessingError = Effect.fn(
  *
  * Receives Resend delivery status for workspace customer fulfilment emails.
  */
-export const POST = WorkspaceEffect.route(
+export const POST = defineWorkspaceRoute(
   {
     operation: "resendWebhook",
     cancellation: "continue-after-disconnect",
-    layer: ResendWebhookServiceLiveWithDependencies,
   },
   (request) =>
     processWebhookRequest(request).pipe(
@@ -92,7 +91,8 @@ export const POST = WorkspaceEffect.route(
       Effect.catchTag(
         "ResendWebhookProcessingError",
         handleResendWebhookProcessingError
-      )
+      ),
+      Effect.provide(ResendWebhookServiceLiveWithDependencies)
     )
 );
 

@@ -6,21 +6,22 @@ import {
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
 import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
 const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   ReservationHoldCleanupServiceLiveWithDependencies,
   WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive))
 );
 
-const processCleanupMessage = WorkspaceEffect.task(
-  {
-    operation: "reservationHoldCleanupSchedule",
-    layer: ReservationHoldCleanupScheduleConsumerLive,
-  },
+const processCleanupMessage = defineWorkspaceTask(
+  "reservationHoldCleanupSchedule",
   (
     message: Parameters<typeof processReservationHoldCleanupScheduleMessage>[0]
-  ) => processReservationHoldCleanupScheduleMessage(message).pipe(Effect.asVoid)
+  ) =>
+    processReservationHoldCleanupScheduleMessage(message).pipe(
+      Effect.asVoid,
+      Effect.provide(ReservationHoldCleanupScheduleConsumerLive)
+    )
 );
 
 export const POST = handleCallback((message, _metadata) =>

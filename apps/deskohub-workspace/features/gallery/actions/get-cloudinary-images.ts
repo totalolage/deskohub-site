@@ -7,7 +7,7 @@ import {
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { env } from "@/env";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
@@ -23,19 +23,18 @@ export async function getCloudinaryImages({
   tags,
   maxResults = 60,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  return WorkspaceEffect.run(
-    { operation: "gallery.images.load", layer: CloudinaryServiceLive },
-    getGalleryImages(normalizeExpression(tags), { maxResults }).pipe(
-      Effect.catch((error) => {
-        if (env.VERCEL_ENV !== "development") return Effect.fail(error);
+  return getGalleryImages(normalizeExpression(tags), { maxResults }).pipe(
+    Effect.catch((error) => {
+      if (env.VERCEL_ENV !== "development") return Effect.fail(error);
 
-        return Effect.logWarning(
-          "Workspace Cloudinary gallery search skipped in development"
-        ).pipe(Effect.as([] as readonly CloudinaryAsset[]));
-      }),
-      Effect.tapError((error) =>
-        Effect.logError("Workspace Cloudinary gallery search failed", error)
-      )
-    )
+      return Effect.logWarning(
+        "Workspace Cloudinary gallery search skipped in development"
+      ).pipe(Effect.as([] as readonly CloudinaryAsset[]));
+    }),
+    Effect.tapError((error) =>
+      Effect.logError("Workspace Cloudinary gallery search failed", error)
+    ),
+    Effect.provide(CloudinaryServiceLive),
+    runWorkspaceEffect("gallery.images.load")
   );
 }

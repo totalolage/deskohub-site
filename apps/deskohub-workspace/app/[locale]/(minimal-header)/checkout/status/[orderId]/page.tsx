@@ -19,7 +19,7 @@ import {
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import {
   getSearchParamsDecoder,
@@ -134,22 +134,18 @@ async function CheckoutStatusContent({
     decodeCheckoutStatusSearchParams(rawSearchParams),
     () => ({ outcome: "unknown" as const })
   );
-  const status = await WorkspaceEffect.run(
-    {
-      operation: "checkout.status.load",
-      layer: CheckoutStatusServiceLiveWithDependencies,
-    },
-    Effect.flatMap(CheckoutStatusService, (service) =>
-      service.refreshStatus({ orderId, returnOutcome })
-    ).pipe(
-      Effect.tapError((cause) =>
-        Effect.logError("Checkout status load failed", {
-          orderId,
-          returnOutcome,
-          cause,
-        })
-      )
-    )
+  const status = await Effect.flatMap(CheckoutStatusService, (service) =>
+    service.refreshStatus({ orderId, returnOutcome })
+  ).pipe(
+    Effect.tapError((cause) =>
+      Effect.logError("Checkout status load failed", {
+        orderId,
+        returnOutcome,
+        cause,
+      })
+    ),
+    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+    runWorkspaceEffect("checkout.status.load")
   );
   const retryOutcome = getRetryOutcome(status.status);
 

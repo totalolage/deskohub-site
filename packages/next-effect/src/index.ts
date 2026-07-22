@@ -1,21 +1,5 @@
 import { Effect, type Layer } from "effect";
 import { execute } from "./internal/executor";
-import { makeNextEffectBoundary } from "./next-boundary";
-
-export type {
-  EffectBoundaryExecutor,
-  EffectBoundaryExecutorOptions,
-  EffectBoundaryOptions,
-  EffectBoundaryTransform,
-  EffectHostBoundary,
-} from "./effect-boundary";
-export type {
-  NextEffectBoundary,
-  NextEffectBoundaryOptions,
-  NextEffectBoundaryRoutePolicy,
-  NextEffectRequestCancellation,
-  NextEffectRouteFailureMapping,
-} from "./next-boundary";
 
 interface NextEffectBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
@@ -51,12 +35,15 @@ function makeRuntime<R>(
 ): NextEffectRuntime<R> {
   return {
     run: runEffect,
-    page: (component) => (props) => runEffect(component(props)),
+    page: (component) => (props) =>
+      runEffect(Effect.suspend(() => component(props))),
   };
 }
 
 function make(options?: NextEffectRunnableOptions): NextEffectRuntime<never>;
-function make<R, LE>(options: NextEffectLayerOptions<R, LE>): NextEffectRuntime<R>;
+function make<R, LE>(
+  options: NextEffectLayerOptions<R, LE>
+): NextEffectRuntime<R>;
 function make<R, LE>(
   options: NextEffectOptions<R, LE> = {}
 ): NextEffectRuntime<R> | NextEffectRuntime<never> {
@@ -79,5 +66,4 @@ function make<R, LE>(
 
 export const NextEffect = {
   make,
-  makeBoundary: makeNextEffectBoundary,
 };

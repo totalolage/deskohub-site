@@ -5,15 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./effect-boundary": "./src/effect-boundary.ts",
     "./effect-action": "./src/effect-action.ts"
   },
   "scripts": {
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@standard-schema/spec": "^1.1.0",
-    "type-fest": "^5.8.0"
+    "@standard-schema/spec": "^1.1.0"
   },
   "peerDependencies": {
     "effect": "4.0.0-beta.85",

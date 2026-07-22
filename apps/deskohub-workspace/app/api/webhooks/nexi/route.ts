@@ -6,8 +6,10 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  defineWorkspaceRoute,
+  mapWorkspaceInternalRouteFailure,
+} from "@/shared/backend/workspace-route";
 
 const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_parse_failed: 400,
@@ -47,16 +49,10 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(function* (
  *
  * Receives Nexi payment notifications and verifies payment state server-side.
  */
-export const POST = WorkspaceEffect.route(
+export const POST = defineWorkspaceRoute(
   {
     operation: "nexiWebhook",
     cancellation: "continue-after-disconnect",
-    layer: NexiWebhookServiceLiveWithDependencies.pipe(
-      Layer.provide(NexiServiceLive)
-    ),
-    mapFailure: mapWorkspaceInternalRouteFailure(
-      "Nexi webhook processing failed"
-    ),
   },
   (request) =>
     processWebhookRequest(request).pipe(
@@ -135,6 +131,14 @@ export const POST = WorkspaceEffect.route(
             )
           )
         )
+      ),
+      Effect.provide(
+        NexiWebhookServiceLiveWithDependencies.pipe(
+          Layer.provide(NexiServiceLive)
+        )
+      ),
+      Effect.mapError(
+        mapWorkspaceInternalRouteFailure("Nexi webhook processing failed")
       )
     )
 );

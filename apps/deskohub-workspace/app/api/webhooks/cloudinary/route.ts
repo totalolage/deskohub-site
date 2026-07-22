@@ -8,8 +8,10 @@ import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import {
+  defineWorkspaceRoute,
+  mapWorkspaceInternalRouteFailure,
+} from "@/shared/backend/workspace-route";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(
@@ -66,14 +68,10 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  *
  * Receives webhooks from Cloudinary
  */
-export const POST = WorkspaceEffect.route(
+export const POST = defineWorkspaceRoute(
   {
     operation: "cloudinaryWebhook",
     cancellation: "continue-after-disconnect",
-    layer: CloudinaryWebhookVerifierLive,
-    mapFailure: mapWorkspaceInternalRouteFailure(
-      "Cloudinary webhook processing failed"
-    ),
   },
   (request) =>
     processWebhookRequest(request).pipe(
@@ -123,7 +121,11 @@ export const POST = WorkspaceEffect.route(
               }
             )
           ),
-      })
+      }),
+      Effect.provide(CloudinaryWebhookVerifierLive),
+      Effect.mapError(
+        mapWorkspaceInternalRouteFailure("Cloudinary webhook processing failed")
+      )
     )
 );
 

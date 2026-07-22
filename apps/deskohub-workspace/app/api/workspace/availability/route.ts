@@ -3,8 +3,7 @@ import { Effect, Predicate } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
-import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const getAvailabilityRequest = (request: Request) => {
   const { searchParams } = new URL(request.url);
@@ -41,14 +40,10 @@ const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
   }
 );
 
-export const GET = WorkspaceEffect.route(
+export const GET = defineWorkspaceRoute(
   {
     operation: "workspaceAvailability",
     cancellation: "interrupt-on-disconnect",
-    layer: WorkspaceAvailabilityService.LiveWithDependencies,
-    mapFailure: mapWorkspaceInternalRouteFailure(
-      "Workspace availability could not be loaded"
-    ),
   },
   (request) =>
     loadWorkspaceAvailabilityRequest(request).pipe(
@@ -56,6 +51,7 @@ export const GET = WorkspaceEffect.route(
         Effect.logInfo("Workspace availability response ready", { result })
       ),
       Effect.map((result) => NextResponse.json(result)),
+      Effect.provide(WorkspaceAvailabilityService.LiveWithDependencies),
       Effect.catch(handleAvailabilityRouteError)
     )
 );

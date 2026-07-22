@@ -56,4 +56,14 @@ describe("NextEffect", () => {
       digest: expect.stringContaining("NEXT_REDIRECT"),
     });
   });
+
+  test("page suspends synchronous component construction", async () => {
+    const next = NextEffect.make();
+    const defect = new Error("construction failed");
+    const Page = next.page(() => {
+      throw defect;
+    });
+
+    await expect(Page({})).rejects.toBe(defect);
+  });
 });

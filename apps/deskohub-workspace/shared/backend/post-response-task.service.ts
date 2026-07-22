@@ -1,6 +1,6 @@
 import { Context, Data, Effect, Layer } from "effect";
 import { after } from "next/server";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
 interface IPostResponseTaskService {
   readonly run: (options: {
@@ -25,7 +25,7 @@ export class PostResponseTaskService extends Context.Service<
       run: ({ operation, task }) =>
         Effect.try({
           try: () => {
-            const runTask = WorkspaceEffect.task({ operation }, () =>
+            const runTask = defineWorkspaceTask(operation, () =>
               task.pipe(
                 Effect.catchCause((cause) =>
                   Effect.logWarning("Post-response task failed", { cause })

@@ -5,8 +5,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
-import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const cronBatchLimit = 25;
 
@@ -48,14 +47,10 @@ const handleReservationHoldCleanupCronError = Effect.fn(
   );
 });
 
-export const GET = WorkspaceEffect.route(
+export const GET = defineWorkspaceRoute(
   {
     operation: "reservationHoldCleanupCron",
     cancellation: "continue-after-disconnect",
-    layer: ReservationHoldCleanupServiceLiveWithDependencies,
-    mapFailure: mapWorkspaceInternalRouteFailure(
-      "Reservation hold cleanup failed"
-    ),
   },
   (request) => {
     if (!isAuthorizedCronRequest(request)) {
@@ -67,6 +62,7 @@ export const GET = WorkspaceEffect.route(
     }
 
     return sweepExpiredReservationHolds().pipe(
+      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
       Effect.catch(handleReservationHoldCleanupCronError)
     );
   }

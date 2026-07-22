@@ -26,7 +26,7 @@ export default [
           selector:
             "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
           message:
-            "Declare the real lifecycle boundary through WorkspaceEffect so logging, cancellation, and telemetry policy are applied.",
+            "Use the matching Workspace Effect runner or boundary so logging, cancellation, and telemetry policy are applied.",
         },
       ],
     },
@@ -34,7 +34,9 @@ export default [
   {
     files: ["**/*.{ts,tsx}"],
     ignores: [
-      "shared/backend/effect-boundary/next.ts",
+      "shared/backend/standalone-workspace-effect.ts",
+      "shared/backend/workspace-action.ts",
+      "shared/backend/workspace-effect.ts",
       "**/*.test.{ts,tsx}",
       "**/*.test-utils.{ts,tsx}",
     ],
@@ -46,12 +48,12 @@ export default [
             {
               name: "@deskohub/next-effect",
               message:
-                "Workspace production code imports the app-owned WorkspaceEffect facade.",
+                "Workspace production code uses the app-owned Workspace Effect runners.",
             },
             {
               name: "@deskohub/next-effect/effect-action",
               message:
-                "Workspace actions are declared through WorkspaceEffect.action.",
+                "Workspace actions are declared through defineWorkspaceAction or defineWorkspaceStateAction.",
             },
           ],
         },

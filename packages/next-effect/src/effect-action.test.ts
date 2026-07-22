@@ -177,107 +177,26 @@ describe("EffectAction", () => {
     expect(runnerError).toBe(mapped);
   });
 
-  test("declares actions with per-invocation Layers after validation", async () => {
-    let preparations = 0;
-    const boundary = EffectAction.makeBoundary(makeActionClient(), {
-      runExit: (effect) => Effect.runPromiseExit(effect),
-      prepare: (_invocation, effect) =>
-        Effect.sync(() => {
-          preparations += 1;
-        }).pipe(Effect.andThen(effect)),
-    });
-    const action = boundary.action(
-      {
-        operation: "test.boundary-action",
-        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
-        layer: Layer.succeed(TestService, { multiplier: 3 }),
-      },
-      ({ parsedInput }) =>
-        Effect.map(TestService, ({ multiplier }) => parsedInput * multiplier)
-    );
-
-    await expect(action("invalid")).resolves.toMatchObject({
-      validationErrors: expect.any(Object),
-    });
-    expect(preparations).toBe(0);
-
-    await expect(action("14")).resolves.toEqual({ data: 42 });
-    expect(preparations).toBe(1);
-  });
-
-  test("provides a shared Layer to every boundary action", async () => {
-    const boundary = EffectAction.makeBoundary(makeActionClient(), {
-      runExit: (effect) => Effect.runPromiseExit(effect),
-      layer: Layer.succeed(TestService, { multiplier: 3 }),
-      prepare: (_invocation, effect) => effect,
-    });
-    const action = boundary.action(
-      {
-        operation: "test.shared-boundary-layer",
-        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
-      },
-      ({ parsedInput }) =>
-        Effect.map(TestService, ({ multiplier }) => parsedInput * multiplier)
-    );
-
-    await expect(action("14")).resolves.toEqual({ data: 42 });
-  });
-
-  test("prepares actions after fallible Layer acquisition", async () => {
-    let preparedFailure: unknown;
-    const boundary = EffectAction.makeBoundary(makeActionClient(), {
-      runExit: (effect) => Effect.runPromiseExit(effect),
-      prepare: (_invocation, effect) =>
-        Effect.mapError(effect, (error) => {
-          preparedFailure = error;
-          return new Error("public setup");
-        }),
-    });
-    const action = boundary.action(
-      {
-        operation: "test.boundary-layer-failure",
-        schema: Schema.toStandardSchemaV1(Schema.String),
-        layer: Layer.effect(TestService, Effect.fail("setup")),
-      },
-      () => TestService
-    );
-
-    await expect(action("input")).resolves.toEqual({
-      serverError: "public setup",
-    });
-    expect(preparedFailure).toBe("setup");
-  });
-
-  test("declares stateful form actions through the same boundary method", async () => {
-    let preparations = 0;
+  test("declares stateful Effect actions after validation", async () => {
+    let executions = 0;
     let previousResult: unknown;
-    const boundary = EffectAction.makeBoundary(makeActionClient(), {
-      runExit: (effect) => Effect.runPromiseExit(effect),
-      prepare: (_invocation, effect) =>
+    const action = EffectAction.fromClient(makeActionClient())
+      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
+      .stateAction(({ parsedInput }, { prevResult }) =>
         Effect.sync(() => {
-          preparations += 1;
-        }).pipe(Effect.andThen(effect)),
-    });
-    const action = boundary.action(
-      {
-        operation: "test.stateful-boundary-action",
-        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
-        stateful: true,
-      },
-      ({ parsedInput }, { prevResult }) =>
-        Effect.sync(() => {
+          executions += 1;
           previousResult = prevResult;
           return parsedInput * 2;
         })
-    );
+      );
 
     await expect(action({ data: 1 }, "invalid")).resolves.toMatchObject({
       validationErrors: expect.any(Object),
     });
-    expect(preparations).toBe(0);
+    expect(executions).toBe(0);
 
     await expect(action({ data: 1 }, "21")).resolves.toEqual({ data: 42 });
-    expect(preparations).toBe(1);
+    expect(executions).toBe(1);
     expect(previousResult).toEqual({ data: 1 });
   });
 });
@@ -319,17 +238,9 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
   // @ts-expect-error useAction preserves the action input type.
   hook.execute(1);
 
-  const statefulAction = EffectAction.makeBoundary(makeActionClient(), {
-    runExit: (effect) => Effect.runPromiseExit(effect),
-    prepare: (_invocation, effect) => effect,
-  }).action(
-    {
-      operation: "test.stateful-action-types",
-      schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
-      stateful: true,
-    },
-    ({ parsedInput }) => Effect.succeed(parsedInput)
-  );
+  const statefulAction = EffectAction.fromClient(makeActionClient())
+    .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
+    .stateAction(({ parsedInput }) => Effect.succeed(parsedInput));
 
   // biome-ignore lint/correctness/useHookAtTopLevel: Compile-time coverage intentionally exercises the hook API.
   const statefulHook = useStateAction(statefulAction, {
@@ -340,19 +251,10 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
   // @ts-expect-error useStateAction preserves the action input type.
   statefulHook.formAction(1);
 
-  const boundary = EffectAction.makeBoundary(makeActionClient(), {
-    runExit: (effect) => Effect.runPromiseExit(effect),
-    prepare: (_invocation, effect) => effect,
-  });
-
-  boundary.action(
-    // @ts-expect-error an action requiring a service must declare its Layer.
-    {
-      operation: "test.missing-action-layer",
-      schema: Schema.toStandardSchemaV1(Schema.String),
-    },
-    () => TestService
-  );
+  EffectAction.fromClient(makeActionClient())
+    .inputSchema(Schema.toStandardSchemaV1(Schema.String))
+    // @ts-expect-error an action must provide every required service.
+    .action(() => TestService);
 
   void hook.executeAsync("1").then((result) => {
     if (result.data !== undefined) {

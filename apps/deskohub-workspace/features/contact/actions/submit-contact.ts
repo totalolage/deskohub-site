@@ -1,7 +1,7 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Layer, Schema, SchemaGetter, SchemaParser } from "effect";
+import { Effect, Layer, Schema, SchemaGetter, SchemaParser } from "effect";
 import {
   type ContactFormValues,
   processContactSubmission,
@@ -9,7 +9,7 @@ import {
 import { ContactServiceLive } from "@/features/contact/backend/contact.service";
 import { locales } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { defineWorkspaceStateAction } from "@/shared/backend/workspace-action";
 
 const getSubmittedString = (
   formData: FormData,
@@ -71,18 +71,16 @@ const ContactActionLive = ContactServiceLive.pipe(
   )
 );
 
-const submitContactAction = WorkspaceEffect.action(
+const submitContactAction = defineWorkspaceStateAction(
   {
     operation: "contact.submit",
     schema: contactFormDataStandardSchema,
-    stateful: true,
-    layer: ContactActionLive,
   },
-  ({ parsedInput }) =>
+  (input) =>
     processContactSubmission({
-      locale: parsedInput.locale,
-      submittedValues: parsedInput.submittedValues,
-    })
+      locale: input.locale,
+      submittedValues: input.submittedValues,
+    }).pipe(Effect.provide(ContactActionLive))
 );
 
 // Next must register an async function declared by this "use server" module.

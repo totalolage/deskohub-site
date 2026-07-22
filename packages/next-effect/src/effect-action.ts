@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Effect, Layer } from "effect";
+import { Effect, type Layer } from "effect";
 import type {
   ActionCallbacks,
   EffectiveThrows,
@@ -13,7 +13,6 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import type { EffectBoundaryOptions, EffectRunExit } from "./effect-boundary";
 import {
   type ExecuteOptions,
   type ExecuteRun,
@@ -36,35 +35,6 @@ export interface EffectActionArgs<
   readonly bindArgsClientInputs: readonly unknown[];
   readonly ctx: Ctx;
   readonly metadata: Metadata;
-}
-
-export interface EffectActionBoundaryInvocation<
-  S extends StandardSchemaV1,
-  Ctx extends object,
-  Metadata,
-> {
-  readonly operation: string;
-  readonly args: EffectActionArgs<S, Ctx, Metadata>;
-}
-
-export type EffectActionBoundaryPrepare<Ctx extends object, Metadata> = <
-  S extends StandardSchemaV1,
-  A,
-  E,
->(
-  invocation: EffectActionBoundaryInvocation<S, Ctx, Metadata>,
-  effect: Effect.Effect<A, E, never>
-) => Effect.Effect<A, unknown, never>;
-
-export interface EffectActionBoundaryOptions<
-  Ctx extends object,
-  Metadata,
-  R = never,
-  LE = never,
-> {
-  readonly runExit: EffectRunExit;
-  readonly prepare: EffectActionBoundaryPrepare<Ctx, Metadata>;
-  readonly layer?: Layer.Layer<R, LE, never>;
 }
 
 interface EffectActionBaseOptions {
@@ -98,102 +68,13 @@ type SafeActionValidationErrors<
   ? FlattenedValidationErrors<ValidationErrors<S>>
   : ValidationErrors<S>;
 
-export interface EffectActionState<ServerError, S extends StandardSchemaV1> {
-  readonly prevResult: SafeActionResult<ServerError, S, unknown, unknown>;
-}
-
-interface EffectActionBoundaryNoLayerOptions {
-  readonly layer?: never;
-}
-
-interface EffectActionBoundaryLayerOptions<R, LE> {
-  readonly layer: Layer.Layer<R, LE, never>;
-}
-
-export interface EffectActionBoundary<
+export interface EffectActionState<
   ServerError,
-  ErrorsFormat extends ValidationErrorsFormat | undefined,
-  Metadata,
-  Ctx extends object,
-  ThrowsValidationErrors extends boolean = false,
-  BoundaryR = never,
+  S extends StandardSchemaV1,
+  ShapedErrors = unknown,
+  A = unknown,
 > {
-  readonly action: {
-    <S extends StandardSchemaV1, A, E>(
-      options: EffectBoundaryOptions & {
-        readonly schema: S;
-        readonly stateful: true;
-      } & EffectActionBoundaryNoLayerOptions,
-      handler: (
-        args: EffectActionArgs<S, Ctx, Metadata>,
-        state: EffectActionState<ServerError, S>
-      ) => Effect.Effect<A, E, BoundaryR>
-    ): MaybeBrandThrows<
-      SafeStateActionFn<
-        ServerError,
-        S,
-        readonly [],
-        SafeActionValidationErrors<ErrorsFormat, S>,
-        A
-      >,
-      ThrowsValidationErrors
-    >;
-    <S extends StandardSchemaV1, A, E, R, LE>(
-      options: EffectBoundaryOptions & {
-        readonly schema: S;
-        readonly stateful: true;
-      } & EffectActionBoundaryLayerOptions<R, LE>,
-      handler: (
-        args: EffectActionArgs<S, Ctx, Metadata>,
-        state: EffectActionState<ServerError, S>
-      ) => Effect.Effect<A, E, R | BoundaryR>
-    ): MaybeBrandThrows<
-      SafeStateActionFn<
-        ServerError,
-        S,
-        readonly [],
-        SafeActionValidationErrors<ErrorsFormat, S>,
-        A
-      >,
-      ThrowsValidationErrors
-    >;
-    <S extends StandardSchemaV1, A, E>(
-      options: EffectBoundaryOptions & {
-        readonly schema: S;
-        readonly stateful?: false;
-      } & EffectActionBoundaryNoLayerOptions,
-      handler: (
-        args: EffectActionArgs<S, Ctx, Metadata>
-      ) => Effect.Effect<A, E, BoundaryR>
-    ): MaybeBrandThrows<
-      SafeActionFn<
-        ServerError,
-        S,
-        readonly [],
-        SafeActionValidationErrors<ErrorsFormat, S>,
-        A
-      >,
-      ThrowsValidationErrors
-    >;
-    <S extends StandardSchemaV1, A, E, R, LE>(
-      options: EffectBoundaryOptions & {
-        readonly schema: S;
-        readonly stateful?: false;
-      } & EffectActionBoundaryLayerOptions<R, LE>,
-      handler: (
-        args: EffectActionArgs<S, Ctx, Metadata>
-      ) => Effect.Effect<A, E, R | BoundaryR>
-    ): MaybeBrandThrows<
-      SafeActionFn<
-        ServerError,
-        S,
-        readonly [],
-        SafeActionValidationErrors<ErrorsFormat, S>,
-        A
-      >,
-      ThrowsValidationErrors
-    >;
-  };
+  readonly prevResult: SafeActionResult<ServerError, S, ShapedErrors, A>;
 }
 
 interface EffectActionSafeClient<
@@ -258,6 +139,50 @@ interface EffectActionSafeClient<
       >,
       EffectiveThrows<ThrowsValidationErrors, Utils>
     >;
+    stateAction<
+      A extends SchemaOutputOrDefault<OutputSchema, unknown>,
+      E,
+      Utils extends ActionCallbacks<
+        ServerError,
+        Metadata,
+        Ctx,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A,
+        PreValidationCtx
+      > = ActionCallbacks<
+        ServerError,
+        Metadata,
+        Ctx,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A,
+        PreValidationCtx
+      >,
+    >(
+      this: HasMetadata extends true ? object : never,
+      handler: (
+        args: EffectActionArgs<S, Ctx, Metadata>,
+        state: EffectActionState<
+          ServerError,
+          S,
+          SafeActionValidationErrors<ErrorsFormat, S>,
+          NoInfer<A>
+        >
+      ) => Effect.Effect<A, E, R>,
+      utils?: Utils
+    ): MaybeBrandThrows<
+      SafeStateActionFn<
+        ServerError,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A
+      >,
+      EffectiveThrows<ThrowsValidationErrors, Utils>
+    >;
   };
 }
 
@@ -314,6 +239,12 @@ function makeEffectActionClient<
         action(handler, actionUtils) {
           return builder.action(
             (args) => runEffect(handler(args)),
+            actionUtils
+          );
+        },
+        stateAction(handler, actionUtils) {
+          return builder.stateAction(
+            (args, state) => runEffect(handler(args, state)),
             actionUtils
           );
         },
@@ -444,277 +375,6 @@ function fromClient(
   );
 }
 
-type StatefulBoundaryActionInvocation<
-  ServerError,
-  S extends StandardSchemaV1,
-  Metadata,
-  Ctx extends object,
-  A,
-  E,
-  R,
-  LE,
-  BoundaryR,
-> = readonly [
-  declaration: EffectBoundaryOptions & {
-    readonly schema: S;
-    readonly stateful: true;
-    readonly layer?: Layer.Layer<R, LE, never>;
-  },
-  handler: (
-    args: EffectActionArgs<S, Ctx, Metadata>,
-    state: EffectActionState<ServerError, S>
-  ) => Effect.Effect<A, E, R | BoundaryR>,
-];
-
-type StatelessBoundaryActionInvocation<
-  S extends StandardSchemaV1,
-  Metadata,
-  Ctx extends object,
-  A,
-  E,
-  R,
-  LE,
-  BoundaryR,
-> = readonly [
-  declaration: EffectBoundaryOptions & {
-    readonly schema: S;
-    readonly stateful?: false;
-    readonly layer?: Layer.Layer<R, LE, never>;
-  },
-  handler: (
-    args: EffectActionArgs<S, Ctx, Metadata>
-  ) => Effect.Effect<A, E, R | BoundaryR>,
-];
-
-const isStatefulBoundaryActionInvocation = <
-  ServerError,
-  S extends StandardSchemaV1,
-  Metadata,
-  Ctx extends object,
-  A,
-  E,
-  R,
-  LE,
-  BoundaryR,
->(
-  invocation:
-    | StatefulBoundaryActionInvocation<
-        ServerError,
-        S,
-        Metadata,
-        Ctx,
-        A,
-        E,
-        R,
-        LE,
-        BoundaryR
-      >
-    | StatelessBoundaryActionInvocation<
-        S,
-        Metadata,
-        Ctx,
-        A,
-        E,
-        R,
-        LE,
-        BoundaryR
-      >
-): invocation is StatefulBoundaryActionInvocation<
-  ServerError,
-  S,
-  Metadata,
-  Ctx,
-  A,
-  E,
-  R,
-  LE,
-  BoundaryR
-> => invocation[0].stateful === true;
-
-function makeBoundary<
-  ServerError,
-  ErrorsFormat extends ValidationErrorsFormat | undefined,
-  MetadataSchema extends StandardSchemaV1 | undefined,
-  Metadata,
-  Ctx extends object,
-  InputSchemaFn extends
-    | ((clientInput?: unknown) => Promise<StandardSchemaV1>)
-    | undefined,
-  InputSchema extends StandardSchemaV1 | undefined,
-  BindArgsSchemas extends readonly [],
-  ShapedErrors,
-  ThrowsValidationErrors extends boolean,
-  PreValidationCtx extends object,
-  BoundaryR = never,
-  BoundaryLE = never,
->(
-  actionClient: SafeActionClient<
-    ServerError,
-    ErrorsFormat,
-    MetadataSchema,
-    Metadata,
-    true,
-    Ctx,
-    InputSchemaFn,
-    InputSchema,
-    undefined,
-    BindArgsSchemas,
-    ShapedErrors,
-    ThrowsValidationErrors,
-    false,
-    PreValidationCtx
-  >,
-  options: EffectActionBoundaryOptions<Ctx, Metadata, BoundaryR, BoundaryLE>
-): EffectActionBoundary<
-  ServerError,
-  ErrorsFormat,
-  Metadata,
-  Ctx,
-  ThrowsValidationErrors,
-  BoundaryR
-> {
-  const executeHandler = <S extends StandardSchemaV1, A, E, R, LE>(
-    declaration: EffectBoundaryOptions & {
-      readonly layer?: Layer.Layer<R, LE, never>;
-    },
-    args: EffectActionArgs<S, Ctx, Metadata>,
-    handler: () => Effect.Effect<A, E, R | BoundaryR>
-  ) => {
-    const effect = Effect.provide(Effect.suspend(handler), [
-      declaration.layer ?? Layer.empty,
-      options.layer ?? Layer.empty,
-    ]);
-    const prepared = Effect.suspend(() =>
-      options.prepare({ operation: declaration.operation, args }, effect)
-    ).pipe(
-      Effect.annotateLogs({
-        boundary: "action",
-        operation: declaration.operation,
-      })
-    );
-
-    return execute(prepared, { runExit: options.runExit });
-  };
-
-  function action<S extends StandardSchemaV1, A, E>(
-    declaration: EffectBoundaryOptions & {
-      readonly schema: S;
-      readonly stateful: true;
-    } & EffectActionBoundaryNoLayerOptions,
-    handler: (
-      args: EffectActionArgs<S, Ctx, Metadata>,
-      state: EffectActionState<ServerError, S>
-    ) => Effect.Effect<A, E, BoundaryR>
-  ): MaybeBrandThrows<
-    SafeStateActionFn<
-      ServerError,
-      S,
-      readonly [],
-      SafeActionValidationErrors<ErrorsFormat, S>,
-      A
-    >,
-    ThrowsValidationErrors
-  >;
-  function action<S extends StandardSchemaV1, A, E, R, LE>(
-    declaration: EffectBoundaryOptions & {
-      readonly schema: S;
-      readonly stateful: true;
-    } & EffectActionBoundaryLayerOptions<R, LE>,
-    handler: (
-      args: EffectActionArgs<S, Ctx, Metadata>,
-      state: EffectActionState<ServerError, S>
-    ) => Effect.Effect<A, E, R | BoundaryR>
-  ): MaybeBrandThrows<
-    SafeStateActionFn<
-      ServerError,
-      S,
-      readonly [],
-      SafeActionValidationErrors<ErrorsFormat, S>,
-      A
-    >,
-    ThrowsValidationErrors
-  >;
-  function action<S extends StandardSchemaV1, A, E>(
-    declaration: EffectBoundaryOptions & {
-      readonly schema: S;
-      readonly stateful?: false;
-    } & EffectActionBoundaryNoLayerOptions,
-    handler: (
-      args: EffectActionArgs<S, Ctx, Metadata>
-    ) => Effect.Effect<A, E, BoundaryR>
-  ): MaybeBrandThrows<
-    SafeActionFn<
-      ServerError,
-      S,
-      readonly [],
-      SafeActionValidationErrors<ErrorsFormat, S>,
-      A
-    >,
-    ThrowsValidationErrors
-  >;
-  function action<S extends StandardSchemaV1, A, E, R, LE>(
-    declaration: EffectBoundaryOptions & {
-      readonly schema: S;
-      readonly stateful?: false;
-    } & EffectActionBoundaryLayerOptions<R, LE>,
-    handler: (
-      args: EffectActionArgs<S, Ctx, Metadata>
-    ) => Effect.Effect<A, E, R | BoundaryR>
-  ): MaybeBrandThrows<
-    SafeActionFn<
-      ServerError,
-      S,
-      readonly [],
-      SafeActionValidationErrors<ErrorsFormat, S>,
-      A
-    >,
-    ThrowsValidationErrors
-  >;
-  function action<S extends StandardSchemaV1, A, E, R, LE>(
-    ...invocation:
-      | StatefulBoundaryActionInvocation<
-          ServerError,
-          S,
-          Metadata,
-          Ctx,
-          A,
-          E,
-          R,
-          LE,
-          BoundaryR
-        >
-      | StatelessBoundaryActionInvocation<
-          S,
-          Metadata,
-          Ctx,
-          A,
-          E,
-          R,
-          LE,
-          BoundaryR
-        >
-  ) {
-    if (isStatefulBoundaryActionInvocation(invocation)) {
-      const [declaration, handler] = invocation;
-      const builder = actionClient.inputSchema(declaration.schema);
-
-      return builder.stateAction((args, state) =>
-        executeHandler(declaration, args, () => handler(args, state))
-      );
-    }
-
-    const [declaration, handler] = invocation;
-    const builder = actionClient.inputSchema(declaration.schema);
-
-    return builder.action((args) =>
-      executeHandler(declaration, args, () => handler(args))
-    );
-  }
-
-  return { action };
-}
-
 export const EffectAction = {
   fromClient,
-  makeBoundary,
 };
