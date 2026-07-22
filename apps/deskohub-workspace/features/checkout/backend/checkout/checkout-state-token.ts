@@ -30,8 +30,10 @@ export type CheckoutStateCryptoOptions = {
   readonly randomBytes?: (size: number) => Buffer;
 };
 
+const checkoutStateTokenErrorTag = "CheckoutStateTokenError";
+
 export class CheckoutStateTokenError extends Data.TaggedError(
-  "CheckoutStateTokenError"
+  checkoutStateTokenErrorTag
 )<{
   readonly code:
     | "missing-secret"
@@ -41,7 +43,9 @@ export class CheckoutStateTokenError extends Data.TaggedError(
     | "expired";
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static readonly _tag = checkoutStateTokenErrorTag;
+}
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder();

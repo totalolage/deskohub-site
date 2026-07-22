@@ -15,11 +15,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
-import {
-  parseWorkspaceAdvertisedPrice,
-  type WorkspaceAdvertisedPriceRequest,
-  workspaceAdvertisedPriceKeys,
-} from "@/features/checkout/advertised-price";
+import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import {
@@ -44,6 +40,7 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import { useAdvertisedPrice } from "@/features/reservation/components/use-advertised-price";
 import {
   type CoworkReservationData,
   type CoworkReservationInput,
@@ -211,24 +208,6 @@ const loadWorkspaceAvailability = async ({
   return parseWorkspaceAvailabilityResponse(await response.json());
 };
 
-const loadWorkspaceAdvertisedPrice = async ({
-  input,
-  signal,
-}: {
-  input: WorkspaceAdvertisedPriceRequest;
-  signal: AbortSignal;
-}) => {
-  const response = await fetch("/api/workspace/advertised-price", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-    signal,
-  });
-  if (!response.ok) throw new Error("Advertised price request failed");
-
-  return parseWorkspaceAdvertisedPrice(await response.json());
-};
-
 const formatDisplayDate = (date: string, locale: Locale) =>
   formatReservationDisplayDate(
     date,
@@ -344,7 +323,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
           date: selectedDate,
         },
       },
-    } satisfies WorkspaceAdvertisedPriceRequest;
+    } satisfies AdvertisedPriceRequest;
   }, [
     locale,
     selectedCoffee,
@@ -352,20 +331,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     selectedMonitorOption,
     selectedTier,
   ]);
-  const advertisedPriceQueryResult = useQuery({
-    queryKey: advertisedPriceRequest
-      ? workspaceAdvertisedPriceKeys.price(advertisedPriceRequest)
-      : workspaceAdvertisedPriceKeys.all,
-    queryFn: ({ signal }) =>
-      loadWorkspaceAdvertisedPrice({
-        input: advertisedPriceRequest!,
-        signal,
-      }),
-    enabled: Boolean(advertisedPriceRequest),
-    retry: (failureCount) => failureCount < 3,
-    staleTime: 4 * 60 * 1000,
-    refetchInterval: 4 * 60 * 1000,
-  });
+  const advertisedPriceQueryResult = useAdvertisedPrice(advertisedPriceRequest);
   const advertisedPrice =
     advertisedPriceRequest && !advertisedPriceQueryResult.isError
       ? (advertisedPriceQueryResult.data ?? null)

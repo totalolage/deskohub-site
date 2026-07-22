@@ -3,38 +3,28 @@ import { workspaceCheckoutQuoteSchema } from "@/features/checkout/checkout-quote
 import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 
-export const workspaceAdvertisedPriceRequestSchema = Schema.Struct({
+export const advertisedPriceRequestSchema = Schema.Struct({
   locale: Schema.Literals(locales),
   reservation: coworkAdvertisedPriceReservationSchema,
 }).annotate({
-  identifier: "WorkspaceAdvertisedPriceRequest",
-  description: "Inputs for anonymous Workspace price advertisement.",
+  identifier: "AdvertisedPriceRequest",
+  description: "Inputs for anonymous price advertisement.",
 });
 
-export const workspaceAdvertisedPriceSchema = Schema.Struct({
+export const advertisedPriceSchema = Schema.Struct({
   quote: workspaceCheckoutQuoteSchema,
   advertisedPriceToken: Schema.NonEmptyString,
 }).annotate({
-  identifier: "WorkspaceAdvertisedPrice",
+  identifier: "AdvertisedPrice",
   description:
     "Source-neutral advertised quote and its integrity-protected snapshot token.",
 });
 
-export type WorkspaceAdvertisedPriceRequest =
-  typeof workspaceAdvertisedPriceRequestSchema.Type;
-export type WorkspaceAdvertisedPrice =
-  typeof workspaceAdvertisedPriceSchema.Type;
+export type AdvertisedPriceRequest = typeof advertisedPriceRequestSchema.Type;
+export type AdvertisedPrice = typeof advertisedPriceSchema.Type;
 
-const decodeAdvertisedPrice = Schema.decodeUnknownPromise(
-  workspaceAdvertisedPriceSchema,
-  { onExcessProperty: "error" }
-);
-
-export const parseWorkspaceAdvertisedPrice = (input: unknown) =>
-  decodeAdvertisedPrice(input);
-
-export const workspaceAdvertisedPriceKeys = {
-  all: ["workspace-advertised-price"] as const,
-  price: (input: WorkspaceAdvertisedPriceRequest) =>
-    [...workspaceAdvertisedPriceKeys.all, input] as const,
+export const advertisedPriceKeys = {
+  all: ["advertised-price"] as const,
+  price: (input: AdvertisedPriceRequest) =>
+    [...advertisedPriceKeys.all, input] as const,
 };

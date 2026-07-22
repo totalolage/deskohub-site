@@ -135,4 +135,41 @@ describe("submitWorkspaceReservation", () => {
     });
     expect(scenario.createHostedPaymentCheckout).toHaveBeenCalledTimes(1);
   });
+
+  test("maps cowork availability failures from their typed cause", async () => {
+    const { CheckoutError } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const { getReservationAvailabilityUnavailableMessage } = await import(
+      "@/features/reservation/reservation.i18n"
+    );
+    const { WorkspaceTableUnavailableError } = await import(
+      "@/features/reservation/backend/workspace-availability.service"
+    );
+    const createHostedPaymentCheckout = mock(() =>
+      Effect.fail(
+        new CheckoutError({
+          message: "workspace_table_unavailable",
+          cause: new WorkspaceTableUnavailableError({
+            date: "2099-07-30",
+            reservation: { kind: "cowork", tier: "basic" },
+          }),
+        })
+      )
+    );
+    const scenario = await runSubmitReservation({
+      createHostedPaymentCheckout,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: getReservationAvailabilityUnavailableMessage({
+        date: "2099-07-30",
+        locale: "en-US",
+        tier: "basic",
+      }),
+    });
+  });
 });

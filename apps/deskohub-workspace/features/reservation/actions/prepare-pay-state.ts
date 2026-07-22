@@ -104,8 +104,8 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
 const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
   now.add({ milliseconds: payStateDefaultTtlMilliseconds });
 
-const openSubmittedAdvertisedPrice = Effect.fn(
-  "prepareWorkspacePayState.openAdvertisedPrice"
+const openSubmittedCoworkAdvertisedPrice = Effect.fn(
+  "prepareCoworkPayState.openAdvertisedPrice"
 )((input: PreparePayStateInput) =>
   openAdvertisedPriceState(input.advertisedPriceToken).pipe(
     Effect.mapError(
@@ -171,7 +171,7 @@ const DotyposEntityWithIdSchema = Schema.Struct({
 });
 
 const decodeDotyposEntityId = Effect.fn(
-  "prepareWorkspacePayState.decodeDotyposEntityId"
+  "prepareCoworkPayState.decodeDotyposEntityId"
 )(function* (input: {
   readonly value: unknown;
   readonly missingIdMessage: string;
@@ -191,7 +191,7 @@ const decodeDotyposEntityId = Effect.fn(
 });
 
 const getDotyposCustomerId = Effect.fn(
-  "prepareWorkspacePayState.getDotyposCustomerId"
+  "prepareCoworkPayState.getDotyposCustomerId"
 )((customer: { readonly id?: string | null }) =>
   decodeDotyposEntityId({
     value: customer,
@@ -221,7 +221,7 @@ const buildReservationCheckoutDetails = (input: {
 };
 
 const getReservationPrivacyEvidence = Effect.fn(
-  "prepareWorkspacePayState.getReservationPrivacyEvidence"
+  "prepareCoworkPayState.getReservationPrivacyEvidence"
 )(function* (input: {
   readonly locale: Locale;
   readonly accepted: boolean;
@@ -245,7 +245,7 @@ const getReservationPrivacyEvidence = Effect.fn(
   });
 });
 
-const toReadyResult = Effect.fn("prepareWorkspacePayState.toReadyResult")(
+const toReadyResult = Effect.fn("prepareCoworkPayState.toReadyResult")(
   function* (input: {
     readonly locale: Locale;
     readonly reservation: NormalizedCoworkReservationOrder;
@@ -262,16 +262,21 @@ const toReadyResult = Effect.fn("prepareWorkspacePayState.toReadyResult")(
     });
     const sealedState = yield* sealPayStateForUrl(state);
     const payPath = buildCheckoutPayPath(input.locale, sealedState);
-    return {
-      status: input.changedKeys
-        ? ("pricing_changed" as const)
-        : ("ready" as const),
-      redirectUrl: `${payPath}&orderId=${encodeURIComponent(input.reservationId)}`,
-      ...(input.changedKeys && {
+    const redirectUrl = `${payPath}&orderId=${encodeURIComponent(input.reservationId)}`;
+
+    if (input.changedKeys) {
+      return {
+        status: "pricing_changed" as const,
+        redirectUrl,
         affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
           key.startsWith("product:") ? [key] : []
         ),
-      }),
+      };
+    }
+
+    return {
+      status: "ready" as const,
+      redirectUrl,
     };
   }
 );
@@ -301,7 +306,7 @@ const getExistingReservationSubmitMessage = (
     : m.reservationErrorMessage({}, { locale });
 
 const enqueueReservationHoldCleanup = Effect.fn(
-  "prepareWorkspacePayState.enqueueReservationHoldCleanup"
+  "prepareCoworkPayState.enqueueReservationHoldCleanup"
 )(function* (input: {
   readonly orderId: string;
   readonly reservationHoldExpiresAt: Temporal.Instant | null;
@@ -360,7 +365,7 @@ const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
 );
 
 const waitForPendingHoldCreation = Effect.fn(
-  "prepareWorkspacePayState.waitForPendingHoldCreation"
+  "prepareCoworkPayState.waitForPendingHoldCreation"
 )(function* (input: {
   readonly reservations: WorkspaceReservationRepository;
   readonly reservationId: string;
@@ -389,13 +394,13 @@ const waitForPendingHoldCreation = Effect.fn(
   );
 });
 
-export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
+export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
     const pricing = yield* CheckoutPricingService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
-    const advertisedPrice = yield* openSubmittedAdvertisedPrice(input);
+    const advertisedPrice = yield* openSubmittedCoworkAdvertisedPrice(input);
 
     const reservationIntentKey = deriveReservationIntentKey({
       reservationIntentId: input.reservationIntentId,
@@ -870,7 +875,7 @@ const preparePayStateAction = defineWorkspaceAction(
     schema: preparePayStateSchema,
   },
   (input) =>
-    prepareWorkspacePayState(input).pipe(Effect.provide(PreparePayStateLive))
+    prepareCoworkPayState(input).pipe(Effect.provide(PreparePayStateLive))
 );
 
 export const preparePayState: typeof preparePayStateAction = async (

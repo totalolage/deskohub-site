@@ -598,12 +598,23 @@ export const CheckoutServiceLive = Layer.effect(
 
           if (state.changedKeys) {
             yield* Effect.logInfo(
-              "Hosted payment checkout rejected: updated price still requires review"
+              "Hosted payment checkout returned existing pricing_changed review"
             );
-            return yield* new CheckoutError({
-              message:
-                "The updated checkout price must be reviewed before payment.",
+
+            const freshPayUrl = yield* getFreshPayUrl({
+              locale,
+              reservation: data,
+              quote: state.quote,
+              orderId: reservation.id,
+              submittedCode: state.submittedCode,
+              changedKeys: state.changedKeys,
             });
+            return {
+              status: "pricing_changed" as const,
+              changedKeys: state.changedKeys,
+              freshSummary: state.quote.summary,
+              freshPayUrl,
+            };
           }
 
           const paymentAffirmation = yield* pricing.affirmForPayment({

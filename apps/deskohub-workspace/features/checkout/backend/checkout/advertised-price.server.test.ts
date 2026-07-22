@@ -11,9 +11,7 @@ import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 mock.module("server-only", () => ({}));
 
 const { openAdvertisedPriceState } = await import("./advertised-price-state");
-const { buildWorkspaceAdvertisedPrice } = await import(
-  "./workspace-advertised-price.server"
-);
+const { buildAdvertisedPrice } = await import("./advertised-price.server");
 
 const money = (value: number) => ({
   value,
@@ -21,7 +19,7 @@ const money = (value: number) => ({
   currency: "CZK",
 });
 
-describe("buildWorkspaceAdvertisedPrice", () => {
+describe("buildAdvertisedPrice", () => {
   test("seals the source-neutral quote returned by pricing", async () => {
     const discountQuote = discountAdvertisementQuoteCodec.make({
       product: { kind: "cowork", tier: "basic" },
@@ -56,7 +54,7 @@ describe("buildWorkspaceAdvertisedPrice", () => {
       },
     };
 
-    const result = await buildWorkspaceAdvertisedPrice(input).pipe(
+    const result = await buildAdvertisedPrice(input).pipe(
       Effect.provide(CheckoutPricingServiceMock({ quoteAdvertisement })),
       Effect.runPromise
     );

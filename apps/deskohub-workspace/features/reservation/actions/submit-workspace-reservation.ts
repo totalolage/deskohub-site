@@ -1,13 +1,14 @@
 import { Effect } from "effect";
 import {
+  CheckoutError,
   CheckoutService,
-  openPayState,
 } from "@/features/checkout/backend/checkout";
 import { type Locale, m } from "@/features/i18n";
 import {
   getSubmitReservationCheckoutLocale,
   type SubmitReservationInput,
 } from "@/features/reservation/actions/submit-reservation-input";
+import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
   BotDetectedError,
@@ -15,34 +16,30 @@ import {
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
-const getSubmitReservationErrorMessage = Effect.fn(
-  "submitWorkspaceReservation.getErrorMessage"
-)(function* (
+const getSubmitReservationErrorMessage = (
   error: { readonly message: string },
   input: SubmitReservationInput
-) {
+) => {
   if (error instanceof BotDetectedError) {
     return m.reservationRateLimitMessage({}, { locale: input.locale });
   }
 
-  if (error.message !== "workspace_table_unavailable") {
-    return m.reservationErrorMessage({}, { locale: input.locale });
-  }
+  const unavailableCause =
+    error instanceof CheckoutError &&
+    error.cause instanceof WorkspaceTableUnavailableError
+      ? error.cause
+      : undefined;
 
-  const payState = yield* openPayState(input.payStateToken).pipe(
-    Effect.catch(() => Effect.succeed(undefined))
-  );
-
-  if (!payState) {
+  if (!unavailableCause || unavailableCause.reservation.kind !== "cowork") {
     return m.reservationErrorMessage({}, { locale: input.locale });
   }
 
   return getReservationAvailabilityUnavailableMessage({
-    date: payState.reservation.date,
+    date: unavailableCause.date,
     locale: input.locale,
-    tier: payState.reservation.entryTier,
+    tier: unavailableCause.reservation.tier,
   });
-});
+};
 
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
@@ -75,17 +72,15 @@ export const submitWorkspaceReservation = Effect.fn(
     effect.pipe(
       Effect.scoped,
       Effect.annotateLogs(input),
-      Effect.catch((error) =>
-        getSubmitReservationErrorMessage(error, input).pipe(
-          Effect.flatMap((message) =>
-            Effect.fail(
-              new PublicSafeActionError({
-                message,
-                cause: error,
-              })
-            )
-          )
-        )
+      Effect.tapError(() =>
+        Effect.logError("Workspace checkout submission failed")
+      ),
+      Effect.mapError(
+        (error) =>
+          new PublicSafeActionError({
+            message: getSubmitReservationErrorMessage(error, input),
+            cause: error,
+          })
       )
     )
 );

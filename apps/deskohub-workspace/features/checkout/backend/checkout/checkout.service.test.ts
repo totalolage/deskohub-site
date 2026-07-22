@@ -417,7 +417,7 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
-  test("rejects a review-required price state before affirmation or provider work", async () => {
+  test("returns the existing pricing change for a review-required state before provider work", async () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-review-required",
       changedKeys: {
@@ -426,11 +426,16 @@ describe("CheckoutService", () => {
       },
     });
 
-    const error = await Effect.runPromise(Effect.flip(harness.effect));
+    const result = await Effect.runPromise(harness.effect);
 
-    expect(error).toMatchObject({
-      _tag: "CheckoutError",
-      message: "The updated checkout price must be reviewed before payment.",
+    expect(result).toMatchObject({
+      status: "pricing_changed",
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["product:cowork:profi"],
+      },
+      freshSummary: expect.any(Object),
+      freshPayUrl: expect.stringContaining("/en-US/checkout/pay?payState="),
     });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();

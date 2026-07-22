@@ -52,3 +52,9 @@ In a named Effect operation, do not add a scoped annotation for the entire input
 Collection combinators such as `Effect.all` and `Effect.forEach` are sequential by default. For independent work that should use the runtime's ambient concurrency, specify `{ concurrency: "inherit" }`; do not manually fork and join fibers to obtain that behavior. Use a numeric limit only when the operation has a real local concurrency constraint.
 
 Expose each feature's public service API through its `index.ts` barrel. Keep providers, repositories, intermediate candidates, and other implementation modules private. In tests, import the declaration module under test directly rather than through the feature barrel.
+
+## Adapt Next boundaries
+
+For same-app UI operations that do not need an independently addressable HTTP resource, use `defineWorkspaceAction` and validate untrusted input with its Standard Schema boundary. Provide feature capabilities inside the handler so the shared action runtime owns execution, request context, bot protection, failure mapping, timeouts, and telemetry. Do not make client components construct requests to app-owned endpoints merely to call server code.
+
+For independently addressable HTTP resources, use `defineWorkspaceRoute` and choose its request-disconnect cancellation policy explicitly. Keep status codes and safe public messages out of reusable domain and Layer errors. Before returning the handler Effect, provide all feature capabilities and map the final expected error channel to `WorkspaceRouteFailure`, preserving the original error as `cause`.

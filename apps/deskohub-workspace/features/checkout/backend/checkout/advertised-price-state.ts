@@ -3,7 +3,7 @@ import type { Locale } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 import {
   type CheckoutStateCryptoOptions,
-  type CheckoutStateTokenError,
+  CheckoutStateTokenError,
   createCheckoutStateClaims,
   openCheckoutState,
   sealCheckoutState,
@@ -34,7 +34,7 @@ export class AdvertisedPriceStateTokenError extends Data.TaggedError(
 const isCheckoutStateTokenError = (
   cause: unknown
 ): cause is CheckoutStateTokenError =>
-  Predicate.isTagged(cause, "CheckoutStateTokenError");
+  Predicate.isTagged(cause, CheckoutStateTokenError._tag);
 
 const toAdvertisedPriceStateTokenError = (cause: unknown) =>
   isCheckoutStateTokenError(cause)

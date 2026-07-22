@@ -25,6 +25,7 @@ import {
 
 const push = mock(() => undefined);
 const execute = mock(() => undefined);
+const getAdvertisedPrice = mock(() => Promise.resolve(advertisedPriceResponse));
 
 mock.module("next/navigation", () => ({
   unstable_rethrow: (error: unknown) => {
@@ -39,6 +40,10 @@ mock.module("next/navigation", () => ({
 
 mock.module("@/features/cookie-consent", () => ({
   useCookieConsent: () => ({ isAccepted: () => false }),
+}));
+
+mock.module("@/features/reservation/actions/get-advertised-price", () => ({
+  getAdvertisedPrice,
 }));
 
 mock.module("@/shared/utils/use-workspace-action", () => ({
@@ -138,24 +143,25 @@ describe("ReservationForm advertised pricing", () => {
 
   test("renders the discount accessibly and clears the prior price while selection refreshes", async () => {
     const advertisedRequests: unknown[] = [];
-    let resolvePlusRequest: ((response: Response) => void) | undefined;
-    globalThis.fetch = mock(
-      (request: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(request);
-        if (url.startsWith("/api/workspace/availability")) {
-          return Promise.resolve(jsonResponse(availabilityResponse));
-        }
-
-        const body = JSON.parse(String(init?.body));
-        advertisedRequests.push(body);
-        if (body.reservation.details.entryTier === "plus") {
-          return new Promise<Response>((resolve) => {
-            resolvePlusRequest = resolve;
-          });
-        }
-        return Promise.resolve(jsonResponse(advertisedPriceResponse));
+    let resolvePlusRequest:
+      | ((response: typeof advertisedPriceResponse) => void)
+      | undefined;
+    getAdvertisedPrice.mockImplementation((input) => {
+      advertisedRequests.push(input);
+      if (input.reservation.details.entryTier === "plus") {
+        return new Promise((resolve) => {
+          resolvePlusRequest = resolve;
+        });
       }
-    ) as typeof fetch;
+      return Promise.resolve(advertisedPriceResponse);
+    });
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
 
     const view = renderForm();
 
@@ -193,7 +199,7 @@ describe("ReservationForm advertised pricing", () => {
     expect(view.queryByText(/discounted price.*175/i)).toBeNull();
 
     await act(async () => {
-      resolvePlusRequest?.(jsonResponse(advertisedPriceResponse));
+      resolvePlusRequest?.(advertisedPriceResponse);
     });
     await waitFor(() => {
       expect(
@@ -204,16 +210,17 @@ describe("ReservationForm advertised pricing", () => {
 
   test("shows a retryable error instead of enabling checkout with failed price data", async () => {
     let failAdvertisedPrice = true;
+    getAdvertisedPrice.mockImplementation(() =>
+      failAdvertisedPrice
+        ? Promise.reject(new Error("unavailable"))
+        : Promise.resolve(advertisedPriceResponse)
+    );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
       if (url.startsWith("/api/workspace/availability")) {
         return Promise.resolve(jsonResponse(availabilityResponse));
       }
-      return Promise.resolve(
-        failAdvertisedPrice
-          ? jsonResponse({ error: "unavailable" }, 500)
-          : jsonResponse(advertisedPriceResponse)
-      );
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
     }) as typeof fetch;
 
     const view = renderForm();

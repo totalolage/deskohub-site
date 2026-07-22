@@ -3,7 +3,6 @@ import {
   type CheckoutQuoteError,
   calculateWorkspaceCheckoutQuote,
   normalizeWorkspaceCheckoutOrder,
-  type WorkspaceCheckoutOrderInput,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -16,11 +15,8 @@ import {
   DiscountService,
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
+import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-
-export type CheckoutPricingReservation = WorkspaceCheckoutOrderInput & {
-  readonly date: string;
-};
 
 export type CheckoutPricingError =
   | CheckoutQuoteError
@@ -46,7 +42,7 @@ export type PaymentPriceAffirmation = {
 };
 
 export type AdvertisementQuoteInput = {
-  readonly reservation: CheckoutPricingReservation;
+  readonly reservation: CoworkReservationDetails;
   readonly locale: Locale;
 };
 
@@ -108,9 +104,7 @@ export class CheckoutPricingService extends Context.Service<
 
       const getPricingContext = Effect.fn(
         "CheckoutPricingService.getPricingContext"
-      )(function* (input: {
-        readonly reservation: CheckoutPricingReservation;
-      }) {
+      )(function* (input: { readonly reservation: CoworkReservationDetails }) {
         const order = yield* normalizeWorkspaceCheckoutOrder(input.reservation);
         const product = getWorkspaceProductByTier(order.entryTier);
 

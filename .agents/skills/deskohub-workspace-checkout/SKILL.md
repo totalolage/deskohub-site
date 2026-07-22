@@ -21,4 +21,6 @@ Reservation-page advertisement evaluates only anonymously discoverable automatic
 
 Inside `apps/deskohub-workspace`, do not prefix new app-owned services, operations, or supporting types with `Workspace`; the app boundary already supplies that context. Keep the prefix only when it distinguishes a real alternative or belongs to an established contract whose broad rename is outside the current change.
 
+Pass canonical reservation projections through pricing boundaries. Do not repair an incomplete checkout product type by manually intersecting reservation fields such as `date`; use the reservation domain's existing PII-free details projection.
+
 Keep catalog currency through advertisement, signed-summary generation, and final price affirmation. The non-production Nexi sandbox currency override belongs only at provider-session creation: apply it to the amount sent to Nexi and persisted on the provider attempt, without feeding it back into any customer-visible quote.

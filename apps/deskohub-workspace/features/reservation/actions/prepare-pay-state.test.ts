@@ -189,7 +189,7 @@ const runReusableReservationScenario = async (input: {
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
 }) => {
-  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const { prepareCoworkPayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
     "@/features/checkout/backend/reservation"
   );
@@ -270,7 +270,7 @@ const runReusableReservationScenario = async (input: {
     } as unknown as typeof DotyposService.Service)
   );
 
-  const result = await prepareWorkspacePayState({
+  const result = await prepareCoworkPayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
     advertisedPriceToken:
@@ -295,9 +295,9 @@ const runReusableReservationScenario = async (input: {
   };
 };
 
-describe("prepareWorkspacePayState", () => {
+describe("prepareCoworkPayState", () => {
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareCoworkPayState } = await import("./prepare-pay-state");
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -423,7 +423,7 @@ describe("prepareWorkspacePayState", () => {
         capture: mock(() => Effect.void),
       })
     );
-    const result = await prepareWorkspacePayState({
+    const result = await prepareCoworkPayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       advertisedPriceToken: await buildAdvertisedPriceToken(),
@@ -544,12 +544,12 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects a tampered advertised-price snapshot before downstream work", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareCoworkPayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const token = await buildAdvertisedPriceToken();
-    const effect = prepareWorkspacePayState({
+    const effect = prepareCoworkPayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       advertisedPriceToken: tamperToken(token),
@@ -576,11 +576,11 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects a snapshot for different reservation inputs", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareCoworkPayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
-    const effect = prepareWorkspacePayState({
+    const effect = prepareCoworkPayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       advertisedPriceToken: await buildAdvertisedPriceToken(),
@@ -607,11 +607,11 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects an expired advertised-price snapshot", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareCoworkPayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
-    const effect = prepareWorkspacePayState({
+    const effect = prepareCoworkPayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       advertisedPriceToken: await buildAdvertisedPriceToken(
@@ -700,7 +700,7 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects a classified bot before resolving downstream services", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareCoworkPayState } = await import("./prepare-pay-state");
     const { BotDetectedError } = await import(
       "@/shared/backend/bot-protection/bot-protection.service"
     );
@@ -713,7 +713,7 @@ describe("prepareWorkspacePayState", () => {
         new BotDetectedError({ message: "Automated request detected" })
       )
     );
-    const effect = prepareWorkspacePayState({
+    const effect = prepareCoworkPayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       advertisedPriceToken: "invalid-but-bot-rejects-first",
