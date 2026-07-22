@@ -4,6 +4,7 @@ import {
   beforeAll,
   describe,
   expect,
+  mock,
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
@@ -11,7 +12,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { ContactForm } from "./contact-form";
+
+mock.module("@/features/contact/actions/contact", () => ({
+  submitContactForm: async () => ({ data: { status: "idle" } }),
+}));
 
 describe("ContactForm", () => {
   beforeAll(() => {
@@ -26,7 +30,8 @@ describe("ContactForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("prefills fields from provided initial values", () => {
+  test("prefills fields from provided initial values", async () => {
+    const { ContactForm } = await import("./contact-form");
     const view = render(
       <ContactForm
         locale="en-US"

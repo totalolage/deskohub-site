@@ -91,7 +91,9 @@ const runReusableReservationScenario = async (input: {
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
 }) => {
-  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const { prepareWorkspacePayState } = await import(
+    "./prepare-pay-state-workflow"
+  );
   const {
     WorkspaceCheckoutAccessCodeService,
     WorkspaceTableAssignmentService,
@@ -198,7 +200,9 @@ const runReusableReservationScenario = async (input: {
 
 describe("prepareWorkspacePayState", () => {
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import(
+      "./prepare-pay-state-workflow"
+    );
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -450,7 +454,9 @@ describe("prepareWorkspacePayState", () => {
   });
 
   test("rejects a classified bot before resolving downstream services", async () => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import(
+      "./prepare-pay-state-workflow"
+    );
     const { BotDetectedError } = await import(
       "@/shared/backend/bot-protection/bot-protection.service"
     );

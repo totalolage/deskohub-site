@@ -5,12 +5,18 @@ import { CheckoutServiceLiveWithDependencies } from "@/features/checkout/backend
 import { getSubmitReservationSchema } from "@/features/reservation/actions/submit-reservation-input";
 import { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
-const submitReservationAction = createEffectSafeAction(
-  getSubmitReservationSchema(),
-  submitWorkspaceReservation,
-  Layer.merge(CheckoutServiceLiveWithDependencies, BotProtectionService.Live)
+const submitReservationAction = WorkspaceEffect.action(
+  {
+    operation: "checkout.submit-reservation",
+    schema: getSubmitReservationSchema(),
+    layer: Layer.merge(
+      CheckoutServiceLiveWithDependencies,
+      BotProtectionService.Live
+    ),
+  },
+  ({ ctx, parsedInput }) => submitWorkspaceReservation(parsedInput, ctx)
 );
 
 export const submitReservation: typeof submitReservationAction = async (
