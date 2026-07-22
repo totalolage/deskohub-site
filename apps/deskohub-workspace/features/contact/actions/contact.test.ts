@@ -19,7 +19,7 @@ const runContactSubmission = async (options?: {
   const { ContactService } = await import(
     "@/features/contact/backend/contact.service"
   );
-  const { processContactSubmission } = await import("./contact-workflow");
+  const { processContactSubmission } = await import("./contact");
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );

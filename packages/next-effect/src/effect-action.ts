@@ -13,13 +13,12 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import type { EffectBoundaryOptions } from "./effect-boundary";
+import type {
+  EffectBoundaryOptions,
+  EffectRunExit,
+} from "./effect-boundary";
 import { provideBoundaryLayer } from "./internal/boundary";
-import {
-  type EffectRunExit,
-  type ExecuteRun,
-  execute,
-} from "./internal/executor";
+import { type ExecuteRun, execute } from "./internal/executor";
 
 type SchemaInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
 type SchemaOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
@@ -64,27 +63,16 @@ export interface EffectActionBoundaryOptions<Ctx extends object, Metadata> {
 
 interface EffectActionBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
+  readonly run?: ExecuteRun;
 }
 
-type EffectActionExecutorOptions =
-  | {
-      readonly run?: ExecuteRun;
-      readonly runExit?: never;
-    }
-  | {
-      readonly run?: never;
-      readonly runExit: EffectRunExit;
-    };
+interface EffectActionRunnableOptions extends EffectActionBaseOptions {
+  readonly layer?: undefined;
+}
 
-type EffectActionRunnableOptions = EffectActionBaseOptions &
-  EffectActionExecutorOptions & {
-    readonly layer?: undefined;
-  };
-
-type EffectActionLayerOptions<R, LE> = EffectActionBaseOptions &
-  EffectActionExecutorOptions & {
-    readonly layer: Layer.Layer<R, LE, never>;
-  };
+interface EffectActionLayerOptions<R, LE> extends EffectActionBaseOptions {
+  readonly layer: Layer.Layer<R, LE, never>;
+}
 
 export type EffectActionOptions<R = never, LE = never> =
   | EffectActionRunnableOptions
@@ -304,7 +292,7 @@ function makeEffectActionClient<
       return {
         action(handler, actionUtils) {
           return builder.action(
-            (args) => runEffect(Effect.suspend(() => handler(args))),
+            (args) => runEffect(handler(args)),
             actionUtils
           );
         },
@@ -422,18 +410,22 @@ function fromClient(
   >,
   options: EffectActionOptions<unknown, unknown> = {}
 ): unknown {
-  assertExecutorOptions(options);
-
   if (options.layer) {
     return makeEffectActionClient(actionClient, (effect) =>
-      execute(Effect.provide(effect, options.layer), getExecuteOptions(options))
+      execute(Effect.provide(effect, options.layer), {
+        mapError: options.mapError,
+        run: options.run,
+      })
     );
   }
 
   return makeEffectActionClient(
     actionClient,
     <A, E>(effect: Effect.Effect<A, E, never>) =>
-      execute(effect, getExecuteOptions(options))
+      execute(effect, {
+        mapError: options.mapError,
+        run: options.run,
+      })
   );
 }
 
@@ -497,14 +489,14 @@ function makeBoundary<
         Effect.suspend(() => handler(args, state)),
         declaration.layer
       );
-      const prepared = options
-        .prepare({ operation: declaration.operation, args }, effect)
-        .pipe(
-          Effect.annotateLogs({
-            boundary: "action",
-            operation: declaration.operation,
-          })
-        );
+      const prepared = Effect.suspend(() =>
+        options.prepare({ operation: declaration.operation, args }, effect)
+      ).pipe(
+        Effect.annotateLogs({
+          boundary: "action",
+          operation: declaration.operation,
+        })
+      );
 
       return execute(prepared, { runExit: options.runExit });
     };
@@ -521,23 +513,6 @@ function makeBoundary<
   >["action"];
 
   return { action };
-}
-
-function getExecuteOptions(
-  options: EffectActionBaseOptions & EffectActionExecutorOptions
-) {
-  return options.runExit
-    ? { mapError: options.mapError, runExit: options.runExit }
-    : { mapError: options.mapError, run: options.run };
-}
-
-function assertExecutorOptions(options: {
-  readonly run?: ExecuteRun;
-  readonly runExit?: EffectRunExit;
-}) {
-  if (process.env.NODE_ENV !== "production" && options.run && options.runExit) {
-    throw new TypeError("EffectAction cannot combine runExit with run");
-  }
 }
 
 export const EffectAction = {

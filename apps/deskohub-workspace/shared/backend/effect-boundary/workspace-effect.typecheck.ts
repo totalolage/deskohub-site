@@ -17,17 +17,6 @@ declare const responseWithService: Effect.Effect<Response, never, TestService>;
 const typecheck = false as boolean;
 
 if (typecheck) {
-  // @ts-expect-error Pages must recover their typed failure channel.
-  workspace.page({ operation: "type.page" }, () =>
-    Effect.fail("handler failed")
-  );
-
-  workspace.page(
-    // @ts-expect-error Page Layers must be explicitly made infallible.
-    { operation: "type.page-layer", layer: fallibleLayer },
-    () => responseWithService
-  );
-
   // @ts-expect-error Actions must declare their input schema.
   workspace.action({ operation: "type.action" }, ({ parsedInput }) =>
     Effect.succeed(parsedInput)

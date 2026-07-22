@@ -13,7 +13,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-mock.module("@/features/contact/actions/contact", () => ({
+mock.module("@/features/contact/actions/submit-contact", () => ({
   submitContactForm: async () => ({ data: { status: "idle" } }),
 }));
 

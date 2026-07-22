@@ -70,7 +70,7 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  */
 export const POST = WorkspaceEffect.route(
   {
-    operation: "gallery.cloudinary-webhook",
+    operation: "cloudinaryWebhook",
     cancellation: "continue-after-disconnect",
     layer: CloudinaryWebhookVerifierLive,
     mapFailure: mapWorkspaceInternalRouteFailure(

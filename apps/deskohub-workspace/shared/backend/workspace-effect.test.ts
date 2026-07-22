@@ -92,21 +92,6 @@ class TestLayerError extends Data.TaggedError("TestLayerError")<{
 }> {}
 
 describe("WorkspaceEffect", () => {
-  test("page adds stable metadata without reading request state or flushing", async () => {
-    const harness = makeHarness();
-    const Page = harness.workspace.page({ operation: "test.page" }, () =>
-      Effect.logInfo("rendered").pipe(Effect.as("page"))
-    );
-
-    await expect(Page({})).resolves.toBe("page");
-    expect(harness.actionHeaderReads).toBe(0);
-    expect(harness.scheduledFlushes).toBe(0);
-    expect(harness.logs[0]?.annotations).toMatchObject({
-      boundary: "page",
-      operation: "test.page",
-    });
-  });
-
   test("route adds safe request metadata and schedules one flush", async () => {
     const consent = encodeURIComponent(
       JSON.stringify({ categories: ["necessary", "analytics"] })
@@ -165,6 +150,56 @@ describe("WorkspaceEffect", () => {
       error: "Temporarily unavailable",
     });
     expect(JSON.stringify(publicBody)).not.toContain("private setup");
+  });
+
+  test("route recognizes structurally tagged Workspace failures", async () => {
+    const harness = makeHarness();
+    const failure: WorkspaceRouteFailure = {
+      _tag: "WorkspaceRouteFailure",
+      statusCode: 418,
+      publicMessage: "Tagged failure",
+    };
+    const GET = harness.workspace.route(
+      {
+        operation: "test.tagged-route-failure",
+        cancellation: "continue-after-disconnect",
+      },
+      () => Effect.fail(failure).pipe(Effect.as(new Response("unused")))
+    );
+
+    const response = await GET(new Request("https://deskohub.test/api/test"));
+    expect(response.status).toBe(418);
+    await expect(response.json()).resolves.toEqual({ error: "Tagged failure" });
+  });
+
+  test("route failure logging preserves the cause for censorship", async () => {
+    const harness = makeHarness();
+    const cause = new TestLayerError({ message: "private cause" });
+    const GET = harness.workspace.route(
+      {
+        operation: "test.route-failure-cause",
+        cancellation: "continue-after-disconnect",
+      },
+      () =>
+        Effect.fail(
+          new WorkspaceRouteFailure({
+            statusCode: 500,
+            publicMessage: "Public failure",
+            cause,
+          })
+        ).pipe(Effect.as(new Response("unused")))
+    );
+
+    await GET(new Request("https://deskohub.test/api/test"));
+    const failureLog = harness.logs.find(
+      ({ message }) =>
+        Array.isArray(message) &&
+        message[0] === "Workspace route request failed"
+    );
+    expect(failureLog?.message).toEqual([
+      "Workspace route request failed",
+      { statusCode: 500, cause },
+    ]);
   });
 
   test("route suspends synchronous handler construction as a defect", async () => {
@@ -286,30 +321,3 @@ describe("WorkspaceEffect", () => {
     expect(harness.taskFlushes).toBe(2);
   });
 });
-
-if (process.env.WORKSPACE_EFFECT_TYPECHECK === "1") {
-  const workspace = makeHarness().workspace;
-
-  // @ts-expect-error Pages must recover their typed failure channel.
-  workspace.page({ operation: "type.page" }, () => Effect.fail("failure"));
-
-  // @ts-expect-error Routes with domain failures require total mapping.
-  workspace.route(
-    { operation: "type.route", cancellation: "continue-after-disconnect" },
-    () => Effect.fail("failure").pipe(Effect.as(new Response()))
-  );
-
-  workspace.route(
-    {
-      operation: "type.route-mapped",
-      cancellation: "continue-after-disconnect",
-      mapFailure: (cause: string) =>
-        new WorkspaceRouteFailure({
-          statusCode: 500,
-          publicMessage: "Failed",
-          cause,
-        }),
-    },
-    () => Effect.fail("failure").pipe(Effect.as(new Response()))
-  );
-}

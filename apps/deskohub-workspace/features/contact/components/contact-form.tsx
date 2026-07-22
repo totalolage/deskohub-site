@@ -6,11 +6,11 @@ import { useSearchParams } from "next/navigation";
 import { useStateAction } from "next-safe-action/stateful-hooks";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { submitContactForm } from "@/features/contact/actions/contact";
 import type {
   ContactFormState,
   ContactFormValues,
-} from "@/features/contact/actions/contact-workflow";
+} from "@/features/contact/actions/contact";
+import { submitContactForm } from "@/features/contact/actions/submit-contact";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {

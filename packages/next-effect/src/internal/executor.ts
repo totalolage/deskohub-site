@@ -1,14 +1,10 @@
 import { Cause, Effect, Exit } from "effect";
 import { unstable_rethrow } from "next/navigation";
+import type { EffectRunExit } from "../effect-boundary";
 
 export type ExecuteRun = <A>(
   effect: Effect.Effect<A, unknown, never>
 ) => Promise<A>;
-
-export type EffectRunExit = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  options?: { readonly signal?: AbortSignal }
-) => Promise<Exit.Exit<A, E>>;
 
 interface ExecuteBaseOptions<E> {
   readonly mapError?: (error: E) => unknown;
@@ -27,25 +23,14 @@ export type ExecuteOptions<E> = ExecuteBaseOptions<E> &
       }
   );
 
-export interface ExecuteRecoveryOptions<A, E, ErrorResult>
-  extends ExecuteBaseOptions<E> {
-  readonly run: (
-    effect: Effect.Effect<A, unknown, never>
-  ) => Promise<A | ErrorResult>;
-}
-
 export function execute<A, E>(
   effect: Effect.Effect<A, E, never>,
   options?: ExecuteOptions<E>
 ): Promise<A>;
-export function execute<A, E, ErrorResult>(
+export async function execute<A, E>(
   effect: Effect.Effect<A, E, never>,
-  options: ExecuteRecoveryOptions<A, E, ErrorResult>
-): Promise<A | ErrorResult>;
-export async function execute<A, E, ErrorResult = never>(
-  effect: Effect.Effect<A, E, never>,
-  options: ExecuteOptions<E> | ExecuteRecoveryOptions<A, E, ErrorResult> = {}
-): Promise<A | ErrorResult> {
+  options: ExecuteOptions<E> = {}
+): Promise<A> {
   const program = options.mapError
     ? Effect.mapError(effect, options.mapError)
     : effect;

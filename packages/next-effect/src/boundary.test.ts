@@ -18,8 +18,6 @@ const makeBoundary = () => {
   const boundary = NextEffect.makeBoundary<TestRouteFailure, Response>({
     executor,
     route: {
-      isFailure: (failure): failure is TestRouteFailure =>
-        failure instanceof TestRouteFailure,
       recoverFailure: (failure) =>
         Effect.succeed(new Response("recovered", { status: failure.status })),
       withRequest: (_request, effect) =>
@@ -112,8 +110,7 @@ describe("NextEffect boundary declarations", () => {
   });
 
   test("keeps every declaration method extractable", async () => {
-    const { page, route, task, run } = makeBoundary().boundary;
-    const Page = page({ operation: "test.page" }, () => Effect.succeed("page"));
+    const { route, task, run } = makeBoundary().boundary;
     const GET = route(
       {
         operation: "test.route",
@@ -125,7 +122,6 @@ describe("NextEffect boundary declarations", () => {
       Effect.succeed("task")
     );
 
-    await expect(Page({})).resolves.toBe("page");
     await expect(
       (await GET(new Request("https://example.test"))).text()
     ).resolves.toBe("route");

@@ -1,11 +1,4 @@
-import { Effect } from "effect";
-import { env } from "@/env";
-import {
-  type CloudinaryAsset,
-  CloudinaryServiceLive,
-} from "@/features/gallery/backend/cloudinary.service";
-import { getCloudinaryImages } from "@/features/gallery/backend/cloudinary-images";
-import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
 import noiseTexture from "../images/noise-texture.png";
@@ -30,29 +23,11 @@ export const LandingPagePhotoCarouselBackgroundNoise = ({
   />
 );
 
-const loadLandingPageImages = WorkspaceEffect.page(
-  { operation: "landing.photo-carousel.render" },
-  (_props: Record<string, never>) =>
-    getCloudinaryImages({
-      tags: ["landing-carousel"],
-      maxResults: 20,
-    }).pipe(
-      Effect.provide(CloudinaryServiceLive),
-      Effect.catch((error) =>
-        env.VERCEL_ENV === "development"
-          ? Effect.logWarning(
-              "Workspace Cloudinary gallery search skipped in development"
-            ).pipe(Effect.as([] as readonly CloudinaryAsset[]))
-          : Effect.logError(
-              "Workspace Cloudinary gallery search failed",
-              error
-            ).pipe(Effect.andThen(Effect.die(error)))
-      )
-    )
-);
-
 export function LandingPagePhotoCarouselSection() {
-  const imagesPromise = loadLandingPageImages({});
+  const imagesPromise = getCloudinaryImages({
+    tags: ["landing-carousel"],
+    maxResults: 20,
+  });
 
   return (
     <section

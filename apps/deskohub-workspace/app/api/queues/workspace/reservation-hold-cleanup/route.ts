@@ -15,7 +15,7 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
 
 const processCleanupMessage = WorkspaceEffect.task(
   {
-    operation: "reservation-hold.cleanup-message",
+    operation: "reservationHoldCleanupSchedule",
     layer: ReservationHoldCleanupScheduleConsumerLive,
   },
   (

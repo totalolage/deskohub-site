@@ -28,7 +28,7 @@ export const recoverWorkspaceRouteFailure = Effect.fn(
   const statusCode = normalizePublicStatus(failure.statusCode);
   const annotations = {
     statusCode,
-    errorTag: getSafeErrorTag(failure.cause),
+    cause: failure.cause,
   };
 
   yield* statusCode >= 400 && statusCode < 500
@@ -45,16 +45,3 @@ const normalizePublicStatus = (statusCode: number) =>
   Number.isInteger(statusCode) && statusCode >= 400 && statusCode <= 599
     ? statusCode
     : 500;
-
-const safeErrorTagPattern = /^[A-Za-z][A-Za-z0-9_]{0,127}$/;
-
-const getSafeErrorTag = (cause: unknown) => {
-  if (!cause || typeof cause !== "object" || !("_tag" in cause)) {
-    return "UnknownError";
-  }
-
-  const tag = cause._tag;
-  return typeof tag === "string" && safeErrorTagPattern.test(tag)
-    ? tag
-    : "UnknownError";
-};

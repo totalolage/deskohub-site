@@ -83,60 +83,56 @@ export default async function LocalizedCheckoutPayPage({
   ));
 }
 
-const CheckoutPayContent = WorkspaceEffect.page(
-  { operation: "checkout.pay.render" },
-  ({
-    locale,
-    searchParams,
-  }: {
-    readonly locale: Locale;
-    readonly searchParams: Promise<SearchParamsRecord>;
-  }) =>
-    Effect.gen(function* () {
-      yield* Effect.promise(() => connection());
-      const payStateToken = getSearchParam(
-        yield* Effect.promise(() => searchParams),
-        payStateTokenQueryParam
+async function CheckoutPayContent({
+  locale,
+  searchParams,
+}: {
+  readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
+  await connection();
+  const payStateToken = getSearchParam(
+    await searchParams,
+    payStateTokenQueryParam
+  );
+
+  if (!payStateToken) {
+    return runWithRequestLocale(locale, () => (
+      <InvalidPayState locale={locale} />
+    ));
+  }
+
+  const state = await Promise.resolve()
+    .then(() => openPayState(payStateToken))
+    .catch(async (cause) => {
+      await WorkspaceEffect.run(
+        { operation: "checkout.pay.invalid-state" },
+        Effect.logWarning("Checkout pay state token could not be opened", {
+          cause,
+          payStateToken,
+          reason: "openPayStateFailed",
+        })
       );
+      return undefined;
+    });
 
-      if (!payStateToken) {
-        return runWithRequestLocale(locale, () => (
-          <InvalidPayState locale={locale} />
-        ));
-      }
+  if (!state || state.locale !== locale) {
+    return runWithRequestLocale(locale, () => (
+      <InvalidPayState locale={locale} />
+    ));
+  }
 
-      const state = yield* Effect.try({
-        try: () => openPayState(payStateToken),
-        catch: (cause) => cause,
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("Checkout pay state token could not be opened", {
-            cause,
-            payStateToken,
-            reason: "openPayStateFailed",
-          })
-        ),
-        Effect.catch(() => Effect.succeed(undefined))
-      );
-
-      if (!state || state.locale !== locale) {
-        return runWithRequestLocale(locale, () => (
-          <InvalidPayState locale={locale} />
-        ));
-      }
-
-      return runWithRequestLocale(locale, () => (
-        <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
-          <CheckoutPayPage
-            locale={locale}
-            payStateToken={payStateToken}
-            summary={state.quote.summary}
-            variant="pay"
-          />
-        </CheckoutFlowLayout>
-      ));
-    })
-);
+  return runWithRequestLocale(locale, () => (
+    <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+      <CheckoutPayPage
+        locale={locale}
+        payStateToken={payStateToken}
+        summary={state.quote.summary}
+        variant="pay"
+      />
+    </CheckoutFlowLayout>
+  ));
+}
 
 function InvalidPayState({ locale }: { readonly locale: Locale }) {
   return (

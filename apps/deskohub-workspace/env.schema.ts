@@ -57,7 +57,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_ENV: toEnvSchema(
     Schema.Literals(["production", "preview", "development"])
   ),
-  VERCEL_GIT_COMMIT_SHA: optionalStringSchema,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,

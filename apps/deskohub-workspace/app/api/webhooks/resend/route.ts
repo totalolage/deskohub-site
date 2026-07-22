@@ -73,7 +73,7 @@ const handleResendWebhookProcessingError = Effect.fn(
  */
 export const POST = WorkspaceEffect.route(
   {
-    operation: "fulfillment.resend-webhook",
+    operation: "resendWebhook",
     cancellation: "continue-after-disconnect",
     layer: ResendWebhookServiceLiveWithDependencies,
   },

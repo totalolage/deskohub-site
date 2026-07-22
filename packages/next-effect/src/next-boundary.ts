@@ -32,7 +32,6 @@ export interface NextEffectBoundaryRoutePolicy<
   RouteFailure,
   RouteErrorResponse extends Response,
 > {
-  readonly isFailure: (failure: unknown) => failure is RouteFailure;
   readonly recoverFailure: (
     failure: RouteFailure
   ) => Effect.Effect<RouteErrorResponse, never, never>;
@@ -57,18 +56,6 @@ export interface NextEffectBoundary<
   RouteFailure,
   RouteErrorResponse extends Response,
 > extends EffectHostBoundary {
-  readonly page: {
-    <Props, A>(
-      options: EffectBoundaryOptions,
-      render: (props: Props) => Effect.Effect<A, never, never>
-    ): (props: Props) => Promise<A>;
-    <Props, A, R>(
-      options: EffectBoundaryOptions & {
-        readonly layer: Layer.Layer<R, never, never>;
-      },
-      render: (props: Props) => Effect.Effect<A, never, R>
-    ): (props: Props) => Promise<A>;
-  };
   readonly route: {
     <
       Args extends [request: Request, ...rest: readonly unknown[]],
@@ -112,36 +99,6 @@ export function makeNextEffectBoundary<
     effect: Effect.Effect<A, E, never>,
     signal?: AbortSignal
   ) => execute(effect, { runExit: options.executor.runExit, signal });
-
-  function page<Props, A>(
-    declaration: EffectBoundaryOptions,
-    render: (props: Props) => Effect.Effect<A, never, never>
-  ): (props: Props) => Promise<A>;
-  function page<Props, A, R>(
-    declaration: EffectBoundaryOptions & {
-      readonly layer: Layer.Layer<R, never, never>;
-    },
-    render: (props: Props) => Effect.Effect<A, never, R>
-  ): (props: Props) => Promise<A>;
-  function page<Props, A, R>(
-    declaration: EffectBoundaryOptions & {
-      readonly layer?: Layer.Layer<R, never, never>;
-    },
-    render: (props: Props) => Effect.Effect<A, never, R>
-  ) {
-    return (props: Props) =>
-      run(
-        provideBoundaryLayer(
-          Effect.suspend(() => render(props)),
-          declaration.layer
-        ).pipe(
-          Effect.annotateLogs({
-            boundary: "page",
-            operation: declaration.operation,
-          })
-        )
-      );
-  }
 
   function route<
     Args extends [request: Request, ...rest: readonly unknown[]],
@@ -195,12 +152,10 @@ export function makeNextEffectBoundary<
       const mapped = mapFailure
         ? Effect.mapError(provided, mapFailure)
         : (provided as Effect.Effect<A, RouteFailure, never>);
-      const recovered = Effect.catch(mapped, (failure) =>
-        options.route.isFailure(failure)
-          ? options.route.recoverFailure(failure)
-          : Effect.die(failure)
-      );
-      const effect = options.route.withRequest(request, recovered).pipe(
+      const recovered = Effect.catch(mapped, options.route.recoverFailure);
+      const effect = Effect.suspend(() =>
+        options.route.withRequest(request, recovered)
+      ).pipe(
         Effect.annotateLogs({
           boundary: "route",
           operation: declaration.operation,
@@ -216,5 +171,5 @@ export function makeNextEffectBoundary<
     };
   }
 
-  return { page, route, ...host };
+  return { route, ...host };
 }

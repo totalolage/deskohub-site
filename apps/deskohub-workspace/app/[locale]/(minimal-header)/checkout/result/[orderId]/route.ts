@@ -8,10 +8,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceEffect,
-} from "@/shared/backend/workspace-effect";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { SearchParamsRecord } from "@/shared/utils";
 
 export const maxDuration = 45;
@@ -58,19 +55,28 @@ const loadCheckoutStatusAttempt = (
     );
   });
 
-const loadCheckoutStatusWithBriefRetry = (orderId: string) =>
-  Effect.gen(function* () {
-    const attempts = yield* Ref.make(0);
-    return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
-      Effect.repeat({
-        times: 3,
-        while: (attemptStatus) =>
-          !attemptStatus ||
-          attemptStatus.status === "created" ||
-          attemptStatus.status === "pending",
-      })
-    );
-  });
+const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
+  const status = WorkspaceEffect.run(
+    {
+      operation: "checkout.result.refresh",
+      layer: CheckoutStatusServiceLiveWithDependencies,
+    },
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make(0);
+      return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
+        Effect.repeat({
+          times: 3,
+          while: (attemptStatus) =>
+            !attemptStatus ||
+            attemptStatus.status === "created" ||
+            attemptStatus.status === "pending",
+        })
+      );
+    })
+  );
+
+  return status;
+};
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -111,44 +117,34 @@ const getCheckoutStatusRedirectPath = (input: {
 const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
   Object.fromEntries(url.searchParams);
 
-export const GET = WorkspaceEffect.route(
-  {
-    operation: "checkout.result-return",
-    cancellation: "continue-after-disconnect",
-    layer: CheckoutStatusServiceLiveWithDependencies,
-    mapFailure: mapWorkspaceInternalRouteFailure(
-      "Checkout status could not be refreshed"
-    ),
-  },
-  (request, { params }: LocalizedCheckoutResultRouteContext) =>
-    Effect.gen(function* () {
-      const decodedParams = decodeCheckoutResultParams(
-        yield* Effect.promise(() => params)
-      );
-      const routeParams = Option.getOrUndefined(decodedParams);
-      if (!routeParams) return new NextResponse(null, { status: 404 });
+export async function GET(
+  request: Request,
+  { params }: LocalizedCheckoutResultRouteContext
+): Promise<NextResponse> {
+  const decodedParams = decodeCheckoutResultParams(await params);
+  const routeParams = Option.getOrUndefined(decodedParams);
+  if (!routeParams) return new NextResponse(null, { status: 404 });
 
-      const { locale, orderId } = routeParams;
-      const rawSearchParams = getSearchParamsRecord(new URL(request.url));
-      const status = yield* loadCheckoutStatusWithBriefRetry(orderId);
-      const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
+  const { locale, orderId } = routeParams;
+  const rawSearchParams = getSearchParamsRecord(new URL(request.url));
+  const status = await loadCheckoutStatusWithBriefRetry(orderId);
+  const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
-      if (retryOutcome) {
-        return NextResponse.redirect(
-          new URL(
-            getCheckoutPaymentRetryRedirectPath({
-              locale,
-              orderId,
-              outcome: retryOutcome,
-              searchParams: rawSearchParams,
-            }),
-            request.url
-          )
-        );
-      }
+  if (retryOutcome) {
+    return NextResponse.redirect(
+      new URL(
+        getCheckoutPaymentRetryRedirectPath({
+          locale,
+          orderId,
+          outcome: retryOutcome,
+          searchParams: rawSearchParams,
+        }),
+        request.url
+      )
+    );
+  }
 
-      return NextResponse.redirect(
-        new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
-      );
-    })
-);
+  return NextResponse.redirect(
+    new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
+  );
+}

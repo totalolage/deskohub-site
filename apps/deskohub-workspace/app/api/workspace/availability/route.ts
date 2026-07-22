@@ -45,7 +45,7 @@ const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
 
 export const GET = WorkspaceEffect.route(
   {
-    operation: "workspace.availability",
+    operation: "workspaceAvailability",
     cancellation: "interrupt-on-disconnect",
     layer: WorkspaceAvailabilityService.LiveWithDependencies,
     mapFailure: mapWorkspaceInternalRouteFailure(

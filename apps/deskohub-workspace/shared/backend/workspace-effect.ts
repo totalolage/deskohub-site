@@ -1,5 +1,4 @@
 import { EffectBoundary } from "@deskohub/next-effect/effect-boundary";
-import { logs } from "@opentelemetry/api-logs";
 import { Effect } from "effect";
 import { headers } from "next/headers";
 import { after } from "next/server";
@@ -7,6 +6,7 @@ import { makeWorkspaceEffect } from "./effect-boundary/next";
 import { createWorkspaceLoggerLive } from "./logging/censorship";
 import {
   flushPostHogLogs,
+  postHogLoggerProvider,
   schedulePostHogLogsFlush,
 } from "./logging/posthog-otel";
 
@@ -40,11 +40,7 @@ const readActionHeaders = () =>
 
 const workspaceEffectExecutor = EffectBoundary.makeExecutor({
   transform: (effect) =>
-    Effect.sync(() => logs.getLoggerProvider()).pipe(
-      Effect.flatMap((loggerProvider) =>
-        Effect.provide(effect, createWorkspaceLoggerLive(loggerProvider))
-      )
-    ),
+    Effect.provide(effect, createWorkspaceLoggerLive(postHogLoggerProvider)),
   completeTask: flushTelemetry,
 });
 

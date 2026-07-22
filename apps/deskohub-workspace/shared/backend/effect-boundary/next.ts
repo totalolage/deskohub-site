@@ -19,7 +19,7 @@ import { withWorkspaceRequestContext } from "./request-context";
 import {
   recoverWorkspaceRouteFailure,
   type WorkspaceRouteErrorResponse,
-  WorkspaceRouteFailure,
+  type WorkspaceRouteFailure,
 } from "./route-failure";
 
 type WorkspaceEffectAction = EffectActionBoundary<
@@ -52,8 +52,6 @@ export const makeWorkspaceEffect = (
   >({
     executor: dependencies.executor,
     route: {
-      isFailure: (failure): failure is WorkspaceRouteFailure =>
-        failure instanceof WorkspaceRouteFailure,
       recoverFailure: recoverWorkspaceRouteFailure,
       withRequest: (request, effect) =>
         Effect.andThen(

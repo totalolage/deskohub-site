@@ -51,7 +51,7 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(function* (
  */
 export const POST = WorkspaceEffect.route(
   {
-    operation: "checkout.nexi-webhook",
+    operation: "nexiWebhook",
     cancellation: "continue-after-disconnect",
     layer: NexiWebhookServiceLiveWithDependencies.pipe(
       Layer.provide(NexiServiceLive)

@@ -52,7 +52,7 @@ const handleReservationHoldCleanupCronError = Effect.fn(
 
 export const GET = WorkspaceEffect.route(
   {
-    operation: "reservation-hold.recovery-cron",
+    operation: "reservationHoldCleanupCron",
     cancellation: "continue-after-disconnect",
     layer: ReservationHoldCleanupServiceLiveWithDependencies,
     mapFailure: mapWorkspaceInternalRouteFailure(

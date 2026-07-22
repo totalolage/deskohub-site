@@ -1,4 +1,5 @@
 import { type Locale, m } from "@/features/i18n";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -17,10 +18,8 @@ export const getSiteHeaderLanguageLabels = (
   "en-US": m.languageEnglish({}, { locale }),
 });
 
-export function getSiteHeaderConfig(
-  locale: Locale,
-  options: { readonly meetingRoomPageEnabled: boolean }
-) {
+export async function getSiteHeaderConfig(locale: Locale) {
+  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
 
@@ -31,7 +30,7 @@ export function getSiteHeaderConfig(
         label: m.landingNavWhereToFindUs({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
-      options.meetingRoomPageEnabled && {
+      meetingRoomPageEnabled && {
         label: m.landingNavMeetingRoom({}, { locale }),
         href: `${localePath}/meeting-room`,
       },

@@ -1,6 +1,10 @@
 import { Cause, Effect, Exit, type Layer } from "effect";
 import { provideBoundaryLayer } from "./internal/boundary";
-import type { EffectRunExit } from "./internal/executor";
+
+export type EffectRunExit = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  options?: { readonly signal?: AbortSignal }
+) => Promise<Exit.Exit<A, E>>;
 
 export interface EffectBoundaryExecutor {
   readonly runExit: EffectRunExit;

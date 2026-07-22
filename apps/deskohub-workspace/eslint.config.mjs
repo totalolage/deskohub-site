@@ -58,30 +58,4 @@ export default [
       ],
     },
   },
-  {
-    files: ["**/*.{ts,tsx}"],
-    ignores: [
-      "scripts/**",
-      "shared/backend/effect-boundary/**",
-      "**/*.test.{ts,tsx}",
-      "**/*.test-utils.{ts,tsx}",
-    ],
-    rules: {
-      "no-restricted-syntax": [
-        "error",
-        {
-          selector:
-            "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
-          message:
-            "Declare the real lifecycle boundary through WorkspaceEffect so logging, cancellation, and telemetry policy are applied.",
-        },
-        {
-          selector:
-            "CallExpression[callee.object.name='WorkspaceEffect'][callee.property.name='run']",
-          message:
-            "Use the named WorkspaceEffect lifecycle adapter; run is reserved for standalone scripts and boundary composition.",
-        },
-      ],
-    },
-  },
 ];

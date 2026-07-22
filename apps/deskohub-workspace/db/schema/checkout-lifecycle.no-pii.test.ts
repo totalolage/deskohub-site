@@ -50,7 +50,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("intent key uses JSON.stringify payload and does not use tuple delimiter", async () => {
     const source = await readAppFile(
-      "features/reservation/actions/prepare-pay-state-workflow.ts"
+      "features/reservation/actions/prepare-pay-state.ts"
     );
 
     expect(source).toContain('schema: "workspace-reservation-intent-key"');
@@ -126,7 +126,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("reservation submit acquires local hold claim before remote Dotypos hold", async () => {
     const source = await readAppFile(
-      "features/reservation/actions/prepare-pay-state-workflow.ts"
+      "features/reservation/actions/prepare-pay-state.ts"
     );
 
     expect(source.indexOf("reservations.createDraft({")).toBeLessThan(
