@@ -1,14 +1,19 @@
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
+import {
+  type CloudinaryAsset,
+  CloudinaryServiceLive,
+} from "@/features/gallery/backend/cloudinary.service";
+import { getCloudinaryImages } from "@/features/gallery/backend/cloudinary-images";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { MeetingRoomEditorialDesign } from "@/features/meeting-room/components/meeting-room-editorial-design";
 import { MeetingRoomPageFeature } from "@/features/meeting-room/components/meeting-room-page-feature";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -24,62 +29,79 @@ const decodeMeetingRoomParams = getParamsDecoder({});
 const getMeetingRoomImages = () =>
   getCloudinaryImages({
     tags: [["ttrpg-room", "ttrpg-room-workspace"]],
-  }).catch((): readonly CloudinaryAsset[] => []);
-
-export async function generateMetadata({
-  params,
-}: MeetingRoomPageProps): Promise<Metadata> {
-  const routeParams = Option.getOrUndefined(
-    decodeMeetingRoomParams(await params)
+  }).pipe(
+    Effect.provide(CloudinaryServiceLive),
+    Effect.catch(() => Effect.succeed([] as readonly CloudinaryAsset[]))
   );
-  if (!routeParams) notFound();
-  const { locale } = routeParams;
-  if (!(await isMeetingRoomPageEnabled())) notFound();
 
-  return runWithRequestLocale(locale, () => {
-    const title = m.meetingRoomMetadataTitle({}, { locale });
-    const description = m.meetingRoomMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(locale, pathname);
+export const generateMetadata = WorkspaceEffect.page(
+  {
+    operation: "meeting-room.metadata",
+    layer: WorkspaceFeatureFlagServiceLive,
+  },
+  ({ params }: MeetingRoomPageProps) =>
+    Effect.gen(function* () {
+      const routeParams = Option.getOrUndefined(
+        decodeMeetingRoomParams(yield* Effect.promise(() => params))
+      );
+      if (!routeParams) return yield* Effect.sync(() => notFound());
+      const { locale } = routeParams;
+      if (!(yield* isMeetingRoomPageEnabled)) {
+        return yield* Effect.sync(() => notFound());
+      }
 
-    return {
-      title,
-      description,
-      alternates: {
-        canonical: url,
-        languages: Object.fromEntries(
-          locales.map((itemLocale) => [
-            itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(itemLocale, pathname),
-          ])
-        ),
-      },
-      openGraph: {
-        title,
-        description,
-        url,
-        siteName: workspaceSiteConstants.brand.name,
-        locale,
-        type: "website",
-      },
-    } satisfies Metadata;
-  });
-}
+      return runWithRequestLocale(locale, () => {
+        const title = m.meetingRoomMetadataTitle({}, { locale });
+        const description = m.meetingRoomMetadataDescription({}, { locale });
+        const url = getWorkspaceLocalizedCanonicalUrl(locale, pathname);
 
-export default async function LocalizedMeetingRoomPage({
-  params,
-}: MeetingRoomPageProps) {
-  const routeParams = Option.getOrUndefined(
-    decodeMeetingRoomParams(await params)
-  );
-  if (!routeParams) notFound();
-  const { locale } = routeParams;
-  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
-  if (!meetingRoomPageEnabled) notFound();
-  const images = await getMeetingRoomImages();
+        return {
+          title,
+          description,
+          alternates: {
+            canonical: url,
+            languages: Object.fromEntries(
+              locales.map((itemLocale) => [
+                itemLocale,
+                getWorkspaceLocalizedCanonicalUrl(itemLocale, pathname),
+              ])
+            ),
+          },
+          openGraph: {
+            title,
+            description,
+            url,
+            siteName: workspaceSiteConstants.brand.name,
+            locale,
+            type: "website",
+          },
+        } satisfies Metadata;
+      });
+    })
+);
 
-  return runWithRequestLocale(locale, () => (
-    <MeetingRoomPageFeature initialEnabled={meetingRoomPageEnabled}>
-      <MeetingRoomEditorialDesign images={images} locale={locale} />
-    </MeetingRoomPageFeature>
-  ));
-}
+export default WorkspaceEffect.page(
+  {
+    operation: "meeting-room.render",
+    layer: WorkspaceFeatureFlagServiceLive,
+  },
+  ({ params }: MeetingRoomPageProps) =>
+    Effect.gen(function* () {
+      const routeParams = Option.getOrUndefined(
+        decodeMeetingRoomParams(yield* Effect.promise(() => params))
+      );
+      if (!routeParams) return yield* Effect.sync(() => notFound());
+      const { locale } = routeParams;
+      const meetingRoomPageEnabled = yield* isMeetingRoomPageEnabled;
+      if (!meetingRoomPageEnabled) {
+        return yield* Effect.sync(() => notFound());
+      }
+      const images = yield* getMeetingRoomImages();
+
+      return runWithRequestLocale(locale, () => (
+        <MeetingRoomPageFeature initialEnabled={meetingRoomPageEnabled}>
+          <MeetingRoomEditorialDesign images={images} locale={locale} />
+        </MeetingRoomPageFeature>
+      ));
+    })
+);

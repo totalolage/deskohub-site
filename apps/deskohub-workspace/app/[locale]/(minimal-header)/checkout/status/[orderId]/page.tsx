@@ -1,4 +1,4 @@
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
@@ -7,6 +7,7 @@ import { env } from "@/env";
 import {
   appendVercelPreviewProtectionBypass,
   type CheckoutStatusReturnOutcome,
+  CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
   getCheckoutStatus,
   refreshCheckoutStatus,
@@ -21,7 +22,7 @@ import {
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import {
   getSearchParam,
@@ -137,56 +138,68 @@ export default function LocalizedCheckoutStatusPage({
   );
 }
 
-async function CheckoutStatusContent({
-  params,
-  searchParams,
-}: LocalizedCheckoutStatusPageProps) {
-  const decodedParams = decodeCheckoutStatusParams(await params);
-  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
+const CheckoutStatusContent = WorkspaceEffect.page(
+  {
+    operation: "checkout.status.render",
+    layer: CheckoutStatusServiceLiveWithDependencies.pipe(Layer.orDie),
+  },
+  ({ params, searchParams }: LocalizedCheckoutStatusPageProps) =>
+    Effect.gen(function* () {
+      const decodedParams = decodeCheckoutStatusParams(
+        yield* Effect.promise(() => params)
+      );
+      const routeParams = Option.getOrUndefined(decodedParams);
+      if (!routeParams) return yield* Effect.sync(() => notFound());
+      const { locale, orderId } = routeParams;
 
-  await connection();
-  const rawSearchParams = await searchParams;
-  const { outcome: returnOutcome } = Option.getOrElse(
-    decodeCheckoutStatusSearchParams(rawSearchParams),
-    () => ({ outcome: "unknown" as const })
-  );
-  const status = await loadCheckoutStatus({
-    orderId,
-    returnOutcome,
-    searchParams: rawSearchParams,
-  }).catch(async (cause) => {
-    await Effect.logError("Checkout status load failed", {
-      orderId,
-      returnOutcome,
-      cause,
-    }).pipe(runWorkspaceEffect);
-    throw cause;
-  });
-  const retryOutcome = getRetryOutcome(status.status);
-
-  if (
-    retryOutcome &&
-    getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
-  ) {
-    redirect(
-      getCheckoutPaymentRetryRedirectPath({
-        locale,
+      yield* Effect.promise(() => connection());
+      const rawSearchParams = yield* Effect.promise(() => searchParams);
+      const { outcome: returnOutcome } = Option.getOrElse(
+        decodeCheckoutStatusSearchParams(rawSearchParams),
+        () => ({ outcome: "unknown" as const })
+      );
+      const status = yield* loadCheckoutStatus({
         orderId,
-        outcome: retryOutcome,
+        returnOutcome,
         searchParams: rawSearchParams,
-      })
-    );
-  }
+      }).pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("Checkout status load failed", {
+            orderId,
+            returnOutcome,
+            cause,
+          })
+        ),
+        Effect.orDie
+      );
+      const retryOutcome = getRetryOutcome(status.status);
 
-  return runWithRequestLocale(locale, () => (
-    <>
-      <CheckoutStatusAutoRefresh
-        enabled={shouldAutoRefreshCheckoutStatus(status.status)}
-      />
-      <CheckoutStatusPage locale={locale} status={status} />
-    </>
-  ));
-}
+      if (
+        retryOutcome &&
+        getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
+      ) {
+        return yield* Effect.sync(() =>
+          redirect(
+            getCheckoutPaymentRetryRedirectPath({
+              locale,
+              orderId,
+              outcome: retryOutcome,
+              searchParams: rawSearchParams,
+            })
+          )
+        );
+      }
+
+      return runWithRequestLocale(locale, () => (
+        <>
+          <CheckoutStatusAutoRefresh
+            enabled={shouldAutoRefreshCheckoutStatus(status.status)}
+          />
+          <CheckoutStatusPage locale={locale} status={status} />
+        </>
+      ));
+    })
+);
 
 function CheckoutStatusFallback() {
   return (

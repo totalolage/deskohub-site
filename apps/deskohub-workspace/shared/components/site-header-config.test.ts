@@ -1,31 +1,21 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
-
-const isMeetingRoomPageEnabled = mock();
-
-mock.module(
-  "@/features/meeting-room/backend/meeting-room-page-feature-flag",
-  () => ({ isMeetingRoomPageEnabled })
-);
+import { describe, expect, test } from "bun:test";
+import { getSiteHeaderConfig } from "./site-header-config";
 
 describe("getSiteHeaderConfig", () => {
-  beforeEach(() => {
-    isMeetingRoomPageEnabled.mockReset();
-  });
-
-  test("omits the Meeting Room link when its release flag is disabled", async () => {
-    const { getSiteHeaderConfig } = await import("./site-header-config");
-    isMeetingRoomPageEnabled.mockResolvedValue(false);
-    const config = await getSiteHeaderConfig("cs-CZ");
+  test("omits the Meeting Room link when its release flag is disabled", () => {
+    const config = getSiteHeaderConfig("cs-CZ", {
+      meetingRoomPageEnabled: false,
+    });
 
     expect(config.links).not.toContainEqual(
       expect.objectContaining({ href: "/cs-CZ/meeting-room" })
     );
   });
 
-  test("includes the Meeting Room link when its release flag is enabled", async () => {
-    const { getSiteHeaderConfig } = await import("./site-header-config");
-    isMeetingRoomPageEnabled.mockResolvedValue(true);
-    const config = await getSiteHeaderConfig("en-US");
+  test("includes the Meeting Room link when its release flag is enabled", () => {
+    const config = getSiteHeaderConfig("en-US", {
+      meetingRoomPageEnabled: true,
+    });
 
     expect(config.links).toContainEqual(
       expect.objectContaining({ href: "/en-US/meeting-room" })

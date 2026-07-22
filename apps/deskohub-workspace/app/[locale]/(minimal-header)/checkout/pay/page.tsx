@@ -12,7 +12,7 @@ import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -83,53 +83,60 @@ export default async function LocalizedCheckoutPayPage({
   ));
 }
 
-async function CheckoutPayContent({
-  locale,
-  searchParams,
-}: {
-  readonly locale: Locale;
-  readonly searchParams: Promise<SearchParamsRecord>;
-}) {
-  await connection();
-  const payStateToken = getSearchParam(
-    await searchParams,
-    payStateTokenQueryParam
-  );
+const CheckoutPayContent = WorkspaceEffect.page(
+  { operation: "checkout.pay.render" },
+  ({
+    locale,
+    searchParams,
+  }: {
+    readonly locale: Locale;
+    readonly searchParams: Promise<SearchParamsRecord>;
+  }) =>
+    Effect.gen(function* () {
+      yield* Effect.promise(() => connection());
+      const payStateToken = getSearchParam(
+        yield* Effect.promise(() => searchParams),
+        payStateTokenQueryParam
+      );
 
-  if (!payStateToken) {
-    return runWithRequestLocale(locale, () => (
-      <InvalidPayState locale={locale} />
-    ));
-  }
+      if (!payStateToken) {
+        return runWithRequestLocale(locale, () => (
+          <InvalidPayState locale={locale} />
+        ));
+      }
 
-  const state = await Promise.resolve()
-    .then(() => openPayState(payStateToken))
-    .catch(async (cause) => {
-      await Effect.logWarning("Checkout pay state token could not be opened", {
-        cause,
-        payStateToken,
-        reason: "openPayStateFailed",
-      }).pipe(runWorkspaceEffect);
-      return undefined;
-    });
+      const state = yield* Effect.try({
+        try: () => openPayState(payStateToken),
+        catch: (cause) => cause,
+      }).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning("Checkout pay state token could not be opened", {
+            cause,
+            payStateToken,
+            reason: "openPayStateFailed",
+          })
+        ),
+        Effect.catch(() => Effect.succeed(undefined))
+      );
 
-  if (!state || state.locale !== locale) {
-    return runWithRequestLocale(locale, () => (
-      <InvalidPayState locale={locale} />
-    ));
-  }
+      if (!state || state.locale !== locale) {
+        return runWithRequestLocale(locale, () => (
+          <InvalidPayState locale={locale} />
+        ));
+      }
 
-  return runWithRequestLocale(locale, () => (
-    <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
-      <CheckoutPayPage
-        locale={locale}
-        payStateToken={payStateToken}
-        summary={state.quote.summary}
-        variant="pay"
-      />
-    </CheckoutFlowLayout>
-  ));
-}
+      return runWithRequestLocale(locale, () => (
+        <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+          <CheckoutPayPage
+            locale={locale}
+            payStateToken={payStateToken}
+            summary={state.quote.summary}
+            variant="pay"
+          />
+        </CheckoutFlowLayout>
+      ));
+    })
+);
 
 function InvalidPayState({ locale }: { readonly locale: Locale }) {
   return (

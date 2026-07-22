@@ -1,13 +1,17 @@
-import { Option } from "effect";
+import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
-import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import {
+  type CloudinaryAsset,
+  CloudinaryServiceLive,
+} from "@/features/gallery/backend/cloudinary.service";
+import { getCloudinaryImages } from "@/features/gallery/backend/cloudinary-images";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -31,8 +35,8 @@ const getContactHref = (href: string, message: string) => {
 const getRoomImages = (
   tags: readonly ["ttrpg-room", "ttrpg-room-bar" | "ttrpg-room-workspace"]
 ) =>
-  getCloudinaryImages({ tags: [tags] }).catch(
-    (): readonly CloudinaryAsset[] => []
+  getCloudinaryImages({ tags: [tags] }).pipe(
+    Effect.catch(() => Effect.succeed([] as readonly CloudinaryAsset[]))
   );
 
 export async function generateMetadata({
@@ -144,24 +148,37 @@ function TtrpgRoomPage({
   );
 }
 
-export default async function LocalizedTtrpgRoomPage({
-  params,
-}: TtrpgRoomPageProps) {
-  const routeParams = Option.getOrUndefined(
-    decodeTtrpgRoomParams(await params)
-  );
-  if (!routeParams) notFound();
-  const { locale } = routeParams;
-  const [barImages, workspaceImages] = await Promise.all([
-    getRoomImages(["ttrpg-room", "ttrpg-room-bar"]),
-    getRoomImages(["ttrpg-room", "ttrpg-room-workspace"]),
-  ]);
+export default WorkspaceEffect.page(
+  { operation: "ttrpg-room.render" },
+  ({ params }: TtrpgRoomPageProps) =>
+    Effect.gen(function* () {
+      const routeParams = Option.getOrUndefined(
+        decodeTtrpgRoomParams(yield* Effect.promise(() => params))
+      );
+      if (!routeParams) return yield* Effect.sync(() => notFound());
+      const { locale } = routeParams;
+      const [barImages, workspaceImages] = yield* Effect.all(
+        [
+          getRoomImages(["ttrpg-room", "ttrpg-room-bar"]),
+          getRoomImages(["ttrpg-room", "ttrpg-room-workspace"]),
+        ],
+        { concurrency: "inherit" }
+      ).pipe(
+        Effect.provide(CloudinaryServiceLive),
+        Effect.catch(() =>
+          Effect.succeed([[], []] as const satisfies readonly [
+            readonly CloudinaryAsset[],
+            readonly CloudinaryAsset[],
+          ])
+        )
+      );
 
-  return runWithRequestLocale(locale, () => (
-    <TtrpgRoomPage
-      barImages={barImages}
-      locale={locale}
-      workspaceImages={workspaceImages}
-    />
-  ));
-}
+      return runWithRequestLocale(locale, () => (
+        <TtrpgRoomPage
+          barImages={barImages}
+          locale={locale}
+          workspaceImages={workspaceImages}
+        />
+      ));
+    })
+);

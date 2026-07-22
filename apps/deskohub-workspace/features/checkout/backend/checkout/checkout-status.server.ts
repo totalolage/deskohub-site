@@ -1,11 +1,9 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
 } from "./checkout-status.service";
 
 const runCheckoutStatusService = <A, E>(
@@ -14,10 +12,7 @@ const runCheckoutStatusService = <A, E>(
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
     return yield* useService(service);
-  }).pipe(
-    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
-    runWorkspaceEffect
-  );
+  });
 
 export const getCheckoutStatus = (input: {
   readonly orderId: string;
