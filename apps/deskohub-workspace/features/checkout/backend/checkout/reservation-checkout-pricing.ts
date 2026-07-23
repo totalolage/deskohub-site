@@ -333,61 +333,51 @@ export const reservationCheckoutPricing = <
 
     const applyDiscountCode = Effect.fn(
       "ReservationCheckoutPricing.applyDiscountCode"
-    )(
-      (
-        input: ReservationDiscountCodePriceInput<
-          CustomerReservation,
-          Quote
-        >
-      ) =>
-        affirmDisplayedPrice({
+    )((input: ReservationDiscountCodePriceInput<CustomerReservation, Quote>) =>
+      Effect.gen(function* () {
+        const { affirmation, pricing, quote } = yield* affirmDisplayedPrice({
           reservation: input.reservation,
           dotyposCustomerId: input.dotyposCustomerId,
           locale: input.locale,
           quote: input.quote,
-        }).pipe(
-          Effect.bind("result", ({ affirmation, pricing, quote }) => {
-            const displayedSummary = domain.getCheckoutSummary(input.quote);
-            const affirmedSummary = domain.getCheckoutSummary(quote);
-            const displayedPriceIsCurrent =
-              quote.fingerprint === input.quote.fingerprint &&
-              workspaceMoneyEquals(
-                affirmedSummary.total,
-                displayedSummary.total
-              );
+        });
+        const displayedSummary = domain.getCheckoutSummary(input.quote);
+        const affirmedSummary = domain.getCheckoutSummary(quote);
+        const displayedPriceIsCurrent =
+          quote.fingerprint === input.quote.fingerprint &&
+          workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);
 
-            return displayedPriceIsCurrent
-              ? discounts
-                  .applyDiscountCode({
-                    baseQuote: affirmation.quote,
-                    dotyposCustomerId: input.dotyposCustomerId,
-                    locale: input.locale,
-                    submittedCode: input.submittedCode,
-                  })
-                  .pipe(
-                    Effect.flatMap((discountQuote) =>
-                      domain.buildQuote({ pricing, discountQuote })
-                    ),
-                    Effect.map((appliedQuote) => ({
-                      kind: input.reservation.kind,
-                      reservation: input.reservation,
-                      quote: appliedQuote,
-                      status: "applied" as const,
-                    }))
-                  )
-              : Effect.succeed({
-                  kind: input.reservation.kind,
-                  reservation: input.reservation,
-                  quote,
-                  status: "pricing_changed" as const,
-                  changedKeys: getCheckoutSummaryChangedKeys(
-                    displayedSummary,
-                    affirmedSummary
-                  ),
-                });
-          }),
-          Effect.map(({ result }) => result)
-        )
+        if (!displayedPriceIsCurrent) {
+          return {
+            kind: input.reservation.kind,
+            reservation: input.reservation,
+            quote,
+            status: "pricing_changed" as const,
+            changedKeys: getCheckoutSummaryChangedKeys(
+              displayedSummary,
+              affirmedSummary
+            ),
+          };
+        }
+
+        const discountQuote = yield* discounts.applyDiscountCode({
+          baseQuote: affirmation.quote,
+          dotyposCustomerId: input.dotyposCustomerId,
+          locale: input.locale,
+          submittedCode: input.submittedCode,
+        });
+        const appliedQuote = yield* domain.buildQuote({
+          pricing,
+          discountQuote,
+        });
+
+        return {
+          kind: input.reservation.kind,
+          reservation: input.reservation,
+          quote: appliedQuote,
+          status: "applied" as const,
+        };
+      })
     );
 
     return {

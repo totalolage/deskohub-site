@@ -11,7 +11,7 @@ import {
   sealPayState,
 } from "@/features/checkout/backend/checkout/pay-state";
 import { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { DiscountCodeUnavailableError } from "@/features/discounts";
 
 mock.module("server-only", () => ({}));
@@ -25,7 +25,7 @@ const reservation = {
   email: "ada@example.test",
   phone: "+420777000111",
 };
-const quote = buildWorkspaceCheckoutQuote(reservation);
+const quote = buildCoworkReservationQuote(reservation);
 const checkoutSessionId = "checkout-session-id";
 
 const makePayStateToken = async () => {
@@ -84,7 +84,14 @@ const runSubmission = async (input?: {
   });
   const applyDiscountCode =
     input?.applyDiscountCode ??
-    mock(() => Effect.succeed({ status: "applied" as const, quote }));
+    mock(() =>
+      Effect.succeed({
+        kind: "cowork" as const,
+        reservation,
+        status: "applied" as const,
+        quote,
+      })
+    );
   const payStateToken = await makePayStateToken();
   const result = await applyDiscountCodeToPayState({
     locale: "en-US",
@@ -124,7 +131,7 @@ describe("applyDiscountCodeToPayState", () => {
       }),
       dotyposCustomerId: "customer-id",
       locale: "en-US",
-      displayedQuote: quote,
+      quote,
       submittedCode: "SAVE20",
     });
     expect(scenario.result.status).toBe("applied");
@@ -180,6 +187,8 @@ describe("applyDiscountCodeToPayState", () => {
     };
     const applyDiscountCode = mock(() =>
       Effect.succeed({
+        kind: "cowork" as const,
+        reservation,
         status: "pricing_changed" as const,
         quote,
         changedKeys,

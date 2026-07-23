@@ -504,7 +504,7 @@ describe("CheckoutService", () => {
     });
     const harness = await createCheckoutHarness({
       orderId,
-      acceptedQuote: buildWorkspaceCheckoutQuote(reservationData, {
+      acceptedQuote: buildCoworkReservationQuote(reservationData, {
         discountQuote: discountedQuote,
       }),
       activeAttempt,

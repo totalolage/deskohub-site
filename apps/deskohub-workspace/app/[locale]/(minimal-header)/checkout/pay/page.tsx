@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
-  buildFreshCheckoutPayPath,
+  buildCheckoutPayContinuationPath,
   getSignedPayStateCheckoutSummary,
   openPayState,
   PayableReservationService,
@@ -110,7 +110,7 @@ async function CheckoutPayContent({
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
     const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled;
-    const freshPayUrl = yield* buildFreshCheckoutPayPath(state).pipe(
+    const freshPayUrl = yield* buildCheckoutPayContinuationPath(state).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
     );

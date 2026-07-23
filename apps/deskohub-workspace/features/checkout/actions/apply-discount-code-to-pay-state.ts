@@ -1,4 +1,4 @@
-import { Effect, Option } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import {
   buildFreshCheckoutPayPath,
   CheckoutPricingService,
@@ -8,8 +8,10 @@ import {
 } from "@/features/checkout/backend/checkout";
 import {
   DiscountCodeUnavailableError,
+  DiscountProviderError,
   normalizeSubmittedDiscountCode,
 } from "@/features/discounts";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import type { ApplyDiscountCodeInput } from "./apply-discount-code-input";
 
@@ -65,13 +67,41 @@ export const applyDiscountCodeToPayState = Effect.fn(
         return { status: "unavailable" as const };
       }
 
-      const result = yield* pricing.applyDiscountCode({
-        reservation: state.reservation,
-        dotyposCustomerId: reservation.dotyposCustomerId,
-        locale: input.locale,
-        displayedQuote: state.quote,
-        submittedCode,
-      });
+      const dotyposCustomerId = yield* Schema.decodeUnknownEffect(
+        dotyposCustomerIdSchema
+      )(reservation.dotyposCustomerId).pipe(
+        Effect.mapError(
+          (cause) =>
+            new DiscountProviderError({
+              reason: "provider_failure",
+              message: "Stored customer identity is invalid.",
+              cause,
+            })
+        )
+      );
+      const result = yield* Match.value(state).pipe(
+        Match.when({ reservation: { kind: "cowork" } }, (coworkState) =>
+          pricing.applyDiscountCode({
+            reservation: coworkState.reservation,
+            dotyposCustomerId,
+            locale: input.locale,
+            quote: coworkState.quote,
+            submittedCode,
+          })
+        ),
+        Match.when(
+          { reservation: { kind: "meeting-room" } },
+          (meetingRoomState) =>
+            pricing.applyDiscountCode({
+              reservation: meetingRoomState.reservation,
+              dotyposCustomerId,
+              locale: input.locale,
+              quote: meetingRoomState.quote,
+              submittedCode,
+            })
+        ),
+        Match.exhaustive
+      );
       const currentReservation = yield* payableReservations.requireCurrent({
         orderId: state.orderId,
         checkoutSessionId: state.checkoutSessionId,
@@ -80,29 +110,37 @@ export const applyDiscountCodeToPayState = Effect.fn(
         return { status: "unavailable" as const };
       }
 
-      if (result.status === "pricing_changed") {
-        const freshPayUrl = yield* buildFreshCheckoutPayPath({
-          locale: input.locale,
-          reservation: state.reservation,
-          quote: result.quote,
-          orderId: state.orderId,
-          checkoutSessionId: state.checkoutSessionId,
-          changedKeys: result.changedKeys,
-        });
+      const freshPayUrl = yield* Match.value(result).pipe(
+        Match.when({ reservation: { kind: "cowork" } }, (coworkResult) =>
+          buildFreshCheckoutPayPath({
+            locale: input.locale,
+            reservation: coworkResult.reservation,
+            quote: coworkResult.quote,
+            orderId: state.orderId,
+            checkoutSessionId: state.checkoutSessionId,
+            ...(coworkResult.status === "pricing_changed"
+              ? { changedKeys: coworkResult.changedKeys }
+              : { submittedCode }),
+          })
+        ),
+        Match.when(
+          { reservation: { kind: "meeting-room" } },
+          (meetingRoomResult) =>
+            buildFreshCheckoutPayPath({
+              locale: input.locale,
+              reservation: meetingRoomResult.reservation,
+              quote: meetingRoomResult.quote,
+              orderId: state.orderId,
+              checkoutSessionId: state.checkoutSessionId,
+              ...(meetingRoomResult.status === "pricing_changed"
+                ? { changedKeys: meetingRoomResult.changedKeys }
+                : { submittedCode }),
+            })
+        ),
+        Match.exhaustive
+      );
 
-        return { status: "pricing_changed" as const, freshPayUrl };
-      }
-
-      const freshPayUrl = yield* buildFreshCheckoutPayPath({
-        locale: input.locale,
-        reservation: state.reservation,
-        quote: result.quote,
-        orderId: state.orderId,
-        checkoutSessionId: state.checkoutSessionId,
-        submittedCode,
-      });
-
-      return { status: "applied" as const, freshPayUrl };
+      return { status: result.status, freshPayUrl };
     }),
   (effect) =>
     effect.pipe(

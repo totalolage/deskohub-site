@@ -9,7 +9,7 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
 import {
   workspaceRouterPush as routerPush,
@@ -244,7 +244,7 @@ describe("CheckoutDiscountCodeForm", () => {
     useFeatureFlagEnabled.mockReturnValue(true);
     pendingActionCall = 2;
     const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });

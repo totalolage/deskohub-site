@@ -13,7 +13,6 @@ import {
   addWorkspaceMoney,
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
-  type WorkspaceMoney,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";

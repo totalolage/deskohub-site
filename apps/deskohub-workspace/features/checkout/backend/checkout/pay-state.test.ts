@@ -20,7 +20,7 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const { buildFreshCheckoutPayPath } = await import("./checkout-pay-url");
+const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -445,20 +445,11 @@ describe("Pay URL state", () => {
       },
     });
     const path = runSync(
-      buildFreshCheckoutPayPath(
-        {
-          locale: reviewState.locale,
-          reservation: reviewState.reservation,
-          quote: reviewState.quote,
-          orderId: reviewState.orderId,
-          submittedCode: reviewState.submittedCode,
-        },
-        {
-          keys: [fixedKey],
-          now: () => fixedNow,
-          randomBytes: fixedRandomBytes,
-        }
-      )
+      buildCheckoutPayContinuationPath(reviewState, {
+        keys: [fixedKey],
+        now: () => fixedNow,
+        randomBytes: fixedRandomBytes,
+      })
     );
     const token = new URL(path, "https://deskohub.test").searchParams.get(
       payStateTokenQueryParam

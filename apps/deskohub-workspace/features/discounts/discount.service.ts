@@ -128,7 +128,7 @@ export class DiscountService extends Context.Service<
                 enabled: input.releaseGates.discountCodes,
                 operation: "quote",
                 provider: "code",
-                resolve: () => code.quote(input.quoteInput),
+                resolve: () => code.revalidate(input.quoteInput),
               }),
             ],
             { concurrency: "inherit" }

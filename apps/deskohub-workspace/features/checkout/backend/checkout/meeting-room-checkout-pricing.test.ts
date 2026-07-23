@@ -3,11 +3,14 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
+  canonicalDiscountCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
+  discountQuoteCodec,
 } from "@/features/discounts/contracts";
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
@@ -19,6 +22,9 @@ const money = getWorkspaceMeetingRoomPriceForDuration(240);
 const discountId = Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
+);
+const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+  "SAVE20"
 );
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
@@ -162,7 +168,7 @@ describe("meeting-room checkout pricing", () => {
 
   test("affirms the displayed payment discounts and preserves commitment", async () => {
     const commitment = { applications: [] } as unknown as DiscountCommitment;
-    const affirmForPayment = mock(() =>
+    const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
     const advertised = await runWithDiscounts(
@@ -188,10 +194,10 @@ describe("meeting-room checkout pricing", () => {
           quote: advertised.quote,
         });
       }),
-      DiscountServiceMock({ affirmForPayment })
+      DiscountServiceMock({ affirmDisplayedDiscounts })
     );
 
-    expect(affirmForPayment).toHaveBeenCalledWith({
+    expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "meeting-room", durationMinutes: 240 },
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
@@ -201,5 +207,156 @@ describe("meeting-room checkout pricing", () => {
       displayedDiscountIds: [discountId],
     });
     expect(result.commitment).toBe(commitment);
+  });
+
+  test("affirms the displayed price before appending a submitted code", async () => {
+    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const affirmDisplayedDiscounts = mock(() =>
+      Effect.succeed({ quote: affirmedAdvertisement, commitment })
+    );
+    const codeDiscountId = Schema.decodeUnknownSync(discountIdSchema)("code");
+    const remaining = advertisementQuote.discountedSubtotal.value;
+    const codeAmount = Math.round(remaining * 0.2);
+    const codeQuote = discountQuoteCodec.make({
+      ...affirmedAdvertisement,
+      discounts: [
+        ...affirmedAdvertisement.discounts,
+        {
+          discount: {
+            id: codeDiscountId,
+            label: "Member code",
+            adjustment: { kind: "percentage", basisPoints: 2000 },
+          },
+          subtotalBefore: advertisementQuote.discountedSubtotal,
+          amount: { ...money, value: codeAmount },
+          subtotalAfter: { ...money, value: remaining - codeAmount },
+        },
+      ],
+      totalDiscount: {
+        ...money,
+        value: advertisementQuote.totalDiscount.value + codeAmount,
+      },
+      discountedSubtotal: { ...money, value: remaining - codeAmount },
+    });
+    const applyDiscountCode = mock(() => Effect.succeed(codeQuote));
+    const displayedQuoteWithoutFingerprint =
+      await getMeetingRoomReservationQuote(reservation, {
+        discountQuote: advertisementQuote,
+      }).pipe(Effect.runPromise);
+    const displayedQuote = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        const advertised = yield* pricing.quoteAdvertisement({
+          reservation: advertisedReservation,
+          locale: "en-US",
+        });
+        return advertised.quote;
+      }),
+      DiscountServiceMock({
+        discoverAdvertisedDiscounts: () => Effect.succeed(advertisementQuote),
+      })
+    );
+
+    expect(displayedQuote.payment).toEqual(
+      displayedQuoteWithoutFingerprint.payment
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        return yield* pricing.applyDiscountCode({
+          reservation,
+          locale: "en-US",
+          dotyposCustomerId,
+          quote: displayedQuote,
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        affirmDisplayedDiscounts,
+        applyDiscountCode,
+      })
+    );
+
+    expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
+      product: { kind: "meeting-room", durationMinutes: 240 },
+      discountableSubtotal: money,
+      reservationDate: "2099-06-10",
+      dotyposCustomerId,
+      locale: "en-US",
+      submittedCode: undefined,
+      displayedDiscountIds: [discountId],
+    });
+    expect(applyDiscountCode).toHaveBeenCalledWith({
+      baseQuote: affirmedAdvertisement,
+      dotyposCustomerId,
+      locale: "en-US",
+      submittedCode,
+    });
+    expect(result).toMatchObject({
+      status: "applied",
+      quote: {
+        payment: {
+          expectedPrice: codeQuote.discountedSubtotal,
+        },
+      },
+    });
+  });
+
+  test("returns pricing_changed before resolving a submitted code", async () => {
+    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const affirmedWithoutDiscounts = discountQuoteCodec.make({
+      product: { kind: "meeting-room", durationMinutes: 240 },
+      discountableSubtotal: money,
+      discounts: [],
+      totalDiscount: { ...money, value: 0 },
+      discountedSubtotal: money,
+    });
+    const affirmDisplayedDiscounts = mock(() =>
+      Effect.succeed({
+        quote: affirmedWithoutDiscounts,
+        commitment,
+      })
+    );
+    const applyDiscountCode = mock(() => Effect.die("must not resolve code"));
+    const displayedQuote = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        const advertised = yield* pricing.quoteAdvertisement({
+          reservation: advertisedReservation,
+          locale: "en-US",
+        });
+        return advertised.quote;
+      }),
+      DiscountServiceMock({
+        discoverAdvertisedDiscounts: () => Effect.succeed(advertisementQuote),
+      })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        return yield* pricing.applyDiscountCode({
+          reservation,
+          locale: "en-US",
+          dotyposCustomerId,
+          quote: displayedQuote,
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        affirmDisplayedDiscounts,
+        applyDiscountCode,
+      })
+    );
+
+    expect(result).toMatchObject({
+      status: "pricing_changed",
+      changedKeys: {
+        itemKeys: ["product:meeting-room:240", "total:final"],
+        sectionKeys: ["order", "total"],
+      },
+    });
+    expect(applyDiscountCode).not.toHaveBeenCalled();
   });
 });

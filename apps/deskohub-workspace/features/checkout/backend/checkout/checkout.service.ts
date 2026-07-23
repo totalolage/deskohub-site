@@ -338,10 +338,21 @@ const hasAcceptedPaymentAttemptAmount = (input: {
     readonly currency: string;
   };
   readonly total: WorkspaceMoney;
-}) =>
-  input.attempt.amountValue === input.total.value &&
-  input.attempt.amountExponent === input.total.exponent &&
-  input.attempt.currency === input.total.currency;
+}) => {
+  const expectedProviderTotal = withWorkspaceMoneyCurrency(
+    input.total,
+    getNexiCurrencyOverride()
+  );
+
+  return workspaceMoneyEquals(
+    {
+      value: input.attempt.amountValue,
+      exponent: input.attempt.amountExponent,
+      currency: input.attempt.currency,
+    },
+    expectedProviderTotal
+  );
+};
 
 export const CheckoutServiceLive = Layer.effect(
   CheckoutService,

@@ -50,11 +50,10 @@ export type CoworkPaymentPriceAffirmationInput =
     CoworkReservationQuote
   >;
 
-export type CoworkDiscountCodePriceInput =
-  ReservationDiscountCodePriceInput<
-    NormalizedCoworkReservationOrder,
-    CoworkReservationQuote
-  >;
+export type CoworkDiscountCodePriceInput = ReservationDiscountCodePriceInput<
+  NormalizedCoworkReservationOrder,
+  CoworkReservationQuote
+>;
 
 export type CoworkAdvertisementQuote = ReservationAdvertisementQuote<
   CoworkAdvertisedPriceReservation,
@@ -77,11 +76,10 @@ export type CoworkPaymentPriceAffirmation = ReservationPaymentPriceAffirmation<
   CoworkReservationQuote
 >;
 
-export type CoworkDiscountCodePriceResult =
-  ReservationDiscountCodePriceResult<
-    NormalizedCoworkReservationOrder,
-    CoworkReservationQuote
-  >;
+export type CoworkDiscountCodePriceResult = ReservationDiscountCodePriceResult<
+  NormalizedCoworkReservationOrder,
+  CoworkReservationQuote
+>;
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
