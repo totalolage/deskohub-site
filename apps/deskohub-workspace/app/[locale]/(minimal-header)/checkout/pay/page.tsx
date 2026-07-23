@@ -109,7 +109,7 @@ async function CheckoutPayContent({
   const opened = await Effect.gen(function* () {
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
-    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled();
+    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled;
     const freshPayUrl = yield* buildFreshCheckoutPayPath(state).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)

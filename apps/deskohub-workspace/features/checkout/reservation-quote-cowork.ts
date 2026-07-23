@@ -7,7 +7,6 @@ import {
 } from "@/features/checkout/product-catalog";
 import {
   addWorkspaceMoney,
-  withWorkspaceMoneyCurrency,
   workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts";
@@ -57,13 +56,9 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
     reservation: CoworkReservationDetails,
     options: {
       readonly discountQuote?: DiscountQuote;
-      readonly currencyOverride?: string;
     } = {}
   ) {
-    const productPrice = withWorkspaceMoneyCurrency(
-      getWorkspaceProductByTier(reservation.entryTier).price,
-      options.currencyOverride
-    );
+    const productPrice = getWorkspaceProductByTier(reservation.entryTier).price;
     const productItem: CoworkProductQuoteItem = {
       type: "cowork",
       tier: reservation.entryTier,
@@ -74,9 +69,8 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
     if (getReservationProductCoffee(reservation)) {
       addonItems.push({
         type: "coffee",
-        amount: withWorkspaceMoneyCurrency(
-          getWorkspaceProductCoffeeLinePriceForTier(reservation.entryTier),
-          options.currencyOverride
+        amount: getWorkspaceProductCoffeeLinePriceForTier(
+          reservation.entryTier
         ),
       });
     }

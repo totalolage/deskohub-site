@@ -346,7 +346,7 @@
   "checkoutDiscountCodeLabel": "Slevový kód",
   "checkoutDiscountCodePlaceholder": "Zadej kód",
   "checkoutDiscountCodeApply": "Použít kód",
-  "checkoutDiscountCodeApplying": "Používáme...",
+  "checkoutDiscountCodeApplying": "Aplikuje se...",
   "checkoutDiscountCodeUnavailable": "Tento slevový kód není dostupný. Stále můžeš pokračovat s aktuální cenou.",
   "checkoutDiscountCodeApplied": "Slevový kód byl použit.",
   "checkoutSummaryOriginalPrice": "Původní cena: {price}",

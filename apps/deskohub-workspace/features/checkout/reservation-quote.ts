@@ -26,7 +26,6 @@ export const buildReservationQuote = Effect.fn("buildReservationQuote")(
     reservation: ReservationOrderData,
     options: {
       readonly discountQuote?: DiscountQuote;
-      readonly currencyOverride?: string;
     } = {}
   ) {
     const quoteWithoutFingerprint = yield* Match.value(reservation).pipe(
@@ -34,12 +33,10 @@ export const buildReservationQuote = Effect.fn("buildReservationQuote")(
         cowork: (coworkReservation) =>
           getCoworkReservationQuote(coworkReservation, {
             discountQuote: options.discountQuote,
-            currencyOverride: options.currencyOverride,
           }),
         "meeting-room": (meetingRoomReservation) =>
           getMeetingRoomReservationQuote(meetingRoomReservation, {
             discountQuote: options.discountQuote,
-            currencyOverride: options.currencyOverride,
           }),
       })
     );

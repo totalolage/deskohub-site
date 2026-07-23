@@ -1,5 +1,6 @@
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
+import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
@@ -9,6 +10,7 @@ import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
+  appliedDiscountCodec,
   type CanonicalDiscountCode,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
@@ -25,7 +27,6 @@ import {
 import {
   type DiscountCalculationError,
   DiscountCodeUnavailableError,
-  DiscountProviderError,
   type DiscountResolutionError,
 } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -358,7 +359,6 @@ export class DiscountService extends Context.Service<
                 submittedCode: input.submittedCode,
               })
             ),
-            Effect.tap(requireResolvedCodeCandidate),
             Effect.bind("quote", ({ candidates }) =>
               appendDiscounts({
                 baseQuote: input.baseQuote,
@@ -490,39 +490,37 @@ const requireDiscountCodesEnabled = (releaseGates: DiscountReleaseGates) =>
       );
 
 const requireEligibleSubtotal = (input: ApplyDiscountCodeInput) =>
-  input.baseQuote.discountedSubtotal.value > 0
-    ? Effect.void
-    : Effect.fail(
+  Schema.decodeEffect(positiveWorkspaceMoneyCodec)(
+    input.baseQuote.discountedSubtotal
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
         new DiscountCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "No discountable subtotal remains for a discount code.",
+          cause,
         })
-      );
-
-const requireResolvedCodeCandidate = (input: {
-  readonly candidates: readonly DiscountCandidate[];
-}) =>
-  input.candidates.length > 0
-    ? Effect.void
-    : Effect.fail(
-        new DiscountProviderError({
-          reason: "provider_failure",
-          message: "The submitted discount code resolved no candidate.",
-        })
-      );
+    )
+  );
 
 const requireAppliedCode = (input: {
   readonly baseQuote: DiscountQuote;
   readonly quote: DiscountQuote;
 }) =>
-  input.quote.discounts.length > input.baseQuote.discounts.length
-    ? Effect.void
-    : Effect.fail(
+  Schema.decodeUnknownEffect(Schema.NonEmptyArray(appliedDiscountCodec))(
+    input.quote.discounts.slice(input.baseQuote.discounts.length)
+  ).pipe(
+    Effect.asVoid,
+    Effect.mapError(
+      (cause) =>
         new DiscountCodeUnavailableError({
           reason: "no_eligible_subtotal",
           message: "The discount code has no applicable amount.",
+          cause,
         })
-      );
+    )
+  );
 
 const withApplyDiscountCodeAnnotations = <A>(
   effect: Effect.Effect<A, DiscountResolutionError>,

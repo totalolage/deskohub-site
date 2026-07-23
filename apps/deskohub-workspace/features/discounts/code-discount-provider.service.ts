@@ -32,14 +32,21 @@ export type CodeDiscountProviderInput = Pick<
   | "submittedCode"
 >;
 
+export type SubmittedCodeDiscountProviderInput = Omit<
+  CodeDiscountProviderInput,
+  "submittedCode"
+> & {
+  readonly submittedCode: CanonicalDiscountCode;
+};
+
 type CodeDiscountProviderError =
   | DiscountCodeUnavailableError
   | DiscountProviderError;
 
 export interface ICodeDiscountProvider {
   readonly quote: (
-    input: CodeDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], CodeDiscountProviderError>;
+    input: SubmittedCodeDiscountProviderInput
+  ) => Effect.Effect<readonly [DiscountCandidate], CodeDiscountProviderError>;
   readonly revalidate: (
     input: CodeDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], CodeDiscountProviderError>;
@@ -144,7 +151,10 @@ export class CodeDiscountProvider extends Context.Service<
       );
 
       const quote = Effect.fn("CodeDiscountProvider.quote")(
-        (input: CodeDiscountProviderInput) => resolve(input),
+        (input: SubmittedCodeDiscountProviderInput) =>
+          resolveCode({ ...input, code: input.submittedCode }).pipe(
+            Effect.map((candidate) => [candidate] as const)
+          ),
         withProviderAnnotations("quote")
       );
 
