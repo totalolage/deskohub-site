@@ -1,7 +1,6 @@
 import { createEnv } from "@t3-oss/env-nextjs";
-import { Schema } from "effect";
 import {
-  postHogFeatureFlagOverridesEnvironmentCheck,
+  createEnvironmentSchema,
   workspaceClientEnvSchema,
   workspaceServerEnvSchema,
 } from "./env.schema";
@@ -40,8 +39,7 @@ export const env = createEnv({
       process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
     POSTHOG_SERVICE_NAME: process.env.POSTHOG_SERVICE_NAME,
     POSTHOG_SERVICE_NAMESPACE: process.env.POSTHOG_SERVICE_NAMESPACE,
-    POSTHOG_FEATURE_FLAG_OVERRIDES:
-      process.env.POSTHOG_FEATURE_FLAG_OVERRIDES,
+    POSTHOG_FEATURE_FLAG_OVERRIDES: process.env.POSTHOG_FEATURE_FLAG_OVERRIDES,
     VERCEL_AUTOMATION_BYPASS_SECRET:
       process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
     VERCEL_ENV: process.env.VERCEL_ENV,
@@ -56,15 +54,7 @@ export const env = createEnv({
       process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
     NEXT_PUBLIC_VERCEL_ENV: process.env.NEXT_PUBLIC_VERCEL_ENV,
   },
-  createFinalSchema: (shape, isServer) => {
-    const schema = Schema.Struct(shape);
-
-    return Schema.toStandardSchemaV1(
-      isServer
-        ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
-        : schema
-    );
-  },
+  createFinalSchema: createEnvironmentSchema,
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
     const sanitizedError = error.map((issue) =>

@@ -15,6 +15,8 @@ Follow the architecture documented in [FEATURE_FLAGS.md](../../../docs/FEATURE_F
 
 Deployment-scoped overrides use the optional server-only `POSTHOG_FEATURE_FLAG_OVERRIDES` value, decoded against the generated Workspace contract. Only preview and development deployments may configure a non-empty map; production configuration must fail validation. Apply the map once to the process-scoped Node client and pass that identical typed map from the server layout to the consent-aware browser boundary. Never derive overrides from a request, cookie, header, URL, or visitor identity. After browser initialization, replace the complete override set and explicitly clear persisted overrides when the map is absent. Do not initialize PostHog before analytics consent merely to apply an override.
 
+Keep feature-flag-specific environment schemas and their focused tests in the feature-flag module; the root environment schema should import and compose them. T3 Env's field dictionary drops cross-field Effect Struct checks, so apply deployment validation through a named final-schema composer and cover that integration path with a regression test. Type browser override clients directly against `PostHogFeatureFlagOverrides<Definitions>` instead of casting the typed map to an arbitrary record.
+
 Use overrides only for isolated development or protected-preview validation, never for rollout management or mutation of PostHog's stored flag definitions. Safe example:
 
 ```env

@@ -20,13 +20,13 @@ type ValidDefinitions<Definitions> = {
   readonly [Key in keyof Definitions]: PostHogFeatureFlagDefinitionContract;
 };
 
-interface PostHogFeatureFlagOverrideClient {
+interface PostHogFeatureFlagOverrideClient<Definitions> {
   readonly featureFlags: {
     readonly overrideFeatureFlags: (
       overrides:
         | false
         | {
-            readonly flags: Readonly<Record<string, boolean | string>>;
+            readonly flags: PostHogFeatureFlagOverrides<Definitions>;
           }
     ) => void;
   };
@@ -90,14 +90,14 @@ export const createPostHogReactFeatureFlags = <
   }
 
   const applyFeatureFlagOverrides = (
-    client: PostHogFeatureFlagOverrideClient,
+    client: PostHogFeatureFlagOverrideClient<Definitions>,
     overrides?: PostHogFeatureFlagOverrides<Definitions>
   ) => {
     client.featureFlags.overrideFeatureFlags(
       overrides === undefined
         ? false
         : {
-            flags: overrides as Readonly<Record<string, boolean | string>>,
+            flags: overrides,
           }
     );
   };

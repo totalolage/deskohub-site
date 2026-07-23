@@ -1,9 +1,9 @@
-import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import { Effect, Schema, SchemaGetter } from "effect";
+import { Effect, Schema } from "effect";
 import {
-  type PostHogFeatureFlagDefinitions,
-  postHogFeatureFlags,
-} from "./features/feature-flags/generated/contract";
+  postHogFeatureFlagOverridesEnvironmentCheck,
+  postHogFeatureFlagOverridesSchema,
+  vercelEnvironmentSchema,
+} from "./features/feature-flags/feature-flag-overrides.schema";
 import { urlStringSchema } from "./shared/utils/url-schema";
 
 const toEnvSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
@@ -15,69 +15,6 @@ const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
-const vercelEnvironmentSchema = Schema.Literals([
-  "production",
-  "preview",
-  "development",
-]);
-
-const postHogFeatureFlagKeySet = new Set<string>(postHogFeatureFlags.keys);
-const postHogFeatureFlagOverridesObjectSchema = Schema.Record(
-  Schema.Literals(postHogFeatureFlags.keys),
-  Schema.optional(Schema.Boolean)
-);
-const decodedPostHogFeatureFlagOverridesSchema = Schema.Record(
-  Schema.String,
-  Schema.Boolean
-)
-  .check(
-    Schema.makeFilter((overrides) =>
-      Object.keys(overrides).every((key) =>
-        postHogFeatureFlagKeySet.has(key)
-      )
-        ? undefined
-        : "Feature flag overrides contain an unknown flag key."
-    )
-  )
-  .pipe(Schema.decodeTo(postHogFeatureFlagOverridesObjectSchema));
-
-const postHogFeatureFlagOverridesSchema = Schema.optional(
-  Schema.Union([
-    Schema.Literal(""),
-    Schema.fromJsonString(decodedPostHogFeatureFlagOverridesSchema),
-  ])
-).pipe(
-  Schema.decodeTo(Schema.optional(postHogFeatureFlagOverridesObjectSchema), {
-    decode: SchemaGetter.transform((overrides) =>
-      overrides === "" ||
-      (overrides !== undefined && Object.keys(overrides).length === 0)
-        ? undefined
-        : overrides
-    ),
-    encode: SchemaGetter.transform((overrides) => overrides),
-  })
-);
-
-export const postHogFeatureFlagOverridesEnvironmentCheck = Schema.makeFilter<{
-  readonly POSTHOG_FEATURE_FLAG_OVERRIDES?:
-    | PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>
-    | undefined;
-  readonly VERCEL_ENV: "production" | "preview" | "development";
-}>((environment) =>
-  environment.VERCEL_ENV === "production" &&
-  environment.POSTHOG_FEATURE_FLAG_OVERRIDES !== undefined
-    ? {
-        path: ["POSTHOG_FEATURE_FLAG_OVERRIDES"],
-        issue:
-          "Feature flag overrides are only allowed in preview or development deployments.",
-      }
-    : undefined
-);
-
-export const postHogFeatureFlagOverrideEnvironmentSchema = Schema.Struct({
-  POSTHOG_FEATURE_FLAG_OVERRIDES: postHogFeatureFlagOverridesSchema,
-  VERCEL_ENV: vercelEnvironmentSchema,
-}).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceServerEnvSchema = Schema.Struct({
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
@@ -143,6 +80,25 @@ export const workspaceClientEnvSchema = Schema.Struct({
     Schema.optional(Schema.Literals(["production", "preview", "development"]))
   ),
 });
+
+/**
+ * T3 Env normally validates the field dictionary, which cannot retain checks
+ * that depend on multiple fields. Compose its final schema here so server-only
+ * deployment checks run without coupling them to `env.ts`.
+ */
+export const createEnvironmentSchema = (
+  fields: typeof workspaceServerEnvSchema.fields &
+    typeof workspaceClientEnvSchema.fields,
+  isServer: boolean
+) => {
+  const schema = Schema.Struct(fields);
+
+  return Schema.toStandardSchemaV1(
+    isServer
+      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
+      : schema
+  );
+};
 
 export type WorkspaceServerEnv = Schema.Schema.Type<
   typeof workspaceServerEnvSchema
