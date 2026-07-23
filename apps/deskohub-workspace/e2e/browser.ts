@@ -226,6 +226,17 @@ export const activateBrowserElement = (
     yield* pressBrowserKey(run, session, "Enter", options);
   });
 
+export const activateHydratedBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* waitForBrowserReactHydration(run, session, selector, options);
+    yield* activateBrowserElement(run, session, selector, options);
+  });
+
 export const readInteractiveSnapshot = (
   run: Runner,
   session: string,

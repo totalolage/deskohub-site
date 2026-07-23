@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 import {
-  activateBrowserElement,
+  activateHydratedBrowserElement,
   openBrowserPage,
-  waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -61,8 +60,9 @@ const activateLocaleSwitchLink = (
   Effect.gen(function* () {
     const timeoutMs = timeouts.uiTransition;
     const selector = `nav[aria-label="Language switcher"] a[href^="/${locale}"]`;
-    yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
-    yield* activateBrowserElement(run, session, selector, { timeoutMs });
+    yield* activateHydratedBrowserElement(run, session, selector, {
+      timeoutMs,
+    });
   });
 
 const switchLocale = (

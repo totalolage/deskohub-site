@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import {
-  activateBrowserElement,
+  activateHydratedBrowserElement,
   evalBrowserScript,
   openBrowserPage,
   waitForBrowserReactHydration,
@@ -173,15 +173,12 @@ const returnToPrefilledReservation = ({
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
     const browserActionTimeoutMs = timeouts.browserAction;
-    yield* waitForBrowserReactHydration(
+    yield* activateHydratedBrowserElement(
       run,
       session,
       reservationStepSelector,
       { timeoutMs: browserActionTimeoutMs }
     );
-    yield* activateBrowserElement(run, session, reservationStepSelector, {
-      timeoutMs: browserActionTimeoutMs,
-    });
     yield* waitForBrowserUrl({
       description: "prefilled reservation page",
       matches: (value) => {
