@@ -348,7 +348,7 @@
   "checkoutDiscountCodeApply": "Použít kód",
   "checkoutDiscountCodeApplying": "Aplikuje se...",
   "checkoutDiscountCodeUnavailable": "Tento slevový kód není dostupný. Stále můžeš pokračovat s aktuální cenou.",
-  "checkoutDiscountCodeApplied": "Slevový kód byl použit.",
+  "checkoutDiscountCodeApplied": "Slevový kód použit: sleva {discount} 🎉",
   "checkoutSummaryOriginalPrice": "Původní cena: {price}",
   "checkoutSummaryDiscountedPrice": "Cena po slevě: {price}",
   "checkoutSummaryItemCoffee": "Káva",

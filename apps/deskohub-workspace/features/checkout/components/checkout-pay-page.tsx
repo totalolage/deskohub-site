@@ -13,6 +13,7 @@ import {
   CheckoutSummarySection,
   CheckoutSummarySections,
 } from "@/features/checkout/components/checkout-summary";
+import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import { Button } from "@/shared/components/ui/button";
@@ -31,10 +32,10 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { CheckoutDiscountCodeForm } from "./checkout-discount-code-form";
 
 type CheckoutPayPageProps = {
+  readonly appliedDiscountCodeAdjustment?: DiscountAdjustment;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly discountCodeEntryEnabled?: boolean;
   readonly freshPayUrl?: string;
-  readonly hasSubmittedCode?: boolean;
   readonly locale: Locale;
   readonly payStateToken?: string;
   readonly summary: CheckoutSummaryData;
@@ -45,10 +46,10 @@ type CheckoutPayPageProps = {
 type CheckoutPayActionVariant = "pay" | "retry";
 
 export function CheckoutPayPage({
+  appliedDiscountCodeAdjustment,
   changedKeys,
   discountCodeEntryEnabled = false,
   freshPayUrl,
-  hasSubmittedCode = false,
   locale,
   payStateToken,
   retryOutcome,
@@ -139,7 +140,7 @@ export function CheckoutPayPage({
 
       {variant === "pay" && payStateToken && (
         <CheckoutDiscountCodeForm
-          applied={hasSubmittedCode}
+          appliedAdjustment={appliedDiscountCodeAdjustment}
           checkoutNavigationPending={isSubmitPending}
           initialEnabled={discountCodeEntryEnabled}
           locale={locale}

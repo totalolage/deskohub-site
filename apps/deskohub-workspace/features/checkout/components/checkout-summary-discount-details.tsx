@@ -1,8 +1,8 @@
 "use client";
 
-import { Match } from "effect";
 import { Info } from "lucide-react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
@@ -15,21 +15,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
-
-const formatDiscountAdjustment = (
-  discount: CheckoutSummaryDiscount["discount"],
-  locale: Locale
-) =>
-  Match.value(discount.adjustment).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      percentage: ({ basisPoints }) =>
-        new Intl.NumberFormat(locale, {
-          style: "percent",
-          maximumFractionDigits: 2,
-        }).format(basisPoints / 10_000),
-      fixed: ({ amount }) => formatWorkspaceMoney(amount, locale),
-    })
-  );
 
 export function CheckoutSummaryDiscountDetails({
   discounts,
@@ -90,7 +75,7 @@ export function CheckoutSummaryDiscountDetailsContent({
           <span className="min-w-0">
             <span className="block truncate font-medium">{discount.label}</span>
             <span className="block text-xs text-navy-blue/55">
-              {formatDiscountAdjustment(discount, locale)}
+              {formatDiscountAdjustment(discount.adjustment, locale)}
             </span>
           </span>
           <span className="font-semibold tabular-nums">

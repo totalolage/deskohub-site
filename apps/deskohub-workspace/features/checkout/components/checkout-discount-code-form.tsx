@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { applyDiscountCode } from "@/features/checkout/actions/apply-discount-code";
+import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
+import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { useFeatureFlagEnabled } from "@/features/feature-flags/react";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
@@ -11,7 +13,7 @@ import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type CheckoutDiscountCodeFormProps = {
-  readonly applied: boolean;
+  readonly appliedAdjustment?: DiscountAdjustment;
   readonly checkoutNavigationPending: boolean;
   readonly initialEnabled: boolean;
   readonly locale: Locale;
@@ -19,7 +21,7 @@ type CheckoutDiscountCodeFormProps = {
 };
 
 export function CheckoutDiscountCodeForm({
-  applied,
+  appliedAdjustment,
   checkoutNavigationPending,
   initialEnabled,
   locale,
@@ -52,10 +54,15 @@ export function CheckoutDiscountCodeForm({
     },
   });
 
-  if (applied) {
+  if (appliedAdjustment) {
     return (
-      <output className="block rounded-2xl border border-navy-blue/10 bg-navy-blue/2.5 px-4 py-3 text-sm text-navy-blue/72">
-        {m.checkoutDiscountCodeApplied({}, { locale })}
+      <output className="block rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm font-semibold text-navy-blue ring-1 ring-aquamarine-green/10">
+        {m.checkoutDiscountCodeApplied(
+          {
+            discount: formatDiscountAdjustment(appliedAdjustment, locale),
+          },
+          { locale }
+        )}
       </output>
     );
   }

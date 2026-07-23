@@ -151,10 +151,14 @@ async function CheckoutPayContent({
       }}
     >
       <CheckoutPayPage
+        appliedDiscountCodeAdjustment={
+          state.submittedCode === undefined
+            ? undefined
+            : state.quote.payment.discounts.at(-1)?.discount.adjustment
+        }
         changedKeys={state.changedKeys}
         discountCodeEntryEnabled={discountCodeEntryEnabled}
         freshPayUrl={freshPayUrl}
-        hasSubmittedCode={state.submittedCode !== undefined}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}
         summary={getSignedPayStateCheckoutSummary(state)}

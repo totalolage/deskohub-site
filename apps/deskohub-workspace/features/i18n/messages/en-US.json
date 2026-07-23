@@ -347,7 +347,7 @@
   "checkoutDiscountCodeApply": "Apply code",
   "checkoutDiscountCodeApplying": "Applying...",
   "checkoutDiscountCodeUnavailable": "This discount code is unavailable. You can still continue with the current price.",
-  "checkoutDiscountCodeApplied": "Discount code applied.",
+  "checkoutDiscountCodeApplied": "Discount code applied: {discount} off 🎉",
   "checkoutSummaryOriginalPrice": "Original price: {price}",
   "checkoutSummaryDiscountedPrice": "Discounted price: {price}",
   "checkoutSummaryItemCoffee": "Coffee",

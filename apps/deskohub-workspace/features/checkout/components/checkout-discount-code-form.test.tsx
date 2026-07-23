@@ -87,7 +87,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending={false}
         initialEnabled={false}
         locale="en-US"
@@ -105,7 +104,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending={false}
         initialEnabled
         locale="en-US"
@@ -136,7 +134,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending={false}
         initialEnabled
         locale="en-US"
@@ -162,7 +159,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     render(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending={false}
         initialEnabled
         locale="en-US"
@@ -191,7 +187,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending={false}
         initialEnabled
         locale="en-US"
@@ -200,7 +195,6 @@ describe("CheckoutDiscountCodeForm", () => {
     );
     view.rerender(
       <CheckoutDiscountCodeForm
-        applied={false}
         checkoutNavigationPending
         initialEnabled
         locale="en-US"
@@ -220,14 +214,14 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(routerReplace).not.toHaveBeenCalled();
   });
 
-  test("shows only a generic applied state after a code is signed", async () => {
+  test("celebrates the applied adjustment without showing the code", async () => {
     useFeatureFlagEnabled.mockReturnValue(false);
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        applied
+        appliedAdjustment={{ kind: "percentage", basisPoints: 2000 }}
         checkoutNavigationPending={false}
         initialEnabled={false}
         locale="en-US"
@@ -236,8 +230,13 @@ describe("CheckoutDiscountCodeForm", () => {
     );
 
     expect(
-      view.getByText(m.checkoutDiscountCodeApplied({}, { locale: "en-US" }))
+      view.getByText(
+        m.checkoutDiscountCodeApplied({ discount: "20%" }, { locale: "en-US" })
+      )
     ).toBeDefined();
+    expect(view.getByRole("status").className).toContain(
+      "bg-aquamarine-green/12"
+    );
     expect(view.queryByRole("textbox")).toBeNull();
   });
 
