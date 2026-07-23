@@ -67,6 +67,52 @@ export type MeetingRoomReservationOrderInput =
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderSchema.Type;
 
+export const meetingRoomReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  startsAt: instantStringSchema,
+  endsAt: instantStringSchema,
+}).annotate({
+  identifier: "MeetingRoomReservationDetails",
+  description:
+    "PII-free meeting-room reservation projection for external consumers.",
+});
+
+export type MeetingRoomReservationDetails =
+  typeof meetingRoomReservationDetailsSchema.Type;
+
+export const getMeetingRoomReservationDetails = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomReservationDetails =>
+  meetingRoomReservationDetailsSchema.make({
+    kind: meetingRoomReservationKind,
+    startsAt: reservation.startsAt,
+    endsAt: reservation.endsAt,
+  });
+
+export const meetingRoomAdvertisedPriceReservationSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  details: meetingRoomReservationDetailsSchema,
+}).annotate({
+  identifier: "MeetingRoomAdvertisedPriceReservation",
+  description:
+    "PII-free normalized meeting-room reservation inputs whose price is advertised.",
+});
+
+export type MeetingRoomAdvertisedPriceReservation =
+  typeof meetingRoomAdvertisedPriceReservationSchema.Type;
+
+export const meetingRoomAdvertisedPriceReservationEquals = Schema.toEquivalence(
+  meetingRoomAdvertisedPriceReservationSchema
+);
+
+export const getMeetingRoomAdvertisedPriceReservation = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomAdvertisedPriceReservation =>
+  meetingRoomAdvertisedPriceReservationSchema.make({
+    kind: meetingRoomReservationKind,
+    details: getMeetingRoomReservationDetails(reservation),
+  });
+
 export type MeetingRoomReservationProductInput = Pick<
   MeetingRoomReservationOrderInput,
   "kind"

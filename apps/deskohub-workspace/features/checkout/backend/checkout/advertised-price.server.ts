@@ -12,19 +12,17 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
   function* (input: AdvertisedPriceRequest) {
     const pricing = yield* CheckoutPricingService;
-    const quote = yield* pricing.quoteAdvertisement({
-      reservation: input.reservation.details,
-      locale: input.locale,
-    });
+    const advertised = yield* pricing.quoteAdvertisement(input);
     const state = yield* buildAdvertisedPriceState({
+      ...advertised,
       locale: input.locale,
-      reservation: input.reservation,
-      quote,
     });
+    const advertisedPriceToken = yield* sealAdvertisedPriceState(state);
+    const { reservation: _, ...advertisedPrice } = advertised;
 
     return {
-      quote,
-      advertisedPriceToken: yield* sealAdvertisedPriceState(state),
+      ...advertisedPrice,
+      advertisedPriceToken,
     } satisfies AdvertisedPrice;
   }
 );

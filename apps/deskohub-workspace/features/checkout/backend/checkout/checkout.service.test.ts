@@ -8,9 +8,11 @@ import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type {
   CheckoutSummaryChangedKeys,
-  WorkspaceCheckoutQuote,
+  CoworkReservationQuote,
 } from "@/features/checkout/checkout-quote";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
+import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
   CanonicalDiscountCode,
@@ -23,6 +25,7 @@ import {
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 import {
@@ -70,6 +73,20 @@ const reservationData = Schema.decodeUnknownSync(
   email: "ada@example.com",
   phone: "+420 777 777 777",
 });
+
+const meetingRoomReservationData = Schema.decodeUnknownSync(
+  reservationOrderSchema
+)({
+  kind: "meeting-room",
+  startsAt: "2099-06-20T08:00:00Z",
+  endsAt: "2099-06-20T12:00:00Z",
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+});
+if (meetingRoomReservationData.kind !== "meeting-room") {
+  throw new Error("Expected meeting-room reservation");
+}
 
 const money = (value: number) => ({
   value,
@@ -126,7 +143,7 @@ const privateCommitment = makeDiscountCommitment({
 const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
-  readonly quote?: WorkspaceCheckoutQuote;
+  readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -136,11 +153,49 @@ const buildPayStateToken = (input: {
       const state = yield* buildSignedPayState({
         locale: input.locale ?? "en-US",
         reservation: reservationData,
-        quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
+        quote: input.quote ?? buildCoworkReservationQuote(reservationData),
         orderId: input.orderId,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         submittedCode: input.submittedCode,
         changedKeys: input.changedKeys,
+        ttlMilliseconds: 10 * 60 * 1000,
+      });
+      return yield* sealPayState(state);
+    })
+  );
+
+const buildMeetingRoomQuote = (discountQuote?: DiscountQuote) => {
+  const quoteWithoutFingerprint = Effect.runSync(
+    getMeetingRoomReservationQuote(meetingRoomReservationData, {
+      discountQuote,
+    })
+  );
+
+  return {
+    ...quoteWithoutFingerprint,
+    fingerprint: getReservationQuoteFingerprint(
+      meetingRoomReservationData,
+      quoteWithoutFingerprint
+    ),
+  };
+};
+
+const buildMeetingRoomPayStateToken = (input: {
+  readonly orderId: string;
+  readonly checkoutSessionId?: string;
+  readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
+  readonly submittedCode?: CanonicalDiscountCode;
+}) =>
+  Effect.runSync(
+    Effect.gen(function* () {
+      const state = yield* buildSignedPayState({
+        locale: "en-US",
+        reservation: meetingRoomReservationData,
+        quote: input.quote ?? buildMeetingRoomQuote(),
+        orderId: input.orderId,
+        checkoutSessionId:
+          input.checkoutSessionId ?? "meeting-room-checkout-session-id",
+        submittedCode: input.submittedCode,
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
@@ -218,8 +273,9 @@ const makeReservation = (
 
 type CheckoutHarnessOptions = {
   readonly orderId: string;
+  readonly payStateToken?: string;
   readonly locale?: Locale;
-  readonly acceptedQuote?: WorkspaceCheckoutQuote;
+  readonly acceptedQuote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -331,23 +387,33 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     options.affirm ??
     mock(() =>
       Effect.succeed({
-        quote: buildWorkspaceCheckoutQuote(reservationData),
+        quote: buildCoworkReservationQuote(reservationData),
         commitment: emptyCommitment,
       })
+    );
+  const affirmForPayment = (pricingInput: Parameters<typeof affirm>[0]) =>
+    affirm(pricingInput).pipe(
+      Effect.map((result) => ({
+        kind: pricingInput.reservation.kind,
+        reservation: pricingInput.reservation,
+        ...result,
+      }))
     );
 
   const effect = Effect.gen(function* () {
     const service = yield* CheckoutService;
     return yield* service.createHostedPaymentCheckout(
       {
-        payStateToken: buildPayStateToken({
-          orderId: options.orderId,
-          locale,
-          quote: options.acceptedQuote,
-          checkoutSessionId: options.checkoutSessionId,
-          submittedCode: options.submittedCode,
-          changedKeys: options.changedKeys,
-        }),
+        payStateToken:
+          options.payStateToken ??
+          buildPayStateToken({
+            orderId: options.orderId,
+            locale,
+            quote: options.acceptedQuote,
+            checkoutSessionId: options.checkoutSessionId,
+            submittedCode: options.submittedCode,
+            changedKeys: options.changedKeys,
+          }),
         legalConsent: true,
       },
       locale
@@ -357,7 +423,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       CheckoutServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            CheckoutPricingServiceMock({ affirmForPayment: affirm }),
+            CheckoutPricingServiceMock({
+              affirmForPayment: affirmForPayment as never,
+            }),
             Layer.succeed(DotyposService, dotypos),
             Layer.succeed(NexiService, nexi),
             Layer.succeed(WorkspaceReservationRepository, reservations),
@@ -454,10 +522,10 @@ describe("CheckoutService", () => {
   test("affirms the accepted discounts with the checkout locale, stored customer, and encrypted code", async () => {
     const submittedCode = canonicalCode("CANONICAL-SECRET-CODE");
     const orderId = "reservation-affirms-code";
-    const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData);
+    const acceptedQuote = buildCoworkReservationQuote(reservationData);
     const affirm = mock(() =>
       Effect.succeed({
-        quote: buildWorkspaceCheckoutQuote(reservationData, {
+        quote: buildCoworkReservationQuote(reservationData, {
           discountQuote: undiscountedQuote,
         }),
         commitment: emptyCommitment,
@@ -481,18 +549,20 @@ describe("CheckoutService", () => {
     await Effect.runPromise(harness.effect);
 
     expect(affirm).toHaveBeenCalledTimes(1);
-    expect(affirm).toHaveBeenCalledWith({
-      reservation: expect.objectContaining(reservationData),
-      dotyposCustomerId: "stored-dotypos-customer-id",
-      locale: "cs-CZ",
-      submittedCode,
-      displayedQuote: acceptedQuote,
-    });
+    expect(affirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservation: expect.objectContaining(reservationData),
+        dotyposCustomerId: "stored-dotypos-customer-id",
+        locale: "cs-CZ",
+        submittedCode,
+        quote: acceptedQuote,
+      })
+    );
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         amountValue: 55_000,
         amountExponent: 2,
-        currency: "EUR",
+        currency: "CZK",
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -526,6 +596,88 @@ describe("CheckoutService", () => {
     }
   });
 
+  test("affirms meeting-room discounts and returns a fresh state when pricing changes", async () => {
+    const submittedCode = canonicalCode("ROOM50");
+    const meetingRoomApplication = {
+      ...application,
+      subtotalBefore: money(60_000),
+      amount: money(10_000),
+      subtotalAfter: money(50_000),
+    };
+    const acceptedDiscountQuote: DiscountQuote = {
+      product: { kind: "meeting-room", durationMinutes: 240 },
+      discountableSubtotal: money(60_000),
+      discounts: [meetingRoomApplication],
+      totalDiscount: money(10_000),
+      discountedSubtotal: money(50_000),
+    };
+    const freshDiscountQuote: DiscountQuote = {
+      ...acceptedDiscountQuote,
+      discounts: [
+        {
+          ...meetingRoomApplication,
+          amount: money(20_000),
+          subtotalAfter: money(40_000),
+        },
+      ],
+      totalDiscount: money(20_000),
+      discountedSubtotal: money(40_000),
+    };
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote: buildMeetingRoomQuote(freshDiscountQuote),
+        commitment: emptyCommitment,
+      })
+    );
+    const orderId = "meeting-room-pricing-changed";
+    const checkoutSessionId = "meeting-room-session-id";
+    const acceptedQuote = buildMeetingRoomQuote(acceptedDiscountQuote);
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        checkoutSessionId,
+        quote: acceptedQuote,
+        submittedCode,
+      }),
+      affirm,
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(affirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservation: meetingRoomReservationData,
+        dotyposCustomerId: "stored-dotypos-customer-id",
+        locale: "en-US",
+        submittedCode,
+        quote: acceptedQuote,
+      })
+    );
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    expect(result.changedKeys).toEqual({
+      sectionKeys: ["order", "total"],
+      itemKeys: ["product:meeting-room:240", "total:final"],
+    });
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.reservation.kind).toBe("meeting-room");
+    expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
+    expect(freshState.submittedCode).toBe(submittedCode);
+  });
+
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
     const editedApplication = {
       ...application,
@@ -538,7 +690,7 @@ describe("CheckoutService", () => {
       ...discountedQuote,
       discounts: [editedApplication],
     };
-    const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData, {
+    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: discountedQuote,
     });
     const acceptedToken = buildPayStateToken({
@@ -548,7 +700,7 @@ describe("CheckoutService", () => {
     });
     const affirm = mock(() =>
       Effect.succeed({
-        quote: buildWorkspaceCheckoutQuote(reservationData, {
+        quote: buildCoworkReservationQuote(reservationData, {
           discountQuote: editedQuote,
         }),
         commitment: emptyCommitment,
@@ -592,7 +744,7 @@ describe("CheckoutService", () => {
     const submittedCode = canonicalCode("SUMMER50");
     const affirm = mock(() =>
       Effect.succeed({
-        quote: buildWorkspaceCheckoutQuote(reservationData, {
+        quote: buildCoworkReservationQuote(reservationData, {
           discountQuote: undiscountedQuote,
         }),
         commitment: emptyCommitment,
@@ -600,7 +752,7 @@ describe("CheckoutService", () => {
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-pricing-changed",
-      acceptedQuote: buildWorkspaceCheckoutQuote(reservationData, {
+      acceptedQuote: buildCoworkReservationQuote(reservationData, {
         discountQuote: discountedQuote,
       }),
       submittedCode,
@@ -622,7 +774,7 @@ describe("CheckoutService", () => {
     );
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        displayedQuote: expect.objectContaining({
+        quote: expect.objectContaining({
           payment: expect.objectContaining({
             discounts: [application],
           }),
@@ -637,12 +789,12 @@ describe("CheckoutService", () => {
 
   test("refreshes the Dotypos note with public discount labels before provider creation", async () => {
     const events: string[] = [];
-    const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData, {
+    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
       discountQuote: discountedQuote,
     });
     const affirm = mock(() =>
       Effect.succeed({
-        quote: buildWorkspaceCheckoutQuote(reservationData, {
+        quote: buildCoworkReservationQuote(reservationData, {
           discountQuote: discountedQuote,
         }),
         commitment: privateCommitment,

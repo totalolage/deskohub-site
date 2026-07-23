@@ -65,7 +65,7 @@ export const getDatasourceConfig = () => {
       employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
       refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
     },
-    expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
+    expectedCurrency: "CZK",
     nexiApiOrigin: requireEnv("NEXI_API_ORIGIN"),
   };
 };

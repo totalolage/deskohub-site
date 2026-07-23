@@ -1,4 +1,5 @@
 import { Match, Schema, SchemaGetter } from "effect";
+import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   coworkReservationProductInputSchema,
@@ -123,16 +124,19 @@ const coworkReservationDetailsDateSchema = Schema.toEncoded(
 );
 
 const basicCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
   ...normalizedBasicCoworkReservationProductSchema.fields,
   date: coworkReservationDetailsDateSchema,
 });
 
 const plusCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
   ...normalizedPlusCoworkReservationProductSchema.fields,
   date: coworkReservationDetailsDateSchema,
 });
 
 const profiCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
   ...normalizedProfiCoworkReservationProductSchema.fields,
   date: coworkReservationDetailsDateSchema,
 });
@@ -172,18 +176,21 @@ export const getCoworkReservationDetails = (
     Match.discriminatorsExhaustive("entryTier")({
       basic: (basicReservation) =>
         basicCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
           entryTier: basicReservation.entryTier,
           date: basicReservation.date,
           coffee: basicReservation.coffee,
         }),
       plus: (plusReservation) =>
         plusCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
           entryTier: plusReservation.entryTier,
           date: plusReservation.date,
           coffee: true,
         }),
       profi: (profiReservation) =>
         profiCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
           entryTier: profiReservation.entryTier,
           date: profiReservation.date,
           coffee: true,
@@ -191,6 +198,24 @@ export const getCoworkReservationDetails = (
         }),
     })
   );
+
+export type CoworkCheckoutAttemptDetails = {
+  readonly kind: NormalizedCoworkReservationOrder["kind"];
+  readonly date: NormalizedCoworkReservationOrder["date"];
+  readonly entryTier: NormalizedCoworkReservationOrder["entryTier"];
+  readonly coffee: boolean;
+  readonly monitorOption: WorkspaceProductMonitorOption | null;
+};
+
+export const getCoworkCheckoutAttemptDetails = (
+  reservation: NormalizedCoworkReservationOrder
+): CoworkCheckoutAttemptDetails => ({
+  kind: reservation.kind,
+  date: reservation.date,
+  entryTier: reservation.entryTier,
+  coffee: reservation.coffee,
+  monitorOption: reservation.monitorOption ?? null,
+});
 
 export const getCoworkReservationIssues = (
   data: CoworkReservationOrderInput | CoworkReservationFormInput

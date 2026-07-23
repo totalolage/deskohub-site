@@ -8,7 +8,7 @@ import {
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
@@ -31,7 +31,7 @@ describe("CheckoutSummary", () => {
   });
 
   test("renders server-provided summary rows and amounts without a duplicate title", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: true,
     });
@@ -49,7 +49,7 @@ describe("CheckoutSummary", () => {
   });
 
   test("localizes product summary item keys", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
@@ -63,7 +63,7 @@ describe("CheckoutSummary", () => {
   });
 
   test("highlights the canonical changed product key", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
@@ -99,7 +99,7 @@ describe("CheckoutSummary", () => {
       amount: money(27_500),
       subtotalAfter: money(27_500),
     };
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       {
         entryTier: "profi",
         coffee: true,
@@ -139,7 +139,7 @@ describe("CheckoutSummary", () => {
       exponent: 2,
       currency: "CZK",
     });
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: true },
       {
         discountQuote: {
@@ -182,7 +182,7 @@ describe("CheckoutSummary", () => {
       currency: "CZK",
     });
     const discountId = Schema.decodeUnknownSync(discountIdSchema);
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       {
         discountQuote: {

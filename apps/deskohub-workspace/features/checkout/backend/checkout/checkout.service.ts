@@ -3,22 +3,23 @@ import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { env } from "@/env";
 import {
+  type CheckoutSummary,
   getCheckoutSummaryChangedKeys,
-  type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
   type LegalEvidenceMap,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
+import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
+import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import {
+  type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
-import type { CanonicalDiscountCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CheckoutLegalAcceptanceSnapshot,
@@ -29,11 +30,8 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import {
-  getCoworkReservationDetails,
-  type NormalizedCoworkReservationOrder,
-} from "@/features/reservation/cowork-reservation";
-import { getStoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -49,6 +47,7 @@ import {
   capturePaymentStarted,
 } from "../analytics/posthog-lifecycle-events";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
+import { getNexiCurrencyOverride } from "../payment/nexi-currency";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
@@ -61,7 +60,12 @@ import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservati
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { CheckoutPricingServiceLiveWithDependencies } from "./checkout-pricing.runtime";
 import { CheckoutPricingService } from "./checkout-pricing.service";
-import { openPayState, type SignedPayState } from "./pay-state.server";
+import {
+  type BuildSignedPayStateInput,
+  getSignedPayStateCheckoutSummary,
+  openPayState,
+  type SignedPayState,
+} from "./pay-state.server";
 import {
   PayableReservationService,
   type PayableReservationUnavailableError,
@@ -73,6 +77,9 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   {
     onExcessProperty: "error",
   }
+);
+const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
+  dotyposCustomerIdSchema
 );
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
@@ -92,7 +99,7 @@ export interface CheckoutService {
     | {
         readonly status: "pricing_changed";
         readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
-        readonly freshSummary: WorkspaceCheckoutQuote["summary"];
+        readonly freshSummary: CheckoutSummary;
         readonly freshPayUrl: string;
       }
     | { readonly status: "in_progress" },
@@ -188,14 +195,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
-const getNexiCheckoutCurrencyOverride = () => {
-  if (env.VERCEL_ENV === "production") return undefined;
-  if (new URL(env.NEXI_API_ORIGIN).hostname !== "xpaysandbox.nexigroup.com") {
-    return undefined;
-  }
-  return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
-};
-
 const getCheckoutLegalAcceptanceSnapshot: (
   locale: Locale
 ) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
@@ -257,25 +256,6 @@ const getCheckoutLegalEvidence = (input: {
   });
 };
 
-const buildCheckoutDetailsForPayment = (input: {
-  readonly locale: Locale;
-  readonly data: NormalizedCoworkReservationOrder;
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly legalEvidence: LegalEvidenceMap;
-}): CheckoutDetailsJson => ({
-  schema: "workspace-checkout-details",
-  schemaVersion: 1,
-  locale: input.locale,
-  reservation: getCoworkReservationDetails(input.data),
-  payment: {
-    expectedPrice: input.quote.payment.expectedPrice,
-    undiscountedPrice: input.quote.payment.undiscountedPrice,
-    discounts: [...input.quote.payment.discounts],
-    summary: input.quote.summary,
-  },
-  legal: input.legalEvidence,
-});
-
 const openFinalPayState: (
   payStateToken: string,
   locale: Locale
@@ -302,15 +282,9 @@ const openFinalPayState: (
   return state;
 });
 
-const getFreshPayUrl: (input: {
-  readonly locale: Locale;
-  readonly reservation: NormalizedCoworkReservationOrder;
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly orderId: string;
-  readonly checkoutSessionId?: string;
-  readonly submittedCode: CanonicalDiscountCode | undefined;
-  readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
-}) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
+const getFreshPayUrl: (
+  input: BuildSignedPayStateInput
+) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
   (input) =>
     buildFreshCheckoutPayPath(input).pipe(
       Effect.mapError(
@@ -375,14 +349,14 @@ export const CheckoutServiceLive = Layer.effect(
         readonly correlationId: string;
         readonly checkoutSessionId?: string;
         readonly locale: Locale;
-        readonly total: WorkspaceCheckoutQuote["summary"]["total"];
+        readonly total: WorkspaceMoney;
       }) {
         yield* Effect.annotateLogsScoped({ providerSessionInput: input });
         yield* Effect.logInfo("Checkout provider session start requested");
 
         const providerTotal = withWorkspaceMoneyCurrency(
           input.total,
-          getNexiCheckoutCurrencyOverride()
+          getNexiCurrencyOverride()
         );
         const nexiAmount = yield* toNexiAmount(providerTotal).pipe(
           Effect.mapError(
@@ -407,9 +381,9 @@ export const CheckoutServiceLive = Layer.effect(
         const attempt = yield* paymentAttempts.create({
           workspaceReservationId: input.workspaceReservationId,
           providerOrderId: generateNexiOrderId(),
-          amountValue: providerTotal.value,
-          amountExponent: providerTotal.exponent,
-          currency: providerTotal.currency,
+          amountValue: input.total.value,
+          amountExponent: input.total.exponent,
+          currency: input.total.currency,
         });
         yield* Effect.annotateLogsScoped({ attempt });
         yield* Effect.logInfo("Checkout payment attempt created");
@@ -622,42 +596,55 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             const freshPayUrl = yield* getFreshPayUrl({
+              ...state,
               locale,
-              reservation: data,
-              quote: state.quote,
               orderId: reservation.id,
-              submittedCode: state.submittedCode,
-              changedKeys: state.changedKeys,
             });
             return {
               status: "pricing_changed" as const,
               changedKeys: state.changedKeys,
-              freshSummary: state.quote.summary,
+              freshSummary: getSignedPayStateCheckoutSummary(state),
               freshPayUrl,
             };
           }
 
-          const paymentAffirmation = yield* pricing.affirmForPayment({
-            reservation: data,
-            dotyposCustomerId: reservation.dotyposCustomerId,
+          const dotyposCustomerId = yield* decodeDotyposCustomerId(
+            reservation.dotyposCustomerId
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new CheckoutError({
+                  message: "Reservation customer identity is invalid.",
+                  cause,
+                })
+            )
+          );
+          const prepared = yield* pricing.affirmForPayment({
+            ...state,
+            dotyposCustomerId,
             locale,
-            submittedCode: state.submittedCode,
-            displayedQuote: state.quote,
           });
-          const quote = paymentAffirmation.quote;
-          yield* Effect.annotateLogsScoped({ quote });
+          const acceptedSummary = getSignedPayStateCheckoutSummary(state);
+          const freshSummary = Match.value(prepared).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              cowork: ({ quote }) => quote.summary,
+              "meeting-room": ({ quote }) =>
+                getMeetingRoomCheckoutSummary(quote),
+            })
+          );
+          yield* Effect.annotateLogsScoped({ quote: prepared.quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(
             "Hosted payment checkout quote comparison started"
           );
 
           if (
-            quote.fingerprint !== state.quote.fingerprint ||
-            !workspaceMoneyEquals(quote.summary.total, state.acceptedTotal)
+            prepared.quote.fingerprint !== state.quote.fingerprint ||
+            !workspaceMoneyEquals(freshSummary.total, state.acceptedTotal)
           ) {
             const changedKeys = getCheckoutSummaryChangedKeys(
-              state.quote.summary,
-              quote.summary
+              acceptedSummary,
+              freshSummary
             );
             yield* Effect.annotateLogsScoped({
               changedKeys,
@@ -669,9 +656,8 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             const freshPayUrl = yield* getFreshPayUrl({
+              ...prepared,
               locale,
-              reservation: data,
-              quote,
               orderId: reservation.id,
               checkoutSessionId: state.checkoutSessionId,
               submittedCode: state.submittedCode,
@@ -680,7 +666,7 @@ export const CheckoutServiceLive = Layer.effect(
             return {
               status: "pricing_changed" as const,
               changedKeys,
-              freshSummary: quote.summary,
+              freshSummary,
               freshPayUrl,
             };
           }
@@ -690,7 +676,7 @@ export const CheckoutServiceLive = Layer.effect(
 
           yield* reservations.updateReservationDetails({
             id: reservation.id,
-            reservationDetails: getStoredCoworkReservationDetails(data),
+            reservationDetails: getStoredWorkspaceReservationDetails(data),
             locale,
           });
 
@@ -702,12 +688,24 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalDocuments,
           });
-          const checkoutDetails = buildCheckoutDetailsForPayment({
-            locale,
-            data,
-            quote,
-            legalEvidence,
-          });
+          const checkoutDetails = Match.value(prepared).pipe(
+            Match.discriminatorsExhaustive("kind")({
+              cowork: ({ quote, reservation: freshReservation }) =>
+                getCoworkCheckoutDetails({
+                  locale,
+                  reservation: freshReservation,
+                  quote,
+                  legalEvidence,
+                }),
+              "meeting-room": ({ quote, reservation: freshReservation }) =>
+                getMeetingRoomCheckoutDetails({
+                  locale,
+                  reservation: freshReservation,
+                  quote,
+                  legalEvidence,
+                }),
+            })
+          );
           yield* Effect.annotateLogsScoped({ legalEvidence, checkoutDetails });
           yield* Effect.logInfo(
             "Hosted payment checkout legal evidence recording started"
@@ -733,11 +731,8 @@ export const CheckoutServiceLive = Layer.effect(
             reservationId: reservation.dotyposReservationId,
             note: formatWorkspaceReservationNote({
               paymentOrderId: reservation.id,
-              checkoutDetails: checkoutDetails as CheckoutDetailsJson,
-              reservation: {
-                kind: data.kind,
-                ...checkoutDetails.reservation,
-              },
+              checkoutDetails,
+              reservation: checkoutDetails.reservation,
             }),
           });
           yield* Effect.logInfo(
@@ -749,7 +744,7 @@ export const CheckoutServiceLive = Layer.effect(
             correlationId: reservation.correlationId,
             checkoutSessionId: state.checkoutSessionId,
             locale,
-            total: quote.payment.expectedPrice,
+            total: prepared.quote.payment.expectedPrice,
           });
         },
         (effect, input, locale) =>

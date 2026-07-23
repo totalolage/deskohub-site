@@ -8,7 +8,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -77,7 +77,7 @@ describe("CheckoutPayPage pricing change", () => {
 
   test("requires review before exposing payment controls", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });

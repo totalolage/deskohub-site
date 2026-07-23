@@ -12,6 +12,7 @@ export {
   type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
+  type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountProductIdentitySchema,
   discountQuoteCodec,

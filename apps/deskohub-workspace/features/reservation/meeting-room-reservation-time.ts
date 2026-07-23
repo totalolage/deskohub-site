@@ -76,3 +76,11 @@ export const getMeetingRoomAvailabilityToDate = ({
     .toPlainDate()
     .toString();
 };
+
+export const getMeetingRoomReservationDate = ({
+  startsAt,
+}: Pick<ReservationInterval, "startsAt">) =>
+  Temporal.Instant.from(startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate()
+    .toString();

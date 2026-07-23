@@ -1,76 +1,75 @@
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Match } from "effect";
 import {
-  type CheckoutQuoteError,
-  calculateWorkspaceCheckoutQuote,
-  normalizeWorkspaceCheckoutOrder,
-  type WorkspaceCheckoutQuote,
-} from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
+  type CoworkAdvertisementAffirmation,
+  type CoworkAdvertisementAffirmationInput,
+  type CoworkAdvertisementQuote,
+  type CoworkAdvertisementQuoteInput,
+  type CoworkCheckoutPricingError,
+  type CoworkCustomerQuote,
+  type CoworkCustomerQuoteInput,
+  type CoworkPaymentPriceAffirmation,
+  type CoworkPaymentPriceAffirmationInput,
+  coworkCheckoutPricing,
+} from "./cowork-checkout-pricing";
 import {
-  type AffirmedDiscountAdvertisementQuote,
-  type CanonicalDiscountCode,
-  type DiscountCalculationError,
-  type DiscountCommitment,
-  DiscountService,
-} from "@/features/discounts";
-import type { Locale } from "@/features/i18n";
-import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
-import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+  type MeetingRoomAdvertisementAffirmation,
+  type MeetingRoomAdvertisementAffirmationInput,
+  type MeetingRoomAdvertisementQuote,
+  type MeetingRoomAdvertisementQuoteInput,
+  type MeetingRoomCheckoutPricingError,
+  type MeetingRoomCustomerQuote,
+  type MeetingRoomCustomerQuoteInput,
+  type MeetingRoomPaymentPriceAffirmation,
+  type MeetingRoomPaymentPriceAffirmationInput,
+  meetingRoomCheckoutPricing,
+} from "./meeting-room-checkout-pricing";
 
 export type CheckoutPricingError =
-  | CheckoutQuoteError
-  | WorkspaceMoneyError
-  | DiscountCalculationError
-  | CheckoutPricingInputError;
+  | CoworkCheckoutPricingError
+  | MeetingRoomCheckoutPricingError;
 
-export class CheckoutPricingInputError extends Data.TaggedError(
-  "CheckoutPricingInputError"
-)<{
-  readonly field: "dotyposCustomerId";
-  readonly cause: unknown;
-}> {}
+export type AdvertisementQuoteInput =
+  | CoworkAdvertisementQuoteInput
+  | MeetingRoomAdvertisementQuoteInput;
 
-export type AdvertisementAffirmation = {
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly discountQuote: AffirmedDiscountAdvertisementQuote;
-};
+export type AdvertisementQuote =
+  | CoworkAdvertisementQuote
+  | MeetingRoomAdvertisementQuote;
 
-export type PaymentPriceAffirmation = {
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly commitment: DiscountCommitment;
-};
+export type AdvertisementAffirmationInput =
+  | CoworkAdvertisementAffirmationInput
+  | MeetingRoomAdvertisementAffirmationInput;
 
-export type AdvertisementQuoteInput = {
-  readonly reservation: CoworkReservationDetails;
-  readonly locale: Locale;
-};
+export type AdvertisementAffirmation =
+  | CoworkAdvertisementAffirmation
+  | MeetingRoomAdvertisementAffirmation;
 
-export type AdvertisementAffirmationInput = AdvertisementQuoteInput & {
-  readonly advertisedQuote: WorkspaceCheckoutQuote;
-};
+export type CustomerQuoteInput =
+  | CoworkCustomerQuoteInput
+  | MeetingRoomCustomerQuoteInput;
 
-export type CustomerQuoteInput = AdvertisementQuoteInput & {
-  readonly dotyposCustomerId: string;
-  readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
-};
+export type PreparedCustomerQuote =
+  | CoworkCustomerQuote
+  | MeetingRoomCustomerQuote;
 
-export type PaymentPriceAffirmationInput = AdvertisementQuoteInput & {
-  readonly dotyposCustomerId: string;
-  readonly displayedQuote: WorkspaceCheckoutQuote;
-  readonly submittedCode?: CanonicalDiscountCode;
-};
+export type PaymentPriceAffirmationInput =
+  | CoworkPaymentPriceAffirmationInput
+  | MeetingRoomPaymentPriceAffirmationInput;
+
+export type PaymentPriceAffirmation =
+  | CoworkPaymentPriceAffirmation
+  | MeetingRoomPaymentPriceAffirmation;
 
 export interface ICheckoutPricingService {
   readonly quoteAdvertisement: (
     input: AdvertisementQuoteInput
-  ) => Effect.Effect<WorkspaceCheckoutQuote, CheckoutPricingError>;
+  ) => Effect.Effect<AdvertisementQuote, CheckoutPricingError>;
   readonly affirmAdvertisement: (
     input: AdvertisementAffirmationInput
   ) => Effect.Effect<AdvertisementAffirmation, CheckoutPricingError>;
   readonly quoteForCustomer: (
     input: CustomerQuoteInput
-  ) => Effect.Effect<WorkspaceCheckoutQuote, CheckoutPricingError>;
+  ) => Effect.Effect<PreparedCustomerQuote, CheckoutPricingError>;
   readonly affirmForPayment: (
     input: PaymentPriceAffirmationInput
   ) => Effect.Effect<PaymentPriceAffirmation, CheckoutPricingError>;
@@ -83,131 +82,68 @@ export class CheckoutPricingService extends Context.Service<
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {
-      const discounts = yield* DiscountService;
-      const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
-        dotyposCustomerIdSchema
-      );
-
-      const getDotyposCustomerId = Effect.fn(
-        "CheckoutPricingService.getDotyposCustomerId"
-      )((value: string) =>
-        decodeDotyposCustomerId(value).pipe(
-          Effect.mapError(
-            (cause) =>
-              new CheckoutPricingInputError({
-                field: "dotyposCustomerId",
-                cause,
-              })
-          )
-        )
-      );
-
-      const getPricingContext = Effect.fn(
-        "CheckoutPricingService.getPricingContext"
-      )(function* (input: { readonly reservation: CoworkReservationDetails }) {
-        const order = yield* normalizeWorkspaceCheckoutOrder(input.reservation);
-        const product = getWorkspaceProductByTier(order.entryTier);
-
-        return {
-          order,
-          discountInput: {
-            product: { kind: "cowork" as const, tier: order.entryTier },
-            discountableSubtotal: product.price,
-            reservationDate: input.reservation.date,
-          },
-        };
-      });
+      const cowork = yield* coworkCheckoutPricing;
+      const meetingRoom = yield* meetingRoomCheckoutPricing;
 
       const quoteAdvertisement = Effect.fn(
         "CheckoutPricingService.quoteAdvertisement"
       )((input: AdvertisementQuoteInput) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("pricing", getPricingContext),
-          Effect.bind("discountQuote", ({ pricing }) =>
-            discounts.discoverAdvertisedDiscounts({
-              ...pricing.discountInput,
-              locale: input.locale,
-            })
+        Match.value(input).pipe(
+          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+            cowork.quoteAdvertisement(coworkInput)
           ),
-          Effect.bind("quote", ({ discountQuote, pricing }) =>
-            calculateWorkspaceCheckoutQuote(pricing.order, { discountQuote })
+          Match.when(
+            { reservation: { kind: "meeting-room" } },
+            (meetingRoomInput) =>
+              meetingRoom.quoteAdvertisement(meetingRoomInput)
           ),
-          Effect.map(({ quote }) => quote)
+          Match.exhaustive
         )
       );
 
       const affirmAdvertisement = Effect.fn(
         "CheckoutPricingService.affirmAdvertisement"
       )((input: AdvertisementAffirmationInput) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("pricing", getPricingContext),
-          Effect.bind("discountQuote", ({ pricing }) =>
-            discounts.affirmAdvertisement({
-              ...pricing.discountInput,
-              locale: input.locale,
-              advertisedDiscountIds:
-                input.advertisedQuote.payment.discounts.map(
-                  ({ discount }) => discount.id
-                ),
-            })
+        Match.value(input).pipe(
+          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+            cowork.affirmAdvertisement(coworkInput)
           ),
-          Effect.bind("quote", ({ discountQuote, pricing }) =>
-            calculateWorkspaceCheckoutQuote(pricing.order, { discountQuote })
+          Match.when(
+            { reservation: { kind: "meeting-room" } },
+            (meetingRoomInput) =>
+              meetingRoom.affirmAdvertisement(meetingRoomInput)
           ),
-          Effect.map(({ discountQuote, quote }) => ({ discountQuote, quote }))
+          Match.exhaustive
         )
       );
 
       const quoteForCustomer = Effect.fn(
         "CheckoutPricingService.quoteForCustomer"
       )((input: CustomerQuoteInput) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("pricing", getPricingContext),
-          Effect.bind("dotyposCustomerId", () =>
-            getDotyposCustomerId(input.dotyposCustomerId)
+        Match.value(input).pipe(
+          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+            cowork.quoteForCustomer(coworkInput)
           ),
-          Effect.bind("discountQuote", ({ dotyposCustomerId }) =>
-            discounts.applyCustomerDiscount({
-              affirmedAdvertisement: input.affirmedAdvertisement,
-              dotyposCustomerId,
-              locale: input.locale,
-            })
+          Match.when(
+            { reservation: { kind: "meeting-room" } },
+            (meetingRoomInput) => meetingRoom.quoteForCustomer(meetingRoomInput)
           ),
-          Effect.bind("quote", ({ discountQuote, pricing }) =>
-            calculateWorkspaceCheckoutQuote(pricing.order, { discountQuote })
-          ),
-          Effect.map(({ quote }) => quote)
+          Match.exhaustive
         )
       );
 
       const affirmForPayment = Effect.fn(
         "CheckoutPricingService.affirmForPayment"
       )((input: PaymentPriceAffirmationInput) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("pricing", getPricingContext),
-          Effect.bind("dotyposCustomerId", () =>
-            getDotyposCustomerId(input.dotyposCustomerId)
+        Match.value(input).pipe(
+          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+            cowork.affirmForPayment(coworkInput)
           ),
-          Effect.bind("affirmation", ({ dotyposCustomerId, pricing }) =>
-            discounts.affirmForPayment({
-              ...pricing.discountInput,
-              dotyposCustomerId,
-              locale: input.locale,
-              submittedCode: input.submittedCode,
-              displayedDiscountIds: input.displayedQuote.payment.discounts.map(
-                ({ discount }) => discount.id
-              ),
-            })
+          Match.when(
+            { reservation: { kind: "meeting-room" } },
+            (meetingRoomInput) => meetingRoom.affirmForPayment(meetingRoomInput)
           ),
-          Effect.bind("quote", ({ affirmation, pricing }) =>
-            calculateWorkspaceCheckoutQuote(pricing.order, {
-              discountQuote: affirmation.quote,
-            })
-          ),
-          Effect.map(({ affirmation, quote }) => ({
-            quote,
-            commitment: affirmation.commitment,
-          }))
+          Match.exhaustive
         )
       );
 

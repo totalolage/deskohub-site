@@ -8,7 +8,8 @@ import {
   type CanonicalMeetingRoomReservation,
   getCanonicalMeetingRoomReservation,
 } from "@/features/checkout/reservation-quote-meeting-room";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
+import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 
 type AppliedDiscount = ReservationQuote["payment"]["discounts"][number];
 type CanonicalAppliedDiscount = {
@@ -26,6 +27,9 @@ type CanonicalAppliedDiscount = {
 type CanonicalReservation =
   | CanonicalCoworkReservation
   | CanonicalMeetingRoomReservation;
+type ReservationQuoteFingerprintReservation =
+  | CoworkReservationDetails
+  | MeetingRoomReservationDetails;
 
 const getCanonicalAppliedDiscount = (
   application: AppliedDiscount
@@ -54,7 +58,7 @@ const getCanonicalAppliedDiscount = (
 });
 
 const getCanonicalReservation = (
-  reservation: ReservationOrderData
+  reservation: ReservationQuoteFingerprintReservation
 ): CanonicalReservation =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -73,7 +77,7 @@ const hashCanonicalPayload = (canonicalPayload: string): string =>
     .toString(16);
 
 export const getReservationQuoteFingerprint = (
-  reservation: ReservationOrderData,
+  reservation: ReservationQuoteFingerprintReservation,
   quote: Omit<ReservationQuote, "fingerprint">
 ): string =>
   hashCanonicalPayload(

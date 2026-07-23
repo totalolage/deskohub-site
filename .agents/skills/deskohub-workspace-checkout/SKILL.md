@@ -27,4 +27,8 @@ Inside `apps/deskohub-workspace`, do not prefix new app-owned services, operatio
 
 Pass canonical reservation projections through pricing boundaries. Do not repair an incomplete checkout product type by manually intersecting reservation fields such as `date`; use the reservation domain's existing PII-free details projection.
 
-Keep catalog currency through advertisement, signed-summary generation, and final price affirmation. The non-production Nexi sandbox currency override belongs only at provider-session creation: apply it to the amount sent to Nexi and persisted on the provider attempt, without feeding it back into any customer-visible quote.
+Keep catalog currency through advertisement, signed-summary generation, final price affirmation, and local payment attempts. The non-production Nexi sandbox currency override belongs only at Nexi call sites: apply it to HPP creation and verification arguments without feeding it back into customer-visible quotes or locally persisted payment facts.
+
+Discount-code submission and price-change metadata are reservation-family-neutral. Keep `submittedCode` and `changedKeys` in the common signed pay-state envelope, and have every reservation family quote and affirm discounts through its own canonical product identity. Exhaustively dispatch family-owned quote, summary, persistence, and checkout-details projections; do not make cowork the implicit default.
+
+Do not add temporary downstream reservation-family rejection guards when the public issuing schema cannot produce that family. Keep reachability at the issuer boundary and let the PR that opens the issuer implement the new family exhaustively; transitional guards are easy to forget and can silently block the completed feature.

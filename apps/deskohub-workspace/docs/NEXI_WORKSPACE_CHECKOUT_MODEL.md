@@ -40,7 +40,7 @@ type PaymentOrder = {
   correlationId: string;
   securityToken: string | null;
 
-  checkoutDetails: CheckoutDetailsJson;
+  checkoutDetails: CheckoutDetails;
 
   paymentStatus:
     | "created"
@@ -109,7 +109,7 @@ It must not contain customer name, email, or phone because those belong to the D
 Recommended `jsonb` shape:
 
 ```ts
-type CheckoutDetailsJson = {
+type CheckoutDetails = {
   schema: "workspace-checkout-details";
   schemaVersion: 1;
 
@@ -337,7 +337,7 @@ interface PaymentOrderRepository {
     id: string;
     dotyposCustomerId: string;
     correlationId: string;
-    checkoutDetails: CheckoutDetailsJson;
+    checkoutDetails: CheckoutDetails;
   }): Promise<PaymentOrder>;
 
   attachNexiSession(input: {

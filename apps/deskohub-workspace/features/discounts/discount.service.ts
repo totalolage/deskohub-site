@@ -1,4 +1,5 @@
 import { Context, Effect, Layer, Option } from "effect";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { Locale } from "@/features/i18n";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { appendDiscounts, calculateDiscounts } from "./calculator";
@@ -8,11 +9,11 @@ import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
-  type CanonicalDiscountCode,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
+  type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
@@ -30,9 +31,7 @@ import {
   recoverDiscountResolution,
 } from "./resolution-logging";
 
-export type DiscountPaymentAffirmationInput = DiscountAdvertisementInput & {
-  readonly dotyposCustomerId: DotyposCustomerId;
-  readonly submittedCode?: CanonicalDiscountCode;
+export type DiscountPaymentAffirmationInput = DiscountQuoteInput & {
   readonly displayedDiscountIds: readonly DiscountId[];
 };
 
@@ -53,6 +52,9 @@ export type ApplyCustomerDiscountInput = {
 };
 
 export interface IDiscountService {
+  readonly quote: (
+    input: DiscountQuoteInput
+  ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
   readonly discoverAdvertisedDiscounts: (
     input: DiscountAdvertisementInput
   ) => Effect.Effect<DiscountAdvertisementQuote, DiscountCalculationError>;
@@ -81,6 +83,38 @@ export class DiscountService extends Context.Service<
       const customer = yield* CustomerDiscountProvider;
       const code = yield* CodeDiscountProvider;
       const releaseGates = yield* DiscountReleaseGateService;
+
+      const resolveQuoteCandidates = Effect.fn(
+        "DiscountService.resolveQuoteCandidates"
+      )(
+        (input: {
+          readonly quoteInput: DiscountQuoteInput;
+          readonly releaseGates: DiscountReleaseGates;
+        }) =>
+          Effect.all(
+            [
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.calendarSales,
+                operation: "quote",
+                provider: "calendar",
+                resolve: () => calendar.quote(input.quoteInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.customerDiscounts,
+                operation: "quote",
+                provider: "customer",
+                resolve: () => customer.resolve(input.quoteInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.discountCodes,
+                operation: "quote",
+                provider: "code",
+                resolve: () => code.quote(input.quoteInput),
+              }),
+            ],
+            { concurrency: "inherit" }
+          ).pipe(Effect.map(collectDiscountCandidates))
+      );
 
       const resolveAdvertisementCandidates = Effect.fn(
         "DiscountService.resolveAdvertisementCandidates"
@@ -142,6 +176,22 @@ export class DiscountService extends Context.Service<
               })
             )
           )
+      );
+
+      const quote = Effect.fn("DiscountService.quote")(
+        (input: DiscountQuoteInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "quote" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              resolveQuoteCandidates({ quoteInput: input, releaseGates })
+            ),
+            Effect.bind("calculation", calculateDiscounts),
+            Effect.tap(logDiscountResolution),
+            Effect.map(({ calculation }) => calculation.quote)
+          ),
+        withServiceAnnotations("quote")
       );
 
       const discoverAdvertisedDiscounts = Effect.fn(
@@ -268,6 +318,7 @@ export class DiscountService extends Context.Service<
       );
 
       return {
+        quote,
         discoverAdvertisedDiscounts,
         affirmAdvertisement,
         applyCustomerDiscount,
@@ -329,6 +380,7 @@ const logDiscountResolution = (input: {
 const withServiceAnnotations =
   (
     operation:
+      | "quote"
       | "discover_advertised_discounts"
       | "affirm_advertisement"
       | "apply_customer_discount"
@@ -338,6 +390,7 @@ const withServiceAnnotations =
     effect: Effect.Effect<A, DiscountCalculationError>,
     input:
       | DiscountPaymentAffirmationInput
+      | DiscountQuoteInput
       | DiscountAdvertisementInput
       | DiscountAdvertisementAffirmationInput
       | ApplyCustomerDiscountInput
@@ -356,10 +409,11 @@ const withServiceAnnotations =
           "product" in input
             ? input.product.kind
             : input.affirmedAdvertisement.product.kind,
-        discountProductTier:
+        discountProductKey: getWorkspaceProductKey(
           "product" in input
-            ? input.product.tier
-            : input.affirmedAdvertisement.product.tier,
+            ? input.product
+            : input.affirmedAdvertisement.product
+        ),
       })
     );
 

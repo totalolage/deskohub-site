@@ -6,6 +6,7 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import {
   buildFreshCheckoutPayPath,
+  getSignedPayStateCheckoutSummary,
   openPayState,
   PayableReservationService,
   payStateTokenQueryParam,
@@ -107,14 +108,7 @@ async function CheckoutPayContent({
   const opened = await Effect.gen(function* () {
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
-    const freshPayUrl = yield* buildFreshCheckoutPayPath({
-      locale: state.locale,
-      reservation: state.reservation,
-      quote: state.quote,
-      orderId: state.orderId,
-      checkoutSessionId: state.checkoutSessionId,
-      submittedCode: state.submittedCode,
-    }).pipe(
+    const freshPayUrl = yield* buildFreshCheckoutPayPath(state).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
     );
@@ -159,7 +153,7 @@ async function CheckoutPayContent({
         freshPayUrl={freshPayUrl}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}
-        summary={state.quote.summary}
+        summary={getSignedPayStateCheckoutSummary(state)}
         variant={state.changedKeys ? "pricingChanged" : "pay"}
       />
     </CheckoutFlowLayout>

@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
-import { calculateWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { Effect, Schema } from "effect";
+import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
@@ -11,7 +11,8 @@ import {
 } from "@/features/discounts/contracts";
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { CheckoutPricingService } from "./checkout-pricing.service";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { coworkCheckoutPricing } from "./cowork-checkout-pricing";
 
 const money = (value: number): WorkspaceMoney => ({
   value,
@@ -21,6 +22,9 @@ const money = (value: number): WorkspaceMoney => ({
 
 const advertisedDiscountId =
   Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
+const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
+  "customer-id"
+);
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
   product: { kind: "cowork", tier: "basic" },
@@ -45,31 +49,41 @@ const affirmedAdvertisement =
   affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
 
 const reservation = {
+  kind: "cowork" as const,
   entryTier: "basic" as const,
   coffee: true,
-  date: "2026-07-30",
+  date: "2099-07-30",
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+};
+
+const advertisedReservation = {
+  kind: "cowork" as const,
+  details: {
+    kind: reservation.kind,
+    entryTier: reservation.entryTier,
+    coffee: reservation.coffee,
+    date: reservation.date,
+  },
 };
 
 const runWithDiscounts = <A, E>(
-  effect: Effect.Effect<A, E, CheckoutPricingService>,
-  discounts: Layer.Layer<DiscountService>
-) =>
-  effect.pipe(
-    Effect.provide(CheckoutPricingService.Live.pipe(Layer.provide(discounts))),
-    Effect.runPromise
-  );
+  effect: Effect.Effect<A, E, DiscountService>,
+  discounts: ReturnType<typeof DiscountServiceMock>
+) => effect.pipe(Effect.provide(discounts), Effect.runPromise);
 
-describe("CheckoutPricingService", () => {
+describe("cowork checkout pricing", () => {
   test("quotes the advertised catalog price with anonymous discounts", async () => {
     const discoverAdvertisedDiscounts = mock(() =>
       Effect.succeed(advertisementQuote)
     );
 
-    const quote = await runWithDiscounts(
+    const result = await runWithDiscounts(
       Effect.gen(function* () {
-        const pricing = yield* CheckoutPricingService;
+        const pricing = yield* coworkCheckoutPricing;
         return yield* pricing.quoteAdvertisement({
-          reservation,
+          reservation: advertisedReservation,
           locale: "en-US",
         });
       }),
@@ -82,7 +96,7 @@ describe("CheckoutPricingService", () => {
       reservationDate: reservation.date,
       locale: "en-US",
     });
-    expect(quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.summary.total).toEqual(money(22_500));
   });
 
   test("freshly affirms exactly the discounts in the advertisement", async () => {
@@ -90,16 +104,16 @@ describe("CheckoutPricingService", () => {
       Effect.succeed(affirmedAdvertisement)
     );
     const displayedQuote = await Effect.runPromise(
-      calculateWorkspaceCheckoutQuote(reservation, {
+      calculateCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
 
     const result = await runWithDiscounts(
       Effect.gen(function* () {
-        const pricing = yield* CheckoutPricingService;
+        const pricing = yield* coworkCheckoutPricing;
         return yield* pricing.affirmAdvertisement({
-          reservation,
+          reservation: advertisedReservation,
           locale: "en-US",
           advertisedQuote: displayedQuote,
         });
@@ -118,18 +132,18 @@ describe("CheckoutPricingService", () => {
     expect(result.quote.summary.total).toEqual(money(22_500));
   });
 
-  test("completes the affirmed advertisement for the identified customer", async () => {
+  test("applies customer discounts to the affirmed advertisement", async () => {
     const applyCustomerDiscount = mock(() =>
       Effect.succeed(affirmedAdvertisement)
     );
 
-    const quote = await runWithDiscounts(
+    const result = await runWithDiscounts(
       Effect.gen(function* () {
-        const pricing = yield* CheckoutPricingService;
+        const pricing = yield* coworkCheckoutPricing;
         return yield* pricing.quoteForCustomer({
           reservation,
           locale: "en-US",
-          dotyposCustomerId: "customer-id",
+          dotyposCustomerId,
           affirmedAdvertisement,
         });
       }),
@@ -138,10 +152,10 @@ describe("CheckoutPricingService", () => {
 
     expect(applyCustomerDiscount).toHaveBeenCalledWith({
       affirmedAdvertisement,
-      dotyposCustomerId: "customer-id",
+      dotyposCustomerId,
       locale: "en-US",
     });
-    expect(quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.summary.total).toEqual(money(22_500));
   });
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
@@ -150,19 +164,19 @@ describe("CheckoutPricingService", () => {
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
     const displayedQuote = await Effect.runPromise(
-      calculateWorkspaceCheckoutQuote(reservation, {
+      calculateCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
 
     const result = await runWithDiscounts(
       Effect.gen(function* () {
-        const pricing = yield* CheckoutPricingService;
+        const pricing = yield* coworkCheckoutPricing;
         return yield* pricing.affirmForPayment({
           reservation,
           locale: "en-US",
-          dotyposCustomerId: "customer-id",
-          displayedQuote,
+          dotyposCustomerId,
+          quote: displayedQuote,
         });
       }),
       DiscountServiceMock({ affirmForPayment })
@@ -172,7 +186,7 @@ describe("CheckoutPricingService", () => {
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
       reservationDate: reservation.date,
-      dotyposCustomerId: "customer-id",
+      dotyposCustomerId,
       locale: "en-US",
       submittedCode: undefined,
       displayedDiscountIds: [advertisedDiscountId],

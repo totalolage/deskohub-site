@@ -10,10 +10,12 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import {
-  calculateWorkspaceCheckoutQuote,
-  type WorkspaceCheckoutQuote,
+  type CoworkReservationQuote,
+  calculateCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
+import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -23,6 +25,7 @@ import {
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 
 mock.module("server-only", () => ({}));
 
@@ -56,7 +59,7 @@ const reservation = {
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
 const buildAdvertisedPriceToken = async (
-  quote: WorkspaceCheckoutQuote = buildWorkspaceCheckoutQuote(reservation),
+  quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
   ttlMilliseconds?: number
 ) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
@@ -64,10 +67,12 @@ const buildAdvertisedPriceToken = async (
   );
   return Effect.gen(function* () {
     const state = yield* buildAdvertisedPriceState({
+      kind: "cowork",
       locale: "en-US",
       reservation: {
         kind: "cowork",
         details: {
+          kind: "cowork",
           entryTier: reservation.entryTier,
           coffee: reservation.coffee,
           date: reservation.date,
@@ -75,6 +80,45 @@ const buildAdvertisedPriceToken = async (
       },
       quote,
       ttlMilliseconds,
+    });
+    return yield* sealAdvertisedPriceState(state);
+  }).pipe(Effect.runPromise);
+};
+
+const buildMeetingRoomAdvertisedPriceToken = async (input: {
+  readonly startsAt: string;
+  readonly endsAt: string;
+}) => {
+  const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
+    "@/features/checkout/backend/checkout"
+  );
+  const advertisedReservation = Schema.decodeUnknownSync(
+    meetingRoomAdvertisedPriceReservationSchema
+  )({
+    kind: "meeting-room",
+    details: {
+      kind: "meeting-room",
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+    },
+  });
+  const quoteWithoutFingerprint = Effect.runSync(
+    getMeetingRoomReservationQuote(advertisedReservation.details)
+  );
+  const quote = {
+    ...quoteWithoutFingerprint,
+    fingerprint: getReservationQuoteFingerprint(
+      advertisedReservation.details,
+      quoteWithoutFingerprint
+    ),
+  };
+
+  return Effect.gen(function* () {
+    const state = yield* buildAdvertisedPriceState({
+      kind: "meeting-room",
+      locale: "en-US",
+      reservation: advertisedReservation,
+      quote,
     });
     return yield* sealAdvertisedPriceState(state);
   }).pipe(Effect.runPromise);
@@ -124,7 +168,7 @@ const makeAdvertisementQuote = (
 
 const buildQuoteFromAdvertisement = (quote: DiscountAdvertisementQuote) =>
   Effect.runSync(
-    calculateWorkspaceCheckoutQuote(reservation, { discountQuote: quote })
+    calculateCoworkReservationQuote(reservation, { discountQuote: quote })
   );
 
 const affirmAdvertisementQuote = (
@@ -137,6 +181,16 @@ const makeAdvertisementAffirmation = (basisPoints?: number) => {
     makeAdvertisementQuote(basisPoints)
   );
   return {
+    kind: "cowork" as const,
+    reservation: {
+      kind: "cowork" as const,
+      details: {
+        kind: "cowork" as const,
+        entryTier: reservation.entryTier,
+        coffee: reservation.coffee,
+        date: reservation.date,
+      },
+    },
     discountQuote,
     quote: buildQuoteFromAdvertisement(discountQuote),
   };
@@ -197,7 +251,7 @@ const runReusableReservationScenario = async (input: {
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
 }) => {
-  const { prepareCoworkPayState } = await import("./prepare-pay-state");
+  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
     "@/features/checkout/backend/reservation"
   );
@@ -250,11 +304,24 @@ const runReusableReservationScenario = async (input: {
     mock(({ affirmedAdvertisement }) =>
       Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement))
     );
+  const quoteForCustomerResult = (
+    pricingInput: Parameters<typeof quoteForCustomer>[0]
+  ) =>
+    quoteForCustomer(pricingInput).pipe(
+      Effect.map((quote) => ({
+        kind: pricingInput.reservation.kind,
+        reservation: pricingInput.reservation,
+        quote,
+      }))
+    );
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
   const testLayer = Layer.mergeAll(
-    CheckoutPricingServiceMock({ affirmAdvertisement, quoteForCustomer }),
+    CheckoutPricingServiceMock({
+      affirmAdvertisement,
+      quoteForCustomer: quoteForCustomerResult as never,
+    }),
     BotProtectionServiceMock({ verifyHuman }),
     Layer.succeed(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
@@ -301,7 +368,7 @@ const runReusableReservationScenario = async (input: {
     } as unknown as typeof DotyposService.Service)
   );
 
-  const result = await prepareCoworkPayState({
+  const result = await prepareWorkspacePayState({
     locale: "en-US",
     checkoutSessionId: "session-id",
     checkoutAttemptId: "attempt-id",
@@ -333,9 +400,272 @@ const runReusableReservationScenario = async (input: {
   };
 };
 
-describe("prepareCoworkPayState", () => {
+const runMeetingRoomNewHoldScenario = async () => {
+  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+  const { CheckoutPricingService } = await import(
+    "@/features/checkout/backend/checkout/checkout-pricing.service"
+  );
+  const { ReservationHoldCleanupScheduleService } = await import(
+    "@/features/checkout/backend/holds"
+  );
+  const { LegalEvidenceEventRepository } = await import(
+    "@/features/checkout/backend/repositories"
+  );
+  const { WorkspaceCheckoutAccessCodeService } = await import(
+    "@/features/checkout/backend/reservation"
+  );
+  const { DiscountServiceMock } = await import(
+    "@/features/discounts/discount.service.mock"
+  );
+  const { WorkspaceAvailabilityService } = await import(
+    "@/features/reservation/backend/workspace-availability.service"
+  );
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
+  );
+  const { BotProtectionServiceMock } = await import(
+    "@/shared/backend/bot-protection/bot-protection.service.mock"
+  );
+
+  const meetingRoomReservation = {
+    kind: "meeting-room" as const,
+    startsAt: "2099-06-10T08:00:00Z",
+    endsAt: "2099-06-10T12:00:00Z",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  };
+  const ensureAvailable = mock(() => Effect.void);
+  const createDraft = mock((input) =>
+    Effect.succeed({
+      id: "meeting-room-reservation-id",
+      checkoutSessionKey: input.checkoutSessionKey,
+      checkoutAttemptKey: input.checkoutAttemptKey,
+      reservationState: "draft",
+      reservationDetails: input.reservationDetails,
+    } as never)
+  );
+  const assignTableId = mock(() => Effect.succeed("meeting-room-table-id"));
+  const createReservation = mock(() =>
+    Effect.succeed({ id: "dotypos-meeting-room-id" } as never)
+  );
+  const attachHold = mock(() => Effect.void);
+  const enqueueCleanup = mock(() => Effect.void);
+  const advertisementQuote = discountAdvertisementQuoteCodec.make({
+    product: { kind: "meeting-room", durationMinutes: 240 },
+    discountableSubtotal: basicMoney(60_000),
+    discounts: [],
+    totalDiscount: basicMoney(0),
+    discountedSubtotal: basicMoney(60_000),
+  });
+  const affirmedAdvertisement =
+    affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
+  const affirmAdvertisement = mock(() => Effect.succeed(affirmedAdvertisement));
+  const applyCustomerDiscount = mock(() =>
+    Effect.succeed(affirmedAdvertisement)
+  );
+  const discoverAdvertisedDiscounts = mock(
+    ({ discountableSubtotal, product }) =>
+      Effect.succeed({
+        product,
+        discountableSubtotal,
+        discounts: [],
+        totalDiscount: basicMoney(0),
+        discountedSubtotal: discountableSubtotal,
+      })
+  );
+  const testLayer = Layer.mergeAll(
+    CheckoutPricingService.Live.pipe(
+      Layer.provide(
+        DiscountServiceMock({
+          discoverAdvertisedDiscounts,
+          affirmAdvertisement,
+          applyCustomerDiscount,
+        })
+      )
+    ),
+    BotProtectionServiceMock({ verifyHuman: mock(() => Effect.void) }),
+    Layer.succeed(WorkspaceAvailabilityService, {
+      getAvailability: mock(() => Effect.die("unused")),
+      ensureAvailable,
+    } satisfies IWorkspaceAvailabilityService),
+    Layer.succeed(WorkspaceReservationRepository, {
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
+      createDraft,
+      claimHoldCreation: mock(() => Effect.succeed(true)),
+      attachHold,
+      findById: mock(() => Effect.succeed(null)),
+      releaseHoldCreation: mock(() => Effect.void),
+      updateReservationDetails: mock(() => Effect.die("unused")),
+      markAttachFailedCancellationRequired: mock(() => Effect.void),
+      claimSupersessionCancellation: mock(() => Effect.succeed(null)),
+      completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
+      markCancelled: mock(() => Effect.void),
+      markCancellationFailed: mock(() => Effect.void),
+    } as unknown as WorkspaceReservationRepositoryType),
+    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+    } satisfies WorkspaceCheckoutAccessCodeServiceType),
+    Layer.succeed(LegalEvidenceEventRepository, {
+      record: mock(() => Effect.die("unused")),
+      recordMany: mock((events) => Effect.succeed(events as never)),
+    } as unknown as LegalEvidenceEventRepositoryType),
+    WorkspaceTableAssignmentServiceMock({ assignTableId }),
+    Layer.succeed(ReservationHoldCleanupScheduleService, {
+      enqueueCleanup,
+    } as never),
+    Layer.succeed(DotyposService, {
+      findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
+      createReservation,
+    } as unknown as typeof DotyposService.Service),
+    Layer.succeed(PostHogEventService, {
+      capture: mock(() => Effect.void),
+    })
+  );
+
+  const result = await prepareWorkspacePayState({
+    locale: "en-US",
+    checkoutSessionId: "meeting-room-session-id",
+    checkoutAttemptId: "meeting-room-attempt-id",
+    advertisedPriceToken: await buildMeetingRoomAdvertisedPriceToken(
+      meetingRoomReservation
+    ),
+    reservation: meetingRoomReservation,
+    legalConsent: true,
+  }).pipe(Effect.provide(testLayer), Effect.runPromise);
+
+  return {
+    result,
+    meetingRoomReservation,
+    ensureAvailable,
+    createDraft,
+    assignTableId,
+    createReservation,
+    attachHold,
+    enqueueCleanup,
+    affirmAdvertisement,
+    applyCustomerDiscount,
+  };
+};
+
+describe("prepareWorkspacePayState", () => {
+  test("accepts meeting-room preparation with its family advertisement", async () => {
+    const { preparePayStateSchema } = await import(
+      "./prepare-pay-state.schema"
+    );
+    const result = await preparePayStateSchema["~standard"].validate({
+      locale: "en-US",
+      checkoutSessionId: "meeting-room-session-id",
+      checkoutAttemptId: "meeting-room-attempt-id",
+      advertisedPriceToken: "meeting-room-advertised-price-token",
+      reservation: {
+        kind: "meeting-room",
+        startsAt: "2099-06-10T08:00:00Z",
+        endsAt: "2099-06-10T12:00:00Z",
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420 777 777 777",
+      },
+      legalConsent: true,
+    });
+
+    expect(result).not.toHaveProperty("issues");
+    expect(result).toHaveProperty("value.reservation.kind", "meeting-room");
+  });
+
+  test("keeps meeting-room timing transient while creating its hold", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const scenario = await runMeetingRoomNewHoldScenario();
+    const { startsAt, endsAt } = scenario.meetingRoomReservation;
+
+    expect(scenario.ensureAvailable).toHaveBeenCalledWith({
+      kind: "meeting-room",
+      startsAt,
+      endsAt,
+    });
+    expect(scenario.createDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkoutSessionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
+        checkoutAttemptKey: expect.stringMatching(/^[a-f0-9]{64}$/),
+        reservationDetails: { kind: "meeting-room" },
+      })
+    );
+    const persistedDraft = scenario.createDraft.mock.calls[0]?.[0];
+    expect(JSON.stringify(persistedDraft?.reservationDetails)).toBe(
+      '{"kind":"meeting-room"}'
+    );
+    expect(scenario.assignTableId).toHaveBeenCalledWith({
+      kind: "meeting-room",
+      startsAt,
+      endsAt,
+    });
+    expect(scenario.createReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startDate: new Date(startsAt),
+        endDate: new Date(endsAt),
+        tableId: "meeting-room-table-id",
+        status: "NEW",
+      })
+    );
+    expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
+      expect.objectContaining({
+        product: { kind: "meeting-room", durationMinutes: 240 },
+        reservationDate: "2099-06-10",
+        locale: "en-US",
+        advertisedDiscountIds: [],
+      })
+    );
+    expect(scenario.applyCustomerDiscount).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: "customer-id",
+        locale: "en-US",
+      })
+    );
+    expect(scenario.attachHold).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "meeting-room-reservation-id",
+        dotyposReservationId: "dotypos-meeting-room-id",
+      })
+    );
+    expect(scenario.enqueueCleanup).toHaveBeenCalledTimes(1);
+
+    expect(scenario.result.status).toBe("ready");
+    if (scenario.result.status !== "ready") {
+      throw new Error("Expected a ready result");
+    }
+    const token = new URL(
+      scenario.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const state = Effect.runSync(openPayState(token ?? ""));
+    expect(state.checkoutSessionId).toBe("meeting-room-session-id");
+    expect(state.reservation).toMatchObject({
+      kind: "meeting-room",
+      startsAt,
+      endsAt,
+    });
+    expect(state.quote).toMatchObject({
+      items: [
+        {
+          type: "meeting-room",
+          durationMinutes: 240,
+          amount: { value: 60_000, exponent: 2, currency: "CZK" },
+        },
+      ],
+      payment: {
+        expectedPrice: { value: 60_000, exponent: 2, currency: "CZK" },
+      },
+    });
+  });
+
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareCoworkPayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -425,8 +755,21 @@ describe("prepareCoworkPayState", () => {
         return buildQuoteFromAdvertisement(affirmedAdvertisement);
       })
     );
+    const quoteForCustomerResult = (
+      pricingInput: Parameters<typeof quoteForCustomer>[0]
+    ) =>
+      quoteForCustomer(pricingInput).pipe(
+        Effect.map((quote) => ({
+          kind: pricingInput.reservation.kind,
+          reservation: pricingInput.reservation,
+          quote,
+        }))
+      );
     const testLayer = Layer.mergeAll(
-      CheckoutPricingServiceMock({ affirmAdvertisement, quoteForCustomer }),
+      CheckoutPricingServiceMock({
+        affirmAdvertisement,
+        quoteForCustomer: quoteForCustomerResult as never,
+      }),
       BotProtectionServiceMock({ verifyHuman }),
       Layer.succeed(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
@@ -468,7 +811,7 @@ describe("prepareCoworkPayState", () => {
         capture: mock(() => Effect.void),
       })
     );
-    const result = await prepareCoworkPayState({
+    const result = await prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -860,12 +1203,12 @@ describe("prepareCoworkPayState", () => {
   });
 
   test("rejects a tampered advertised-price snapshot before downstream work", async () => {
-    const { prepareCoworkPayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
     const token = await buildAdvertisedPriceToken();
-    const effect = prepareCoworkPayState({
+    const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -893,11 +1236,11 @@ describe("prepareCoworkPayState", () => {
   });
 
   test("rejects a snapshot for different reservation inputs", async () => {
-    const { prepareCoworkPayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
-    const effect = prepareCoworkPayState({
+    const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
@@ -925,16 +1268,16 @@ describe("prepareCoworkPayState", () => {
   });
 
   test("rejects an expired advertised-price snapshot", async () => {
-    const { prepareCoworkPayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
     );
-    const effect = prepareCoworkPayState({
+    const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",
       advertisedPriceToken: await buildAdvertisedPriceToken(
-        buildWorkspaceCheckoutQuote(reservation),
+        buildCoworkReservationQuote(reservation),
         -1000
       ),
       reservation,
@@ -1019,7 +1362,7 @@ describe("prepareCoworkPayState", () => {
   });
 
   test("rejects a classified bot before resolving downstream services", async () => {
-    const { prepareCoworkPayState } = await import("./prepare-pay-state");
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotDetectedError } = await import(
       "@/shared/backend/bot-protection/bot-protection.service"
     );
@@ -1032,7 +1375,7 @@ describe("prepareCoworkPayState", () => {
         new BotDetectedError({ message: "Automated request detected" })
       )
     );
-    const effect = prepareCoworkPayState({
+    const effect = prepareWorkspacePayState({
       locale: "en-US",
       checkoutSessionId: "session-id",
       checkoutAttemptId: "attempt-id",

@@ -1,17 +1,20 @@
 import { Effect, Match, Option, Schema } from "effect";
 import {
+  getCanonicalWorkspaceProductIdentity,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
+import {
   nonNegativeWorkspaceMoneyCodec,
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 import { recoverDiscountResolution } from "./resolution-logging";
 
 type DiscountCalculationInput = {
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly candidates: readonly DiscountCandidate[];
 };
@@ -237,7 +240,7 @@ const toNextCalculationState = (input: {
 };
 
 const toDiscountCalculation = (input: {
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
   readonly validatedSubtotal: WorkspaceMoney;
   readonly calculation: Pick<
     DiscountCalculationState,
@@ -245,7 +248,7 @@ const toDiscountCalculation = (input: {
   >;
 }): DiscountCalculation => ({
   quote: {
-    product: { kind: "cowork", tier: input.product.tier },
+    product: getCanonicalWorkspaceProductIdentity(input.product),
     discountableSubtotal: input.validatedSubtotal,
     discounts: input.calculation.applications.map(
       ({ application }) => application

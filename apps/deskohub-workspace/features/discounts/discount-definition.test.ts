@@ -78,6 +78,28 @@ describe("stored discount definitions", () => {
     });
   });
 
+  test("decodes a meeting-room product target", async () => {
+    const result = await Effect.runPromise(
+      decode(
+        percentageRow({
+          productTargets: [
+            {
+              discountId,
+              productIdentity: {
+                kind: "meeting-room",
+                durationMinutes: 240,
+              },
+            },
+          ],
+        })
+      )
+    );
+
+    expect(result.products).toEqual([
+      { kind: "meeting-room", durationMinutes: 240 },
+    ]);
+  });
+
   test.each([
     [
       "missing locale label",

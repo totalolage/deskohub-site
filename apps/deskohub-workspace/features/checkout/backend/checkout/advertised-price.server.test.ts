@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { calculateWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
 import {
   discountAdvertisementQuoteCodec,
   discountIdSchema,
@@ -39,14 +39,23 @@ describe("buildAdvertisedPrice", () => {
       totalDiscount: money(17_500),
       discountedSubtotal: money(17_500),
     });
-    const quoteAdvertisement = mock(({ reservation }) =>
-      calculateWorkspaceCheckoutQuote(reservation, { discountQuote })
+    const quoteAdvertisement = mock((request) =>
+      calculateCoworkReservationQuote(request.reservation.details, {
+        discountQuote,
+      }).pipe(
+        Effect.map((quote) => ({
+          kind: "cowork" as const,
+          reservation: request.reservation,
+          quote,
+        }))
+      )
     );
     const input = {
       locale: "en-US" as const,
       reservation: {
         kind: "cowork" as const,
         details: {
+          kind: "cowork" as const,
           entryTier: "basic" as const,
           coffee: true,
           date: "2026-07-30",
@@ -63,10 +72,15 @@ describe("buildAdvertisedPrice", () => {
     ).pipe(Effect.runPromise);
 
     expect(quoteAdvertisement).toHaveBeenCalledWith({
-      reservation: input.reservation.details,
+      reservation: input.reservation,
       locale: "en-US",
     });
+    expect(result.kind).toBe("cowork");
+    if (result.kind !== "cowork") {
+      throw new Error("Expected a cowork advertised price.");
+    }
     expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(state.kind).toBe("cowork");
     expect(state.reservation).toEqual(input.reservation);
     expect(state.quote).toEqual(result.quote);
     expect(JSON.stringify(result)).not.toMatch(

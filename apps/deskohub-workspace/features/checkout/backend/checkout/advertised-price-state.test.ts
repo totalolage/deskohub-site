@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
   parseCheckoutStateKey,
   sealCheckoutState,
@@ -24,17 +24,19 @@ const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const reservation = {
   kind: "cowork" as const,
   details: {
+    kind: "cowork" as const,
     entryTier: "basic" as const,
     coffee: true,
     date: "2026-06-20",
   },
 };
-const quote = buildWorkspaceCheckoutQuote(reservation.details);
+const quote = buildCoworkReservationQuote(reservation.details);
 
 const buildState = () =>
   Effect.runSync(
     buildAdvertisedPriceState(
       {
+        kind: "cowork",
         locale: "en-US",
         reservation,
         quote,

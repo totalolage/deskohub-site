@@ -16,7 +16,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
@@ -64,7 +64,7 @@ const money = (value: number) => ({
   currency: "CZK",
 });
 
-const basicDiscountedQuote = buildWorkspaceCheckoutQuote(
+const basicDiscountedQuote = buildCoworkReservationQuote(
   {
     entryTier: "basic",
     coffee: true,
@@ -104,6 +104,7 @@ const availabilityResponse = {
 };
 
 const advertisedPriceResponse = {
+  kind: "cowork" as const,
   quote: basicDiscountedQuote,
   advertisedPriceToken: "sealed-advertised-price",
 };

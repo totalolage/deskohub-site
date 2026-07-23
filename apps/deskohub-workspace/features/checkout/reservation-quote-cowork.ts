@@ -11,13 +11,11 @@ import {
   workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts";
-import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
+import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
 } from "@/features/reservation/reservation-order";
-
-type CoworkReservation = NormalizedCoworkReservationOrder;
 
 const coworkProductQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("cowork"),
@@ -56,7 +54,7 @@ export type CanonicalCoworkReservation = {
 
 export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   function* (
-    reservation: CoworkReservation,
+    reservation: CoworkReservationDetails,
     options: {
       readonly discountQuote?: DiscountQuote;
       readonly currencyOverride?: string;
@@ -116,7 +114,7 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
 );
 
 export const getCanonicalCoworkReservation = (
-  reservation: CoworkReservation
+  reservation: CoworkReservationDetails
 ): CanonicalCoworkReservation => ({
   kind: reservation.kind,
 });

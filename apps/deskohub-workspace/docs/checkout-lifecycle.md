@@ -48,7 +48,7 @@ Discount code entry belongs on the order-summary page as an independent form wit
 
 The hard payment invariant is that a provider session amount must exactly equal the last signed summary price shown to the customer. Order submission freshly affirms exactly the discounts in that summary and compares the complete quote fingerprint and total. A mismatch—or a failure to persist applications or admit a claim atomically—returns `pricing_changed`; the transaction rolls back and Nexi is not called.
 
-Advertised, signed, and freshly affirmed quotes always retain the catalog currency. The controlled non-production Nexi sandbox currency override is a provider-adapter exception only: immediately before HPP creation, Workspace may replace the currency code on the provider amount and persist that provider amount on the attempt so later Nexi verification uses the same facts. The override never changes the customer-visible quote, its numeric minor-unit value, or its exponent, and it is unavailable for production or the live Nexi origin.
+Advertised, signed, and freshly affirmed quotes and local payment attempts always retain the catalog currency. The controlled non-production Nexi sandbox currency override is a provider-adapter exception only: Workspace applies it immediately before HPP creation and again when constructing Nexi verification arguments. The override never changes locally persisted payment facts, the customer-visible quote, its numeric minor-unit value, or its exponent, and it is unavailable for production or the live Nexi origin.
 
 ## Ownership
 

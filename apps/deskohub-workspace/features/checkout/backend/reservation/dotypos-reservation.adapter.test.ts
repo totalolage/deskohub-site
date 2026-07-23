@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
-import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
+import { checkoutDetailsSchema } from "@/features/checkout/schemas/checkout-details";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
 import {
@@ -14,11 +14,10 @@ import {
 
 const decodeInstant = Schema.decodeUnknownSync(instantStringSchema);
 
-const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsJsonSchema)({
-  schema: "workspace-checkout-details",
-  schemaVersion: 1,
+const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsSchema)({
   locale: "en-US",
   reservation: {
+    kind: "cowork",
     entryTier: "basic",
     date: "2099-06-10",
     coffee: false,

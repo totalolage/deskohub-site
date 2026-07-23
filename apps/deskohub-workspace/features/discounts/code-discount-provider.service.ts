@@ -1,6 +1,9 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { temporalInstantToIsoString } from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
@@ -222,7 +225,7 @@ const validateCustomerAllowed = (input: {
 const validateDiscountCodeProduct = (input: {
   readonly configuration: DiscountCodeConfiguration;
   readonly definition: DiscountDefinition;
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
 }) =>
   input.definition.products.some((product) =>
     isSameProduct(product, input.product)
@@ -277,7 +280,7 @@ const toDiscountCodeCandidate = (input: {
   readonly definition: DiscountDefinition;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: CodeDiscountProviderInput["locale"];
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
 }): DiscountCandidate => {
   const timing = getDiscountCodeTiming(input.configuration.validUntil);
 
@@ -322,9 +325,9 @@ const getDiscountCodeTiming = (
 };
 
 const isSameProduct = (
-  left: WorkspaceCoworkProductIdentity,
-  right: WorkspaceCoworkProductIdentity
-) => left.kind === right.kind && left.tier === right.tier;
+  left: WorkspaceProductIdentity,
+  right: WorkspaceProductIdentity
+) => getWorkspaceProductKey(left) === getWorkspaceProductKey(right);
 
 const unavailable = (
   configuration: DiscountCodeConfiguration,
@@ -360,6 +363,6 @@ const withProviderAnnotations =
       Effect.annotateLogs({
         discountOperation: operation,
         discountProductKind: input.product.kind,
-        discountProductTier: input.product.tier,
+        discountProductKey: getWorkspaceProductKey(input.product),
       })
     );

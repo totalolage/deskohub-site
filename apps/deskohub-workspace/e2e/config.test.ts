@@ -60,6 +60,29 @@ test("requires a direct datasource URL", () => {
   );
 });
 
+test("keeps canonical local currency despite sandbox and runner overrides", () => {
+  withEnv(
+    {
+      DATABASE_URL:
+        "postgresql://preview-pooler.example.test/workspace",
+      DOTYPOS_API_URL: "https://dotypos.example.test",
+      DOTYPOS_BRANCH_ID: "branch",
+      DOTYPOS_CLIENT_ID: "client",
+      DOTYPOS_CLIENT_SECRET: "client-secret",
+      DOTYPOS_CLOUD_ID: "cloud",
+      DOTYPOS_EMPLOYEE_ID: "employee",
+      DOTYPOS_REFRESH_TOKEN: "refresh-token",
+      NEXI_API_ORIGIN:
+        "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp",
+      NEXI_CHECKOUT_CURRENCY_OVERRIDE: "EUR",
+      WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
+        "postgresql://preview.example.test/workspace",
+      WORKSPACE_E2E_EXPECTED_CURRENCY: "EUR",
+    },
+    () => expect(getDatasourceConfig().expectedCurrency).toBe("CZK")
+  );
+});
+
 test("rejects a datasource outside the explicit preview allowlist", () => {
   withEnv(
     {

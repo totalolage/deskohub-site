@@ -1,11 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
+import "@/shared/testing/workspace-test-env";
 
 mock.module("server-only", () => ({}));
-mock.module("@/features/reservation/components/reservation-form", () => ({
-  ReservationForm: () => null,
-  ReservationFormFallback: () => null,
-}));
 
 const getRenderedProps = async (
   props: Parameters<

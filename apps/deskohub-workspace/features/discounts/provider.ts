@@ -1,4 +1,4 @@
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { Discount } from "./contracts";
 import type { DiscountCodeId, StoredDiscountId } from "./persistence-contracts";
@@ -14,7 +14,7 @@ export type DiscountClaimInstruction = {
   readonly codeId: DiscountCodeId;
   readonly storedDiscountId: StoredDiscountId;
   readonly dotyposCustomerId: DotyposCustomerId;
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
 };
 
 export type DiscountCandidate = {

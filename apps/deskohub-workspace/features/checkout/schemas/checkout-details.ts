@@ -1,27 +1,43 @@
-import { Schema } from "effect";
-import { checkoutSummarySchema } from "@/features/checkout/checkout-quote";
-import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
-import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
-import { appliedDiscountCodec } from "@/features/discounts/contracts";
-import { locales } from "@/features/i18n";
-import { coworkReservationDetailsSchema } from "@/features/reservation/cowork-reservation";
+import { Match, Schema } from "effect";
+import { coworkCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-cowork";
+import { meetingRoomCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-meeting-room";
+import {
+  coworkReservationDetailsSchema,
+  getCoworkReservationDetails,
+} from "@/features/reservation/cowork-reservation";
+import {
+  getMeetingRoomReservationDetails,
+  meetingRoomReservationDetailsSchema,
+} from "@/features/reservation/meeting-room-reservation";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
-export const checkoutDetailsJsonSchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-details"),
-  schemaVersion: Schema.Literal(1),
-  locale: Schema.Literals(locales),
-  reservation: coworkReservationDetailsSchema,
-  payment: Schema.Struct({
-    expectedPrice: nonNegativeWorkspaceMoneyCodec,
-    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
-    discounts: Schema.Array(appliedDiscountCodec),
-    summary: checkoutSummarySchema,
-    providerRedirectUrl: Schema.optional(Schema.URL),
-  }),
-  legal: legalEvidenceMapSchema,
-}).annotate({
+export const checkoutReservationDetailsSchema = Schema.Union([
+  coworkReservationDetailsSchema,
+  meetingRoomReservationDetailsSchema,
+]).annotate({
+  identifier: "CheckoutReservationDetails",
+  description: "PII-free reservation projection used by checkout providers.",
+});
+
+export type CheckoutReservationDetails =
+  typeof checkoutReservationDetailsSchema.Type;
+
+export const getCheckoutReservationDetails = (
+  reservation: ReservationOrderData
+): CheckoutReservationDetails =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: getCoworkReservationDetails,
+      "meeting-room": getMeetingRoomReservationDetails,
+    })
+  );
+
+export const checkoutDetailsSchema = Schema.Union([
+  coworkCheckoutDetailsSchema,
+  meetingRoomCheckoutDetailsSchema,
+]).annotate({
   identifier: "CheckoutDetails",
   description: "Transient PII-free checkout provider snapshot.",
 });
 
-export type CheckoutDetailsJson = typeof checkoutDetailsJsonSchema.Type;
+export type CheckoutDetails = typeof checkoutDetailsSchema.Type;

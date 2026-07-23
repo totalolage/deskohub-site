@@ -2,9 +2,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Deferred, Effect, Layer, Logger, References, Schema } from "effect";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import {
@@ -31,7 +31,7 @@ import type { DiscountCandidate } from "./provider";
 const product = {
   kind: "cowork",
   tier: "basic",
-} satisfies WorkspaceCoworkProductIdentity;
+} satisfies WorkspaceProductIdentity;
 
 const money = (value: number): WorkspaceMoney => ({
   value,

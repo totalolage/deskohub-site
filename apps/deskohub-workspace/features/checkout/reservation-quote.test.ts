@@ -284,4 +284,28 @@ describe("reservation quotes", () => {
     expect(fourHours.payment.expectedPrice.value).toBe(60_000);
     expect(fullDay.payment.expectedPrice.value).toBe(100_000);
   });
+
+  test("applies discounts to meeting-room reservations", () => {
+    const reservation = meetingRoomReservation(
+      "2099-06-10T07:00:00Z",
+      "2099-06-10T11:00:00Z"
+    );
+    const application = discountApplication(10_000, {
+      subtotalBefore: money(60_000),
+      subtotalAfter: money(50_000),
+    });
+    const quote = buildQuote(reservation, {
+      discountQuote: {
+        product: { kind: "meeting-room", durationMinutes: 240 },
+        discountableSubtotal: money(60_000),
+        discounts: [application],
+        totalDiscount: money(10_000),
+        discountedSubtotal: money(50_000),
+      },
+    });
+
+    expect(quote.payment.expectedPrice).toEqual(money(50_000));
+    expect(quote.payment.undiscountedPrice).toEqual(money(60_000));
+    expect(quote.payment.discounts).toEqual([application]);
+  });
 });

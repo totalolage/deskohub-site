@@ -13,6 +13,7 @@ export type DiscountResolutionProvider =
   | "calculator";
 
 export type DiscountResolutionOperation =
+  | "quote"
   | "discover_advertised_discounts"
   | "affirm_advertisement"
   | "apply_customer_discount"

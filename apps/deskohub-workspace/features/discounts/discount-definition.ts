@@ -4,12 +4,12 @@ import type {
   DiscountProductTarget,
   StoredDiscount,
 } from "@/db/schema";
-import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import { locales } from "@/features/i18n";
 import {
-  type WorkspaceCoworkProductIdentity,
-  workspaceCoworkProductIdentitySchema,
-} from "@/features/reservation/cowork-reservation-product";
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+  workspaceProductIdentitySchema,
+} from "@/features/checkout/product-identity";
+import { locales } from "@/features/i18n";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
   type StoredDiscountId,
@@ -20,7 +20,7 @@ export type DiscountDefinition = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceCoworkProductIdentity[];
+  readonly products: readonly WorkspaceProductIdentity[];
 };
 
 export type DiscountDefinitionRow = StoredDiscount & {
@@ -68,7 +68,7 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
 const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   Schema.Struct({
     discountId: storedDiscountIdSchema,
-    productIdentity: workspaceCoworkProductIdentitySchema,
+    productIdentity: workspaceProductIdentitySchema,
   });
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
