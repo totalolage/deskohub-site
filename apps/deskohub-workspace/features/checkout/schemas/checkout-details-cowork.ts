@@ -1,10 +1,8 @@
-import { Schema } from "effect";
 import {
   type CoworkReservationQuote,
   checkoutSummarySchema,
 } from "@/features/checkout/checkout-quote";
-import { reservationQuotePaymentSchema } from "@/features/checkout/reservation-quote-schema";
-import { checkoutDetailsBaseSchema } from "@/features/checkout/schemas/checkout-details-base";
+import { makeCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-base";
 import type { Locale } from "@/features/i18n";
 import {
   coworkReservationDetailsSchema,
@@ -12,13 +10,11 @@ import {
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 
-export const coworkCheckoutDetailsJsonSchema = Schema.Struct({
-  ...checkoutDetailsBaseSchema.fields,
+export const coworkCheckoutDetailsJsonSchema = makeCheckoutDetailsSchema({
   reservation: coworkReservationDetailsSchema,
-  payment: Schema.Struct({
-    ...reservationQuotePaymentSchema.fields,
+  paymentFields: {
     summary: checkoutSummarySchema,
-  }),
+  },
 });
 
 export type CoworkCheckoutDetailsJson =
