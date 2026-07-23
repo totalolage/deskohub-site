@@ -94,6 +94,61 @@ describe("reservation cancellation ownership migration", () => {
     ).resolves.toBeDefined();
   });
 
+  test("database-stamps the real old-writer cancellation update before new takeover", async () => {
+    const database = new PGlite();
+    databases.push(database);
+    await database.exec(`
+      create table workspace_reservations (
+        id text primary key,
+        reservation_state text not null,
+        payment_state text not null,
+        updated_at timestamptz not null default now()
+      );
+      insert into workspace_reservations
+        (id, reservation_state, payment_state, updated_at)
+      values
+        ('old-writer-update', 'held', 'not_started', now())
+    `);
+
+    await applyCancellationMigration(database);
+
+    await database.exec(`
+      update workspace_reservations
+      set
+        reservation_state = 'cancelling',
+        updated_at = now() - interval '30 minutes'
+      where
+        id = 'old-writer-update'
+        and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
+        and payment_state <> 'paid'
+    `);
+
+    const [legacyClaim] = (
+      await database.query<{ database_time_stamped: boolean }>(`
+        select updated_at > now() - interval '1 minute' as database_time_stamped
+        from workspace_reservations
+        where id = 'old-writer-update'
+      `)
+    ).rows;
+    expect(legacyClaim?.database_time_stamped).toBe(true);
+
+    const takeover = await database.query<{ id: string }>(`
+      update workspace_reservations
+      set
+        cancellation_claim_owner = 'new-worker',
+        cancellation_claimed_at = now(),
+        updated_at = now()
+      where
+        id = 'old-writer-update'
+        and reservation_state = 'cancelling'
+        and cancellation_claim_owner is null
+        and cancellation_claimed_at is null
+        and updated_at <= now() - interval '5 minutes'
+      returning id
+    `);
+    expect(takeover.rows).toEqual([]);
+  });
+
   test("backfills legacy failures without creating invalid half-leases", async () => {
     const database = new PGlite();
     databases.push(database);
