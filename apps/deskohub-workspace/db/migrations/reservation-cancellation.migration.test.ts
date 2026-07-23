@@ -1,66 +1,23 @@
 import "@/shared/testing/workspace-test-env";
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 
 const databases: PGlite[] = [];
-const migrationDirectories: string[] = [];
-const parentMigrationName = "20260723121853_known_lorna_dane";
-const correctionMigrationName = "20260723175532_legacy_cancellation_clock";
-const parentMigrationUrl = new URL(
-  `./${parentMigrationName}/migration.sql`,
-  import.meta.url
-);
-const correctionMigrationUrl = new URL(
-  `./${correctionMigrationName}/migration.sql`,
+const cancellationMigrationUrl = new URL(
+  "./20260723121853_known_lorna_dane/migration.sql",
   import.meta.url
 );
 
 afterEach(async () => {
-  await Promise.all([
-    ...databases.splice(0).map((database) => database.close()),
-    ...migrationDirectories
-      .splice(0)
-      .map((directory) => rm(directory, { recursive: true, force: true })),
-  ]);
+  await Promise.all(databases.splice(0).map((database) => database.close()));
 });
 
-const applyMigrationFile = async (database: PGlite, migrationUrl: URL) => {
-  const migration = await Bun.file(migrationUrl).text();
+const applyCancellationMigration = async (database: PGlite) => {
+  const migration = await Bun.file(cancellationMigrationUrl).text();
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await database.exec(statement);
   }
-};
-
-const applyCancellationMigration = async (database: PGlite) => {
-  await applyMigrationFile(database, parentMigrationUrl);
-  await applyMigrationFile(database, correctionMigrationUrl);
-};
-
-const makeMigrationDirectory = async () => {
-  const directory = await mkdtemp(
-    join(tmpdir(), "deskohub-cancellation-migrations-")
-  );
-  migrationDirectories.push(directory);
-  return directory;
-};
-
-const addMigrationToDirectory = async (
-  directory: string,
-  name: string,
-  migrationUrl: URL
-) => {
-  const migrationDirectory = join(directory, name);
-  await mkdir(migrationDirectory);
-  await Bun.write(
-    join(migrationDirectory, "migration.sql"),
-    Bun.file(migrationUrl)
-  );
 };
 
 describe("reservation cancellation ownership migration", () => {
@@ -132,11 +89,63 @@ describe("reservation cancellation ownership migration", () => {
     await expect(
       database.exec(`
         insert into workspace_reservations
-          (id, reservation_state, payment_state)
+          (id, reservation_state, payment_state, updated_at)
         values
-          ('old-writer-ownerless-cancelling', 'cancelling', 'not_started')
+          (
+            'old-writer-ownerless-cancelling',
+            'cancelling',
+            'not_started',
+            now() - interval '30 minutes'
+          )
       `)
     ).resolves.toBeDefined();
+
+    const ownerlessClaims = await database.query<{
+      id: string;
+      database_time_stamped: boolean;
+      grace_period_active: boolean;
+    }>(`
+      select
+        id,
+        updated_at > now() - interval '1 minute' as database_time_stamped,
+        updated_at + interval '5 minutes' > now() as grace_period_active
+      from workspace_reservations
+      where reservation_state = 'cancelling'
+      order by id
+    `);
+    expect(ownerlessClaims.rows).toEqual([
+      {
+        id: "old-writer-ownerless-cancelling",
+        database_time_stamped: true,
+        grace_period_active: true,
+      },
+      {
+        id: "pending-provider-paid",
+        database_time_stamped: true,
+        grace_period_active: true,
+      },
+      {
+        id: "pending-provider-terminal",
+        database_time_stamped: true,
+        grace_period_active: true,
+      },
+    ]);
+
+    const immediateTakeover = await database.query<{ id: string }>(`
+      update workspace_reservations
+      set
+        cancellation_claim_owner = 'new-worker',
+        cancellation_claimed_at = now(),
+        updated_at = now()
+      where
+        id = 'old-writer-ownerless-cancelling'
+        and reservation_state = 'cancelling'
+        and cancellation_claim_owner is null
+        and cancellation_claimed_at is null
+        and updated_at <= now() - interval '5 minutes'
+      returning id
+    `);
+    expect(immediateTakeover.rows).toEqual([]);
   });
 
   test("database-stamps the real old-writer cancellation update before new takeover", async () => {
@@ -192,98 +201,6 @@ describe("reservation cancellation ownership migration", () => {
       returning id
     `);
     expect(takeover.rows).toEqual([]);
-  });
-
-  test("replays the additive correction after the parent migration was already applied", async () => {
-    const database = new PGlite();
-    databases.push(database);
-    await database.exec(`
-      create table workspace_reservations (
-        id text primary key,
-        reservation_state text not null,
-        payment_state text not null,
-        updated_at timestamptz not null default now()
-      );
-      insert into workspace_reservations
-        (id, reservation_state, payment_state, updated_at)
-      values
-        ('old-writer-update', 'held', 'not_started', now())
-    `);
-
-    const migrationsFolder = await makeMigrationDirectory();
-    await addMigrationToDirectory(
-      migrationsFolder,
-      parentMigrationName,
-      parentMigrationUrl
-    );
-    const migrationDatabase = drizzle({ client: database });
-    await migrate(migrationDatabase, { migrationsFolder });
-
-    await database.exec(`
-      update workspace_reservations
-      set
-        reservation_state = 'cancelling',
-        updated_at = now() - interval '30 minutes'
-      where
-        id = 'old-writer-update'
-        and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
-        and payment_state <> 'paid'
-    `);
-
-    await addMigrationToDirectory(
-      migrationsFolder,
-      correctionMigrationName,
-      correctionMigrationUrl
-    );
-    await migrate(migrationDatabase, { migrationsFolder });
-    await migrate(migrationDatabase, { migrationsFolder });
-
-    const appliedMigrations = await database.query<{ name: string }>(`
-      select name
-      from drizzle.__drizzle_migrations
-      order by name
-    `);
-    expect(appliedMigrations.rows).toEqual([
-      { name: parentMigrationName },
-      { name: correctionMigrationName },
-    ]);
-
-    const [legacyClaim] = (
-      await database.query<{ database_time_stamped: boolean }>(`
-        select updated_at > now() - interval '1 minute' as database_time_stamped
-        from workspace_reservations
-        where id = 'old-writer-update'
-      `)
-    ).rows;
-    expect(legacyClaim?.database_time_stamped).toBe(true);
-
-    await database.exec(`
-      insert into workspace_reservations
-        (id, reservation_state, payment_state, updated_at)
-      values
-        (
-          'old-writer-insert',
-          'cancelling',
-          'not_started',
-          now() - interval '30 minutes'
-        )
-    `);
-
-    const claims = await database.query<{ id: string }>(`
-      update workspace_reservations
-      set
-        cancellation_claim_owner = 'new-worker',
-        cancellation_claimed_at = now(),
-        updated_at = now()
-      where
-        id in ('old-writer-update', 'old-writer-insert')
-        and reservation_state = 'cancelling'
-        and cancellation_claim_owner is null
-        and cancellation_claimed_at is null
-        and updated_at <= now() - interval '5 minutes'
-      returning id
-    `);
-    expect(claims.rows).toEqual([]);
   });
 
   test("backfills legacy failures without creating invalid half-leases", async () => {
