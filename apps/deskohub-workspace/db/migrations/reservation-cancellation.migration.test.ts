@@ -11,7 +11,7 @@ afterEach(async () => {
 
 const applyCancellationMigration = async (database: PGlite) => {
   const migration = await Bun.file(
-    new URL("./20260723114225_eminent_lake/migration.sql", import.meta.url)
+    new URL("./20260723121853_known_lorna_dane/migration.sql", import.meta.url)
   ).text();
   for (const statement of migration.split("--> statement-breakpoint")) {
     if (statement.trim()) await database.exec(statement);
@@ -45,13 +45,15 @@ describe("reservation cancellation ownership migration", () => {
       payment_state: string;
       cancellation_claim_owner: string | null;
       cancellation_failure_disposition: string | null;
+      cancellation_recovery_reason: string | null;
     }>(`
       select
         id,
         reservation_state,
         payment_state,
         cancellation_claim_owner,
-        cancellation_failure_disposition
+        cancellation_failure_disposition,
+        cancellation_recovery_reason
       from workspace_reservations
       order by id
     `);
@@ -62,6 +64,7 @@ describe("reservation cancellation ownership migration", () => {
         payment_state: "pending",
         cancellation_claim_owner: null,
         cancellation_failure_disposition: "retryable",
+        cancellation_recovery_reason: "retryable_failure",
       },
       {
         id: "pending-provider-paid",
@@ -69,6 +72,7 @@ describe("reservation cancellation ownership migration", () => {
         payment_state: "pending",
         cancellation_claim_owner: null,
         cancellation_failure_disposition: null,
+        cancellation_recovery_reason: null,
       },
       {
         id: "pending-provider-terminal",
@@ -76,6 +80,7 @@ describe("reservation cancellation ownership migration", () => {
         payment_state: "pending",
         cancellation_claim_owner: null,
         cancellation_failure_disposition: null,
+        cancellation_recovery_reason: null,
       },
     ]);
 
@@ -124,6 +129,13 @@ describe("reservation cancellation ownership migration", () => {
       database.exec(`
         update workspace_reservations
         set cancellation_claim_owner = 'worker', cancellation_claimed_at = null
+        where id = 'legacy-failed'
+      `)
+    ).rejects.toBeDefined();
+    await expect(
+      database.exec(`
+        update workspace_reservations
+        set cancellation_recovery_reason = 'unknown_reason'
         where id = 'legacy-failed'
       `)
     ).rejects.toBeDefined();

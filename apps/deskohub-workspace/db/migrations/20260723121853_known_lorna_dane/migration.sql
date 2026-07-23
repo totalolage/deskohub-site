@@ -2,12 +2,14 @@ ALTER TABLE "workspace_reservations" ADD COLUMN "cancellation_claim_owner" text;
 ALTER TABLE "workspace_reservations" ADD COLUMN "cancellation_claimed_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "cancellation_failure_disposition" text;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "cancellation_retry_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "cancellation_recovery_reason" text;--> statement-breakpoint
 UPDATE "workspace_reservations"
 SET
   "cancellation_failure_disposition" = 'retryable',
-  "cancellation_retry_at" = now()
+  "cancellation_retry_at" = now(),
+  "cancellation_recovery_reason" = 'retryable_failure'
 WHERE "reservation_state" = 'cancellation_failed';--> statement-breakpoint
-CREATE INDEX "workspace_reservations_cancellation_recovery_idx" ON "workspace_reservations" ("reservation_state","cancellation_failure_disposition","cancellation_retry_at","cancellation_claimed_at") WHERE "reservation_state" in ('cancelling', 'cancellation_failed');--> statement-breakpoint
+CREATE INDEX "workspace_reservations_cancellation_recovery_idx" ON "workspace_reservations" ("reservation_state","cancellation_recovery_reason","cancellation_failure_disposition","cancellation_retry_at","cancellation_claimed_at") WHERE "reservation_state" in ('cancelling', 'cancellation_failed');--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_claim_check" CHECK ((
         "cancellation_claim_owner" is null
         and "cancellation_claimed_at" is null
@@ -24,4 +26,5 @@ ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_canc
       ) or (
         "cancellation_failure_disposition" = 'manual_review'
         and "cancellation_retry_at" is null
-      ));
+      ));--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_recovery_reason_check" CHECK ("cancellation_recovery_reason" is null or "cancellation_recovery_reason" in ('hold_expired', 'attachment_compensation', 'supersession_recovery', 'retryable_failure', 'stale_claim_recovery'));

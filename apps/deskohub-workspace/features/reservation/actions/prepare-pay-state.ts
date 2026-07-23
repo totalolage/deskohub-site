@@ -480,6 +480,7 @@ const prepareReservationDraft = Effect.fn(
         const owned = yield* reservations.renewCancellationClaim({
           id: claimed.id,
           ownerId: cancellationOwnerId,
+          recoveryReason: "supersession_recovery",
         });
         if (!owned) {
           yield* Effect.logWarning(
@@ -548,6 +549,7 @@ const prepareReservationDraft = Effect.fn(
             id: claimed.id,
             ownerId: cancellationOwnerId,
             disposition: cancellation.disposition,
+            recoveryReason: "supersession_recovery",
             failureCode: "checkout_supersession_cancel_failed",
           })
           .pipe(
@@ -591,6 +593,7 @@ const prepareReservationDraft = Effect.fn(
             .markCancelled({
               id: claimed.id,
               ownerId: cancellationOwnerId,
+              recoveryReason: "supersession_recovery",
               cancelledAt,
             })
             .pipe(Effect.ignore)
@@ -917,12 +920,10 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
               }
             );
 
-            const cancellationRequiredAt = Temporal.Now.instant();
             yield* enqueueAttachmentCancellationCompensation({
               orderId: reservationDraft.id,
               dotyposReservationId,
               reservationCreatedAt,
-              cancellationRequiredAt,
             }).pipe(
               Effect.tapError((markerCause) =>
                 Effect.logFatal(

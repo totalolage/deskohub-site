@@ -109,6 +109,7 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `cancellation_claimed_at` | timestamptz | no | Database-clock start or renewal time of the current cancellation lease. |
 | `cancellation_failure_disposition` | text | no | `retryable` for automatic recovery or `manual_review` for an excluded poison row. |
 | `cancellation_retry_at` | timestamptz | no | Database-clock retry eligibility time; required only for retryable cancellation failures. |
+| `cancellation_recovery_reason` | text | no | Audit reason for the current cancellation path: genuine hold expiry, attachment compensation, supersession recovery, retryable failure, or stale-claim recovery. |
 | `paid_at` | timestamptz | no | When a verified Nexi attempt made the workflow paid. |
 | `fulfilled_at` | timestamptz | no | When all required post-payment work completed. |
 | `fulfillment_failed_at` | timestamptz | no | Most recent fulfillment failure time. |
@@ -126,7 +127,7 @@ Indexes and constraints:
 - Unique index on `correlation_id`.
 - Partial unique index on `dotypos_reservation_id` where not null.
 - Partial index on `reservation_hold_expires_at` for `reservation_state = 'held'`.
-- Partial cancellation recovery index on `(reservation_state, cancellation_failure_disposition, cancellation_retry_at, cancellation_claimed_at)` for `cancelling` and `cancellation_failed`.
+- Partial cancellation recovery index on `(reservation_state, cancellation_recovery_reason, cancellation_failure_disposition, cancellation_retry_at, cancellation_claimed_at)` for `cancelling` and `cancellation_failed`.
 - Recovery index on `(reservation_state, payment_state, fulfillment_state)`.
 - `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancelled`, and `cancellation_failed` states.
 - `paid_at` must be non-null when `payment_state = 'paid'`.
@@ -134,6 +135,7 @@ Indexes and constraints:
 - `fulfillment_failed_at` and `fulfillment_failure_code` must be non-null when `fulfillment_state = 'failed'`.
 - Cancellation claim owner and timestamp must both be null or both be present.
 - Retryable cancellation failures require a retry timestamp; manual-review failures must not have one.
+- Cancellation recovery reasons are restricted to the documented audit values. Only a genuine hold-expiry observation may write `reservation_hold_expired_at`; other recovery reasons never synthesize or overwrite it.
 
 ### `payment_attempts`
 
@@ -255,6 +257,10 @@ Forbidden reservation transitions:
 Cancellation is a compare-and-set lease, not ownership inferred from `reservation_state` alone. A worker atomically writes a fresh opaque owner and database-generated `cancellation_claimed_at` while moving an eligible row to `cancelling`. Every completion, failure, supersession transaction, and ownership renewal compares that same owner. After reading live provider status, the worker renews the timestamp with an owner-CAS update and uses the returned row as its reload. A worker whose renewal no longer finds its owner stops without provider or local destructive work.
 
 The lease is five minutes. Acquisition, renewal, retry eligibility, and stale takeover compare against the database clock so application-host clock skew cannot shorten or extend ownership. `cancelling` may be taken over only when its paired lease timestamp is at or before the database's five-minute stale cutoff. Legacy ownerless `cancelling` rows use `updated_at` as the same bounded grace period. Retryable failures carry a database-generated retry time; failures that require manual review carry no retry time and are excluded from bounded cron batches. Queue delivery is the primary cleanup path; the daily cron selects expired held rows, due retryable failures, legacy recoverable rows, and only stale cancelling leases.
+
+Cancellation recovery carries an explicit reason through queue, cron, service, and repository calls. `reservation_hold_expired_at` is written only when an unpaid held reservation's real deadline was observed at or before the cleanup timestamp. Attachment compensation, supersession recovery, retryable failures, and stale-claim takeover never synthesize that audit fact.
+
+After Dotypos creates a reservation, a failed local attachment hands the exact Dotypos reservation ID to two independent durable recovery paths: the local cancellation marker and an identity-bearing queue message retained for the queue provider's seven-day maximum. Both are attempted even if the other fails. A surviving marker is recoverable by cron when enqueue fails; a surviving queue message can idempotently materialize the marker when the original marker write fails. Duplicate or delayed messages only materialize the original `creating_hold`/initial attachment-failure state with the same provider ID and cannot overwrite a successfully attached, differently owned, retried, manually reviewed, or completed reservation. If neither durable handoff succeeds, the action fails loudly rather than reporting a successful handoff.
 
 A legacy `cancelling` or `cancellation_failed` row with `payment_state = 'pending'` is never sent directly to cancellation. Recovery first CAS-restores it to `held`, allowing the existing provider-payment finalization contract to resolve paid, terminal, or still-pending outcomes. Paid stays held for fulfillment, terminal unsuccessful can proceed through a fresh cancellation claim, and unconfirmed outcomes remain held for later reconciliation.
 
@@ -512,7 +518,7 @@ sequenceDiagram
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
 
-Rollout is expand-first and supports migrate-before-promote. First apply the migration: it adds nullable paired-lease and failure-disposition columns, backfills existing `cancellation_failed` rows as due retryable work, and installs constraints that permit both paired claims and ownerless rows. It deliberately leaves existing `cancelling` rows unchanged, so old application instances may continue writing ownerless `cancelling` rows during a rolling deployment. Then promote the ownership-aware application; it gives those rows the same five-minute database-clock grace before takeover or pending-payment restoration. After all old writers are retired and legacy ownerless rows have drained, a later contract migration may tighten the state/owner constraint if operationally useful. The tradeoff is temporary acceptance of ownerless cancellation rows in exchange for safe zero-downtime ordering.
+Rollout is expand-first and supports migrate-before-promote. First apply the migration: it adds nullable paired-lease, failure-disposition, retry, and recovery-reason columns; backfills existing `cancellation_failed` rows as due `retryable_failure` work; and installs constraints that permit both paired claims and ownerless rows. It deliberately leaves existing `cancelling` rows unchanged, so old application instances may continue writing ownerless `cancelling` rows during a rolling deployment. Then promote the ownership-aware application; it gives those rows the same five-minute database-clock grace before takeover or pending-payment restoration. After all old writers are retired and legacy ownerless rows have drained, a later contract migration may tighten the state/owner constraint if operationally useful. The tradeoff is temporary acceptance of ownerless cancellation rows in exchange for safe zero-downtime ordering.
 
 ## Live Test Safety Checklist
 

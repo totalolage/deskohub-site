@@ -128,6 +128,7 @@ describe("ReservationHoldCleanupService", () => {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
+        recoveryReason: "hold_expired",
         holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
       });
     }).pipe(
@@ -330,7 +331,11 @@ describe("ReservationHoldCleanupService", () => {
     );
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
+      return yield* cleanup.cancelOrderHold({
+        orderId,
+        recoveryReason: "hold_expired",
+        holdExpiredAt,
+      });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -384,11 +389,14 @@ describe("ReservationHoldCleanupService", () => {
     expect(claimCancellation).toHaveBeenCalledWith({
       id: orderId,
       ownerId: expect.any(String),
+      recoveryReason: "hold_expired",
+      holdExpiredAt,
     });
     expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
       ownerId: expect.any(String),
+      recoveryReason: "hold_expired",
       cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt,
     });
@@ -417,7 +425,10 @@ describe("ReservationHoldCleanupService", () => {
 
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId });
+      return yield* cleanup.cancelOrderHold({
+        orderId,
+        recoveryReason: "retryable_failure",
+      });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -491,7 +502,10 @@ describe("ReservationHoldCleanupService", () => {
 
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId });
+      return yield* cleanup.cancelOrderHold({
+        orderId,
+        recoveryReason: "retryable_failure",
+      });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -532,6 +546,34 @@ describe("ReservationHoldCleanupService", () => {
     expect(markTerminalForReservation).not.toHaveBeenCalled();
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
+  });
+
+  test("cron recovery carries non-expiry audit reasons without synthesizing expiry", async () => {
+    const claimCancellation = await runRecoveryReasonSweep();
+
+    expect(claimCancellation).toHaveBeenNthCalledWith(1, {
+      id: "attachment",
+      ownerId: expect.any(String),
+      recoveryReason: "attachment_compensation",
+    });
+    expect(claimCancellation).toHaveBeenNthCalledWith(2, {
+      id: "supersession",
+      ownerId: expect.any(String),
+      recoveryReason: "supersession_recovery",
+    });
+    expect(claimCancellation).toHaveBeenNthCalledWith(3, {
+      id: "retryable",
+      ownerId: expect.any(String),
+      recoveryReason: "retryable_failure",
+    });
+    expect(claimCancellation).toHaveBeenNthCalledWith(4, {
+      id: "stale",
+      ownerId: expect.any(String),
+      recoveryReason: "stale_claim_recovery",
+    });
+    for (const [input] of claimCancellation.mock.calls) {
+      expect(input).not.toHaveProperty("holdExpiredAt");
+    }
   });
 
   test("centralizes the NEW, CANCELLED, and other live provider status policy", async () => {
@@ -592,6 +634,7 @@ describe("ReservationHoldCleanupService", () => {
           id: "owned-cancellation-reservation",
           ownerId: expect.any(String),
           disposition: scenario.failureDisposition,
+          recoveryReason: "retryable_failure",
           failureCode: "dotypos_reservation_status_not_cancellable",
         });
       }
@@ -599,6 +642,7 @@ describe("ReservationHoldCleanupService", () => {
       expect(renewCancellationClaim).toHaveBeenCalledWith({
         id: "owned-cancellation-reservation",
         ownerId: expect.any(String),
+        recoveryReason: "retryable_failure",
       });
     });
   }
@@ -641,7 +685,10 @@ describe("ReservationHoldCleanupService", () => {
     const cancelReservation = mock(() => Effect.die("not used"));
     const outcome = await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
-      return yield* cleanup.cancelOrderHold({ orderId: "racing-reservation" });
+      return yield* cleanup.cancelOrderHold({
+        orderId: "racing-reservation",
+        recoveryReason: "retryable_failure",
+      });
     }).pipe(
       Effect.provide(
         ReservationHoldCleanupServiceLive.pipe(
@@ -685,6 +732,97 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 });
+
+const runRecoveryReasonSweep = async () => {
+  const { PaymentAttemptRepository } = await import(
+    "../repositories/payment-attempt.repository"
+  );
+  const { ProviderPaymentFinalizationService } = await import(
+    "../payment/provider-payment-finalization.service"
+  );
+  const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
+    await import("./reservation-hold-cleanup.service");
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
+  );
+
+  const candidates = [
+    {
+      id: "attachment",
+      reservationState: "cancellation_failed",
+      paymentState: "not_started",
+      cancellationRecoveryReason: "attachment_compensation",
+    },
+    {
+      id: "supersession",
+      reservationState: "cancellation_failed",
+      paymentState: "not_started",
+      cancellationRecoveryReason: "supersession_recovery",
+    },
+    {
+      id: "retryable",
+      reservationState: "cancellation_failed",
+      paymentState: "not_started",
+      cancellationRecoveryReason: "retryable_failure",
+    },
+    {
+      id: "stale",
+      reservationState: "cancelling",
+      paymentState: "not_started",
+      cancellationRecoveryReason: "attachment_compensation",
+    },
+  ];
+  const claimCancellation = mock(() => Effect.succeed(null));
+
+  await Effect.gen(function* () {
+    const cleanup = yield* ReservationHoldCleanupService;
+    return yield* cleanup.sweepExpiredHolds({
+      now: Temporal.Instant.from("2026-06-02T10:00:00Z"),
+      limit: candidates.length,
+    });
+  }).pipe(
+    Effect.provide(
+      ReservationHoldCleanupServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ProviderPaymentFinalizationService, {
+              finalizePendingProviderPayment: mock(() =>
+                Effect.die("not used")
+              ),
+            } satisfies ProviderPaymentFinalizationServiceType),
+            Layer.succeed(PaymentAttemptRepository, {
+              markTerminalForReservation: mock(() => Effect.die("not used")),
+            } as unknown as PaymentAttemptRepositoryType),
+            Layer.succeed(WorkspaceReservationRepository, {
+              selectCancellationCandidates: mock(() =>
+                Effect.succeed(candidates as never)
+              ),
+              findById: mock((id: string) =>
+                Effect.succeed(
+                  candidates.find((candidate) => candidate.id === id) as never
+                )
+              ),
+              claimCancellation,
+            } as unknown as WorkspaceReservationRepositoryType),
+            Layer.succeed(PostHogEventService, {
+              capture: () => Effect.void,
+            }),
+            Layer.succeed(
+              DotyposService,
+              {} as unknown as typeof DotyposService.Service
+            )
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+  return claimCancellation;
+};
 
 const runLegacyPendingReconciliationScenario = async (
   providerResult: "paid" | "terminal"
@@ -731,6 +869,7 @@ const runLegacyPendingReconciliationScenario = async (
     const cleanup = yield* ReservationHoldCleanupService;
     return yield* cleanup.cancelOrderHold({
       orderId: "legacy-pending-reservation",
+      recoveryReason: "retryable_failure",
     });
   }).pipe(
     Effect.provide(
@@ -817,7 +956,10 @@ const runOwnedCancellationScenario = async (input: {
   );
   const outcome = await Effect.gen(function* () {
     const cleanup = yield* ReservationHoldCleanupService;
-    return yield* cleanup.cancelOrderHold({ orderId: reservation.id });
+    return yield* cleanup.cancelOrderHold({
+      orderId: reservation.id,
+      recoveryReason: "retryable_failure",
+    });
   }).pipe(
     Effect.provide(
       ReservationHoldCleanupServiceLive.pipe(

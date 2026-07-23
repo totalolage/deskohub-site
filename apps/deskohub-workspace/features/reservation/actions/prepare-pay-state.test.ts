@@ -277,7 +277,9 @@ const runReusableReservationScenario = async (input: {
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails,
       attachHold: mock(() => Effect.void),
-      markAttachFailedCancellationRequired: mock(() => Effect.void),
+      recordAttachmentCancellationHandoff: mock(() =>
+        Effect.succeed(makeReusableReservation())
+      ),
       claimSupersessionCancellation,
       renewCancellationClaim,
       completeSupersessionAndCreateDraft,
@@ -449,7 +451,9 @@ describe("prepareCoworkPayState", () => {
         findById: mock(() => Effect.succeed(null)),
         releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
-        markAttachFailedCancellationRequired: mock(() => Effect.void),
+        recordAttachmentCancellationHandoff: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
         claimSupersessionCancellation: mock(() => Effect.succeed(null)),
         completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
         markCancelled: mock(() => Effect.void),
@@ -507,6 +511,7 @@ describe("prepareCoworkPayState", () => {
       })
     );
     expect(enqueueCleanup).toHaveBeenCalledWith({
+      reason: "hold_expired",
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Temporal.Instant),
     });
@@ -830,6 +835,7 @@ describe("prepareCoworkPayState", () => {
       id: previousReservation.id,
       ownerId: expect.any(String),
       disposition: "retryable",
+      recoveryReason: "supersession_recovery",
       failureCode: "checkout_supersession_cancel_failed",
     });
     if (result.result.status !== "ready") throw new Error("Expected ready");
@@ -873,6 +879,7 @@ describe("prepareCoworkPayState", () => {
       id: previousReservation.id,
       ownerId: expect.any(String),
       disposition: "manual_review",
+      recoveryReason: "supersession_recovery",
       failureCode: "checkout_supersession_cancel_failed",
     });
   });
@@ -909,6 +916,7 @@ describe("prepareCoworkPayState", () => {
       id: previousReservation.id,
       ownerId: expect.any(String),
       disposition: "retryable",
+      recoveryReason: "supersession_recovery",
       failureCode: "checkout_supersession_cancel_failed",
     });
   });
@@ -929,7 +937,7 @@ describe("prepareCoworkPayState", () => {
     const compensation = source.slice(start, end);
 
     expect(compensation).toContain("enqueueAttachmentCancellationCompensation");
-    expect(compensation).toContain("cancellationRequiredAt");
+    expect(compensation).toContain("dotyposReservationId");
     expect(compensation).not.toContain("dotypos.cancelReservation");
   });
 

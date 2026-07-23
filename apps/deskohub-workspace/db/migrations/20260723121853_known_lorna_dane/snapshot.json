@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "dc927194-27e3-4399-b49e-7a56343707b7",
+  "id": "aaf87e07-318e-47a5-a553-4d43e2df5cad",
   "prevIds": [
     "083a1001-8f45-4d9d-8e55-a567c13902e6"
   ],
@@ -14,13 +14,13 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_code_redemptions",
+      "name": "discount_code_customers",
       "entityType": "tables",
       "schema": "public"
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_code_customers",
+      "name": "discount_code_redemptions",
       "entityType": "tables",
       "schema": "public"
     },
@@ -344,6 +344,32 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "code_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_code_customers"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_code_customers"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -507,32 +533,6 @@
       "entityType": "columns",
       "schema": "public",
       "table": "discount_code_redemptions"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "code_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_code_customers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_code_customers"
     },
     {
       "type": "text",
@@ -1562,6 +1562,19 @@
       "table": "workspace_reservations"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_recovery_reason",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": false,
@@ -2188,6 +2201,13 @@
           "opclass": null
         },
         {
+          "value": "cancellation_recovery_reason",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
           "value": "cancellation_failure_disposition",
           "isExpression": false,
           "asc": true,
@@ -2285,6 +2305,23 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "discount_code_customers_code_id_discount_codes_id_fk",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "discount_code_customers"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "code_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "discount_codes",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "name": "discount_code_redemptions_code_id_discount_codes_id_fk",
       "entityType": "fks",
@@ -2324,23 +2361,6 @@
       "entityType": "fks",
       "schema": "public",
       "table": "discount_code_redemptions"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "code_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "discount_codes",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "discount_code_customers_code_id_discount_codes_id_fk",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "discount_code_customers"
     },
     {
       "nameExplicit": false,
@@ -2595,6 +2615,13 @@
     },
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",
+      "name": "discount_code_customers_customer_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_code_customers"
+    },
+    {
+      "value": "btrim(\"dotypos_customer_id\") <> ''",
       "name": "discount_code_redemptions_customer_check",
       "entityType": "checks",
       "schema": "public",
@@ -2620,13 +2647,6 @@
       "entityType": "checks",
       "schema": "public",
       "table": "discount_code_redemptions"
-    },
-    {
-      "value": "btrim(\"dotypos_customer_id\") <> ''",
-      "name": "discount_code_customers_customer_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "discount_code_customers"
     },
     {
       "value": "\"code\" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'",
@@ -2799,6 +2819,13 @@
     {
       "value": "(\n        \"cancellation_failure_disposition\" is null\n        and \"cancellation_retry_at\" is null\n      ) or (\n        \"cancellation_failure_disposition\" = 'retryable'\n        and \"cancellation_retry_at\" is not null\n      ) or (\n        \"cancellation_failure_disposition\" = 'manual_review'\n        and \"cancellation_retry_at\" is null\n      )",
       "name": "workspace_reservations_cancellation_failure_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "\"cancellation_recovery_reason\" is null or \"cancellation_recovery_reason\" in ('hold_expired', 'attachment_compensation', 'supersession_recovery', 'retryable_failure', 'stale_claim_recovery')",
+      "name": "workspace_reservations_cancellation_recovery_reason_check",
       "entityType": "checks",
       "schema": "public",
       "table": "workspace_reservations"

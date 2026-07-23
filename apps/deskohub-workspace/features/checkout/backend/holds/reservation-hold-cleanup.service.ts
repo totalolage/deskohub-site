@@ -3,6 +3,8 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
+  type CancellationRecoveryContext,
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -45,10 +47,11 @@ export const getDotyposCancellationAction = (
   })[status] as "complete" | "delete" | "refuse";
 
 export interface ReservationHoldCleanupService {
-  readonly cancelOrderHold: (input: {
-    readonly orderId: string;
-    readonly holdExpiredAt?: Temporal.Instant;
-  }) => Effect.Effect<
+  readonly cancelOrderHold: (
+    input: {
+      readonly orderId: string;
+    } & CancellationRecoveryContext
+  ) => Effect.Effect<
     ReservationHoldCleanupOutcome,
     ReservationHoldCleanupError
   >;
@@ -80,10 +83,11 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     const posthogEvents = yield* PostHogEventService;
 
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
-      function* (input: {
-        readonly orderId: string;
-        readonly holdExpiredAt?: Temporal.Instant;
-      }) {
+      function* (
+        input: {
+          readonly orderId: string;
+        } & CancellationRecoveryContext
+      ) {
         yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Reservation hold cancellation started");
 
@@ -150,7 +154,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           );
 
           const recordSkippedCleanupAttempt = () =>
-            input.holdExpiredAt
+            input.recoveryReason === "hold_expired"
               ? reservations
                   .recordHoldCleanupSkipped({
                     id: active.id,
@@ -219,10 +223,12 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         }
 
         const ownerId = randomUUID();
+        const claimRecoveryContext = getRecoveryContextFromInput(input);
         const claimed = yield* reservations
           .claimCancellation({
             id: input.orderId,
             ownerId,
+            ...claimRecoveryContext,
           })
           .pipe(
             Effect.mapError(
@@ -259,6 +265,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               id: claimed.id,
               ownerId,
               disposition,
+              recoveryReason: input.recoveryReason,
               failureCode,
             })
             .pipe(
@@ -304,6 +311,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           .renewCancellationClaim({
             id: claimed.id,
             ownerId,
+            recoveryReason: input.recoveryReason,
           })
           .pipe(
             Effect.mapError(
@@ -361,12 +369,13 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 
         yield* Effect.logInfo("Reservation hold cancelled marker started");
         const cancelledAt = Temporal.Now.instant();
+        const completionRecoveryContext = getRecoveryContextFromInput(input);
         const markedCancelled = yield* reservations
           .markCancelled({
             id: claimed.id,
             ownerId,
             cancelledAt,
-            holdExpiredAt: input.holdExpiredAt,
+            ...completionRecoveryContext,
           })
           .pipe(
             Effect.as(true),
@@ -430,7 +439,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             });
             const result = yield* cancelOrderHold({
               orderId: order.id,
-              holdExpiredAt: input.now,
+              ...getCancellationRecoveryContext(order, input.now),
             }).pipe(Effect.result);
 
             yield* Match.value(result).pipe(
@@ -476,6 +485,42 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     });
   })
 );
+
+const getCancellationRecoveryContext = (
+  reservation: WorkspaceReservation,
+  now: Temporal.Instant
+): CancellationRecoveryContext => {
+  if (reservation.reservationState === "held") {
+    return { recoveryReason: "hold_expired", holdExpiredAt: now };
+  }
+  if (reservation.reservationState === "cancelling") {
+    return { recoveryReason: "stale_claim_recovery" };
+  }
+  if (
+    reservation.cancellationRecoveryReason === "hold_expired" &&
+    reservation.reservationHoldExpiredAt
+  ) {
+    return {
+      recoveryReason: "hold_expired",
+      holdExpiredAt: reservation.reservationHoldExpiredAt,
+    };
+  }
+  const recoveryReason =
+    reservation.cancellationRecoveryReason ?? "retryable_failure";
+  return recoveryReason === "hold_expired"
+    ? { recoveryReason: "retryable_failure" }
+    : { recoveryReason };
+};
+
+const getRecoveryContextFromInput = (
+  input: CancellationRecoveryContext
+): CancellationRecoveryContext =>
+  input.recoveryReason === "hold_expired"
+    ? {
+        recoveryReason: "hold_expired",
+        holdExpiredAt: input.holdExpiredAt,
+      }
+    : { recoveryReason: input.recoveryReason };
 
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(

@@ -15,15 +15,46 @@ export const reservationHoldCleanupQueueTopic =
 
 export const reservationHoldCleanupScheduleMaxDelaySeconds = 7 * 24 * 60 * 60;
 const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
+const attachmentCancellationRetentionSeconds = 7 * 24 * 60 * 60;
 
-const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
+const LegacyReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   orderId: Schema.String,
   reservationHoldExpiresAtIso: instantStringSchema,
 });
 
+const ReservationHoldCleanupSchedulePayloadSchema = Schema.Union([
+  LegacyReservationHoldCleanupSchedulePayloadSchema,
+  Schema.Struct({
+    schemaVersion: Schema.Literal(2),
+    reason: Schema.Literal("hold_expired"),
+    orderId: Schema.String,
+    reservationHoldExpiresAtIso: instantStringSchema,
+  }),
+  Schema.Struct({
+    schemaVersion: Schema.Literal(2),
+    reason: Schema.Literal("attachment_compensation"),
+    orderId: Schema.String,
+    dotyposReservationId: Schema.String,
+    reservationCreatedAtIso: instantStringSchema,
+  }),
+]);
+
 export type ReservationHoldCleanupSchedulePayload =
   typeof ReservationHoldCleanupSchedulePayloadSchema.Encoded;
+
+type ReservationCancellationScheduleInput =
+  | {
+      readonly reason: "hold_expired";
+      readonly orderId: string;
+      readonly reservationHoldExpiresAt: Temporal.Instant;
+    }
+  | {
+      readonly reason: "attachment_compensation";
+      readonly orderId: string;
+      readonly dotyposReservationId: string;
+      readonly reservationCreatedAt: Temporal.Instant;
+    };
 
 type ReservationHoldCleanupScheduleMessage = {
   readonly topic: typeof reservationHoldCleanupQueueTopic;
@@ -52,6 +83,12 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
   }
 }
 
+export class AttachmentCancellationHandoffError extends Data.TaggedError(
+  "AttachmentCancellationHandoffError"
+)<{
+  readonly message: string;
+}> {}
+
 class ReservationHoldCleanupQueueDuplicateError extends Data.TaggedError(
   "ReservationHoldCleanupQueueDuplicateError"
 ) {}
@@ -63,10 +100,9 @@ class ReservationHoldCleanupQueueRequestError extends Data.TaggedError(
 }> {}
 
 interface IReservationHoldCleanupScheduleService {
-  readonly enqueueCleanup: (input: {
-    readonly orderId: string;
-    readonly reservationHoldExpiresAt: Temporal.Instant;
-  }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
+  readonly enqueueCleanup: (
+    input: ReservationCancellationScheduleInput
+  ) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
 export const getReservationHoldCleanupScheduleMessage = (
@@ -95,7 +131,8 @@ export const getReservationHoldCleanupScheduleMessage = (
   return {
     topic: reservationHoldCleanupQueueTopic,
     payload: {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      reason: "hold_expired",
       orderId: input.orderId,
       reservationHoldExpiresAtIso,
     } satisfies ReservationHoldCleanupSchedulePayload,
@@ -107,13 +144,36 @@ export const getReservationHoldCleanupScheduleMessage = (
   };
 };
 
+export const getAttachmentCancellationScheduleMessage = (input: {
+  readonly orderId: string;
+  readonly dotyposReservationId: string;
+  readonly reservationCreatedAt: Temporal.Instant;
+}): ReservationHoldCleanupScheduleMessage => ({
+  topic: reservationHoldCleanupQueueTopic,
+  payload: {
+    schemaVersion: 2,
+    reason: "attachment_compensation",
+    orderId: input.orderId,
+    dotyposReservationId: input.dotyposReservationId,
+    reservationCreatedAtIso: input.reservationCreatedAt.toString(),
+  },
+  options: {
+    delaySeconds: 0,
+    retentionSeconds: attachmentCancellationRetentionSeconds,
+    idempotencyKey: `reservation-attachment-cancellation:${input.orderId}:${input.dotyposReservationId}`,
+  },
+});
+
 export function makeReservationHoldCleanupScheduleService(
   sendMessage: typeof send = send
 ): IReservationHoldCleanupScheduleService {
   return {
     enqueueCleanup: Effect.fn("reservationHoldCleanupSchedule.enqueueCleanup")(
       function* (input) {
-        const message = getReservationHoldCleanupScheduleMessage(input);
+        const message =
+          input.reason === "hold_expired"
+            ? getReservationHoldCleanupScheduleMessage(input)
+            : getAttachmentCancellationScheduleMessage(input);
         yield* Effect.logInfo("Reservation hold cleanup enqueue started", {
           message,
         });
@@ -176,6 +236,7 @@ export const enqueueReservationHoldCleanup = Effect.fn(
   const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
   const enqueue = cleanupSchedule
     .enqueueCleanup({
+      reason: "hold_expired",
       orderId: input.orderId,
       reservationHoldExpiresAt: input.reservationHoldExpiresAt,
     })
@@ -209,20 +270,51 @@ export const enqueueAttachmentCancellationCompensation = Effect.fn(
   readonly orderId: string;
   readonly dotyposReservationId: string;
   readonly reservationCreatedAt: Temporal.Instant;
-  readonly cancellationRequiredAt: Temporal.Instant;
 }) {
   const reservations = yield* WorkspaceReservationRepository;
-  yield* reservations.markAttachFailedCancellationRequired({
-    id: input.orderId,
-    dotyposReservationId: input.dotyposReservationId,
-    reservationCreatedAt: input.reservationCreatedAt,
-    reservationHoldExpiresAt: input.cancellationRequiredAt,
-    failureCode: "attach_failed_cancellation_required",
-  });
-  yield* enqueueReservationHoldCleanup({
-    orderId: input.orderId,
-    reservationHoldExpiresAt: input.cancellationRequiredAt,
-  });
+  const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
+  const [marker, enqueue] = yield* Effect.all(
+    [
+      reservations
+        .recordAttachmentCancellationHandoff({
+          id: input.orderId,
+          dotyposReservationId: input.dotyposReservationId,
+          reservationCreatedAt: input.reservationCreatedAt,
+          failureCode: "attach_failed_cancellation_required",
+        })
+        .pipe(Effect.result),
+      cleanupSchedule
+        .enqueueCleanup({
+          reason: "attachment_compensation",
+          orderId: input.orderId,
+          dotyposReservationId: input.dotyposReservationId,
+          reservationCreatedAt: input.reservationCreatedAt,
+        })
+        .pipe(Effect.result),
+    ],
+    { concurrency: "inherit" }
+  );
+
+  if (marker._tag === "Failure") {
+    yield* Effect.logError(
+      "Workspace reservation attachment compensation marker failed",
+      { orderId: input.orderId, cause: marker.failure }
+    );
+  }
+  if (enqueue._tag === "Failure") {
+    yield* Effect.logError(
+      "Workspace reservation attachment compensation enqueue failed",
+      { orderId: input.orderId, cause: enqueue.failure }
+    );
+  }
+
+  const markerPersisted = marker._tag === "Success" && marker.success !== null;
+  if (!(markerPersisted || enqueue._tag === "Success")) {
+    return yield* new AttachmentCancellationHandoffError({
+      message:
+        "Reservation attachment cancellation identity could not be handed off.",
+    });
+  }
 });
 
 const decodeSchedulePayload = Schema.decodeUnknownOption(
@@ -253,12 +345,53 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
     return "ignored" as const;
   }
 
+  const reservations = yield* WorkspaceReservationRepository;
+  const cleanup = yield* ReservationHoldCleanupService;
+
+  if (
+    payload.schemaVersion === 2 &&
+    payload.reason === "attachment_compensation"
+  ) {
+    const handoff = yield* reservations
+      .recordAttachmentCancellationHandoff({
+        id: payload.orderId,
+        dotyposReservationId: payload.dotyposReservationId,
+        reservationCreatedAt: Temporal.Instant.from(
+          payload.reservationCreatedAtIso
+        ),
+        failureCode: "attach_failed_cancellation_required",
+      })
+      .pipe(
+        Effect.mapError(
+          ReservationHoldCleanupScheduleError.fromError(
+            "Queued attachment cancellation identity could not be recorded."
+          )
+        )
+      );
+    if (!handoff) {
+      yield* Effect.logInfo(
+        "Attachment cancellation queue message ignored: reservation state changed",
+        { orderId: payload.orderId }
+      );
+      return "ignored" as const;
+    }
+    return yield* cleanup
+      .cancelOrderHold({
+        orderId: payload.orderId,
+        recoveryReason: "attachment_compensation",
+      })
+      .pipe(
+        Effect.mapError(
+          ReservationHoldCleanupScheduleError.fromError(
+            "Queued attachment cancellation failed."
+          )
+        )
+      );
+  }
+
   const reservationHoldExpiresAt = Temporal.Instant.from(
     payload.reservationHoldExpiresAtIso
   );
-
-  const reservations = yield* WorkspaceReservationRepository;
-  const cleanup = yield* ReservationHoldCleanupService;
   const reservation = yield* reservations
     .findById(payload.orderId)
     .pipe(
@@ -278,7 +411,11 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   }
 
   const outcome = yield* cleanup
-    .cancelOrderHold({ orderId: payload.orderId, holdExpiredAt: now })
+    .cancelOrderHold({
+      orderId: payload.orderId,
+      recoveryReason: "hold_expired",
+      holdExpiredAt: now,
+    })
     .pipe(
       Effect.mapError(
         ReservationHoldCleanupScheduleError.fromError(

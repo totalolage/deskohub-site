@@ -38,6 +38,7 @@ const createReservationsTable = sql.raw(`
     cancellation_claimed_at timestamptz,
     cancellation_failure_disposition text,
     cancellation_retry_at timestamptz,
+    cancellation_recovery_reason text,
     paid_at timestamptz,
     fulfilled_at timestamptz,
     fulfillment_failed_at timestamptz,
@@ -120,8 +121,16 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
 
         const claims = yield* Effect.all(
           [
-            repository.claimCancellation({ id: "owned", ownerId: "worker-a" }),
-            repository.claimCancellation({ id: "owned", ownerId: "worker-b" }),
+            repository.claimCancellation({
+              id: "owned",
+              ownerId: "worker-a",
+              recoveryReason: "retryable_failure",
+            }),
+            repository.claimCancellation({
+              id: "owned",
+              ownerId: "worker-b",
+              recoveryReason: "retryable_failure",
+            }),
           ],
           { concurrency: "unbounded" }
         );
@@ -149,6 +158,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           yield* repository.claimCancellation({
             id: "lost",
             ownerId: "worker-a",
+            recoveryReason: "retryable_failure",
           })
         ).not.toBeNull();
 
@@ -164,12 +174,14 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           yield* repository.renewCancellationClaim({
             id: "lost",
             ownerId: "worker-a",
+            recoveryReason: "retryable_failure",
           })
         ).toBeNull();
         const error = yield* Effect.flip(
           repository.markCancelled({
             id: "lost",
             ownerId: "worker-a",
+            recoveryReason: "retryable_failure",
             cancelledAt: instant("2026-07-23T10:01:00Z"),
           })
         );
@@ -230,18 +242,21 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           yield* repository.claimCancellation({
             id: "fresh",
             ownerId: "new-owner",
+            recoveryReason: "stale_claim_recovery",
           })
         ).toBeNull();
         expect(
           yield* repository.claimCancellation({
             id: "boundary",
             ownerId: "new-owner",
+            recoveryReason: "stale_claim_recovery",
           })
         ).not.toBeNull();
         expect(
           yield* repository.claimCancellation({
             id: "legacy-ownerless",
             ownerId: "new-owner",
+            recoveryReason: "stale_claim_recovery",
           })
         ).not.toBeNull();
       })
@@ -275,6 +290,8 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           yield* repository.claimCancellation({
             id: candidate.id,
             ownerId: "cleanup-worker",
+            recoveryReason: "hold_expired",
+            holdExpiredAt: instant("2026-07-23T11:00:00Z"),
           })
         ).toBeNull();
       })
@@ -376,13 +393,18 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           })
         );
 
-        yield* repository.markAttachFailedCancellationRequired({
+        const handoff = {
           id: "attachment",
           dotyposReservationId: "provider-attachment",
           reservationCreatedAt: instant("2026-07-23T09:00:00Z"),
-          reservationHoldExpiresAt: expiredAt,
           failureCode: "attach_failed",
-        });
+        };
+        expect(
+          yield* repository.recordAttachmentCancellationHandoff(handoff)
+        ).not.toBeNull();
+        expect(
+          yield* repository.recordAttachmentCancellationHandoff(handoff)
+        ).not.toBeNull();
 
         const [stored] = yield* db
           .select()
@@ -397,15 +419,134 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
             )
           );
         expect(stored?.cancellationRetryAt).not.toBeNull();
-        expect(
-          yield* repository.claimCancellation({
-            id: "attachment",
-            ownerId: "compensation-worker",
-          })
-        ).toMatchObject({
+        expect(stored?.cancellationRecoveryReason).toBe(
+          "attachment_compensation"
+        );
+        expect(stored?.reservationHoldExpiresAt).toBeNull();
+        expect(stored?.reservationHoldExpiredAt).toBeNull();
+        const claimed = yield* repository.claimCancellation({
+          id: "attachment",
+          ownerId: "compensation-worker",
+          recoveryReason: "attachment_compensation",
+        });
+        expect(claimed).toMatchObject({
           reservationState: "cancelling",
           cancellationClaimOwner: "compensation-worker",
         });
+        expect(
+          yield* repository.recordAttachmentCancellationHandoff(handoff)
+        ).toBeNull();
+        const [owned] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, "attachment"));
+        expect(owned?.cancellationClaimOwner).toBe("compensation-worker");
+      })
+    );
+  });
+
+  test("persists recovery reasons while only genuine expiry records an audit timestamp", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        yield* db.insert(workspaceReservations).values([
+          reservationRow("expired-audit"),
+          reservationRow("retry-audit", {
+            reservationState: "cancellation_failed",
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "retryable_failure",
+          }),
+          reservationRow("supersession-audit", {
+            reservationState: "cancellation_failed",
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "supersession_recovery",
+          }),
+          reservationRow("stale-audit", {
+            reservationState: "cancelling",
+            cancellationClaimOwner: "old-owner",
+            cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+          }),
+        ]);
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            cancellationClaimedAt: sql`now() - interval '5 minutes'`,
+          })
+          .where(eq(workspaceReservations.id, "stale-audit"));
+
+        const holdExpiredAt = instant("2026-07-23T11:00:00Z");
+        expect(
+          yield* repository.claimCancellation({
+            id: "expired-audit",
+            ownerId: "expiry-worker",
+            recoveryReason: "hold_expired",
+            holdExpiredAt,
+          })
+        ).not.toBeNull();
+        expect(
+          yield* repository.claimCancellation({
+            id: "retry-audit",
+            ownerId: "retry-worker",
+            recoveryReason: "retryable_failure",
+          })
+        ).not.toBeNull();
+        expect(
+          yield* repository.claimCancellation({
+            id: "supersession-audit",
+            ownerId: "supersession-worker",
+            recoveryReason: "supersession_recovery",
+          })
+        ).not.toBeNull();
+        expect(
+          yield* repository.claimCancellation({
+            id: "stale-audit",
+            ownerId: "stale-worker",
+            recoveryReason: "stale_claim_recovery",
+          })
+        ).not.toBeNull();
+
+        const rows = yield* db
+          .select({
+            id: workspaceReservations.id,
+            cancellationRecoveryReason:
+              workspaceReservations.cancellationRecoveryReason,
+            reservationHoldExpiredAt:
+              workspaceReservations.reservationHoldExpiredAt,
+          })
+          .from(workspaceReservations)
+          .orderBy(workspaceReservations.id);
+        expect(
+          rows.map((row) => ({
+            id: row.id,
+            reason: row.cancellationRecoveryReason,
+            expired: row.reservationHoldExpiredAt?.toString() ?? null,
+          }))
+        ).toEqual([
+          {
+            id: "expired-audit",
+            reason: "hold_expired",
+            expired: holdExpiredAt.toString(),
+          },
+          {
+            id: "retry-audit",
+            reason: "retryable_failure",
+            expired: null,
+          },
+          {
+            id: "stale-audit",
+            reason: "stale_claim_recovery",
+            expired: null,
+          },
+          {
+            id: "supersession-audit",
+            reason: "supersession_recovery",
+            expired: null,
+          },
+        ]);
       })
     );
   });
