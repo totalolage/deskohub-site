@@ -8,7 +8,7 @@ import {
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
+import { checkoutDetailsSchema } from "@/features/checkout/schemas/checkout-details";
 import {
   type DiscountQuote,
   discountIdSchema,
@@ -22,7 +22,7 @@ const document = {
 
 const strictParseOptions = { onExcessProperty: "error" } as const;
 const decodeCheckoutDetails = Schema.decodeUnknownSync(
-  checkoutDetailsJsonSchema,
+  checkoutDetailsSchema,
   strictParseOptions
 );
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(

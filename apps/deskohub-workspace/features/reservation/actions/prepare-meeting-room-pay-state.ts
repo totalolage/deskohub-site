@@ -12,7 +12,7 @@ import {
   getMeetingRoomCheckoutSummary,
   type MeetingRoomReservationQuote,
 } from "@/features/checkout/reservation-quote-meeting-room";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
@@ -108,8 +108,8 @@ export const ensureMeetingRoomPayStateAvailable = (input: {
 export const getPreparedMeetingRoomCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly prepared: PreparedMeetingRoomPayState;
-  readonly legalEvidence: CheckoutDetailsJson["legal"];
-}): CheckoutDetailsJson =>
+  readonly legalEvidence: CheckoutDetails["legal"];
+}): CheckoutDetails =>
   getMeetingRoomCheckoutDetails({
     locale: input.locale,
     reservation: input.prepared.reservation,

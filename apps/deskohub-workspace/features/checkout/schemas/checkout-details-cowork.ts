@@ -10,22 +10,21 @@ import {
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 
-export const coworkCheckoutDetailsJsonSchema = makeCheckoutDetailsSchema({
+export const coworkCheckoutDetailsSchema = makeCheckoutDetailsSchema({
   reservation: coworkReservationDetailsSchema,
   paymentFields: {
     summary: checkoutSummarySchema,
   },
 });
 
-export type CoworkCheckoutDetailsJson =
-  typeof coworkCheckoutDetailsJsonSchema.Type;
+export type CoworkCheckoutDetails = typeof coworkCheckoutDetailsSchema.Type;
 
 export const getCoworkCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: CoworkReservationQuote;
-  readonly legalEvidence: CoworkCheckoutDetailsJson["legal"];
-}): CoworkCheckoutDetailsJson => ({
+  readonly legalEvidence: CoworkCheckoutDetails["legal"];
+}): CoworkCheckoutDetails => ({
   locale: input.locale,
   reservation: getCoworkReservationDetails(input.reservation),
   payment: {

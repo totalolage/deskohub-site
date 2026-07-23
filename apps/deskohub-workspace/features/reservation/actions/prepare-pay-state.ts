@@ -45,7 +45,7 @@ import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -176,8 +176,8 @@ type PreparedPayState = PreparedCoworkPayState | PreparedMeetingRoomPayState;
 const getReservationCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly prepared: PreparedPayState;
-  readonly legalEvidence: CheckoutDetailsJson["legal"];
-}): CheckoutDetailsJson =>
+  readonly legalEvidence: CheckoutDetails["legal"];
+}): CheckoutDetails =>
   Match.value(input.prepared).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: (prepared) =>

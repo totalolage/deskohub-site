@@ -10,7 +10,7 @@ import {
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
@@ -32,7 +32,7 @@ import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;
   readonly dotyposCustomerId: string;
-  readonly checkoutDetails: CheckoutDetailsJson;
+  readonly checkoutDetails: CheckoutDetails;
   readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
 }

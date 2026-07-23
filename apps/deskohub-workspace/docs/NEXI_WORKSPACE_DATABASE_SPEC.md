@@ -271,7 +271,7 @@ create index webhook_events_status_received_idx
 Required shape:
 
 ```ts
-type CheckoutDetailsJson = {
+type CheckoutDetails = {
   schema: "workspace-checkout-details";
   schemaVersion: 1;
 
@@ -414,7 +414,7 @@ interface PaymentOrderRepository {
     id: string;
     dotyposCustomerId: string;
     correlationId: string;
-    checkoutDetails: CheckoutDetailsJson;
+    checkoutDetails: CheckoutDetails;
   }): Promise<PaymentOrder>;
 
   attachNexiSession(input: {
@@ -545,7 +545,7 @@ The initial database implementation does not need to provide:
 - Add constraints for allowed provider/status values.
 - Add recovery and lookup indexes.
 - Implement repository methods as state transitions rather than generic writes.
-- Validate `CheckoutDetailsJson` before insert and before fulfillment.
+- Validate `CheckoutDetails` before insert and before fulfillment.
 - Ensure checkout creation stores Dotypos customer ID but not customer PII.
 - Ensure Nexi webhook handling compares notification `securityToken` against the stored order token when present, and always verifies the final outcome through Nexi `GET /orders/{orderId}` before applying payment state.
 - Ensure Dotypos reservation creation happens only after `payment_status = 'paid'`.

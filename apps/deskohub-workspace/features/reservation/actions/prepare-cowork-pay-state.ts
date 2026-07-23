@@ -9,7 +9,7 @@ import type {
   CoworkReservationQuote,
 } from "@/features/checkout/checkout-quote";
 import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
@@ -107,8 +107,8 @@ export const ensureCoworkPayStateAvailable = (input: {
 export const getPreparedCoworkCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly prepared: PreparedCoworkPayState;
-  readonly legalEvidence: CheckoutDetailsJson["legal"];
-}): CheckoutDetailsJson =>
+  readonly legalEvidence: CheckoutDetails["legal"];
+}): CheckoutDetails =>
   getCoworkCheckoutDetails({
     locale: input.locale,
     reservation: input.prepared.reservation,

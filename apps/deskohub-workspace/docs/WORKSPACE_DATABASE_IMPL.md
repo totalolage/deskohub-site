@@ -86,7 +86,7 @@ Recommended indexes:
 
 checkout_details must conform to a strict JSON schema summarised below:
 
-type CheckoutDetailsJson = {
+type CheckoutDetails = {
   schema: "workspace-checkout-details";
   schemaVersion: 1;
   locale: "cs-CZ" | "en-US";
@@ -250,7 +250,7 @@ export class PaymentOrderRepository extends Context.Tag(
     id: string;
     dotyposCustomerId: string;
     correlationId: string;
-    checkoutDetails: CheckoutDetailsJson;
+    checkoutDetails: CheckoutDetails;
   }) => Effect.Effect<never, Error, PaymentOrder>;
   markPaymentPending: (id: string) => Effect.Effect<never, Error, void>;
   markPaid: (input: {

@@ -1,6 +1,6 @@
 import { Match, Schema } from "effect";
-import { coworkCheckoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details-cowork";
-import { meetingRoomCheckoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details-meeting-room";
+import { coworkCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-cowork";
+import { meetingRoomCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import {
   coworkReservationDetailsSchema,
   getCoworkReservationDetails,
@@ -32,12 +32,12 @@ export const getCheckoutReservationDetails = (
     })
   );
 
-export const checkoutDetailsJsonSchema = Schema.Union([
-  coworkCheckoutDetailsJsonSchema,
-  meetingRoomCheckoutDetailsJsonSchema,
+export const checkoutDetailsSchema = Schema.Union([
+  coworkCheckoutDetailsSchema,
+  meetingRoomCheckoutDetailsSchema,
 ]).annotate({
   identifier: "CheckoutDetails",
   description: "Transient PII-free checkout provider snapshot.",
 });
 
-export type CheckoutDetailsJson = typeof checkoutDetailsJsonSchema.Type;
+export type CheckoutDetails = typeof checkoutDetailsSchema.Type;

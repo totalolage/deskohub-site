@@ -11,22 +11,22 @@ import {
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 
-export const meetingRoomCheckoutDetailsJsonSchema = makeCheckoutDetailsSchema({
+export const meetingRoomCheckoutDetailsSchema = makeCheckoutDetailsSchema({
   reservation: meetingRoomReservationDetailsSchema,
   paymentFields: {
     items: Schema.Array(meetingRoomReservationQuoteItemSchema),
   },
 });
 
-export type MeetingRoomCheckoutDetailsJson =
-  typeof meetingRoomCheckoutDetailsJsonSchema.Type;
+export type MeetingRoomCheckoutDetails =
+  typeof meetingRoomCheckoutDetailsSchema.Type;
 
 export const getMeetingRoomCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly reservation: NormalizedMeetingRoomReservationOrder;
   readonly quote: MeetingRoomReservationQuote;
-  readonly legalEvidence: MeetingRoomCheckoutDetailsJson["legal"];
-}): MeetingRoomCheckoutDetailsJson => ({
+  readonly legalEvidence: MeetingRoomCheckoutDetails["legal"];
+}): MeetingRoomCheckoutDetails => ({
   locale: input.locale,
   reservation: getMeetingRoomReservationDetails(input.reservation),
   payment: {
