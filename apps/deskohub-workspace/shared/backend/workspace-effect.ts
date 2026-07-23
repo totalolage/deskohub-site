@@ -21,7 +21,10 @@ export const runWorkspaceEffect =
   (operation: string, options: RunWorkspaceEffectOptions = {}) =>
   <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
     workspaceRuntime.run(
-      effect.pipe(
+      (shouldScheduleTelemetryFlush(options.boundary)
+        ? Effect.andThen(scheduleWorkspaceTelemetryFlush(), effect)
+        : effect
+      ).pipe(
         Effect.annotateLogs({
           boundary: options.boundary ?? "run",
           operation,
@@ -29,6 +32,10 @@ export const runWorkspaceEffect =
       ),
       { signal: options.signal }
     );
+
+const shouldScheduleTelemetryFlush = (
+  boundary: WorkspaceEffectBoundary | undefined
+) => boundary === "action" || boundary === "route";
 
 export const defineWorkspaceTask =
   <Args extends readonly unknown[], A, E>(
@@ -71,7 +78,6 @@ const flushTelemetry = Effect.tryPromise({
   try: () => flushPostHogLogs(),
   catch: (cause) => cause,
 }).pipe(
-  Effect.timeout("5 seconds"),
   Effect.tapError((cause) =>
     Effect.logWarning("PostHog log flush failed", { cause })
   ),

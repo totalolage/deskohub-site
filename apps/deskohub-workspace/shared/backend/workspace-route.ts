@@ -1,9 +1,6 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
+import { runWorkspaceEffect } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 export type WorkspaceRouteCancellation =
@@ -42,10 +39,9 @@ export const defineWorkspaceRoute =
       Effect.catch(recoverWorkspaceRouteFailure),
       withWorkspaceRequestContext(request.headers)
     );
-    const effect = Effect.andThen(
-      scheduleWorkspaceTelemetryFlush(),
-      invocation
-    ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
+    const effect = invocation.pipe(
+      Effect.annotateLogs({ method: request.method.toUpperCase() })
+    );
     const signal =
       options.cancellation === "interrupt-on-disconnect"
         ? request.signal
@@ -56,14 +52,13 @@ export const defineWorkspaceRoute =
     );
   };
 
-export const mapWorkspaceInternalRouteFailure = (publicMessage: string) =>
-  function mapFailure(cause: unknown) {
-    return new WorkspaceRouteFailure({
+export const mapWorkspaceInternalRouteFailure =
+  (publicMessage: string) => (cause: unknown) =>
+    new WorkspaceRouteFailure({
       statusCode: 500,
       publicMessage,
       cause,
     });
-  };
 
 const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
   function* (failure: WorkspaceRouteFailure) {

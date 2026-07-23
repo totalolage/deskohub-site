@@ -18,10 +18,7 @@ import {
   PublicSafeActionError,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
+import { runWorkspaceEffect } from "./workspace-effect";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -117,7 +114,7 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     })
   );
 
-  return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation);
+  return invocation;
 };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(

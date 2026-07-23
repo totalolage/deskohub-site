@@ -4,7 +4,7 @@ import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
-  WorkspaceRouteFailure,
+  mapWorkspaceInternalRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import {
@@ -98,12 +98,9 @@ export const makeCheckoutPaymentReturnGet = (
       handleCheckoutPaymentReturn(request, context).pipe(
         Effect.provide(statusServiceLayer),
         Effect.mapError(
-          (cause) =>
-            new WorkspaceRouteFailure({
-              statusCode: 500,
-              publicMessage: "Checkout status could not be refreshed",
-              cause,
-            })
+          mapWorkspaceInternalRouteFailure(
+            "Checkout status could not be refreshed"
+          )
         )
       )
   );
