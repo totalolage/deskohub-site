@@ -26,6 +26,22 @@ The server evaluates flags through the app-owned `WorkspaceFeatureFlagService`, 
 
 The global fallback keeps release switches available on a visitor's first request. Targeted or percentage rollouts should account for the fact that a stable PostHog visitor identity is only available after consent and client initialization.
 
+### Deployment-scoped overrides
+
+Workspace can fix generated PostHog flag values for an isolated development or protected-preview deployment with one optional server environment variable:
+
+```env
+POSTHOG_FEATURE_FLAG_OVERRIDES={"discount_codes":true}
+```
+
+The value is decoded against the Workspace-owned generated contract. Unknown keys, malformed JSON, and values that do not match the generated flag type fail environment validation. Missing, empty, or `{}` configuration means no overrides.
+
+Overrides are deployment-scoped and may be configured only when `VERCEL_ENV` is `preview` or `development`. A non-empty production configuration fails environment validation instead of being ignored. This mechanism is for isolated development and protected-preview validation, not rollout management; it never modifies PostHog's stored flag definitions or rollout state.
+
+The process-scoped `posthog-node` client applies the fixed map once when its existing lazy singleton is created. Request-level overrides are forbidden: do not derive overrides from cookies, headers, URLs, visitor identity, or other request data, because mutating the shared Node client would affect unrelated requests.
+
+The server layout serializes the same decoded typed map to the consent-aware analytics boundary. After analytics consent initializes `posthog-js`, the browser replaces its complete override map so hydrated hooks agree with server-rendered fallback values. When configuration is absent, the browser explicitly clears persisted overrides. PostHog is not initialized merely to apply an override before analytics consent.
+
 ## Boardgame Bar Static Flags
 
 ## Source of Truth

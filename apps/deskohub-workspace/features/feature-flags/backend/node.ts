@@ -12,6 +12,7 @@ export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
       host: postHogRuntimeConfig.host,
     },
     defaultEvaluationOptions: { disableGeoip: true },
+    featureFlagOverrides: postHogRuntimeConfig.featureFlagOverrides,
     projectToken: postHogRuntimeConfig.projectToken,
   }
 );

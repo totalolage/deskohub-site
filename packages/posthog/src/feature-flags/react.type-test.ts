@@ -18,6 +18,40 @@ const barContract = definePostHogFeatureFlags<{
 const workspaceFlags = createPostHogReactFeatureFlags(workspaceContract);
 const barFlags = createPostHogReactFeatureFlags(barContract);
 
+const postHogFeatureFlags = {
+  overrideFeatureFlags: (
+    _overrides:
+      | false
+      | {
+          readonly flags: Readonly<Record<string, boolean | string>>;
+        }
+  ) => {},
+};
+
+workspaceFlags.applyFeatureFlagOverrides({ featureFlags: postHogFeatureFlags }, {
+  meeting_room_page: false,
+});
+barFlags.applyFeatureFlagOverrides(
+  { featureFlags: postHogFeatureFlags },
+  { seasonal_menu: "summer" }
+);
+
+workspaceFlags.applyFeatureFlagOverrides(
+  { featureFlags: postHogFeatureFlags },
+  // @ts-expect-error Workspace cannot override a Bar feature flag.
+  { seasonal_menu: true }
+);
+workspaceFlags.applyFeatureFlagOverrides(
+  { featureFlags: postHogFeatureFlags },
+  // @ts-expect-error Boolean flags reject variant values.
+  { meeting_room_page: "summer" }
+);
+barFlags.applyFeatureFlagOverrides(
+  { featureFlags: postHogFeatureFlags },
+  // @ts-expect-error Variant flags reject unknown variants.
+  { seasonal_menu: "winter" }
+);
+
 function FeatureFlagTypeTest() {
   const enabled: boolean = workspaceFlags.useFeatureFlagEnabled(
     "meeting_room_page",

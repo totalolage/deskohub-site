@@ -10,6 +10,7 @@ import type {
   PostHogFeatureFlagContract,
   PostHogFeatureFlagDefinitionContract,
   PostHogFeatureFlagKey,
+  PostHogFeatureFlagOverrides,
   PostHogFeatureFlagPayload,
   PostHogFeatureFlagValue,
 } from "./contract";
@@ -18,9 +19,10 @@ type ValidDefinitions<Definitions> = {
   readonly [Key in keyof Definitions]: PostHogFeatureFlagDefinitionContract;
 };
 
-export interface PostHogNodeFeatureFlagServiceConfig {
+export interface PostHogNodeFeatureFlagServiceConfig<Definitions> {
   readonly clientOptions?: PostHogOptions;
   readonly defaultEvaluationOptions?: Omit<AllFlagsOptions, "flagKeys">;
+  readonly featureFlagOverrides?: PostHogFeatureFlagOverrides<Definitions>;
   readonly projectToken?: string;
 }
 
@@ -33,7 +35,7 @@ export const makePostHogNodeFeatureFlagService = <
   const Definitions extends ValidDefinitions<Definitions>,
 >(
   contract: PostHogFeatureFlagContract<Definitions>,
-  config: PostHogNodeFeatureFlagServiceConfig
+  config: PostHogNodeFeatureFlagServiceConfig<Definitions>
 ) => {
   let client: PostHog | undefined;
 
@@ -266,7 +268,11 @@ const evaluatePostHogFeatureFlagsWithoutEvents = Effect.fn(
 );
 
 const createPostHogClient = Effect.fn("PostHogNodeFeatureFlags.createClient")(
-  ({ config }: { readonly config: PostHogNodeFeatureFlagServiceConfig }) => {
+  <Definitions>({
+    config,
+  }: {
+    readonly config: PostHogNodeFeatureFlagServiceConfig<Definitions>;
+  }) => {
     const { projectToken } = config;
     if (!projectToken) {
       const cause = new Error("PostHog project token is not configured.");
@@ -279,7 +285,13 @@ const createPostHogClient = Effect.fn("PostHogNodeFeatureFlags.createClient")(
     }
 
     return Effect.try({
-      try: () => new PostHog(projectToken, config.clientOptions),
+      try: () => {
+        const client = new PostHog(projectToken, config.clientOptions);
+        if (config.featureFlagOverrides !== undefined) {
+          client.overrideFeatureFlags(config.featureFlagOverrides);
+        }
+        return client;
+      },
       catch: (cause) =>
         new PostHogFeatureFlagEvaluationError({
           message: "Could not initialize the PostHog feature flag client.",

@@ -1,9 +1,12 @@
 "use client";
 
+import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { PostHogProvider } from "@posthog/react";
 import posthog, { type BeforeSendFn } from "posthog-js";
 import { type ReactNode, useEffect } from "react";
 import { env } from "@/env";
+import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
+import { applyFeatureFlagOverrides } from "@/features/feature-flags/react";
 import {
   createPostHogSessionClearCookieStrings,
   createPostHogSessionCookieStrings,
@@ -33,12 +36,14 @@ function sanitizePostHogEvent(
 type PostHogAnalyticsProps = {
   analyticsAccepted: boolean;
   children: ReactNode;
+  featureFlagOverrides?: PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
   posthogEnvironment: string;
 };
 
 export function PostHogAnalytics({
   analyticsAccepted,
   children,
+  featureFlagOverrides,
   posthogEnvironment,
 }: PostHogAnalyticsProps) {
   const posthogProjectToken = env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
@@ -48,6 +53,7 @@ export function PostHogAnalytics({
       {posthogProjectToken && (
         <PostHogClient
           analyticsAccepted={analyticsAccepted}
+          featureFlagOverrides={featureFlagOverrides}
           posthogEnvironment={posthogEnvironment}
           posthogHost={env.NEXT_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST}
           posthogProjectToken={posthogProjectToken}
@@ -60,6 +66,7 @@ export function PostHogAnalytics({
 
 type PostHogClientProps = {
   analyticsAccepted: boolean;
+  featureFlagOverrides?: PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
   posthogEnvironment: string;
   posthogHost: string;
   posthogProjectToken: string;
@@ -67,6 +74,7 @@ type PostHogClientProps = {
 
 function PostHogClient({
   analyticsAccepted,
+  featureFlagOverrides,
   posthogEnvironment,
   posthogHost,
   posthogProjectToken,
@@ -117,9 +125,16 @@ function PostHogClient({
       posthog.set_config({ tracing_headers: [window.location.hostname] });
     }
 
+    applyFeatureFlagOverrides(posthog, featureFlagOverrides);
     posthog.opt_in_capturing();
     posthog.startSessionRecording();
-  }, [analyticsAccepted, posthogEnvironment, posthogHost, posthogProjectToken]);
+  }, [
+    analyticsAccepted,
+    featureFlagOverrides,
+    posthogEnvironment,
+    posthogHost,
+    posthogProjectToken,
+  ]);
 
   useEffect(() => {
     if (!analyticsAccepted) {

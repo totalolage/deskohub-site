@@ -26,6 +26,13 @@ export type PostHogFeatureFlagValue<
   Key extends PostHogFeatureFlagKey<Definitions>,
 > = Definitions[Key] extends { readonly value: infer Value } ? Value : never;
 
+export type PostHogFeatureFlagOverrides<Definitions> = Readonly<{
+  [Key in PostHogFeatureFlagKey<Definitions>]?: PostHogFeatureFlagValue<
+    Definitions,
+    Key
+  >;
+}>;
+
 export type PostHogFeatureFlagPayload<
   Definitions,
   Key extends PostHogFeatureFlagKey<Definitions>,
