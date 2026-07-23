@@ -64,7 +64,10 @@ export default async function LocaleLayout({
       )}
       <body>
         <CookieConsentProvider locale={locale} />
-        <ConsentAwareAnalytics posthogEnvironment={env.VERCEL_ENV}>
+        <ConsentAwareAnalytics
+          featureFlagOverrides={env.POSTHOG_FEATURE_FLAG_OVERRIDES}
+          posthogEnvironment={env.VERCEL_ENV}
+        >
           <QueryProvider>{children}</QueryProvider>
         </ConsentAwareAnalytics>
       </body>

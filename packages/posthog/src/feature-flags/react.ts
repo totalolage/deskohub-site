@@ -11,6 +11,7 @@ import type {
   PostHogFeatureFlagContract,
   PostHogFeatureFlagDefinitionContract,
   PostHogFeatureFlagKey,
+  PostHogFeatureFlagOverrides,
   PostHogFeatureFlagPayload,
   PostHogFeatureFlagValue,
 } from "./contract";
@@ -18,6 +19,18 @@ import type {
 type ValidDefinitions<Definitions> = {
   readonly [Key in keyof Definitions]: PostHogFeatureFlagDefinitionContract;
 };
+
+interface PostHogFeatureFlagOverrideClient<Definitions> {
+  readonly featureFlags: {
+    readonly overrideFeatureFlags: (
+      overrides:
+        | false
+        | {
+            readonly flags: PostHogFeatureFlagOverrides<Definitions>;
+          }
+    ) => void;
+  };
+}
 
 export type TypedPostHogFeatureFlagResult<
   Definitions,
@@ -76,7 +89,21 @@ export const createPostHogReactFeatureFlags = <
     >;
   }
 
+  const applyFeatureFlagOverrides = (
+    client: PostHogFeatureFlagOverrideClient<Definitions>,
+    overrides?: PostHogFeatureFlagOverrides<Definitions>
+  ) => {
+    client.featureFlags.overrideFeatureFlags(
+      overrides === undefined
+        ? false
+        : {
+            flags: overrides,
+          }
+    );
+  };
+
   return {
+    applyFeatureFlagOverrides,
     useFeatureFlagEnabled,
     useFeatureFlagPayload,
     useFeatureFlagResult,

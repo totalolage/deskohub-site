@@ -5,6 +5,27 @@ import {
   workspaceServerEnvSchema,
 } from "./env.schema";
 
+const validateFeatureFlagOverrideEnvironment = (
+  vercelEnvironment: "production" | "preview"
+) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'const { env } = await import("./env.ts"); if (env.POSTHOG_FEATURE_FLAG_OVERRIDES?.discount_codes !== true) process.exit(2);',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      POSTHOG_FEATURE_FLAG_OVERRIDES: '{"discount_codes":true}',
+      VERCEL_ENV: vercelEnvironment,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -54,5 +75,19 @@ describe("workspace environment schemas", () => {
     expect(decodeVercelEnvironment("preview")).toBe("preview");
     expect(decodeVercelEnvironment("production")).toBe("production");
     expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
+
+  test("retains server cross-field checks through T3 Env composition", () => {
+    const previewValidation = validateFeatureFlagOverrideEnvironment("preview");
+    const productionValidation =
+      validateFeatureFlagOverrideEnvironment("production");
+    const productionError = productionValidation.stderr.toString();
+
+    expect(previewValidation.exitCode).toBe(0);
+    expect(productionValidation.exitCode).toBe(1);
+    expect(productionError).toContain(
+      "Invalid PostHog feature flag override configuration."
+    );
+    expect(productionError).not.toContain('{"discount_codes":true}');
   });
 });

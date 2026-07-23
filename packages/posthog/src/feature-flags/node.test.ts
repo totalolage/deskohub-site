@@ -31,14 +31,67 @@ const getFeatureFlagResult = mock(
 );
 const shutdown = mock(() => Promise.resolve());
 const createClient = mock((_projectToken: string, _options: unknown) => {});
+const overrideFeatureFlags = mock((_overrides: unknown) => {});
 
 mock.module("posthog-node", () => ({
   PostHog: function PostHog(projectToken: string, options: unknown) {
     createClient(projectToken, options);
+    let overrides: Readonly<Record<string, boolean | string>> = {};
+
     return {
-      evaluateFlags,
-      getAllFlagsAndPayloads,
-      getFeatureFlagResult,
+      evaluateFlags: async (distinctId: string, evaluationOptions?: unknown) => {
+        const snapshot = await evaluateFlags(distinctId, evaluationOptions);
+        return {
+          ...snapshot,
+          getFlag: (key: string) =>
+            key in overrides ? overrides[key] : snapshot.getFlag(),
+          isEnabled: (key: string) =>
+            key in overrides
+              ? overrides[key] !== false
+              : snapshot.isEnabled(),
+        };
+      },
+      getAllFlagsAndPayloads: async (
+        distinctId: string,
+        evaluationOptions?: unknown
+      ) => {
+        const snapshot = await getAllFlagsAndPayloads(
+          distinctId,
+          evaluationOptions
+        );
+        return {
+          ...snapshot,
+          featureFlags: {
+            ...snapshot.featureFlags,
+            ...overrides,
+          },
+        };
+      },
+      getFeatureFlagResult: async (
+        key: string,
+        distinctId: string,
+        evaluationOptions?: unknown
+      ) => {
+        const result = await getFeatureFlagResult(
+          key,
+          distinctId,
+          evaluationOptions
+        );
+        const value = overrides[key];
+        return value === undefined
+          ? result
+          : {
+              ...result,
+              enabled: value !== false,
+              variant: typeof value === "string" ? value : undefined,
+            };
+      },
+      overrideFeatureFlags: (
+        configuredOverrides: Readonly<Record<string, boolean | string>>
+      ) => {
+        overrideFeatureFlags(configuredOverrides);
+        overrides = configuredOverrides;
+      },
       shutdown,
     };
   },
@@ -186,6 +239,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     getAllFlagsAndPayloads.mockClear();
     getFeatureFlagResult.mockClear();
     shutdown.mockClear();
+    overrideFeatureFlags.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
       clientOptions: {
         featureFlagsRequestTimeoutMs: 2_000,
@@ -196,6 +250,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     });
 
     expect(createClient).not.toHaveBeenCalled();
+    expect(overrideFeatureFlags).not.toHaveBeenCalled();
 
     const firstEvaluation = await Effect.runPromise(
       featureFlags.isEnabled({
@@ -219,6 +274,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(firstEvaluation).toBeTrue();
     expect(secondEvaluation).toBeTrue();
     expect(createClient).toHaveBeenCalledTimes(1);
+    expect(overrideFeatureFlags).not.toHaveBeenCalled();
     expect(createClient).toHaveBeenCalledWith("phc_test", {
       featureFlagsRequestTimeoutMs: 2_000,
       host: "https://posthog.example",
@@ -246,6 +302,93 @@ describe("makePostHogNodeFeatureFlagService", () => {
     await Effect.runPromise(featureFlags.shutdown);
 
     expect(shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  test("applies fixed overrides once when the lazy SDK client is created", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    createClient.mockClear();
+    evaluateFlags.mockClear();
+    getFeatureFlagResult.mockClear();
+    overrideFeatureFlags.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      featureFlagOverrides: {
+        meeting_room_page: false,
+        room_experience: "treatment",
+      },
+      projectToken: "phc_test",
+    });
+
+    expect(createClient).not.toHaveBeenCalled();
+    expect(overrideFeatureFlags).not.toHaveBeenCalled();
+
+    const snapshot = await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        subject: {
+          distinctId: "visitor-id",
+          sendFeatureFlagEvents: true,
+        },
+      })
+    );
+    const nonRecordingSnapshot = await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        subject: {
+          distinctId: "global-release",
+          sendFeatureFlagEvents: false,
+        },
+      })
+    );
+    const enabled = await Effect.runPromise(
+      featureFlags.isEnabled({
+        key: "meeting_room_page",
+        subject: {
+          distinctId: "another-visitor-id",
+          sendFeatureFlagEvents: false,
+        },
+      })
+    );
+
+    expect(snapshot.getFlag("meeting_room_page")).toBeFalse();
+    expect(snapshot.getFlag("room_experience")).toBe("treatment");
+    expect(snapshot.isEnabled("meeting_room_page")).toBeFalse();
+    expect(nonRecordingSnapshot.getFlag("meeting_room_page")).toBeFalse();
+    expect(nonRecordingSnapshot.getFlag("room_experience")).toBe(
+      "treatment"
+    );
+    expect(enabled).toBeFalse();
+    expect(createClient).toHaveBeenCalledTimes(1);
+    expect(overrideFeatureFlags).toHaveBeenCalledTimes(1);
+    expect(overrideFeatureFlags).toHaveBeenCalledWith({
+      meeting_room_page: false,
+      room_experience: "treatment",
+    });
+
+    await Effect.runPromise(featureFlags.shutdown);
+  });
+
+  test("preserves explicit true overrides", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    overrideFeatureFlags.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      featureFlagOverrides: { meeting_room_page: true },
+      projectToken: "phc_test",
+    });
+
+    const enabled = await Effect.runPromise(
+      featureFlags.isEnabled({
+        key: "meeting_room_page",
+        subject: {
+          distinctId: "visitor-id",
+          sendFeatureFlagEvents: false,
+        },
+      })
+    );
+
+    expect(enabled).toBeTrue();
+    expect(overrideFeatureFlags).toHaveBeenCalledWith({
+      meeting_room_page: true,
+    });
+
+    await Effect.runPromise(featureFlags.shutdown);
   });
 
   test("reports missing runtime configuration through the Effect error channel", async () => {

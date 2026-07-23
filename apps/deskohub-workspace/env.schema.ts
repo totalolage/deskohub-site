@@ -1,4 +1,9 @@
 import { Effect, Schema } from "effect";
+import {
+  postHogFeatureFlagOverridesEnvironmentCheck,
+  postHogFeatureFlagOverridesSchema,
+  vercelEnvironmentSchema,
+} from "./features/feature-flags/feature-flag-overrides.schema";
 import { urlStringSchema } from "./shared/utils/url-schema";
 
 const toEnvSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
@@ -54,14 +59,15 @@ export const workspaceServerEnvSchema = Schema.Struct({
       Schema.withDecodingDefaultType(Effect.succeed("deskohub"))
     )
   ),
-  VERCEL_ENV: toEnvSchema(
-    Schema.Literals(["production", "preview", "development"])
+  POSTHOG_FEATURE_FLAG_OVERRIDES: toEnvSchema(
+    postHogFeatureFlagOverridesSchema
   ),
+  VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
-});
+}).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
@@ -74,6 +80,25 @@ export const workspaceClientEnvSchema = Schema.Struct({
     Schema.optional(Schema.Literals(["production", "preview", "development"]))
   ),
 });
+
+/**
+ * T3 Env normally validates the field dictionary, which cannot retain checks
+ * that depend on multiple fields. Compose its final schema here so server-only
+ * deployment checks run without coupling them to `env.ts`.
+ */
+export const createEnvironmentSchema = (
+  fields: typeof workspaceServerEnvSchema.fields &
+    typeof workspaceClientEnvSchema.fields,
+  isServer: boolean
+) => {
+  const schema = Schema.Struct(fields);
+
+  return Schema.toStandardSchemaV1(
+    isServer
+      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
+      : schema
+  );
+};
 
 export type WorkspaceServerEnv = Schema.Schema.Type<
   typeof workspaceServerEnvSchema

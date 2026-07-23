@@ -4,6 +4,7 @@ import { createPostHogReactFeatureFlags } from "@deskohub/posthog/feature-flags/
 import { postHogFeatureFlags } from "./generated/contract";
 
 export const {
+  applyFeatureFlagOverrides,
   useFeatureFlagEnabled,
   useFeatureFlagPayload,
   useFeatureFlagResult,
