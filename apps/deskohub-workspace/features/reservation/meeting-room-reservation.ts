@@ -89,6 +89,30 @@ export const getMeetingRoomReservationDetails = (
     endsAt: reservation.endsAt,
   });
 
+export const meetingRoomAdvertisedPriceReservationSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  details: meetingRoomReservationDetailsSchema,
+}).annotate({
+  identifier: "MeetingRoomAdvertisedPriceReservation",
+  description:
+    "PII-free normalized meeting-room reservation inputs whose price is advertised.",
+});
+
+export type MeetingRoomAdvertisedPriceReservation =
+  typeof meetingRoomAdvertisedPriceReservationSchema.Type;
+
+export const meetingRoomAdvertisedPriceReservationEquals = Schema.toEquivalence(
+  meetingRoomAdvertisedPriceReservationSchema
+);
+
+export const getMeetingRoomAdvertisedPriceReservation = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomAdvertisedPriceReservation =>
+  meetingRoomAdvertisedPriceReservationSchema.make({
+    kind: meetingRoomReservationKind,
+    details: getMeetingRoomReservationDetails(reservation),
+  });
+
 export type MeetingRoomCheckoutAttemptDetails = {
   readonly kind: NormalizedMeetingRoomReservationOrder["kind"];
   readonly startsAt: NormalizedMeetingRoomReservationOrder["startsAt"];

@@ -11,13 +11,13 @@ import {
   workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts";
-import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
+import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
 } from "@/features/reservation/reservation-order";
 
-type CoworkReservation = NormalizedCoworkReservationOrder;
+type CoworkReservation = CoworkReservationDetails;
 
 const coworkProductQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("cowork"),

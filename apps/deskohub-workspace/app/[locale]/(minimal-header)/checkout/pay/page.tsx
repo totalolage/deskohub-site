@@ -1,4 +1,4 @@
-import { Effect, Match, Option } from "effect";
+import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -108,30 +108,8 @@ async function CheckoutPayContent({
   const opened = await Effect.gen(function* () {
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
-    const freshPayUrl = yield* Match.value(state).pipe(
-      Match.when({ reservation: { kind: "cowork" } }, (coworkState) =>
-        buildFreshCheckoutPayPath({
-          locale: coworkState.locale,
-          reservation: coworkState.reservation,
-          quote: coworkState.quote,
-          orderId: coworkState.orderId,
-          checkoutSessionId: coworkState.checkoutSessionId,
-          submittedCode: coworkState.submittedCode,
-        })
-      ),
-      Match.when(
-        { reservation: { kind: "meeting-room" } },
-        (meetingRoomState) =>
-          buildFreshCheckoutPayPath({
-            locale: meetingRoomState.locale,
-            reservation: meetingRoomState.reservation,
-            quote: meetingRoomState.quote,
-            orderId: meetingRoomState.orderId,
-            checkoutSessionId: meetingRoomState.checkoutSessionId,
-            submittedCode: meetingRoomState.submittedCode,
-          })
-      ),
-      Match.exhaustive,
+    const { changedKeys: _, ...acceptedState } = state;
+    const freshPayUrl = yield* buildFreshCheckoutPayPath(acceptedState).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
     );

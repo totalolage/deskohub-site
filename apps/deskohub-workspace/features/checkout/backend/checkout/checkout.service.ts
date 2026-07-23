@@ -30,6 +30,7 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
@@ -76,6 +77,9 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   {
     onExcessProperty: "error",
   }
+);
+const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
+  dotyposCustomerIdSchema
 );
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
@@ -591,33 +595,11 @@ export const CheckoutServiceLive = Layer.effect(
               "Hosted payment checkout returned existing pricing_changed review"
             );
 
-            const freshPayUrl = yield* Match.value(state).pipe(
-              Match.when({ reservation: { kind: "cowork" } }, (coworkState) =>
-                getFreshPayUrl({
-                  locale,
-                  reservation: coworkState.reservation,
-                  quote: coworkState.quote,
-                  orderId: reservation.id,
-                  checkoutSessionId: state.checkoutSessionId,
-                  submittedCode: coworkState.submittedCode,
-                  changedKeys: coworkState.changedKeys,
-                })
-              ),
-              Match.when(
-                { reservation: { kind: "meeting-room" } },
-                (meetingRoomState) =>
-                  getFreshPayUrl({
-                    locale,
-                    reservation: meetingRoomState.reservation,
-                    quote: meetingRoomState.quote,
-                    orderId: reservation.id,
-                    checkoutSessionId: state.checkoutSessionId,
-                    submittedCode: meetingRoomState.submittedCode,
-                    changedKeys: meetingRoomState.changedKeys,
-                  })
-              ),
-              Match.exhaustive
-            );
+            const freshPayUrl = yield* getFreshPayUrl({
+              ...state,
+              locale,
+              orderId: reservation.id,
+            });
             return {
               status: "pricing_changed" as const,
               changedKeys: state.changedKeys,
@@ -626,29 +608,33 @@ export const CheckoutServiceLive = Layer.effect(
             };
           }
 
-          const prepared = yield* Match.value(state).pipe(
-            Match.when({ reservation: { kind: "cowork" } }, (coworkState) =>
-              pricing.affirmForPayment({
-                reservation: coworkState.reservation,
-                dotyposCustomerId: reservation.dotyposCustomerId,
-                locale,
-                submittedCode: coworkState.submittedCode,
-                displayedQuote: coworkState.quote,
-              })
-            ),
-            Match.when(
-              { reservation: { kind: "meeting-room" } },
-              (meetingRoomState) =>
-                pricing.affirmForPayment({
-                  reservation: meetingRoomState.reservation,
-                  dotyposCustomerId: reservation.dotyposCustomerId,
-                  locale,
-                  submittedCode: meetingRoomState.submittedCode,
-                  displayedQuote: meetingRoomState.quote,
+          const dotyposCustomerId = yield* decodeDotyposCustomerId(
+            reservation.dotyposCustomerId
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new CheckoutError({
+                  message: "Reservation customer identity is invalid.",
+                  cause,
                 })
-            ),
-            Match.exhaustive
+            )
           );
+          const {
+            acceptedTotal: _acceptedTotal,
+            changedKeys: _changedKeys,
+            checkoutSessionId: _checkoutSessionId,
+            exp: _exp,
+            iat: _iat,
+            kid: _kid,
+            locale: _stateLocale,
+            orderId: _orderId,
+            ...paymentPriceInput
+          } = state;
+          const prepared = yield* pricing.affirmForPayment({
+            ...paymentPriceInput,
+            dotyposCustomerId,
+            locale,
+          });
           const acceptedSummary = getSignedPayStateCheckoutSummary(state);
           const freshSummary = Match.value(prepared).pipe(
             Match.discriminatorsExhaustive("kind")({
@@ -680,30 +666,14 @@ export const CheckoutServiceLive = Layer.effect(
               "Hosted payment checkout returned pricing_changed"
             );
 
-            const freshPayUrl = yield* Match.value(prepared).pipe(
-              Match.discriminatorsExhaustive("kind")({
-                cowork: ({ quote, reservation: freshReservation }) =>
-                  getFreshPayUrl({
-                    locale,
-                    reservation: freshReservation,
-                    quote,
-                    orderId: reservation.id,
-                    checkoutSessionId: state.checkoutSessionId,
-                    submittedCode: state.submittedCode,
-                    changedKeys,
-                  }),
-                "meeting-room": ({ quote, reservation: freshReservation }) =>
-                  getFreshPayUrl({
-                    locale,
-                    reservation: freshReservation,
-                    quote,
-                    orderId: reservation.id,
-                    checkoutSessionId: state.checkoutSessionId,
-                    submittedCode: state.submittedCode,
-                    changedKeys,
-                  }),
-              })
-            );
+            const freshPayUrl = yield* getFreshPayUrl({
+              ...prepared,
+              locale,
+              orderId: reservation.id,
+              checkoutSessionId: state.checkoutSessionId,
+              submittedCode: state.submittedCode,
+              changedKeys,
+            });
             return {
               status: "pricing_changed" as const,
               changedKeys,

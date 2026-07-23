@@ -36,6 +36,7 @@ const buildState = () =>
   Effect.runSync(
     buildAdvertisedPriceState(
       {
+        kind: "cowork",
         locale: "en-US",
         reservation,
         quote,

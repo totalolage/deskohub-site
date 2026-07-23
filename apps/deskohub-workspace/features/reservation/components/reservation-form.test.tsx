@@ -104,6 +104,7 @@ const availabilityResponse = {
 };
 
 const advertisedPriceResponse = {
+  kind: "cowork" as const,
   quote: basicDiscountedQuote,
   advertisedPriceToken: "sealed-advertised-price",
 };

@@ -554,7 +554,7 @@ describe("CheckoutService", () => {
       dotyposCustomerId: "stored-dotypos-customer-id",
       locale: "cs-CZ",
       submittedCode,
-      displayedQuote: acceptedQuote,
+      quote: acceptedQuote,
     });
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -654,7 +654,7 @@ describe("CheckoutService", () => {
       dotyposCustomerId: "stored-dotypos-customer-id",
       locale: "en-US",
       submittedCode,
-      displayedQuote: acceptedQuote,
+      quote: acceptedQuote,
     });
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
@@ -770,7 +770,7 @@ describe("CheckoutService", () => {
     );
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        displayedQuote: expect.objectContaining({
+        quote: expect.objectContaining({
           payment: expect.objectContaining({
             discounts: [application],
           }),

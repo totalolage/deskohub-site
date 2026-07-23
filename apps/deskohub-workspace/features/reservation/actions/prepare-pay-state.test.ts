@@ -14,6 +14,8 @@ import {
   calculateCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
+import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -23,6 +25,7 @@ import {
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 
 mock.module("server-only", () => ({}));
 
@@ -64,6 +67,7 @@ const buildAdvertisedPriceToken = async (
   );
   return Effect.gen(function* () {
     const state = yield* buildAdvertisedPriceState({
+      kind: "cowork",
       locale: "en-US",
       reservation: {
         kind: "cowork",
@@ -76,6 +80,45 @@ const buildAdvertisedPriceToken = async (
       },
       quote,
       ttlMilliseconds,
+    });
+    return yield* sealAdvertisedPriceState(state);
+  }).pipe(Effect.runPromise);
+};
+
+const buildMeetingRoomAdvertisedPriceToken = async (input: {
+  readonly startsAt: string;
+  readonly endsAt: string;
+}) => {
+  const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
+    "@/features/checkout/backend/checkout"
+  );
+  const advertisedReservation = Schema.decodeUnknownSync(
+    meetingRoomAdvertisedPriceReservationSchema
+  )({
+    kind: "meeting-room",
+    details: {
+      kind: "meeting-room",
+      startsAt: input.startsAt,
+      endsAt: input.endsAt,
+    },
+  });
+  const quoteWithoutFingerprint = Effect.runSync(
+    getMeetingRoomReservationQuote(advertisedReservation.details)
+  );
+  const quote = {
+    ...quoteWithoutFingerprint,
+    fingerprint: getReservationQuoteFingerprint(
+      advertisedReservation.details,
+      quoteWithoutFingerprint
+    ),
+  };
+
+  return Effect.gen(function* () {
+    const state = yield* buildAdvertisedPriceState({
+      kind: "meeting-room",
+      locale: "en-US",
+      reservation: advertisedReservation,
+      quote,
     });
     return yield* sealAdvertisedPriceState(state);
   }).pipe(Effect.runPromise);
@@ -138,6 +181,16 @@ const makeAdvertisementAffirmation = (basisPoints?: number) => {
     makeAdvertisementQuote(basisPoints)
   );
   return {
+    kind: "cowork" as const,
+    reservation: {
+      kind: "cowork" as const,
+      details: {
+        kind: "cowork" as const,
+        entryTier: reservation.entryTier,
+        coffee: reservation.coffee,
+        date: reservation.date,
+      },
+    },
     discountQuote,
     quote: buildQuoteFromAdvertisement(discountQuote),
   };
@@ -401,18 +454,38 @@ const runMeetingRoomNewHoldScenario = async () => {
   );
   const attachHold = mock(() => Effect.void);
   const enqueueCleanup = mock(() => Effect.void);
-  const discountQuote = mock(({ discountableSubtotal, product }) =>
-    Effect.succeed({
-      product,
-      discountableSubtotal,
-      discounts: [],
-      totalDiscount: basicMoney(0),
-      discountedSubtotal: discountableSubtotal,
-    })
+  const advertisementQuote = discountAdvertisementQuoteCodec.make({
+    product: { kind: "meeting-room", durationMinutes: 240 },
+    discountableSubtotal: basicMoney(60_000),
+    discounts: [],
+    totalDiscount: basicMoney(0),
+    discountedSubtotal: basicMoney(60_000),
+  });
+  const affirmedAdvertisement =
+    affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
+  const affirmAdvertisement = mock(() => Effect.succeed(affirmedAdvertisement));
+  const applyCustomerDiscount = mock(() =>
+    Effect.succeed(affirmedAdvertisement)
+  );
+  const discoverAdvertisedDiscounts = mock(
+    ({ discountableSubtotal, product }) =>
+      Effect.succeed({
+        product,
+        discountableSubtotal,
+        discounts: [],
+        totalDiscount: basicMoney(0),
+        discountedSubtotal: discountableSubtotal,
+      })
   );
   const testLayer = Layer.mergeAll(
     CheckoutPricingService.Live.pipe(
-      Layer.provide(DiscountServiceMock({ quote: discountQuote }))
+      Layer.provide(
+        DiscountServiceMock({
+          discoverAdvertisedDiscounts,
+          affirmAdvertisement,
+          applyCustomerDiscount,
+        })
+      )
     ),
     BotProtectionServiceMock({ verifyHuman: mock(() => Effect.void) }),
     Layer.succeed(WorkspaceAvailabilityService, {
@@ -458,6 +531,9 @@ const runMeetingRoomNewHoldScenario = async () => {
     locale: "en-US",
     checkoutSessionId: "meeting-room-session-id",
     checkoutAttemptId: "meeting-room-attempt-id",
+    advertisedPriceToken: await buildMeetingRoomAdvertisedPriceToken(
+      meetingRoomReservation
+    ),
     reservation: meetingRoomReservation,
     legalConsent: true,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
@@ -471,12 +547,13 @@ const runMeetingRoomNewHoldScenario = async () => {
     createReservation,
     attachHold,
     enqueueCleanup,
-    discountQuote,
+    affirmAdvertisement,
+    applyCustomerDiscount,
   };
 };
 
 describe("prepareWorkspacePayState", () => {
-  test("accepts meeting-room preparation without a cowork advertisement", async () => {
+  test("accepts meeting-room preparation with its family advertisement", async () => {
     const { preparePayStateSchema } = await import(
       "./prepare-pay-state.schema"
     );
@@ -484,6 +561,7 @@ describe("prepareWorkspacePayState", () => {
       locale: "en-US",
       checkoutSessionId: "meeting-room-session-id",
       checkoutAttemptId: "meeting-room-attempt-id",
+      advertisedPriceToken: "meeting-room-advertised-price-token",
       reservation: {
         kind: "meeting-room",
         startsAt: "2099-06-10T08:00:00Z",
@@ -535,10 +613,16 @@ describe("prepareWorkspacePayState", () => {
         status: "NEW",
       })
     );
-    expect(scenario.discountQuote).toHaveBeenCalledWith(
+    expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({
         product: { kind: "meeting-room", durationMinutes: 240 },
         reservationDate: "2099-06-10",
+        locale: "en-US",
+        advertisedDiscountIds: [],
+      })
+    );
+    expect(scenario.applyCustomerDiscount).toHaveBeenCalledWith(
+      expect.objectContaining({
         dotyposCustomerId: "customer-id",
         locale: "en-US",
       })

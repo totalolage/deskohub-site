@@ -15,7 +15,10 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
-import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import {
+  type AdvertisedPriceRequest,
+  isCoworkAdvertisedPrice,
+} from "@/features/checkout/advertised-price";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import {
@@ -350,9 +353,13 @@ export function ReservationForm({
     selectedTier,
   ]);
   const advertisedPriceQueryResult = useAdvertisedPrice(advertisedPriceRequest);
-  const advertisedPrice =
+  const advertisedPriceData =
     advertisedPriceRequest && !advertisedPriceQueryResult.isError
-      ? (advertisedPriceQueryResult.data ?? null)
+      ? advertisedPriceQueryResult.data
+      : undefined;
+  const advertisedPrice =
+    advertisedPriceData && isCoworkAdvertisedPrice(advertisedPriceData)
+      ? advertisedPriceData
       : null;
   const availability = availabilityQueryResult.isError
     ? null

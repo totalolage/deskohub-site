@@ -18,8 +18,8 @@ import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
+  buildSignedPayState,
   CheckoutPricingService,
-  openAdvertisedPriceState,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
@@ -40,16 +40,12 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
-import {
-  type CheckoutSummaryChangedKeys,
-  getCheckoutSummaryChangedKeys,
-} from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
-import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -60,10 +56,9 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
-  coworkAdvertisedPriceReservationEquals,
-  getCoworkReservationDetails,
-} from "@/features/reservation/cowork-reservation";
-import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+  type DotyposCustomerId,
+  dotyposCustomerIdSchema,
+} from "@/features/reservation/dotypos-customer";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
@@ -71,29 +66,23 @@ import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
-  buildPreparedCoworkPayState,
   ensureCoworkPayStateAvailable,
   getPreparedCoworkCheckoutDetails,
+  type PreparedCoworkAdvertisement,
   type PreparedCoworkPayState,
+  prepareCoworkAdvertisement,
 } from "./prepare-cowork-pay-state";
 import {
-  buildPreparedMeetingRoomPayState,
   ensureMeetingRoomPayStateAvailable,
   getPreparedMeetingRoomCheckoutDetails,
+  type PreparedMeetingRoomAdvertisement,
   type PreparedMeetingRoomPayState,
+  prepareMeetingRoomAdvertisement,
 } from "./prepare-meeting-room-pay-state";
 import {
   type PreparePayStateInput,
   preparePayStateSchema,
 } from "./prepare-pay-state.schema";
-
-class AdvertisedPriceMismatchError extends Data.TaggedError(
-  "AdvertisedPriceMismatchError"
-)<{
-  readonly reason: "invalid_token" | "input_mismatch";
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
@@ -105,92 +94,20 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
 const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
   now.add({ milliseconds: payStateDefaultTtlMilliseconds });
 
-const openSubmittedCoworkAdvertisedPrice = Effect.fn(
-  "prepareCoworkPayState.openAdvertisedPrice"
-)((input: Extract<PreparePayStateInput, { reservation: { kind: "cowork" } }>) =>
-  openAdvertisedPriceState(input.advertisedPriceToken).pipe(
-    Effect.mapError(
-      (cause) =>
-        new AdvertisedPriceMismatchError({
-          reason: "invalid_token",
-          message: "Advertised price snapshot is invalid or expired.",
-          cause,
-        })
-    ),
-    Effect.filterOrFail(
-      (state) =>
-        state.locale === input.locale &&
-        coworkAdvertisedPriceReservationEquals(state.reservation, {
-          kind: "cowork",
-          details: getCoworkReservationDetails(input.reservation),
-        }),
-      () =>
-        new AdvertisedPriceMismatchError({
-          reason: "input_mismatch",
-          message:
-            "Advertised price snapshot does not match the submitted reservation.",
-        })
-    )
-  )
-);
-
 type PreparedAdvertisement =
-  | {
-      readonly kind: "cowork";
-      readonly reservation: Extract<
-        PreparePayStateInput["reservation"],
-        { kind: "cowork" }
-      >;
-      readonly discountQuote: AffirmedDiscountAdvertisementQuote;
-      readonly changedKeys?: CheckoutSummaryChangedKeys;
-    }
-  | {
-      readonly kind: "meeting-room";
-      readonly reservation: Extract<
-        PreparePayStateInput["reservation"],
-        { kind: "meeting-room" }
-      >;
-      readonly changedKeys?: never;
-    };
+  | PreparedCoworkAdvertisement
+  | PreparedMeetingRoomAdvertisement;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (input: PreparePayStateInput) =>
     Match.value(input).pipe(
       Match.when(
         { reservation: { kind: "cowork" } },
-        Effect.fn(function* (coworkInput) {
-          const advertisedPrice =
-            yield* openSubmittedCoworkAdvertisedPrice(coworkInput);
-          const pricing = yield* CheckoutPricingService;
-          const affirmed = yield* pricing.affirmAdvertisement({
-            reservation: coworkInput.reservation,
-            locale: coworkInput.locale,
-            advertisedQuote: advertisedPrice.quote,
-          });
-          const changed =
-            advertisedPrice.quote.fingerprint !== affirmed.quote.fingerprint;
-
-          return {
-            kind: coworkInput.reservation.kind,
-            reservation: coworkInput.reservation,
-            discountQuote: affirmed.discountQuote,
-            ...(changed && {
-              changedKeys: getCheckoutSummaryChangedKeys(
-                advertisedPrice.quote.summary,
-                affirmed.quote.summary
-              ),
-            }),
-          };
-        })
+        prepareCoworkAdvertisement
       ),
       Match.when(
         { reservation: { kind: "meeting-room" } },
-        (meetingRoomInput) =>
-          Effect.succeed({
-            kind: meetingRoomInput.reservation.kind,
-            reservation: meetingRoomInput.reservation,
-            changedKeys: undefined,
-          })
+        prepareMeetingRoomAdvertisement
       ),
       Match.exhaustive
     )
@@ -200,28 +117,17 @@ const quotePreparedReservation = Effect.fn(
   "preparePayState.quotePreparedReservation"
 )(function* (input: {
   readonly advertisement: PreparedAdvertisement;
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
 }) {
   const pricing = yield* CheckoutPricingService;
 
-  return yield* Match.value(input.advertisement).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: (advertisement) =>
-        pricing.quoteForCustomer({
-          reservation: advertisement.reservation,
-          dotyposCustomerId: input.dotyposCustomerId,
-          locale: input.locale,
-          affirmedAdvertisement: advertisement.discountQuote,
-        }),
-      "meeting-room": (advertisement) =>
-        pricing.quoteForCustomer({
-          reservation: advertisement.reservation,
-          dotyposCustomerId: input.dotyposCustomerId,
-          locale: input.locale,
-        }),
-    })
-  );
+  return yield* pricing.quoteForCustomer({
+    ...input.advertisement,
+    dotyposCustomerId: input.dotyposCustomerId,
+    locale: input.locale,
+    affirmedAdvertisement: input.advertisement.discountQuote,
+  });
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
@@ -314,14 +220,13 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
     readonly checkoutSessionId: string;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
   }) {
-    const state = yield* Match.value(input.prepared).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: (prepared) =>
-          buildPreparedCoworkPayState({ ...input, prepared }),
-        "meeting-room": (prepared) =>
-          buildPreparedMeetingRoomPayState({ ...input, prepared }),
-      })
-    );
+    const state = yield* buildSignedPayState({
+      ...input.prepared,
+      locale: input.locale,
+      orderId: input.reservationId,
+      checkoutSessionId: input.checkoutSessionId,
+      changedKeys: input.changedKeys,
+    });
     const sealedState = yield* sealPayStateForUrl(state);
     const redirectUrl = buildCheckoutPayPath(input.locale, sealedState, {
       orderId: input.reservationId,

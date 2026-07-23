@@ -27,13 +27,10 @@ import {
   appliedDiscountCodec,
   type DiscountQuote,
 } from "@/features/discounts/contracts";
+import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
-type MeetingRoomReservation = Extract<
-  ReservationOrderData,
-  { kind: "meeting-room" }
->;
+type MeetingRoomReservation = MeetingRoomReservationDetails;
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),

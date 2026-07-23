@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Option, Schema } from "effect";
 import { coworkAdvertisedPriceReservationEquals } from "@/features/reservation/cowork-reservation";
@@ -18,6 +19,22 @@ const reservation = {
 };
 
 describe("advertised price contract", () => {
+  test("accepts meeting-room reservations at the family-neutral boundary", () => {
+    const decoded = decodeRequest({
+      locale: "en-US",
+      reservation: {
+        kind: "meeting-room",
+        details: {
+          kind: "meeting-room",
+          startsAt: "2099-06-10T08:00:00Z",
+          endsAt: "2099-06-10T12:00:00Z",
+        },
+      },
+    });
+
+    expect(Option.isSome(decoded)).toBe(true);
+  });
+
   test("strictly rejects contact details at the anonymous request boundary", () => {
     const decoded = decodeRequest({
       locale: "en-US",

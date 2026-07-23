@@ -1,6 +1,21 @@
 import { Data, Effect, Predicate, Schema } from "effect";
+import {
+  type CoworkReservationQuote,
+  coworkReservationQuoteSchema,
+} from "@/features/checkout/checkout-quote";
+import {
+  type MeetingRoomReservationQuote,
+  meetingRoomReservationQuoteSchema,
+} from "@/features/checkout/reservation-quote-meeting-room";
 import type { Locale } from "@/features/i18n";
-import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
+import {
+  type CoworkAdvertisedPriceReservation,
+  coworkAdvertisedPriceReservationSchema,
+} from "@/features/reservation/cowork-reservation";
+import {
+  type MeetingRoomAdvertisedPriceReservation,
+  meetingRoomAdvertisedPriceReservationSchema,
+} from "@/features/reservation/meeting-room-reservation";
 import {
   type CheckoutStateCryptoOptions,
   CheckoutStateTokenError,
@@ -12,10 +27,20 @@ import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-st
 
 export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
-export const advertisedPriceStateSchema = Schema.Struct({
-  ...workspaceCheckoutPriceStateSchema.fields,
-  reservation: coworkAdvertisedPriceReservationSchema,
-}).annotate({
+export const advertisedPriceStateSchema = Schema.Union([
+  Schema.Struct({
+    ...workspaceCheckoutPriceStateSchema.fields,
+    kind: coworkAdvertisedPriceReservationSchema.fields.kind,
+    reservation: coworkAdvertisedPriceReservationSchema,
+    quote: coworkReservationQuoteSchema,
+  }),
+  Schema.Struct({
+    ...workspaceCheckoutPriceStateSchema.fields,
+    kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
+    reservation: meetingRoomAdvertisedPriceReservationSchema,
+    quote: meetingRoomReservationQuoteSchema,
+  }),
+]).annotate({
   identifier: "AdvertisedPriceState",
   description:
     "PII-free Workspace price advertisement state protected for reservation submission.",
@@ -23,10 +48,34 @@ export const advertisedPriceStateSchema = Schema.Struct({
 
 export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
 
+type AdvertisedPriceStateInput =
+  | {
+      readonly kind: "cowork";
+      readonly locale: Locale;
+      readonly reservation: CoworkAdvertisedPriceReservation;
+      readonly quote: CoworkReservationQuote;
+      readonly ttlMilliseconds?: number;
+    }
+  | {
+      readonly kind: "meeting-room";
+      readonly locale: Locale;
+      readonly reservation: MeetingRoomAdvertisedPriceReservation;
+      readonly quote: MeetingRoomReservationQuote;
+      readonly ttlMilliseconds?: number;
+    };
+
 export class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
 )<{
   readonly code: CheckoutStateTokenError["code"];
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+export class AdvertisedPriceMismatchError extends Data.TaggedError(
+  "AdvertisedPriceMismatchError"
+)<{
+  readonly reason: "invalid_token" | "input_mismatch";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -52,12 +101,7 @@ const toAdvertisedPriceStateTokenError = (cause: unknown) =>
 export const buildAdvertisedPriceState = Effect.fn(
   "advertisedPriceState.build"
 )(function* (
-  input: {
-    readonly locale: Locale;
-    readonly reservation: AdvertisedPriceState["reservation"];
-    readonly quote: AdvertisedPriceState["quote"];
-    readonly ttlMilliseconds?: number;
-  },
+  input: AdvertisedPriceStateInput,
   options: CheckoutStateCryptoOptions = {}
 ) {
   const claims = yield* createCheckoutStateClaims(
@@ -69,6 +113,7 @@ export const buildAdvertisedPriceState = Effect.fn(
     onExcessProperty: "error",
   })({
     ...claims,
+    kind: input.kind,
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
@@ -96,4 +141,19 @@ export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
     openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
       Effect.mapError(toAdvertisedPriceStateTokenError)
     )
+);
+
+export const openSubmittedAdvertisedPriceState = Effect.fn(
+  "advertisedPriceState.openSubmitted"
+)((token: string) =>
+  openAdvertisedPriceState(token).pipe(
+    Effect.mapError(
+      (cause) =>
+        new AdvertisedPriceMismatchError({
+          reason: "invalid_token",
+          message: "Advertised price snapshot is invalid or expired.",
+          cause,
+        })
+    )
+  )
 );

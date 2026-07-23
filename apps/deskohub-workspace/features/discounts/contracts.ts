@@ -10,7 +10,6 @@ import {
   positiveWorkspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
@@ -164,7 +163,7 @@ export type AffirmedDiscountAdvertisementQuote =
   typeof affirmedDiscountAdvertisementQuoteCodec.Type;
 
 export type DiscountAdvertisementInput = {
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly reservationDate: string;
   readonly locale: Locale;
