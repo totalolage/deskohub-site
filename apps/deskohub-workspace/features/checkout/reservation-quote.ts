@@ -6,24 +6,15 @@ export { ReservationQuoteError } from "@/features/checkout/reservation-quote-err
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { reservationQuoteItemSchema } from "@/features/checkout/reservation-quote-item";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
-import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
-import {
-  appliedDiscountCodec,
-  type DiscountQuote,
-} from "@/features/discounts/contracts";
+import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
+import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export type { ReservationQuoteItem } from "@/features/checkout/reservation-quote-item";
 
-export const reservationQuoteSchema = Schema.Struct({
-  items: Schema.Array(reservationQuoteItemSchema),
-  fingerprint: Schema.NonEmptyString,
-  payment: Schema.Struct({
-    expectedPrice: nonNegativeWorkspaceMoneyCodec,
-    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
-    discounts: Schema.Array(appliedDiscountCodec),
-  }),
-}).annotate({
+export const reservationQuoteSchema = makeReservationQuoteSchema(
+  Schema.Array(reservationQuoteItemSchema)
+).annotate({
   identifier: "ReservationQuote",
   description: "Authoritative reservation quote snapshot.",
 });

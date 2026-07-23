@@ -18,19 +18,14 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
+import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
 import {
-  nonNegativeWorkspaceMoneyCodec,
   withWorkspaceMoneyCurrency,
   workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
-import {
-  appliedDiscountCodec,
-  type DiscountQuote,
-} from "@/features/discounts/contracts";
+import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
-
-type MeetingRoomReservation = MeetingRoomReservationDetails;
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
@@ -41,15 +36,9 @@ export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
 export type MeetingRoomReservationQuoteItem =
   typeof meetingRoomReservationQuoteItemSchema.Type;
 
-export const meetingRoomReservationQuoteSchema = Schema.Struct({
-  items: Schema.Tuple([meetingRoomReservationQuoteItemSchema]),
-  fingerprint: Schema.NonEmptyString,
-  payment: Schema.Struct({
-    expectedPrice: nonNegativeWorkspaceMoneyCodec,
-    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
-    discounts: Schema.Array(appliedDiscountCodec),
-  }),
-});
+export const meetingRoomReservationQuoteSchema = makeReservationQuoteSchema(
+  Schema.Tuple([meetingRoomReservationQuoteItemSchema])
+);
 
 export type MeetingRoomReservationQuote =
   typeof meetingRoomReservationQuoteSchema.Type;
@@ -104,12 +93,12 @@ export const getMeetingRoomCheckoutSummary = (
 
 export type CanonicalMeetingRoomReservation = {
   readonly kind: "meeting-room";
-  readonly startsAt: MeetingRoomReservation["startsAt"];
-  readonly endsAt: MeetingRoomReservation["endsAt"];
+  readonly startsAt: MeetingRoomReservationDetails["startsAt"];
+  readonly endsAt: MeetingRoomReservationDetails["endsAt"];
 };
 
 export const getMeetingRoomReservationQuote = (
-  reservation: MeetingRoomReservation,
+  reservation: MeetingRoomReservationDetails,
   options: {
     readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
@@ -159,7 +148,7 @@ export const getMeetingRoomReservationQuote = (
 };
 
 export const getCanonicalMeetingRoomReservation = (
-  reservation: MeetingRoomReservation
+  reservation: MeetingRoomReservationDetails
 ): CanonicalMeetingRoomReservation => ({
   kind: "meeting-room" as const,
   startsAt: reservation.startsAt,

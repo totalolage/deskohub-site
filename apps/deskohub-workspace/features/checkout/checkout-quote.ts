@@ -8,6 +8,7 @@ import {
   workspaceProductIdentitySchema,
   workspaceProductKeySchema,
 } from "@/features/checkout/product-identity";
+import { reservationQuotePaymentSchema } from "@/features/checkout/reservation-quote-schema";
 import {
   addWorkspaceMoney,
   nonNegativeWorkspaceMoneyCodec,
@@ -143,11 +144,7 @@ export const coworkReservationQuoteSchema = Schema.Struct({
   fingerprint: Schema.NonEmptyString,
   order: coworkReservationQuoteOrderSchema,
   summary: checkoutSummarySchema,
-  payment: Schema.Struct({
-    expectedPrice: nonNegativeWorkspaceMoneyCodec,
-    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
-    discounts: Schema.Array(appliedDiscountCodec),
-  }),
+  payment: reservationQuotePaymentSchema,
 }).annotate({
   identifier: "CoworkReservationQuote",
   description: "Authoritative cowork reservation quote snapshot.",

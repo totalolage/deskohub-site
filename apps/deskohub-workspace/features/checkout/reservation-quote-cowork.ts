@@ -17,8 +17,6 @@ import {
   getReservationProductMonitorOption,
 } from "@/features/reservation/reservation-order";
 
-type CoworkReservation = CoworkReservationDetails;
-
 const coworkProductQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("cowork"),
   tier: Schema.Literals(workspaceCoworkProductTiers),
@@ -56,7 +54,7 @@ export type CanonicalCoworkReservation = {
 
 export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   function* (
-    reservation: CoworkReservation,
+    reservation: CoworkReservationDetails,
     options: {
       readonly discountQuote?: DiscountQuote;
       readonly currencyOverride?: string;
@@ -116,7 +114,7 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
 );
 
 export const getCanonicalCoworkReservation = (
-  reservation: CoworkReservation
+  reservation: CoworkReservationDetails
 ): CanonicalCoworkReservation => ({
   kind: reservation.kind,
 });

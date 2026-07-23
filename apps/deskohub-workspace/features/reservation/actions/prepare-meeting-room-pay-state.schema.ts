@@ -4,7 +4,6 @@ import { preparePayStateCommonSchema } from "./prepare-pay-state-common.schema";
 
 export const prepareMeetingRoomPayStateInputSchema = Schema.Struct({
   ...preparePayStateCommonSchema.fields,
-  advertisedPriceToken: Schema.NonEmptyString,
   reservation: normalizedMeetingRoomReservationOrderSchema,
 });
 

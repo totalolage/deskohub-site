@@ -113,20 +113,6 @@ export const getMeetingRoomAdvertisedPriceReservation = (
     details: getMeetingRoomReservationDetails(reservation),
   });
 
-export type MeetingRoomCheckoutAttemptDetails = {
-  readonly kind: NormalizedMeetingRoomReservationOrder["kind"];
-  readonly startsAt: NormalizedMeetingRoomReservationOrder["startsAt"];
-  readonly endsAt: NormalizedMeetingRoomReservationOrder["endsAt"];
-};
-
-export const getMeetingRoomCheckoutAttemptDetails = (
-  reservation: NormalizedMeetingRoomReservationOrder
-): MeetingRoomCheckoutAttemptDetails => ({
-  kind: reservation.kind,
-  startsAt: reservation.startsAt,
-  endsAt: reservation.endsAt,
-});
-
 export type MeetingRoomReservationProductInput = Pick<
   MeetingRoomReservationOrderInput,
   "kind"

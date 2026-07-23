@@ -549,13 +549,15 @@ describe("CheckoutService", () => {
     await Effect.runPromise(harness.effect);
 
     expect(affirm).toHaveBeenCalledTimes(1);
-    expect(affirm).toHaveBeenCalledWith({
-      reservation: expect.objectContaining(reservationData),
-      dotyposCustomerId: "stored-dotypos-customer-id",
-      locale: "cs-CZ",
-      submittedCode,
-      quote: acceptedQuote,
-    });
+    expect(affirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservation: expect.objectContaining(reservationData),
+        dotyposCustomerId: "stored-dotypos-customer-id",
+        locale: "cs-CZ",
+        submittedCode,
+        quote: acceptedQuote,
+      })
+    );
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         amountValue: 55_000,
@@ -649,13 +651,15 @@ describe("CheckoutService", () => {
 
     const result = await Effect.runPromise(harness.effect);
 
-    expect(affirm).toHaveBeenCalledWith({
-      reservation: meetingRoomReservationData,
-      dotyposCustomerId: "stored-dotypos-customer-id",
-      locale: "en-US",
-      submittedCode,
-      quote: acceptedQuote,
-    });
+    expect(affirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservation: meetingRoomReservationData,
+        dotyposCustomerId: "stored-dotypos-customer-id",
+        locale: "en-US",
+        submittedCode,
+        quote: acceptedQuote,
+      })
+    );
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
       throw new Error("Expected pricing_changed result");

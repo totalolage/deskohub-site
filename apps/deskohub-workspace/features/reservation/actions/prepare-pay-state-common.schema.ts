@@ -5,5 +5,6 @@ export const preparePayStateCommonSchema = Schema.Struct({
   locale: Schema.Literals(locales),
   checkoutSessionId: Schema.NonEmptyString,
   checkoutAttemptId: Schema.NonEmptyString,
+  advertisedPriceToken: Schema.NonEmptyString,
   legalConsent: Schema.optional(Schema.Boolean),
 });

@@ -619,19 +619,8 @@ export const CheckoutServiceLive = Layer.effect(
                 })
             )
           );
-          const {
-            acceptedTotal: _acceptedTotal,
-            changedKeys: _changedKeys,
-            checkoutSessionId: _checkoutSessionId,
-            exp: _exp,
-            iat: _iat,
-            kid: _kid,
-            locale: _stateLocale,
-            orderId: _orderId,
-            ...paymentPriceInput
-          } = state;
           const prepared = yield* pricing.affirmForPayment({
-            ...paymentPriceInput,
+            ...state,
             dotyposCustomerId,
             locale,
           });

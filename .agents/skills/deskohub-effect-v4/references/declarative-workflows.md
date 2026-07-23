@@ -31,6 +31,11 @@ Effect.Do.pipe(
 
 When a workflow starts from an existing object input, start with `Effect.succeed(input).pipe(...)` and bind from that record instead of rebuilding its fields with `Effect.Do` and `Effect.let`.
 
+When an existing value structurally satisfies an operation input, pass it
+through directly. Do not destructure away unrelated properties merely to make
+the runtime object exactly match the declared input type; project fields only
+at a real serialization, privacy, or persistence boundary.
+
 Keep `Effect.bind`, `Effect.let`, and `Effect.tap` callbacks small. Extract non-trivial work into named record-input operations and pass those operations directly to the pipeline.
 
 Keep conditional execution inside Effect. Use `Effect.when`, `Effect.filterOrFail`, or the matching Effect/Match combinator instead of a JavaScript conditional whose branches return Effects.

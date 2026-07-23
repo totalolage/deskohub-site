@@ -3,10 +3,8 @@ import {
   type MeetingRoomReservationQuote,
   meetingRoomReservationQuoteItemSchema,
 } from "@/features/checkout/reservation-quote-meeting-room";
-import {
-  checkoutDetailsBaseSchema,
-  checkoutPaymentBaseSchema,
-} from "@/features/checkout/schemas/checkout-details-base";
+import { reservationQuotePaymentSchema } from "@/features/checkout/reservation-quote-schema";
+import { checkoutDetailsBaseSchema } from "@/features/checkout/schemas/checkout-details-base";
 import type { Locale } from "@/features/i18n";
 import {
   getMeetingRoomReservationDetails,
@@ -18,7 +16,7 @@ export const meetingRoomCheckoutDetailsJsonSchema = Schema.Struct({
   ...checkoutDetailsBaseSchema.fields,
   reservation: meetingRoomReservationDetailsSchema,
   payment: Schema.Struct({
-    ...checkoutPaymentBaseSchema.fields,
+    ...reservationQuotePaymentSchema.fields,
     items: Schema.Array(meetingRoomReservationQuoteItemSchema),
   }),
 });
