@@ -86,6 +86,8 @@ export const workspaceReservations = pgTable(
     reservationCreatedAt: instant("reservation_created_at"),
     reservationConfirmedAt: instant("reservation_confirmed_at"),
     reservationCancelledAt: instant("reservation_cancelled_at"),
+    cancellationClaimOwner: text("cancellation_claim_owner"),
+    cancellationClaimedAt: instant("cancellation_claimed_at"),
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
@@ -127,6 +129,18 @@ export const workspaceReservations = pgTable(
       "workspace_reservations_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
     ),
+    check(
+      "workspace_reservations_cancellation_claim_check",
+      sql`(
+        ${t.reservationState} = 'cancelling'
+        and ${t.cancellationClaimOwner} is not null
+        and ${t.cancellationClaimedAt} is not null
+      ) or (
+        ${t.reservationState} <> 'cancelling'
+        and ${t.cancellationClaimOwner} is null
+        and ${t.cancellationClaimedAt} is null
+      )`
+    ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey
     ),
@@ -148,6 +162,11 @@ export const workspaceReservations = pgTable(
     index("workspace_reservations_expired_holds_idx")
       .on(t.reservationHoldExpiresAt)
       .where(sql`${t.reservationState} = 'held'`),
+    index("workspace_reservations_cancellation_recovery_idx")
+      .on(t.reservationState, t.cancellationClaimedAt)
+      .where(
+        sql`${t.reservationState} in ('cancelling', 'cancellation_failed')`
+      ),
     index("workspace_reservations_dotypos_customer_idx").on(
       t.dotyposCustomerId
     ),

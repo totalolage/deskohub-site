@@ -35,6 +35,8 @@ const makeReservation = (
     reservationCreatedAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     reservationConfirmedAt: null,
     reservationCancelledAt: null,
+    cancellationClaimOwner: null,
+    cancellationClaimedAt: null,
     paidAt: null,
     fulfilledAt: null,
     fulfillmentFailedAt: null,
@@ -279,5 +281,22 @@ describe("ReservationHoldCleanupScheduleService", () => {
       retryAfterSeconds: 60,
       initialDelaySeconds: 0,
     });
+
+    const queueRoute = await Bun.file(
+      new URL(
+        "../../../../app/api/queues/workspace/reservation-hold-cleanup/route.ts",
+        import.meta.url
+      )
+    ).text();
+    const cronRoute = await Bun.file(
+      new URL(
+        "../../../../app/api/cron/workspace/reservation-holds/route.ts",
+        import.meta.url
+      )
+    ).text();
+    expect(queueRoute).toContain(
+      "processReservationHoldCleanupScheduleMessage(message)"
+    );
+    expect(cronRoute).toContain("cleanup.sweepExpiredHolds(input)");
   });
 });

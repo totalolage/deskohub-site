@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import {
   DotyposService,
   ValidationError as DotyposValidationError,
@@ -30,7 +31,10 @@ import {
   deriveCheckoutAttemptKey,
   deriveCheckoutSessionKey,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
-import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
+import {
+  getDotyposCancellationAction,
+  ReservationHoldCleanupScheduleService,
+} from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
@@ -495,9 +499,12 @@ const prepareReservationDraft = Effect.fn(
     }
 
     if (currentReservation) {
-      const claimed = yield* reservations.claimSupersessionCancellation(
-        currentReservation.id
-      );
+      const cancellationOwnerId = randomUUID();
+      const claimed = yield* reservations.claimSupersessionCancellation({
+        id: currentReservation.id,
+        ownerId: cancellationOwnerId,
+        claimedAt: Temporal.Now.instant(),
+      });
       if (!claimed) {
         continue;
       }
@@ -512,8 +519,21 @@ const prepareReservationDraft = Effect.fn(
       const cancelled = yield* Effect.gen(function* () {
         const status =
           yield* dotypos.getReservationStatus(dotyposReservationId);
-        if (status === "CANCELLED") return true;
-        if (status !== "NEW") {
+        const action = getDotyposCancellationAction(status);
+        const owned = yield* reservations.renewCancellationClaim({
+          id: claimed.id,
+          ownerId: cancellationOwnerId,
+          claimedAt: Temporal.Now.instant(),
+        });
+        if (!owned) {
+          yield* Effect.logWarning(
+            "Checkout supersession cancellation ownership changed before provider action",
+            { reservationId: claimed.id }
+          );
+          return false;
+        }
+        if (action === "complete") return true;
+        if (action === "refuse") {
           yield* Effect.logError(
             "Checkout supersession refused to cancel a non-pending Dotypos reservation",
             {
@@ -525,7 +545,8 @@ const prepareReservationDraft = Effect.fn(
           return false;
         }
 
-        yield* dotypos.cancelReservation(dotyposReservationId);
+        if (!owned.dotyposReservationId) return false;
+        yield* dotypos.cancelReservation(owned.dotyposReservationId);
         return true;
       }).pipe(
         Effect.catch(
@@ -547,6 +568,7 @@ const prepareReservationDraft = Effect.fn(
         yield* reservations
           .markCancellationFailed({
             id: claimed.id,
+            ownerId: cancellationOwnerId,
             failureCode: "checkout_supersession_cancel_failed",
           })
           .pipe(
@@ -572,6 +594,7 @@ const prepareReservationDraft = Effect.fn(
         Effect.andThen(
           reservations.completeSupersessionAndCreateDraft({
             cancelledReservationId: claimed.id,
+            cancellationOwnerId,
             cancelledAt,
             replacement: {
               ...input.draft,
@@ -586,7 +609,11 @@ const prepareReservationDraft = Effect.fn(
         })),
         Effect.tapError(() =>
           reservations
-            .markCancelled({ id: claimed.id, cancelledAt })
+            .markCancelled({
+              id: claimed.id,
+              ownerId: cancellationOwnerId,
+              cancelledAt,
+            })
             .pipe(Effect.ignore)
         )
       );
@@ -905,62 +932,43 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
         Effect.catch(
           Effect.fn(function* (cause) {
             yield* Effect.logError(
-              "Workspace reservation hold attach failed; cancelling Dotypos hold",
+              "Workspace reservation hold attach failed; scheduling owned cancellation compensation",
               {
                 cause,
               }
             );
 
-            yield* dotypos.cancelReservation(dotyposReservationId).pipe(
-              Effect.catch((cancelCause) =>
-                Effect.gen(function* () {
-                  yield* Effect.logFatal(
-                    "Workspace reservation hold attach cleanup failed",
+            const cancellationRequiredAt = Temporal.Now.instant();
+            yield* reservations
+              .markAttachFailedCancellationRequired({
+                id: reservationDraft.id,
+                dotyposReservationId,
+                reservationCreatedAt,
+                reservationHoldExpiresAt: cancellationRequiredAt,
+                failureCode: "attach_failed_cancellation_required",
+              })
+              .pipe(
+                Effect.tapError((markerCause) =>
+                  Effect.logFatal(
+                    "Workspace reservation hold cancellation compensation marker failed",
                     {
                       reservationDraftId: reservationDraft.id,
                       dotyposReservationId,
-                      cause: cancelCause,
+                      cause: markerCause,
                     }
-                  );
-
-                  yield* reservations
-                    .markAttachFailedCancellationRequired({
-                      id: reservationDraft.id,
-                      dotyposReservationId,
-                      reservationCreatedAt: Temporal.Now.instant(),
-                      failureCode: "attach_failed_cancel_failed",
-                    })
-                    .pipe(
-                      Effect.tapError((markerCause) =>
-                        Effect.logFatal(
-                          "Workspace reservation hold attach cleanup marker failed",
-                          {
-                            reservationDraftId: reservationDraft.id,
-                            dotyposReservationId,
-                            cause: markerCause,
-                          }
-                        )
-                      )
-                    );
-
-                  yield* Effect.logWarning(
-                    "Workspace reservation hold cancellation marked for retry",
-                    {
-                      reservationDraftId: reservationDraft.id,
-                      dotyposReservationId,
-                    }
-                  );
-                  return yield* cancelCause;
-                })
-              )
-            );
-            yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-              Effect.tapError((releaseCause) =>
-                Effect.logError("Reservation hold creation release failed", {
-                  cause: releaseCause,
-                })
-              ),
-              Effect.ignore
+                  )
+                )
+              );
+            yield* enqueueReservationHoldCleanup({
+              orderId: reservationDraft.id,
+              reservationHoldExpiresAt: cancellationRequiredAt,
+            });
+            yield* Effect.logWarning(
+              "Workspace reservation hold cancellation compensation enqueued",
+              {
+                reservationDraftId: reservationDraft.id,
+                dotyposReservationId,
+              }
             );
 
             return yield* cause;

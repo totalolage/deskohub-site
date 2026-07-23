@@ -27,7 +27,7 @@ describe("ReservationHoldCleanupService", () => {
     );
 
     const unused = () => Effect.die("not used");
-    const selectExpiredHolds = mock(() =>
+    const selectCancellationCandidates = mock(() =>
       Effect.fail(
         new EffectDrizzleQueryError({
           query: "select expired holds",
@@ -37,7 +37,7 @@ describe("ReservationHoldCleanupService", () => {
       )
     );
     const reservations = {
-      selectExpiredHolds,
+      selectCancellationCandidates,
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {} as unknown as typeof DotyposService.Service;
 
@@ -72,12 +72,16 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
-    expect(selectExpiredHolds).toHaveBeenCalledTimes(1);
-    expect(selectExpiredHolds).toHaveBeenCalledWith({ now, limit: 25 });
+    expect(selectCancellationCandidates).toHaveBeenCalledTimes(1);
+    expect(selectCancellationCandidates).toHaveBeenCalledWith({
+      now,
+      limit: 25,
+      staleClaimBefore: Temporal.Instant.from("2026-06-02T09:55:00.000Z"),
+    });
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected failure");
     expect(result.failure.message).toBe(
-      "Expired reservation holds could not be selected."
+      "Reservation cancellation candidates could not be selected."
     );
   });
 
@@ -182,7 +186,7 @@ describe("ReservationHoldCleanupService", () => {
       paymentState: "pending",
       activePaymentAttemptId: attemptId,
     };
-    const selectExpiredHolds = mock(() =>
+    const selectCancellationCandidates = mock(() =>
       Effect.succeed([activeReservation] as never)
     );
     const recordHoldCleanupSkipped = mock(() => Effect.void);
@@ -192,7 +196,7 @@ describe("ReservationHoldCleanupService", () => {
       finalizePendingProviderPayment: mock(() => Effect.succeed("pending")),
     };
     const reservations = {
-      selectExpiredHolds,
+      selectCancellationCandidates,
       findById: mock(() => Effect.succeed(activeReservation as never)),
       recordHoldCleanupSkipped,
       claimCancellation,
@@ -314,12 +318,18 @@ describe("ReservationHoldCleanupService", () => {
                   })
                 ),
                 claimCancellation,
+                renewCancellationClaim: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
                 markCancelled,
               } as unknown as WorkspaceReservationRepositoryType),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),
               Layer.succeed(DotyposService, {
+                getReservationStatus: mock(() =>
+                  Effect.succeed("NEW" as const)
+                ),
                 cancelReservation,
               } as unknown as typeof DotyposService.Service)
             )
@@ -335,10 +345,16 @@ describe("ReservationHoldCleanupService", () => {
       state: "expired",
       failureCode: "payment_not_verifiable_before_cleanup",
     });
-    expect(claimCancellation).toHaveBeenCalledWith(orderId);
+    expect(claimCancellation).toHaveBeenCalledWith({
+      id: orderId,
+      ownerId: expect.any(String),
+      claimedAt: expect.any(Temporal.Instant),
+      staleClaimBefore: expect.any(Temporal.Instant),
+    });
     expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
+      ownerId: expect.any(String),
       cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt,
     });
@@ -483,4 +499,230 @@ describe("ReservationHoldCleanupService", () => {
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
   });
+
+  test("centralizes the NEW, CANCELLED, and other live provider status policy", async () => {
+    const { getDotyposCancellationAction } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+
+    expect(getDotyposCancellationAction("NEW")).toBe("delete");
+    expect(getDotyposCancellationAction("CANCELLED")).toBe("complete");
+    expect(getDotyposCancellationAction("CONFIRMED")).toBe("refuse");
+  });
+
+  for (const scenario of [
+    {
+      status: "NEW" as const,
+      outcome: "cancelled" as const,
+      deleteCount: 1,
+      failedCount: 0,
+      completedCount: 1,
+    },
+    {
+      status: "CANCELLED" as const,
+      outcome: "cancelled" as const,
+      deleteCount: 0,
+      failedCount: 0,
+      completedCount: 1,
+    },
+    {
+      status: "CONFIRMED" as const,
+      outcome: "skipped" as const,
+      deleteCount: 0,
+      failedCount: 1,
+      completedCount: 0,
+    },
+  ]) {
+    test(`applies ${scenario.status} provider status cancellation policy only while owned`, async () => {
+      const {
+        outcome,
+        cancelReservation,
+        markCancellationFailed,
+        markCancelled,
+        renewCancellationClaim,
+      } = await runOwnedCancellationScenario({
+        status: scenario.status,
+        ownedAfterStatusRead: true,
+      });
+
+      expect(outcome).toBe(scenario.outcome);
+      expect(cancelReservation).toHaveBeenCalledTimes(scenario.deleteCount);
+      expect(markCancellationFailed).toHaveBeenCalledTimes(
+        scenario.failedCount
+      );
+      expect(markCancelled).toHaveBeenCalledTimes(scenario.completedCount);
+      expect(renewCancellationClaim).toHaveBeenCalledWith({
+        id: "owned-cancellation-reservation",
+        ownerId: expect.any(String),
+        claimedAt: expect.any(Temporal.Instant),
+      });
+    });
+  }
+
+  test("a worker that loses its cancellation claim after provider read never deletes or transitions", async () => {
+    const {
+      outcome,
+      cancelReservation,
+      markCancellationFailed,
+      markCancelled,
+    } = await runOwnedCancellationScenario({
+      status: "NEW",
+      ownedAfterStatusRead: false,
+    });
+
+    expect(outcome).toBe("skipped");
+    expect(cancelReservation).not.toHaveBeenCalled();
+    expect(markCancellationFailed).not.toHaveBeenCalled();
+    expect(markCancelled).not.toHaveBeenCalled();
+  });
+
+  test("does not act when stale not_started cleanup loses its claim to a newly pending payment", async () => {
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
+      await import("./reservation-hold-cleanup.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+
+    const claimCancellation = mock(() => Effect.succeed(null));
+    const getReservationStatus = mock(() => Effect.die("not used"));
+    const cancelReservation = mock(() => Effect.die("not used"));
+    const outcome = await Effect.gen(function* () {
+      const cleanup = yield* ReservationHoldCleanupService;
+      return yield* cleanup.cancelOrderHold({ orderId: "racing-reservation" });
+    }).pipe(
+      Effect.provide(
+        ReservationHoldCleanupServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderPaymentFinalizationService, {
+                finalizePendingProviderPayment: mock(() =>
+                  Effect.die("not used")
+                ),
+              } satisfies ProviderPaymentFinalizationServiceType),
+              Layer.succeed(PaymentAttemptRepository, {
+                markTerminalForReservation: mock(() => Effect.die("not used")),
+              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() =>
+                  Effect.succeed({
+                    id: "racing-reservation",
+                    reservationState: "held",
+                    paymentState: "not_started",
+                  } as never)
+                ),
+                claimCancellation,
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(DotyposService, {
+                getReservationStatus,
+                cancelReservation,
+              } as unknown as typeof DotyposService.Service)
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(outcome).toBe("skipped");
+    expect(claimCancellation).toHaveBeenCalledTimes(1);
+    expect(getReservationStatus).not.toHaveBeenCalled();
+    expect(cancelReservation).not.toHaveBeenCalled();
+  });
 });
+
+const runOwnedCancellationScenario = async (input: {
+  readonly status: "NEW" | "CANCELLED" | "CONFIRMED";
+  readonly ownedAfterStatusRead: boolean;
+}) => {
+  const { PaymentAttemptRepository } = await import(
+    "../repositories/payment-attempt.repository"
+  );
+  const { ProviderPaymentFinalizationService } = await import(
+    "../payment/provider-payment-finalization.service"
+  );
+  const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
+    await import("./reservation-hold-cleanup.service");
+  const { WorkspaceReservationRepository } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
+  );
+
+  const reservation = {
+    id: "owned-cancellation-reservation",
+    reservationState: "cancelling",
+    paymentState: "not_started",
+    dotyposReservationId: "owned-dotypos-reservation",
+    dotyposCustomerId: "dotypos-customer-id",
+  };
+  const cancelReservation = mock(() => Effect.void);
+  const markCancellationFailed = mock(() => Effect.void);
+  const markCancelled = mock(() => Effect.void);
+  const renewCancellationClaim = mock(() =>
+    Effect.succeed(input.ownedAfterStatusRead ? (reservation as never) : null)
+  );
+  const outcome = await Effect.gen(function* () {
+    const cleanup = yield* ReservationHoldCleanupService;
+    return yield* cleanup.cancelOrderHold({ orderId: reservation.id });
+  }).pipe(
+    Effect.provide(
+      ReservationHoldCleanupServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(ProviderPaymentFinalizationService, {
+              finalizePendingProviderPayment: mock(() =>
+                Effect.die("not used")
+              ),
+            } satisfies ProviderPaymentFinalizationServiceType),
+            Layer.succeed(PaymentAttemptRepository, {
+              markTerminalForReservation: mock(() => Effect.die("not used")),
+            } as unknown as PaymentAttemptRepositoryType),
+            Layer.succeed(WorkspaceReservationRepository, {
+              findById: mock(() =>
+                Effect.succeed({
+                  ...reservation,
+                  reservationState: "cancellation_failed",
+                } as never)
+              ),
+              claimCancellation: mock(() =>
+                Effect.succeed(reservation as never)
+              ),
+              renewCancellationClaim,
+              markCancellationFailed,
+              markCancelled,
+            } as unknown as WorkspaceReservationRepositoryType),
+            Layer.succeed(PostHogEventService, {
+              capture: () => Effect.void,
+            }),
+            Layer.succeed(DotyposService, {
+              getReservationStatus: mock(() => Effect.succeed(input.status)),
+              cancelReservation,
+            } as unknown as typeof DotyposService.Service)
+          )
+        )
+      )
+    ),
+    Effect.runPromise
+  );
+
+  return {
+    outcome,
+    cancelReservation,
+    markCancellationFailed,
+    markCancelled,
+    renewCancellationClaim,
+  };
+};
