@@ -30,12 +30,15 @@ const invoke = (refreshStatus: CheckoutStatusServiceType["refreshStatus"]) => {
   return invokeGet(GET);
 };
 
-const invokeGet = (GET: ReturnType<typeof makeCheckoutPaymentReturnGet>) =>
+const invokeGet = (
+  GET: ReturnType<typeof makeCheckoutPaymentReturnGet>,
+  params = { locale: "en-US", orderId: "order-id" }
+) =>
   GET(
     new Request(
       "https://deskohub.test/en-US/checkout/payment/order-id?outcome=success"
     ),
-    { params: Promise.resolve({ locale: "en-US", orderId: "order-id" }) }
+    { params: Promise.resolve(params) }
   );
 
 describe("checkout payment return route", () => {
@@ -97,5 +100,29 @@ describe("checkout payment return route", () => {
       error: "Checkout status could not be refreshed",
     });
     expect(body).not.toContain(privateFailure.message);
+  });
+
+  test("rejects invalid params before acquiring the status service", async () => {
+    let acquisitions = 0;
+    const GET = makeCheckoutPaymentReturnGet(
+      Layer.effect(
+        CheckoutStatusService,
+        Effect.sync(() => {
+          acquisitions += 1;
+        }).pipe(
+          Effect.andThen(
+            Effect.fail(new Error("status service must not be acquired"))
+          )
+        )
+      )
+    );
+
+    const response = await invokeGet(GET, {
+      locale: "en-US",
+      orderId: "",
+    });
+
+    expect(response.status).toBe(404);
+    expect(acquisitions).toBe(0);
   });
 });

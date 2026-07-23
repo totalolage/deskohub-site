@@ -17,6 +17,12 @@ type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
 };
 
+type CheckoutPaymentReturn = {
+  readonly locale: Locale;
+  readonly orderId: string;
+  readonly outcome: CheckoutStatusReturnOutcome;
+};
+
 const decodeCheckoutPaymentParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
@@ -42,7 +48,7 @@ const getCheckoutStatusRedirectPath = (input: {
   return `${url.pathname}${url.search}`;
 };
 
-const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
+const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
   function* (
     request: Request,
     { params }: LocalizedCheckoutPaymentRouteContext
@@ -51,7 +57,7 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       yield* Effect.promise(() => params)
     );
     const routeParams = Option.getOrUndefined(decodedParams);
-    if (!routeParams) return new NextResponse(null, { status: 404 });
+    if (!routeParams) return Option.none<CheckoutPaymentReturn>();
 
     const { locale, orderId } = routeParams;
     const { outcome } = Option.getOrElse(
@@ -61,27 +67,30 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       () => ({ outcome: "unknown" as const })
     );
 
+    return Option.some({ locale, orderId, outcome });
+  }
+);
+
+const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
+  function* (request: Request, input: CheckoutPaymentReturn) {
     const checkoutStatus = yield* CheckoutStatusService;
     yield* checkoutStatus
       .refreshStatus({
-        orderId,
-        returnOutcome: outcome,
+        orderId: input.orderId,
+        returnOutcome: input.outcome,
       })
       .pipe(
         Effect.catch((cause) =>
           Effect.logError("Checkout payment return refresh failed", {
-            orderId,
-            outcome,
+            orderId: input.orderId,
+            outcome: input.outcome,
             cause,
           })
         )
       );
 
     return NextResponse.redirect(
-      new URL(
-        getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
-        request.url
-      )
+      new URL(getCheckoutStatusRedirectPath(input), request.url)
     );
   }
 );
@@ -95,12 +104,21 @@ export const makeCheckoutPaymentReturnGet = (
       cancellation: "continue-after-disconnect",
     },
     (request, context: LocalizedCheckoutPaymentRouteContext) =>
-      handleCheckoutPaymentReturn(request, context).pipe(
-        Effect.provide(statusServiceLayer),
-        Effect.mapError(
-          mapWorkspaceInternalRouteFailure(
-            "Checkout status could not be refreshed"
-          )
+      decodeCheckoutPaymentReturn(request, context).pipe(
+        Effect.flatMap((decoded) =>
+          Option.match(decoded, {
+            onNone: () =>
+              Effect.succeed(new NextResponse(null, { status: 404 })),
+            onSome: (input) =>
+              handleCheckoutPaymentReturn(request, input).pipe(
+                Effect.provide(statusServiceLayer),
+                Effect.mapError(
+                  mapWorkspaceInternalRouteFailure(
+                    "Checkout status could not be refreshed"
+                  )
+                )
+              ),
+          })
         )
       )
   );
