@@ -2,9 +2,15 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import { createHash } from "node:crypto";
+import {
+  DotyposService,
+  NetworkError,
+  ValidationError,
+} from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import { CheckoutPricingInputError } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
@@ -22,7 +28,10 @@ import {
 } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  ReservationDraftAcquisition,
+  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 
@@ -181,21 +190,78 @@ const makeReusableReservation = (
     ...overrides,
   }) as WorkspaceReservation;
 
+const makeProviderEvidence = (input: {
+  readonly id?: string;
+  readonly status: "NEW" | "CANCELLED" | "CONFIRMED";
+  readonly note: string;
+  readonly customerId: string;
+}) => {
+  const provider = {
+    id: input.id,
+    _branchId: "synthetic-branch",
+    _cloudId: "synthetic-cloud",
+    _customerId: input.customerId,
+    _tableId: "synthetic-table",
+    startDate: "2026-07-01T10:00:00.000Z",
+    endDate: "2026-07-01T12:00:00.000Z",
+    seats: "2",
+    status: input.status,
+  };
+  const evidence = createHash("sha256")
+    .update(
+      JSON.stringify([
+        provider._branchId,
+        provider._cloudId,
+        provider._customerId,
+        provider._tableId,
+        Date.parse(provider.startDate),
+        Date.parse(provider.endDate),
+        Number(provider.seats),
+        "NEW",
+        input.note,
+      ])
+    )
+    .digest("base64url");
+  return {
+    ...provider,
+    note: `${input.note}\nProvider request evidence: ${evidence}`,
+  };
+};
+
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKey: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
-  readonly createDraft?: ReturnType<typeof mock>;
+  readonly acquireDraft?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
+  readonly beginProviderHoldCreation?: ReturnType<typeof mock>;
+  readonly reclaimPreProviderHoldCreation?: ReturnType<typeof mock>;
+  readonly reclaimStalePreProviderHoldCreation?: ReturnType<typeof mock>;
+  readonly retirePreProviderDraft?: ReturnType<typeof mock>;
+  readonly requireHoldCreationRecovery?: ReturnType<typeof mock>;
+  readonly claimHoldCreationCompensation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
+  readonly attachHold?: ReturnType<typeof mock>;
+  readonly recordProviderHoldCandidate?: ReturnType<typeof mock>;
+  readonly releaseHoldCreation?: ReturnType<typeof mock>;
+  readonly markAttachFailedCancellationRequired?: ReturnType<typeof mock>;
   readonly claimSupersessionCancellation?: ReturnType<typeof mock>;
   readonly completeSupersessionAndCreateDraft?: ReturnType<typeof mock>;
   readonly cancelReservation?: ReturnType<typeof mock>;
+  readonly prepareReservationCreation?: ReturnType<typeof mock>;
   readonly createReservation?: ReturnType<typeof mock>;
+  readonly listReservations?: ReturnType<typeof mock>;
   readonly getReservationStatus?: ReturnType<typeof mock>;
   readonly markCancellationFailed?: ReturnType<typeof mock>;
+  readonly findOrCreateCustomer?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
+  readonly enqueueCleanup?: ReturnType<typeof mock>;
+  readonly scenarioTimeout?: `${number} millis`;
+  readonly recordDifferentProviderAttachmentRecovery?: ReturnType<typeof mock>;
+  readonly completeDifferentProviderAttachmentRecovery?: ReturnType<
+    typeof mock
+  >;
 }) => {
   const { prepareCoworkPayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -220,24 +286,101 @@ const runReusableReservationScenario = async (input: {
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
 
-  const enqueueCleanup = mock(() => Effect.void);
+  const enqueueCleanup = input.enqueueCleanup ?? mock(() => Effect.void);
   const updateReservationDetails = mock(() => Effect.void);
   const recordMany = mock((events) => Effect.succeed(events as never));
   const ensureAvailable = mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
-  const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
+  let latestReservation: WorkspaceReservation | null = null;
+  const findByAttemptKey = mock((key: string) =>
+    input.findByAttemptKey(key).pipe(
+      Effect.tap((reservation) =>
+        Effect.sync(() => {
+          latestReservation = reservation;
+        })
+      )
+    )
+  );
+  const acquireDraftSource =
+    input.acquireDraft ?? mock(() => Effect.die("unused"));
+  const acquireDraft = mock((draftInput) =>
+    acquireDraftSource(draftInput).pipe(
+      Effect.tap((acquisition) =>
+        Effect.sync(() => {
+          latestReservation = acquisition.reservation;
+        })
+      )
+    )
+  );
   const claimHoldCreation =
-    input.claimHoldCreation ?? mock(() => Effect.succeed(true));
-  const findById = input.findById ?? mock(() => Effect.succeed(null));
+    input.claimHoldCreation ??
+    mock(() => Effect.succeed("test-provider-epoch"));
+  const beginProviderHoldCreation =
+    input.beginProviderHoldCreation ?? mock(() => Effect.succeed(true));
+  const reclaimPreProviderHoldCreation =
+    input.reclaimPreProviderHoldCreation ?? mock(() => Effect.succeed(false));
+  const reclaimStalePreProviderHoldCreation =
+    input.reclaimStalePreProviderHoldCreation ??
+    mock(() => Effect.succeed(false));
+  const retirePreProviderDraft =
+    input.retirePreProviderDraft ?? mock(() => Effect.succeed(true));
+  const requireHoldCreationRecovery =
+    input.requireHoldCreationRecovery ?? mock(() => Effect.void);
+  const claimHoldCreationCompensation =
+    input.claimHoldCreationCompensation ?? mock(() => Effect.succeed(true));
+  const findById =
+    input.findById ?? mock(() => Effect.sync(() => latestReservation));
+  const attachHoldSource = input.attachHold ?? mock(() => Effect.void);
+  const recordProviderHoldCandidate =
+    input.recordProviderHoldCandidate ?? mock(() => Effect.void);
+  const attachHold = mock((attachInput) =>
+    attachHoldSource(attachInput).pipe(
+      Effect.tap(() =>
+        Effect.sync(() => {
+          if (!latestReservation) return;
+          latestReservation = makeReusableReservation({
+            ...latestReservation,
+            dotyposReservationId: attachInput.dotyposReservationId,
+            reservationCreatedAt: attachInput.reservationCreatedAt,
+            reservationState: "held",
+            failureCode: `hold_creation_attached:${attachInput.epoch}`,
+          });
+        })
+      )
+    )
+  );
+  const releaseHoldCreation =
+    input.releaseHoldCreation ?? mock(() => Effect.void);
+  const markAttachFailedCancellationRequired =
+    input.markAttachFailedCancellationRequired ?? mock(() => Effect.void);
+  const recordDifferentProviderAttachmentRecovery =
+    input.recordDifferentProviderAttachmentRecovery ?? mock(() => Effect.void);
+  const completeDifferentProviderAttachmentRecovery =
+    input.completeDifferentProviderAttachmentRecovery ??
+    mock(() => Effect.void);
   const claimSupersessionCancellation =
     input.claimSupersessionCancellation ?? mock(() => Effect.succeed(null));
-  const completeSupersessionAndCreateDraft =
+  const completeSupersessionAndCreateDraftSource =
     input.completeSupersessionAndCreateDraft ??
     mock(() => Effect.die("unused"));
+  const completeSupersessionAndCreateDraft = mock((replacementInput) =>
+    completeSupersessionAndCreateDraftSource(replacementInput).pipe(
+      Effect.tap((reservation) =>
+        Effect.sync(() => {
+          latestReservation = reservation;
+        })
+      )
+    )
+  );
   const cancelReservation = input.cancelReservation ?? mock(() => Effect.void);
   const createReservation =
     input.createReservation ??
     mock(() => Effect.succeed({ id: "new-dotypos-reservation-id" } as never));
+  const prepareReservationCreation =
+    input.prepareReservationCreation ??
+    mock(() => Effect.succeed({ request: {} } as never));
+  const listReservations =
+    input.listReservations ?? mock(() => Effect.succeed([]));
   const getReservationStatus =
     input.getReservationStatus ?? mock(() => Effect.succeed("NEW" as const));
   const markCancellationFailed =
@@ -250,9 +393,9 @@ const runReusableReservationScenario = async (input: {
     mock(({ affirmedAdvertisement }) =>
       Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement))
     );
-  const findOrCreateCustomer = mock(() =>
-    Effect.succeed({ id: "customer-id" })
-  );
+  const findOrCreateCustomer =
+    input.findOrCreateCustomer ??
+    mock(() => Effect.succeed({ id: "customer-id" }));
   const testLayer = Layer.mergeAll(
     CheckoutPricingServiceMock({ affirmAdvertisement, quoteForCustomer }),
     BotProtectionServiceMock({ verifyHuman }),
@@ -261,17 +404,26 @@ const runReusableReservationScenario = async (input: {
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
     Layer.succeed(WorkspaceReservationRepository, {
-      findByAttemptKey: input.findByAttemptKey,
+      findByAttemptKey,
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
-      createDraft,
+      acquireDraft,
       claimHoldCreation,
+      beginProviderHoldCreation,
+      reclaimPreProviderHoldCreation,
+      reclaimStalePreProviderHoldCreation,
+      retirePreProviderDraft,
+      requireHoldCreationRecovery,
+      claimHoldCreationCompensation,
       findById,
-      releaseHoldCreation: mock(() => Effect.void),
+      releaseHoldCreation,
       updateReservationDetails,
-      attachHold: mock(() => Effect.void),
-      markAttachFailedCancellationRequired: mock(() => Effect.void),
+      attachHold,
+      recordProviderHoldCandidate,
+      markAttachFailedCancellationRequired,
+      recordDifferentProviderAttachmentRecovery,
+      completeDifferentProviderAttachmentRecovery,
       claimSupersessionCancellation,
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
@@ -297,11 +449,14 @@ const runReusableReservationScenario = async (input: {
       findOrCreateCustomer,
       getReservationStatus,
       cancelReservation,
+      prepareReservationCreation,
+      createPreparedReservation: createReservation,
       createReservation,
+      listReservations,
     } as unknown as typeof DotyposService.Service)
   );
 
-  const result = await prepareCoworkPayState({
+  const program = prepareCoworkPayState({
     locale: "en-US",
     checkoutSessionId: "session-id",
     checkoutAttemptId: "attempt-id",
@@ -309,7 +464,11 @@ const runReusableReservationScenario = async (input: {
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation,
     legalConsent: true,
-  }).pipe(Effect.provide(testLayer), Effect.runPromise);
+  }).pipe(Effect.provide(testLayer));
+  const result = await (input.scenarioTimeout
+    ? program.pipe(Effect.timeout(input.scenarioTimeout))
+    : program
+  ).pipe(Effect.runPromise);
 
   return {
     result,
@@ -317,19 +476,266 @@ const runReusableReservationScenario = async (input: {
     updateReservationDetails,
     recordMany,
     ensureAvailable,
-    createDraft,
+    acquireDraft,
     claimHoldCreation,
+    beginProviderHoldCreation,
+    reclaimPreProviderHoldCreation,
+    reclaimStalePreProviderHoldCreation,
+    requireHoldCreationRecovery,
+    claimHoldCreationCompensation,
     findById,
+    attachHold,
+    releaseHoldCreation,
+    markAttachFailedCancellationRequired,
+    recordDifferentProviderAttachmentRecovery,
+    completeDifferentProviderAttachmentRecovery,
     claimSupersessionCancellation,
     completeSupersessionAndCreateDraft,
     cancelReservation,
+    prepareReservationCreation,
     createReservation,
+    listReservations,
     getReservationStatus,
     markCancellationFailed,
     verifyHuman,
     affirmAdvertisement,
     quoteForCustomer,
     findOrCreateCustomer,
+  };
+};
+
+const runPreProviderExitRetryScenario = async (input: {
+  readonly exit: "timeout" | "defect" | "typed_failure";
+  readonly reclaimFailures?: number;
+}) => {
+  const epoch = "pre-provider-retry-epoch";
+  let persistedReservation = makeReusableReservation({
+    id: "pre-provider-retry-reservation-id",
+    dotyposCustomerId: "persisted-pre-provider-retry-customer-id",
+    dotyposReservationId: null,
+    reservationState: "draft",
+  });
+  let claimPhase: "draft" | "pre_provider" | "provider" = "draft";
+  let quoteAttempt = 0;
+  let remainingReclaimFailures = input.reclaimFailures ?? 0;
+
+  const claimHoldCreation = mock(() =>
+    Effect.sync(() => {
+      if (claimPhase !== "draft") return null;
+      claimPhase = "pre_provider";
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        dotyposReservationId: null,
+        reservationState: "creating_hold",
+        failureCode: `hold_creation_pre_provider:${epoch}`,
+      });
+      return epoch;
+    })
+  );
+  const beginProviderHoldCreation = mock(() =>
+    Effect.sync(() => {
+      if (claimPhase !== "pre_provider") return false;
+      claimPhase = "provider";
+      return true;
+    })
+  );
+  const reclaimPreProviderHoldCreation = mock(() => {
+    if (remainingReclaimFailures > 0) {
+      remainingReclaimFailures -= 1;
+      return Effect.fail(new Error("Synthetic reclaim update failure"));
+    }
+    return Effect.sync(() => {
+      if (claimPhase !== "pre_provider") return false;
+      claimPhase = "draft";
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        dotyposReservationId: null,
+        reservationState: "draft",
+        failureCode: null,
+      });
+      return true;
+    });
+  });
+  const quoteForCustomer = mock(({ affirmedAdvertisement }) => {
+    quoteAttempt += 1;
+    if (quoteAttempt > 1) {
+      return Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement));
+    }
+    if (input.exit === "timeout") {
+      return Effect.never.pipe(Effect.timeout("10 millis"));
+    }
+    if (input.exit === "defect") {
+      return Effect.die(new Error("Synthetic pre-provider defect"));
+    }
+    return Effect.fail(
+      new CheckoutPricingInputError({
+        field: "dotyposCustomerId",
+        cause: new Error("Synthetic pre-provider typed failure"),
+      })
+    );
+  });
+  const createReservation = mock(() =>
+    Effect.succeed({ id: "pre-provider-retry-provider-id" } as never)
+  );
+  const attachHold = mock((attachment) =>
+    Effect.sync(() => {
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        dotyposReservationId: attachment.dotyposReservationId,
+        reservationState: "held",
+        reservationCreatedAt: attachment.reservationCreatedAt,
+        failureCode: `hold_creation_attached:${attachment.epoch}`,
+      });
+    })
+  );
+  const scenario = {
+    findByAttemptKey: mock(() => Effect.sync(() => persistedReservation)),
+    findById: mock(() => Effect.sync(() => persistedReservation)),
+    claimHoldCreation,
+    beginProviderHoldCreation,
+    reclaimPreProviderHoldCreation,
+    reclaimStalePreProviderHoldCreation: reclaimPreProviderHoldCreation,
+    quoteForCustomer,
+    createReservation,
+    attachHold,
+  };
+
+  await expect(runReusableReservationScenario(scenario)).rejects.toBeDefined();
+  const phaseAfterFailure = claimPhase;
+  const retry = await runReusableReservationScenario(scenario);
+
+  return {
+    retry,
+    phaseAfterFailure,
+    claimHoldCreation,
+    beginProviderHoldCreation,
+    reclaimPreProviderHoldCreation,
+    quoteForCustomer,
+    createReservation,
+  };
+};
+
+const runProviderBoundaryReconciliationScenario = async (input: {
+  readonly exit: "network" | "missing_id" | "defect";
+}) => {
+  const epoch = `provider-reconciliation-${input.exit}-epoch`;
+  const reservationId = `provider-reconciliation-${input.exit}`;
+  const providerReservationId = `provider-reservation-${input.exit}`;
+  let persistedReservation = makeReusableReservation({
+    id: reservationId,
+    dotyposCustomerId: "persisted-provider-reconciliation-customer-id",
+    dotyposReservationId: null,
+    reservationState: "draft",
+    failureCode: null,
+  });
+  let providerRequestCount = 0;
+
+  const claimHoldCreation = mock(() =>
+    Effect.sync(() => {
+      if (persistedReservation.reservationState !== "draft") return null;
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        dotyposReservationId: null,
+        reservationState: "creating_hold",
+        failureCode: `hold_creation_pre_provider:${epoch}`,
+      });
+      return epoch;
+    })
+  );
+  const beginProviderHoldCreation = mock(() =>
+    Effect.sync(() => {
+      if (
+        persistedReservation.reservationState !== "creating_hold" ||
+        persistedReservation.failureCode !==
+          `hold_creation_pre_provider:${epoch}`
+      ) {
+        return false;
+      }
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+      });
+      return true;
+    })
+  );
+  const reclaimPreProviderHoldCreation = mock(() =>
+    Effect.sync(() => {
+      if (
+        persistedReservation.reservationState !== "creating_hold" ||
+        persistedReservation.failureCode !==
+          `hold_creation_pre_provider:${epoch}`
+      ) {
+        return false;
+      }
+      persistedReservation = makeReusableReservation({
+        ...persistedReservation,
+        reservationState: "draft",
+        failureCode: null,
+      });
+      return true;
+    })
+  );
+  const attachHold = mock(
+    (attachment: {
+      readonly dotyposReservationId: string;
+      readonly reservationCreatedAt: Temporal.Instant;
+    }) =>
+      Effect.sync(() => {
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          dotyposReservationId: attachment.dotyposReservationId,
+          reservationState: "held",
+          reservationCreatedAt: attachment.reservationCreatedAt,
+          failureCode: `hold_creation_attached:${epoch}`,
+        });
+      })
+  );
+  const createReservation = mock(() => {
+    providerRequestCount += 1;
+    if (input.exit === "network") {
+      return Effect.fail(
+        new NetworkError({ message: "Synthetic ambiguous network failure" })
+      );
+    }
+    if (input.exit === "defect") {
+      return Effect.die(new Error("Synthetic provider boundary defect"));
+    }
+    return Effect.succeed({ status: "NEW" } as never);
+  });
+  const listReservations = mock(() =>
+    Effect.succeed([
+      makeProviderEvidence({
+        id: providerReservationId,
+        status: "NEW",
+        note: `Payment order: ${reservationId}\nProvider creation epoch: ${epoch}`,
+        customerId: "persisted-provider-reconciliation-customer-id",
+      }),
+    ] as never)
+  );
+  const scenario = {
+    findByAttemptKey: mock(() => Effect.sync(() => persistedReservation)),
+    findById: mock(() => Effect.sync(() => persistedReservation)),
+    claimHoldCreation,
+    beginProviderHoldCreation,
+    reclaimPreProviderHoldCreation,
+    attachHold,
+    createReservation,
+    listReservations,
+  };
+
+  await expect(runReusableReservationScenario(scenario)).rejects.toBeDefined();
+  const persistedAfterAmbiguity = persistedReservation;
+  const retry = await runReusableReservationScenario(scenario);
+
+  return {
+    retry,
+    persistedAfterAmbiguity,
+    providerRequestCount,
+    beginProviderHoldCreation,
+    reclaimPreProviderHoldCreation,
+    attachHold,
+    createReservation,
+    listReservations,
   };
 };
 
@@ -372,26 +778,33 @@ describe("prepareCoworkPayState", () => {
         eventOrder.push("availability");
       })
     );
-    const createDraft = mock((input) =>
-      Effect.succeed({
-        id: "reservation-id",
-        checkoutSessionKey: input.checkoutSessionKey,
-        checkoutAttemptKey: input.checkoutAttemptKey,
-        correlationId: "correlation-id",
-        reservationState: "draft",
-        paymentState: "not_started",
-        fulfillmentState: "not_started",
-        dotyposCustomerId: input.dotyposCustomerId,
-        customerAccessCode: input.customerAccessCode,
-        reservationDetails: input.reservationDetails,
-        productTier: "basic",
-        productCoffee: false,
-        productMonitorOption: null,
-        locale: input.locale,
-        reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-      } as never)
+    const acquireDraft = mock((input) =>
+      Effect.succeed(
+        ReservationDraftAcquisition.created({
+          reservation: {
+            id: "reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            correlationId: "correlation-id",
+            reservationState: "draft",
+            paymentState: "not_started",
+            fulfillmentState: "not_started",
+            dotyposCustomerId: input.dotyposCustomerId,
+            dotyposReservationId: null,
+            customerAccessCode: input.customerAccessCode,
+            reservationDetails: input.reservationDetails,
+            productTier: "basic",
+            productCoffee: false,
+            productMonitorOption: null,
+            locale: input.locale,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          },
+        } as never)
+      )
     );
-    const claimHoldCreation = mock(() => Effect.succeed(true));
+    const claimHoldCreation = mock(() =>
+      Effect.succeed("created-reservation-epoch")
+    );
     const attachHold = mock(() =>
       Effect.sync(() => {
         eventOrder.push("attach");
@@ -403,8 +816,17 @@ describe("prepareCoworkPayState", () => {
       })
     );
     const recordMany = mock((input) => Effect.succeed(input as never));
+    const prepareReservationCreation = mock((input) =>
+      Effect.sync(() => {
+        eventOrder.push("provider-prepare");
+        return { request: input } as never;
+      })
+    );
     const createReservation = mock(() =>
-      Effect.succeed({ id: "dotypos-reservation-id" } as never)
+      Effect.sync(() => {
+        eventOrder.push("provider-post");
+        return { id: "dotypos-reservation-id" } as never;
+      })
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
     const findOrCreateCustomer = mock(() =>
@@ -435,10 +857,34 @@ describe("prepareCoworkPayState", () => {
       Layer.succeed(WorkspaceReservationRepository, {
         findByAttemptKey: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
-        createDraft,
+        acquireDraft,
         claimHoldCreation,
+        beginProviderHoldCreation: mock(() =>
+          Effect.sync(() => {
+            eventOrder.push("provider-boundary");
+            return true;
+          })
+        ),
+        reclaimPreProviderHoldCreation: mock(() => Effect.succeed(false)),
+        reclaimStalePreProviderHoldCreation: mock(() => Effect.succeed(false)),
+        requireHoldCreationRecovery: mock(() => Effect.void),
+        claimHoldCreationCompensation: mock(() => Effect.succeed(true)),
+        recordProviderHoldCandidate: mock(() =>
+          Effect.sync(() => {
+            eventOrder.push("provider-evidence");
+          })
+        ),
         attachHold,
-        findById: mock(() => Effect.succeed(null)),
+        findById: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "reservation-id",
+              dotyposCustomerId: "customer-id",
+              dotyposReservationId: "dotypos-reservation-id",
+              failureCode: "hold_creation_attached:created-reservation-epoch",
+            })
+          )
+        ),
         releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
         markAttachFailedCancellationRequired: mock(() => Effect.void),
@@ -462,6 +908,8 @@ describe("prepareCoworkPayState", () => {
       } as never),
       Layer.succeed(DotyposService, {
         findOrCreateCustomer,
+        prepareReservationCreation,
+        createPreparedReservation: createReservation,
         createReservation,
       } as unknown as typeof DotyposService.Service),
       Layer.succeed(PostHogEventService, {
@@ -483,7 +931,7 @@ describe("prepareCoworkPayState", () => {
       entryTier: reservation.entryTier,
       monitorOption: undefined,
     });
-    expect(createDraft).toHaveBeenCalledTimes(1);
+    expect(acquireDraft).toHaveBeenCalledTimes(1);
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
       kind: "cowork",
@@ -492,6 +940,12 @@ describe("prepareCoworkPayState", () => {
       coffee: false,
     });
     expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(eventOrder.indexOf("provider-prepare")).toBeLessThan(
+      eventOrder.indexOf("provider-boundary")
+    );
+    expect(eventOrder.indexOf("provider-boundary")).toBeLessThan(
+      eventOrder.indexOf("provider-post")
+    );
     expect(attachHold).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "reservation-id",
@@ -502,13 +956,28 @@ describe("prepareCoworkPayState", () => {
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Temporal.Instant),
     });
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "attachment_unknown",
+        orderId: "reservation-id",
+        providerCreationEpoch: expect.any(String),
+        dotyposReservationId: "dotypos-reservation-id",
+        delaySeconds: 120,
+      })
+    );
     expect(eventOrder).toEqual([
       "bot-verification",
       "advertisement",
       "customer",
-      "quote",
       "availability",
+      "quote",
+      "provider-prepare",
+      "provider-boundary",
+      "provider-post",
+      "provider-evidence",
       "attach",
+      "enqueue",
       "enqueue",
     ]);
     expect(verifyHuman).toHaveBeenCalledWith({
@@ -538,27 +1007,62 @@ describe("prepareCoworkPayState", () => {
     );
   });
 
-  test("reuses an immediate retry without scheduling cleanup", async () => {
-    const existingReservation = makeReusableReservation();
+  test("canonicalizes the provider customer ID before persistence and requests", async () => {
+    const acquireDraft = mock((input) =>
+      Effect.succeed(
+        ReservationDraftAcquisition.created({
+          reservation: makeReusableReservation({
+            id: "canonical-provider-id-reservation",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            dotyposCustomerId: input.dotyposCustomerId,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          }),
+        })
+      )
+    );
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      acquireDraft,
+      findOrCreateCustomer: mock(() =>
+        Effect.succeed({ id: "  canonical-customer-id  " })
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(acquireDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: "canonical-customer-id",
+      })
+    );
+    expect(result.quoteForCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: "canonical-customer-id",
+      })
+    );
+    expect(result.prepareReservationCreation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        customerId: "canonical-customer-id",
+      })
+    );
+  });
+
+  test("reuses an immediate retry with idempotent cleanup scheduling", async () => {
+    const existingReservation = makeReusableReservation({
+      dotyposCustomerId: "persisted-customer-id",
+    });
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(existingReservation)),
     });
 
     expect(result.result.status).toBe("ready");
     expect(result.ensureAvailable).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.enqueueCleanup).toHaveBeenCalledTimes(1);
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
     });
-    expect(result.updateReservationDetails).toHaveBeenCalledWith({
-      id: existingReservation.id,
-      reservationDetails: {
-        kind: "cowork",
-        entryTier: "basic",
-        coffee: false,
-      },
-      locale: "en-US",
-    });
+    expect(result.updateReservationDetails).not.toHaveBeenCalled();
     expect(result.findOrCreateCustomer).toHaveBeenCalledTimes(1);
     expect(result.quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -567,30 +1071,2237 @@ describe("prepareCoworkPayState", () => {
     );
   });
 
+  test("requires cleanup enqueue success before reusing a held reservation", async () => {
+    let enqueueAttempt = 0;
+    const enqueueCleanup = mock(() => {
+      enqueueAttempt += 1;
+      return enqueueAttempt === 1
+        ? Effect.fail(new Error("Synthetic cleanup enqueue failure"))
+        : Effect.void;
+    });
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      enqueueCleanup,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(enqueueCleanup).toHaveBeenCalledTimes(2);
+    expect(retry.createReservation).not.toHaveBeenCalled();
+  });
+
+  test("treats cleanup enqueue timeout as a retryable action failure", async () => {
+    let enqueueAttempt = 0;
+    const enqueueCleanup = mock(() => {
+      enqueueAttempt += 1;
+      return enqueueAttempt === 1 ? Effect.never : Effect.void;
+    });
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+      enqueueCleanup,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(enqueueCleanup).toHaveBeenCalledTimes(2);
+    expect(retry.createReservation).not.toHaveBeenCalled();
+  }, 5_000);
+
+  test("retries cleanup scheduling after attachment without another provider create", async () => {
+    const epoch = "cleanup-after-attach-epoch";
+    const providerId = "cleanup-after-attach-provider";
+    let persisted = makeReusableReservation({
+      id: "cleanup-after-attach-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    let enqueueAttempt = 0;
+    const enqueueCleanup = mock(() => {
+      enqueueAttempt += 1;
+      return enqueueAttempt === 1
+        ? Effect.fail(new Error("Synthetic post-attach enqueue failure"))
+        : Effect.void;
+    });
+    const createReservation = mock(() =>
+      Effect.succeed({ id: providerId } as never)
+    );
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      claimHoldCreation: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            reservationState: "creating_hold",
+            failureCode: `hold_creation_pre_provider:${epoch}`,
+          });
+          return epoch;
+        })
+      ),
+      beginProviderHoldCreation: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+          });
+          return true;
+        })
+      ),
+      attachHold: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            dotyposReservationId: providerId,
+            reservationState: "held",
+            failureCode: `hold_creation_attached:${epoch}`,
+          });
+        })
+      ),
+      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(false)),
+      createReservation,
+      enqueueCleanup,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    expect(persisted).toMatchObject({
+      reservationState: "held",
+      dotyposReservationId: providerId,
+    });
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(enqueueCleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test("schedules a definitive hold after losing the hold-creation claim", async () => {
+    const draft = makeReusableReservation({
+      id: "lost-claim-cleanup-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const definitive = makeReusableReservation({
+      ...draft,
+      dotyposReservationId: "lost-claim-cleanup-provider",
+      reservationState: "held",
+      failureCode: "hold_creation_attached:lost-claim-cleanup-epoch",
+    });
+    const enqueueCleanup = mock(() => Effect.void);
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(draft)),
+      claimHoldCreation: mock(() => Effect.succeed(null)),
+      findById: mock(() => Effect.succeed(definitive)),
+      enqueueCleanup,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(enqueueCleanup).toHaveBeenCalledWith({
+      orderId: definitive.id,
+      reservationHoldExpiresAt: definitive.reservationHoldExpiresAt,
+    });
+    expect(result.createReservation).not.toHaveBeenCalled();
+  });
+
+  test("preserves the persisted draft hold deadline through attachment and cleanup", async () => {
+    const persistedDeadline = Temporal.Instant.from("2099-07-01T09:59:00Z");
+    const draft = makeReusableReservation({
+      id: "immutable-deadline-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+      reservationHoldExpiresAt: persistedDeadline,
+    });
+    const attachHold = mock(() => Effect.void);
+    const enqueueCleanup = mock(() => Effect.void);
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(draft)),
+      attachHold,
+      enqueueCleanup,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(attachHold.mock.calls[0]?.[0]).not.toHaveProperty(
+      "reservationHoldExpiresAt"
+    );
+    expect(enqueueCleanup).toHaveBeenCalledWith({
+      orderId: draft.id,
+      reservationHoldExpiresAt: persistedDeadline,
+    });
+  });
+
   test("reuses a held reservation returned by a conflicting draft insert", async () => {
     const claimConflictReservation = makeReusableReservation({
       id: "claim-conflict-reservation-id",
+      dotyposCustomerId: "persisted-conflict-customer-id",
     });
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(null)),
-      createDraft: mock((input) =>
-        Effect.succeed({
-          ...claimConflictReservation,
-          checkoutSessionKey: input.checkoutSessionKey,
-          checkoutAttemptKey: input.checkoutAttemptKey,
-        })
+      acquireDraft: mock((input) =>
+        Effect.succeed(
+          ReservationDraftAcquisition.existing_attempt({
+            reservation: {
+              ...claimConflictReservation,
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
+            },
+          })
+        )
       ),
     });
 
     expect(result.result.status).toBe("ready");
     expect(result.claimHoldCreation).not.toHaveBeenCalled();
-    expect(result.findById).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.findById).toHaveBeenCalledTimes(1);
+    expect(result.enqueueCleanup).toHaveBeenCalledTimes(1);
     expect(result.quoteForCustomer).toHaveBeenLastCalledWith(
       expect.objectContaining({
         dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
       })
     );
+  });
+
+  test("waits for an insertion-conflict attempt transition before reusing its definitive hold", async () => {
+    const creatingReservation = makeReusableReservation({
+      id: "insertion-conflict-reservation-id",
+      dotyposCustomerId: "persisted-insertion-conflict-customer-id",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: "hold_creation_pre_provider:live-insertion-conflict-epoch",
+      updatedAt: Temporal.Instant.from("2030-07-01T09:55:00.000Z"),
+    });
+    const heldReservation = makeReusableReservation({
+      ...creatingReservation,
+      dotyposReservationId: "insertion-conflict-provider-reservation-id",
+      reservationState: "held",
+    });
+    let persistedReservation = creatingReservation;
+    let lookupCount = 0;
+    const findById = mock(() =>
+      Effect.sync(() => {
+        lookupCount += 1;
+        const observedReservation = persistedReservation;
+        persistedReservation = heldReservation;
+        return observedReservation;
+      })
+    );
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      acquireDraft: mock(() =>
+        Effect.succeed(
+          ReservationDraftAcquisition.existing_attempt({
+            reservation: creatingReservation,
+          })
+        )
+      ),
+      findById,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(lookupCount).toBe(3);
+    expect(result.claimHoldCreation).not.toHaveBeenCalled();
+    expect(result.createReservation).not.toHaveBeenCalled();
+    expect(result.reclaimStalePreProviderHoldCreation).not.toHaveBeenCalled();
+    expect(result.quoteForCustomer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: heldReservation.dotyposCustomerId,
+      })
+    );
+  });
+
+  test("releases a claimed draft after quote failure so the exact attempt can retry", async () => {
+    const epoch = "quote-retry-epoch";
+    let persistedReservation = makeReusableReservation({
+      id: "quote-retry-reservation-id",
+      dotyposCustomerId: "persisted-quote-retry-customer-id",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    let quoteAttempt = 0;
+    let providerBoundaryStarted = false;
+    const claimHoldCreation = mock(() =>
+      Effect.sync(() => {
+        if (persistedReservation.reservationState !== "draft") return null;
+        providerBoundaryStarted = false;
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          dotyposReservationId: null,
+          reservationState: "creating_hold",
+          failureCode: `hold_creation_pre_provider:${epoch}`,
+        });
+        return epoch;
+      })
+    );
+    const reclaimPreProviderHoldCreation = mock(() =>
+      Effect.sync(() => {
+        if (providerBoundaryStarted) return false;
+        if (persistedReservation.reservationState !== "creating_hold") {
+          throw new Error("Expected an owned creating-hold claim");
+        }
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          dotyposReservationId: null,
+          reservationState: "draft",
+          failureCode: null,
+        });
+        return true;
+      })
+    );
+    const beginProviderHoldCreation = mock(() =>
+      Effect.sync(() => {
+        if (persistedReservation.reservationState !== "creating_hold") {
+          return false;
+        }
+        providerBoundaryStarted = true;
+        return true;
+      })
+    );
+    const quoteForCustomer = mock(({ affirmedAdvertisement }) => {
+      quoteAttempt += 1;
+      return quoteAttempt === 1
+        ? Effect.fail(
+            new CheckoutPricingInputError({
+              field: "dotyposCustomerId",
+              cause: new Error("Synthetic quote failure"),
+            })
+          )
+        : Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement));
+    });
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "quote-retry-provider-reservation-id" } as never)
+    );
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persistedReservation)),
+      claimHoldCreation,
+      beginProviderHoldCreation,
+      reclaimPreProviderHoldCreation,
+      quoteForCustomer,
+      createReservation,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+
+    expect(persistedReservation.reservationState).toBe("draft");
+    expect(reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(1);
+    expect(createReservation).not.toHaveBeenCalled();
+
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(claimHoldCreation).toHaveBeenCalledTimes(2);
+    expect(reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(2);
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(quoteForCustomer).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: persistedReservation.dotyposCustomerId,
+      })
+    );
+  });
+
+  test.each([
+    "validation",
+    "authentication",
+  ] as const)("keeps provider %s failure before the durable boundary retryable", async (failureKind) => {
+    const draft = makeReusableReservation({
+      id: `provider-preparation-${failureKind}`,
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const beginProviderHoldCreation = mock(() => Effect.succeed(true));
+    const reclaimPreProviderHoldCreation = mock(() => Effect.succeed(true));
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "unused-provider-id" } as never)
+    );
+    const prepareReservationCreation = mock(() =>
+      Effect.fail(
+        failureKind === "validation"
+          ? new ValidationError({
+              message: "Synthetic deterministic validation failure",
+            })
+          : new NetworkError({
+              message: "Synthetic authentication setup failure",
+            })
+      )
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(draft)),
+        claimHoldCreation: mock(() =>
+          Effect.succeed(`provider-preparation-${failureKind}-epoch`)
+        ),
+        beginProviderHoldCreation,
+        reclaimPreProviderHoldCreation,
+        prepareReservationCreation,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(prepareReservationCreation).toHaveBeenCalledTimes(1);
+    expect(beginProviderHoldCreation).not.toHaveBeenCalled();
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(1);
+  });
+
+  test("reclaims an interrupted pre-provider claim and retries the exact attempt", async () => {
+    const result = await runPreProviderExitRetryScenario({ exit: "timeout" });
+
+    expect(result.phaseAfterFailure).toBe("draft");
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.claimHoldCreation).toHaveBeenCalledTimes(2);
+    expect(result.beginProviderHoldCreation).toHaveBeenCalledTimes(1);
+    expect(result.reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(2);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("reclaims a defected pre-provider claim and retries the exact attempt", async () => {
+    const result = await runPreProviderExitRetryScenario({ exit: "defect" });
+
+    expect(result.phaseAfterFailure).toBe("draft");
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.claimHoldCreation).toHaveBeenCalledTimes(2);
+    expect(result.beginProviderHoldCreation).toHaveBeenCalledTimes(1);
+    expect(result.reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(2);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("recovers an exact retry after pre-provider compensation persistence fails", async () => {
+    const result = await runPreProviderExitRetryScenario({
+      exit: "typed_failure",
+      reclaimFailures: 1,
+    });
+
+    expect(result.phaseAfterFailure).toBe("pre_provider");
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.claimHoldCreation).toHaveBeenCalledTimes(2);
+    expect(result.beginProviderHoldCreation).toHaveBeenCalledTimes(1);
+    expect(result.reclaimPreProviderHoldCreation).toHaveBeenCalledTimes(3);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("reconciles an ambiguous network result without a second provider create", async () => {
+    const result = await runProviderBoundaryReconciliationScenario({
+      exit: "network",
+    });
+
+    expect(result.persistedAfterAmbiguity).toMatchObject({
+      reservationState: "creating_hold",
+      dotyposReservationId: null,
+      failureCode:
+        "hold_creation_provider_reconciliation:provider-reconciliation-network-epoch",
+    });
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.providerRequestCount).toBe(1);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+    expect(result.listReservations).toHaveBeenCalledTimes(1);
+    expect(result.attachHold).toHaveBeenCalledTimes(1);
+    expect(result.retry.enqueueCleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test("reconciles begin-marker commit ambiguity without issuing a provider create", async () => {
+    const epoch = "begin-marker-ambiguity-epoch";
+    const providerId = "begin-marker-reconciled-provider-id";
+    let persisted = makeReusableReservation({
+      id: "begin-marker-ambiguity-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "unused-provider-id" } as never)
+    );
+    const attachHold = mock(
+      (input: { readonly dotyposReservationId: string }) =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            reservationState: "held",
+            dotyposReservationId: input.dotyposReservationId,
+            failureCode: `hold_creation_attached:${epoch}`,
+          });
+        })
+    );
+    let beginAttempt = 0;
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      claimHoldCreation: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            reservationState: "creating_hold",
+            failureCode: `hold_creation_pre_provider:${epoch}`,
+          });
+          return epoch;
+        })
+      ),
+      beginProviderHoldCreation: mock(() =>
+        Effect.suspend(() => {
+          beginAttempt += 1;
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+          });
+          return Effect.fail(
+            new Error("Synthetic provider-boundary marker acknowledgement loss")
+          );
+        })
+      ),
+      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(false)),
+      listReservations: mock(() =>
+        Effect.succeed([
+          makeProviderEvidence({
+            id: providerId,
+            status: "NEW",
+            note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+            customerId: persisted.dotyposCustomerId,
+          }),
+        ] as never)
+      ),
+      attachHold,
+      createReservation,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(beginAttempt).toBe(1);
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(attachHold).toHaveBeenCalledTimes(1);
+    expect(retry.enqueueCleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test("reconciles a successful provider response without an ID", async () => {
+    const result = await runProviderBoundaryReconciliationScenario({
+      exit: "missing_id",
+    });
+
+    expect(result.persistedAfterAmbiguity.failureCode).toBe(
+      "hold_creation_provider_reconciliation:provider-reconciliation-missing_id-epoch"
+    );
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.providerRequestCount).toBe(1);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+    expect(result.listReservations).toHaveBeenCalledTimes(1);
+    expect(result.attachHold).toHaveBeenCalledTimes(1);
+    expect(result.retry.enqueueCleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test("reconciles a provider defect without a second provider create", async () => {
+    const result = await runProviderBoundaryReconciliationScenario({
+      exit: "defect",
+    });
+
+    expect(result.persistedAfterAmbiguity.failureCode).toBe(
+      "hold_creation_provider_reconciliation:provider-reconciliation-defect-epoch"
+    );
+    expect(result.retry.result.status).toBe("ready");
+    expect(result.providerRequestCount).toBe(1);
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+    expect(result.listReservations).toHaveBeenCalledTimes(1);
+    expect(result.attachHold).toHaveBeenCalledTimes(1);
+    expect(result.retry.enqueueCleanup).toHaveBeenCalledTimes(2);
+  });
+
+  test.each([
+    ["zero_matches", []],
+    [
+      "multiple_matches",
+      [
+        { id: "synthetic-match-a", status: "NEW" },
+        { id: "synthetic-match-b", status: "NEW" },
+      ],
+    ],
+    ["missing_id", [{ id: " ", status: "NEW" }]],
+    ["unsafe_status", [{ id: "synthetic-match", status: "CONFIRMED" }]],
+  ] as const)("durably classifies %s reconciliation without another provider create", async (reason, matches) => {
+    const epoch = `recovery-${reason}-epoch`;
+    const pending = makeReusableReservation({
+      id: `recovery-${reason}-reservation`,
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    const requireHoldCreationRecovery = mock(() => Effect.void);
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "unused-provider-id" } as never)
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(pending)),
+        findById: mock(() => Effect.succeed(pending)),
+        listReservations: mock(() =>
+          Effect.succeed(
+            matches.map((match) =>
+              makeProviderEvidence({
+                id: match.id,
+                status: match.status,
+                note: `Payment order: ${pending.id}\nProvider creation epoch: ${epoch}`,
+                customerId: pending.dotyposCustomerId,
+              })
+            ) as never
+          )
+        ),
+        requireHoldCreationRecovery,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(requireHoldCreationRecovery).toHaveBeenCalledWith({
+      id: pending.id,
+      epoch,
+      reason,
+    });
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("persists read-failure recovery and retries reconciliation without a provider create", async () => {
+    const epoch = "reconciliation-read-failure-epoch";
+    const pending = makeReusableReservation({
+      id: "reconciliation-read-failure-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    let readAttempt = 0;
+    const requireHoldCreationRecovery = mock(() => Effect.void);
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "unused-provider-id" } as never)
+    );
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.succeed(pending)),
+      findById: mock(() => Effect.succeed(pending)),
+      listReservations: mock(() => {
+        readAttempt += 1;
+        return Effect.fail(
+          new NetworkError({
+            message: `Synthetic reconciliation read failure ${readAttempt}`,
+          })
+        );
+      }),
+      requireHoldCreationRecovery,
+      createReservation,
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+
+    expect(requireHoldCreationRecovery).toHaveBeenCalledTimes(2);
+    expect(requireHoldCreationRecovery).toHaveBeenLastCalledWith({
+      id: pending.id,
+      epoch,
+      reason: "read_failed",
+    });
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("keeps reconciliation retryable when recovery-marker persistence fails", async () => {
+    const epoch = "recovery-persistence-failure-epoch";
+    const pending = makeReusableReservation({
+      id: "recovery-persistence-failure-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    let markerAttempt = 0;
+    const requireHoldCreationRecovery = mock(() => {
+      markerAttempt += 1;
+      return markerAttempt === 1
+        ? Effect.fail(new Error("Synthetic recovery marker failure"))
+        : Effect.void;
+    });
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.succeed(pending)),
+      findById: mock(() => Effect.succeed(pending)),
+      listReservations: mock(() => Effect.succeed([])),
+      requireHoldCreationRecovery,
+      createReservation: mock(() =>
+        Effect.succeed({ id: "unused-provider-id" } as never)
+      ),
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+
+    expect(requireHoldCreationRecovery).toHaveBeenCalledTimes(2);
+    expect(scenario.createReservation).not.toHaveBeenCalled();
+  });
+
+  test("stale cancelled evidence cannot release a newer provider epoch", async () => {
+    const oldEpoch = "stale-cancelled-epoch";
+    const newEpoch = "new-provider-epoch";
+    let persisted = makeReusableReservation({
+      id: "epoch-guard-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${oldEpoch}`,
+    });
+    const releaseHoldCreation = mock(({ epoch }: { readonly epoch: string }) =>
+      Effect.suspend(() => {
+        if (
+          persisted.failureCode !==
+          `hold_creation_provider_reconciliation:${epoch}`
+        ) {
+          return Effect.fail(new Error("Synthetic stale epoch conflict"));
+        }
+        persisted = makeReusableReservation({
+          ...persisted,
+          reservationState: "draft",
+          failureCode: null,
+        });
+        return Effect.void;
+      })
+    );
+    const listReservations = mock(() =>
+      Effect.sync(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          failureCode: `hold_creation_provider_reconciliation:${newEpoch}`,
+        });
+        return [
+          makeProviderEvidence({
+            id: "synthetic-cancelled-provider-id",
+            status: "CANCELLED",
+            note: `Payment order: ${persisted.id}\nProvider creation epoch: ${oldEpoch}`,
+            customerId: persisted.dotyposCustomerId,
+          }),
+        ] as never;
+      })
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        listReservations,
+        releaseHoldCreation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(releaseHoldCreation).toHaveBeenCalledWith({
+      id: persisted.id,
+      epoch: oldEpoch,
+    });
+    expect(persisted).toMatchObject({
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${newEpoch}`,
+    });
+  });
+
+  test("ignores epoch-A cancellation until delayed epoch-B evidence is visible", async () => {
+    const oldEpoch = "visibility-old-epoch";
+    const epoch = "visibility-current-epoch";
+    const providerId = "visibility-current-provider";
+    let lookupAttempt = 0;
+    let persisted = makeReusableReservation({
+      id: "visibility-delay-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    const releaseHoldCreation = mock(() => Effect.void);
+    const requireHoldCreationRecovery = mock(
+      (input: { readonly reason: string }) =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_recovery_required:${epoch}:${input.reason}`,
+          });
+        })
+    );
+    const listReservations = mock(() =>
+      Effect.sync(() => {
+        lookupAttempt += 1;
+        return lookupAttempt === 1
+          ? [
+              makeProviderEvidence({
+                id: "visibility-old-provider",
+                status: "CANCELLED",
+                note: `Payment order: ${persisted.id}\nProvider creation epoch: ${oldEpoch}`,
+                customerId: persisted.dotyposCustomerId,
+              }),
+            ]
+          : [
+              makeProviderEvidence({
+                id: providerId,
+                status: "NEW",
+                note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+                customerId: persisted.dotyposCustomerId,
+              }),
+            ];
+      })
+    );
+    const attachHold = mock(() =>
+      Effect.sync(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          dotyposReservationId: providerId,
+          reservationState: "held",
+          failureCode: `hold_creation_attached:${epoch}`,
+        });
+      })
+    );
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      listReservations,
+      requireHoldCreationRecovery,
+      releaseHoldCreation,
+      attachHold,
+      createReservation: mock(() =>
+        Effect.succeed({ id: "unused-provider-id" } as never)
+      ),
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    expect(releaseHoldCreation).not.toHaveBeenCalled();
+    expect(persisted.failureCode).toBe(
+      `hold_creation_recovery_required:${epoch}:zero_matches`
+    );
+
+    const retry = await runReusableReservationScenario(scenario);
+    expect(retry.result.status).toBe("ready");
+    expect(attachHold).toHaveBeenCalledTimes(1);
+    expect(scenario.createReservation).not.toHaveBeenCalled();
+  });
+
+  test("schedules an already-due reconciled hold before refusing reuse", async () => {
+    const epoch = "already-due-reconciliation-epoch";
+    const providerId = "already-due-provider";
+    let persisted = makeReusableReservation({
+      id: "already-due-reconciliation-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+      reservationHoldExpiresAt: Temporal.Instant.from(
+        "2000-01-01T00:00:00.000Z"
+      ),
+    });
+    const enqueueCleanup = mock(() => Effect.void);
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "unused-provider-id" } as never)
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: providerId,
+              status: "NEW",
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        attachHold: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              dotyposReservationId: providerId,
+              reservationState: "held",
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+          })
+        ),
+        enqueueCleanup,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(enqueueCleanup).toHaveBeenCalledTimes(2);
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(persisted.reservationState).toBe("held");
+  });
+
+  test("treats commit-then-error attachment as success without provider compensation", async () => {
+    const epoch = "commit-then-error-epoch";
+    const providerId = "commit-then-error-provider-id";
+    let persisted = makeReusableReservation({
+      id: "commit-then-error-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+      failureCode: null,
+    });
+    const attachHold = mock(() =>
+      Effect.suspend(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          dotyposReservationId: providerId,
+          reservationState: "held",
+          failureCode: `hold_creation_attached:${epoch}`,
+        });
+        return Effect.fail(
+          new Error("Synthetic post-commit acknowledgement loss")
+        );
+      })
+    );
+    const claimHoldCreationCompensation = mock(() =>
+      Effect.succeed(
+        persisted.reservationState === "creating_hold" &&
+          persisted.dotyposReservationId === null
+      )
+    );
+    const cancelReservation = mock(() => Effect.void);
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      claimHoldCreation: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            reservationState: "creating_hold",
+            failureCode: `hold_creation_pre_provider:${epoch}`,
+          });
+          return epoch;
+        })
+      ),
+      beginProviderHoldCreation: mock(() =>
+        Effect.sync(() => {
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+          });
+          return true;
+        })
+      ),
+      attachHold,
+      claimHoldCreationCompensation,
+      cancelReservation,
+      createReservation: mock(() =>
+        Effect.succeed({ id: providerId } as never)
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(claimHoldCreationCompensation).toHaveBeenCalledTimes(1);
+    expect(cancelReservation).not.toHaveBeenCalled();
+    expect(result.enqueueCleanup).toHaveBeenCalledTimes(3);
+    expect(result.enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "attachment_unknown",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+      })
+    );
+  });
+
+  test("hands exact provider evidence off after an attachment defect", async () => {
+    const epoch = "synthetic-attach-defect-epoch";
+    const providerId = "synthetic-attach-defect-provider";
+    const createReservation = mock(() =>
+      Effect.succeed({ id: providerId } as never)
+    );
+    const recordProviderHoldCandidate = mock(() => Effect.void);
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "synthetic-attach-defect-order",
+              dotyposReservationId: null,
+              reservationState: "draft",
+              failureCode: null,
+            })
+          )
+        ),
+        claimHoldCreation: mock(() => Effect.succeed(epoch)),
+        attachHold: mock(() => Effect.die("synthetic attachment defect")),
+        recordProviderHoldCandidate,
+        createReservation,
+        enqueueCleanup,
+      })
+    ).rejects.toBeDefined();
+
+    const evidence = recordProviderHoldCandidate.mock.calls[0]?.[0];
+    expect(evidence).toMatchObject({
+      epoch,
+      dotyposReservationId: providerId,
+    });
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "attachment_unknown",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+        reservationCreatedAt: evidence.reservationCreatedAt,
+      })
+    );
+  });
+
+  test("hands exact provider evidence off after immediate cancellation defects", async () => {
+    const epoch = "synthetic-cancel-defect-epoch";
+    const providerId = "synthetic-cancel-defect-provider";
+    const recordProviderHoldCandidate = mock(() => Effect.void);
+    const cancelReservation = mock(() =>
+      Effect.die("synthetic cancellation defect")
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              id: "synthetic-cancel-defect-order",
+              dotyposReservationId: null,
+              reservationState: "draft",
+              failureCode: null,
+            })
+          )
+        ),
+        claimHoldCreation: mock(() => Effect.succeed(epoch)),
+        recordProviderHoldCandidate,
+        attachHold: mock(() =>
+          Effect.fail(new Error("synthetic attachment failure"))
+        ),
+        claimHoldCreationCompensation: mock(() => Effect.succeed(true)),
+        cancelReservation,
+        enqueueCleanup,
+        createReservation: mock(() =>
+          Effect.succeed({ id: providerId } as never)
+        ),
+      })
+    ).rejects.toBeDefined();
+
+    expect(recordProviderHoldCandidate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        epoch,
+        dotyposReservationId: providerId,
+        reservationCreatedAt: expect.any(Temporal.Instant),
+      })
+    );
+    expect(cancelReservation).toHaveBeenCalledTimes(1);
+    const evidence = recordProviderHoldCandidate.mock.calls[0]?.[0];
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+        reservationCreatedAt: evidence.reservationCreatedAt,
+      })
+    );
+  });
+
+  test("keeps a fresh provider boundary non-payable instead of reconciling concurrently", async () => {
+    const epoch = "synthetic-live-provider-boundary-epoch";
+    const persisted = makeReusableReservation({
+      id: "synthetic-live-provider-boundary-order",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+      updatedAt: Temporal.Now.instant(),
+    });
+    const listReservations = mock(() =>
+      Effect.die("live provider boundary must not be queried")
+    );
+    const attachHold = mock(() =>
+      Effect.die("live provider boundary must not attach")
+    );
+    const createReservation = mock(() =>
+      Effect.die("an exact retry must not create again")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(persisted)),
+        findById: mock(() => Effect.succeed(persisted)),
+        listReservations,
+        attachHold,
+        createReservation,
+        scenarioTimeout: "50 millis",
+      })
+    ).rejects.toBeDefined();
+
+    expect(listReservations).not.toHaveBeenCalled();
+    expect(attachHold).not.toHaveBeenCalled();
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("keeps payment blocked when exact evidence persistence fails before a delayed queue handoff", async () => {
+    const epoch = "synthetic-evidence-write-failure-epoch";
+    let persisted = makeReusableReservation({
+      id: "synthetic-evidence-write-failure-order",
+      dotyposReservationId: null,
+      reservationState: "draft",
+      failureCode: null,
+    });
+    const createReservation = mock(() =>
+      Effect.succeed({
+        id: "synthetic-evidence-write-failure-provider",
+      } as never)
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+    const attachHold = mock(() =>
+      Effect.die("attachment cannot follow failed evidence persistence")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        claimHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "creating_hold",
+              failureCode: `hold_creation_pre_provider:${epoch}`,
+            });
+            return epoch;
+          })
+        ),
+        beginProviderHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+              updatedAt: Temporal.Now.instant(),
+            });
+            return true;
+          })
+        ),
+        recordProviderHoldCandidate: mock(() =>
+          Effect.fail(new Error("synthetic evidence persistence failure"))
+        ),
+        attachHold,
+        createReservation,
+        enqueueCleanup,
+      })
+    ).rejects.toBeDefined();
+
+    expect(persisted).toMatchObject({
+      reservationState: "creating_hold",
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(attachHold).not.toHaveBeenCalled();
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        providerCreationEpoch: epoch,
+      })
+    );
+  });
+
+  test("durably records a different-provider attachment loser without changing the winner", async () => {
+    const epoch = "different-provider-epoch";
+    const winnerId = "synthetic-provider-winner";
+    const loserId = "synthetic-provider-loser";
+    let persisted = makeReusableReservation({
+      id: "different-provider-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const recordProviderHoldCandidate = mock(
+      (input: { readonly dotyposReservationId: string }) =>
+        Effect.sync(() => {
+          if (
+            persisted.reservationState === "held" &&
+            persisted.dotyposReservationId !== input.dotyposReservationId
+          ) {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+            });
+          }
+        })
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        claimHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "creating_hold",
+              failureCode: `hold_creation_pre_provider:${epoch}`,
+            });
+            return epoch;
+          })
+        ),
+        beginProviderHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+            });
+            return true;
+          })
+        ),
+        createReservation: mock(() => Effect.succeed({ id: loserId } as never)),
+        attachHold: mock(() =>
+          Effect.suspend(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "held",
+              dotyposReservationId: winnerId,
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+            return Effect.fail(
+              new Error("Synthetic concurrent attachment conflict")
+            );
+          })
+        ),
+        claimHoldCreationCompensation: mock(() => Effect.succeed(false)),
+        recordProviderHoldCandidate,
+      })
+    ).rejects.toBeDefined();
+
+    expect(persisted).toMatchObject({
+      reservationState: "held",
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+    expect(recordProviderHoldCandidate).toHaveBeenCalledTimes(2);
+  });
+
+  test("hands off a direct attachment loser before a failed definitive reread", async () => {
+    const epoch = "direct-reread-failure-epoch";
+    const winnerId = "synthetic-direct-reread-winner";
+    const loserId = "synthetic-direct-reread-loser";
+    let persisted = makeReusableReservation({
+      id: "direct-reread-failure-reservation",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const recordCandidate = mock((input) =>
+      Effect.sync(() => {
+        if (
+          persisted.reservationState === "held" &&
+          persisted.dotyposReservationId !== input.dotyposReservationId
+        ) {
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+          });
+        }
+      })
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() =>
+          Effect.fail(new Error("Synthetic definitive reread failure"))
+        ),
+        claimHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "creating_hold",
+              failureCode: `hold_creation_pre_provider:${epoch}`,
+            });
+            return epoch;
+          })
+        ),
+        beginProviderHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+            });
+            return true;
+          })
+        ),
+        createReservation: mock(() => Effect.succeed({ id: loserId } as never)),
+        attachHold: mock(() =>
+          Effect.suspend(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "held",
+              dotyposReservationId: winnerId,
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+            return Effect.fail(
+              new Error("Synthetic direct attachment conflict")
+            );
+          })
+        ),
+        claimHoldCreationCompensation: mock(() => Effect.succeed(false)),
+        recordProviderHoldCandidate: recordCandidate,
+        enqueueCleanup,
+      })
+    ).rejects.toBeDefined();
+
+    expect(recordCandidate).toHaveBeenCalledTimes(2);
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "attachment_unknown",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: loserId,
+      })
+    );
+    expect(persisted).toMatchObject({
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+
+    const retryCreate = mock(() =>
+      Effect.succeed({ id: "unexpected-retry-provider" } as never)
+    );
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        enqueueCleanup,
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: loserId,
+              status: "NEW",
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        createReservation: retryCreate,
+      })
+    ).rejects.toBeDefined();
+    expect(retryCreate).not.toHaveBeenCalled();
+  });
+
+  test("records a reconciler attachment loser without overwriting the direct winner", async () => {
+    const epoch = "reconciler-loser-epoch";
+    const winnerId = "synthetic-direct-winner";
+    const loserId = "synthetic-reconciler-loser";
+    let persisted = makeReusableReservation({
+      id: "reconciler-loser-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    const recordProviderHoldCandidate = mock(
+      (input: { readonly dotyposReservationId: string }) =>
+        Effect.sync(() => {
+          if (
+            persisted.reservationState === "held" &&
+            persisted.dotyposReservationId !== input.dotyposReservationId
+          ) {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+            });
+          }
+        })
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: loserId,
+              status: "NEW",
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        attachHold: mock(() =>
+          Effect.suspend(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "held",
+              dotyposReservationId: winnerId,
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+            return Effect.fail(
+              new Error("Synthetic direct-vs-reconciler attach conflict")
+            );
+          })
+        ),
+        recordProviderHoldCandidate,
+        createReservation: mock(() =>
+          Effect.succeed({ id: "unused-provider-id" } as never)
+        ),
+      })
+    ).rejects.toBeDefined();
+
+    expect(persisted).toMatchObject({
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+    expect(recordProviderHoldCandidate).toHaveBeenCalledTimes(2);
+  });
+
+  test("hands off a reconciler attachment loser before a failed definitive reread", async () => {
+    const epoch = "reconciler-reread-failure-epoch";
+    const winnerId = "synthetic-reconciler-reread-winner";
+    const loserId = "synthetic-reconciler-reread-loser";
+    let persisted = makeReusableReservation({
+      id: "reconciler-reread-failure-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    const recordCandidate = mock((input) =>
+      Effect.sync(() => {
+        if (
+          persisted.reservationState === "held" &&
+          persisted.dotyposReservationId !== input.dotyposReservationId
+        ) {
+          persisted = makeReusableReservation({
+            ...persisted,
+            failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+          });
+        }
+      })
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() =>
+          Effect.fail(new Error("Synthetic definitive reread failure"))
+        ),
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: loserId,
+              status: "NEW",
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        attachHold: mock(() =>
+          Effect.suspend(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "held",
+              dotyposReservationId: winnerId,
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+            return Effect.fail(
+              new Error("Synthetic reconciler attachment conflict")
+            );
+          })
+        ),
+        recordProviderHoldCandidate: recordCandidate,
+        enqueueCleanup,
+        createReservation: mock(() =>
+          Effect.succeed({ id: "unused-provider-id" } as never)
+        ),
+      })
+    ).rejects.toBeDefined();
+
+    expect(recordCandidate).toHaveBeenCalledTimes(2);
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "attachment_unknown",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: loserId,
+      })
+    );
+    expect(persisted).toMatchObject({
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+  });
+
+  test("unblocks the retained winner only after exact losing-hold cancellation evidence", async () => {
+    const epoch = "completed-orphan-recovery-epoch";
+    const winnerId = "synthetic-retained-winner";
+    const loserId = "synthetic-cancelled-loser";
+    let persisted = makeReusableReservation({
+      id: "completed-orphan-recovery-reservation",
+      dotyposReservationId: winnerId,
+      reservationState: "held",
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+    const completeDifferentProviderAttachmentRecovery = mock(() =>
+      Effect.sync(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          failureCode: `hold_creation_attached:${epoch}`,
+        });
+      })
+    );
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      listReservations: mock(() =>
+        Effect.succeed([
+          makeProviderEvidence({
+            id: winnerId,
+            status: "NEW",
+            note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+            customerId: persisted.dotyposCustomerId,
+          }),
+          makeProviderEvidence({
+            id: loserId,
+            status: "CANCELLED",
+            note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+            customerId: persisted.dotyposCustomerId,
+          }),
+        ])
+      ),
+      completeDifferentProviderAttachmentRecovery,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(completeDifferentProviderAttachmentRecovery).toHaveBeenCalledWith({
+      id: persisted.id,
+      epoch,
+      dotyposReservationId: loserId,
+      reservationCreatedAt: persisted.reservationCreatedAt,
+    });
+    expect(persisted).toMatchObject({
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_attached:${epoch}`,
+    });
+    expect(result.createReservation).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["missing winner", ["loser_cancelled"]],
+    ["unsafe winner", ["winner_unsafe", "loser_cancelled"]],
+    ["third live result", ["winner_live", "loser_cancelled", "third_live"]],
+  ] as const)("keeps browser recovery fenced when post-compensation evidence has %s", async (_reason, evidenceKinds) => {
+    const epoch = "synthetic-browser-fence-epoch";
+    const winnerId = "synthetic-browser-fence-winner";
+    const loserId = "synthetic-browser-fence-loser";
+    const persisted = makeReusableReservation({
+      id: "synthetic-browser-fence-reservation",
+      dotyposReservationId: winnerId,
+      reservationState: "held",
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+    const completeDifferentProviderAttachmentRecovery = mock(() =>
+      Effect.die("indefinite evidence must not remove the payment fence")
+    );
+    const createReservation = mock(() =>
+      Effect.die("browser recovery must not create another provider hold")
+    );
+    const evidence = evidenceKinds.map((kind) =>
+      makeProviderEvidence({
+        id:
+          kind === "third_live"
+            ? "synthetic-browser-fence-third"
+            : kind === "loser_cancelled"
+              ? loserId
+              : winnerId,
+        status:
+          kind === "winner_unsafe"
+            ? "CONFIRMED"
+            : kind === "loser_cancelled"
+              ? "CANCELLED"
+              : "NEW",
+        note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+        customerId: persisted.dotyposCustomerId,
+      })
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(persisted)),
+        findById: mock(() => Effect.succeed(persisted)),
+        listReservations: mock(() => Effect.succeed(evidence)),
+        completeDifferentProviderAttachmentRecovery,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(completeDifferentProviderAttachmentRecovery).not.toHaveBeenCalled();
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("concurrent reconciliation attaches the same provider hold idempotently", async () => {
+    const epoch = "concurrent-reconciliation-epoch";
+    const providerId = "concurrent-reconciliation-provider-id";
+    let persisted = makeReusableReservation({
+      id: "concurrent-reconciliation-reservation",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+    });
+    const attachHold = mock(
+      (input: { readonly dotyposReservationId: string }) =>
+        Effect.sync(() => {
+          if (
+            persisted.reservationState === "held" &&
+            persisted.dotyposReservationId === input.dotyposReservationId
+          ) {
+            return;
+          }
+          persisted = makeReusableReservation({
+            ...persisted,
+            reservationState: "held",
+            dotyposReservationId: input.dotyposReservationId,
+            failureCode: `hold_creation_attached:${epoch}`,
+          });
+        })
+    );
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+      findById: mock(() => Effect.sync(() => persisted)),
+      listReservations: mock(() =>
+        Effect.succeed([
+          makeProviderEvidence({
+            id: providerId,
+            status: "NEW",
+            note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+            customerId: persisted.dotyposCustomerId,
+          }),
+        ] as never)
+      ),
+      attachHold,
+      createReservation: mock(() =>
+        Effect.succeed({ id: "unused-provider-id" } as never)
+      ),
+    };
+
+    const results = await Promise.all([
+      runReusableReservationScenario(scenario),
+      runReusableReservationScenario(scenario),
+    ]);
+
+    expect(results.every(({ result }) => result.status === "ready")).toBe(true);
+    expect(persisted).toMatchObject({
+      reservationState: "held",
+      dotyposReservationId: providerId,
+    });
+    expect(scenario.createReservation).not.toHaveBeenCalled();
+    expect(
+      results.reduce(
+        (count, result) => count + result.enqueueCleanup.mock.calls.length,
+        0
+      )
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  test("retries only after confirmed provider compensation when release persistence fails", async () => {
+    const reservationId = "confirmed-compensation-release-retry";
+    const firstProviderReservationId = "confirmed-cancelled-provider-hold";
+    const epoch = "confirmed-compensation-epoch";
+    let persistedReservation = makeReusableReservation({
+      id: reservationId,
+      dotyposReservationId: null,
+      reservationState: "draft",
+      failureCode: null,
+    });
+    let releaseAttempt = 0;
+    let providerCreateAttempt = 0;
+
+    const claimHoldCreation = mock(() =>
+      Effect.sync(() => {
+        if (persistedReservation.reservationState !== "draft") return null;
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          dotyposReservationId: null,
+          reservationState: "creating_hold",
+          failureCode: `hold_creation_pre_provider:${epoch}`,
+        });
+        return epoch;
+      })
+    );
+    const beginProviderHoldCreation = mock(() =>
+      Effect.sync(() => {
+        if (
+          persistedReservation.failureCode !==
+          `hold_creation_pre_provider:${epoch}`
+        ) {
+          return false;
+        }
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+        });
+        return true;
+      })
+    );
+    const reclaimPreProviderHoldCreation = mock(() => Effect.succeed(false));
+    const releaseHoldCreation = mock(() => {
+      releaseAttempt += 1;
+      if (releaseAttempt === 1) {
+        return Effect.fail(new Error("Synthetic release persistence failure"));
+      }
+      return Effect.sync(() => {
+        persistedReservation = makeReusableReservation({
+          ...persistedReservation,
+          dotyposReservationId: null,
+          reservationState: "draft",
+          failureCode: null,
+        });
+      });
+    });
+    const attachHold = mock(
+      (attachment: {
+        readonly dotyposReservationId: string;
+        readonly reservationCreatedAt: Temporal.Instant;
+      }) => {
+        if (providerCreateAttempt === 1) {
+          return Effect.fail(
+            new Error("Synthetic first local attachment failure")
+          );
+        }
+        return Effect.sync(() => {
+          persistedReservation = makeReusableReservation({
+            ...persistedReservation,
+            dotyposReservationId: attachment.dotyposReservationId,
+            reservationState: "held",
+            reservationCreatedAt: attachment.reservationCreatedAt,
+            failureCode: `hold_creation_attached:${epoch}`,
+          });
+        });
+      }
+    );
+    const createReservation = mock(() => {
+      providerCreateAttempt += 1;
+      return Effect.succeed({
+        id:
+          providerCreateAttempt === 1
+            ? firstProviderReservationId
+            : "replacement-provider-hold",
+      } as never);
+    });
+    const scenario = {
+      findByAttemptKey: mock(() => Effect.sync(() => persistedReservation)),
+      findById: mock(() => Effect.sync(() => persistedReservation)),
+      claimHoldCreation,
+      beginProviderHoldCreation,
+      reclaimPreProviderHoldCreation,
+      claimHoldCreationCompensation: mock(() =>
+        Effect.sync(() => {
+          persistedReservation = makeReusableReservation({
+            ...persistedReservation,
+            failureCode: `hold_creation_compensating:${epoch}`,
+          });
+          return true;
+        })
+      ),
+      releaseHoldCreation,
+      attachHold,
+      cancelReservation: mock(() => Effect.void),
+      createReservation,
+      listReservations: mock(() =>
+        Effect.succeed([
+          makeProviderEvidence({
+            id: firstProviderReservationId,
+            status: "CANCELLED",
+            note: `Payment order: ${reservationId}\nProvider creation epoch: ${epoch}`,
+            customerId: persistedReservation.dotyposCustomerId,
+          }),
+        ] as never)
+      ),
+    };
+
+    await expect(
+      runReusableReservationScenario(scenario)
+    ).rejects.toBeDefined();
+    expect(persistedReservation).toMatchObject({
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_compensating:${epoch}`,
+    });
+
+    const retry = await runReusableReservationScenario(scenario);
+
+    expect(retry.result.status).toBe("ready");
+    expect(releaseHoldCreation).toHaveBeenCalledTimes(2);
+    expect(createReservation).toHaveBeenCalledTimes(2);
+    expect(attachHold).toHaveBeenCalledTimes(2);
+  });
+
+  test("never reattaches visibility-delayed provider evidence after compensation starts", async () => {
+    const epoch = "visibility-delay-compensation-epoch";
+    const providerId = "visibility-delay-provider-id";
+    let persisted = makeReusableReservation({
+      id: "visibility-delay-reservation-id",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_compensating:${epoch}`,
+      updatedAt: Temporal.Instant.from("2000-01-01T00:00:00.000Z"),
+    });
+    const attachHold = mock(() => Effect.die("must not attach"));
+    const releaseHoldCreation = mock(() => Effect.die("must not release"));
+    const createReservation = mock(() => Effect.die("must not create"));
+    const markAttachFailedCancellationRequired = mock((input) =>
+      Effect.sync(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          dotyposReservationId: input.dotyposReservationId,
+          reservationState: "cancellation_failed",
+          reservationCreatedAt: input.reservationCreatedAt,
+          failureCode: `attach_failed_cancel_failed:${input.epoch}`,
+        });
+      })
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.sync(() => persisted)),
+        findById: mock(() => Effect.sync(() => persisted)),
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: providerId,
+              status: "NEW",
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        attachHold,
+        releaseHoldCreation,
+        createReservation,
+        markAttachFailedCancellationRequired,
+        enqueueCleanup,
+      })
+    ).rejects.toMatchObject({ _tag: "PublicSafeActionError" });
+
+    expect(persisted).toMatchObject({
+      reservationState: "cancellation_failed",
+      dotyposReservationId: providerId,
+      failureCode: `attach_failed_cancel_failed:${epoch}`,
+    });
+    expect(attachHold).not.toHaveBeenCalled();
+    expect(releaseHoldCreation).not.toHaveBeenCalled();
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(enqueueCleanup).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reason: "attachment_compensation",
+        recoveryKind: "unattached",
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+      })
+    );
+  });
+
+  test("revalidates a concurrent losing-hold marker before returning ready", async () => {
+    const epoch = "ready-revalidation-epoch";
+    const winnerId = "ready-revalidation-winner";
+    const loserId = "ready-revalidation-loser";
+    const initiallyAttached = makeReusableReservation({
+      id: "ready-revalidation-reservation",
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_attached:${epoch}`,
+    });
+    const blocked = makeReusableReservation({
+      ...initiallyAttached,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+    });
+    const createReservation = mock(() => Effect.die("must not create"));
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(initiallyAttached)),
+        findById: mock(() => Effect.succeed(blocked)),
+        createReservation,
+      })
+    ).rejects.toMatchObject({ _tag: "PublicSafeActionError" });
+
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("converges a real concurrent hold-creation CAS conflict on the persisted row", async () => {
+    const { decideReservationPreparation } = await import(
+      "./prepare-pay-state"
+    );
+    let persisted = makeReusableReservation({
+      id: "concurrent-reservation-id",
+      dotyposCustomerId: "persisted-concurrent-customer-id",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+
+    const repository = {
+      claimHoldCreation: () =>
+        Effect.sync(() => {
+          if (persisted.reservationState !== "draft") return null;
+          persisted = makeReusableReservation({
+            ...persisted,
+            dotyposReservationId: null,
+            reservationState: "creating_hold",
+            failureCode: "hold_creation_pre_provider:concurrent-epoch",
+          });
+          return "concurrent-epoch";
+        }),
+      findById: () => Effect.sync(() => persisted),
+    } as unknown as WorkspaceReservationRepositoryType;
+
+    const prepare = decideReservationPreparation({
+      reservations: repository,
+      checkoutSessionId: "session-id",
+      reservation: persisted,
+    }).pipe(
+      Effect.tap((decision) =>
+        decision._tag === "create_hold"
+          ? Effect.sleep("10 millis").pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  persisted = makeReusableReservation({
+                    ...persisted,
+                    dotyposCustomerId: "persisted-concurrent-customer-id",
+                    dotyposReservationId: "concurrent-dotypos-reservation-id",
+                    reservationState: "held",
+                  });
+                })
+              )
+            )
+          : Effect.void
+      )
+    );
+
+    const decisions = await Effect.all([prepare, prepare], {
+      concurrency: "unbounded",
+    }).pipe(Effect.runPromise);
+
+    expect(decisions.map((decision) => decision._tag).sort()).toEqual([
+      "create_hold",
+      "reuse_hold",
+    ]);
+    expect(
+      decisions.find((decision) => decision._tag === "reuse_hold")?.reservation
+        .dotyposCustomerId
+    ).toBe("persisted-concurrent-customer-id");
+    expect(
+      decisions.every(
+        (decision) => decision.reservation.id === "concurrent-reservation-id"
+      )
+    ).toBe(true);
+  });
+
+  test("uses the same reuse decision for an observed hold and a settled claim conflict", async () => {
+    const { decideReservationPreparation } = await import(
+      "./prepare-pay-state"
+    );
+    const held = makeReusableReservation({
+      id: "definitive-held-reservation-id",
+      dotyposCustomerId: "definitive-held-customer-id",
+    });
+    const draft = makeReusableReservation({
+      ...held,
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const directRepository = {
+      claimHoldCreation: () => Effect.die("unused"),
+      findById: () => Effect.die("unused"),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const conflictRepository = {
+      claimHoldCreation: () => Effect.succeed(null),
+      findById: () => Effect.succeed(held),
+    } as unknown as WorkspaceReservationRepositoryType;
+
+    const [direct, conflict] = await Effect.all([
+      decideReservationPreparation({
+        reservations: directRepository,
+        checkoutSessionId: "session-id",
+        reservation: held,
+      }),
+      decideReservationPreparation({
+        reservations: conflictRepository,
+        checkoutSessionId: "session-id",
+        reservation: draft,
+      }),
+    ]).pipe(Effect.runPromise);
+
+    expect(direct).toMatchObject({
+      _tag: "reuse_hold",
+      reservation: {
+        id: "definitive-held-reservation-id",
+        dotyposCustomerId: "definitive-held-customer-id",
+      },
+    });
+    expect(conflict).toEqual(direct);
+  });
+
+  test("records attachment compensation when provider cancellation also fails", async () => {
+    const draft = makeReusableReservation({
+      id: "attachment-compensation-reservation-id",
+      dotyposReservationId: null,
+      reservationState: "draft",
+    });
+    const marker = mock(() => Effect.void);
+    const release = mock(() => Effect.void);
+    const cancel = mock(() =>
+      Effect.fail(new Error("Synthetic provider cancellation failure"))
+    );
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "synthetic-provider-reservation-id" } as never)
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        acquireDraft: mock(() =>
+          Effect.succeed(
+            ReservationDraftAcquisition.created({ reservation: draft })
+          )
+        ),
+        attachHold: mock(() =>
+          Effect.fail(new Error("Synthetic local attachment failure"))
+        ),
+        releaseHoldCreation: release,
+        markAttachFailedCancellationRequired: marker,
+        cancelReservation: cancel,
+        createReservation,
+      })
+    ).rejects.toMatchObject({
+      _tag: "PublicSafeActionError",
+    });
+
+    expect(createReservation).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith("synthetic-provider-reservation-id");
+    expect(marker).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "attachment-compensation-reservation-id",
+        dotyposReservationId: "synthetic-provider-reservation-id",
+        failureCode: "attach_failed_cancel_failed",
+      })
+    );
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  test("composes successful attach compensation release with exact queue acknowledgement", async () => {
+    const {
+      getAttachmentCancellationScheduleMessage,
+      processReservationHoldCleanupScheduleMessage,
+      ReservationHoldCleanupScheduleService,
+    } = await import(
+      "@/features/checkout/backend/holds/reservation-hold-cleanup-queue.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "@/features/checkout/backend/holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const epoch = "synthetic-successful-compensation-epoch";
+    const providerId = "synthetic-successful-compensation-provider";
+    let persisted = makeReusableReservation({
+      id: "synthetic-successful-compensation-order",
+      dotyposReservationId: null,
+      reservationCreatedAt: null,
+      reservationState: "draft",
+      failureCode: null,
+    });
+    const enqueueCleanup = mock(() => Effect.void);
+    const recordProviderHoldCandidate = mock((input) =>
+      Effect.suspend(() => {
+        if (persisted.reservationState !== "creating_hold") {
+          return Effect.fail(new Error("Synthetic candidate state cleared"));
+        }
+        persisted = makeReusableReservation({
+          ...persisted,
+          dotyposReservationId: input.dotyposReservationId,
+          reservationCreatedAt: input.reservationCreatedAt,
+          failureCode: `hold_creation_candidate:${input.epoch}:${input.dotyposReservationId}:${input.reservationCreatedAt.epochMilliseconds}`,
+        });
+        return Effect.void;
+      })
+    );
+    const releaseHoldCreation = mock(() =>
+      Effect.sync(() => {
+        persisted = makeReusableReservation({
+          ...persisted,
+          dotyposReservationId: null,
+          reservationCreatedAt: null,
+          reservationState: "draft",
+          failureCode: null,
+        });
+      })
+    );
+    const cancelReservation = mock(() => Effect.void);
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        acquireDraft: mock(() =>
+          Effect.succeed(
+            ReservationDraftAcquisition.created({ reservation: persisted })
+          )
+        ),
+        claimHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              reservationState: "creating_hold",
+              failureCode: `hold_creation_pre_provider:${epoch}`,
+            });
+            return epoch;
+          })
+        ),
+        beginProviderHoldCreation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+            });
+            return true;
+          })
+        ),
+        recordProviderHoldCandidate,
+        attachHold: mock(() =>
+          Effect.fail(new Error("Synthetic local attachment failure"))
+        ),
+        claimHoldCreationCompensation: mock(() =>
+          Effect.sync(() => {
+            persisted = makeReusableReservation({
+              ...persisted,
+              failureCode: `hold_creation_candidate_compensating:${epoch}:${providerId}:${persisted.reservationCreatedAt?.epochMilliseconds}`,
+            });
+            return true;
+          })
+        ),
+        cancelReservation,
+        releaseHoldCreation,
+        enqueueCleanup,
+        createReservation: mock(() =>
+          Effect.succeed({ id: providerId } as never)
+        ),
+      })
+    ).rejects.toBeDefined();
+
+    const queuedInput = enqueueCleanup.mock.calls
+      .map(([input]) => input)
+      .find((input) => input.reason === "attachment_compensation");
+    if (!queuedInput || queuedInput.reason !== "attachment_compensation") {
+      throw new Error("Expected successful compensation queue handoff.");
+    }
+    expect(persisted).toMatchObject({
+      reservationState: "draft",
+      dotyposReservationId: null,
+      reservationCreatedAt: null,
+      failureCode: null,
+    });
+    expect(cancelReservation).toHaveBeenCalledTimes(1);
+    expect(releaseHoldCreation).toHaveBeenCalledTimes(1);
+
+    let providerStatus: "NEW" | "CANCELLED" = "NEW";
+    const queueCancel = mock(() =>
+      Effect.die("released exact result must not be cancelled again")
+    );
+    const queueLayer = Layer.mergeAll(
+      Layer.succeed(WorkspaceReservationRepository, {
+        findById: mock(() => Effect.succeed(persisted)),
+      } as unknown as WorkspaceReservationRepositoryType),
+      Layer.succeed(ReservationHoldCleanupScheduleService, {
+        enqueueCleanup: mock(() => Effect.void),
+      }),
+      Layer.succeed(ReservationHoldCleanupService, {
+        cancelOrderHold: mock(() =>
+          Effect.die("released draft must not enter local cancellation")
+        ),
+        sweepExpiredHolds: mock(() =>
+          Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+        ),
+      } as never),
+      Layer.succeed(DotyposService, {
+        listReservations: mock(() =>
+          Effect.succeed([
+            makeProviderEvidence({
+              id: providerId,
+              status: providerStatus,
+              note: `Payment order: ${persisted.id}\nProvider creation epoch: ${epoch}`,
+              customerId: persisted.dotyposCustomerId,
+            }),
+          ])
+        ),
+        cancelReservation: queueCancel,
+      } as unknown as typeof DotyposService.Service)
+    );
+    const payload =
+      getAttachmentCancellationScheduleMessage(queuedInput).payload;
+    await expect(
+      processReservationHoldCleanupScheduleMessage(
+        payload,
+        Temporal.Now.instant()
+      ).pipe(Effect.provide(queueLayer), Effect.runPromise)
+    ).rejects.toBeDefined();
+    providerStatus = "CANCELLED";
+    const result = await processReservationHoldCleanupScheduleMessage(
+      payload,
+      Temporal.Now.instant()
+    ).pipe(Effect.provide(queueLayer), Effect.runPromise);
+
+    expect(result).toBe("cancelled");
+    expect(queueCancel).not.toHaveBeenCalled();
+    expect(persisted.reservationState).toBe("draft");
+  });
+
+  test("keeps PII and access-bearing rows out of preparation log annotations", async () => {
+    const source = await Bun.file(
+      new URL("./prepare-pay-state.ts", import.meta.url)
+    ).text();
+
+    expect(source).toContain(
+      "Effect.annotateLogsScoped({ locale: input.locale })"
+    );
+    expect(source).not.toContain("Effect.annotateLogsScoped({ input");
+    expect(source).not.toContain("Effect.annotateLogsScoped({ customer");
+    expect(source).not.toContain(
+      "Effect.annotateLogsScoped({ reservationDraft"
+    );
+    expect(source).not.toContain(
+      "Effect.annotateLogsScoped({ claimConflictReservation"
+    );
+    expect(source).not.toContain("Effect.annotateLogsScoped({ checkoutDetails");
+    expect(source).not.toContain(
+      "Effect.annotateLogsScoped({ dotyposReservation"
+    );
+  });
+
+  test("handles every ReservationPreparationDecision tag exhaustively", async () => {
+    const source = await Bun.file(
+      new URL("./prepare-pay-state.ts", import.meta.url)
+    ).text();
+    const decisionSection = source.slice(
+      source.indexOf("export type ReservationPreparationDecision"),
+      source.indexOf("const checkoutDetails")
+    );
+
+    expect(decisionSection).toContain("Data.TaggedEnum");
+    expect(decisionSection).toContain(
+      "ReservationPreparationDecision.create_hold"
+    );
+    expect(decisionSection).toContain(
+      "ReservationPreparationDecision.reuse_hold"
+    );
+    expect(source).not.toContain('Match.discriminatorsExhaustive("_tag")');
+    expect(decisionSection).toContain('Match.tag("create_hold"');
+    expect(decisionSection).toContain('Match.tag("reuse_hold"');
+    expect(decisionSection).toContain("Match.exhaustive");
   });
 
   test("re-queries the attempt after another request completes session supersession", async () => {
@@ -601,10 +3312,11 @@ describe("prepareCoworkPayState", () => {
       id: "replacement-reservation-id",
     });
     let attemptLookupCount = 0;
+    let reservationLookupCount = 0;
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() =>
         Effect.succeed(
-          attemptLookupCount++ === 0 ? null : replacementReservation
+          attemptLookupCount++ === 2 ? replacementReservation : null
         )
       ),
       findCurrentByCheckoutSessionKey: mock(() =>
@@ -612,15 +3324,17 @@ describe("prepareCoworkPayState", () => {
       ),
       findById: mock(() =>
         Effect.succeed(
-          makeReusableReservation({ reservationState: "cancelled" })
+          reservationLookupCount++ === 0
+            ? makeReusableReservation({ reservationState: "cancelled" })
+            : replacementReservation
         )
       ),
     });
 
     expect(result.result.status).toBe("ready");
-    expect(attemptLookupCount).toBe(2);
+    expect(attemptLookupCount).toBe(3);
     expect(result.cancelReservation).not.toHaveBeenCalled();
-    expect(result.createDraft).not.toHaveBeenCalled();
+    expect(result.acquireDraft).not.toHaveBeenCalled();
     expect(result.claimHoldCreation).not.toHaveBeenCalled();
   });
 
@@ -686,6 +3400,226 @@ describe("prepareCoworkPayState", () => {
     ]);
   });
 
+  test.each([
+    "hold_creation_candidate:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
+    "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+  ])("returns a bounded retryable outcome instead of looping on unresolved supersession recovery: %s", async (failureCode) => {
+    const current = makeReusableReservation({
+      id: "unresolved-supersession-reservation",
+      failureCode,
+    });
+    const findCurrentByCheckoutSessionKey = mock(() => Effect.succeed(current));
+    const claimSupersessionCancellation = mock(() =>
+      Effect.die("unresolved recovery must not enter supersession")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey,
+        claimSupersessionCancellation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(findCurrentByCheckoutSessionKey).toHaveBeenCalledTimes(1);
+    expect(claimSupersessionCancellation).not.toHaveBeenCalled();
+  });
+
+  test("bounds repeated supersession claim loss without provider work", async () => {
+    const current = makeReusableReservation({
+      id: "synthetic-claim-loss-reservation",
+    });
+    const claimSupersessionCancellation = mock(() => Effect.succeed(null));
+    const createReservation = mock(() =>
+      Effect.die("claim loss must not create a provider reservation")
+    );
+    const cancelReservation = mock(() =>
+      Effect.die("claim loss must not cancel without ownership")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(current)),
+        claimSupersessionCancellation,
+        createReservation,
+        cancelReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(claimSupersessionCancellation.mock.calls.length).toBeGreaterThan(1);
+    expect(claimSupersessionCancellation.mock.calls.length).toBeLessThan(10);
+    expect(createReservation).not.toHaveBeenCalled();
+    expect(cancelReservation).not.toHaveBeenCalled();
+  });
+
+  test("bounds repeated session-occupied acquisition conflicts", async () => {
+    const occupied = makeReusableReservation({
+      id: "synthetic-session-occupied-reservation",
+    });
+    const acquireDraft = mock(() =>
+      Effect.succeed(
+        ReservationDraftAcquisition.session_occupied({
+          reservation: occupied,
+        })
+      )
+    );
+    const createReservation = mock(() =>
+      Effect.die("session conflict must not create a provider reservation")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
+        acquireDraft,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(acquireDraft.mock.calls.length).toBeGreaterThan(1);
+    expect(acquireDraft.mock.calls.length).toBeLessThan(10);
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("maps exhausted repository acquisition conflicts to retryable unavailability", async () => {
+    const acquireDraft = mock(() =>
+      Effect.succeed(ReservationDraftAcquisition.conflict_unresolved({}))
+    );
+    const createReservation = mock(() =>
+      Effect.die(
+        "unresolved acquisition must not create a provider reservation"
+      )
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
+        acquireDraft,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(acquireDraft).toHaveBeenCalledTimes(1);
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ["draft", null],
+    ["draft", "hold_creation_pre_provider_retired"],
+    ["creating_hold", "hold_creation_pre_provider:synthetic-prior-epoch"],
+  ] as const)("isolates a message-changed attempt from a durable prior %s row", async (reservationState, failureCode) => {
+    const { deriveCheckoutAttemptKey, deriveCheckoutSessionKey } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const priorAttemptKey = deriveCheckoutAttemptKey({
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "synthetic-prior-attempt-id",
+      reservation: {
+        ...reservation,
+        message: "Synthetic prior message",
+      },
+    });
+    const prior = makeReusableReservation({
+      id: `synthetic-prior-${reservationState}`,
+      checkoutAttemptKey: priorAttemptKey,
+      dotyposReservationId: null,
+      reservationState,
+      failureCode,
+    });
+    let currentLookup = 0;
+    const acquireDraft = mock((input) =>
+      Effect.succeed(
+        ReservationDraftAcquisition.created({
+          reservation: makeReusableReservation({
+            id: `synthetic-changed-${reservationState}`,
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          }),
+        })
+      )
+    );
+    const retirePreProviderDraft = mock(() => Effect.succeed(true));
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findCurrentByCheckoutSessionKey: mock(() =>
+        Effect.succeed(currentLookup++ === 0 ? prior : null)
+      ),
+      acquireDraft,
+      retirePreProviderDraft,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(retirePreProviderDraft).toHaveBeenCalledWith({
+      id: prior.id,
+      checkoutAttemptKey: prior.checkoutAttemptKey,
+    });
+    expect(acquireDraft).toHaveBeenCalledTimes(1);
+    expect(acquireDraft).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkoutSessionKey: deriveCheckoutSessionKey("attempt-id"),
+      })
+    );
+    expect(result.cancelReservation).not.toHaveBeenCalled();
+    expect(result.createReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("bounds a changed attempt when pre-provider retirement repeatedly loses its CAS", async () => {
+    const prior = makeReusableReservation({
+      id: "synthetic-prior-retirement-conflict",
+      checkoutAttemptKey: "synthetic-prior-retirement-attempt",
+      dotyposReservationId: null,
+      reservationState: "creating_hold",
+      failureCode:
+        "hold_creation_pre_provider:synthetic-prior-retirement-epoch",
+    });
+    const retirePreProviderDraft = mock(() => Effect.succeed(false));
+    const createReservation = mock(() =>
+      Effect.die("a lost retirement CAS must not create a provider hold")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(null)),
+        findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(prior)),
+        retirePreProviderDraft,
+        createReservation,
+      })
+    ).rejects.toBeDefined();
+
+    expect(retirePreProviderDraft).toHaveBeenCalledTimes(3);
+    expect(createReservation).not.toHaveBeenCalled();
+  });
+
+  test("does not mutate exact-retry details when payment or recovery wins the definitive reread", async () => {
+    const reusable = makeReusableReservation();
+    const raced = makeReusableReservation({
+      ...reusable,
+      paymentState: "pending",
+      activePaymentAttemptId: "synthetic-pending-attempt",
+      failureCode:
+        "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
+    });
+    const updateReservationDetails = mock(() =>
+      Effect.die("reuse must not mutate before definitive eligibility")
+    );
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(reusable)),
+        findById: mock(() => Effect.succeed(raced)),
+        updateReservationDetails,
+      })
+    ).rejects.toBeDefined();
+
+    expect(updateReservationDetails).not.toHaveBeenCalled();
+  });
+
   test("rotates the checkout session instead of cancelling a reservation with pending payment", async () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
@@ -700,14 +3634,16 @@ describe("prepareCoworkPayState", () => {
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(currentLookupCount++ === 0 ? pendingReservation : null)
       ),
-      createDraft: mock((input) =>
+      acquireDraft: mock((input) =>
         Effect.succeed(
-          makeReusableReservation({
-            id: "rotated-reservation-id",
-            checkoutSessionKey: input.checkoutSessionKey,
-            checkoutAttemptKey: input.checkoutAttemptKey,
-            dotyposReservationId: null,
-            reservationState: "draft",
+          ReservationDraftAcquisition.created({
+            reservation: makeReusableReservation({
+              id: "rotated-reservation-id",
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
+              dotyposReservationId: null,
+              reservationState: "draft",
+            }),
           })
         )
       ),
@@ -724,6 +3660,77 @@ describe("prepareCoworkPayState", () => {
     expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
       "attempt-id"
     );
+  });
+
+  test("rediscovers an exact rotated attempt after the prior session changes", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const rotated = makeReusableReservation({
+      id: "exact-rotated-retry-reservation",
+    });
+    let attemptLookup = 0;
+    const findCurrentByCheckoutSessionKey = mock(() =>
+      Effect.die("must not depend on the prior session state")
+    );
+    const acquireDraft = mock(() => Effect.die("must not acquire"));
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() =>
+        Effect.succeed(attemptLookup++ === 0 ? null : rotated)
+      ),
+      findCurrentByCheckoutSessionKey,
+      acquireDraft,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(findCurrentByCheckoutSessionKey).not.toHaveBeenCalled();
+    expect(acquireDraft).not.toHaveBeenCalled();
+    expect(result.createReservation).not.toHaveBeenCalled();
+    if (result.result.status !== "ready") throw new Error("Expected ready");
+    const token = new URL(
+      result.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
+      "attempt-id"
+    );
+  });
+
+  test("never rotates or creates for an exact terminal attempt", async () => {
+    for (const terminal of [
+      { reservationState: "held", paymentState: "pending" },
+      { reservationState: "confirmed", paymentState: "paid" },
+      { reservationState: "cancelled", paymentState: "cancelled" },
+      { reservationState: "held", paymentState: "cancelled" },
+    ] as const) {
+      const exact = makeReusableReservation(terminal);
+      const findCurrentByCheckoutSessionKey = mock(() =>
+        Effect.die("must not inspect a different session row")
+      );
+      const acquireDraft = mock(() => Effect.die("must not acquire"));
+      const claimHoldCreation = mock(() => Effect.die("must not claim"));
+      const beginProviderHoldCreation = mock(() =>
+        Effect.die("must not enter provider boundary")
+      );
+      const createReservation = mock(() => Effect.die("must not create"));
+
+      await expect(
+        runReusableReservationScenario({
+          findByAttemptKey: mock(() => Effect.succeed(exact)),
+          findCurrentByCheckoutSessionKey,
+          acquireDraft,
+          claimHoldCreation,
+          beginProviderHoldCreation,
+          createReservation,
+        })
+      ).rejects.toMatchObject({ _tag: "PublicSafeActionError" });
+
+      expect(findCurrentByCheckoutSessionKey).not.toHaveBeenCalled();
+      expect(acquireDraft).not.toHaveBeenCalled();
+      expect(claimHoldCreation).not.toHaveBeenCalled();
+      expect(beginProviderHoldCreation).not.toHaveBeenCalled();
+      expect(createReservation).not.toHaveBeenCalled();
+    }
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
@@ -798,14 +3805,16 @@ describe("prepareCoworkPayState", () => {
         Effect.fail(new Error("Dotypos cancellation failed"))
       ),
       markCancellationFailed,
-      createDraft: mock((input) =>
+      acquireDraft: mock((input) =>
         Effect.succeed(
-          makeReusableReservation({
-            id: "rotated-reservation-id",
-            checkoutSessionKey: input.checkoutSessionKey,
-            checkoutAttemptKey: input.checkoutAttemptKey,
-            dotyposReservationId: null,
-            reservationState: "draft",
+          ReservationDraftAcquisition.created({
+            reservation: makeReusableReservation({
+              id: "rotated-reservation-id",
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
+              dotyposReservationId: null,
+              reservationState: "draft",
+            }),
           })
         )
       ),
@@ -838,14 +3847,16 @@ describe("prepareCoworkPayState", () => {
         Effect.succeed(previousReservation)
       ),
       getReservationStatus: mock(() => Effect.succeed("CONFIRMED" as const)),
-      createDraft: mock((input) =>
+      acquireDraft: mock((input) =>
         Effect.succeed(
-          makeReusableReservation({
-            id: "rotated-reservation-id",
-            checkoutSessionKey: input.checkoutSessionKey,
-            checkoutAttemptKey: input.checkoutAttemptKey,
-            dotyposReservationId: null,
-            reservationState: "draft",
+          ReservationDraftAcquisition.created({
+            reservation: makeReusableReservation({
+              id: "rotated-reservation-id",
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
+              dotyposReservationId: null,
+              reservationState: "draft",
+            }),
           })
         )
       ),

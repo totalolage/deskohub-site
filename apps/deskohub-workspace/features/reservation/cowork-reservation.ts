@@ -1,4 +1,5 @@
 import { Match, Schema, SchemaGetter } from "effect";
+import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   coworkReservationProductInputSchema,
@@ -16,6 +17,8 @@ import {
 } from "@/features/reservation/cowork-reservation-product";
 import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
+  getNormalizedReservationCustomerAttemptIdentity,
+  normalizedReservationCustomerAttemptIdentitySchema,
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
@@ -117,6 +120,30 @@ export type NormalizedCoworkReservationOrder =
   typeof normalizedCoworkReservationOrderSchema.Type;
 export type NormalizedCoworkReservationForm =
   typeof normalizedCoworkReservationFormSchema.Type;
+
+export const normalizedCoworkReservationAttemptIdentitySchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  ...normalizedReservationCustomerAttemptIdentitySchema.fields,
+  date: plainDateStringSchema,
+  entryTier: coworkReservationProductInputSchema.fields.entryTier,
+  coffee: Schema.Boolean,
+  monitorOption: Schema.NullOr(Schema.Literals(workspaceProductMonitorOptions)),
+});
+
+export type NormalizedCoworkReservationAttemptIdentity =
+  typeof normalizedCoworkReservationAttemptIdentitySchema.Type;
+
+export const getNormalizedCoworkReservationAttemptIdentity = (
+  reservation: NormalizedCoworkReservationOrder
+): NormalizedCoworkReservationAttemptIdentity =>
+  normalizedCoworkReservationAttemptIdentitySchema.make({
+    kind: reservation.kind,
+    ...getNormalizedReservationCustomerAttemptIdentity(reservation),
+    date: reservation.date,
+    entryTier: reservation.entryTier,
+    coffee: reservation.coffee,
+    monitorOption: reservation.monitorOption ?? null,
+  });
 
 const coworkReservationDetailsDateSchema = Schema.toEncoded(
   plainDateStringSchema

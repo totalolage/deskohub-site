@@ -2,7 +2,10 @@ import "server-only";
 
 import { createHmac } from "node:crypto";
 import { env } from "@/env";
-import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
+import {
+  getNormalizedCoworkReservationAttemptIdentity,
+  type NormalizedCoworkReservationOrder,
+} from "@/features/reservation/cowork-reservation";
 
 const deriveCheckoutKey = (payload: object) =>
   createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
@@ -22,14 +25,7 @@ export const deriveCheckoutAttemptKey = (input: {
   deriveCheckoutKey({
     checkoutSessionId: input.checkoutSessionId,
     checkoutAttemptId: input.checkoutAttemptId,
-    reservation: {
-      kind: input.reservation.kind,
-      name: input.reservation.name,
-      email: input.reservation.email,
-      phone: input.reservation.phone,
-      date: input.reservation.date,
-      entryTier: input.reservation.entryTier,
-      coffee: input.reservation.coffee,
-      monitorOption: input.reservation.monitorOption ?? null,
-    },
+    reservation: getNormalizedCoworkReservationAttemptIdentity(
+      input.reservation
+    ),
   });
