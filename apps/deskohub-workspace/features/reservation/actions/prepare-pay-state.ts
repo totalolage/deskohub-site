@@ -32,6 +32,8 @@ import {
   deriveCheckoutSessionKey,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import {
+  enqueueAttachmentCancellationCompensation,
+  enqueueReservationHoldCleanup,
   getDotyposCancellationAction,
   ReservationHoldCleanupScheduleService,
 } from "@/features/checkout/backend/holds";
@@ -274,50 +276,6 @@ const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.paymentState === "paid" ||
   reservation.reservationState !== "held";
 
-const enqueueReservationHoldCleanup = Effect.fn(
-  "prepareCoworkPayState.enqueueReservationHoldCleanup"
-)(function* (input: {
-  readonly orderId: string;
-  readonly reservationHoldExpiresAt: Temporal.Instant | null;
-}) {
-  if (!input.reservationHoldExpiresAt) {
-    yield* Effect.logWarning(
-      "Workspace reservation hold cleanup enqueue skipped: missing hold expiry",
-      { orderId: input.orderId }
-    );
-    return;
-  }
-
-  const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
-  const enqueue = cleanupSchedule
-    .enqueueCleanup({
-      orderId: input.orderId,
-      reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-    })
-    .pipe(
-      Effect.tapError((cause) =>
-        Effect.logError("Workspace reservation hold cleanup enqueue failed", {
-          orderId: input.orderId,
-          cause,
-        })
-      )
-    );
-
-  yield* enqueue.pipe(
-    Effect.timeoutOrElse({
-      duration: Duration.seconds(2),
-      orElse: () =>
-        Effect.logWarning(
-          "Workspace reservation hold cleanup enqueue timed out",
-          {
-            orderId: input.orderId,
-          }
-        ),
-    }),
-    Effect.ignore
-  );
-});
-
 class PendingReservationTransition extends Data.TaggedError(
   "PendingReservationTransition"
 )<{
@@ -503,7 +461,6 @@ const prepareReservationDraft = Effect.fn(
       const claimed = yield* reservations.claimSupersessionCancellation({
         id: currentReservation.id,
         ownerId: cancellationOwnerId,
-        claimedAt: Temporal.Now.instant(),
       });
       if (!claimed) {
         continue;
@@ -516,23 +473,30 @@ const prepareReservationDraft = Effect.fn(
         });
       }
 
-      const cancelled = yield* Effect.gen(function* () {
+      const cancellation = yield* Effect.gen(function* () {
         const status =
           yield* dotypos.getReservationStatus(dotyposReservationId);
         const action = getDotyposCancellationAction(status);
         const owned = yield* reservations.renewCancellationClaim({
           id: claimed.id,
           ownerId: cancellationOwnerId,
-          claimedAt: Temporal.Now.instant(),
         });
         if (!owned) {
           yield* Effect.logWarning(
             "Checkout supersession cancellation ownership changed before provider action",
             { reservationId: claimed.id }
           );
-          return false;
+          return {
+            cancelled: false,
+            disposition: "retryable" as const,
+          };
         }
-        if (action === "complete") return true;
+        if (action === "complete") {
+          return {
+            cancelled: true,
+            disposition: "retryable" as const,
+          };
+        }
         if (action === "refuse") {
           yield* Effect.logError(
             "Checkout supersession refused to cancel a non-pending Dotypos reservation",
@@ -542,12 +506,23 @@ const prepareReservationDraft = Effect.fn(
               status,
             }
           );
-          return false;
+          return {
+            cancelled: false,
+            disposition: "manual_review" as const,
+          };
         }
 
-        if (!owned.dotyposReservationId) return false;
+        if (!owned.dotyposReservationId) {
+          return {
+            cancelled: false,
+            disposition: "retryable" as const,
+          };
+        }
         yield* dotypos.cancelReservation(owned.dotyposReservationId);
-        return true;
+        return {
+          cancelled: true,
+          disposition: "retryable" as const,
+        };
       }).pipe(
         Effect.catch(
           Effect.fn(function* (cause) {
@@ -559,16 +534,20 @@ const prepareReservationDraft = Effect.fn(
                 cause,
               }
             );
-            return false;
+            return {
+              cancelled: false,
+              disposition: "retryable" as const,
+            };
           })
         )
       );
 
-      if (!cancelled) {
+      if (!cancellation.cancelled) {
         yield* reservations
           .markCancellationFailed({
             id: claimed.id,
             ownerId: cancellationOwnerId,
+            disposition: cancellation.disposition,
             failureCode: "checkout_supersession_cancel_failed",
           })
           .pipe(
@@ -939,30 +918,23 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
             );
 
             const cancellationRequiredAt = Temporal.Now.instant();
-            yield* reservations
-              .markAttachFailedCancellationRequired({
-                id: reservationDraft.id,
-                dotyposReservationId,
-                reservationCreatedAt,
-                reservationHoldExpiresAt: cancellationRequiredAt,
-                failureCode: "attach_failed_cancellation_required",
-              })
-              .pipe(
-                Effect.tapError((markerCause) =>
-                  Effect.logFatal(
-                    "Workspace reservation hold cancellation compensation marker failed",
-                    {
-                      reservationDraftId: reservationDraft.id,
-                      dotyposReservationId,
-                      cause: markerCause,
-                    }
-                  )
-                )
-              );
-            yield* enqueueReservationHoldCleanup({
+            yield* enqueueAttachmentCancellationCompensation({
               orderId: reservationDraft.id,
-              reservationHoldExpiresAt: cancellationRequiredAt,
-            });
+              dotyposReservationId,
+              reservationCreatedAt,
+              cancellationRequiredAt,
+            }).pipe(
+              Effect.tapError((markerCause) =>
+                Effect.logFatal(
+                  "Workspace reservation hold cancellation compensation marker failed",
+                  {
+                    reservationDraftId: reservationDraft.id,
+                    dotyposReservationId,
+                    cause: markerCause,
+                  }
+                )
+              )
+            );
             yield* Effect.logWarning(
               "Workspace reservation hold cancellation compensation enqueued",
               {

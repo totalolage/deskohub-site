@@ -45,6 +45,14 @@ export type ReservationState = (typeof reservationStates)[number];
 export type PaymentState = (typeof paymentStates)[number];
 export type FulfillmentState = (typeof fulfillmentStates)[number];
 
+export const cancellationFailureDispositions = [
+  "retryable",
+  "manual_review",
+] as const;
+
+export type CancellationFailureDisposition =
+  (typeof cancellationFailureDispositions)[number];
+
 const reservationStatesRequiringDotyposReservationId = [
   "held",
   "confirming",
@@ -88,6 +96,10 @@ export const workspaceReservations = pgTable(
     reservationCancelledAt: instant("reservation_cancelled_at"),
     cancellationClaimOwner: text("cancellation_claim_owner"),
     cancellationClaimedAt: instant("cancellation_claimed_at"),
+    cancellationFailureDisposition: text(
+      "cancellation_failure_disposition"
+    ).$type<CancellationFailureDisposition>(),
+    cancellationRetryAt: instant("cancellation_retry_at"),
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
@@ -132,13 +144,24 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_cancellation_claim_check",
       sql`(
-        ${t.reservationState} = 'cancelling'
-        and ${t.cancellationClaimOwner} is not null
-        and ${t.cancellationClaimedAt} is not null
-      ) or (
-        ${t.reservationState} <> 'cancelling'
-        and ${t.cancellationClaimOwner} is null
+        ${t.cancellationClaimOwner} is null
         and ${t.cancellationClaimedAt} is null
+      ) or (
+        ${t.cancellationClaimOwner} is not null
+        and ${t.cancellationClaimedAt} is not null
+      )`
+    ),
+    check(
+      "workspace_reservations_cancellation_failure_check",
+      sql`(
+        ${t.cancellationFailureDisposition} is null
+        and ${t.cancellationRetryAt} is null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'retryable'
+        and ${t.cancellationRetryAt} is not null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'manual_review'
+        and ${t.cancellationRetryAt} is null
       )`
     ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
@@ -163,7 +186,12 @@ export const workspaceReservations = pgTable(
       .on(t.reservationHoldExpiresAt)
       .where(sql`${t.reservationState} = 'held'`),
     index("workspace_reservations_cancellation_recovery_idx")
-      .on(t.reservationState, t.cancellationClaimedAt)
+      .on(
+        t.reservationState,
+        t.cancellationFailureDisposition,
+        t.cancellationRetryAt,
+        t.cancellationClaimedAt
+      )
       .where(
         sql`${t.reservationState} in ('cancelling', 'cancellation_failed')`
       ),

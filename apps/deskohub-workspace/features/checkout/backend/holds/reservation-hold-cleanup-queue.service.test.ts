@@ -21,7 +21,7 @@ const makeReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
+    customerAccessCode: "",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -99,6 +99,57 @@ const duePayload = {
 };
 
 describe("ReservationHoldCleanupScheduleService", () => {
+  test("persists attachment compensation before best-effort queue scheduling", async () => {
+    const {
+      enqueueAttachmentCancellationCompensation,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const operations: string[] = [];
+    const markAttachFailedCancellationRequired = mock(() => {
+      operations.push("marked");
+      return Effect.void;
+    });
+    const enqueueCleanup = mock(() => {
+      operations.push("enqueued");
+      return Effect.void;
+    });
+
+    await enqueueAttachmentCancellationCompensation({
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+      cancellationRequiredAt: dueNow,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            markAttachFailedCancellationRequired,
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupScheduleService, {
+            enqueueCleanup,
+          })
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(operations).toEqual(["marked", "enqueued"]);
+    expect(markAttachFailedCancellationRequired).toHaveBeenCalledWith({
+      id: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+      reservationHoldExpiresAt: dueNow,
+      failureCode: "attach_failed_cancellation_required",
+    });
+    expect(enqueueCleanup).toHaveBeenCalledWith({
+      orderId: "order-id",
+      reservationHoldExpiresAt: dueNow,
+    });
+  });
+
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
       getReservationHoldCleanupScheduleMessage,

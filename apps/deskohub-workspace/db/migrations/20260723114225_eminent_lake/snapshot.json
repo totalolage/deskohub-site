@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "a689cd77-f1d9-4ebc-86a6-23713556e766",
+  "id": "dc927194-27e3-4399-b49e-7a56343707b7",
   "prevIds": [
     "083a1001-8f45-4d9d-8e55-a567c13902e6"
   ],
@@ -1536,6 +1536,32 @@
       "table": "workspace_reservations"
     },
     {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_failure_disposition",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_retry_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
       "type": "timestamp with time zone",
       "typeSchema": null,
       "notNull": false,
@@ -2162,6 +2188,20 @@
           "opclass": null
         },
         {
+          "value": "cancellation_failure_disposition",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "cancellation_retry_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
           "value": "cancellation_claimed_at",
           "isExpression": false,
           "asc": true,
@@ -2750,8 +2790,15 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "(\n        \"reservation_state\" = 'cancelling'\n        and \"cancellation_claim_owner\" is not null\n        and \"cancellation_claimed_at\" is not null\n      ) or (\n        \"reservation_state\" <> 'cancelling'\n        and \"cancellation_claim_owner\" is null\n        and \"cancellation_claimed_at\" is null\n      )",
+      "value": "(\n        \"cancellation_claim_owner\" is null\n        and \"cancellation_claimed_at\" is null\n      ) or (\n        \"cancellation_claim_owner\" is not null\n        and \"cancellation_claimed_at\" is not null\n      )",
       "name": "workspace_reservations_cancellation_claim_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "(\n        \"cancellation_failure_disposition\" is null\n        and \"cancellation_retry_at\" is null\n      ) or (\n        \"cancellation_failure_disposition\" = 'retryable'\n        and \"cancellation_retry_at\" is not null\n      ) or (\n        \"cancellation_failure_disposition\" = 'manual_review'\n        and \"cancellation_retry_at\" is null\n      )",
+      "name": "workspace_reservations_cancellation_failure_check",
       "entityType": "checks",
       "schema": "public",
       "table": "workspace_reservations"

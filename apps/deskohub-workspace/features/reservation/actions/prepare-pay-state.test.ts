@@ -679,7 +679,6 @@ describe("prepareCoworkPayState", () => {
     expect(result.claimSupersessionCancellation).toHaveBeenCalledWith({
       id: "previous-reservation-id",
       ownerId: expect.any(String),
-      claimedAt: expect.any(Temporal.Instant),
     });
     expect(result.completeSupersessionAndCreateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -830,6 +829,7 @@ describe("prepareCoworkPayState", () => {
     expect(markCancellationFailed).toHaveBeenCalledWith({
       id: previousReservation.id,
       ownerId: expect.any(String),
+      disposition: "retryable",
       failureCode: "checkout_supersession_cancel_failed",
     });
     if (result.result.status !== "ready") throw new Error("Expected ready");
@@ -872,6 +872,7 @@ describe("prepareCoworkPayState", () => {
     expect(result.markCancellationFailed).toHaveBeenCalledWith({
       id: previousReservation.id,
       ownerId: expect.any(String),
+      disposition: "manual_review",
       failureCode: "checkout_supersession_cancel_failed",
     });
   });
@@ -907,6 +908,7 @@ describe("prepareCoworkPayState", () => {
     expect(result.markCancellationFailed).toHaveBeenCalledWith({
       id: previousReservation.id,
       ownerId: expect.any(String),
+      disposition: "retryable",
       failureCode: "checkout_supersession_cancel_failed",
     });
   });
@@ -926,12 +928,8 @@ describe("prepareCoworkPayState", () => {
     expect(end).toBeGreaterThan(start);
     const compensation = source.slice(start, end);
 
-    expect(compensation).toContain("markAttachFailedCancellationRequired");
-    expect(compensation).toContain("reservationHoldExpiresAt");
-    expect(compensation).toContain("enqueueReservationHoldCleanup");
-    expect(
-      compensation.indexOf("markAttachFailedCancellationRequired")
-    ).toBeLessThan(compensation.indexOf("enqueueReservationHoldCleanup"));
+    expect(compensation).toContain("enqueueAttachmentCancellationCompensation");
+    expect(compensation).toContain("cancellationRequiredAt");
     expect(compensation).not.toContain("dotypos.cancelReservation");
   });
 

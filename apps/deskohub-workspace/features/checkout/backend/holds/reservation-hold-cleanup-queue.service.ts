@@ -1,5 +1,5 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer, Option, Schema } from "effect";
+import { Context, Data, Duration, Effect, Layer, Option, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { clamp } from "@/shared/utils";
@@ -158,6 +158,72 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
     makeReservationHoldCleanupScheduleService()
   );
 }
+
+export const enqueueReservationHoldCleanup = Effect.fn(
+  "reservationHoldCleanupSchedule.enqueueBestEffort"
+)(function* (input: {
+  readonly orderId: string;
+  readonly reservationHoldExpiresAt: Temporal.Instant | null;
+}) {
+  if (!input.reservationHoldExpiresAt) {
+    yield* Effect.logWarning(
+      "Workspace reservation hold cleanup enqueue skipped: missing hold expiry",
+      { orderId: input.orderId }
+    );
+    return;
+  }
+
+  const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
+  const enqueue = cleanupSchedule
+    .enqueueCleanup({
+      orderId: input.orderId,
+      reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+    })
+    .pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Workspace reservation hold cleanup enqueue failed", {
+          orderId: input.orderId,
+          cause,
+        })
+      )
+    );
+
+  yield* enqueue.pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(2),
+      orElse: () =>
+        Effect.logWarning(
+          "Workspace reservation hold cleanup enqueue timed out",
+          {
+            orderId: input.orderId,
+          }
+        ),
+    }),
+    Effect.ignore
+  );
+});
+
+export const enqueueAttachmentCancellationCompensation = Effect.fn(
+  "reservationHoldCleanupSchedule.enqueueAttachmentCancellationCompensation"
+)(function* (input: {
+  readonly orderId: string;
+  readonly dotyposReservationId: string;
+  readonly reservationCreatedAt: Temporal.Instant;
+  readonly cancellationRequiredAt: Temporal.Instant;
+}) {
+  const reservations = yield* WorkspaceReservationRepository;
+  yield* reservations.markAttachFailedCancellationRequired({
+    id: input.orderId,
+    dotyposReservationId: input.dotyposReservationId,
+    reservationCreatedAt: input.reservationCreatedAt,
+    reservationHoldExpiresAt: input.cancellationRequiredAt,
+    failureCode: "attach_failed_cancellation_required",
+  });
+  yield* enqueueReservationHoldCleanup({
+    orderId: input.orderId,
+    reservationHoldExpiresAt: input.cancellationRequiredAt,
+  });
+});
 
 const decodeSchedulePayload = Schema.decodeUnknownOption(
   ReservationHoldCleanupSchedulePayloadSchema
