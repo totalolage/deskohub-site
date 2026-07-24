@@ -366,8 +366,13 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
   });
   let firstOwnerId: string | undefined;
   let completedOwnerId: string | undefined;
+  const claimOwnerIds: string[] = [];
+  const releaseInputs: Array<{ readonly ownerId: string }> = [];
   const claim = mock((claimInput) =>
     Effect.sync(() => {
+      if (claimOwnerIds.at(-1) !== claimInput.ownerId) {
+        claimOwnerIds.push(claimInput.ownerId);
+      }
       const recovery = getDifferentProviderAttachmentRecovery(row);
       if (!recovery) return false;
       const ownedByAnother =
@@ -403,16 +408,18 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
     })
   );
   const release = mock((releaseInput) =>
-    input.retainOwnedVerification
-      ? Effect.fail(new Error("Synthetic verification release failure"))
-      : Effect.sync(() => {
-          row = makeReservation({
-            ...row,
-            updatedAt: deliveryNow,
-            failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+    Effect.suspend(() => {
+      releaseInputs.push(releaseInput);
+      return input.retainOwnedVerification
+        ? Effect.fail(new Error("Synthetic verification release failure"))
+        : Effect.sync(() => {
+            row = makeReservation({
+              ...row,
+              updatedAt: deliveryNow,
+              failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+            });
           });
-          expect(releaseInput.ownerId).toBe(firstOwnerId);
-        })
+    })
   );
   const complete = mock((completeInput) =>
     Effect.sync(() => {
@@ -450,7 +457,6 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
         return Effect.die(new Error("Synthetic provider cancellation defect"));
       }
       if (input.exitKind === "interruption") return Effect.never;
-      loserStatus = "CANCELLED";
       return Effect.fail(
         new NetworkError({
           message: "Synthetic cancellation response was lost",
@@ -507,7 +513,6 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
   });
   expect(firstOwnerId).toBeDefined();
 
-  loserStatus = "CANCELLED";
   if (input.retainOwnedVerification) {
     const lookupsBeforeLiveOwnerRetry = listReservations.mock.calls.length;
     await expect(Effect.runPromise(process(now))).rejects.toBeDefined();
@@ -515,16 +520,36 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
     expect(cancelReservation).toHaveBeenCalledTimes(1);
     deliveryNow = now.add({ minutes: 3 });
   }
+  const lookupsBeforeStaleVisibility = listReservations.mock.calls.length;
+  await expect(Effect.runPromise(process(deliveryNow))).rejects.toBeDefined();
+  expect(listReservations).toHaveBeenCalledTimes(
+    lookupsBeforeStaleVisibility + 2
+  );
+  expect(cancelReservation).toHaveBeenCalledTimes(1);
+  expect(complete).not.toHaveBeenCalled();
+  expect(getDifferentProviderAttachmentRecovery(row)).toMatchObject({
+    epoch,
+    dotyposReservationId: loserId,
+    reservationCreatedAt: loserCreatedAt,
+    phase: input.retainOwnedVerification ? "verifying" : "awaiting_visibility",
+  });
+
+  if (input.retainOwnedVerification) {
+    deliveryNow = deliveryNow.add({ minutes: 3 });
+  }
+  loserStatus = "CANCELLED";
   const redelivery = await Effect.runPromise(process(deliveryNow));
   const resolvedRecovery = row.failureCode;
   return {
     beginVerification,
     cancelReservation,
+    claimOwnerIds,
     complete,
     completedOwnerId,
     firstOwnerId,
     listReservations,
     redelivery,
+    releaseInputs,
     resolvedRecovery,
   };
 };
@@ -2344,9 +2369,16 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.cancelReservation).toHaveBeenCalledTimes(1);
     expect(result.beginVerification).toHaveBeenCalledTimes(1);
     expect(result.complete).toHaveBeenCalledTimes(1);
-    expect(result.listReservations).toHaveBeenCalledTimes(3);
+    expect(result.listReservations).toHaveBeenCalledTimes(5);
     expect(result.completedOwnerId).toBeDefined();
     expect(result.completedOwnerId).not.toBe(result.firstOwnerId);
+    const releaseOwnerIds = result.releaseInputs.map(({ ownerId }) => ownerId);
+    expect(releaseOwnerIds[0]).toBe(result.firstOwnerId);
+    expect(releaseOwnerIds).toEqual(result.claimOwnerIds.slice(0, -1));
+    expect(new Set(result.claimOwnerIds).size).toBe(
+      result.claimOwnerIds.length
+    );
+    expect(result.completedOwnerId).toBe(result.claimOwnerIds.at(-1));
     expect(result.resolvedRecovery).toBe(
       `hold_creation_orphan_resolved:synthetic-${scenario.exitKind}-boundary-epoch:synthetic-${scenario.exitKind}-boundary-loser:${now.epochMilliseconds}`
     );
