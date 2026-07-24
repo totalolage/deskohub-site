@@ -144,6 +144,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                     "cancelled",
                     "expired",
                   ]),
+                  sql`${workspaceReservations.reservationHoldExpiresAt} > clock_timestamp()`,
                   hasNoUnresolvedProviderAttachmentRecovery()
                 )
               )

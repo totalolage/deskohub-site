@@ -369,6 +369,8 @@
   "checkoutPaymentRetryConsentBefore": "Znovu potvrzuji, že souhlasím s dokumenty",
   "checkoutPaymentRetryButton": "Zkusit platbu znovu",
   "checkoutPaymentRetryPending": "Připravujeme bezpečnou platbu...",
+  "checkoutPayStabilizingTitle": "Připravujeme bezpečnou platbu.",
+  "checkoutPayStabilizingLead": "Vaše rezervace je zajištěná, zatímco dokončujeme ověření. Tato stránka bude automaticky pokračovat.",
   "checkoutPaymentRetryError": "Platbu se nepodařilo znovu spustit. Zkontroluj prosím údaje rezervace a zkus to znovu.",
   "checkoutPaymentRetryCancelledBanner": "Předchozí platba byla zrušena. Po opětovném potvrzení podmínek můžete spustit novou bezpečnou platbu.",
   "checkoutPaymentRetryFailedBanner": "Předchozí platba nebyla dokončena. Po opětovném potvrzení podmínek můžete spustit novou bezpečnou platbu.",

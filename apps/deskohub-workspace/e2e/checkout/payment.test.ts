@@ -1,5 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { Effect } from "effect";
+import { openBrowserPage } from "../browser";
 import {
   browserDiagnosticsScript,
   payPageReadyScript,
@@ -127,10 +128,10 @@ test("retries a transient reservation preparation failure with the same checkout
   expect(activatedRefs).toEqual(["@e2", "@e3"]);
 });
 
-test("refreshes a fenced fresh-candidate pay page until it is payable", async () => {
+test("waits for the production handoff to make a fenced fresh-candidate pay page payable", async () => {
   const submitReservationScript = "submit-fresh-reservation";
   const payPageUrl = `${checkoutUrl.replace("/order", "/pay")}?orderId=${orderId}`;
-  let payPageReady = false;
+  let payPageReadinessChecks = 0;
   let reservationSubmitted = false;
   const openedUrls: string[] = [];
   const run = mock(async (_command, args, options = {}) => {
@@ -151,11 +152,11 @@ test("refreshes a fenced fresh-candidate pay page until it is payable", async ()
       return success(reservationSubmitted ? payPageUrl : checkoutUrl);
     }
     if (commandArgs[0] === "eval" && options.input === payPageReadyScript) {
-      return success(String(payPageReady));
+      payPageReadinessChecks += 1;
+      return success(String(payPageReadinessChecks > 1));
     }
     if (commandArgs[0] === "open") {
       openedUrls.push(commandArgs[1] ?? "");
-      payPageReady = true;
       return success();
     }
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
@@ -164,6 +165,7 @@ test("refreshes a fenced fresh-candidate pay page until it is payable", async ()
   const result = await Effect.runPromise(
     submitReservationForPayPage({
       config: makeConfig(),
+      locale: "en-US",
       run,
       session: "fresh-candidate-session",
       submitReservationScript,
@@ -171,7 +173,33 @@ test("refreshes a fenced fresh-candidate pay page until it is payable", async ()
   );
 
   expect(result).toBe(orderId);
-  expect(openedUrls).toEqual([payPageUrl]);
+  expect(payPageReadinessChecks).toBeGreaterThan(1);
+  expect(openedUrls).toEqual([]);
+});
+
+test.each([
+  {
+    label: "an off-origin pay page",
+    url: "https://off-origin.example.test/en-US/checkout/pay?payState=synthetic-capability",
+  },
+  {
+    label: "an insecure pay page",
+    url: `${checkoutUrl.replace("https:", "http:").replace("/order", "/pay")}?payState=synthetic-capability`,
+  },
+  {
+    label: "a protected-origin non-checkout path",
+    url: `${checkoutUrl.replace("/checkout/order", "/contact")}?payState=synthetic-capability`,
+  },
+])("rejects $label before attaching preview authorization", async ({ url }) => {
+  const run = mock(async () => success()) as unknown as Runner;
+
+  await expect(
+    openBrowserPage(makeConfig(), run, "unsafe-navigation-session", url, {
+      expectedLocalizedPath: "/en-US/checkout/pay",
+    }).pipe(Effect.runPromise)
+  ).rejects.toBeDefined();
+
+  expect(run).not.toHaveBeenCalled();
 });
 
 test("retries a hosted payment field when its first fill does not stick", async () => {

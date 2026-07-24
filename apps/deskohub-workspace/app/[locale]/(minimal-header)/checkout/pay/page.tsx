@@ -12,7 +12,10 @@ import {
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
-import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
+import {
+  CheckoutPayPage,
+  CheckoutPayStabilizingPage,
+} from "@/features/checkout/components/checkout-pay-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -113,12 +116,21 @@ async function CheckoutPayContent({
       Effect.map(Option.getOrUndefined)
     );
 
-    yield* payableReservations.requireCurrent({
-      orderId: state.orderId,
-      checkoutSessionId: state.checkoutSessionId,
-    });
+    const availability = yield* payableReservations
+      .requireCurrent({
+        orderId: state.orderId,
+        checkoutSessionId: state.checkoutSessionId,
+      })
+      .pipe(
+        Effect.as("payable" as const),
+        Effect.catchTag("PayableReservationUnavailableError", (cause) =>
+          cause.reason === "unresolved_attachment_recovery"
+            ? Effect.succeed("stabilizing" as const)
+            : Effect.fail(cause)
+        )
+      );
 
-    return { state, freshPayUrl };
+    return { state, freshPayUrl, availability };
   }).pipe(
     Effect.provide(PayableReservationService.LiveWithDependencies),
     Effect.catch((cause) =>
@@ -136,7 +148,16 @@ async function CheckoutPayContent({
     ));
   }
 
-  const { freshPayUrl, state } = opened;
+  const { availability, freshPayUrl, state } = opened;
+  const summary = getSignedPayStateCheckoutSummary(state);
+
+  if (availability === "stabilizing") {
+    return runWithRequestLocale(locale, () => (
+      <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+        <CheckoutPayStabilizingPage locale={locale} summary={summary} />
+      </CheckoutFlowLayout>
+    ));
+  }
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -153,7 +174,7 @@ async function CheckoutPayContent({
         freshPayUrl={freshPayUrl}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}
-        summary={getSignedPayStateCheckoutSummary(state)}
+        summary={summary}
         variant={state.changedKeys ? "pricingChanged" : "pay"}
       />
     </CheckoutFlowLayout>

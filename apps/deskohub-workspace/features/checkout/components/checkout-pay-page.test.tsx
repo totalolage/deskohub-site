@@ -20,8 +20,9 @@ const { submitWorkspaceReservation } = await import(
 );
 
 mock.module("server-only", () => ({}));
+const refresh = mock();
 mock.module("next/navigation", () => ({
-  useRouter: () => ({ push: mock() }),
+  useRouter: () => ({ push: mock(), refresh }),
 }));
 const submitReservationActions = await import(
   "@/features/reservation/actions/submit-reservation"
@@ -59,6 +60,49 @@ describe("CheckoutPayPageSkeleton", () => {
         "[data-slot='skeleton'][aria-hidden='true']"
       ).length
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("CheckoutPayStabilizingPage", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(() => {
+    cleanup();
+    refresh.mockClear();
+  });
+
+  afterAll(() => {
+    unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("keeps payment controls fenced while production refreshes the handoff", async () => {
+    const { CheckoutPayStabilizingPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayStabilizingPage
+        locale="en-US"
+        refreshIntervalMs={5}
+        summary={quote.summary}
+      />
+    );
+
+    expect(
+      view.getByText(m.checkoutPayStabilizingTitle({}, { locale: "en-US" }))
+    ).toBeDefined();
+    expect(view.queryByRole("checkbox")).toBeNull();
+    expect(
+      view.queryByRole("button", {
+        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(refresh).toHaveBeenCalled();
   });
 });
 

@@ -25,6 +25,7 @@ import {
   getHoldCreationMarker,
   getProviderHoldCandidateStabilizationDeadline,
   getResolvedDifferentProviderAttachmentRecovery,
+  hasUnresolvedProviderAttachmentRecovery,
   providerHoldCandidateStabilizationSeconds,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -50,6 +51,11 @@ const LegacyReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   reservationHoldExpiresAtIso: instantStringSchema,
 });
 
+const StabilizedProviderCandidateCleanupIdentitySchema = Schema.Struct({
+  providerCreationEpoch: Schema.Trim.check(Schema.isNonEmpty()),
+  dotyposReservationId: Schema.Trim.check(Schema.isNonEmpty()),
+});
+
 const ReservationHoldCleanupSchedulePayloadSchema = Schema.Union([
   LegacyReservationHoldCleanupSchedulePayloadSchema,
   Schema.Struct({
@@ -57,6 +63,9 @@ const ReservationHoldCleanupSchedulePayloadSchema = Schema.Union([
     reason: Schema.Literal("hold_expired"),
     orderId: Schema.String,
     reservationHoldExpiresAtIso: instantStringSchema,
+    stabilizedProviderCandidate: Schema.optional(
+      StabilizedProviderCandidateCleanupIdentitySchema
+    ),
   }),
   Schema.Struct({
     schemaVersion: Schema.Literal(2),
@@ -198,6 +207,9 @@ export const getReservationHoldCleanupScheduleMessage = (
       reason: "hold_expired",
       orderId: input.orderId,
       reservationHoldExpiresAtIso,
+      ...(input.stabilizedProviderCandidate && {
+        stabilizedProviderCandidate: input.stabilizedProviderCandidate,
+      }),
     } satisfies ReservationHoldCleanupSchedulePayload,
     options: {
       delaySeconds,
@@ -856,21 +868,6 @@ const completeProviderHoldCandidate = Effect.fn(
     reservation: input.reservation,
     providerCreationEpoch: input.providerCreationEpoch,
   });
-  const reservations = yield* WorkspaceReservationRepository;
-  yield* reservations
-    .completeProviderHoldCandidate({
-      id: input.reservation.id,
-      epoch: input.providerCreationEpoch,
-      dotyposReservationId: input.reservation.dotyposReservationId,
-      reservationCreatedAt: input.reservationCreatedAt,
-    })
-    .pipe(
-      Effect.mapError(
-        ReservationHoldCleanupScheduleError.fromError(
-          "Provider candidate attachment could not be completed."
-        )
-      )
-    );
   const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
   yield* cleanupSchedule.enqueueCleanup({
     reason: "hold_expired",
@@ -886,6 +883,21 @@ const completeProviderHoldCandidate = Effect.fn(
       },
     }),
   });
+  const reservations = yield* WorkspaceReservationRepository;
+  yield* reservations
+    .completeProviderHoldCandidate({
+      id: input.reservation.id,
+      epoch: input.providerCreationEpoch,
+      dotyposReservationId: input.reservation.dotyposReservationId,
+      reservationCreatedAt: input.reservationCreatedAt,
+    })
+    .pipe(
+      Effect.mapError(
+        ReservationHoldCleanupScheduleError.fromError(
+          "Provider candidate attachment could not be completed."
+        )
+      )
+    );
   return "cancelled" as const;
 });
 
@@ -1515,6 +1527,31 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
         )
       )
     );
+  const holdCreationMarker = reservation && getHoldCreationMarker(reservation);
+  const differentProviderRecovery =
+    reservation && getDifferentProviderAttachmentRecovery(reservation);
+  const unresolvedProviderCreationEpoch =
+    holdCreationMarker?._tag === "candidate" ||
+    holdCreationMarker?._tag === "candidate_compensating"
+      ? holdCreationMarker.epoch
+      : differentProviderRecovery?.epoch;
+
+  if (
+    payload.schemaVersion === 2 &&
+    payload.stabilizedProviderCandidate &&
+    reservation?.dotyposReservationId ===
+      canonicalizeDotyposEntityId(
+        payload.stabilizedProviderCandidate.dotyposReservationId
+      ) &&
+    unresolvedProviderCreationEpoch ===
+      payload.stabilizedProviderCandidate.providerCreationEpoch &&
+    hasUnresolvedProviderAttachmentRecovery(reservation)
+  ) {
+    return yield* new ReservationHoldCleanupScheduleError({
+      message:
+        "Post-stabilization cleanup delivery is waiting for the exact candidate fence to clear.",
+    });
+  }
 
   if (!isDueReservation(reservation, reservationHoldExpiresAt, now)) {
     yield* Effect.logInfo(

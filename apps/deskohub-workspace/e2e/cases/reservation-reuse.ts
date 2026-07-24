@@ -52,6 +52,7 @@ export const assertReservationReplacement = ({
         });
         return yield* submitReservationForPayPage({
           config,
+          locale: data.locale,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
@@ -87,6 +88,7 @@ export const assertReservationReplacement = ({
     const secondOrderId = yield* runStep({
       execute: submitReservationForPayPage({
         config,
+        locale: data.locale,
         onOrderId: (orderId) => {
           state.orderId = orderId;
         },

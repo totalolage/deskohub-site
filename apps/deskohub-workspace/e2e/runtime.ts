@@ -25,7 +25,7 @@ export const makeRunner =
       timeoutMs?: number;
     } = {}
   ) => {
-    const printable = redact([command, ...args].join(" "));
+    const printable = formatRunnerCommand(command, args);
     if (options.logCommand !== false) log(`$ ${printable}`);
 
     const child = Bun.spawn([command, ...args], {
@@ -84,6 +84,9 @@ const baseChildEnv = () =>
   );
 
 export type Runner = ReturnType<typeof makeRunner>;
+
+export const formatRunnerCommand = (command: string, args: readonly string[]) =>
+  redact([command, ...args].join(" "));
 
 export const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
   const allowlist = requireEnv("WORKSPACE_E2E_DATABASE_ALLOWLIST")
@@ -184,7 +187,12 @@ export const addRedaction = (value: string | undefined, force = false) => {
 };
 
 export const redact = (text: string) => {
-  let output = text;
+  let output = text
+    .replace(/([?&]payState=)[^&\s"'<>]*/gi, "$1[redacted]")
+    .replace(
+      /((?:%3F|%26)payState(?:%3D|=))(?:(?!%26|[&\s"'<>]).)+/gi,
+      "$1[redacted]"
+    );
   for (const secret of redactions)
     output = output.replaceAll(secret, "[redacted]");
   return output;

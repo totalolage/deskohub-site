@@ -7,6 +7,7 @@ import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "./errors";
 import { pollUntil } from "./polling";
@@ -57,15 +58,48 @@ export const openBrowserPage = (
   run: Runner,
   session: string,
   url: string,
-  options: { readonly timeoutMs?: number } = {}
+  options: {
+    readonly expectedLocalizedPath?: string;
+    readonly timeoutMs?: number;
+  } = {}
 ) =>
-  runBrowserCommand(
-    "open browser page",
-    run,
-    session,
-    [...getBrowserHeaderArgs(config), "open", url],
-    { timeoutMs: options.timeoutMs ?? 60_000 }
-  );
+  Effect.gen(function* () {
+    yield* validateProtectedBrowserNavigation(
+      config,
+      url,
+      options.expectedLocalizedPath
+    );
+
+    return yield* runBrowserCommand(
+      "open browser page",
+      run,
+      session,
+      [...getBrowserHeaderArgs(config), "open", url],
+      { timeoutMs: options.timeoutMs ?? 60_000 }
+    );
+  });
+
+export const validateProtectedBrowserNavigation = (
+  config: WorkspaceE2EConfig,
+  url: string,
+  expectedLocalizedPath?: string
+) =>
+  tryWorkspaceE2ESync("validate protected browser navigation", () => {
+    const target = new URL(url);
+    if (
+      target.protocol !== "https:" ||
+      target.host !== config.expectedHost ||
+      target.username ||
+      target.password ||
+      !/^\/(?:cs-CZ|en-US)(?:\/|$)/.test(target.pathname) ||
+      (expectedLocalizedPath !== undefined &&
+        target.pathname !== expectedLocalizedPath)
+    ) {
+      throw new Error(
+        "Protected browser navigation must stay on the expected localized HTTPS origin."
+      );
+    }
+  });
 
 export const waitForBrowserReactHydration = (
   run: Runner,

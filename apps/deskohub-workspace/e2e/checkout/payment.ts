@@ -12,6 +12,7 @@ import {
   requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
   switchToMainFrame,
+  validateProtectedBrowserNavigation,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
@@ -46,7 +47,6 @@ const reservationStartRetryableErrorMessages = [
 ] as const;
 const reservationSubmitAttemptCount = 2;
 const hostedPaymentFieldFillAttemptCount = 3;
-const payPageRefreshIntervalMs = 5_000;
 
 const runBrowserCommand = (
   operation: string,
@@ -83,6 +83,7 @@ export const completeCheckout = ({
     });
     yield* submitReservationForPayPage({
       config,
+      locale: data.locale,
       onOrderId,
       run,
       session,
@@ -133,6 +134,7 @@ export const startCheckoutPaymentAttempt = ({
     });
     const orderId = yield* submitReservationForPayPage({
       config,
+      locale: data.locale,
       onOrderId,
       run,
       session,
@@ -145,12 +147,14 @@ export const startCheckoutPaymentAttempt = ({
 
 export const submitReservationForPayPage = ({
   config,
+  locale,
   onOrderId,
   run,
   session,
   submitReservationScript,
 }: {
   config: WorkspaceE2EConfig;
+  locale: CheckoutData["locale"];
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -159,6 +163,7 @@ export const submitReservationForPayPage = ({
   Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       config,
+      locale,
       onOrderId,
       run,
       session,
@@ -195,12 +200,14 @@ const readPayPageOrderId = (
 
 const submitReservationAndWaitForPayPage = ({
   config,
+  locale,
   onOrderId,
   run,
   session,
   submitReservationScript,
 }: {
   config: WorkspaceE2EConfig;
+  locale: CheckoutData["locale"];
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -225,6 +232,7 @@ const submitReservationAndWaitForPayPage = ({
 
         const result = yield* waitForReservationStart(
           config,
+          locale,
           run,
           session,
           timeoutMs
@@ -280,28 +288,27 @@ type ReservationStartResult =
 
 const waitForReservationStart = (
   config: WorkspaceE2EConfig,
+  locale: CheckoutData["locale"],
   run: Runner,
   session: string,
   timeoutMs: number
 ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
   Effect.gen(function* () {
     let latest: ReservationStartDiagnostics | undefined;
-    let lastPayPageRefreshAt = 0;
 
     const reservationStartExit = yield* Effect.exit(
       pollUntil(
         Effect.gen(function* () {
           const url = yield* readBrowserUrl(run, session);
-          if (url?.includes("/checkout/pay")) {
+          const parsedUrl = parseUrl(url ?? "");
+          if (parsedUrl?.pathname === `/${locale}/checkout/pay`) {
+            yield* validateProtectedBrowserNavigation(
+              config,
+              url as string,
+              `/${locale}/checkout/pay`
+            );
             if (yield* isPayPageReady(run, session)) {
-              return { status: "ready" as const, url };
-            }
-            const now = Date.now();
-            if (now - lastPayPageRefreshAt >= payPageRefreshIntervalMs) {
-              lastPayPageRefreshAt = now;
-              yield* openBrowserPage(config, run, session, url, {
-                timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
-              });
+              return { status: "ready" as const, url: url as string };
             }
             return undefined;
           }

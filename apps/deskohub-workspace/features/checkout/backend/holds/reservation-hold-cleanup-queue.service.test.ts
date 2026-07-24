@@ -3222,6 +3222,140 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(acceptedDeadlineDeliveries).toBe(2);
   });
 
+  test("keeps payment fenced when the post-stabilization cleanup handoff fails", async () => {
+    const {
+      getAttachmentCancellationScheduleMessage,
+      processReservationHoldCleanupScheduleMessage,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const epoch = "synthetic-cleanup-handoff-epoch";
+    const providerId = "synthetic-cleanup-handoff-provider";
+    const createdAt = now.subtract({ minutes: 5 });
+    const stabilizationDeadline = now.subtract({ seconds: 1 });
+    const row = makeReservation({
+      dotyposReservationId: providerId,
+      reservationCreatedAt: createdAt,
+      failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:${stabilizationDeadline.epochMilliseconds}`,
+    });
+    const completeProviderHoldCandidate = mock(() => Effect.void);
+    const payload = getAttachmentCancellationScheduleMessage({
+      recoveryKind: "attachment_unknown",
+      orderId: row.id,
+      providerCreationEpoch: epoch,
+      dotyposReservationId: providerId,
+      reservationCreatedAt: createdAt,
+      stabilizeCandidate: true,
+    }).payload;
+
+    await expect(
+      processReservationHoldCleanupScheduleMessage(payload, now).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(WorkspaceReservationRepository, {
+              findById: mock(() => Effect.succeed(row)),
+              completeProviderHoldCandidate,
+            } as unknown as WorkspaceReservationRepositoryType),
+            Layer.succeed(ReservationHoldCleanupScheduleService, {
+              enqueueCleanup: mock(() =>
+                Effect.fail(
+                  new Error("Synthetic durable cleanup handoff failure")
+                )
+              ),
+            }),
+            Layer.succeed(ReservationHoldCleanupService, {
+              cancelOrderHold: mock(() =>
+                Effect.die("candidate stabilization must not cancel the winner")
+              ),
+              sweepExpiredHolds: mock(() =>
+                Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+              ),
+            } satisfies ReservationHoldCleanupServiceType),
+            Layer.succeed(DotyposService, {
+              listReservations: mock(() =>
+                Effect.succeed([
+                  makeProviderEvidence({
+                    id: providerId,
+                    status: "NEW",
+                    orderId: row.id,
+                    epoch,
+                    customerId: row.dotyposCustomerId,
+                  }),
+                ])
+              ),
+            } as unknown as typeof DotyposService.Service)
+          )
+        ),
+        Effect.runPromise
+      )
+    ).rejects.toBeDefined();
+
+    expect(completeProviderHoldCandidate).not.toHaveBeenCalled();
+    expect(row.failureCode).toStartWith("hold_creation_candidate:");
+  });
+
+  test("retries an already-due stabilized cleanup delivered before the candidate fence clears", async () => {
+    const {
+      getReservationHoldCleanupScheduleMessage,
+      processReservationHoldCleanupScheduleMessage,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const epoch = "synthetic-handoff-delivery-race-epoch";
+    const providerId = "synthetic-handoff-delivery-race-provider";
+    const createdAt = now.subtract({ minutes: 5 });
+    const row = makeReservation({
+      dotyposReservationId: providerId,
+      reservationCreatedAt: createdAt,
+      failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:${now.epochMilliseconds}`,
+    });
+    const message = getReservationHoldCleanupScheduleMessage(
+      {
+        orderId: row.id,
+        reservationHoldExpiresAt:
+          row.reservationHoldExpiresAt as Temporal.Instant,
+        stabilizedProviderCandidate: {
+          providerCreationEpoch: epoch,
+          dotyposReservationId: providerId,
+        },
+      },
+      dueNow
+    );
+    const cancelOrderHold = mock(() => Effect.succeed("skipped" as const));
+
+    expect(message.payload).toMatchObject({
+      stabilizedProviderCandidate: {
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+      },
+    });
+    await expect(
+      processReservationHoldCleanupScheduleMessage(
+        message.payload,
+        dueNow
+      ).pipe(
+        Effect.provide(
+          Layer.mergeAll(
+            Layer.succeed(WorkspaceReservationRepository, {
+              findById: mock(() => Effect.succeed(row)),
+            } as unknown as WorkspaceReservationRepositoryType),
+            Layer.succeed(ReservationHoldCleanupService, {
+              cancelOrderHold,
+              sweepExpiredHolds: mock(() =>
+                Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+              ),
+            } satisfies ReservationHoldCleanupServiceType)
+          )
+        ),
+        Effect.runPromise
+      )
+    ).rejects.toBeDefined();
+    expect(cancelOrderHold).not.toHaveBeenCalled();
+  });
+
   test("reverifies a stale attached candidate and schedules its original deadline without another create", async () => {
     const {
       getAttachmentCancellationScheduleMessage,
