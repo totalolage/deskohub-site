@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import { makeTestE2EEnvironment } from "./e2e-env.test-fixture";
-import { makeE2ETelemetryRuntime } from "./telemetry-runtime";
+import { makeE2ETelemetryRuntime, runE2EEffect } from "./telemetry-runtime";
 
 describe("E2E telemetry runtime", () => {
   test("keeps local E2E runnable without PostHog configuration", async () => {
@@ -21,5 +21,12 @@ describe("E2E telemetry runtime", () => {
 
     expect(runtime.telemetryEnabled).toBe(true);
     await expect(Effect.runPromise(runtime.shutdown)).resolves.toBeUndefined();
+  });
+
+  test("returns the suite failure after the telemetry lifecycle finishes", async () => {
+    const runtime = makeE2ETelemetryRuntime(makeTestE2EEnvironment());
+    const exit = await runE2EEffect(Effect.fail("suite failed"), runtime);
+
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 });

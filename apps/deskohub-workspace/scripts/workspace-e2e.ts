@@ -11,11 +11,7 @@ import { makeWorkspaceE2E } from "../e2e/workspace-e2e";
 
 const environment = makeE2EEnvironment();
 const telemetry = makeE2ETelemetryRuntime(environment);
-const exit = await runE2EEffect(
-  makeWorkspaceE2E(environment),
-  telemetry.loggerLayer
-);
-await runE2EEffect(telemetry.shutdown, telemetry.loggerLayer);
+const exit = await runE2EEffect(makeWorkspaceE2E(environment), telemetry);
 
 if (Exit.isFailure(exit)) {
   process.stderr.write(

@@ -127,7 +127,6 @@ jobs:
       group: workspace-e2e-dotypos-sandbox
       cancel-in-progress: false
     env:
-      DOTYPOS_API_TIMEOUT: ${{ vars.WORKSPACE_E2E_DOTYPOS_API_TIMEOUT }}
       NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
       TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}

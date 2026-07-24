@@ -20,11 +20,6 @@ export type E2EResult =
       readonly outcome: "timed_out";
     };
 
-type E2EFinishedEvent = {
-  readonly durationMs: number;
-  readonly phase: "finished";
-} & E2EResult;
-
 export type E2ERunContext = {
   readonly executionContext: E2EExecutionContext;
   readonly githubRunAttempt?: number;
@@ -34,34 +29,21 @@ export type E2ERunContext = {
   readonly targetSha?: string;
 };
 
-export type E2ETelemetryEvent =
+export type E2ESpan =
   | {
-      readonly phase: "started";
       readonly scope: "run";
     }
-  | (E2EFinishedEvent & {
-      readonly scope: "run";
-    })
   | {
       readonly caseId: string;
-      readonly phase: "started";
       readonly scope: "case";
+      readonly timeoutMs: number;
     }
-  | (E2EFinishedEvent & {
-      readonly caseId: string;
-      readonly scope: "case";
-    })
   | {
-      readonly caseId: string;
-      readonly phase: "started";
-      readonly scope: "step";
-      readonly stepId: string;
-    }
-  | (E2EFinishedEvent & {
       readonly caseId: string;
       readonly scope: "step";
       readonly stepId: string;
-    });
+      readonly timeoutMs: number;
+    };
 
 interface IE2ERunContextService {
   readonly value: E2ERunContext;
@@ -78,7 +60,20 @@ export class E2ERunContextService extends Context.Service<
 }
 
 export interface E2ETelemetry {
-  readonly record: (event: E2ETelemetryEvent) => Effect.Effect<void>;
+  readonly traceCase: <A, E, R>(input: {
+    readonly caseId: string;
+    readonly effect: Effect.Effect<A, E, R>;
+    readonly timeoutMs: number;
+  }) => Effect.Effect<A, E, R>;
+  readonly traceRun: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+  readonly traceStep: <A, E, R>(input: {
+    readonly caseId: string;
+    readonly effect: Effect.Effect<A, E, R>;
+    readonly stepId: string;
+    readonly timeoutMs: number;
+  }) => Effect.Effect<A, E, R>;
 }
 
 export class E2ETelemetryService extends Context.Service<
@@ -91,10 +86,18 @@ export class E2ETelemetryService extends Context.Service<
       const { value: runContext } = yield* E2ERunContextService;
 
       return {
-        record: (event) =>
-          Effect.logInfo("E2E lifecycle").pipe(
-            Effect.annotateLogs(toE2ETelemetryAnnotations(runContext, event))
+        traceCase: ({ caseId, effect, timeoutMs }) =>
+          traceE2EEffect(runContext, { caseId, scope: "case", timeoutMs })(
+            effect
           ),
+        traceRun: traceE2EEffect(runContext, { scope: "run" }),
+        traceStep: ({ caseId, effect, stepId, timeoutMs }) =>
+          traceE2EEffect(runContext, {
+            caseId,
+            scope: "step",
+            stepId,
+            timeoutMs,
+          })(effect),
       };
     })
   );
@@ -154,42 +157,16 @@ export const toE2EResult = <A, E>(exit: Exit.Exit<A, E>): E2EResult => {
   };
 };
 
-export const withE2ERunTelemetry = <A, E, R>(
-  effect: Effect.Effect<A, E, R>,
-  telemetry: E2ETelemetry,
-  now: () => number = Date.now
-): Effect.Effect<A, E, R> =>
-  Effect.suspend(() => {
-    const startedAt = now();
-    return telemetry.record({ phase: "started", scope: "run" }).pipe(
-      Effect.andThen(effect),
-      Effect.onExit((exit) =>
-        telemetry.record({
-          durationMs: now() - startedAt,
-          phase: "finished",
-          scope: "run",
-          ...toE2EResult(exit),
-        })
-      )
-    );
-  });
-
-export const toE2ETelemetryAnnotations = (
+export const toE2ESpanAttributes = (
   runContext: E2ERunContext,
-  event: E2ETelemetryEvent
+  span: E2ESpan
 ): Record<string, boolean | number | string> => ({
-  "e2e.event": `${event.scope}.${event.phase}`,
   "e2e.execution_context": runContext.executionContext,
   "e2e.run.id": runContext.runId,
-  "e2e.scope": event.scope,
-  "e2e.phase": event.phase,
-  ...("outcome" in event ? { "e2e.outcome": event.outcome } : {}),
-  ...("failureKind" in event ? { "e2e.failure.kind": event.failureKind } : {}),
-  ...("durationMs" in event
-    ? { "e2e.duration_ms": Math.max(0, Math.round(event.durationMs)) }
-    : {}),
-  ...("caseId" in event ? { "e2e.case.id": event.caseId } : {}),
-  ...("stepId" in event ? { "e2e.step.id": event.stepId } : {}),
+  "e2e.scope": span.scope,
+  ...("timeoutMs" in span ? { "e2e.timeout_ms": span.timeoutMs } : {}),
+  ...("caseId" in span ? { "e2e.case.id": span.caseId } : {}),
+  ...("stepId" in span ? { "e2e.step.id": span.stepId } : {}),
   ...(runContext.githubRunId
     ? { "github.run.id": runContext.githubRunId }
     : {}),
@@ -201,3 +178,35 @@ export const toE2ETelemetryAnnotations = (
     : {}),
   ...(runContext.targetSha ? { "git.commit.sha": runContext.targetSha } : {}),
 });
+
+const traceE2EEffect =
+  (runContext: E2ERunContext, span: E2ESpan) =>
+  <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    effect.pipe(
+      Effect.onExit((exit) =>
+        Effect.annotateCurrentSpan(toE2ETerminalSpanAttributes(exit))
+      ),
+      Effect.withSpan(
+        `e2e.${span.scope}`,
+        {
+          attributes: toE2ESpanAttributes(runContext, span),
+          ...(span.scope === "run" ? { root: true } : {}),
+        },
+        {
+          captureStackTrace: false,
+        }
+      )
+    );
+
+const toE2ETerminalSpanAttributes = <A, E>(
+  exit: Exit.Exit<A, E>
+): Record<string, string> => {
+  const result = toE2EResult(exit);
+
+  return {
+    ...(result.outcome === "failed" || result.outcome === "timed_out"
+      ? { "e2e.failure.kind": result.failureKind }
+      : {}),
+    "e2e.outcome": result.outcome,
+  };
+};

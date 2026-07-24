@@ -41,7 +41,7 @@ names. Inspect settings and deployment metadata without printing their values.
 - Neon integration-managed `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
-- Workspace E2E Dotypos URL, timeout, credentials, and tenant IDs.
+- Workspace E2E Dotypos URL, credentials, and tenant IDs.
 - `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when using a non-default ingest
   region, `WORKSPACE_E2E_POSTHOG_HOST` in the `workspace-checkout-e2e` GitHub
   environment. The token is the project ingest token, never a management API
@@ -114,6 +114,10 @@ configuration and must not read ambient environment variables. Application-only
 variables are not projected into the E2E configuration, and E2E telemetry uses
 only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
 
+All case, step, provider, browser, datasource, artifact, and cleanup timeouts
+are static checked-in values in `e2e/timeouts.ts`. The runner does not accept
+environment-variable timeout overrides.
+
 Webhook replay is only a deterministic notification trigger. The deployed
 handler must still fetch authoritative order state from Nexi before applying a
 payment transition. Keep raw payloads, credentials, customer data, and
@@ -153,16 +157,19 @@ timeouts.
 
 ## Suite telemetry
 
-The Bun E2E process uses the same censored OTLP log pipeline as the Workspace
-application, with its own `deskohub-workspace-e2e` service name. It records
-closed, structured lifecycle data for the overall run, every case, and every
-semantic step:
+The Bun E2E process exports an OTLP trace to PostHog under its own
+`deskohub-workspace-e2e` service name. One root `e2e.run` span contains an
+`e2e.case` child for every case, and every semantic step is an `e2e.step` child
+of its case. Span names are fixed and low-cardinality; code-owned case and step
+IDs are attributes.
 
-- start and terminal lifecycle events;
-- `passed`, `failed`, or `cancelled` outcomes;
-- duration in milliseconds;
-- the code-owned case and step IDs;
-- the exact target SHA and GitHub run correlation values when available.
+PostHog's native span duration is the authoritative elapsed time. Case and step
+spans also record their configured `e2e.timeout_ms`, which allows actual
+duration to be compared with the watchdog that governed the operation. Terminal
+attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
+`cancelled`, plus the closed failure kinds `error`, `defect`, and `timeout`.
+The exact target SHA and GitHub run correlation values are included when
+available.
 
 The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
 `ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:
@@ -172,13 +179,19 @@ default-branch workflow, an absent explicit value derives the same result from
 GitHub's event name. A rerun retains the original trigger classification and is
 distinguished by the GitHub run attempt.
 
-Telemetry never includes preview URLs, database or provider identifiers,
-reservation/order/customer data, test contact fields, raw errors, credentials,
-or artifact contents. Export and shutdown are bounded and observational:
-PostHog availability must not replace the E2E result. Without a project ingest
-token, local execution remains usable with console logging only.
+Trace export passes through the same shared censoring logic as normal Workspace
+logs. That shared boundary censors span attributes, event and link attributes,
+exception details, and span status messages. The E2E instrumentation itself
+adds only closed, code-owned values and never adds preview URLs, database or
+provider identifiers, reservation/order/customer data, test contact fields,
+raw errors, credentials, or artifact contents.
 
-These records cover every invocation that reaches `bun run test:e2e`. Failures
+Export and shutdown are bounded and observational: PostHog availability must
+not replace the E2E result. Without a project ingest token, local execution
+remains usable without remote traces; the existing console progress output
+remains available but is not the telemetry source of truth.
+
+These spans cover every invocation that reaches `bun run test:e2e`. Failures
 in earlier workflow setup such as target resolution, dependency installation,
 or preview database migration remain represented by GitHub Actions rather than
 the in-process suite telemetry.

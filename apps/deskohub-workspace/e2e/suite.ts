@@ -66,33 +66,34 @@ export const runWorkspaceE2ECases = ({
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
-      const runtimes = yield* Effect.forEach(cases, (testCase) =>
-        Effect.acquireRelease(
-          Effect.sync(
-            (): WorkspaceE2ECaseRuntime => ({
-              artifactDir: resolve(artifactRoot, testCase.id),
-              browserHarStarted: false,
-              browserHarStopped: false,
-              session: `${sessionPrefix}-${testCase.id}`,
-              testCase,
-            })
-          ),
-          (runtime) => finalizeCaseRuntime(runtime, run, telemetry, timeouts)
-        )
-      );
-
-      yield* Effect.forEach(runtimes, (runtime) =>
-        runCase(runtime, run, telemetry, timeouts).pipe(Effect.forkChild)
-      ).pipe(
-        Effect.andThen(Fiber.joinAll),
-        Effect.tapCause(() =>
-          Effect.forEach(
-            runtimes.filter((runtime) => runtime.failureCause !== undefined),
-            (runtime) => captureFailureArtifacts(runtime, run, timeouts),
-            { discard: true }
-          )
-        )
-      );
+      yield* Effect.forEach(cases, (testCase) =>
+        telemetry
+          .traceCase({
+            caseId: testCase.id,
+            effect: Effect.acquireUseRelease(
+              Effect.sync(
+                (): WorkspaceE2ECaseRuntime => ({
+                  artifactDir: resolve(artifactRoot, testCase.id),
+                  browserHarStarted: false,
+                  browserHarStopped: false,
+                  session: `${sessionPrefix}-${testCase.id}`,
+                  testCase,
+                })
+              ),
+              (runtime) =>
+                runCase(runtime, run, telemetry, timeouts).pipe(
+                  Effect.tapCause(() =>
+                    runtime.failureCause
+                      ? captureFailureArtifacts(runtime, run, timeouts)
+                      : Effect.void
+                  )
+                ),
+              (runtime) => finalizeCaseRuntime(runtime, run, timeouts)
+            ),
+            timeoutMs: testCase.timeoutMs,
+          })
+          .pipe(Effect.forkChild)
+      ).pipe(Effect.andThen(Fiber.joinAll));
     })
   );
 
@@ -107,11 +108,6 @@ const runCase = (
 
   return Effect.gen(function* () {
     log(`CASE START ${runtime.testCase.id}`);
-    yield* telemetry.record({
-      caseId: runtime.testCase.id,
-      phase: "started",
-      scope: "case",
-    });
     runtime.browserHarStarted = yield* startBrowserDiagnostics(
       run,
       runtime.session
@@ -159,48 +155,36 @@ const makeStepRunner =
     const startedAt = Date.now();
     const operation = `${caseId}/${id}`;
 
-    return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
-      Effect.andThen(
-        telemetry.record({
-          caseId,
-          phase: "started",
-          scope: "step",
-          stepId: id,
-        })
-      ),
-      Effect.andThen(
-        execute.pipe(
-          Effect.timeoutOrElse({
-            duration: `${timeoutMs} millis`,
-            orElse: () =>
-              Effect.fail(
-                workspaceE2ETimeoutError(
-                  `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
-                  { operation }
-                )
-              ),
+    return telemetry.traceStep({
+      caseId,
+      effect: Effect.sync(() => log(`STEP START ${operation}`)).pipe(
+        Effect.andThen(
+          execute.pipe(
+            Effect.timeoutOrElse({
+              duration: `${timeoutMs} millis`,
+              orElse: () =>
+                Effect.fail(
+                  workspaceE2ETimeoutError(
+                    `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
+                    { operation }
+                  )
+                ),
+            })
+          )
+        ),
+        Effect.onExit((exit) =>
+          Effect.sync(() => {
+            const durationMs = Date.now() - startedAt;
+            const elapsed = formatWorkspaceE2EDuration(durationMs);
+            const { outcome } = toE2EResult(exit);
+            const status = e2eOutcomeStatus[outcome];
+            log(`STEP ${status} ${operation} (${elapsed})`);
           })
         )
       ),
-      Effect.onExit((exit) =>
-        Effect.gen(function* () {
-          const durationMs = Date.now() - startedAt;
-          const elapsed = formatWorkspaceE2EDuration(durationMs);
-          const result = toE2EResult(exit);
-          const { outcome } = result;
-          const status = e2eOutcomeStatus[outcome];
-          log(`STEP ${status} ${operation} (${elapsed})`);
-          yield* telemetry.record({
-            caseId,
-            durationMs,
-            phase: "finished",
-            scope: "step",
-            stepId: id,
-            ...result,
-          });
-        })
-      )
-    );
+      stepId: id,
+      timeoutMs,
+    });
   };
 
 const captureFailureArtifacts = (
@@ -242,7 +226,6 @@ const captureFailureArtifacts = (
 const finalizeCaseRuntime = (
   runtime: WorkspaceE2ECaseRuntime,
   run: Runner,
-  telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
@@ -278,13 +261,6 @@ const finalizeCaseRuntime = (
     log(
       `CASE ${status} ${runtime.testCase.id} (${formatWorkspaceE2EDuration(durationMs)})`
     );
-    yield* telemetry.record({
-      caseId: runtime.testCase.id,
-      durationMs,
-      phase: "finished",
-      scope: "case",
-      ...result,
-    });
 
     if (failures.length > 0)
       return yield* Effect.die(

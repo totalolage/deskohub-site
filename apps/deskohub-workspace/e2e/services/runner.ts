@@ -18,11 +18,7 @@ import {
   WorkspaceE2ERedactionService,
 } from "./core";
 import { WorkspaceE2EPreviewReadinessService } from "./preview-readiness";
-import {
-  E2ERunContextService,
-  E2ETelemetryService,
-  withE2ERunTelemetry,
-} from "./telemetry";
+import { E2ERunContextService, E2ETelemetryService } from "./telemetry";
 
 interface IWorkspaceE2ERunnerService {
   readonly run: Effect.Effect<void, WorkspaceE2EError>;
@@ -45,7 +41,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
       const telemetry = yield* E2ETelemetryService;
 
       return {
-        run: withE2ERunTelemetry(
+        run: telemetry.traceRun(
           Effect.gen(function* () {
             const config = yield* configService.getConfig;
             const run = yield* commandRunner.getRunner;
@@ -108,8 +104,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                 : workflowFailure;
             }
             if (cleanupError) return yield* cleanupError;
-          }),
-          telemetry
+          })
         ),
       };
     })
@@ -134,10 +129,9 @@ export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
     Layer.provideMerge(WorkspaceE2ECoreLive)
   );
 
-  const WorkspaceE2ECommandRunnerLive =
-    WorkspaceE2ECommandRunnerService.layer(environment).pipe(
-      Layer.provideMerge(WorkspaceE2ECaseLive)
-    );
+  const WorkspaceE2ECommandRunnerLive = WorkspaceE2ECommandRunnerService.layer(
+    environment
+  ).pipe(Layer.provideMerge(WorkspaceE2ECaseLive));
 
   const WorkspaceE2EPreviewReadinessLive =
     WorkspaceE2EPreviewReadinessService.Live.pipe(

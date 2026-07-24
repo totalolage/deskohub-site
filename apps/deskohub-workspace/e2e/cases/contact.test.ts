@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
-import { defaultWorkspaceE2ETimeouts } from "../timeouts";
+import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
@@ -27,7 +27,7 @@ test("activates the hydrated contact form action through its stable selector", a
       "https://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
     bypassSecret: undefined,
     expectedHost: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-    timeouts: defaultWorkspaceE2ETimeouts,
+    timeouts: workspaceE2ETimeouts,
   } satisfies WorkspaceE2EConfig;
   const runStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
 

@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { Runner } from "../runtime";
-import { defaultWorkspaceE2ETimeouts } from "../timeouts";
+import { workspaceE2ETimeouts } from "../timeouts";
 import { activateStatusReserveAgain } from "./payment-terminal";
 
 test("restarts a reservation through a hydrated stable link selector", async () => {
@@ -15,7 +15,7 @@ test("restarts a reservation through a hydrated stable link selector", async () 
     activateStatusReserveAgain(
       run,
       "payment-terminal",
-      defaultWorkspaceE2ETimeouts
+      workspaceE2ETimeouts
     )
   );
 

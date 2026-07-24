@@ -1,17 +1,11 @@
 import type { E2EEnvironment } from "./e2e-env";
 import { addRedaction, assert, parseUrl } from "./runtime";
-import {
-  makeWorkspaceE2ETimeouts,
-  type WorkspaceE2ETimeouts,
-} from "./timeouts";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 const immutableWorkspaceDeploymentHost =
   /^deskohub-workspace(?:-site)?-[a-z0-9]{9}-[a-z0-9-]+\.vercel\.app$/;
 
-export const getConfig = (
-  environment: E2EEnvironment,
-  timeouts: WorkspaceE2ETimeouts = makeWorkspaceE2ETimeouts(environment)
-) => {
+export const getConfig = (environment: E2EEnvironment) => {
   const target = parseWorkspaceE2EBaseUrl(environment.WORKSPACE_E2E_BASE_URL);
   const bypassSecret = environment.VERCEL_AUTOMATION_BYPASS_SECRET;
 
@@ -20,7 +14,7 @@ export const getConfig = (
   return {
     ...target,
     bypassSecret,
-    timeouts,
+    timeouts: workspaceE2ETimeouts,
   };
 };
 
@@ -56,13 +50,9 @@ export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
   };
 };
 
-export const getDatasourceConfig = (
-  environment: E2EEnvironment,
-  timeouts: WorkspaceE2ETimeouts = makeWorkspaceE2ETimeouts(environment)
-) => {
+export const getDatasourceConfig = (environment: E2EEnvironment) => {
   const databaseUrl = environment.DATABASE_URL;
-  const databaseUrlUnpooled =
-    environment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED;
+  const databaseUrlUnpooled = environment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED;
   [
     databaseUrl,
     databaseUrlUnpooled,
@@ -75,13 +65,15 @@ export const getDatasourceConfig = (
     environment.DOTYPOS_REFRESH_TOKEN,
     environment.NEXI_API_ORIGIN,
     environment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
-  ].forEach((value) => addRedaction(value));
+  ].forEach((value) => {
+    addRedaction(value);
+  });
 
   return {
     databaseUrl,
     databaseUrlUnpooled,
     dotypos: {
-      apiTimeout: environment.DOTYPOS_API_TIMEOUT ?? 5_000,
+      apiTimeout: 5_000,
       apiUrl: environment.DOTYPOS_API_URL,
       branchId: environment.DOTYPOS_BRANCH_ID,
       clientId: environment.DOTYPOS_CLIENT_ID,
@@ -92,7 +84,7 @@ export const getDatasourceConfig = (
     },
     expectedCurrency: "CZK",
     nexiApiOrigin: environment.NEXI_API_ORIGIN,
-    timeouts,
+    timeouts: workspaceE2ETimeouts,
   };
 };
 

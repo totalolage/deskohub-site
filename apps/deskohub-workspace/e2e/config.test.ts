@@ -6,6 +6,7 @@ import {
   validE2ERuntimeEnvironment,
 } from "./e2e-env.test-fixture";
 import { assertSafeDatabaseUrl } from "./runtime";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 test("parses an immutable HTTPS Vercel deployment origin", () => {
   expect(
@@ -61,14 +62,13 @@ test("requires a direct datasource URL", () => {
 });
 
 test("keeps canonical local currency in datasource assertions", () => {
-  expect(
-    getDatasourceConfig(makeTestE2EEnvironment()).expectedCurrency
-  ).toBe("CZK");
+  expect(getDatasourceConfig(makeTestE2EEnvironment()).expectedCurrency).toBe(
+    "CZK"
+  );
 });
 
 test("rejects a datasource outside the explicit preview allowlist", () => {
-  const allowlist =
-    "postgresql://owner:test@ep-preview.eu.neon.tech/neondb";
+  const allowlist = "postgresql://owner:test@ep-preview.eu.neon.tech/neondb";
   expect(() =>
     assertSafeDatabaseUrl(
       "postgresql://owner:test@ep-preview-pooler.eu.neon.tech/neondb",
@@ -85,11 +85,9 @@ test("rejects a datasource outside the explicit preview allowlist", () => {
   ).toThrow("is not allowlisted for workspace e2e");
 });
 
-test("decodes timeout overrides once for E2E consumers", () => {
-  const config = getDatasourceConfig(
-    makeTestE2EEnvironment({
-      WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS: "45000",
-    })
-  );
-  expect(config.timeouts.datasource).toBe(45_000);
+test("uses the checked-in timeout configuration", () => {
+  const config = getDatasourceConfig(makeTestE2EEnvironment());
+
+  expect(config.dotypos.apiTimeout).toBe(5_000);
+  expect(config.timeouts).toBe(workspaceE2ETimeouts);
 });

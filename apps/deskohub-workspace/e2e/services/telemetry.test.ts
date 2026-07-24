@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
-import { Cause, Effect, Exit } from "effect";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  type ReadableSpan,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
+import { Cause, Effect, Exit, Layer } from "effect";
+import {
+  CENSORED_LOG_VALUE,
+  createCensoredOtelSpanExporter,
+} from "../../shared/backend/logging/censorship";
+import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { workspaceE2ETimeoutError } from "../errors";
 import {
-  type E2ETelemetryEvent,
+  E2ERunContextService,
+  E2ETelemetryService,
   makeE2ERunContext,
   toE2EResult,
-  toE2ETelemetryAnnotations,
-  withE2ERunTelemetry,
+  toE2ESpanAttributes,
 } from "./telemetry";
 
 describe("E2E run context", () => {
@@ -64,9 +75,9 @@ describe("E2E run context", () => {
   });
 });
 
-test("builds bounded searchable lifecycle annotations", () => {
+test("builds bounded searchable span attributes", () => {
   expect(
-    toE2ETelemetryAnnotations(
+    toE2ESpanAttributes(
       {
         executionContext: "ci",
         githubRunAttempt: 3,
@@ -77,25 +88,18 @@ test("builds bounded searchable lifecycle annotations", () => {
       },
       {
         caseId: "checkout-cowork-basic",
-        durationMs: 1_234.6,
-        failureKind: "error",
-        outcome: "failed",
-        phase: "finished",
         scope: "step",
         stepId: "complete-hosted-payment",
+        timeoutMs: 45_000,
       }
     )
   ).toEqual({
     "e2e.case.id": "checkout-cowork-basic",
-    "e2e.duration_ms": 1235,
-    "e2e.event": "step.finished",
     "e2e.execution_context": "ci",
-    "e2e.failure.kind": "error",
-    "e2e.outcome": "failed",
-    "e2e.phase": "finished",
     "e2e.run.id": "987-3",
     "e2e.scope": "step",
     "e2e.step.id": "complete-hosted-payment",
+    "e2e.timeout_ms": 45_000,
     "git.commit.sha": "b".repeat(40),
     "github.pull_request.number": 120,
     "github.run.attempt": 3,
@@ -126,62 +130,136 @@ test("maps success, errors, defects, timeouts, and interruption to closed result
   });
 });
 
-test("records the terminal outcome for the complete run", async () => {
-  const events: E2ETelemetryEvent[] = [];
-  const times = [1_000, 2_250];
-  const telemetry = {
-    record: (event: E2ETelemetryEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-  };
+test("exports one run trace with nested case and step spans", async () => {
+  const { exporter, layer, provider } = makeTestTelemetry();
 
-  const exit = await Effect.runPromiseExit(
-    withE2ERunTelemetry(
-      Effect.fail("suite failed"),
-      telemetry,
-      () => times.shift() ?? 2_250
-    )
-  );
+  try {
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const telemetry = yield* E2ETelemetryService;
+        yield* telemetry.traceRun(
+          telemetry.traceCase({
+            caseId: "checkout-cowork-basic",
+            effect: telemetry.traceStep({
+              caseId: "checkout-cowork-basic",
+              effect: Effect.sleep("5 millis"),
+              stepId: "complete-hosted-payment",
+              timeoutMs: 45_000,
+            }),
+            timeoutMs: 120_000,
+          })
+        );
+      }).pipe(Effect.provide(layer))
+    );
 
-  expect(Exit.isFailure(exit)).toBe(true);
-  expect(events).toEqual([
-    { phase: "started", scope: "run" },
-    {
-      durationMs: 1_250,
-      failureKind: "error",
-      outcome: "failed",
-      phase: "finished",
-      scope: "run",
-    },
-  ]);
+    const spans = exporter.getFinishedSpans();
+    const runSpan = findSpan(spans, "e2e.run");
+    const caseSpan = findSpan(spans, "e2e.case");
+    const stepSpan = findSpan(spans, "e2e.step");
+
+    expect(spans).toHaveLength(3);
+    expect(caseSpan.spanContext().traceId).toBe(runSpan.spanContext().traceId);
+    expect(stepSpan.spanContext().traceId).toBe(runSpan.spanContext().traceId);
+    expect(caseSpan.parentSpanContext?.spanId).toBe(
+      runSpan.spanContext().spanId
+    );
+    expect(stepSpan.parentSpanContext?.spanId).toBe(
+      caseSpan.spanContext().spanId
+    );
+    expect(stepSpan.attributes).toMatchObject({
+      "e2e.case.id": "checkout-cowork-basic",
+      "e2e.execution_context": "ci",
+      "e2e.outcome": "passed",
+      "e2e.run.id": "987-3",
+      "e2e.scope": "step",
+      "e2e.step.id": "complete-hosted-payment",
+      "e2e.timeout_ms": 45_000,
+      "github.run.attempt": 3,
+      "github.run.id": "987",
+    });
+    expect(spanDurationMs(stepSpan)).toBeGreaterThan(0);
+    expect(spanDurationMs(caseSpan)).toBeGreaterThanOrEqual(
+      spanDurationMs(stepSpan)
+    );
+    expect(spanDurationMs(runSpan)).toBeGreaterThanOrEqual(
+      spanDurationMs(caseSpan)
+    );
+  } finally {
+    await provider.shutdown();
+  }
 });
 
-test("records a distinct timeout result for the complete run", async () => {
-  const events: E2ETelemetryEvent[] = [];
-  const telemetry = {
-    record: (event: E2ETelemetryEvent) =>
-      Effect.sync(() => {
-        events.push(event);
-      }),
-  };
-
-  await Effect.runPromiseExit(
-    withE2ERunTelemetry(
-      Effect.fail(workspaceE2ETimeoutError("suite timed out")),
-      telemetry,
-      () => 1_000
-    )
+test("exports only closed failure facts and preserves the original failure", async () => {
+  const unsafeFailure = new Error(
+    "provider payload and customer data must not reach PostHog"
   );
+  const { exporter, layer, provider } = makeTestTelemetry();
 
-  expect(events).toEqual([
-    { phase: "started", scope: "run" },
-    {
-      durationMs: 0,
-      failureKind: "timeout",
-      outcome: "timed_out",
-      phase: "finished",
-      scope: "run",
-    },
-  ]);
+  try {
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const telemetry = yield* E2ETelemetryService;
+        yield* telemetry.traceRun(Effect.fail(unsafeFailure));
+      }).pipe(Effect.provide(layer))
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(Cause.squash(exit.cause)).toBe(unsafeFailure);
+    }
+
+    const span = findSpan(exporter.getFinishedSpans(), "e2e.run");
+    expect(span.attributes).toMatchObject({
+      "e2e.failure.kind": "error",
+      "e2e.outcome": "failed",
+    });
+    expect(span.events[0]?.name).toBe("exception");
+    const serialized = JSON.stringify({
+      attributes: span.attributes,
+      events: span.events,
+      status: span.status,
+    });
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(unsafeFailure.message);
+  } finally {
+    await provider.shutdown();
+  }
 });
+
+const makeTestTelemetry = () => {
+  const exporter = new InMemorySpanExporter();
+  const provider = new BasicTracerProvider({
+    spanProcessors: [
+      new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+    ],
+  });
+  const environment = makeTestE2EEnvironment({
+    GITHUB_ACTIONS: "true",
+    GITHUB_RUN_ATTEMPT: "3",
+    GITHUB_RUN_ID: "987",
+    TARGET_SHA: "b".repeat(40),
+    WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
+  });
+  const telemetryLayer = E2ETelemetryService.Live.pipe(
+    Layer.provide(E2ERunContextService.layer(environment))
+  );
+  const tracingLayer = createTracingLive({
+    provider,
+    serviceName: "deskohub-workspace-e2e-test",
+  });
+
+  return {
+    exporter,
+    layer: Layer.merge(telemetryLayer, tracingLayer),
+    provider,
+  };
+};
+
+const findSpan = (spans: ReadonlyArray<ReadableSpan>, name: string) => {
+  const span = spans.find((candidate) => candidate.name === name);
+  if (!span) throw new Error(`Expected ${name} span`);
+  return span;
+};
+
+const spanDurationMs = (span: ReadableSpan) =>
+  span.duration[0] * 1_000 + span.duration[1] / 1_000_000;

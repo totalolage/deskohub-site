@@ -42,15 +42,24 @@ describe("Workspace E2E environment", () => {
     });
 
     expect(environment).not.toHaveProperty("NEXI_API_KEY");
-    expect(environment).not.toHaveProperty(
-      "NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN"
-    );
+    expect(environment).not.toHaveProperty("NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN");
     expect(environment).not.toHaveProperty("POSTHOG_API_KEY");
+  });
+
+  test("does not expose timeout environment variables", () => {
+    const environment = makeTestE2EEnvironment({
+      DOTYPOS_API_TIMEOUT: "1",
+      WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS: "1",
+    });
+
+    expect(environment).not.toHaveProperty("DOTYPOS_API_TIMEOUT");
+    expect(environment).not.toHaveProperty(
+      "WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS"
+    );
   });
 
   test.each([
     { TARGET_SHA: "not-a-sha" },
-    { WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS: "0" },
     { WORKSPACE_E2E_EXECUTION_CONTEXT: "scheduled" },
     { WORKSPACE_E2E_POSTHOG_HOST: "not-a-url" },
     { WORKSPACE_E2E_PR_NUMBER: "0" },

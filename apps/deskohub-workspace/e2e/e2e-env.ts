@@ -21,7 +21,6 @@ type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
 export const e2eEnvironmentSchema = Schema.Struct({
   CI: optionalNonEmptyString,
   DATABASE_URL: nonEmptyString,
-  DOTYPOS_API_TIMEOUT: optionalPositiveInteger,
   DOTYPOS_API_URL: url,
   DOTYPOS_BRANCH_ID: nonEmptyString,
   DOTYPOS_CLIENT_ID: nonEmptyString,
@@ -47,28 +46,15 @@ export const e2eEnvironmentSchema = Schema.Struct({
   TMPDIR: optionalNonEmptyString,
   USER: optionalNonEmptyString,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalNonEmptyString,
-  WORKSPACE_E2E_ARTIFACT_CAPTURE_TIMEOUT_MS: optionalPositiveInteger,
   WORKSPACE_E2E_EXECUTION_CONTEXT: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
   WORKSPACE_E2E_BASE_URL: url,
-  WORKSPACE_E2E_BROWSER_ACTION_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_BROWSER_NAVIGATION_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_CHECKOUT_CASE_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_CHECKOUT_START_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_CLEANUP_ACTION_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_CONTACT_CASE_TIMEOUT_MS: optionalPositiveInteger,
   WORKSPACE_E2E_DATABASE_ALLOWLIST: nonEmptyString,
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
-  WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_HOSTED_PAYMENT_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_LOCALE_CASE_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_PAYMENT_TERMINAL_CASE_TIMEOUT_MS: optionalPositiveInteger,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
-  WORKSPACE_E2E_PROVIDER_TRANSITION_TIMEOUT_MS: optionalPositiveInteger,
-  WORKSPACE_E2E_UI_TRANSITION_TIMEOUT_MS: optionalPositiveInteger,
 });
 
 export const makeE2EEnvironment = (
@@ -82,7 +68,6 @@ export const makeE2EEnvironment = (
     runtimeEnv: {
       CI: runtimeEnvironment.CI,
       DATABASE_URL: runtimeEnvironment.DATABASE_URL,
-      DOTYPOS_API_TIMEOUT: runtimeEnvironment.DOTYPOS_API_TIMEOUT,
       DOTYPOS_API_URL: runtimeEnvironment.DOTYPOS_API_URL,
       DOTYPOS_BRANCH_ID: runtimeEnvironment.DOTYPOS_BRANCH_ID,
       DOTYPOS_CLIENT_ID: runtimeEnvironment.DOTYPOS_CLIENT_ID,
@@ -103,43 +88,17 @@ export const makeE2EEnvironment = (
       USER: runtimeEnvironment.USER,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
-      WORKSPACE_E2E_ARTIFACT_CAPTURE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_ARTIFACT_CAPTURE_TIMEOUT_MS,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
-      WORKSPACE_E2E_BROWSER_ACTION_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_BROWSER_ACTION_TIMEOUT_MS,
-      WORKSPACE_E2E_BROWSER_NAVIGATION_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_BROWSER_NAVIGATION_TIMEOUT_MS,
-      WORKSPACE_E2E_CHECKOUT_CASE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_CHECKOUT_CASE_TIMEOUT_MS,
-      WORKSPACE_E2E_CHECKOUT_START_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_CHECKOUT_START_TIMEOUT_MS,
-      WORKSPACE_E2E_CLEANUP_ACTION_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_CLEANUP_ACTION_TIMEOUT_MS,
-      WORKSPACE_E2E_CONTACT_CASE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_CONTACT_CASE_TIMEOUT_MS,
       WORKSPACE_E2E_DATABASE_ALLOWLIST:
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
       WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED,
-      WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS,
       WORKSPACE_E2E_EXECUTION_CONTEXT:
         runtimeEnvironment.WORKSPACE_E2E_EXECUTION_CONTEXT,
-      WORKSPACE_E2E_HOSTED_PAYMENT_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_HOSTED_PAYMENT_TIMEOUT_MS,
-      WORKSPACE_E2E_LOCALE_CASE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_LOCALE_CASE_TIMEOUT_MS,
-      WORKSPACE_E2E_PAYMENT_TERMINAL_CASE_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_PAYMENT_TERMINAL_CASE_TIMEOUT_MS,
       WORKSPACE_E2E_POSTHOG_HOST: runtimeEnvironment.WORKSPACE_E2E_POSTHOG_HOST,
       WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN:
         runtimeEnvironment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
       WORKSPACE_E2E_PR_NUMBER: runtimeEnvironment.WORKSPACE_E2E_PR_NUMBER,
-      WORKSPACE_E2E_PROVIDER_TRANSITION_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_PROVIDER_TRANSITION_TIMEOUT_MS,
-      WORKSPACE_E2E_UI_TRANSITION_TIMEOUT_MS:
-        runtimeEnvironment.WORKSPACE_E2E_UI_TRANSITION_TIMEOUT_MS,
     },
     server: e2eEnvironmentSchema.fields,
   });
