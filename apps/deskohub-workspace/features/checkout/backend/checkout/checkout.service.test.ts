@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import { NexiService } from "@deskohub/nexi";
+import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type {
@@ -22,11 +22,13 @@ import {
   canonicalDiscountCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
+import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 import {
   buildSignedPayState,
@@ -124,8 +126,16 @@ const discountedQuote: DiscountQuote = {
   discountedSubtotal: money(27_500),
 };
 
-const emptyCommitment = makeDiscountCommitment({ applications: [] });
+const commitmentProduct = {
+  kind: "cowork",
+  tier: reservationData.entryTier,
+} as const;
+const emptyCommitment = makeDiscountCommitment({
+  product: commitmentProduct,
+  applications: [],
+});
 const privateCommitment = makeDiscountCommitment({
+  product: commitmentProduct,
   applications: [
     {
       application,
@@ -286,6 +296,7 @@ type CheckoutHarnessOptions = {
   readonly reservationOverrides?: Record<string, unknown>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
+  readonly createAttempt?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
 };
 
@@ -302,6 +313,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   );
   const { PaymentAttemptRepository } = await import(
     "../repositories/payment-attempt.repository"
+  );
+  const { PaymentLifecycleRepository } = await import(
+    "../repositories/payment-lifecycle.repository"
   );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
@@ -320,10 +334,10 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     securityToken: "provider-security-token",
     providerRedirectUrl: "https://payments.example/hosted",
   };
-  const createAttempt = mock(() => Effect.succeed(createdAttempt));
+  const createAttempt =
+    options.createAttempt ?? mock(() => Effect.succeed(createdAttempt));
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
-  const markTerminal = mock(() => Effect.void);
   const markTerminalForReservation = mock(() =>
     Effect.succeed({
       attempt: {
@@ -337,27 +351,26 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     })
   );
   const paymentAttempts = {
-    create: createAttempt,
     findById: findAttempt,
     findByProviderOrderId: mock(() => Effect.succeed(null)),
     findDisplayableForReservation: mock(() => Effect.succeed(null)),
-    attachHostedPaymentPage,
-    markPaid: mock(() => Effect.void),
-    markTerminal,
-    markPaidForReservation: mock(() =>
+  } satisfies PaymentAttemptRepositoryType;
+  const paymentLifecycle = {
+    createAttempt,
+    attachProviderSession: attachHostedPaymentPage,
+    markPaid: mock(() =>
       Effect.succeed({
         attempt: createdAttempt,
         changed: true,
         timestamp: testInstant(),
       })
     ),
-    markTerminalForReservation,
-  } satisfies PaymentAttemptRepositoryType;
+    markTerminal: markTerminalForReservation,
+  } satisfies IPaymentLifecycleRepository;
 
   const updateReservationDetails = mock((input) =>
     Effect.succeed({ id: input.id } as never)
   );
-  const markPaymentTerminal = mock(() => Effect.void);
   const reservationRecord = makeReservation(options.orderId, {
     locale,
     ...options.reservationOverrides,
@@ -365,7 +378,6 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
-    markPaymentTerminal,
   } as unknown as WorkspaceReservationRepositoryType;
   const updateReservation = mock(
     (_input: {
@@ -437,6 +449,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
               requireCurrent: mock(() => Effect.succeed(reservationRecord)),
             }),
             Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+            Layer.succeed(PaymentLifecycleRepository, paymentLifecycle),
             Layer.succeed(PostHogEventService, {
               capture: mock(() => Effect.void),
             }),
@@ -455,9 +468,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     createAttempt,
     findAttempt,
     attachHostedPaymentPage,
-    markTerminal,
     markTerminalForReservation,
-    markPaymentTerminal,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -619,6 +630,7 @@ describe("CheckoutService", () => {
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: money(55_000),
+        commitment: emptyCommitment,
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -915,7 +927,12 @@ describe("CheckoutService", () => {
   test("marks HPP provider-create failures atomically for the reservation", async () => {
     const createHostedPaymentPage = mock(() =>
       Effect.fail(
-        new CheckoutTestFailure({ message: "provider create failed" })
+        new ExternalAPIError({
+          service: "Nexi",
+          operation: "createHostedPaymentPage",
+          statusCode: 400,
+          message: "provider create failed",
+        })
       )
     );
     const harness = await createCheckoutHarness({
@@ -933,8 +950,75 @@ describe("CheckoutService", () => {
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",
     });
-    expect(harness.markTerminal).not.toHaveBeenCalled();
-    expect(harness.markPaymentTerminal).not.toHaveBeenCalled();
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("retains an ambiguous HPP creation attempt for reconciliation", async () => {
+    const createHostedPaymentPage = mock(() =>
+      Effect.fail(
+        new ExternalAPIError({
+          service: "Nexi",
+          operation: "createHostedPaymentPage",
+          statusCode: 503,
+          message: "provider outcome unknown",
+        })
+      )
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-hpp-create-ambiguous",
+      createHostedPaymentPage,
+    });
+
+    await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(harness.markTerminalForReservation).not.toHaveBeenCalled();
+    expect(harness.createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns refreshed pricing when code claim admission loses a race", async () => {
+    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
+      discountQuote: discountedQuote,
+    });
+    const affirm = mock()
+      .mockImplementationOnce(() =>
+        Effect.succeed({
+          quote: acceptedQuote,
+          commitment: privateCommitment,
+        })
+      )
+      .mockImplementationOnce(() =>
+        Effect.succeed({
+          quote: buildCoworkReservationQuote(reservationData),
+          commitment: emptyCommitment,
+        })
+      );
+    const createAttempt = mock(() =>
+      Effect.fail(
+        new DiscountClaimError({
+          operation: "reserve",
+          reason: "usage_limit_reached",
+          message: "The last use was claimed concurrently.",
+        })
+      )
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-code-claim-race",
+      acceptedQuote,
+      affirm,
+      createAttempt,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "pricing_changed",
+      freshSummary: {
+        total: money(55_000),
+      },
+    });
+    expect(affirm).toHaveBeenCalledTimes(2);
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 });

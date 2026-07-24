@@ -339,6 +339,7 @@ export class DiscountService extends Context.Service<
             Effect.map(({ calculation }) => ({
               quote: calculation.quote,
               commitment: makeDiscountCommitment({
+                product: calculation.quote.product,
                 applications: calculation.applications,
               }),
             }))

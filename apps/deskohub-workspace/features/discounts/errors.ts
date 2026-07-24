@@ -50,10 +50,24 @@ export class DiscountProviderError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export class DiscountClaimConflictError extends Data.TaggedError(
-  "DiscountClaimConflictError"
-)<{
+export type DiscountClaimFailureReason =
+  | "unknown_code"
+  | "inactive"
+  | "not_started"
+  | "expired"
+  | "usage_limit_reached"
+  | "already_redeemed"
+  | "customer_ineligible"
+  | "product_ineligible"
+  | "malformed_configuration"
+  | "claim_conflict"
+  | "money_mismatch";
+
+export class DiscountClaimError extends Data.TaggedError("DiscountClaimError")<{
+  readonly operation: "reserve" | "redeem" | "release";
+  readonly reason: DiscountClaimFailureReason;
   readonly message: string;
+  readonly codeId?: DiscountCodeId;
   readonly cause?: unknown;
 }> {}
 
@@ -62,6 +76,4 @@ export type DiscountResolutionError =
   | DiscountCodeUnavailableError
   | DiscountProviderError;
 
-export type DiscountError =
-  | DiscountClaimConflictError
-  | DiscountResolutionError;
+export type DiscountError = DiscountClaimError | DiscountResolutionError;

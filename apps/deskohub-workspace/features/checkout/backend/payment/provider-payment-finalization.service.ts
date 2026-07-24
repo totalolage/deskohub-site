@@ -4,7 +4,7 @@ import {
   NexiCurrencySchema,
   NexiService,
 } from "@deskohub/nexi";
-import { Context, Effect, Layer, Match, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   WorkspaceReservationRepository,
@@ -28,6 +28,10 @@ import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
+import {
+  PaymentLifecycleRepository,
+  type PaymentLifecycleRepositoryError,
+} from "../repositories/payment-lifecycle.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
 
 export type ProviderPaymentFinalizationResult =
@@ -45,7 +49,10 @@ export interface ProviderPaymentFinalizationService {
     readonly orderId: string;
     readonly paymentAttemptId?: string;
     readonly webhookEventId?: string;
-  }) => Effect.Effect<ProviderPaymentFinalizationResult, never>;
+  }) => Effect.Effect<
+    ProviderPaymentFinalizationResult,
+    PaymentLifecycleRepositoryError
+  >;
 }
 
 export const ProviderPaymentFinalizationService =
@@ -58,6 +65,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
+    const paymentLifecycle = yield* PaymentLifecycleRepository;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
     const posthogEvents = yield* PostHogEventService;
@@ -223,8 +231,8 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           if (verification.status === "success") {
             yield* Effect.logInfo("Payment finalization mark paid started");
-            const paid = yield* paymentAttempts
-              .markPaidForReservation({
+            const paidSuccess = yield* paymentLifecycle
+              .markPaid({
                 id: attempt.id,
                 workspaceReservationId: reservation.id,
                 webhookEventId: input.webhookEventId,
@@ -232,21 +240,17 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 providerStatus,
                 paidAt: Temporal.Now.instant(),
               })
-              .pipe(Effect.result);
-
-            const paidSuccess = yield* Match.value(paid).pipe(
-              Match.tag("Failure", (failure) =>
-                Effect.gen(function* () {
-                  yield* Effect.logWarning(
-                    "Payment finalization mark paid returned not_pending",
-                    { paid: failure }
-                  );
-                  return undefined;
-                })
-              ),
-              Match.tag("Success", ({ success }) => Effect.succeed(success)),
-              Match.exhaustive
-            );
+              .pipe(
+                Effect.catchTag("PaymentLifecycleStateError", (cause) =>
+                  Effect.gen(function* () {
+                    yield* Effect.logWarning(
+                      "Payment finalization mark paid returned not_pending",
+                      { cause }
+                    );
+                    return undefined;
+                  })
+                )
+              );
 
             if (!paidSuccess) {
               return "not_pending";
@@ -287,8 +291,8 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
 
             yield* Effect.logInfo("Payment finalization mark terminal started");
-            const terminal = yield* paymentAttempts
-              .markTerminalForReservation({
+            const terminalSuccess = yield* paymentLifecycle
+              .markTerminal({
                 id: attempt.id,
                 workspaceReservationId: reservation.id,
                 state: terminalState,
@@ -297,21 +301,17 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 providerOperationId,
                 providerStatus,
               })
-              .pipe(Effect.result);
-
-            const terminalSuccess = yield* Match.value(terminal).pipe(
-              Match.tag("Failure", (failure) =>
-                Effect.gen(function* () {
-                  yield* Effect.logWarning(
-                    "Payment finalization mark terminal returned not_pending",
-                    { terminal: failure }
-                  );
-                  return undefined;
-                })
-              ),
-              Match.tag("Success", ({ success }) => Effect.succeed(success)),
-              Match.exhaustive
-            );
+              .pipe(
+                Effect.catchTag("PaymentLifecycleStateError", (cause) =>
+                  Effect.gen(function* () {
+                    yield* Effect.logWarning(
+                      "Payment finalization mark terminal returned not_pending",
+                      { cause }
+                    );
+                    return undefined;
+                  })
+                )
+              );
 
             if (!terminalSuccess) {
               return "not_pending";
@@ -366,6 +366,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 export const ProviderPaymentFinalizationServiceLiveWithDependencies =
   ProviderPaymentFinalizationServiceLive.pipe(
     Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PaymentLifecycleRepository.Live),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

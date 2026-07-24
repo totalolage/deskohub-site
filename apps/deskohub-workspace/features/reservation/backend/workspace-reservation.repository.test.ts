@@ -47,7 +47,7 @@ describe("WorkspaceReservationRepository", () => {
     const section = sliceFrom(
       source,
       "recordHoldCleanupSkipped: Effect.fn(",
-      'markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")'
+      "claimPaidFulfillment: Effect.fn("
     );
 
     expect(section).toContain("reservationHoldExpiredAt: input.holdExpiredAt");

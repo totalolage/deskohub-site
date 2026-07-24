@@ -13,6 +13,7 @@ import {
 } from "../fulfillment/paid-fulfillment.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
@@ -86,6 +87,7 @@ const receivedEvent = {
 type NexiWebhookTestServices = {
   readonly webhookEvents: WebhookEventRepositoryType;
   readonly paymentAttempts: PaymentAttemptRepositoryType;
+  readonly paymentLifecycle: IPaymentLifecycleRepository;
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly nexi: NexiServiceType;
   readonly fulfillment: WorkspacePaidFulfillmentServiceType;
@@ -104,6 +106,9 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
   );
   const { PaymentAttemptRepository } = await import(
     "../repositories/payment-attempt.repository"
+  );
+  const { PaymentLifecycleRepository } = await import(
+    "../repositories/payment-lifecycle.repository"
   );
   const { WorkspacePaidFulfillmentService } = await import(
     "../fulfillment/paid-fulfillment.service"
@@ -125,6 +130,10 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
           Layer.mergeAll(
             Layer.succeed(WebhookEventRepository, services.webhookEvents),
             Layer.succeed(PaymentAttemptRepository, services.paymentAttempts),
+            Layer.succeed(
+              PaymentLifecycleRepository,
+              services.paymentLifecycle
+            ),
             Layer.succeed(
               WorkspaceReservationRepository,
               services.reservations
@@ -176,9 +185,13 @@ describe("NexiWebhookService", () => {
         } as unknown as WebhookEventRepositoryType,
         paymentAttempts: {
           findByProviderOrderId: mock(() => Effect.succeed(attempt)),
-          markPaidForReservation,
-          markTerminalForReservation: mock(() => Effect.die("unused")),
         } as unknown as PaymentAttemptRepositoryType,
+        paymentLifecycle: {
+          createAttempt: mock(() => Effect.die("unused")),
+          attachProviderSession: mock(() => Effect.die("unused")),
+          markPaid: markPaidForReservation,
+          markTerminal: mock(() => Effect.die("unused")),
+        },
         reservations: {
           findById: mock(() => Effect.succeed(reservation as never)),
         } as unknown as WorkspaceReservationRepositoryType,
@@ -242,15 +255,19 @@ describe("NexiWebhookService", () => {
           } as unknown as WebhookEventRepositoryType,
           paymentAttempts: {
             findByProviderOrderId: mock(() => Effect.succeed(attempt)),
-            markPaidForReservation: mock(() =>
+          } as unknown as PaymentAttemptRepositoryType,
+          paymentLifecycle: {
+            createAttempt: mock(() => Effect.die("unused")),
+            attachProviderSession: mock(() => Effect.die("unused")),
+            markPaid: mock(() =>
               Effect.succeed({
                 attempt: { ...attempt, state: "paid" as const },
                 changed: true,
                 timestamp: Temporal.Now.instant(),
               })
             ),
-            markTerminalForReservation: mock(() => Effect.die("unused")),
-          } as unknown as PaymentAttemptRepositoryType,
+            markTerminal: mock(() => Effect.die("unused")),
+          },
           reservations: {
             findById: mock(() => Effect.succeed(reservation as never)),
           } as unknown as WorkspaceReservationRepositoryType,

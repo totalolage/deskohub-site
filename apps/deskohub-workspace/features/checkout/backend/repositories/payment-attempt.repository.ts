@@ -1,18 +1,14 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql";
+import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type PaymentAttemptRow,
   type PaymentState,
   paymentAttempts,
-  workspaceReservations,
 } from "@/db/schema";
-import { postgresUuidV7 } from "@/db/uuid-v7";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 
-const withPaymentAttemptAmount = (attempt: PaymentAttemptRow) => {
+export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
   const { amountExponent, amountValue, currency, ...paymentAttempt } = attempt;
 
   return {
@@ -25,31 +21,9 @@ const withPaymentAttemptAmount = (attempt: PaymentAttemptRow) => {
   };
 };
 
-export type PaymentAttempt = ReturnType<typeof withPaymentAttemptAmount>;
+export type PaymentAttempt = ReturnType<typeof toPaymentAttempt>;
 
-export class PaymentAttemptStateError extends Data.TaggedError(
-  "PaymentAttemptStateError"
-)<{
-  readonly operation: string;
-  readonly paymentAttemptId: string;
-  readonly message: string;
-}> {}
-
-export interface PaymentAttemptReservationTransition {
-  readonly attempt: PaymentAttempt;
-  readonly changed: boolean;
-  readonly timestamp: Temporal.Instant;
-}
-
-export interface PaymentAttemptRepository {
-  readonly create: (input: {
-    readonly workspaceReservationId: string;
-    readonly providerOrderId: string;
-    readonly amount: WorkspaceMoney;
-  }) => Effect.Effect<
-    PaymentAttempt,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
-  >;
+export interface IPaymentAttemptRepository {
   readonly findById: (
     id: string
   ) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
@@ -61,141 +35,46 @@ export interface PaymentAttemptRepository {
     readonly activePaymentAttemptId?: string;
     readonly paymentState: PaymentState;
   }) => Effect.Effect<PaymentAttempt | null, EffectDrizzleQueryError>;
-  readonly attachHostedPaymentPage: (input: {
-    readonly id: string;
-    readonly securityToken: string;
-    readonly providerRedirectUrl: string;
-  }) => Effect.Effect<
-    PaymentAttempt,
-    EffectDrizzleQueryError | PaymentAttemptStateError
-  >;
-  readonly markPaid: (input: {
-    readonly id: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
-    readonly providerStatus?: string;
-  }) => Effect.Effect<void, EffectDrizzleQueryError | PaymentAttemptStateError>;
-  readonly markTerminal: (input: {
-    readonly id: string;
-    readonly state: "failed" | "cancelled" | "expired";
-    readonly failureCode: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
-    readonly providerStatus?: string;
-  }) => Effect.Effect<void, EffectDrizzleQueryError | PaymentAttemptStateError>;
-  readonly markPaidForReservation: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
-    readonly providerStatus?: string;
-    readonly paidAt: Temporal.Instant;
-  }) => Effect.Effect<
-    PaymentAttemptReservationTransition,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
-  >;
-  readonly markTerminalForReservation: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
-    readonly state: "failed" | "cancelled" | "expired";
-    readonly failureCode: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
-    readonly providerStatus?: string;
-  }) => Effect.Effect<
-    PaymentAttemptReservationTransition,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
-  >;
 }
 
-export const PaymentAttemptRepository =
-  Context.Service<PaymentAttemptRepository>("PaymentAttemptRepository");
-
-export const PaymentAttemptRepositoryLive = Layer.effect(
+export class PaymentAttemptRepository extends Context.Service<
   PaymentAttemptRepository,
-  Effect.gen(function* () {
-    const { db } = yield* WorkspaceDatabase;
+  IPaymentAttemptRepository
+>()("@deskohub-workspace/checkout/PaymentAttemptRepository") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
 
-    return PaymentAttemptRepository.of({
-      create: Effect.fn("paymentAttempts.create")(function* (input) {
-        const transaction = db.transaction((tx) =>
-          Effect.gen(function* () {
-            const [attempt] = yield* tx
-              .insert(paymentAttempts)
-              .values({
-                id: postgresUuidV7,
-                workspaceReservationId: input.workspaceReservationId,
-                provider: "nexi",
-                providerOrderId: input.providerOrderId,
-                state: "created",
-                amountValue: input.amount.value,
-                amountExponent: input.amount.exponent,
-                currency: input.amount.currency,
-              })
-              .returning();
-
-            if (!attempt) {
-              return yield* Effect.die(
-                "Payment attempt insert returned no row."
-              );
-            }
-
-            const [linked] = yield* tx
-              .update(workspaceReservations)
-              .set({
-                activePaymentAttemptId: attempt.id,
-                paymentState: "pending",
-                updatedAt: Temporal.Now.instant(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.reservationState, "held"),
-                  inArray(workspaceReservations.paymentState, [
-                    "not_started",
-                    "failed",
-                    "cancelled",
-                    "expired",
-                  ])
-                )
-              )
-              .returning({ id: workspaceReservations.id });
-
-            if (!linked) {
-              return yield* new PaymentAttemptStateError({
-                operation: "paymentAttempts.create",
-                paymentAttemptId: attempt.id,
-                message:
-                  "Payment attempts can only be created for held unpaid reservations.",
-              });
-            }
-
-            return withPaymentAttemptAmount(attempt);
-          })
-        );
-        return yield* transaction;
-      }),
-      findById: Effect.fn("paymentAttempts.findById")(function* (id) {
-        const [attempt] = yield* db
-          .select()
-          .from(paymentAttempts)
-          .where(eq(paymentAttempts.id, id))
-          .limit(1);
-        return attempt ? withPaymentAttemptAmount(attempt) : null;
-      }),
-      findByProviderOrderId: Effect.fn("paymentAttempts.findByProviderOrderId")(
-        function* (providerOrderId) {
+      const findById = Effect.fn("PaymentAttemptRepository.findById")(
+        function* (id: string) {
           const [attempt] = yield* db
             .select()
             .from(paymentAttempts)
-            .where(eq(paymentAttempts.providerOrderId, providerOrderId))
+            .where(eq(paymentAttempts.id, id))
             .limit(1);
-          return attempt ? withPaymentAttemptAmount(attempt) : null;
+          return attempt ? toPaymentAttempt(attempt) : null;
         }
-      ),
-      findDisplayableForReservation: Effect.fn(
-        "paymentAttempts.findDisplayableForReservation"
-      )(function* (input) {
+      );
+
+      const findByProviderOrderId = Effect.fn(
+        "PaymentAttemptRepository.findByProviderOrderId"
+      )(function* (providerOrderId: string) {
+        const [attempt] = yield* db
+          .select()
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.providerOrderId, providerOrderId))
+          .limit(1);
+        return attempt ? toPaymentAttempt(attempt) : null;
+      });
+
+      const findDisplayableForReservation = Effect.fn(
+        "PaymentAttemptRepository.findDisplayableForReservation"
+      )(function* (input: {
+        readonly workspaceReservationId: string;
+        readonly activePaymentAttemptId?: string;
+        readonly paymentState: PaymentState;
+      }) {
         const [attempt] = yield* db
           .select()
           .from(paymentAttempts)
@@ -225,291 +104,16 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
             desc(paymentAttempts.updatedAt)
           )
           .limit(1);
-        return attempt ? withPaymentAttemptAmount(attempt) : null;
-      }),
-      attachHostedPaymentPage: Effect.fn(
-        "paymentAttempts.attachHostedPaymentPage"
-      )(function* (input) {
-        const attachedAt = Temporal.Now.instant();
-        const updated = yield* db
-          .update(paymentAttempts)
-          .set({
-            state: "pending",
-            securityToken: input.securityToken,
-            providerRedirectUrl: input.providerRedirectUrl,
-            updatedAt: attachedAt,
-          })
-          .where(
-            and(
-              eq(paymentAttempts.id, input.id),
-              eq(paymentAttempts.state, "created")
-            )
-          )
-          .returning();
+        return attempt ? toPaymentAttempt(attempt) : null;
+      });
 
-        const attempt = updated[0];
-        if (!attempt) {
-          return yield* new PaymentAttemptStateError({
-            operation: "paymentAttempts.attachHostedPaymentPage",
-            paymentAttemptId: input.id,
-            message:
-              "Only created payment attempts can attach a hosted payment page.",
-          });
-        }
+      return {
+        findById,
+        findByProviderOrderId,
+        findDisplayableForReservation,
+      } satisfies IPaymentAttemptRepository;
+    })
+  );
+}
 
-        return withPaymentAttemptAmount(attempt);
-      }),
-      markPaid: Effect.fn("paymentAttempts.markPaid")(function* (input) {
-        const updated = yield* db
-          .update(paymentAttempts)
-          .set({
-            state: "paid",
-            lastWebhookEventId: input.webhookEventId,
-            lastProviderOperationId: input.providerOperationId,
-            lastProviderStatus: input.providerStatus,
-            failureCode: null,
-            updatedAt: Temporal.Now.instant(),
-          })
-          .where(
-            and(
-              eq(paymentAttempts.id, input.id),
-              eq(paymentAttempts.state, "pending")
-            )
-          )
-          .returning({ id: paymentAttempts.id });
-
-        if (updated.length === 0) {
-          return yield* new PaymentAttemptStateError({
-            operation: "paymentAttempts.markPaid",
-            paymentAttemptId: input.id,
-            message: "Only pending payment attempts can be marked paid.",
-          });
-        }
-      }),
-      markTerminal: Effect.fn("paymentAttempts.markTerminal")(
-        function* (input) {
-          const updated = yield* db
-            .update(paymentAttempts)
-            .set({
-              state: input.state,
-              failureCode: input.failureCode,
-              lastWebhookEventId: input.webhookEventId,
-              lastProviderOperationId: input.providerOperationId,
-              lastProviderStatus: input.providerStatus,
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(
-              and(
-                eq(paymentAttempts.id, input.id),
-                inArray(paymentAttempts.state, ["created", "pending"])
-              )
-            )
-            .returning({ id: paymentAttempts.id });
-
-          if (updated.length === 0) {
-            return yield* new PaymentAttemptStateError({
-              operation: "paymentAttempts.markTerminal",
-              paymentAttemptId: input.id,
-              message:
-                "Only non-terminal payment attempts can be marked terminal.",
-            });
-          }
-        }
-      ),
-      markPaidForReservation: Effect.fn(
-        "paymentAttempts.markPaidForReservation"
-      )(function* (input) {
-        const transaction = db.transaction((tx) =>
-          Effect.gen(function* () {
-            const [attempt] = yield* tx
-              .update(paymentAttempts)
-              .set({
-                state: "paid",
-                lastWebhookEventId: input.webhookEventId,
-                lastProviderOperationId: input.providerOperationId,
-                lastProviderStatus: input.providerStatus,
-                failureCode: null,
-                updatedAt: Temporal.Now.instant(),
-              })
-              .where(
-                and(
-                  eq(paymentAttempts.id, input.id),
-                  eq(
-                    paymentAttempts.workspaceReservationId,
-                    input.workspaceReservationId
-                  ),
-                  inArray(paymentAttempts.state, ["pending", "paid"])
-                )
-              )
-              .returning();
-
-            if (!attempt) {
-              return yield* new PaymentAttemptStateError({
-                operation: "paymentAttempts.markPaidForReservation",
-                paymentAttemptId: input.id,
-                message:
-                  "Only pending or already-paid payment attempts can mark a reservation paid.",
-              });
-            }
-
-            const [reservation] = yield* tx
-              .update(workspaceReservations)
-              .set({
-                paymentState: "paid",
-                paidAt: input.paidAt,
-                failureCode: null,
-                updatedAt: Temporal.Now.instant(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.reservationState, "held"),
-                  eq(workspaceReservations.paymentState, "pending"),
-                  eq(workspaceReservations.activePaymentAttemptId, input.id)
-                )
-              )
-              .returning({
-                paidAt: workspaceReservations.paidAt,
-              });
-
-            if (reservation)
-              return {
-                attempt: withPaymentAttemptAmount(attempt),
-                changed: true,
-                timestamp: reservation.paidAt ?? input.paidAt,
-              };
-
-            const [consistent] = yield* tx
-              .select({
-                paidAt: workspaceReservations.paidAt,
-              })
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  eq(workspaceReservations.activePaymentAttemptId, input.id)
-                )
-              )
-              .limit(1);
-
-            if (consistent)
-              return {
-                attempt: withPaymentAttemptAmount(attempt),
-                changed: false,
-                timestamp: consistent.paidAt ?? input.paidAt,
-              };
-
-            // Intentionally reject the transaction to roll back the payment-attempt update above.
-            return yield* new PaymentAttemptStateError({
-              operation: "paymentAttempts.markPaidForReservation",
-              paymentAttemptId: input.id,
-              message:
-                "Only the active pending attempt on a held reservation can mark payment paid.",
-            });
-          })
-        );
-        return yield* transaction;
-      }),
-      markTerminalForReservation: Effect.fn(
-        "paymentAttempts.markTerminalForReservation"
-      )(function* (input) {
-        const terminalAt = Temporal.Now.instant();
-        const transaction = db.transaction((tx) =>
-          Effect.gen(function* () {
-            const [attempt] = yield* tx
-              .update(paymentAttempts)
-              .set({
-                state: input.state,
-                failureCode: input.failureCode,
-                lastWebhookEventId: input.webhookEventId,
-                lastProviderOperationId: input.providerOperationId,
-                lastProviderStatus: input.providerStatus,
-                updatedAt: terminalAt,
-              })
-              .where(
-                and(
-                  eq(paymentAttempts.id, input.id),
-                  eq(
-                    paymentAttempts.workspaceReservationId,
-                    input.workspaceReservationId
-                  ),
-                  inArray(paymentAttempts.state, [
-                    "created",
-                    "pending",
-                    input.state,
-                  ])
-                )
-              )
-              .returning();
-
-            if (!attempt) {
-              return yield* new PaymentAttemptStateError({
-                operation: "paymentAttempts.markTerminalForReservation",
-                paymentAttemptId: input.id,
-                message:
-                  "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
-              });
-            }
-
-            const [reservation] = yield* tx
-              .update(workspaceReservations)
-              .set({
-                paymentState: input.state,
-                failureCode: input.failureCode,
-                updatedAt: terminalAt,
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.reservationState, "held"),
-                  eq(workspaceReservations.paymentState, "pending"),
-                  eq(workspaceReservations.activePaymentAttemptId, input.id)
-                )
-              )
-              .returning({
-                updatedAt: workspaceReservations.updatedAt,
-              });
-
-            if (reservation)
-              return {
-                attempt: withPaymentAttemptAmount(attempt),
-                changed: true,
-                timestamp: reservation.updatedAt,
-              };
-
-            const [consistent] = yield* tx
-              .select({
-                updatedAt: workspaceReservations.updatedAt,
-              })
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.paymentState, input.state),
-                  eq(workspaceReservations.activePaymentAttemptId, input.id)
-                )
-              )
-              .limit(1);
-
-            if (consistent)
-              return {
-                attempt: withPaymentAttemptAmount(attempt),
-                changed: false,
-                timestamp: consistent.updatedAt,
-              };
-
-            // Intentionally reject the transaction to roll back the payment-attempt update above.
-            return yield* new PaymentAttemptStateError({
-              operation: "paymentAttempts.markTerminalForReservation",
-              paymentAttemptId: input.id,
-              message:
-                "Only the active pending attempt on a held reservation can mark payment terminal.",
-            });
-          })
-        );
-        return yield* transaction;
-      }),
-    });
-  })
-);
+export const PaymentAttemptRepositoryLive = PaymentAttemptRepository.Live;

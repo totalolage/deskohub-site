@@ -7,12 +7,12 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 
 describe("ReservationHoldCleanupService", () => {
   test("fails the expired hold sweep when expired hold selection fails", async () => {
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -56,9 +56,9 @@ describe("ReservationHoldCleanupService", () => {
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: unused,
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentAttemptRepository, {
-                markTerminalForReservation: unused,
-              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: unused,
+              } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, reservations),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -85,8 +85,8 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -133,9 +133,9 @@ describe("ReservationHoldCleanupService", () => {
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
-              Layer.succeed(PaymentAttemptRepository, {
-                markTerminalForReservation: mock(() => Effect.die("not used")),
-              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: mock(() => Effect.die("not used")),
+              } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, reservations),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -161,8 +161,8 @@ describe("ReservationHoldCleanupService", () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -211,11 +211,9 @@ describe("ReservationHoldCleanupService", () => {
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(ProviderPaymentFinalizationService, finalization),
-                Layer.succeed(PaymentAttemptRepository, {
-                  markTerminalForReservation: mock(() =>
-                    Effect.die("not used")
-                  ),
-                } as unknown as PaymentAttemptRepositoryType),
+                Layer.succeed(PaymentLifecycleRepository, {
+                  markTerminal: mock(() => Effect.die("not used")),
+                } as unknown as IPaymentLifecycleRepository),
                 Layer.succeed(WorkspaceReservationRepository, reservations),
                 Layer.succeed(PostHogEventService, {
                   capture: () => Effect.void,
@@ -253,8 +251,8 @@ describe("ReservationHoldCleanupService", () => {
   });
 
   test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -301,9 +299,9 @@ describe("ReservationHoldCleanupService", () => {
                   Effect.succeed("not_verifiable" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentAttemptRepository, {
-                markTerminalForReservation,
-              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: markTerminalForReservation,
+              } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
@@ -345,9 +343,8 @@ describe("ReservationHoldCleanupService", () => {
   });
 
   test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
-    );
+    const { PaymentLifecycleRepository, PaymentLifecycleStateError } =
+      await import("../repositories/payment-lifecycle.repository");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -378,17 +375,17 @@ describe("ReservationHoldCleanupService", () => {
                   Effect.succeed("not_verifiable" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentAttemptRepository, {
-                markTerminalForReservation: mock(() =>
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: mock(() =>
                   Effect.fail(
-                    new EffectDrizzleQueryError({
-                      query: "paymentAttempts.markTerminalForReservation",
-                      params: [],
-                      cause: "stale",
+                    new PaymentLifecycleStateError({
+                      operation: "PaymentLifecycleRepository.markTerminal",
+                      paymentAttemptId: attemptId,
+                      message: "stale",
                     })
                   )
                 ),
-              } as unknown as PaymentAttemptRepositoryType),
+              } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
@@ -418,8 +415,8 @@ describe("ReservationHoldCleanupService", () => {
   });
 
   test("does not cancel an expired hold when provider verification fails transiently", async () => {
-    const { PaymentAttemptRepository } = await import(
-      "../repositories/payment-attempt.repository"
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -452,9 +449,9 @@ describe("ReservationHoldCleanupService", () => {
                   Effect.succeed("provider_verification_failed" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
-              Layer.succeed(PaymentAttemptRepository, {
-                markTerminalForReservation,
-              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: markTerminalForReservation,
+              } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, {
                 findById: mock(() =>
                   Effect.succeed({
