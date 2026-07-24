@@ -63,6 +63,8 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 import {
   type BuildSignedPayStateInput,
   getSignedPayStateCheckoutSummary,
+  getSignedPayStateReissueInput,
+  getSignedPayStateSubmittedCode,
   openPayState,
   type SignedPayState,
 } from "./pay-state.server";
@@ -339,18 +341,13 @@ const hasAcceptedPaymentAttemptAmount = (input: {
   };
   readonly total: WorkspaceMoney;
 }) => {
-  const expectedProviderTotal = withWorkspaceMoneyCurrency(
-    input.total,
-    getNexiCurrencyOverride()
-  );
-
   return workspaceMoneyEquals(
     {
       value: input.attempt.amountValue,
       exponent: input.attempt.amountExponent,
       currency: input.attempt.currency,
     },
-    expectedProviderTotal
+    input.total
   );
 };
 
@@ -377,22 +374,6 @@ export const CheckoutServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ providerSessionInput: input });
         yield* Effect.logInfo("Checkout provider session start requested");
 
-        const providerTotal = withWorkspaceMoneyCurrency(
-          input.total,
-          getNexiCurrencyOverride()
-        );
-        const nexiAmount = yield* toNexiAmount(providerTotal).pipe(
-          Effect.mapError(
-            (cause) =>
-              new CheckoutError({
-                message: "Unsupported payment amount.",
-                cause,
-              })
-          )
-        );
-        yield* Effect.annotateLogsScoped({ nexiAmount });
-        yield* Effect.logDebug("Checkout provider session amount encoded");
-
         yield* payableReservations.requireCurrent({
           orderId: input.workspaceReservationId,
           checkoutSessionId: input.checkoutSessionId,
@@ -412,6 +393,19 @@ export const CheckoutServiceLive = Layer.effect(
         yield* Effect.logInfo("Checkout payment attempt created");
 
         yield* Effect.logInfo("Nexi hosted payment page creation started");
+        const nexiAmount = yield* toNexiAmount(
+          withWorkspaceMoneyCurrency(input.total, getNexiCurrencyOverride())
+        ).pipe(
+          Effect.mapError(
+            (cause) =>
+              new CheckoutError({
+                message: "Unsupported payment amount.",
+                cause,
+              })
+          )
+        );
+        yield* Effect.annotateLogsScoped({ nexiAmount });
+        yield* Effect.logDebug("Checkout provider session amount encoded");
         const hostedPaymentPage = yield* nexi
           .createHostedPaymentPage({
             orderId: attempt.providerOrderId,
@@ -631,7 +625,7 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             const freshPayUrl = yield* getFreshPayUrl({
-              ...state,
+              ...getSignedPayStateReissueInput(state),
               locale,
               orderId: reservation.id,
             });
@@ -695,7 +689,10 @@ export const CheckoutServiceLive = Layer.effect(
               locale,
               orderId: reservation.id,
               checkoutSessionId: state.checkoutSessionId,
-              submittedCode: state.submittedCode,
+              ...getSignedPayStateSubmittedCode(
+                state,
+                prepared.quote.payment.discounts
+              ),
               changedKeys,
             });
             return {

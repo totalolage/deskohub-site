@@ -2,7 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import {
   buildSignedPayState,
@@ -12,7 +12,10 @@ import {
 } from "@/features/checkout/backend/checkout/pay-state";
 import { PayableReservationUnavailableError } from "@/features/checkout/backend/checkout/payable-reservation.service";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
-import { DiscountCodeUnavailableError } from "@/features/discounts";
+import {
+  DiscountCodeUnavailableError,
+  discountIdSchema,
+} from "@/features/discounts";
 
 mock.module("server-only", () => ({}));
 
@@ -27,6 +30,8 @@ const reservation = {
 };
 const quote = buildCoworkReservationQuote(reservation);
 const checkoutSessionId = "checkout-session-id";
+const submittedCodeDiscountId =
+  Schema.decodeUnknownSync(discountIdSchema)("code-discount");
 
 const makePayStateToken = async () => {
   const state = await Effect.runPromise(
@@ -89,6 +94,7 @@ const runSubmission = async (input?: {
         kind: "cowork" as const,
         reservation,
         status: "applied" as const,
+        submittedCodeDiscountId,
         quote,
       })
     );
@@ -148,6 +154,7 @@ describe("applyDiscountCodeToPayState", () => {
     const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe("SAVE20");
+    expect(freshState.submittedCodeDiscountId).toBe(submittedCodeDiscountId);
     expect(freshState.changedKeys).toBeUndefined();
     expect(scenario.result.freshPayUrl).not.toContain("SAVE20");
     expect(JSON.stringify(scenario.result)).not.toContain("SAVE20");

@@ -11,6 +11,7 @@ import {
   type CanonicalDiscountCode,
   type DiscountAdvertisementInput,
   type DiscountCommitment,
+  type DiscountId,
   type DiscountQuote,
   type DiscountResolutionError,
   DiscountService,
@@ -118,6 +119,7 @@ export type ReservationDiscountCodePriceResult<
     })
   | (ReservationCustomerQuote<Reservation, Quote> & {
       readonly status: "applied";
+      readonly submittedCodeDiscountId: DiscountId;
     });
 
 type PricingContext = {
@@ -360,7 +362,7 @@ export const reservationCheckoutPricing = <
           };
         }
 
-        const discountQuote = yield* discounts.applyDiscountCode({
+        const appliedCode = yield* discounts.applyDiscountCode({
           baseQuote: affirmation.quote,
           dotyposCustomerId: input.dotyposCustomerId,
           locale: input.locale,
@@ -368,7 +370,7 @@ export const reservationCheckoutPricing = <
         });
         const appliedQuote = yield* domain.buildQuote({
           pricing,
-          discountQuote,
+          discountQuote: appliedCode.quote,
         });
 
         return {
@@ -376,6 +378,7 @@ export const reservationCheckoutPricing = <
           reservation: input.reservation,
           quote: appliedQuote,
           status: "applied" as const,
+          submittedCodeDiscountId: appliedCode.application.discount.id,
         };
       })
     );

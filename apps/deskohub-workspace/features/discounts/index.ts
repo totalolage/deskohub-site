@@ -14,11 +14,13 @@ export {
   type DiscountQuote,
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
+  discountIdSchema,
   discountProductIdentitySchema,
   discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type AppliedDiscountCodeQuote,
   type ApplyCustomerDiscountInput,
   type ApplyDiscountCodeInput,
   type DiscountAdvertisementAffirmationInput,

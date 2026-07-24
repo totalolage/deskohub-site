@@ -256,12 +256,13 @@ describe("DiscountService", () => {
       locale: paymentInput.locale,
       submittedCode: paymentInput.submittedCode,
     });
-    expect(result.discounts.map(({ discount }) => discount.id)).toEqual([
+    expect(result.quote.discounts.map(({ discount }) => discount.id)).toEqual([
       "calendar",
       "code",
     ]);
-    expect(result.discounts[1]?.amount).toEqual(money(4500));
-    expect(result.discountedSubtotal).toEqual(money(4500));
+    expect(result.application).toEqual(result.quote.discounts[1]);
+    expect(result.application.amount).toEqual(money(4500));
+    expect(result.quote.discountedSubtotal).toEqual(money(4500));
   });
 
   test.each([

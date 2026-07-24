@@ -120,7 +120,10 @@ export const applyDiscountCodeToPayState = Effect.fn(
             checkoutSessionId: state.checkoutSessionId,
             ...(coworkResult.status === "pricing_changed"
               ? { changedKeys: coworkResult.changedKeys }
-              : { submittedCode }),
+              : {
+                  submittedCode,
+                  submittedCodeDiscountId: coworkResult.submittedCodeDiscountId,
+                }),
           })
         ),
         Match.when(
@@ -134,7 +137,11 @@ export const applyDiscountCodeToPayState = Effect.fn(
               checkoutSessionId: state.checkoutSessionId,
               ...(meetingRoomResult.status === "pricing_changed"
                 ? { changedKeys: meetingRoomResult.changedKeys }
-                : { submittedCode }),
+                : {
+                    submittedCode,
+                    submittedCodeDiscountId:
+                      meetingRoomResult.submittedCodeDiscountId,
+                  }),
             })
         ),
         Match.exhaustive

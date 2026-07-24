@@ -3,7 +3,7 @@
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
@@ -13,7 +13,6 @@ import {
   CheckoutSummarySection,
   CheckoutSummarySections,
 } from "@/features/checkout/components/checkout-summary";
-import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import { Button } from "@/shared/components/ui/button";
@@ -29,12 +28,10 @@ import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
-import { CheckoutDiscountCodeForm } from "./checkout-discount-code-form";
 
 type CheckoutPayPageProps = {
-  readonly appliedDiscountCodeAdjustment?: DiscountAdjustment;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
-  readonly discountCodeEntryEnabled?: boolean;
+  readonly discountCodeForm?: ReactNode;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -46,9 +43,8 @@ type CheckoutPayPageProps = {
 type CheckoutPayActionVariant = "pay" | "retry";
 
 export function CheckoutPayPage({
-  appliedDiscountCodeAdjustment,
   changedKeys,
-  discountCodeEntryEnabled = false,
+  discountCodeForm,
   freshPayUrl,
   locale,
   payStateToken,
@@ -138,15 +134,7 @@ export function CheckoutPayPage({
         summary={summary}
       />
 
-      {variant === "pay" && payStateToken && (
-        <CheckoutDiscountCodeForm
-          appliedAdjustment={appliedDiscountCodeAdjustment}
-          checkoutNavigationPending={isSubmitPending}
-          initialEnabled={discountCodeEntryEnabled}
-          locale={locale}
-          payStateToken={payStateToken}
-        />
-      )}
+      {variant === "pay" && discountCodeForm}
 
       {isPricingChanged ? (
         <Button

@@ -32,7 +32,11 @@ export type BuildSignedMeetingRoomPayStateInput =
 export const buildSignedMeetingRoomPayState = (
   envelope: Omit<
     SignedPayStateEnvelope,
-    "acceptedTotal" | "checkoutSessionId" | "submittedCode" | "changedKeys"
+    | "acceptedTotal"
+    | "checkoutSessionId"
+    | "submittedCode"
+    | "submittedCodeDiscountId"
+    | "changedKeys"
   >,
   input: BuildSignedMeetingRoomPayStateInput
 ): MeetingRoomSignedPayState => ({

@@ -1,6 +1,7 @@
 import { Data, Effect, Match, Schema } from "effect";
 import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
+import type { AppliedDiscount } from "@/features/discounts";
 import {
   type CheckoutStateCryptoOptions,
   type CheckoutStateKey,
@@ -27,10 +28,22 @@ export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const signedPayStateSchema = Schema.Union([
   coworkSignedPayStateSchema,
   meetingRoomSignedPayStateSchema,
-]).annotate({
-  identifier: "SignedPayState",
-  description: "Workspace checkout Pay state payload.",
-});
+])
+  .check(
+    Schema.makeFilter(
+      ({ submittedCode, submittedCodeDiscountId }) =>
+        (submittedCode === undefined) ===
+          (submittedCodeDiscountId === undefined) || {
+          path: ["submittedCodeDiscountId"],
+          issue:
+            "submitted code and submitted code discount id must occur together",
+        }
+    )
+  )
+  .annotate({
+    identifier: "SignedPayState",
+    description: "Workspace checkout Pay state payload.",
+  });
 
 export type SignedPayState = typeof signedPayStateSchema.Type;
 
@@ -59,6 +72,60 @@ export const getSignedPayStateCheckoutSummary = (
     ),
     Match.exhaustive
   );
+
+export const getSignedPayStateSubmittedCodeApplication = (
+  state: SignedPayState
+): AppliedDiscount | undefined => {
+  if (state.submittedCodeDiscountId === undefined) return undefined;
+
+  return state.quote.payment.discounts.find(
+    ({ discount }) => discount.id === state.submittedCodeDiscountId
+  );
+};
+
+export const getSignedPayStateSubmittedCode = (
+  state: SignedPayState,
+  displayedDiscounts: readonly AppliedDiscount[] = state.quote.payment.discounts
+):
+  | {
+      readonly submittedCode: NonNullable<SignedPayState["submittedCode"]>;
+      readonly submittedCodeDiscountId: NonNullable<
+        SignedPayState["submittedCodeDiscountId"]
+      >;
+    }
+  | {
+      readonly submittedCode?: never;
+      readonly submittedCodeDiscountId?: never;
+    } => {
+  const application = displayedDiscounts.find(
+    ({ discount }) => discount.id === state.submittedCodeDiscountId
+  );
+  if (state.submittedCode === undefined || application === undefined) return {};
+
+  return {
+    submittedCode: state.submittedCode,
+    submittedCodeDiscountId: application.discount.id,
+  };
+};
+
+export const getSignedPayStateReissueInput = (
+  state: SignedPayState
+): BuildSignedPayStateInput => {
+  const {
+    acceptedTotal: _acceptedTotal,
+    exp: _exp,
+    iat: _iat,
+    kid: _kid,
+    submittedCode: _submittedCode,
+    submittedCodeDiscountId: _submittedCodeDiscountId,
+    ...input
+  } = state;
+
+  return {
+    ...input,
+    ...getSignedPayStateSubmittedCode(state),
+  };
+};
 
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code: CheckoutStateTokenError["code"];

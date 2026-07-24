@@ -224,7 +224,11 @@ describe("cowork checkout pricing", () => {
       totalDiscount: money(21_000),
       discountedSubtotal: money(14_000),
     });
-    const applyDiscountCode = mock(() => Effect.succeed(codeQuote));
+    const codeApplication = codeQuote.discounts.at(-1);
+    if (!codeApplication) throw new Error("Expected code application");
+    const applyDiscountCode = mock(() =>
+      Effect.succeed({ quote: codeQuote, application: codeApplication })
+    );
     const displayedQuote = await Effect.runPromise(
       calculateCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
@@ -265,6 +269,7 @@ describe("cowork checkout pricing", () => {
     });
     expect(result).toMatchObject({
       status: "applied",
+      submittedCodeDiscountId: codeApplication.discount.id,
       quote: { summary: { total: money(19_000) } },
     });
   });

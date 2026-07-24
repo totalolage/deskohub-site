@@ -8,33 +8,19 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
-import {
-  workspaceRouterPush as routerPush,
-  workspaceRouterReplace as routerReplace,
-  workspaceUseFeatureFlagEnabled as useFeatureFlagEnabled,
-  workspaceUseAction,
-} from "@/shared/testing/workspace-component-module-mocks";
+import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-const execute = mock();
-let actionCallCount = 0;
-let pendingActionCall: number | undefined;
-let actionOptions: {
-  onSuccess?: (input: {
-    data?: { status: string; freshPayUrl?: string };
-  }) => void;
-  onError?: () => void;
-  onTransportError?: () => void;
-};
+const applyDiscountCodeForm = mock();
 
 mock.module("@/features/checkout/actions/apply-discount-code", () => ({
-  applyDiscountCode: mock(),
+  applyDiscountCodeForm,
 }));
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
@@ -46,26 +32,10 @@ describe("CheckoutDiscountCodeForm", () => {
   });
 
   beforeEach(() => {
-    routerReplace.mockReset();
-    routerPush.mockReset();
-    useFeatureFlagEnabled.mockReset();
-    execute.mockReset();
-    actionCallCount = 0;
-    pendingActionCall = undefined;
-    workspaceUseAction.mockImplementation((_action, options) => {
-      actionCallCount += 1;
-      actionOptions = options as typeof actionOptions;
-      return {
-        execute,
-        executeAsync: async (input: unknown) => {
-          execute(input);
-          return undefined;
-        },
-        isExecuting:
-          pendingActionCall !== undefined &&
-          actionCallCount % pendingActionCall === 0,
-        result: {},
-      };
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+      result: {},
     });
   });
 
@@ -77,18 +47,14 @@ describe("CheckoutDiscountCodeForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test.each([
-    undefined,
-    false,
-  ])("stays hidden while the release flag is %s", async (enabled) => {
-    useFeatureFlagEnabled.mockReturnValue(enabled);
+  test("stays hidden while its server-evaluated release gate is disabled", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        checkoutNavigationPending={false}
-        initialEnabled={false}
+        enabled={false}
+        fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
       />
@@ -97,133 +63,54 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(view.queryByRole("textbox")).toBeNull();
   });
 
-  test("submits the raw field through its independent action", async () => {
-    useFeatureFlagEnabled.mockReturnValue(true);
+  test("posts the raw field through a form action", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        checkoutNavigationPending={false}
-        initialEnabled
+        enabled
+        fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
       />
     );
 
     const codeInput = view.getByRole("textbox") as HTMLInputElement;
-    await act(async () => {
-      fireEvent.input(codeInput, {
-        target: { value: " save20 " },
-      });
-    });
-    expect(codeInput.value).toBe(" save20 ");
-    fireEvent.submit(codeInput.closest("form")!);
-
-    expect(execute).toHaveBeenCalledWith({
-      locale: "en-US",
-      payStateToken: "signed-state",
-      submittedCode: " save20 ",
-    });
+    expect(codeInput.name).toBe("submittedCode");
+    expect(codeInput.value).toBe("");
+    expect(codeInput.getAttribute("data-ph-mask")).not.toBeNull();
+    expect(codeInput.closest("form")).not.toBeNull();
   });
 
-  test("shows one field error while retaining the current summary", async () => {
-    useFeatureFlagEnabled.mockReturnValue(true);
+  test("shows one field error while retaining the form", async () => {
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
     );
     const view = render(
       <CheckoutDiscountCodeForm
-        checkoutNavigationPending={false}
-        initialEnabled
+        enabled
+        fieldError
         locale="en-US"
         payStateToken="signed-state"
       />
     );
-
-    act(() => {
-      actionOptions.onSuccess?.({ data: { status: "unavailable" } });
-    });
 
     expect(
       view.getByText(m.checkoutDiscountCodeUnavailable({}, { locale: "en-US" }))
     ).toBeDefined();
-    expect(routerReplace).not.toHaveBeenCalled();
-    expect(view.getByRole("textbox")).toBeDefined();
-  });
-
-  test("navigates only to the newly signed URL after success", async () => {
-    useFeatureFlagEnabled.mockReturnValue(true);
-    const { CheckoutDiscountCodeForm } = await import(
-      "./checkout-discount-code-form"
-    );
-    render(
-      <CheckoutDiscountCodeForm
-        checkoutNavigationPending={false}
-        initialEnabled
-        locale="en-US"
-        payStateToken="signed-state"
-      />
-    );
-
-    act(() => {
-      actionOptions.onSuccess?.({
-        data: {
-          status: "applied",
-          freshPayUrl: "/en-US/checkout/pay?payState=fresh",
-        },
-      });
-    });
-
-    expect(routerReplace).toHaveBeenCalledWith(
-      "/en-US/checkout/pay?payState=fresh"
-    );
-  });
-
-  test("ignores a late code result after payment navigation starts", async () => {
-    useFeatureFlagEnabled.mockReturnValue(true);
-    const { CheckoutDiscountCodeForm } = await import(
-      "./checkout-discount-code-form"
-    );
-    const view = render(
-      <CheckoutDiscountCodeForm
-        checkoutNavigationPending={false}
-        initialEnabled
-        locale="en-US"
-        payStateToken="signed-state"
-      />
-    );
-    view.rerender(
-      <CheckoutDiscountCodeForm
-        checkoutNavigationPending
-        initialEnabled
-        locale="en-US"
-        payStateToken="signed-state"
-      />
-    );
-
-    act(() => {
-      actionOptions.onSuccess?.({
-        data: {
-          status: "applied",
-          freshPayUrl: "/en-US/checkout/pay?payState=fresh",
-        },
-      });
-    });
-
-    expect(routerReplace).not.toHaveBeenCalled();
+    expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
   });
 
   test("celebrates the applied adjustment without showing the code", async () => {
-    useFeatureFlagEnabled.mockReturnValue(false);
     const { CheckoutDiscountCodeForm } = await import(
       "./checkout-discount-code-form"
     );
     const view = render(
       <CheckoutDiscountCodeForm
         appliedAdjustment={{ kind: "percentage", basisPoints: 2000 }}
-        checkoutNavigationPending={false}
-        initialEnabled={false}
+        enabled={false}
+        fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
       />
@@ -240,9 +127,7 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(view.queryByRole("textbox")).toBeNull();
   });
 
-  test("does not disable payment while the code form is pending", async () => {
-    useFeatureFlagEnabled.mockReturnValue(true);
-    pendingActionCall = 2;
+  test("keeps payment independent from the code form pending state", async () => {
     const { CheckoutPayPage } = await import("./checkout-pay-page");
     const quote = buildCoworkReservationQuote({
       entryTier: "basic",
@@ -250,7 +135,11 @@ describe("CheckoutDiscountCodeForm", () => {
     });
     const view = render(
       <CheckoutPayPage
-        discountCodeEntryEnabled
+        discountCodeForm={
+          <button disabled type="submit">
+            {m.checkoutDiscountCodeApplying({}, { locale: "en-US" })}
+          </button>
+        }
         locale="en-US"
         payStateToken="signed-state"
         summary={quote.summary}
@@ -264,11 +153,6 @@ describe("CheckoutDiscountCodeForm", () => {
       })
     ).toHaveProperty("disabled", true);
     fireEvent.click(view.getByRole("checkbox"));
-    expect(
-      view.getByRole("button", {
-        name: m.checkoutDiscountCodeApplying({}, { locale: "en-US" }),
-      })
-    ).toHaveProperty("disabled", true);
     expect(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),

@@ -30,7 +30,11 @@ export type BuildSignedCoworkPayStateInput = BuildSignedPayStateCommonInput & {
 export const buildSignedCoworkPayState = (
   envelope: Omit<
     SignedPayStateEnvelope,
-    "acceptedTotal" | "checkoutSessionId" | "submittedCode" | "changedKeys"
+    | "acceptedTotal"
+    | "checkoutSessionId"
+    | "submittedCode"
+    | "submittedCodeDiscountId"
+    | "changedKeys"
   >,
   input: BuildSignedCoworkPayStateInput
 ): CoworkSignedPayState => {

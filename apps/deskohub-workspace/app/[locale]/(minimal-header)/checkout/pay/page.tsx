@@ -6,11 +6,14 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import {
   buildCheckoutPayContinuationPath,
+  discountCodeErrorQueryParam,
   getSignedPayStateCheckoutSummary,
+  getSignedPayStateSubmittedCodeApplication,
   openPayState,
   PayableReservationService,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
+import { CheckoutDiscountCodeForm } from "@/features/checkout/components/checkout-discount-code-form";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
@@ -95,10 +98,14 @@ async function CheckoutPayContent({
   readonly searchParams: Promise<SearchParamsRecord>;
 }) {
   await connection();
+  const resolvedSearchParams = await searchParams;
   const payStateToken = getSearchParam(
-    await searchParams,
+    resolvedSearchParams,
     payStateTokenQueryParam
   );
+  const discountCodeError =
+    getSearchParam(resolvedSearchParams, discountCodeErrorQueryParam) ===
+    "unavailable";
 
   if (!payStateToken) {
     return runWithRequestLocale(locale, () => (
@@ -139,6 +146,8 @@ async function CheckoutPayContent({
   }
 
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
+  const submittedCodeApplication =
+    getSignedPayStateSubmittedCodeApplication(state);
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -151,13 +160,18 @@ async function CheckoutPayContent({
       }}
     >
       <CheckoutPayPage
-        appliedDiscountCodeAdjustment={
-          state.submittedCode === undefined
-            ? undefined
-            : state.quote.payment.discounts.at(-1)?.discount.adjustment
-        }
         changedKeys={state.changedKeys}
-        discountCodeEntryEnabled={discountCodeEntryEnabled}
+        discountCodeForm={
+          <CheckoutDiscountCodeForm
+            appliedAdjustment={submittedCodeApplication?.discount.adjustment}
+            enabled={
+              discountCodeEntryEnabled && state.submittedCode === undefined
+            }
+            fieldError={discountCodeError}
+            locale={locale}
+            payStateToken={payStateToken}
+          />
+        }
         freshPayUrl={freshPayUrl}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}

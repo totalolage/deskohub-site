@@ -9,6 +9,7 @@ import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type AffirmedDiscountAdvertisementQuote,
+  type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
   appliedDiscountCodec,
   type CanonicalDiscountCode,
@@ -67,6 +68,11 @@ export type ApplyDiscountCodeInput = {
   readonly submittedCode: CanonicalDiscountCode;
 };
 
+export type AppliedDiscountCodeQuote = {
+  readonly quote: DiscountQuote;
+  readonly application: AppliedDiscount;
+};
+
 export interface IDiscountService {
   readonly quote: (
     input: DiscountQuoteInput
@@ -88,7 +94,7 @@ export interface IDiscountService {
   ) => Effect.Effect<DisplayedDiscountAffirmation, DiscountCalculationError>;
   readonly applyDiscountCode: (
     input: ApplyDiscountCodeInput
-  ) => Effect.Effect<DiscountQuote, DiscountResolutionError>;
+  ) => Effect.Effect<AppliedDiscountCodeQuote, DiscountResolutionError>;
 }
 
 export class DiscountService extends Context.Service<
@@ -365,7 +371,7 @@ export class DiscountService extends Context.Service<
                 candidates,
               })
             ),
-            Effect.tap(({ quote }) =>
+            Effect.bind("application", ({ quote }) =>
               requireAppliedCode({ baseQuote: input.baseQuote, quote })
             ),
             Effect.tap(({ quote }) =>
@@ -373,7 +379,7 @@ export class DiscountService extends Context.Service<
                 calculation: { applications: quote.discounts },
               })
             ),
-            Effect.map(({ quote }) => quote)
+            Effect.map(({ application, quote }) => ({ application, quote }))
           ),
         withApplyDiscountCodeAnnotations
       );
@@ -508,10 +514,10 @@ const requireAppliedCode = (input: {
   readonly baseQuote: DiscountQuote;
   readonly quote: DiscountQuote;
 }) =>
-  Schema.decodeUnknownEffect(Schema.NonEmptyArray(appliedDiscountCodec))(
+  Schema.decodeUnknownEffect(Schema.Tuple([appliedDiscountCodec]))(
     input.quote.discounts.slice(input.baseQuote.discounts.length)
   ).pipe(
-    Effect.asVoid,
+    Effect.map(([application]) => application),
     Effect.mapError(
       (cause) =>
         new DiscountCodeUnavailableError({

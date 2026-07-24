@@ -238,7 +238,11 @@ describe("meeting-room checkout pricing", () => {
       },
       discountedSubtotal: { ...money, value: remaining - codeAmount },
     });
-    const applyDiscountCode = mock(() => Effect.succeed(codeQuote));
+    const codeApplication = codeQuote.discounts.at(-1);
+    if (!codeApplication) throw new Error("Expected code application");
+    const applyDiscountCode = mock(() =>
+      Effect.succeed({ quote: codeQuote, application: codeApplication })
+    );
     const displayedQuoteWithoutFingerprint =
       await getMeetingRoomReservationQuote(reservation, {
         discountQuote: advertisementQuote,
@@ -295,6 +299,7 @@ describe("meeting-room checkout pricing", () => {
     });
     expect(result).toMatchObject({
       status: "applied",
+      submittedCodeDiscountId: codeApplication.discount.id,
       quote: {
         payment: {
           expectedPrice: codeQuote.discountedSubtotal,
