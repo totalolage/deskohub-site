@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
-import { makeE2EEnvironment } from "../e2e-env";
+import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { workspaceE2ETimeoutError } from "../errors";
 import {
   type E2ETelemetryEvent,
@@ -13,7 +13,7 @@ import {
 describe("E2E run context", () => {
   test("defaults local execution to manual", () => {
     expect(
-      makeE2ERunContext(makeE2EEnvironment({}), () => "local-run")
+      makeE2ERunContext(makeTestE2EEnvironment(), () => "local-run")
     ).toEqual({
       executionContext: "manual",
       runId: "manual-local-run",
@@ -23,7 +23,7 @@ describe("E2E run context", () => {
   test("uses explicit CI context and GitHub correlation values", () => {
     expect(
       makeE2ERunContext(
-        makeE2EEnvironment({
+        makeTestE2EEnvironment({
           GITHUB_ACTIONS: "true",
           GITHUB_RUN_ATTEMPT: "2",
           GITHUB_RUN_ID: "12345",
@@ -45,7 +45,7 @@ describe("E2E run context", () => {
   test("derives the first-rollout fallback from the GitHub trigger", () => {
     expect(
       makeE2ERunContext(
-        makeE2EEnvironment({
+        makeTestE2EEnvironment({
           GITHUB_ACTIONS: "true",
           GITHUB_EVENT_NAME: "repository_dispatch",
         }),
@@ -54,7 +54,7 @@ describe("E2E run context", () => {
     ).toBe("ci");
     expect(
       makeE2ERunContext(
-        makeE2EEnvironment({
+        makeTestE2EEnvironment({
           GITHUB_ACTIONS: "true",
           GITHUB_EVENT_NAME: "workflow_dispatch",
         }),

@@ -1,4 +1,4 @@
-import { env } from "./runtime";
+import type { E2EEnvironment } from "./e2e-env";
 
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
@@ -59,14 +59,28 @@ const timeoutDefinitions = {
 } as const;
 
 export type WorkspaceE2ETimeout = keyof typeof timeoutDefinitions;
+export type WorkspaceE2ETimeouts = Readonly<
+  Record<WorkspaceE2ETimeout, number>
+>;
 
-export const getWorkspaceE2ETimeoutMs = (timeout: WorkspaceE2ETimeout) => {
-  const definition = timeoutDefinitions[timeout];
-  const raw = env(definition.env);
-  const value = raw ? Number(raw) : definition.fallbackMs;
-  if (!Number.isFinite(value) || value <= 0) return definition.fallbackMs;
-  return Math.min(value, definition.fallbackMs);
-};
+export const defaultWorkspaceE2ETimeouts = Object.fromEntries(
+  Object.entries(timeoutDefinitions).map(([timeout, { fallbackMs }]) => [
+    timeout,
+    fallbackMs,
+  ])
+) as WorkspaceE2ETimeouts;
+
+export const makeWorkspaceE2ETimeouts = (
+  environment: E2EEnvironment
+): WorkspaceE2ETimeouts =>
+  Object.fromEntries(
+    Object.entries(timeoutDefinitions).map(
+      ([timeout, { env, fallbackMs }]) => [
+        timeout,
+        Math.min(environment[env] ?? fallbackMs, fallbackMs),
+      ]
+    )
+  ) as WorkspaceE2ETimeouts;
 
 export const workspaceE2EPollIntervalMs = {
   browser: SECOND,

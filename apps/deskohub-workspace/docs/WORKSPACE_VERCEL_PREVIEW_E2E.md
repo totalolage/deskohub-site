@@ -106,6 +106,14 @@ preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
 The runner does not deploy, pull Vercel environment files, inspect deployments,
 or mutate aliases/domains.
 
+The runner relies on Bun to load dotenv files before the entry module executes.
+`e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
+validates, and decodes the exact runner configuration once, before telemetry or
+Effect Layers are constructed. Other E2E modules receive that immutable typed
+configuration and must not read ambient environment variables. Application-only
+variables are not projected into the E2E configuration, and E2E telemetry uses
+only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
+
 Webhook replay is only a deterministic notification trigger. The deployed
 handler must still fetch authoritative order state from Nexi before applying a
 payment transition. Keep raw payloads, credentials, customer data, and

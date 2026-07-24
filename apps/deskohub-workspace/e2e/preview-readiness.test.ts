@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
 import { assertPreviewEndpointReady } from "./preview-readiness";
+import { defaultWorkspaceE2ETimeouts } from "./timeouts";
 
 test("checks webhook readiness on the exact protected preview origin", async () => {
   const requests: Array<{ headers: Headers; url: string }> = [];
@@ -46,4 +47,5 @@ const makeConfig = (bypassSecret?: string): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
   bypassSecret,
   expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  timeouts: defaultWorkspaceE2ETimeouts,
 });

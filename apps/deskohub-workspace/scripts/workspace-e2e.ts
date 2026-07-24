@@ -4,13 +4,11 @@ import { Cause, Exit } from "effect";
 import { makeE2EEnvironment } from "../e2e/e2e-env";
 import { formatWorkspaceE2EFailure } from "../e2e/errors";
 import {
-  loadLocalE2EEnvironment,
   makeE2ETelemetryRuntime,
   runE2EEffect,
 } from "../e2e/telemetry-runtime";
 import { makeWorkspaceE2E } from "../e2e/workspace-e2e";
 
-await loadLocalE2EEnvironment();
 const environment = makeE2EEnvironment();
 const telemetry = makeE2ETelemetryRuntime(environment);
 const exit = await runE2EEffect(

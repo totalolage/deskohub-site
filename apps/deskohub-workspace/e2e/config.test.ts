@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
 import { getDatasourceConfig, parseWorkspaceE2EBaseUrl } from "./config";
+import { makeE2EEnvironment } from "./e2e-env";
+import {
+  makeTestE2EEnvironment,
+  validE2ERuntimeEnvironment,
+} from "./e2e-env.test-fixture";
 import { assertSafeDatabaseUrl } from "./runtime";
 
 test("parses an immutable HTTPS Vercel deployment origin", () => {
@@ -47,82 +52,44 @@ test("rejects missing or unsafe preview targets", () => {
 });
 
 test("requires a direct datasource URL", () => {
-  withEnv(
-    {
-      DATABASE_URL:
-        "postgresql://preview.example.test/workspace?sslmode=require",
+  expect(() =>
+    makeE2EEnvironment({
+      ...validE2ERuntimeEnvironment,
       WORKSPACE_E2E_DATABASE_URL_UNPOOLED: undefined,
-    },
-    () =>
-      expect(() => getDatasourceConfig()).toThrow(
-        "WORKSPACE_E2E_DATABASE_URL_UNPOOLED is required"
-      )
-  );
+    })
+  ).toThrow("Invalid workspace E2E environment variables.");
 });
 
-test("keeps canonical local currency despite sandbox and runner overrides", () => {
-  withEnv(
-    {
-      DATABASE_URL:
-        "postgresql://preview-pooler.example.test/workspace",
-      DOTYPOS_API_URL: "https://dotypos.example.test",
-      DOTYPOS_BRANCH_ID: "branch",
-      DOTYPOS_CLIENT_ID: "client",
-      DOTYPOS_CLIENT_SECRET: "client-secret",
-      DOTYPOS_CLOUD_ID: "cloud",
-      DOTYPOS_EMPLOYEE_ID: "employee",
-      DOTYPOS_REFRESH_TOKEN: "refresh-token",
-      NEXI_API_ORIGIN:
-        "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp",
-      NEXI_CHECKOUT_CURRENCY_OVERRIDE: "EUR",
-      WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
-        "postgresql://preview.example.test/workspace",
-      WORKSPACE_E2E_EXPECTED_CURRENCY: "EUR",
-    },
-    () => expect(getDatasourceConfig().expectedCurrency).toBe("CZK")
-  );
+test("keeps canonical local currency in datasource assertions", () => {
+  expect(
+    getDatasourceConfig(makeTestE2EEnvironment()).expectedCurrency
+  ).toBe("CZK");
 });
 
 test("rejects a datasource outside the explicit preview allowlist", () => {
-  withEnv(
-    {
-      WORKSPACE_E2E_DATABASE_ALLOWLIST:
-        "postgresql://owner:test@ep-preview.eu.neon.tech/neondb",
-    },
-    () => {
-      expect(() =>
-        assertSafeDatabaseUrl(
-          "postgresql://owner:test@ep-preview-pooler.eu.neon.tech/neondb",
-          "DATABASE_URL"
-        )
-      ).not.toThrow();
-      expect(() =>
-        assertSafeDatabaseUrl(
-          "postgresql://owner:test@ep-other-pooler.eu.neon.tech/neondb",
-          "DATABASE_URL"
-        )
-      ).toThrow("is not allowlisted for workspace e2e");
-    }
-  );
+  const allowlist =
+    "postgresql://owner:test@ep-preview.eu.neon.tech/neondb";
+  expect(() =>
+    assertSafeDatabaseUrl(
+      "postgresql://owner:test@ep-preview-pooler.eu.neon.tech/neondb",
+      "DATABASE_URL",
+      allowlist
+    )
+  ).not.toThrow();
+  expect(() =>
+    assertSafeDatabaseUrl(
+      "postgresql://owner:test@ep-other-pooler.eu.neon.tech/neondb",
+      "DATABASE_URL",
+      allowlist
+    )
+  ).toThrow("is not allowlisted for workspace e2e");
 });
 
-const withEnv = (
-  values: Readonly<Record<string, string | undefined>>,
-  use: () => void
-) => {
-  const previous = Object.fromEntries(
-    Object.keys(values).map((key) => [key, process.env[key]])
+test("decodes timeout overrides once for E2E consumers", () => {
+  const config = getDatasourceConfig(
+    makeTestE2EEnvironment({
+      WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS: "45000",
+    })
   );
-  try {
-    for (const [key, value] of Object.entries(values)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-    use();
-  } finally {
-    for (const [key, value] of Object.entries(previous)) {
-      if (value === undefined) delete process.env[key];
-      else process.env[key] = value;
-    }
-  }
-};
+  expect(config.timeouts.datasource).toBe(45_000);
+});

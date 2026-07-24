@@ -25,6 +25,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Treat `WORKSPACE_E2E_BASE_URL` and its integration-created Neon preview branch as one target. Resolve and migrate the validated `preview/<internal-head-ref>` branch after the preview succeeds, pass its pooled URL to runtime checks and its direct URL to migrations, assertions, and the allowlist, and fail closed rather than falling back to production or shared development.
 - Do not deploy or mutate Vercel from the E2E runner. Uncommitted local code has no externally reachable Git preview and must not be described as tested through a previously built preview.
 - Keep database assertions on the canonical catalog currency stored in local payment attempts. A non-production Nexi sandbox currency override applies only to Nexi request arguments and must not change the E2E expectation for persisted payment facts.
+- Let Bun load dotenv files before the E2E entry module executes, then treat
+  `e2e/e2e-env.ts` as the suite's only `process.env` boundary. Select, validate,
+  and decode every runner-owned variable there once; inject the immutable typed
+  configuration into telemetry, Layers, timeouts, datasource configuration, and
+  child command construction. Do not project application-only variables or use
+  app-client PostHog variables as E2E telemetry fallbacks.
 - Remember that repository-dispatch workflow configuration is evaluated from the default branch even when the job checks out an exact PR SHA. Do not make exact-SHA validation depend on changing a workflow-level environment value in the same PR; keep canonical expectations in the checked-out runner code or supply them through an already-compatible dispatch contract.
 - Do not add runtime branches, query parameters, or other production behavior that bypasses the normal application path for E2E. Establish the required fixture state through approved integrations, then exercise the same route and workflow a real request uses.
 - Keep Vercel Deployment Protection enabled. Use its automation-bypass cookie/header/query flow for browser navigation, preview callbacks, readiness checks, and webhook replays. BotID is a separate production-only application concern; read the BotID skill before changing that boundary.

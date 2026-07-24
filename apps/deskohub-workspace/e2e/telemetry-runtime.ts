@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { Effect, type Layer } from "effect";
 import {
   createWorkspaceOtelLoggerLive,
@@ -9,21 +8,13 @@ import {
   flushPostHogLogs,
 } from "../shared/backend/logging/posthog-otel";
 import type { E2EEnvironment } from "./e2e-env";
-import { loadEnvFile, workspaceDir } from "./runtime";
 
 const telemetryShutdownTimeoutMs = 5_000;
 
-export const loadLocalE2EEnvironment = () =>
-  Effect.runPromise(loadEnvFile(resolve(workspaceDir, ".env.local")));
-
 export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
   const provider = createPostHogLoggerProvider({
-    posthogHost:
-      environment.WORKSPACE_E2E_POSTHOG_HOST ??
-      environment.NEXT_PUBLIC_POSTHOG_HOST,
-    posthogProjectToken:
-      environment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN ??
-      environment.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
+    posthogHost: environment.WORKSPACE_E2E_POSTHOG_HOST,
+    posthogProjectToken: environment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
     serviceName: "deskohub-workspace-e2e",
     serviceNamespace: "deskohub",
     vercelEnv: "preview",

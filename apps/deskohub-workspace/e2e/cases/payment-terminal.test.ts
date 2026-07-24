@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { Runner } from "../runtime";
+import { defaultWorkspaceE2ETimeouts } from "../timeouts";
 import { activateStatusReserveAgain } from "./payment-terminal";
 
 test("restarts a reservation through a hydrated stable link selector", async () => {
@@ -10,7 +11,13 @@ test("restarts a reservation through a hydrated stable link selector", async () 
     return { exitCode: 0, stderr: "", stdout: "" };
   };
 
-  await Effect.runPromise(activateStatusReserveAgain(run, "payment-terminal"));
+  await Effect.runPromise(
+    activateStatusReserveAgain(
+      run,
+      "payment-terminal",
+      defaultWorkspaceE2ETimeouts
+    )
+  );
 
   expect(calls.map((args) => args.slice(2))).toEqual([
     ["wait", "--fn", expect.any(String)],

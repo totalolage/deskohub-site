@@ -27,7 +27,6 @@ import {
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlow,
@@ -70,17 +69,22 @@ export const executeCheckoutFlow = ({
         submitReservationScript: flow.submitReservationScript(data),
       }),
       id: "start-checkout-payment",
-      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
+      timeoutMs: config.timeouts.checkoutStart,
     });
     yield* runStep({
-      execute: completeNexiHostedPayment({ data, run, session }),
+      execute: completeNexiHostedPayment({
+        data,
+        run,
+        session,
+        timeouts: config.timeouts,
+      }),
       id: "complete-hosted-payment",
-      timeoutMs: getWorkspaceE2ETimeoutMs("hostedPayment"),
+      timeoutMs: config.timeouts.hostedPayment,
     });
     yield* runStep({
       execute: waitForCheckoutStatusPage(config, run, session),
       id: "reach-checkout-status-page",
-      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+      timeoutMs: config.timeouts.providerTransition,
     });
     state.orderId = orderId;
 
@@ -91,26 +95,26 @@ export const executeCheckoutFlow = ({
         state.checkoutRow = row;
       }),
       id: "wait-for-webhook-row",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
       execute: replayNexiWebhook(config, replayRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),
       id: "replay-payment-webhook",
-      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+      timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
       execute: markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId),
       id: "complete-test-fulfillment",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     const checkoutRow = yield* runStep({
       execute: validatePostgres(datasourceConfig, data, orderId, (row) => {
         state.checkoutRow = row;
       }),
       id: "validate-postgres-state",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     state.checkoutRow = checkoutRow;
     yield* runStep({
@@ -122,12 +126,12 @@ export const executeCheckoutFlow = ({
         session,
       }),
       id: "assert-fulfilled-status-page",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: validateDotypos(datasourceConfig, data, checkoutRow),
       id: "validate-dotypos-reservation",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
       execute: assertFulfillmentFailedSupportPath({
@@ -139,7 +143,7 @@ export const executeCheckoutFlow = ({
         session,
       }),
       id: "assert-fulfillment-support-path",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
 
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
@@ -155,7 +159,7 @@ const waitForCheckoutStatusPage = (
     matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
     run,
     session,
-    timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+    timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
 
 const assertFulfilledStatusPage = ({
@@ -177,7 +181,7 @@ const assertFulfilledStatusPage = ({
       run,
       session,
       `${config.baseUrl}/${locale}/checkout/status/${orderId}`,
-      { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
+      { timeoutMs: config.timeouts.browserNavigation }
     );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
@@ -186,7 +190,7 @@ const assertFulfilledStatusPage = ({
         /sent by email/i.test(text),
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* evalBrowserScript(
       "assert fulfilled checkout status page",
@@ -194,7 +198,7 @@ const assertFulfilledStatusPage = ({
       session,
       assertFulfilledStatusScript,
       {
-        timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
+        timeoutMs: config.timeouts.browserAction,
       }
     );
     log("Checkout status page validated");
@@ -225,7 +229,7 @@ const assertFulfillmentFailedSupportPath = ({
       e2eAt: String(Date.now()),
     });
     yield* openBrowserPage(config, run, session, statusUrl.toString(), {
-      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+      timeoutMs: config.timeouts.browserNavigation,
     });
     yield* waitForBrowserText({
       description: "fulfillment failed support link",
@@ -234,7 +238,7 @@ const assertFulfillmentFailedSupportPath = ({
         /Send support request/i.test(text),
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* evalBrowserScript(
       "assert fulfillment failed support link",
@@ -243,14 +247,14 @@ const assertFulfillmentFailedSupportPath = ({
       getAssertFulfillmentFailedSupportScript(data, orderId),
       {
         logOutput: false,
-        timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
+        timeoutMs: config.timeouts.browserAction,
       }
     );
     yield* clickBrowserElement(
       run,
       session,
       "#checkout-status-support-contact",
-      { timeoutMs: getWorkspaceE2ETimeoutMs("browserAction") }
+      { timeoutMs: config.timeouts.browserAction }
     );
     yield* waitForBrowserUrl({
       description: "fulfillment failed support contact page",

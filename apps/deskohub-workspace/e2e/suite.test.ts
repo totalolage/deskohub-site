@@ -8,6 +8,7 @@ import type { Runner } from "./runtime";
 import type { E2ETelemetryEvent } from "./services/telemetry";
 import { makeE2ETelemetryMock } from "./services/telemetry.mock";
 import { runWorkspaceE2ECases } from "./suite";
+import { defaultWorkspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 
 test("runs checkout and terminal cases concurrently", async () => {
@@ -52,6 +53,7 @@ test("runs checkout and terminal cases concurrently", async () => {
       cases,
       run,
       sessionPrefix: "workspace-e2e-scheduling",
+      timeouts: defaultWorkspaceE2ETimeouts,
     }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
   );
 
@@ -129,6 +131,7 @@ test("cancels sibling cases when the first case fails", async () => {
         cases,
         run: makeTestRunner(),
         sessionPrefix: "workspace-e2e-fail-fast",
+        timeouts: defaultWorkspaceE2ETimeouts,
       }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
     );
 
@@ -180,6 +183,7 @@ test("reports the semantic step that timed out", async () => {
         cases,
         run: makeTestRunner(),
         sessionPrefix: "workspace-e2e-timeout",
+        timeouts: defaultWorkspaceE2ETimeouts,
       }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
     );
 
@@ -238,6 +242,7 @@ test("propagates browser finalizer failures", async () => {
       cases,
       run,
       sessionPrefix: "workspace-e2e-finalizer",
+      timeouts: defaultWorkspaceE2ETimeouts,
     }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
   );
 

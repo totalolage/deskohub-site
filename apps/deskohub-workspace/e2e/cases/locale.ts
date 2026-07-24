@@ -9,7 +9,7 @@ import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, WorkspaceE2EStepRunner } from "../types";
 
 export const assertLocaleSwitcher = ({
@@ -30,22 +30,22 @@ export const assertLocaleSwitcher = ({
         run,
         session,
         `${config.baseUrl}/en-US`,
-        { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
+        { timeoutMs: config.timeouts.browserNavigation }
       ).pipe(Effect.asVoid),
       id: "open-home-page",
-      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+      timeoutMs: config.timeouts.browserNavigation,
     });
 
     for (let cycle = 1; cycle <= 3; cycle += 1) {
       yield* runStep({
-        execute: switchLocale(run, session, "cs-CZ", cycle),
+        execute: switchLocale(run, session, "cs-CZ", cycle, config.timeouts),
         id: `switch-to-czech-${cycle}`,
-        timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+        timeoutMs: config.timeouts.uiTransition,
       });
       yield* runStep({
-        execute: switchLocale(run, session, "en-US", cycle),
+        execute: switchLocale(run, session, "en-US", cycle, config.timeouts),
         id: `switch-to-english-${cycle}`,
-        timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+        timeoutMs: config.timeouts.uiTransition,
       });
     }
 
@@ -55,10 +55,11 @@ export const assertLocaleSwitcher = ({
 const activateLocaleSwitchLink = (
   run: Runner,
   session: string,
-  locale: CheckoutData["locale"] | "cs-CZ"
+  locale: CheckoutData["locale"] | "cs-CZ",
+  timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
+    const timeoutMs = timeouts.uiTransition;
     const selector = `nav[aria-label="Language switcher"] a[href^="/${locale}"]`;
     yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
     yield* activateBrowserElement(run, session, selector, { timeoutMs });
@@ -68,16 +69,17 @@ const switchLocale = (
   run: Runner,
   session: string,
   locale: CheckoutData["locale"] | "cs-CZ",
-  cycle: number
+  cycle: number,
+  timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    yield* activateLocaleSwitchLink(run, session, locale);
+    yield* activateLocaleSwitchLink(run, session, locale, timeouts);
     yield* waitForBrowserUrl({
       description: `${locale} locale switch ${cycle}`,
       matches: (url) =>
         parseUrl(url)?.pathname.startsWith(`/${locale}`) ?? false,
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: timeouts.uiTransition,
     });
   });

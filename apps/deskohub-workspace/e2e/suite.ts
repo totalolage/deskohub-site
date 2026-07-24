@@ -19,7 +19,7 @@ import {
 } from "./services/telemetry";
 import {
   formatWorkspaceE2EDuration,
-  getWorkspaceE2ETimeoutMs,
+  type WorkspaceE2ETimeouts,
 } from "./timeouts";
 import type {
   WorkspaceE2ECase,
@@ -50,11 +50,13 @@ export const runWorkspaceE2ECases = ({
   cases,
   run,
   sessionPrefix,
+  timeouts,
 }: {
   artifactRoot: string;
   cases: readonly WorkspaceE2ECase[];
   run: Runner;
   sessionPrefix: string;
+  timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError, E2ETelemetryService> =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -75,18 +77,18 @@ export const runWorkspaceE2ECases = ({
               testCase,
             })
           ),
-          (runtime) => finalizeCaseRuntime(runtime, run, telemetry)
+          (runtime) => finalizeCaseRuntime(runtime, run, telemetry, timeouts)
         )
       );
 
       yield* Effect.forEach(runtimes, (runtime) =>
-        runCase(runtime, run, telemetry).pipe(Effect.forkChild)
+        runCase(runtime, run, telemetry, timeouts).pipe(Effect.forkChild)
       ).pipe(
         Effect.andThen(Fiber.joinAll),
         Effect.tapCause(() =>
           Effect.forEach(
             runtimes.filter((runtime) => runtime.failureCause !== undefined),
-            (runtime) => captureFailureArtifacts(runtime, run),
+            (runtime) => captureFailureArtifacts(runtime, run, timeouts),
             { discard: true }
           )
         )
@@ -97,7 +99,8 @@ export const runWorkspaceE2ECases = ({
 const runCase = (
   runtime: WorkspaceE2ECaseRuntime,
   run: Runner,
-  telemetry: E2ETelemetry
+  telemetry: E2ETelemetry,
+  timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, WorkspaceE2EError> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(runtime.testCase.id, telemetry);
@@ -114,7 +117,7 @@ const runCase = (
       runtime.session
     ).pipe(
       Effect.timeoutOrElse({
-        duration: `${getWorkspaceE2ETimeoutMs("browserAction")} millis`,
+        duration: `${timeouts.browserAction} millis`,
         orElse: () =>
           Effect.fail(
             workspaceE2ETimeoutError(
@@ -202,7 +205,8 @@ const makeStepRunner =
 
 const captureFailureArtifacts = (
   runtime: WorkspaceE2ECaseRuntime,
-  run: Runner
+  run: Runner,
+  timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, never> =>
   captureBrowserFailureArtifacts({
     artifactDir: runtime.artifactDir,
@@ -212,7 +216,7 @@ const captureFailureArtifacts = (
     session: runtime.session,
   }).pipe(
     Effect.timeoutOrElse({
-      duration: `${getWorkspaceE2ETimeoutMs("artifactCapture")} millis`,
+      duration: `${timeouts.artifactCapture} millis`,
       orElse: () =>
         Effect.sync(() => {
           log(`Browser artifact capture timed out for ${runtime.testCase.id}`);
@@ -238,7 +242,8 @@ const captureFailureArtifacts = (
 const finalizeCaseRuntime = (
   runtime: WorkspaceE2ECaseRuntime,
   run: Runner,
-  telemetry: E2ETelemetry
+  telemetry: E2ETelemetry,
+  timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const failures: unknown[] = [];
@@ -248,7 +253,8 @@ const finalizeCaseRuntime = (
         `${runtime.testCase.id} HAR stop`,
         runFinalizer(
           `${runtime.testCase.id} HAR stop`,
-          stopBrowserHar(run, runtime.session, devNull)
+          stopBrowserHar(run, runtime.session, devNull),
+          timeouts
         )
       );
     }
@@ -257,7 +263,8 @@ const finalizeCaseRuntime = (
       `${runtime.testCase.id} browser close`,
       runFinalizer(
         `${runtime.testCase.id} browser close`,
-        closeBrowserSession(run, runtime.session)
+        closeBrowserSession(run, runtime.session),
+        timeouts
       )
     );
 
@@ -290,11 +297,12 @@ const finalizeCaseRuntime = (
 
 const runFinalizer = <A>(
   operation: string,
-  effect: Effect.Effect<A, WorkspaceE2EError>
+  effect: Effect.Effect<A, WorkspaceE2EError>,
+  timeouts: WorkspaceE2ETimeouts
 ): Effect.Effect<void, WorkspaceE2EError> =>
   effect.pipe(
     Effect.timeoutOrElse({
-      duration: `${getWorkspaceE2ETimeoutMs("cleanupAction")} millis`,
+      duration: `${timeouts.cleanupAction} millis`,
       orElse: () =>
         Effect.fail(
           workspaceE2ETimeoutError(`Timed out running ${operation}`, {

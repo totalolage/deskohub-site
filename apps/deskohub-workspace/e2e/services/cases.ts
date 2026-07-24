@@ -5,6 +5,7 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { runWorkspaceE2ECases } from "../suite";
+import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import { E2ETelemetryService } from "./telemetry";
 
@@ -20,6 +21,7 @@ interface IWorkspaceE2ECaseService {
     readonly cases: readonly WorkspaceE2ECase[];
     readonly run: Runner;
     readonly sessionPrefix: string;
+    readonly timeouts: WorkspaceE2ETimeouts;
   }) => Effect.Effect<void, WorkspaceE2EError>;
 }
 
