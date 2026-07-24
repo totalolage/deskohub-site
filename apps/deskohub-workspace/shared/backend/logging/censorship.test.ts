@@ -4,6 +4,7 @@ import {
   NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
 import {
   InMemoryLogRecordExporter,
   LoggerProvider,
@@ -12,6 +13,7 @@ import {
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, Effect, Layer, Logger, References } from "effect";
+import { StorageError } from "@/shared/backend/errors";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
@@ -314,6 +316,25 @@ describe("censorLogValue", () => {
         operation: "createReservation",
         statusCode: 503,
       },
+    });
+  });
+
+  test("fails closed for a provider-derived custom error nested in a storage error", () => {
+    const marker = "synthetic-email-provider-sensitive-marker";
+    const censored = censorLogValue(
+      new StorageError({
+        message: "Reservation delivery failed",
+        operation: "deliverReservationEmail",
+        cause: new EmailServiceError(marker, new CustomValue(marker), "resend"),
+      })
+    );
+    const serialized = JSON.stringify(censored);
+
+    expect(serialized).not.toContain(marker);
+    expect(censored).toEqual({
+      _tag: "StorageError",
+      operation: "deliverReservationEmail",
+      cause: { _tag: "EmailServiceError" },
     });
   });
 
@@ -681,6 +702,35 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
+    await provider.shutdown();
+  });
+
+  test("does not emit a provider-derived custom error through the OTel sink", async () => {
+    const marker = "synthetic-email-provider-otel-marker";
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    const error = new StorageError({
+      message: "Reservation delivery failed",
+      operation: "deliverReservationEmail",
+      cause: new EmailServiceError(marker, new CustomValue(marker), "resend"),
+    });
+
+    await Effect.runPromise(
+      Effect.logError("delivery failed").pipe(
+        Effect.annotateLogs({ error }),
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).not.toContain(marker);
+    expect(serialized).toContain("StorageError");
+    expect(serialized).toContain("EmailServiceError");
+    expect(serialized).toContain("deliverReservationEmail");
+    expect(serialized).not.toContain("resend");
     await provider.shutdown();
   });
 });

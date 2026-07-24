@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const databases: PGlite[] = [];
 const cancellationMigrationUrl = new URL(
-  "./20260724160212_reservation_cancellation_ownership_rollout/migration.sql",
+  "./20260724172713_reservation_cancellation_ownership_fail_closed/migration.sql",
   import.meta.url
 );
 
@@ -179,6 +179,88 @@ describe("reservation cancellation ownership migration", () => {
       returning id, reservation_state
     `);
 
+  const legacyOwnerlessSupersessionClaim = (
+    database: PGlite,
+    id = "rollout-reservation"
+  ) =>
+    database.query<{
+      dotypos_reservation_id: string;
+      id: string;
+      reservation_state: string;
+    }>(`
+      update workspace_reservations
+      set
+        reservation_state = 'cancelling',
+        updated_at = now()
+      where
+        id = '${id}'
+        and reservation_state = 'held'
+        and payment_state in ('not_started', 'failed', 'cancelled', 'expired')
+      returning id, reservation_state, dotypos_reservation_id
+    `);
+
+  const runLegacyOwnerlessSupersessionCaller = async (
+    database: PGlite,
+    id = "rollout-reservation"
+  ) => {
+    let providerCancellationCount = 0;
+    let providerStatusCount = 0;
+
+    try {
+      const [claimed] = (await legacyOwnerlessSupersessionClaim(database, id))
+        .rows;
+      if (claimed) {
+        providerStatusCount += 1;
+        const providerStatus = "NEW";
+        if (providerStatus === "NEW") {
+          providerCancellationCount += 1;
+        }
+      }
+      return {
+        claimError: undefined,
+        claimed,
+        providerCancellationCount,
+        providerStatusCount,
+      };
+    } catch (claimError) {
+      return {
+        claimError,
+        claimed: undefined,
+        providerCancellationCount,
+        providerStatusCount,
+      };
+    }
+  };
+
+  test("keeps the exact ownerless legacy supersession caller outside the provider boundary", async () => {
+    const database = await prepareRolloutDatabase();
+    const {
+      claimError,
+      claimed,
+      providerCancellationCount,
+      providerStatusCount,
+    } = await runLegacyOwnerlessSupersessionCaller(database);
+
+    expect(claimError).toMatchObject({ code: "55000" });
+    expect(providerCancellationCount).toBe(0);
+    expect(providerStatusCount).toBe(0);
+    expect(claimed).toBeUndefined();
+    expect((await newWorkerClaim(database)).rows).toHaveLength(1);
+  });
+
+  test("returns no provider permission to the exact legacy caller when the new worker claims first", async () => {
+    const database = await prepareRolloutDatabase();
+
+    expect((await newWorkerClaim(database)).rows).toHaveLength(1);
+    const result = await runLegacyOwnerlessSupersessionCaller(database);
+    expect(result).toMatchObject({
+      claimError: undefined,
+      claimed: undefined,
+      providerCancellationCount: 0,
+      providerStatusCount: 0,
+    });
+  });
+
   test("keeps an old worker outside the provider boundary when the new worker claims first", async () => {
     const database = await prepareRolloutDatabase();
 
@@ -290,7 +372,7 @@ describe("reservation cancellation ownership migration", () => {
             )
           )
       );
-      create function workspace_reservations_stamp_ownerless_cancellation_time()
+      create function workspace_reservations_handoff_ownerless_cancellation()
       returns trigger
       language plpgsql
       as $$
@@ -300,15 +382,19 @@ describe("reservation cancellation ownership migration", () => {
           and new.cancellation_claim_owner is null
           and new.cancellation_claimed_at is null
         then
+          new.reservation_state = 'cancellation_failed';
+          new.cancellation_failure_disposition = 'retryable';
+          new.cancellation_retry_at = clock_timestamp();
+          new.cancellation_recovery_reason = 'retryable_failure';
           new.updated_at = clock_timestamp();
         end if;
         return new;
       end;
       $$;
-      create trigger workspace_reservations_stamp_ownerless_cancellation_time
+      create trigger workspace_reservations_handoff_ownerless_cancellation
       before insert or update on workspace_reservations
       for each row
-      execute function workspace_reservations_stamp_ownerless_cancellation_time();
+      execute function workspace_reservations_handoff_ownerless_cancellation();
       insert into workspace_reservations (
         id,
         reservation_state,
@@ -331,6 +417,14 @@ describe("reservation cancellation ownership migration", () => {
           'cancelling',
           'not_started',
           'synthetic-ownerless-provider',
+          null,
+          null
+        ),
+        (
+          'published-held',
+          'held',
+          'not_started',
+          'synthetic-published-provider',
           null,
           null
         )
@@ -365,10 +459,24 @@ describe("reservation cancellation ownership migration", () => {
         cancellation_claim_owner: null,
         cancellation_failure_disposition: "retryable",
       },
+      {
+        id: "published-held",
+        reservation_state: "held",
+        cancellation_claim_owner: null,
+        cancellation_failure_disposition: null,
+      },
     ]);
+
+    const legacyResult = await runLegacyOwnerlessSupersessionCaller(
+      database,
+      "published-held"
+    );
+    expect(legacyResult.claimError).toMatchObject({ code: "55000" });
+    expect(legacyResult.providerStatusCount).toBe(0);
+    expect(legacyResult.providerCancellationCount).toBe(0);
   });
 
-  test("preserves legacy pending rows and remains compatible with old writers", async () => {
+  test("preserves legacy pending rows and rejects new ownerless old-writer claims", async () => {
     const database = new PGlite();
     databases.push(database);
     await database.exec(`
@@ -447,7 +555,7 @@ describe("reservation cancellation ownership migration", () => {
             now() - interval '30 minutes'
           )
       `)
-    ).resolves.toBeDefined();
+    ).rejects.toMatchObject({ code: "55000" });
 
     const ownerlessClaims = await database.query<{
       cancellation_failure_disposition: string | null;
@@ -463,37 +571,10 @@ describe("reservation cancellation ownership migration", () => {
       from workspace_reservations
       where id = 'old-writer-ownerless-cancelling'
     `);
-    expect(ownerlessClaims.rows).toEqual([
-      {
-        id: "old-writer-ownerless-cancelling",
-        cancellation_failure_disposition: "retryable",
-        cancellation_recovery_reason: "retryable_failure",
-        cancellation_retry_at: expect.any(Date),
-      },
-    ]);
-
-    const immediateTakeover = await database.query<{ id: string }>(`
-      update workspace_reservations
-      set
-        reservation_state = 'cancellation_claimed',
-        cancellation_claim_owner = 'new-worker',
-        cancellation_claimed_at = now(),
-        cancellation_failure_disposition = null,
-        cancellation_retry_at = null,
-        updated_at = now()
-      where
-        id = 'old-writer-ownerless-cancelling'
-        and reservation_state = 'cancellation_failed'
-        and cancellation_failure_disposition = 'retryable'
-        and cancellation_retry_at <= now()
-      returning id
-    `);
-    expect(immediateTakeover.rows).toEqual([
-      { id: "old-writer-ownerless-cancelling" },
-    ]);
+    expect(ownerlessClaims.rows).toEqual([]);
   });
 
-  test("durably hands a real old-writer cancellation update to the new worker", async () => {
+  test("rejects a real old-writer cancellation update before the new worker claims", async () => {
     const database = new PGlite();
     databases.push(database);
     await database.exec(`
@@ -512,16 +593,18 @@ describe("reservation cancellation ownership migration", () => {
 
     await applyCancellationMigration(database);
 
-    await database.exec(`
-      update workspace_reservations
-      set
-        reservation_state = 'cancelling',
-        updated_at = now() - interval '30 minutes'
-      where
-        id = 'old-writer-update'
-        and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
-        and payment_state <> 'paid'
-    `);
+    await expect(
+      database.exec(`
+        update workspace_reservations
+        set
+          reservation_state = 'cancelling',
+          updated_at = now() - interval '30 minutes'
+        where
+          id = 'old-writer-update'
+          and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
+          and payment_state <> 'paid'
+      `)
+    ).rejects.toMatchObject({ code: "55000" });
 
     const [legacyClaim] = (
       await database.query<{
@@ -540,11 +623,11 @@ describe("reservation cancellation ownership migration", () => {
       `)
     ).rows;
     expect(legacyClaim).toMatchObject({
-      reservation_state: "cancellation_failed",
-      cancellation_failure_disposition: "retryable",
-      cancellation_recovery_reason: "retryable_failure",
+      reservation_state: "held",
+      cancellation_failure_disposition: null,
+      cancellation_recovery_reason: null,
     });
-    expect(legacyClaim?.cancellation_retry_at).not.toBeNull();
+    expect(legacyClaim?.cancellation_retry_at).toBeNull();
 
     const takeover = await database.query<{ id: string }>(`
       update workspace_reservations
@@ -557,9 +640,7 @@ describe("reservation cancellation ownership migration", () => {
         updated_at = now()
       where
         id = 'old-writer-update'
-        and reservation_state = 'cancellation_failed'
-        and cancellation_failure_disposition = 'retryable'
-        and cancellation_retry_at <= now()
+        and reservation_state = 'held'
       returning id
     `);
     expect(takeover.rows).toEqual([{ id: "old-writer-update" }]);

@@ -1,6 +1,8 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ExternalAPIError } from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
 import { Cause, Effect, Schema } from "effect";
+import { StorageError } from "./errors";
 
 let actionHeaderReads = 0;
 
@@ -112,6 +114,49 @@ describe("Workspace actions", () => {
       });
       expect(JSON.stringify(errorOutput)).not.toContain(marker);
       expect(JSON.stringify(errorOutput)).toContain("PublicSafeActionError");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test("censors provider-derived custom errors through generic action console logging", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const marker = "synthetic-email-provider-action-marker";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.censored-email-provider-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new StorageError({
+            message: "Reservation delivery failed",
+            operation: "deliverReservationEmail",
+            cause: new EmailServiceError(
+              marker,
+              { providerMessage: marker },
+              "resend"
+            ),
+          })
+        )
+    );
+
+    try {
+      await expect(action("input")).resolves.toEqual({
+        serverError: "Something went wrong while executing the operation.",
+      });
+      const serialized = JSON.stringify(errorOutput);
+      expect(serialized).not.toContain(marker);
+      expect(serialized).toContain("StorageError");
+      expect(serialized).toContain("EmailServiceError");
+      expect(serialized).toContain("deliverReservationEmail");
+      expect(serialized).not.toContain("resend");
     } finally {
       consoleError.mockRestore();
     }

@@ -9,13 +9,26 @@ DROP TRIGGER IF EXISTS "workspace_reservations_stamp_ownerless_cancellation_time
 DROP FUNCTION IF EXISTS "workspace_reservations_stamp_ownerless_cancellation_time"();--> statement-breakpoint
 DROP TRIGGER IF EXISTS "workspace_reservations_handoff_ownerless_cancellation" ON "workspace_reservations";--> statement-breakpoint
 DROP FUNCTION IF EXISTS "workspace_reservations_handoff_ownerless_cancellation"();--> statement-breakpoint
+DROP TRIGGER IF EXISTS "workspace_reservations_reject_ownerless_cancellation" ON "workspace_reservations";--> statement-breakpoint
+DROP FUNCTION IF EXISTS "workspace_reservations_reject_ownerless_cancellation"();--> statement-breakpoint
 UPDATE "workspace_reservations"
 SET "reservation_state" = 'cancellation_claimed'
 WHERE
   "reservation_state" = 'cancelling'
   AND "cancellation_claim_owner" IS NOT NULL
   AND "cancellation_claimed_at" IS NOT NULL;--> statement-breakpoint
-CREATE FUNCTION "workspace_reservations_handoff_ownerless_cancellation"()
+UPDATE "workspace_reservations"
+SET
+  "reservation_state" = 'cancellation_failed',
+  "cancellation_failure_disposition" = 'retryable',
+  "cancellation_retry_at" = clock_timestamp(),
+  "cancellation_recovery_reason" = 'retryable_failure',
+  "updated_at" = clock_timestamp()
+WHERE
+  "reservation_state" = 'cancelling'
+  AND "cancellation_claim_owner" IS NULL
+  AND "cancellation_claimed_at" IS NULL;--> statement-breakpoint
+CREATE FUNCTION "workspace_reservations_reject_ownerless_cancellation"()
 RETURNS trigger
 LANGUAGE plpgsql
 AS $$
@@ -25,25 +38,17 @@ BEGIN
     AND NEW."cancellation_claim_owner" IS NULL
     AND NEW."cancellation_claimed_at" IS NULL
   THEN
-    NEW."reservation_state" = 'cancellation_failed';
-    NEW."cancellation_failure_disposition" = 'retryable';
-    NEW."cancellation_retry_at" = clock_timestamp();
-    NEW."cancellation_recovery_reason" = 'retryable_failure';
-    NEW."updated_at" = clock_timestamp();
+    RAISE EXCEPTION USING
+      ERRCODE = '55000',
+      MESSAGE = 'ownerless cancellation claims are disabled';
   END IF;
   RETURN NEW;
 END;
 $$;--> statement-breakpoint
-CREATE TRIGGER "workspace_reservations_handoff_ownerless_cancellation"
+CREATE TRIGGER "workspace_reservations_reject_ownerless_cancellation"
 BEFORE INSERT OR UPDATE ON "workspace_reservations"
 FOR EACH ROW
-EXECUTE FUNCTION "workspace_reservations_handoff_ownerless_cancellation"();--> statement-breakpoint
-UPDATE "workspace_reservations"
-SET "updated_at" = clock_timestamp()
-WHERE
-  "reservation_state" = 'cancelling'
-  AND "cancellation_claim_owner" IS NULL
-  AND "cancellation_claimed_at" IS NULL;--> statement-breakpoint
+EXECUTE FUNCTION "workspace_reservations_reject_ownerless_cancellation"();--> statement-breakpoint
 UPDATE "workspace_reservations"
 SET
   "cancellation_failure_disposition" = 'retryable',

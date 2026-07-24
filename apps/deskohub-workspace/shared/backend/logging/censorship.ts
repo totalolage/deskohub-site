@@ -272,13 +272,105 @@ const getStableErrorTag = (value: Record<string, unknown>) => {
     : "Error";
 };
 
+const projectStableErrorMetadata = (
+  value: object,
+  seen: WeakMap<object, unknown>
+): Record<string, unknown> => {
+  const existing = seen.get(value);
+  if (existing) return existing as Record<string, unknown>;
+
+  const record = value as Record<string, unknown>;
+  const result: Record<string, unknown> = {
+    _tag: getStableErrorTag(record),
+  };
+  seen.set(value, result);
+
+  if (
+    typeof record.operation === "string" &&
+    stableErrorMetadataPattern.test(record.operation)
+  ) {
+    result.operation = record.operation;
+  }
+  if (typeof record.statusCode === "number") {
+    result.statusCode = record.statusCode;
+  }
+  if (typeof record.code === "number") {
+    result.code = record.code;
+  }
+  if (typeof record.cause === "object" && record.cause !== null) {
+    result.cause = censorErrorCause(record.cause, seen);
+  }
+
+  return result;
+};
+
+const projectUnknownErrorMetadata = (
+  value: object,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  const record = value as Record<string, unknown>;
+  const tag =
+    typeof record._tag === "string"
+      ? record._tag
+      : typeof record.name === "string"
+        ? record.name
+        : undefined;
+
+  if (
+    tag?.endsWith("Error") !== true ||
+    !stableErrorMetadataPattern.test(tag)
+  ) {
+    return CENSORED_LOG_VALUE;
+  }
+
+  const existing = seen.get(value);
+  if (existing) return existing;
+
+  const result: Record<string, unknown> = { _tag: tag };
+  seen.set(value, result);
+  if (
+    typeof record.operation === "string" &&
+    stableErrorMetadataPattern.test(record.operation)
+  ) {
+    result.operation = record.operation;
+  }
+  if (typeof record.statusCode === "number") {
+    result.statusCode = record.statusCode;
+  }
+  if (typeof record.code === "number") {
+    result.code = record.code;
+  }
+  if (typeof record.cause === "object" && record.cause !== null) {
+    const cause = censorErrorCause(record.cause, seen);
+    if (cause !== CENSORED_LOG_VALUE) {
+      result.cause = cause;
+    }
+  }
+
+  return result;
+};
+
 function censorErrorCause(
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown {
-  return typeof value === "object" && value !== null
-    ? censorLogValueInternal(value, seen)
-    : CENSORED_LOG_VALUE;
+  if (typeof value !== "object" || value === null) return CENSORED_LOG_VALUE;
+
+  if (
+    Cause.isCause(value) ||
+    ("_tag" in value &&
+      (value._tag === "ExternalAPIError" ||
+        value._tag === "NetworkError" ||
+        value._tag === "ValidationError")) ||
+    isPlainDotyposProviderError(value) ||
+    isSerializedError(value) ||
+    isEffectDrizzleQueryError(value) ||
+    value instanceof Error
+  ) {
+    return censorLogValueInternal(value, seen);
+  }
+
+  return projectUnknownErrorMetadata(value, seen);
 }
 
 const censorQueryParameter = (
@@ -324,15 +416,12 @@ const censorLogRecordValue = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  if (
-    key.toLowerCase() === "error" &&
-    typeof value === "object" &&
-    value !== null
-  ) {
-    return censorLogValueInternal(value, seen);
+  const normalizedKey = key.toLowerCase();
+  if (normalizedKey === "error" || normalizedKey === "cause") {
+    return censorErrorCause(value, seen);
   }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  if (normalizedKey === "params") return censorQueryParams(value, seen);
   return censorLogValueInternal(value, seen);
 };
 
@@ -457,28 +546,7 @@ const censorLogValueInternal = (
   }
 
   if (isSerializedError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-    const result: Record<string, unknown> = {
-      _tag: getStableErrorTag(value),
-    };
-    seen.set(value, result);
-    if (
-      typeof value.operation === "string" &&
-      stableErrorMetadataPattern.test(value.operation)
-    ) {
-      result.operation = value.operation;
-    }
-    if (typeof value.statusCode === "number") {
-      result.statusCode = value.statusCode;
-    }
-    if (typeof value.code === "number") {
-      result.code = value.code;
-    }
-    if (typeof value.cause === "object" && value.cause !== null) {
-      result.cause = censorErrorCause(value.cause, seen);
-    }
-    return result;
+    return projectStableErrorMetadata(value, seen);
   }
 
   if (isEffectDrizzleQueryError(value)) {
@@ -495,16 +563,7 @@ const censorLogValueInternal = (
   }
 
   if (value instanceof Error) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-    const result: Record<string, unknown> = {
-      _tag: getStableErrorTag(value as unknown as Record<string, unknown>),
-    };
-    seen.set(value, result);
-    if ("cause" in value && value.cause !== undefined) {
-      result.cause = censorErrorCause(value.cause, seen);
-    }
-    return result;
+    return projectStableErrorMetadata(value, seen);
   }
 
   if (!isPlainObject(value)) return value;
