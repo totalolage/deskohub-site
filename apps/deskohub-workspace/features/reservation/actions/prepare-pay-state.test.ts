@@ -3752,7 +3752,7 @@ describe("prepareWorkspacePayState", () => {
 
   test("re-queries the attempt after another request completes session supersession", async () => {
     const cancellingReservation = makeReusableReservation({
-      reservationState: "cancelling",
+      reservationState: "cancellation_claimed",
     });
     const replacementReservation = makeReusableReservation({
       id: "replacement-reservation-id",

@@ -264,7 +264,7 @@ const runAttachmentRedeliveryScenario = async (input: {
       if (input.firstExit === "defect") {
         row = makeReservation({
           ...row,
-          reservationState: "cancelling",
+          reservationState: "cancellation_claimed",
           failureCode: exactFailureCode,
         });
         return Effect.die(new Error("Synthetic cancellation defect"));
@@ -272,7 +272,7 @@ const runAttachmentRedeliveryScenario = async (input: {
       if (input.firstExit === "interruption") {
         row = makeReservation({
           ...row,
-          reservationState: "cancelling",
+          reservationState: "cancellation_claimed",
           failureCode: exactFailureCode,
         });
         return Effect.never;
@@ -1815,7 +1815,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       label: "epoch",
       row: {
         dotyposReservationId: "synthetic-mismatch-provider",
-        reservationState: "cancelling" as const,
+        reservationState: "cancellation_claimed" as const,
         failureCode: "attach_failed_cancel_failed:synthetic-other-epoch",
       },
     },

@@ -391,7 +391,11 @@ const waitForPendingReservationTransition = Effect.fn(
   readonly reservationId: string;
   readonly pendingStates?: readonly WorkspaceReservation["reservationState"][];
 }) {
-  const pendingStates = input.pendingStates ?? ["creating_hold", "cancelling"];
+  const pendingStates = input.pendingStates ?? [
+    "creating_hold",
+    "cancelling",
+    "cancellation_claimed",
+  ];
   const findSettledReservation = input.reservations
     .findById(input.reservationId)
     .pipe(
@@ -449,7 +453,8 @@ const resolvePendingReservationTransition = Effect.fn(
 
   if (
     input.reservation.reservationState !== "creating_hold" &&
-    input.reservation.reservationState !== "cancelling"
+    input.reservation.reservationState !== "cancelling" &&
+    input.reservation.reservationState !== "cancellation_claimed"
   ) {
     return input.reservation;
   }
@@ -968,7 +973,8 @@ const prepareReservationDraft = Effect.fn(
 
     if (
       existingAttempt?.reservationState === "creating_hold" ||
-      existingAttempt?.reservationState === "cancelling"
+      existingAttempt?.reservationState === "cancelling" ||
+      existingAttempt?.reservationState === "cancellation_claimed"
     ) {
       return yield* new CheckoutAttemptUnavailableError({
         reservation: existingAttempt,
@@ -1045,12 +1051,18 @@ const prepareReservationDraft = Effect.fn(
     if (
       currentReservation?.reservationState === "creating_hold" ||
       currentReservation?.reservationState === "cancelling" ||
+      currentReservation?.reservationState === "cancellation_claimed" ||
       currentReservation?.reservationState === "draft"
     ) {
       const transition = yield* waitForPendingReservationTransition({
         reservations,
         reservationId: currentReservation.id,
-        pendingStates: ["draft", "creating_hold", "cancelling"],
+        pendingStates: [
+          "draft",
+          "creating_hold",
+          "cancelling",
+          "cancellation_claimed",
+        ],
       });
       const settledReservation = Match.value(transition).pipe(
         Match.tag("settled", ({ reservation }) => reservation),
@@ -1060,7 +1072,8 @@ const prepareReservationDraft = Effect.fn(
       if (
         settledReservation?.reservationState === "draft" ||
         settledReservation?.reservationState === "creating_hold" ||
-        settledReservation?.reservationState === "cancelling"
+        settledReservation?.reservationState === "cancelling" ||
+        settledReservation?.reservationState === "cancellation_claimed"
       ) {
         return yield* new CheckoutAttemptUnavailableError({
           reservation: settledReservation,

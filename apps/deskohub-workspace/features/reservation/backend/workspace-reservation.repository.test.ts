@@ -692,9 +692,7 @@ describe("WorkspaceReservationRepository", () => {
     expect(handoff).toContain('"cancellation_failed"');
     expect(handoff).toContain("input.reservationCreatedAt");
     expect(handoff).toContain("existing.dotyposReservationId");
-    expect(source).toContain(
-      '["cancellation_failed", "cancelling", "cancelled"].includes'
-    );
+    expect(source).toContain('"cancellation_claimed"');
     const conflictRecovery = sliceFrom(
       source,
       "recordDifferentProviderAttachmentRecovery: Effect.fn(",
@@ -1100,7 +1098,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .select()
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "owned"));
-        expect(stored?.reservationState).toBe("cancelling");
+        expect(stored?.reservationState).toBe("cancellation_claimed");
         expect(["worker-a", "worker-b"]).toContain(
           stored?.cancellationClaimOwner
         );
@@ -1150,7 +1148,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .select()
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "lost"));
-        expect(stored?.reservationState).toBe("cancelling");
+        expect(stored?.reservationState).toBe("cancellation_claimed");
         expect(stored?.cancellationClaimOwner).toBe("worker-b");
       })
     );
@@ -1163,12 +1161,12 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
         const repository = yield* WorkspaceReservationRepository;
         yield* db.insert(workspaceReservations).values([
           reservationRow("fresh", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
           }),
           reservationRow("boundary", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
           }),
@@ -1390,7 +1388,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           recoveryReason: "attachment_compensation",
         });
         expect(claimed).toMatchObject({
-          reservationState: "cancelling",
+          reservationState: "cancellation_claimed",
           cancellationClaimOwner: "compensation-worker",
         });
         expect(
@@ -1425,7 +1423,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
             cancellationRecoveryReason: "supersession_recovery",
           }),
           reservationRow("stale-audit", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
             cancellationRecoveryReason: "attachment_compensation",

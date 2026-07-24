@@ -186,13 +186,43 @@ export const addRedaction = (value: string | undefined, force = false) => {
   );
 };
 
+const decodeQueryComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value.replaceAll("+", " "));
+  } catch {
+    return value;
+  }
+};
+
+const redactPayStateQuery = (value: string) =>
+  value.replace(
+    /([?&])([^?&\s"'<>]*?)(=|%3d)([^&\s"'<>]*)/gi,
+    (parameter, delimiter, rawKey, separator) =>
+      decodeQueryComponent(rawKey).toLowerCase() === "paystate"
+        ? `${delimiter}${rawKey}${separator}[redacted]`
+        : parameter
+  );
+
+const redactEncodedQuery = (value: string, remainingLayers: number): string => {
+  const structurallyRedacted = redactPayStateQuery(value);
+  if (structurallyRedacted !== value || remainingLayers === 0) {
+    return structurallyRedacted;
+  }
+  if (!/%(?:25)*(?:3f|26)/i.test(value)) return value;
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded === value) return value;
+    const redacted = redactEncodedQuery(decoded, remainingLayers - 1);
+    return redacted === decoded ? value : encodeURIComponent(redacted);
+  } catch {
+    return value;
+  }
+};
+
 export const redact = (text: string) => {
-  let output = text
-    .replace(/([?&]payState=)[^&\s"'<>]*/gi, "$1[redacted]")
-    .replace(
-      /((?:%3F|%26)payState(?:%3D|=))(?:(?!%26|[&\s"'<>]).)+/gi,
-      "$1[redacted]"
-    );
+  let output = text.replace(/[^\s"'<>]+/g, (candidate) =>
+    redactEncodedQuery(candidate, 2)
+  );
   for (const secret of redactions)
     output = output.replaceAll(secret, "[redacted]");
   return output;

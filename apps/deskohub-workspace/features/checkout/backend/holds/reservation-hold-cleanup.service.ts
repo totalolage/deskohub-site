@@ -111,6 +111,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         if (
           active?.paymentState === "pending" &&
           (active.reservationState === "cancelling" ||
+            active.reservationState === "cancellation_claimed" ||
             active.reservationState === "cancellation_failed")
         ) {
           active = yield* reservations
@@ -493,7 +494,10 @@ const getCancellationRecoveryContext = (
   if (reservation.reservationState === "held") {
     return { recoveryReason: "hold_expired", holdExpiredAt: now };
   }
-  if (reservation.reservationState === "cancelling") {
+  if (
+    reservation.reservationState === "cancelling" ||
+    reservation.reservationState === "cancellation_claimed"
+  ) {
     return { recoveryReason: "stale_claim_recovery" };
   }
   if (

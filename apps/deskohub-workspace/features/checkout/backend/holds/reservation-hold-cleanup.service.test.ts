@@ -314,7 +314,7 @@ describe("ReservationHoldCleanupService", () => {
     const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const claimed = {
       id: orderId,
-      reservationState: "cancelling",
+      reservationState: "cancellation_claimed",
       paymentState: "expired",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -850,7 +850,7 @@ const runLegacyPendingReconciliationScenario = async (
   };
   const claimed = {
     ...restored,
-    reservationState: "cancelling",
+    reservationState: "cancellation_claimed",
     paymentState: "failed",
     dotyposReservationId: "legacy-provider-reservation",
     dotyposCustomerId: "legacy-provider-customer",
@@ -943,7 +943,7 @@ const runOwnedCancellationScenario = async (input: {
 
   const reservation = {
     id: "owned-cancellation-reservation",
-    reservationState: "cancelling",
+    reservationState: "cancellation_claimed",
     paymentState: "not_started",
     dotyposReservationId: "owned-dotypos-reservation",
     dotyposCustomerId: "dotypos-customer-id",

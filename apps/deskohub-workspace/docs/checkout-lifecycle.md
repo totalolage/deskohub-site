@@ -127,9 +127,9 @@ Indexes and constraints:
 - Unique index on `correlation_id`.
 - Partial unique index on `dotypos_reservation_id` where not null.
 - Partial index on `reservation_hold_expires_at` for `reservation_state = 'held'`.
-- Partial cancellation recovery index on `(reservation_state, cancellation_recovery_reason, cancellation_failure_disposition, cancellation_retry_at, cancellation_claimed_at)` for `cancelling` and `cancellation_failed`.
+- Partial cancellation recovery index on `(reservation_state, cancellation_recovery_reason, cancellation_failure_disposition, cancellation_retry_at, cancellation_claimed_at)` for legacy `cancelling`, owned `cancellation_claimed`, and `cancellation_failed`.
 - Recovery index on `(reservation_state, payment_state, fulfillment_state)`.
-- `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancelled`, and `cancellation_failed` states.
+- `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancellation_claimed`, `cancelled`, and `cancellation_failed` states.
 - `paid_at` must be non-null when `payment_state = 'paid'`.
 - `fulfilled_at` must be non-null when `fulfillment_state = 'fulfilled'`.
 - `fulfillment_failed_at` and `fulfillment_failure_code` must be non-null when `fulfillment_state = 'failed'`.
@@ -229,7 +229,8 @@ Indexes and constraints:
 - `hold_expired`: local policy observed the hold deadline before payment completed.
 - `confirming`: payment is verified paid and a worker is confirming/finalizing the Dotypos reservation.
 - `confirmed`: Dotypos reservation is confirmed/final for the paid booking.
-- `cancelling`: a worker is cancelling a Dotypos hold.
+- `cancelling`: a legacy worker attempted an ownerless cancellation; after the ownership migration the compatibility trigger immediately hands it off as retryable work.
+- `cancellation_claimed`: an ownership-aware worker exclusively owns the cancellation provider boundary.
 - `cancelled`: Dotypos hold was cancelled or Dotypos already reports it as cancelled.
 - `cancellation_failed`: cancellation failed and needs retry/manual recovery.
 
@@ -239,30 +240,31 @@ Allowed reservation transitions:
 - `creating_hold -> cancellation_failed` when the hold is created in Dotypos but local attachment fails. The failed attachment is queued immediately for owned cancellation compensation.
 - `creating_hold -> draft` only when Dotypos hold creation failed before any Dotypos reservation ID existed.
 - `held -> confirming -> confirmed` after verified paid payment.
-- `held -> hold_expired -> cancelling -> cancelled` for unpaid expired holds.
-- `held -> cancelling -> cancelled` for unsuccessful terminal payment before hold expiry.
-- `cancelling -> cancellation_failed`
-- `cancellation_failed -> cancelling -> cancelled`
+- `held -> hold_expired -> cancellation_claimed -> cancelled` for unpaid expired holds.
+- `held -> cancellation_claimed -> cancelled` for unsuccessful terminal payment before hold expiry.
+- `cancellation_claimed -> cancellation_failed`
+- `cancellation_failed -> cancellation_claimed -> cancelled`
+- `held|hold_expired|cancellation_failed -> cancelling -> cancellation_failed` is the database-owned fail-closed handoff for old writers.
 
 Forbidden reservation transitions:
 
 - Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
+- Any cancellation finalization unless the row is still in `cancellation_claimed`, owned by the completing worker, unpaid, and unconfirmed.
 - Any Dotypos cancellation DELETE unless the worker has reloaded and renewed the row after the live provider-status read and still owns its current cancellation claim.
 
 ### Cancellation ownership and live provider status
 
-Cancellation is a compare-and-set lease, not ownership inferred from `reservation_state` alone. A worker atomically writes a fresh opaque owner and database-generated `cancellation_claimed_at` while moving an eligible row to `cancelling`. Every completion, failure, supersession transaction, and ownership renewal compares that same owner. After reading live provider status, the worker renews the timestamp with an owner-CAS update and uses the returned row as its reload. A worker whose renewal no longer finds its owner stops without provider or local destructive work.
+Cancellation is a compare-and-set lease, not ownership inferred from a legacy state. An ownership-aware worker atomically writes a fresh opaque owner and database-generated `cancellation_claimed_at` while moving an eligible row to `cancellation_claimed`. The database constraint makes that state equivalent to a complete owner/timestamp pair and forbids owner fields on every other state. Every completion, failure, supersession transaction, and ownership renewal compares that same owner. After reading live provider status, the worker renews the timestamp with an owner-CAS update and uses the returned row as its reload. A worker whose renewal no longer finds its owner stops without provider or local destructive work.
 
-The lease is five minutes. Acquisition, renewal, retry eligibility, and stale takeover compare against the database clock so application-host clock skew cannot shorten or extend ownership. `cancelling` may be taken over only when its paired lease timestamp is at or before the database's five-minute stale cutoff. During migrate-before-promote overlap, a database trigger replaces an old writer's application-clock `updated_at` whenever it writes an ownerless `cancelling` row; legacy takeover therefore uses a database-stamped `updated_at` for the same bounded grace period. Retryable failures carry a database-generated retry time; failures that require manual review carry no retry time and are excluded from bounded cron batches. Queue delivery is the primary cleanup path; the daily cron selects expired held rows, due retryable failures, legacy recoverable rows, and only stale cancelling leases.
+The lease is five minutes. Acquisition, renewal, retry eligibility, and stale takeover compare against the database clock so application-host clock skew cannot shorten or extend ownership. `cancellation_claimed` may be taken over only when its paired lease timestamp is at or before the database's five-minute stale cutoff. During rollout, the database trigger rewrites every ownerless old-writer `cancelling` write before `RETURNING` into due retryable `cancellation_failed` work. The old worker therefore fails its own `state === cancelling` provider-boundary guard, while an ownership-aware worker can claim the durable handoff. Retryable failures carry a database-generated retry time; failures that require manual review carry no retry time and are excluded from bounded cron batches. Queue delivery is the primary cleanup path; the daily cron selects expired held rows, due retryable failures, legacy recoverable rows, and only stale owned leases.
 
 Cancellation recovery carries an explicit reason through queue, cron, service, and repository calls. `reservation_hold_expired_at` is written only when an unpaid held reservation's real deadline was observed at or before the cleanup timestamp. Attachment compensation, supersession recovery, retryable failures, and stale-claim takeover never synthesize that audit fact.
 
 After Dotypos creates a reservation, a failed local attachment hands the exact Dotypos reservation ID to two independent durable recovery paths: the local cancellation marker and an identity-bearing queue message retained for the queue provider's seven-day maximum. Both are attempted even if the other fails. A surviving marker is recoverable by cron when enqueue fails; a surviving queue message can idempotently materialize the marker when the original marker write fails. Duplicate or delayed messages only materialize the original `creating_hold`/initial attachment-failure state with the same provider ID and cannot overwrite a successfully attached, differently owned, retried, manually reviewed, or completed reservation. If neither durable handoff succeeds, the action fails loudly rather than reporting a successful handoff.
 
-A legacy `cancelling` or `cancellation_failed` row with `payment_state = 'pending'` is never sent directly to cancellation. Recovery first CAS-restores it to `held`, allowing the existing provider-payment finalization contract to resolve paid, terminal, or still-pending outcomes. Paid stays held for fulfillment, terminal unsuccessful can proceed through a fresh cancellation claim, and unconfirmed outcomes remain held for later reconciliation.
+A legacy `cancelling`, owned `cancellation_claimed`, or `cancellation_failed` row with `payment_state = 'pending'` is never sent directly to cancellation. Recovery first CAS-restores a stale/unowned row to `held`, allowing the existing provider-payment finalization contract to resolve paid, terminal, or still-pending outcomes. Paid stays held for fulfillment, terminal unsuccessful can proceed through a fresh cancellation claim, and unconfirmed outcomes remain held for later reconciliation.
 
 The live Dotypos policy has one shared matrix:
 
@@ -495,7 +497,7 @@ sequenceDiagram
   Nexi-->>Return: Terminal unsuccessful or pending result
   Return->>DB: In one transaction mark attempt/reservation terminal and release reserved discount claim
   Return->>Cleanup: Request unpaid hold cancellation
-  Cleanup->>DB: Claim reservation_state=cancelling
+  Cleanup->>DB: Claim reservation_state=cancellation_claimed + owner
   Cleanup->>Dotypos: Cancel Dotypos reservation hold
   Dotypos-->>Cleanup: Cancelled or already cancelled
   Cleanup->>DB: reservation_state=cancelled
@@ -510,8 +512,8 @@ sequenceDiagram
   participant DB as Local DB
   participant Dotypos
 
-  Job->>DB: Select expired held, cancellation_failed, and stale cancelling rows
-  Job->>DB: CAS owner + claimed_at, reservation_state=cancelling
+  Job->>DB: Select expired held, cancellation_failed, and stale cancellation_claimed rows
+  Job->>DB: CAS owner + claimed_at, reservation_state=cancellation_claimed
   Job->>Dotypos: Read live reservation status
   Job->>DB: Owner-CAS renew lease and reload
   alt live status is NEW
@@ -522,7 +524,7 @@ sequenceDiagram
   else other status or provider failure
     Job->>DB: Owner-CAS reservation_state=cancellation_failed
   end
-  Job->>DB: Later recovery retries cancellation_failed or stale cancelling rows
+  Job->>DB: Later recovery retries cancellation_failed or stale cancellation_claimed rows
 ```
 
 ## Recovery Rules
@@ -536,14 +538,15 @@ sequenceDiagram
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
 | Cancellation failed, retryable | `reservation_state = 'cancellation_failed' and cancellation_failure_disposition = 'retryable' and cancellation_retry_at <= now()` | Retry Dotypos cancellation. |
 | Cancellation failed, manual review | `reservation_state = 'cancellation_failed' and cancellation_failure_disposition = 'manual_review'` | Exclude from automatic batches and investigate explicitly. |
-| Cancellation worker stopped | `reservation_state = 'cancelling'` with a stale paired claim, or an ownerless legacy row whose `updated_at` is stale | Take over with a new owner after the bounded five-minute database-clock lease. |
-| Legacy cancellation with pending payment | `reservation_state in ('cancelling', 'cancellation_failed') and payment_state = 'pending'` | After the ownership/grace guard, restore to `held` and run provider-payment reconciliation before considering cancellation. |
+| Cancellation worker stopped | `reservation_state = 'cancellation_claimed'` with a stale paired claim | Take over with a new owner after the bounded five-minute database-clock lease. |
+| Legacy cancellation handoff | An old writer attempts `reservation_state = 'cancelling'` | The compatibility trigger rewrites it to due retryable `cancellation_failed`; only an ownership-aware worker can claim the provider boundary. |
+| Legacy cancellation with pending payment | `reservation_state in ('cancelling', 'cancellation_claimed', 'cancellation_failed') and payment_state = 'pending'` | After the ownership/lease guard, restore to `held` and run provider-payment reconciliation before considering cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
 
-Rollout is expand-first and supports migrate-before-promote. Before publication, the complete migration adds nullable paired-lease, failure-disposition, retry, and recovery-reason columns; backfills existing `cancellation_failed` rows as due `retryable_failure` work; database-stamps existing ownerless `cancelling` rows; installs the old-writer compatibility trigger; and adds constraints that permit both paired claims and ownerless rows. Apply that migration before promoting the ownership-aware application. Ownerless rows then receive the same five-minute database-clock grace before takeover or pending-payment restoration, regardless of old-host clock skew.
+Rollout is expand-first but is not zero-drain at the irreversible provider boundary. Before applying the migration, quiesce queue, cron, and supersession cancellation ingress and drain or terminate every old-version invocation; SQL cannot revoke provider permission already loaded into an old process. The migration then adds the ownership columns and `cancellation_claimed` state, converts already owner-stamped preview rows, hands every ownerless `cancelling` row to due retryable failure, installs the old-writer fail-closed trigger, and enforces the state/owner equivalence. Promote the ownership-aware application only after migration, then resume cancellation ingress.
 
-Application rollback does not remove the trigger: it is backward-compatible with old writers and must remain while any can run. Drizzle has no down-migration path here. After all old writers are retired and legacy ownerless rows have drained, a later forward-only contract migration may drop the trigger, then its function, and optionally tighten the state/owner constraint. The tradeoff is temporary acceptance of ownerless cancellation rows and a narrow compatibility trigger in exchange for safe zero-downtime ordering.
+Rollback is symmetric: quiesce and drain ownership-aware cancellation work first. Keep the migration and compatibility trigger; Drizzle has no down-migration path here. An old binary behind this schema is safe but fail-closed: its attempted cancellation becomes retryable handoff work and it never reaches DELETE. Cleanup remains blocked until an ownership-aware version is restored. A later forward-only contract migration may remove the trigger only after every old writer is retired and no rollback to one is permitted.
 
 ## Live Test Safety Checklist
 

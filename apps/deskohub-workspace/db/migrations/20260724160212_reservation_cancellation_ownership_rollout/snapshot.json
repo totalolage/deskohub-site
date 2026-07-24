@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "aaf87e07-318e-47a5-a553-4d43e2df5cad",
+  "id": "0d759862-9779-47c3-9780-66d4d594a536",
   "prevIds": [
     "083a1001-8f45-4d9d-8e55-a567c13902e6"
   ],
@@ -14,13 +14,13 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_code_customers",
+      "name": "discount_code_redemptions",
       "entityType": "tables",
       "schema": "public"
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_code_redemptions",
+      "name": "discount_code_customers",
       "entityType": "tables",
       "schema": "public"
     },
@@ -344,32 +344,6 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "code_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_code_customers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "dotypos_customer_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_code_customers"
-    },
-    {
-      "type": "text",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -533,6 +507,32 @@
       "entityType": "columns",
       "schema": "public",
       "table": "discount_code_redemptions"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "code_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_code_customers"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_code_customers"
     },
     {
       "type": "text",
@@ -2230,7 +2230,7 @@
         }
       ],
       "isUnique": false,
-      "where": "\"reservation_state\" in ('cancelling', 'cancellation_failed')",
+      "where": "\"reservation_state\" in ('cancelling', 'cancellation_claimed', 'cancellation_failed')",
       "with": "",
       "method": "btree",
       "concurrently": false,
@@ -2305,23 +2305,6 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
-      "onDelete": "CASCADE",
-      "name": "discount_code_customers_code_id_discount_codes_id_fk",
-      "entityType": "fks",
-      "schema": "public",
-      "table": "discount_code_customers"
-    },
-    {
-      "nameExplicit": false,
-      "columns": [
-        "code_id"
-      ],
-      "schemaTo": "public",
-      "tableTo": "discount_codes",
-      "columnsTo": [
-        "id"
-      ],
-      "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "name": "discount_code_redemptions_code_id_discount_codes_id_fk",
       "entityType": "fks",
@@ -2361,6 +2344,23 @@
       "entityType": "fks",
       "schema": "public",
       "table": "discount_code_redemptions"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "code_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "discount_codes",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "discount_code_customers_code_id_discount_codes_id_fk",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "discount_code_customers"
     },
     {
       "nameExplicit": false,
@@ -2615,13 +2615,6 @@
     },
     {
       "value": "btrim(\"dotypos_customer_id\") <> ''",
-      "name": "discount_code_customers_customer_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "discount_code_customers"
-    },
-    {
-      "value": "btrim(\"dotypos_customer_id\") <> ''",
       "name": "discount_code_redemptions_customer_check",
       "entityType": "checks",
       "schema": "public",
@@ -2647,6 +2640,13 @@
       "entityType": "checks",
       "schema": "public",
       "table": "discount_code_redemptions"
+    },
+    {
+      "value": "btrim(\"dotypos_customer_id\") <> ''",
+      "name": "discount_code_customers_customer_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "discount_code_customers"
     },
     {
       "value": "\"code\" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'",
@@ -2754,7 +2754,7 @@
       "table": "webhook_events"
     },
     {
-      "value": "\"reservation_state\" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed')",
+      "value": "\"reservation_state\" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed')",
       "name": "workspace_reservations_reservation_state_check",
       "entityType": "checks",
       "schema": "public",
@@ -2782,7 +2782,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"reservation_state\" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed') or \"dotypos_reservation_id\" is not null",
+      "value": "\"reservation_state\" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed') or \"dotypos_reservation_id\" is not null",
       "name": "workspace_reservations_hold_id_check",
       "entityType": "checks",
       "schema": "public",
@@ -2810,7 +2810,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "(\n        \"cancellation_claim_owner\" is null\n        and \"cancellation_claimed_at\" is null\n      ) or (\n        \"cancellation_claim_owner\" is not null\n        and \"cancellation_claimed_at\" is not null\n      )",
+      "value": "(\n        \"reservation_state\" <> 'cancellation_claimed'\n        and\n        \"cancellation_claim_owner\" is null\n        and \"cancellation_claimed_at\" is null\n      ) or (\n        \"reservation_state\" = 'cancellation_claimed'\n        and\n        \"cancellation_claim_owner\" is not null\n        and \"cancellation_claimed_at\" is not null\n      )",
       "name": "workspace_reservations_cancellation_claim_check",
       "entityType": "checks",
       "schema": "public",

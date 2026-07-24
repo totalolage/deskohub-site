@@ -564,7 +564,12 @@ const decodeSchedulePayload = Schema.decodeUnknownOption(
   ReservationHoldCleanupSchedulePayloadSchema
 );
 
-const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
+const dueReservationStates = [
+  "held",
+  "cancelling",
+  "cancellation_claimed",
+  "cancellation_failed",
+];
 
 const isDueReservation = (
   reservation: WorkspaceReservation | null,
@@ -646,7 +651,8 @@ const classifyAttachmentCompensation = (input: {
     return AttachmentCompensationClassification.completed({});
   }
   if (
-    reservation.reservationState === "cancelling" &&
+    (reservation.reservationState === "cancelling" ||
+      reservation.reservationState === "cancellation_claimed") &&
     sameProvider &&
     sameCreationTime &&
     hasExactAttachRecovery

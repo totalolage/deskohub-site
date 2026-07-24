@@ -512,9 +512,12 @@ export const getAttachCancellationRecovery = (
   >
 ) => {
   if (
-    !["cancellation_failed", "cancelling", "cancelled"].includes(
-      reservation.reservationState
-    ) ||
+    ![
+      "cancellation_failed",
+      "cancelling",
+      "cancellation_claimed",
+      "cancelled",
+    ].includes(reservation.reservationState) ||
     !reservation.failureCode
   ) {
     return null;
@@ -2252,7 +2255,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           const [claimed] = yield* db
             .update(workspaceReservations)
             .set({
-              reservationState: "cancelling",
+              reservationState: "cancellation_claimed",
               cancellationClaimOwner: input.ownerId,
               cancellationClaimedAt: sql`now()`,
               cancellationFailureDisposition: null,
@@ -2289,6 +2292,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   and(
                     eq(workspaceReservations.reservationState, "cancelling"),
                     cancellationLeaseExpired
+                  ),
+                  and(
+                    eq(
+                      workspaceReservations.reservationState,
+                      "cancellation_claimed"
+                    ),
+                    cancellationLeaseExpired
                   )
                 ),
                 inArray(workspaceReservations.paymentState, [
@@ -2311,7 +2321,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         const [claimed] = yield* db
           .update(workspaceReservations)
           .set({
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: input.ownerId,
             cancellationClaimedAt: sql`now()`,
             cancellationFailureDisposition: null,
@@ -2348,7 +2358,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .where(
             and(
               eq(workspaceReservations.id, input.id),
-              eq(workspaceReservations.reservationState, "cancelling"),
+              eq(
+                workspaceReservations.reservationState,
+                "cancellation_claimed"
+              ),
               eq(workspaceReservations.cancellationClaimOwner, input.ownerId),
               eq(
                 workspaceReservations.cancellationRecoveryReason,
@@ -2393,6 +2406,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 and(
                   eq(workspaceReservations.reservationState, "cancelling"),
                   cancellationLeaseExpired
+                ),
+                and(
+                  eq(
+                    workspaceReservations.reservationState,
+                    "cancellation_claimed"
+                  ),
+                  cancellationLeaseExpired
                 )
               )
             )
@@ -2422,7 +2442,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .where(
               and(
                 eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.reservationState, "cancelling"),
+                eq(
+                  workspaceReservations.reservationState,
+                  "cancellation_claimed"
+                ),
                 eq(workspaceReservations.cancellationClaimOwner, input.ownerId),
                 eq(
                   workspaceReservations.cancellationRecoveryReason,
@@ -2472,7 +2495,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .where(
                 and(
                   eq(workspaceReservations.id, input.cancelledReservationId),
-                  eq(workspaceReservations.reservationState, "cancelling"),
+                  eq(
+                    workspaceReservations.reservationState,
+                    "cancellation_claimed"
+                  ),
                   eq(
                     workspaceReservations.cancellationClaimOwner,
                     input.cancellationOwnerId
@@ -2556,7 +2582,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .where(
             and(
               eq(workspaceReservations.id, input.id),
-              eq(workspaceReservations.reservationState, "cancelling"),
+              eq(
+                workspaceReservations.reservationState,
+                "cancellation_claimed"
+              ),
               eq(workspaceReservations.cancellationClaimOwner, input.ownerId),
               eq(
                 workspaceReservations.cancellationRecoveryReason,
@@ -2876,6 +2905,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                           "cancelling"
                         ),
                         cancellationLeaseExpired
+                      ),
+                      and(
+                        eq(
+                          workspaceReservations.reservationState,
+                          "cancellation_claimed"
+                        ),
+                        cancellationLeaseExpired
                       )
                     )
                   ),
@@ -2898,6 +2934,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                         eq(
                           workspaceReservations.reservationState,
                           "cancelling"
+                        ),
+                        cancellationLeaseExpired
+                      ),
+                      and(
+                        eq(
+                          workspaceReservations.reservationState,
+                          "cancellation_claimed"
                         ),
                         cancellationLeaseExpired
                       )
