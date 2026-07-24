@@ -10,6 +10,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { relations } from "@/db/relations";
 import { workspaceReservations } from "@/db/schema";
 import {
+  getDifferentProviderAttachmentRecovery,
   getHoldCreationMarker,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -913,6 +914,161 @@ const reservationRow = (
   reservationHoldExpiresAt: expiredAt,
   reservationCreatedAt: instant("2026-07-23T09:00:00Z"),
   ...overrides,
+});
+
+describe("WorkspaceReservationRepository different-provider ownership", () => {
+  test("enforces the exact owner and timestamp through the real verification CAS", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-real-verification-epoch";
+        const winnerId = "synthetic-real-verification-winner";
+        const loserId = "synthetic-real-verification-loser";
+        const loserCreatedAt = instant("2026-07-23T09:00:00Z");
+        const wrongCreatedAt = loserCreatedAt.add({ milliseconds: 1 });
+        const ownerId = "synthetic-real-verification-owner";
+        const processingMarker = `hold_creation_orphan_processing:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${ownerId}`;
+        yield* db.insert(workspaceReservations).values(
+          reservationRow("real-verification-cas", {
+            dotyposReservationId: winnerId,
+            reservationCreatedAt: instant("2026-07-23T08:59:00Z"),
+            failureCode: processingMarker,
+          })
+        );
+        const beginInput = {
+          id: "real-verification-cas",
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId,
+        };
+
+        expect(
+          yield* Effect.flip(
+            repository.beginDifferentProviderAttachmentCancellationVerification(
+              {
+                ...beginInput,
+                ownerId: "synthetic-wrong-owner",
+              }
+            )
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(
+          yield* Effect.flip(
+            repository.beginDifferentProviderAttachmentCancellationVerification(
+              {
+                ...beginInput,
+                reservationCreatedAt: wrongCreatedAt,
+              }
+            )
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        const [beforeExactBegin] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(beforeExactBegin?.failureCode).toBe(processingMarker);
+
+        yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+          beginInput
+        );
+        yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+          beginInput
+        );
+        const verifyingMarker = `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${ownerId}`;
+        const [afterExactBegin] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(afterExactBegin?.failureCode).toBe(verifyingMarker);
+
+        expect(
+          yield* Effect.flip(
+            repository.releaseDifferentProviderAttachmentRecovery({
+              ...beginInput,
+              ownerId: "synthetic-wrong-owner",
+            })
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(
+          yield* Effect.flip(
+            repository.completeDifferentProviderAttachmentRecovery({
+              ...beginInput,
+              reservationCreatedAt: wrongCreatedAt,
+            })
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        const [afterRejectedMutations] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(afterRejectedMutations?.failureCode).toBe(verifyingMarker);
+        expect(afterRejectedMutations?.dotyposReservationId).toBe(winnerId);
+        expect(afterRejectedMutations?.paymentState).toBe("not_started");
+      })
+    );
+  });
+
+  test("takes over the real verifying CAS only at the inclusive stale boundary", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-real-takeover-epoch";
+        const winnerId = "synthetic-real-takeover-winner";
+        const loserId = "synthetic-real-takeover-loser";
+        const loserCreatedAt = instant("2026-07-23T09:00:00Z");
+        const staleBoundary = instant("2026-07-23T10:00:00Z");
+        const originalOwnerId = "synthetic-real-takeover-owner";
+        const newOwnerId = "synthetic-real-takeover-new-owner";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow("real-verification-takeover", {
+            dotyposReservationId: winnerId,
+            reservationCreatedAt: instant("2026-07-23T08:59:00Z"),
+            failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${originalOwnerId}`,
+            updatedAt: staleBoundary,
+          })
+        );
+        const claimInput = {
+          id: "real-verification-takeover",
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: newOwnerId,
+        };
+
+        expect(
+          yield* repository.claimDifferentProviderAttachmentRecovery({
+            ...claimInput,
+            staleBefore: staleBoundary.subtract({ milliseconds: 1 }),
+          })
+        ).toBe(false);
+        expect(
+          yield* repository.claimDifferentProviderAttachmentRecovery({
+            ...claimInput,
+            staleBefore: staleBoundary,
+          })
+        ).toBe(true);
+
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, claimInput.id));
+        expect(
+          stored && getDifferentProviderAttachmentRecovery(stored)
+        ).toMatchObject({
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: newOwnerId,
+          phase: "verifying",
+        });
+        expect(stored?.dotyposReservationId).toBe(winnerId);
+        expect(stored?.paymentState).toBe("not_started");
+      })
+    );
+  });
 });
 
 describe("WorkspaceReservationRepository cancellation ownership", () => {
