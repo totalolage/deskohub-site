@@ -142,11 +142,6 @@ export const discountCodeCustomers = pgTable(
 );
 
 export type StoredDiscount = typeof discounts.$inferSelect;
-export type NewStoredDiscount = typeof discounts.$inferInsert;
 export type DiscountProductTarget = typeof discountProductTargets.$inferSelect;
-export type NewDiscountProductTarget =
-  typeof discountProductTargets.$inferInsert;
 export type DiscountCode = typeof discountCodes.$inferSelect;
-export type NewDiscountCode = typeof discountCodes.$inferInsert;
 export type DiscountCodeCustomer = typeof discountCodeCustomers.$inferSelect;
-export type NewDiscountCodeCustomer = typeof discountCodeCustomers.$inferInsert;

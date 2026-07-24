@@ -34,4 +34,3 @@ export const legalEvidenceEvents = pgTable(
 );
 
 export type LegalEvidenceEvent = typeof legalEvidenceEvents.$inferSelect;
-export type NewLegalEvidenceEvent = typeof legalEvidenceEvents.$inferInsert;

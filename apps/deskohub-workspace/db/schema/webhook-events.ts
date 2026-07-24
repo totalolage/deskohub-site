@@ -58,4 +58,3 @@ export const webhookEvents = pgTable(
 );
 
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
-export type NewWebhookEvent = typeof webhookEvents.$inferInsert;
