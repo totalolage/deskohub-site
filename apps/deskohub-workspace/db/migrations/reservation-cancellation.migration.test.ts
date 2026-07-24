@@ -80,7 +80,13 @@ describe("reservation cancellation ownership migration", () => {
   const oldWorkerClaim = (database: PGlite) =>
     database.query<{ id: string; reservation_state: string }>(`
       update workspace_reservations
-      set reservation_state = 'cancelling', updated_at = now()
+      set
+        reservation_state = 'cancelling',
+        cancellation_claim_owner = 'synthetic-old-worker',
+        cancellation_claimed_at = now(),
+        cancellation_failure_disposition = null,
+        cancellation_retry_at = null,
+        updated_at = now()
       where
         id = 'rollout-reservation'
         and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
@@ -90,65 +96,53 @@ describe("reservation cancellation ownership migration", () => {
 
   test("keeps an old worker outside the provider boundary when the new worker claims first", async () => {
     const database = await prepareRolloutDatabase();
-    let providerCancellationCount = 0;
 
     expect((await newWorkerClaim(database)).rows).toHaveLength(1);
     expect((await oldWorkerClaim(database)).rows).toEqual([]);
-    const [oldWorkerFallback] = (
-      await database.query<{ reservation_state: string }>(`
-        select reservation_state
+    const [stored] = (
+      await database.query<{
+        cancellation_claim_owner: string | null;
+        reservation_state: string;
+      }>(`
+        select reservation_state, cancellation_claim_owner
         from workspace_reservations
         where id = 'rollout-reservation'
       `)
     ).rows;
 
-    if (oldWorkerFallback?.reservation_state === "cancelling") {
-      providerCancellationCount += 1;
-    }
-    providerCancellationCount += 1;
-
-    expect(oldWorkerFallback?.reservation_state).toBe("cancellation_claimed");
-    expect(providerCancellationCount).toBe(1);
+    expect(stored).toEqual({
+      reservation_state: "cancellation_claimed",
+      cancellation_claim_owner: "synthetic-new-worker",
+    });
   });
 
-  test("keeps the new worker outside the provider boundary when the old worker claims first", async () => {
+  test("rejects the old owner-stamped claim before its provider boundary when it runs first", async () => {
     const database = await prepareRolloutDatabase();
-    let providerCancellationCount = 0;
 
-    const [oldWorkerResult] = (await oldWorkerClaim(database)).rows;
-    if (oldWorkerResult?.reservation_state === "cancelling") {
-      providerCancellationCount += 1;
-    }
-    expect(oldWorkerResult?.reservation_state).toBe("cancellation_failed");
-    const [handoff] = (
+    await expect(oldWorkerClaim(database)).rejects.toMatchObject({
+      code: "23514",
+    });
+    const [afterRejectedOldClaim] = (
       await database.query<{
         cancellation_claim_owner: string | null;
         cancellation_claimed_at: Date | null;
-        cancellation_failure_disposition: string | null;
-        cancellation_recovery_reason: string | null;
-        cancellation_retry_at: Date | null;
+        reservation_state: string;
       }>(`
         select
+          reservation_state,
           cancellation_claim_owner,
-          cancellation_claimed_at,
-          cancellation_failure_disposition,
-          cancellation_recovery_reason,
-          cancellation_retry_at
+          cancellation_claimed_at
         from workspace_reservations
         where id = 'rollout-reservation'
       `)
     ).rows;
-    expect(handoff).toMatchObject({
+    expect(afterRejectedOldClaim).toEqual({
+      reservation_state: "held",
       cancellation_claim_owner: null,
       cancellation_claimed_at: null,
-      cancellation_failure_disposition: "retryable",
-      cancellation_recovery_reason: "retryable_failure",
     });
-    expect(handoff?.cancellation_retry_at).not.toBeNull();
-    expect((await newWorkerClaim(database)).rows).toHaveLength(1);
-    providerCancellationCount += 1;
 
-    expect(providerCancellationCount).toBe(1);
+    expect((await newWorkerClaim(database)).rows).toHaveLength(1);
   });
 
   test("upgrades an already-applied draft ownership migration without losing claims", async () => {

@@ -692,7 +692,19 @@ describe("WorkspaceReservationRepository", () => {
     expect(handoff).toContain('"cancellation_failed"');
     expect(handoff).toContain("input.reservationCreatedAt");
     expect(handoff).toContain("existing.dotyposReservationId");
-    expect(source).toContain('"cancellation_claimed"');
+    const attachCancellationRecovery = sliceFrom(
+      source,
+      "export const getAttachCancellationRecovery = (",
+      "export interface WorkspaceReservationRepository"
+    );
+    for (const state of [
+      "cancellation_failed",
+      "cancelling",
+      "cancellation_claimed",
+      "cancelled",
+    ]) {
+      expect(attachCancellationRecovery).toContain(`"${state}"`);
+    }
     const conflictRecovery = sliceFrom(
       source,
       "recordDifferentProviderAttachmentRecovery: Effect.fn(",
