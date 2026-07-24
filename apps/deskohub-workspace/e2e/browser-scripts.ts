@@ -62,6 +62,20 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 `;
 };
 
+export const getPrefilledReservationConditionScript = (data: CheckoutData) => {
+  const assertion = getAssertPrefilledReservationScript(data).trim();
+
+  return `
+(() => {
+  try {
+    return (${assertion}) === true;
+  } catch {
+    return false;
+  }
+})()
+`;
+};
+
 export const submitCoworkReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));

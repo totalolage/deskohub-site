@@ -91,6 +91,24 @@ export const waitForBrowserReactHydration = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserCondition = (
+  run: Runner,
+  session: string,
+  description: string,
+  condition: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    `wait for ${description}`,
+    run,
+    session,
+    ["wait", "--fn", condition],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+
 export const waitForBrowserTextContent = (
   run: Runner,
   session: string,

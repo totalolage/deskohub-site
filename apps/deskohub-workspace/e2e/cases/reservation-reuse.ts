@@ -1,13 +1,13 @@
 import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
-  evalBrowserScript,
   openBrowserPage,
+  waitForBrowserCondition,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import {
-  getAssertPrefilledReservationScript,
+  getPrefilledReservationConditionScript,
   submitCoworkReservationScript,
 } from "../browser-scripts";
 import { submitReservationForPayPage } from "../checkout/payment";
@@ -198,14 +198,13 @@ const returnToPrefilledReservation = ({
       "#reservation-privacy-consent",
       { timeoutMs: timeouts.uiTransition }
     );
-    yield* evalBrowserScript(
-      "assert prefilled reservation fields",
+    yield* waitForBrowserCondition(
       run,
       session,
-      getAssertPrefilledReservationScript(data),
+      "prefilled reservation fields",
+      getPrefilledReservationConditionScript(data),
       {
-        logOutput: false,
-        timeoutMs: timeouts.browserAction,
+        timeoutMs: timeouts.uiTransition,
       }
     );
   });
