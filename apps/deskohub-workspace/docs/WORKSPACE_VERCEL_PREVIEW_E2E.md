@@ -42,10 +42,10 @@ names. Inspect settings and deployment metadata without printing their values.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
 - Workspace E2E Dotypos URL, credentials, and tenant IDs.
-- GitHub Actions repository variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN`
-  and, when using a non-default ingest region,
-  `WORKSPACE_E2E_POSTHOG_HOST`. The token is the public project ingest token,
-  never a management API key or secret.
+- GitHub Actions variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when
+  using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
+  `workspace-checkout-e2e` environment. The token is the public project ingest
+  token, never a management API key or secret.
 - `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
   after the deployed payment/webhook path has completed.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.

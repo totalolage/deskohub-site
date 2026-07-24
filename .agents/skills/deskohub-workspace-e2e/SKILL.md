@@ -49,9 +49,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   case/step IDs and safe GitHub correlation metadata, and never attach preview
   URLs, provider or database identifiers, customer/order/reservation data, raw
   errors, secrets, or artifact contents.
-- Configure the public PostHog project ingest token and ingest host as GitHub
-  Actions repository variables, not secrets; management and trace-read API
-  keys remain secrets.
+- Configure the public PostHog project ingest token and ingest host as
+  variables in the `workspace-checkout-e2e` GitHub Actions environment, not
+  secrets; management and trace-read API keys remain secrets.
 - Propagate Effect's `AbortSignal` through command runners into spawned processes so interruption actually cancels in-flight browser work. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
 
 Before inspecting production or provider logs, read `../deskohub-workspace-operations/references/diagnostics.md` and apply its redaction and summarization rules.
