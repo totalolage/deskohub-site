@@ -1,5 +1,3 @@
-"use server";
-
 import { randomUUID } from "node:crypto";
 import {
   canonicalizeDotyposEntityId,
@@ -12,13 +10,11 @@ import {
   Duration,
   Effect,
   Exit,
-  Layer,
   Match,
   Predicate,
   Schedule,
   Schema,
 } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,
@@ -27,7 +23,6 @@ import {
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
-import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
   deriveCheckoutAttemptKey,
   deriveCheckoutSessionKey,
@@ -40,18 +35,13 @@ import {
   recoverPersistedProviderHoldCandidate,
   verifyDifferentProviderAttachmentRecoveryEvidence,
 } from "@/features/checkout/backend/holds";
-import {
-  LegalEvidenceEventRepository,
-  LegalEvidenceEventRepositoryLive,
-} from "@/features/checkout/backend/repositories";
+import { LegalEvidenceEventRepository } from "@/features/checkout/backend/repositories";
 import {
   createWorkspaceDotyposReservation,
   findWorkspaceDotyposReservationsByPaymentOrderId,
   prepareWorkspaceDotyposReservation,
   splitCustomerName,
   WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
-  WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
 import {
@@ -72,17 +62,13 @@ import {
   hasUnresolvedProviderAttachmentRecovery,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type DotyposCustomerId,
   dotyposCustomerIdSchema,
 } from "@/features/reservation/dotypos-customer";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
-import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import {
   ensureCoworkPayStateAvailable,
@@ -98,10 +84,7 @@ import {
   type PreparedMeetingRoomPayState,
   prepareMeetingRoomAdvertisement,
 } from "./prepare-meeting-room-pay-state";
-import {
-  type PreparePayStateInput,
-  preparePayStateSchema,
-} from "./prepare-pay-state.schema";
+import type { PreparePayStateInput } from "./prepare-pay-state.schema";
 
 const maxReservationPreparationConflictRetries = 3;
 
@@ -1663,40 +1646,3 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       )
     )
 );
-
-const PreparePayStateLive = Layer.mergeAll(
-  Layer.mergeAll(
-    WorkspaceReservationRepositoryLive,
-    LegalEvidenceEventRepositoryLive
-  ).pipe(Layer.provide(WorkspaceDatabaseLive)),
-  WorkspaceAvailabilityService.LiveWithDependencies,
-  WorkspaceTableAssignmentService.Live.pipe(
-    Layer.provide(
-      WorkspaceReservationRepositoryLive.pipe(
-        Layer.provide(WorkspaceDatabaseLive)
-      )
-    ),
-    Layer.provide(DotyposServiceLive)
-  ),
-  WorkspaceCheckoutAccessCodeServiceLive,
-  ReservationHoldCleanupScheduleService.Live,
-  PostHogEventServiceLive,
-  DotyposServiceLive,
-  CheckoutPricingServiceLiveWithDependencies
-);
-
-const preparePayStateAction = defineWorkspaceAction(
-  {
-    operation: "checkout.prepare-pay-state",
-    schema: preparePayStateSchema,
-  },
-  (input) =>
-    prepareWorkspacePayState(input).pipe(Effect.provide(PreparePayStateLive))
-);
-
-export const preparePayState: typeof preparePayStateAction = async (
-  ...args: Parameters<typeof preparePayStateAction>
-) => {
-  "use server";
-  return await preparePayStateAction(...args);
-};
