@@ -370,12 +370,33 @@ describe("WorkspaceReservationRepository", () => {
                 row.failureCode?.startsWith(
                   `hold_creation_orphan_processing:${epoch}:${loserId}:`
                 );
+              const canBeginLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_processing:${epoch}:${loserId}:`
+                );
+              const canReleaseLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                );
+              const canClaimLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+                );
               const canResolveLoser =
                 failureCode?.startsWith(
                   `hold_creation_candidate:${epoch}:${winnerId}:`
                 ) &&
                 row.failureCode?.startsWith(
-                  `hold_creation_orphan_processing:${epoch}:${loserId}:`
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
                 ) === true;
               if (
                 !canRecordCandidate &&
@@ -383,6 +404,9 @@ describe("WorkspaceReservationRepository", () => {
                 !canRecordLoser &&
                 !canClaimLoser &&
                 !canReleaseLoser &&
+                !canBeginLoserVerification &&
+                !canReleaseLoserVerification &&
+                !canClaimLoserVerification &&
                 !canResolveLoser
               ) {
                 return [];
@@ -463,6 +487,31 @@ describe("WorkspaceReservationRepository", () => {
           ownerId: retryOwnerId,
           staleBefore: Temporal.Instant.from("2026-06-01T09:55:00Z"),
         });
+      yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+        {
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: retryOwnerId,
+        }
+      );
+      yield* repository.releaseDifferentProviderAttachmentRecovery({
+        id: row.id,
+        epoch,
+        dotyposReservationId: loserId,
+        reservationCreatedAt: loserCreatedAt,
+        ownerId: retryOwnerId,
+      });
+      const verificationReclaimed =
+        yield* repository.claimDifferentProviderAttachmentRecovery({
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: retryOwnerId,
+          staleBefore: Temporal.Instant.from("2026-06-01T09:55:00Z"),
+        });
       yield* repository.completeDifferentProviderAttachmentRecovery({
         id: row.id,
         epoch,
@@ -474,6 +523,7 @@ describe("WorkspaceReservationRepository", () => {
         loserConflict,
         claimed,
         reclaimed,
+        verificationReclaimed,
         originalStabilizationDeadline,
       };
     }).pipe(
@@ -493,6 +543,7 @@ describe("WorkspaceReservationRepository", () => {
     expect(result.loserConflict._tag).toBe("Failure");
     expect(result.claimed).toBe(true);
     expect(result.reclaimed).toBe(true);
+    expect(result.verificationReclaimed).toBe(true);
     expect(row).toMatchObject({
       reservationState: "held",
       dotyposReservationId: winnerId,
@@ -741,6 +792,10 @@ describe("WorkspaceReservationRepository", () => {
     );
     expect(recoverySelection).toContain("hold_creation_orphan_recovery:%");
     expect(recoverySelection).toContain("hold_creation_orphan_processing:%");
+    expect(recoverySelection).toContain(
+      "hold_creation_orphan_awaiting_visibility:%"
+    );
+    expect(recoverySelection).toContain("hold_creation_orphan_verifying:%");
     expect(recoverySelection).toContain(
       "lte(workspaceReservations.updatedAt, input.staleBefore)"
     );

@@ -112,6 +112,8 @@ describe("PayableReservationService", () => {
     "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
     "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
     "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+    "hold_creation_orphan_awaiting_visibility:synthetic-epoch:synthetic-loser:1780308000000",
+    "hold_creation_orphan_verifying:synthetic-epoch:synthetic-loser:1780308000000:synthetic-owner",
   ])("rejects unresolved provider attachment recovery before calling Dotypos", async (failureCode) => {
     const { getReservationStatus, result } = runRequireCurrent({
       candidate: reservation({ failureCode }),

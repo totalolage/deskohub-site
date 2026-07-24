@@ -1317,7 +1317,8 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
         definitive && getDifferentProviderAttachmentRecovery(definitive);
       if (
         !definitive ||
-        exactRecovery?.phase !== "processing" ||
+        (exactRecovery?.phase !== "processing" &&
+          exactRecovery?.phase !== "verifying") ||
         exactRecovery.ownerId !== ownerId ||
         exactRecovery.epoch !== payload.providerCreationEpoch ||
         exactRecovery.dotyposReservationId !== dotyposReservationId ||
@@ -1363,7 +1364,7 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
           "Different-provider attachment recovery requires manual review."
         );
       }
-      if (action === "delete") {
+      if (exactRecovery.phase === "processing" && action === "delete") {
         const stillOwned =
           yield* reservations.claimDifferentProviderAttachmentRecovery({
             id: payload.orderId,
@@ -1378,6 +1379,48 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
             "Different-provider attachment recovery ownership changed before cancellation."
           );
         }
+      }
+      if (exactRecovery.phase === "processing") {
+        yield* reservations
+          .beginDifferentProviderAttachmentCancellationVerification({
+            id: payload.orderId,
+            epoch: payload.providerCreationEpoch,
+            dotyposReservationId,
+            reservationCreatedAt,
+            ownerId,
+          })
+          .pipe(
+            Effect.catch((cause) =>
+              reservations.findById(payload.orderId).pipe(
+                Effect.flatMap((afterTransition) => {
+                  const verifying =
+                    afterTransition &&
+                    getDifferentProviderAttachmentRecovery(afterTransition);
+                  return verifying?.phase === "verifying" &&
+                    verifying.ownerId === ownerId &&
+                    verifying.epoch === payload.providerCreationEpoch &&
+                    verifying.dotyposReservationId === dotyposReservationId &&
+                    (!verifying.hasExactTimestamp ||
+                      verifying.reservationCreatedAt.equals(
+                        reservationCreatedAt
+                      ))
+                    ? Effect.void
+                    : failRecovery(
+                        "Different-provider attachment cancellation verification could not begin.",
+                        cause
+                      );
+                }),
+                Effect.catch((reloadCause) =>
+                  failRecovery(
+                    "Different-provider attachment cancellation verification could not be confirmed.",
+                    reloadCause
+                  )
+                )
+              )
+            )
+          );
+      }
+      if (exactRecovery.phase === "processing" && action === "delete") {
         const dotypos = yield* DotyposService;
         yield* dotypos
           .cancelReservation(dotyposReservationId)

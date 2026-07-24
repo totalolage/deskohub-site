@@ -147,6 +147,21 @@ const providerHoldCreationOrphanProcessingMarker = (
   candidateFence?: ProviderHoldCandidateFence
 ) =>
   `hold_creation_orphan_processing:${epoch}:${dotyposReservationId}:${reservationCreatedAt.epochMilliseconds}:${ownerId}${providerHoldCandidateFenceSuffix(candidateFence)}`;
+const providerHoldCreationOrphanAwaitingVisibilityMarker = (
+  epoch: string,
+  dotyposReservationId: string,
+  reservationCreatedAt: Temporal.Instant,
+  candidateFence?: ProviderHoldCandidateFence
+) =>
+  `hold_creation_orphan_awaiting_visibility:${epoch}:${dotyposReservationId}:${reservationCreatedAt.epochMilliseconds}${providerHoldCandidateFenceSuffix(candidateFence)}`;
+const providerHoldCreationOrphanVerifyingMarker = (
+  epoch: string,
+  dotyposReservationId: string,
+  reservationCreatedAt: Temporal.Instant,
+  ownerId: string,
+  candidateFence?: ProviderHoldCandidateFence
+) =>
+  `hold_creation_orphan_verifying:${epoch}:${dotyposReservationId}:${reservationCreatedAt.epochMilliseconds}:${ownerId}${providerHoldCandidateFenceSuffix(candidateFence)}`;
 const providerHoldCreationOrphanResolvedMarker = (
   epoch: string,
   dotyposReservationId: string,
@@ -155,7 +170,7 @@ const providerHoldCreationOrphanResolvedMarker = (
   `hold_creation_orphan_resolved:${epoch}:${dotyposReservationId}:${reservationCreatedAt.epochMilliseconds}`;
 
 export const hasNoUnresolvedProviderAttachmentRecovery = () =>
-  sql`(${workspaceReservations.failureCode} is null or (${workspaceReservations.failureCode} not like 'hold_creation_candidate:%' and ${workspaceReservations.failureCode} not like 'hold_creation_candidate_compensating:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_recovery:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_processing:%'))`;
+  sql`(${workspaceReservations.failureCode} is null or (${workspaceReservations.failureCode} not like 'hold_creation_candidate:%' and ${workspaceReservations.failureCode} not like 'hold_creation_candidate_compensating:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_recovery:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_processing:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_awaiting_visibility:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_verifying:%'))`;
 
 export const hasUnresolvedProviderAttachmentRecovery = (
   reservation: Pick<WorkspaceReservation, "failureCode">
@@ -167,6 +182,11 @@ export const hasUnresolvedProviderAttachmentRecovery = (
   reservation.failureCode?.startsWith("hold_creation_orphan_recovery:") ===
     true ||
   reservation.failureCode?.startsWith("hold_creation_orphan_processing:") ===
+    true ||
+  reservation.failureCode?.startsWith(
+    "hold_creation_orphan_awaiting_visibility:"
+  ) === true ||
+  reservation.failureCode?.startsWith("hold_creation_orphan_verifying:") ===
     true;
 
 export type HoldCreationRecoveryReason =
@@ -322,13 +342,15 @@ export const getDifferentProviderAttachmentRecovery = (
     ? Temporal.Instant.fromEpochMilliseconds(createdAt)
     : (reservation.reservationCreatedAt ??
       Temporal.Instant.fromEpochMilliseconds(0));
-  const isProcessing = kind === "hold_creation_orphan_processing";
-  const ownerId = isProcessing
+  const isOwned =
+    kind === "hold_creation_orphan_processing" ||
+    kind === "hold_creation_orphan_verifying";
+  const ownerId = isOwned
     ? Number.isSafeInteger(createdAt)
       ? parts[4]
       : rawCreatedAt
     : undefined;
-  const candidateOffset = isProcessing ? 5 : 4;
+  const candidateOffset = isOwned ? 5 : 4;
   const hasCandidateFence = parts[candidateOffset] === "candidate";
   const candidateFence = hasCandidateFence
     ? parseProviderHoldCandidateFence(parts.slice(candidateOffset + 1))
@@ -355,7 +377,28 @@ export const getDifferentProviderAttachmentRecovery = (
       phase: "pending" as const,
     };
   }
-  return kind === "hold_creation_orphan_processing" && ownerId
+  if (kind === "hold_creation_orphan_awaiting_visibility") {
+    return {
+      epoch,
+      dotyposReservationId,
+      reservationCreatedAt,
+      hasExactTimestamp,
+      candidateFence,
+      phase: "awaiting_visibility" as const,
+    };
+  }
+  if (kind === "hold_creation_orphan_processing" && ownerId) {
+    return {
+      epoch,
+      dotyposReservationId,
+      reservationCreatedAt,
+      hasExactTimestamp,
+      ownerId,
+      candidateFence,
+      phase: "processing" as const,
+    };
+  }
+  return kind === "hold_creation_orphan_verifying" && ownerId
     ? {
         epoch,
         dotyposReservationId,
@@ -363,7 +406,7 @@ export const getDifferentProviderAttachmentRecovery = (
         hasExactTimestamp,
         ownerId,
         candidateFence,
-        phase: "processing" as const,
+        phase: "verifying" as const,
       }
     : null;
 };
@@ -625,6 +668,16 @@ export interface WorkspaceReservationRepository {
     readonly staleBefore: Temporal.Instant;
   }) => Effect.Effect<
     boolean,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly beginDifferentProviderAttachmentCancellationVerification: (input: {
+    readonly id: string;
+    readonly epoch: string;
+    readonly dotyposReservationId: string;
+    readonly reservationCreatedAt: Temporal.Instant;
+    readonly ownerId: string;
+  }) => Effect.Effect<
+    void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly releaseDifferentProviderAttachmentRecovery: (input: {
@@ -1915,20 +1968,31 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           return false;
         }
         const needsStaleTakeover =
-          recovery.phase === "processing" && recovery.ownerId !== input.ownerId;
+          (recovery.phase === "processing" || recovery.phase === "verifying") &&
+          recovery.ownerId !== input.ownerId;
         if (
           needsStaleTakeover &&
           Temporal.Instant.compare(existing.updatedAt, input.staleBefore) > 0
         ) {
           return false;
         }
-        const ownedMarker = providerHoldCreationOrphanProcessingMarker(
-          input.epoch,
-          dotyposReservationId,
-          input.reservationCreatedAt,
-          input.ownerId,
-          recovery.candidateFence
-        );
+        const ownedMarker =
+          recovery.phase === "awaiting_visibility" ||
+          recovery.phase === "verifying"
+            ? providerHoldCreationOrphanVerifyingMarker(
+                input.epoch,
+                dotyposReservationId,
+                input.reservationCreatedAt,
+                input.ownerId,
+                recovery.candidateFence
+              )
+            : providerHoldCreationOrphanProcessingMarker(
+                input.epoch,
+                dotyposReservationId,
+                input.reservationCreatedAt,
+                input.ownerId,
+                recovery.candidateFence
+              );
         const updated = yield* db
           .update(workspaceReservations)
           .set({
@@ -1953,6 +2017,73 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .returning({ id: workspaceReservations.id });
         return updated.length > 0;
       }),
+      beginDifferentProviderAttachmentCancellationVerification: Effect.fn(
+        "workspaceReservations.beginDifferentProviderAttachmentCancellationVerification"
+      )(function* (input) {
+        const dotyposReservationId = yield* requireCanonicalProviderId(
+          input.dotyposReservationId,
+          "workspaceReservations.beginDifferentProviderAttachmentCancellationVerification",
+          input.id
+        );
+        const [existing] = yield* db
+          .select({
+            dotyposReservationId: workspaceReservations.dotyposReservationId,
+            failureCode: workspaceReservations.failureCode,
+            reservationCreatedAt: workspaceReservations.reservationCreatedAt,
+            reservationState: workspaceReservations.reservationState,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, input.id))
+          .limit(1);
+        const recovery =
+          existing && getDifferentProviderAttachmentRecovery(existing);
+        const exactRecovery =
+          recovery?.epoch === input.epoch &&
+          recovery.dotyposReservationId === dotyposReservationId &&
+          recovery.reservationCreatedAt.equals(input.reservationCreatedAt) &&
+          (recovery.phase === "processing" || recovery.phase === "verifying") &&
+          recovery.ownerId === input.ownerId;
+        if (exactRecovery && recovery.phase === "verifying") return;
+        if (!exactRecovery || recovery.phase !== "processing") {
+          return yield* new WorkspaceReservationStateError({
+            operation:
+              "workspaceReservations.beginDifferentProviderAttachmentCancellationVerification",
+            reservationId: input.id,
+            message:
+              "Only the owned send-capable recovery can enter cancellation verification.",
+          });
+        }
+        const verifyingMarker = providerHoldCreationOrphanVerifyingMarker(
+          input.epoch,
+          dotyposReservationId,
+          input.reservationCreatedAt,
+          input.ownerId,
+          recovery.candidateFence
+        );
+        const existingFailureCode = existing?.failureCode as string;
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            failureCode: verifyingMarker,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "held"),
+              eq(workspaceReservations.failureCode, existingFailureCode),
+              sql`${workspaceReservations.dotyposReservationId} is not null`,
+              sql`${workspaceReservations.dotyposReservationId} <> ${dotyposReservationId}`
+            )
+          )
+          .returning({ id: workspaceReservations.id });
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.beginDifferentProviderAttachmentCancellationVerification",
+          input.id,
+          "Only the owned send-capable recovery can enter cancellation verification."
+        );
+      }),
       releaseDifferentProviderAttachmentRecovery: Effect.fn(
         "workspaceReservations.releaseDifferentProviderAttachmentRecovery"
       )(function* (input) {
@@ -1975,7 +2106,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           existing && getDifferentProviderAttachmentRecovery(existing);
         if (
           !existing ||
-          recovery?.phase !== "processing" ||
+          (recovery?.phase !== "processing" &&
+            recovery?.phase !== "verifying") ||
           recovery.ownerId !== input.ownerId ||
           recovery.epoch !== input.epoch ||
           recovery.dotyposReservationId !== dotyposReservationId ||
@@ -1992,12 +2124,20 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         const updated = yield* db
           .update(workspaceReservations)
           .set({
-            failureCode: providerHoldCreationOrphanRecoveryMarker(
-              input.epoch,
-              dotyposReservationId,
-              input.reservationCreatedAt,
-              recovery.candidateFence
-            ),
+            failureCode:
+              recovery.phase === "verifying"
+                ? providerHoldCreationOrphanAwaitingVisibilityMarker(
+                    input.epoch,
+                    dotyposReservationId,
+                    input.reservationCreatedAt,
+                    recovery.candidateFence
+                  )
+                : providerHoldCreationOrphanRecoveryMarker(
+                    input.epoch,
+                    dotyposReservationId,
+                    input.reservationCreatedAt,
+                    recovery.candidateFence
+                  ),
             updatedAt: Temporal.Now.instant(),
           })
           .where(
@@ -2046,9 +2186,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           recovery.dotyposReservationId === dotyposReservationId &&
           recovery.reservationCreatedAt.equals(input.reservationCreatedAt) &&
           (input.ownerId
-            ? recovery.phase === "processing" &&
+            ? (recovery.phase === "processing" ||
+                recovery.phase === "verifying") &&
               recovery.ownerId === input.ownerId
-            : recovery.phase === "pending");
+            : recovery.phase === "pending" ||
+              recovery.phase === "awaiting_visibility");
         const completionMarker = recovery?.candidateFence
           ? providerHoldCreationCandidateMarker(
               input.epoch,
@@ -2679,7 +2821,9 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   or(
                     sql`${workspaceReservations.failureCode} like 'hold_creation_candidate:%'`,
                     sql`${workspaceReservations.failureCode} like 'hold_creation_orphan_recovery:%'`,
-                    sql`${workspaceReservations.failureCode} like 'hold_creation_orphan_processing:%'`
+                    sql`${workspaceReservations.failureCode} like 'hold_creation_orphan_processing:%'`,
+                    sql`${workspaceReservations.failureCode} like 'hold_creation_orphan_awaiting_visibility:%'`,
+                    sql`${workspaceReservations.failureCode} like 'hold_creation_orphan_verifying:%'`
                   )
                 ),
                 and(
