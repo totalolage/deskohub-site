@@ -283,6 +283,8 @@ type CheckoutHarnessOptions = {
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
+  readonly requireCurrent?: ReturnType<typeof mock>;
+  readonly createAttempt?: ReturnType<typeof mock>;
 };
 
 const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
@@ -316,7 +318,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     securityToken: "provider-security-token",
     providerRedirectUrl: "https://payments.example/hosted",
   };
-  const createAttempt = mock(() => Effect.succeed(createdAttempt));
+  const createAttempt =
+    options.createAttempt ?? mock(() => Effect.succeed(createdAttempt));
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
   const markTerminal = mock(() => Effect.void);
@@ -358,6 +361,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     locale,
     ...options.reservationOverrides,
   });
+  const requireCurrent =
+    options.requireCurrent ?? mock(() => Effect.succeed(reservationRecord));
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
@@ -430,7 +435,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             Layer.succeed(NexiService, nexi),
             Layer.succeed(WorkspaceReservationRepository, reservations),
             Layer.succeed(PayableReservationService, {
-              requireCurrent: mock(() => Effect.succeed(reservationRecord)),
+              requireCurrent,
             }),
             Layer.succeed(PaymentAttemptRepository, paymentAttempts),
             Layer.succeed(PostHogEventService, {
@@ -456,6 +461,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     markPaymentTerminal,
     updateReservationDetails,
     updateReservation,
+    requireCurrent,
     createHostedPaymentPage,
   };
 };
@@ -851,6 +857,121 @@ describe("CheckoutService", () => {
     });
     expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("revalidates unresolved attachment recovery at final payment admission", async () => {
+    const { PayableReservationUnavailableError } = await import(
+      "./payable-reservation.service"
+    );
+    const orderId = "reservation-final-recovery-guard";
+    const payableReservation = makeReservation(orderId);
+    let admission = 0;
+    const requireCurrent = mock(() => {
+      admission += 1;
+      return admission === 1
+        ? Effect.succeed(payableReservation as never)
+        : Effect.fail(
+            new PayableReservationUnavailableError({
+              orderId,
+              reason: "unresolved_attachment_recovery",
+            })
+          );
+    });
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+    expect(requireCurrent).toHaveBeenCalledTimes(2);
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    "hold_creation_candidate:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
+    "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+  ])("atomically rejects payment admission when recovery commits after the final read: %s", async (failureCode) => {
+    const { PaymentAttemptStateError } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const orderId = "reservation-atomic-recovery-guard";
+    const persistedAttempts: unknown[] = [];
+    const reservation = makeReservation(orderId);
+    const createAttempt = mock(() =>
+      Effect.gen(function* () {
+        persistedAttempts.push({ state: "staged" });
+        Object.assign(reservation, { failureCode });
+        persistedAttempts.length = 0;
+        return yield* new PaymentAttemptStateError({
+          operation: "paymentAttempts.create",
+          paymentAttemptId: "synthetic-rolled-back-attempt",
+          message:
+            "Payment attempts cannot be linked while provider attachment recovery is unresolved.",
+        });
+      })
+    );
+    const requireCurrent = mock(() => Effect.succeed(reservation as never));
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent,
+      createAttempt,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+
+    expect(requireCurrent).toHaveBeenCalledTimes(2);
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(persistedAttempts).toEqual([]);
+    expect(reservation).toMatchObject({
+      reservationState: "held",
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      failureCode,
+    });
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("keeps payment blocked when winner attachment precedes delayed loser handoff", async () => {
+    const { PaymentAttemptStateError } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const orderId = "synthetic-delayed-loser-order";
+    const epoch = "synthetic-delayed-loser-epoch";
+    const winnerId = "synthetic-delayed-loser-winner";
+    const createdAt = testInstant("2026-06-01T09:55:00Z");
+    const reservation = makeReservation(orderId);
+    Object.assign(reservation, {
+      dotyposReservationId: winnerId,
+      reservationCreatedAt: createdAt,
+      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${createdAt.epochMilliseconds}`,
+    });
+    const createAttempt = mock(() =>
+      Effect.fail(
+        new PaymentAttemptStateError({
+          operation: "paymentAttempts.create",
+          paymentAttemptId: "synthetic-blocked-attempt",
+          message:
+            "Payment attempts cannot be linked while provider attachment recovery is unresolved.",
+        })
+      )
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent: mock(() => Effect.succeed(reservation as never)),
+      createAttempt,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(reservation).toMatchObject({
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${createdAt.epochMilliseconds}`,
+    });
   });
 
   test("marks HPP provider-create failures atomically for the reservation", async () => {

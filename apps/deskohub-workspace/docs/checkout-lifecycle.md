@@ -105,6 +105,11 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
 | `reservation_confirmed_at` | timestamptz | no | When paid workflow confirmed the Dotypos reservation. |
 | `reservation_cancelled_at` | timestamptz | no | When Dotypos cancellation succeeded or Dotypos already reported cancellation. |
+| `cancellation_claim_owner` | text | no | Opaque per-worker cancellation owner. Paired with `cancellation_claimed_at`; ownerless legacy rows remain valid during rollout. |
+| `cancellation_claimed_at` | timestamptz | no | Database-clock start or renewal time of the current cancellation lease. |
+| `cancellation_failure_disposition` | text | no | `retryable` for automatic recovery or `manual_review` for an excluded poison row. |
+| `cancellation_retry_at` | timestamptz | no | Database-clock retry eligibility time; required only for retryable cancellation failures. |
+| `cancellation_recovery_reason` | text | no | Audit reason for the current cancellation path: genuine hold expiry, attachment compensation, supersession recovery, retryable failure, or stale-claim recovery. |
 | `paid_at` | timestamptz | no | When a verified Nexi attempt made the workflow paid. |
 | `fulfilled_at` | timestamptz | no | When all required post-payment work completed. |
 | `fulfillment_failed_at` | timestamptz | no | Most recent fulfillment failure time. |
@@ -122,11 +127,15 @@ Indexes and constraints:
 - Unique index on `correlation_id`.
 - Partial unique index on `dotypos_reservation_id` where not null.
 - Partial index on `reservation_hold_expires_at` for `reservation_state = 'held'`.
+- Partial cancellation recovery index on `(reservation_state, cancellation_recovery_reason, cancellation_failure_disposition, cancellation_retry_at, cancellation_claimed_at)` for legacy `cancelling`, owned `cancellation_claimed`, and `cancellation_failed`.
 - Recovery index on `(reservation_state, payment_state, fulfillment_state)`.
-- `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancelled`, and `cancellation_failed` states.
+- `dotypos_reservation_id` must be non-null for `held`, `confirming`, `confirmed`, `cancelling`, `cancellation_claimed`, `cancelled`, and `cancellation_failed` states.
 - `paid_at` must be non-null when `payment_state = 'paid'`.
 - `fulfilled_at` must be non-null when `fulfillment_state = 'fulfilled'`.
 - `fulfillment_failed_at` and `fulfillment_failure_code` must be non-null when `fulfillment_state = 'failed'`.
+- Cancellation claim owner and timestamp must both be null or both be present.
+- Retryable cancellation failures require a retry timestamp; manual-review failures must not have one.
+- Cancellation recovery reasons are restricted to the documented audit values. Only a genuine hold-expiry observation may write `reservation_hold_expired_at`; other recovery reasons never synthesize or overwrite it.
 
 ### `payment_attempts`
 
@@ -220,27 +229,52 @@ Indexes and constraints:
 - `hold_expired`: local policy observed the hold deadline before payment completed.
 - `confirming`: payment is verified paid and a worker is confirming/finalizing the Dotypos reservation.
 - `confirmed`: Dotypos reservation is confirmed/final for the paid booking.
-- `cancelling`: a worker is cancelling a Dotypos hold.
+- `cancelling`: a legacy state retained for migration recovery; after the ownership migration every new ownerless write to this state aborts before returning provider permission.
+- `cancellation_claimed`: an ownership-aware worker exclusively owns the cancellation provider boundary.
 - `cancelled`: Dotypos hold was cancelled or Dotypos already reports it as cancelled.
 - `cancellation_failed`: cancellation failed and needs retry/manual recovery.
 
 Allowed reservation transitions:
 
 - `draft -> creating_hold -> held`
-- `creating_hold -> cancellation_failed` when the hold is created in Dotypos but local attach/cancel recovery fails.
+- `creating_hold -> cancellation_failed` when the hold is created in Dotypos but local attachment fails. The failed attachment is queued immediately for owned cancellation compensation.
 - `creating_hold -> draft` only when Dotypos hold creation failed before any Dotypos reservation ID existed.
 - `held -> confirming -> confirmed` after verified paid payment.
-- `held -> hold_expired -> cancelling -> cancelled` for unpaid expired holds.
-- `held -> cancelling -> cancelled` for unsuccessful terminal payment before hold expiry.
-- `cancelling -> cancellation_failed`
-- `cancellation_failed -> cancelling -> cancelled`
+- `held -> hold_expired -> cancellation_claimed -> cancelled` for unpaid expired holds.
+- `held -> cancellation_claimed -> cancelled` for unsuccessful terminal payment before hold expiry.
+- `cancellation_claimed -> cancellation_failed`
+- `cancellation_failed -> cancellation_claimed -> cancelled`
+- Existing ownerless `cancelling -> cancellation_failed` is a migration-time recovery transition; post-migration ownerless `cancelling` writes are rejected.
 
 Forbidden reservation transitions:
 
 - Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
 - Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
 - Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
-- Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
+- Any cancellation finalization unless the row is still in `cancellation_claimed`, owned by the completing worker, unpaid, and unconfirmed.
+- Any Dotypos cancellation DELETE unless the worker has reloaded and renewed the row after the live provider-status read and still owns its current cancellation claim.
+
+### Cancellation ownership and live provider status
+
+Cancellation is a compare-and-set lease, not ownership inferred from a legacy state. An ownership-aware worker atomically writes a fresh opaque owner and database-generated `cancellation_claimed_at` while moving an eligible row to `cancellation_claimed`. The database constraint makes that state equivalent to a complete owner/timestamp pair and forbids owner fields on every other state. Every completion, failure, supersession transaction, and ownership renewal compares that same owner. After reading live provider status, the worker renews the timestamp with an owner-CAS update and uses the returned row as its reload. A worker whose renewal no longer finds its owner stops without provider or local destructive work.
+
+The lease is five minutes. Acquisition, renewal, retry eligibility, and stale takeover compare against the database clock so application-host clock skew cannot shorten or extend ownership. `cancellation_claimed` may be taken over only when its paired lease timestamp is at or before the database's five-minute stale cutoff. During rollout, the migration converts ownerless `cancelling` rows that already exist into due retryable `cancellation_failed` work. It backfills a pre-ownership `cancellation_failed` row only when all three newly introduced recovery fields are null; replay therefore never changes an explicit disposition, and a deliberate `manual_review` poison row remains excluded from automatic provider work. Its compatibility trigger rejects every later ownerless old-writer `cancelling` insert or update with a transaction error, so even an old caller that treats any `RETURNING` row as provider permission receives no row and cannot reach provider status or cancellation. Retryable failures carry a database-generated retry time; failures that require manual review carry no retry time and are excluded from bounded cron batches. Queue delivery is the primary cleanup path; the daily cron selects expired held rows, due retryable failures, legacy recoverable rows, and only stale owned leases.
+
+Cancellation recovery carries an explicit reason through queue, cron, service, and repository calls. `reservation_hold_expired_at` is written only when an unpaid held reservation's real deadline was observed at or before the cleanup timestamp. Attachment compensation, supersession recovery, retryable failures, and stale-claim takeover never synthesize that audit fact.
+
+After Dotypos creates a reservation, a failed local attachment hands the exact Dotypos reservation ID to two independent durable recovery paths: the local cancellation marker and an identity-bearing queue message retained for the queue provider's seven-day maximum. Both are attempted even if the other fails. A surviving marker is recoverable by cron when enqueue fails; a surviving queue message can idempotently materialize the marker when the original marker write fails. Duplicate or delayed messages only materialize the original `creating_hold`/initial attachment-failure state with the same provider ID and cannot overwrite a successfully attached, differently owned, retried, manually reviewed, or completed reservation. If neither durable handoff succeeds, the action fails loudly rather than reporting a successful handoff.
+
+A legacy `cancelling`, owned `cancellation_claimed`, or `cancellation_failed` row with `payment_state = 'pending'` is never sent directly to cancellation. Recovery first CAS-restores a stale/unowned row to `held`, allowing the existing provider-payment finalization contract to resolve paid, terminal, or still-pending outcomes. Paid stays held for fulfillment, terminal unsuccessful can proceed through a fresh cancellation claim, and unconfirmed outcomes remain held for later reconciliation.
+
+The live Dotypos policy has one shared matrix:
+
+| Fresh Dotypos status | Cancellation action |
+| --- | --- |
+| `NEW` | Reload and renew local ownership, then issue DELETE. |
+| `CANCELLED` | Reload and renew local ownership, then complete the local cancellation without DELETE. |
+| Every other live status | Refuse DELETE and record an owned manual-review failure that cron does not repeatedly retry. |
+
+The provider read and DELETE cannot be made atomic across Deskohub and Dotypos. A Dotypos reservation can change after the fresh status read and before DELETE; this is the unavoidable provider read/delete TOCTOU. Keeping the interval short, reloading and renewing current local ownership after the read, and refusing every freshly observed status other than `NEW` bound what Deskohub can control. Dotypos must remain authoritative if this race is observed.
 
 ### Payment State
 
@@ -304,11 +338,31 @@ const checkoutSessionKey = hmac({
 const checkoutAttemptKey = hmac({
   checkoutSessionId,
   checkoutAttemptId,
-  reservation: normalizedReservation,
+  reservation: normalizedAttemptIdentity,
 });
 ```
 
-The normalized reservation is included so a replayed opaque attempt ID with changed values cannot reuse a hold created for different facts; its PII exists only in the transient HMAC payload. An exact attempt-key match makes an immediate retry idempotent. A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original cleanup deadline and scheduled cleanup job.
+The normalized attempt identity is one complete fixed projection: normalized customer `name`, `email`, `phone`, and optional `message`, followed by an exhaustive family-owned reservation projection. Cowork attempts include `kind`, `date`, `entryTier`, `coffee`, and normalized `monitorOption`; meeting-room attempts include `kind`, normalized `startsAt`, and normalized `endsAt`. Absent and blank normalized messages project to `null`, as do unavailable cowork monitor options. A message-only edit therefore rotates the attempt and hold, while whitespace-only edits and other inputs that decode to the same normalized reservation produce exactly the same attempt HMAC. The projection's PII exists only in this transient HMAC payload.
+
+An exact attempt-key match makes an immediate retry idempotent. After a supersession failure rotates the local checkout session to the attempt identity, later exact retries probe both the original and rotated attempt-key projections before consulting the current session row. They therefore rediscover the one persisted attempt independently of stale browser session state instead of forking a second row. Draft insertion returns one of four exhaustive acquisition tags: `created`, `existing_attempt`, `session_occupied`, or `conflict_unresolved`. A uniqueness conflict is followed by a definitive lookup of the persisted attempt row before the current session row; if an active-session row becomes cancelled during that lookup, insertion retries instead of fabricating a result. Those repository retries are themselves bounded, and exhaustion returns `conflict_unresolved` so the action produces the standard retryable-unavailable outcome without inventing a persisted row. An exact conflict row still in `creating_hold` or `cancelling` follows the same bounded wait and definitive requery as a pre-read row. The action then produces an exhaustive `ReservationPreparationDecision`: `create_hold` only after a successful draft-to-creating-hold CAS, or `reuse_hold` only after a definitive unexpired held row is observed. Direct settled-hold reuse and reuse after a lost concurrent claim share this same path. Quote evaluation and provider hold creation use the definitive row's `dotypos_customer_id`, which may differ from the transient customer resolution performed by a concurrent retry.
+
+A newly claimed `creating_hold` row carries a local pre-provider marker with an immutable provider-creation epoch. An Effect finalizer releases only that exact marker back to `draft` on typed failure, defect, or interruption. Another live action cannot steal it: exact retries wait for the transition and only a bounded stale-marker CAS may recover abandoned pre-provider work. Deterministic request construction, validation, table assignment, and a minimum-validity authentication lease all complete before a separate epoch-bound CAS replaces the marker with a durable provider-reconciliation marker and enters the irreversible provider boundary. The actual send consumes that fixed lease and performs no refresh or other fallible authentication setup after the marker.
+
+Dotypos reservation creation has no documented idempotency key, so the prepared operation sends exactly one POST for an epoch, uses manual redirect handling, and never applies the adapter's general network/5xx retry policy. A network ambiguity, provider defect, 3xx response, zero-or-multiple create response, successful response without an ID, or provider-boundary persistence ambiguity can never return that epoch to `draft` merely because no local provider ID is present. The controlled note carries exact whole-line order and epoch correlation plus an opaque SHA-256 request-evidence value covering the normalized provider request. A direct response must contain exactly one reservation and match its expected status, IDs, interval, seats, customer, table, complete note, and request evidence before it can be attached.
+
+Exact retries search Dotypos by both controlled order and epoch markers and verify the request evidence and persisted customer ID before interpreting provider status. Thus an epoch-A cancellation or a visibility-delayed epoch-B create cannot release or authorize another create for B. Fresh provider-boundary work remains a live fence: concurrent exact retries wait instead of reconciling or attaching while the original single-send action is still within its bounded lease. After a verified response, the canonical provider ID and one millisecond-normalized creation timestamp are first persisted as an epoch-bound candidate marker. Attachment is a second exact CAS from that candidate to `held`, but retains the candidate marker as a non-payable settling fence with an immutable persisted stabilization deadline. The sealed checkout URL renders that exact state as a pending, payment-free page which refreshes the server boundary until stabilization completes; it never converts a temporary fence into a permanent invalid-payment result. Candidate stabilization uses a distinct queue idempotency identity, and the consumer independently enforces that deadline; an immediate ambiguity delivery therefore cannot finalize the fence early even when queue deduplication or redelivery ordering differs. A delayed recovery task requires exactly one verified `NEW` winner and permits other exact-epoch matches only when they are definitively verified `CANCELLED`. Before replacing the fence with the attached marker, it durably enqueues cleanup for the original hold deadline; if that already-due delivery arrives before the exact candidate CAS, it remains retryable rather than being acknowledged as skipped. Confirmed compensation releases only the matching candidate-compensation tuple. One verified `NEW` match attaches idempotently, including commit-then-error and same-ID concurrent-attach cases; one verified `CANCELLED` match permits only the exact epoch's guarded release. Every created, reused, or reconciled attachment, including an already-due hold, must successfully receive its idempotent scheduled cleanup task before checkout can be ready. Enqueue failure or timeout fails the action while retaining the payment fence, so an exact retry enqueues the same task without another provider create.
+
+Reconciliation outcomes are durable and operationally explicit in the non-PII `failure_code`: `zero_matches`, `multiple_matches`, `missing_id`, `unsafe_status`, and `read_failed` retain the same epoch and never issue another create. Transient read/visibility failures are retried by every exact checkout retry. A repeated non-transient marker is the manual escalation contract: support resolves the provider side using only the Deskohub order/epoch correlation, without copying provider payloads locally, until exactly one verified safe result is observable; the normal exact-retry path then performs the epoch-bound attach or release. No database-only reset is permitted for an ambiguous epoch. A provider result already handed to compensation remains compensation-only: delayed `NEW` visibility cannot attach it, while verified `CANCELLED` evidence may release only that exact epoch.
+
+If a verified direct result loses attachment to a different verified result from the same epoch, the winner remains immutable and an epoch-, loser-, original-timestamp-, and owner-bound orphan marker durably blocks checkout, ordinary due cleanup, and supersession. When the winner is still a candidate, every pending, owned, released, and completed loser transition also carries the winner's exact provider identity, creation timestamp, and original stabilization deadline. Resolving the loser restores that exact candidate fence rather than an attached/payable marker; payment remains blocked until the delayed full-cardinality verification completes. Even when the winner was already attached, browser and queue recovery may remove the loser fence only after a fresh post-compensation query proves exactly one valid live `NEW` winner matching the immutable local provider ID and proves every other exact-epoch result valid and `CANCELLED`. Missing or unsafe winner evidence and any additional live result remain retryable fences. Candidate registration atomically establishes the blocker when it observes a different attached winner, so the payment-attempt transaction cannot link through the conflict window. Any attachment error first hands off the same immutable epoch/provider/timestamp tuple before attempting a definitive reread. The queue safely classifies that outcome as the same attached hold, a different-provider loser, or an unattached provider result; it schedules cleanup for the same hold and never compensates it, establishes the orphan blocker before cancelling a different loser, or enters the existing guarded unattached-compensation flow. Marker persistence and queue enqueue execute as independent all-exit handoff attempts, including defects; readiness is prohibited, and failure is returned only when neither path retained the exact tuple. When candidate persistence fails but its candidate marker committed, browser recovery, queue redelivery, and the stale daily scan all use attach-only recovery for that exact epoch/provider/timestamp; they never issue another create or cancel the candidate winner, and attachment retains the original hold deadline plus its non-payable stabilization fence. When candidate persistence fails but the queue retains the tuple, the consumer may promote the matching plain epoch-compensation marker to exact provider/timestamp cancellation recovery; this transition is idempotent and never authorizes another provider create or a broad cancellation. When immediate compensation already cancelled the exact provider result and safely released the local row to `draft`, the queued ambiguity delivery re-proves the exact order, epoch, provider, customer, request evidence, and observed `CANCELLED` status before acknowledging; provider visibility delay remains retryable and never causes a second cancellation or create. Unattached and unclassified redelivery share one exact state machine. It restores a mutable cancellation-failure marker only under that guarded association; resumes typed-failure, defect, and interruption states; and acknowledges locally completed cancellation without another provider call.
+
+The queue first establishes or confirms an exact durable marker, then claims it with bounded stale-owner takeover before applying the S5-01 live-status policy. A live owner causes message retry rather than acknowledgement. Before a different-provider cancellation crosses its non-idempotent boundary, the exact owned recovery moves from send-capable processing to verification-only ownership. Pre-boundary lookup, ownership, or phase-transition failure releases back to send-capable recovery. After the boundary is consumed, every unsuccessful exit, including typed failure, defect, interruption, stale visibility, and cardinality-proof failure, releases only to an exact awaiting-visibility marker. Redelivery may reclaim verification ownership but never sends cancellation again. Only a failed release leaves the owned processing or verifying marker for stale takeover. Completion still requires definitive loser `CANCELLED` status plus the full winner/cardinality proof, stores an exact resolved marker, and makes commit-then-error redelivery idempotent. If later paid or terminal lifecycle progression replaces that marker, at-least-once redelivery may acknowledge only after re-proving exact order, epoch, loser, customer, request evidence, and observed `CANCELLED` status; markerless redelivery never issues another cancellation. An exact retry revalidates unresolved recovery before preparation and the payable service revalidates it at both checkout admission reads. The payment-attempt transaction repeats the no-unresolved-recovery predicate and requires the persisted hold deadline to be strictly later than database `clock_timestamp()` in the same atomic held/unpaid link CAS. A concurrent blocker or deadline transition therefore rolls back the staged attempt before Nexi can be called. A persistent recovery blocker returns a bounded retryable preparation outcome instead of spinning in supersession. Delayed evidence or handoff from another epoch cannot write or clear the marker or mutate the winner. The integrated attachment-compensation payload retains the epoch, recovery kind, candidate provider identity, and provider-created timestamp while using S5-01's shared owner/lease and status-policy symbols.
+
+An exact attempt-key match is permanent idempotency, not a request to rotate. The exact row may continue from `draft`, reuse only a definitive valid held/not-started row, or converge its in-flight provider reconciliation; reuse never rewrites reservation details before the definitive eligibility reread. An exact retry of a cancelled row or any payment-terminal/in-progress row returns unavailable and never derives a replacement session, acquires another draft, or sends another provider create. Only a genuinely different attempt may supersede the current session row. If that changed attempt encounters an older row that is still only `draft` or carries the pre-provider marker, it first atomically retires that exact attempt into a non-create-capable draft marker under no-provider/unpaid predicates. Only a successful retirement CAS permits session isolation; repeated CAS loss is bounded and returns retryable unavailable.
+
+A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. Repeated supersession-claim loss and repeated session-occupied acquisition conflicts are bounded; exhaustion returns the retryable unavailable result without unowned cancellation or provider creation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original persisted cleanup deadline through attachment and exact retries; attachment never refreshes it. Every definitive ready path, including a lost creation CAS or an already-due reconciled hold, must successfully schedule that exact deadline before returning.
+
+The daily recovery scan selects stale pre-attachment candidates, attached candidates, candidate-compensation tuples, and pending or stale-owned different-provider markers and re-enqueues their exact epoch/provider/timestamp payloads. A failed initial enqueue or absent browser retry therefore cannot abandon them.
 
 ## Sequence Diagrams
 
@@ -328,20 +382,23 @@ sequenceDiagram
   App->>App: Derive checkout session and attempt HMACs
   App->>Dotypos: Find or create customer using PII
   Dotypos-->>App: dotyposCustomerId
-  App->>App: Evaluate customer discount for the first signed summary
   alt same attempt is already held
-    App->>DB: Reuse exact attempt row
+    App->>DB: Resolve exact persisted attempt row
   else session has an earlier unpaid hold
     App->>DB: Claim earlier row for cancellation
     App->>Dotypos: Cancel earlier NEW reservation
     App->>DB: Mark earlier row cancelled and insert replacement draft
   else no current row in session
-    App->>DB: Insert workspace_reservations(draft, not_started, not_started)
+    App->>DB: Acquire tagged workspace_reservations draft
   end
-  App->>DB: Claim reservation_state=creating_hold
-  App->>Dotypos: Create NEW reservation hold
-  Dotypos-->>App: dotyposReservationId
-  App->>DB: Set reservation_state=held and hold deadline
+  App->>DB: CAS draft to creating_hold or resolve settled held row
+  App->>App: Decide create_hold or reuse_hold exhaustively
+  App->>App: Evaluate quote using persisted dotyposCustomerId
+  opt create_hold
+    App->>Dotypos: Create NEW reservation hold
+    Dotypos-->>App: dotyposReservationId
+    App->>DB: Set reservation_state=held and hold deadline
+  end
   App->>DB: Insert legal_evidence_events
   alt advertised price still matches
     App-->>Customer: Show signed order summary, which may first add the customer discount
@@ -440,7 +497,7 @@ sequenceDiagram
   Nexi-->>Return: Terminal unsuccessful or pending result
   Return->>DB: In one transaction mark attempt/reservation terminal and release reserved discount claim
   Return->>Cleanup: Request unpaid hold cancellation
-  Cleanup->>DB: Claim reservation_state=cancelling
+  Cleanup->>DB: Claim reservation_state=cancellation_claimed + owner
   Cleanup->>Dotypos: Cancel Dotypos reservation hold
   Dotypos-->>Cleanup: Cancelled or already cancelled
   Cleanup->>DB: reservation_state=cancelled
@@ -455,17 +512,19 @@ sequenceDiagram
   participant DB as Local DB
   participant Dotypos
 
-  Job->>DB: Select held unpaid rows past reservation_hold_expires_at
-  Job->>DB: Mark reservation_state=hold_expired then cancelling
-  Job->>Dotypos: Cancel Dotypos reservation hold
-  alt cancellation succeeds or already cancelled
-    Dotypos-->>Job: OK
-    Job->>DB: reservation_state=cancelled, reservation_cancelled_at
-  else cancellation fails
-    Dotypos-->>Job: Provider/client error
-    Job->>DB: reservation_state=cancellation_failed
+  Job->>DB: Select expired held, cancellation_failed, and stale cancellation_claimed rows
+  Job->>DB: CAS owner + claimed_at, reservation_state=cancellation_claimed
+  Job->>Dotypos: Read live reservation status
+  Job->>DB: Owner-CAS renew lease and reload
+  alt live status is NEW
+    Job->>Dotypos: DELETE reservation
+    Job->>DB: Owner-CAS reservation_state=cancelled, reservation_cancelled_at
+  else live status is CANCELLED
+    Job->>DB: Owner-CAS reservation_state=cancelled, reservation_cancelled_at
+  else other status or provider failure
+    Job->>DB: Owner-CAS reservation_state=cancellation_failed
   end
-  Job->>DB: Later retry selects cancellation_failed rows
+  Job->>DB: Later recovery retries cancellation_failed or stale cancellation_claimed rows
 ```
 
 ## Recovery Rules
@@ -477,9 +536,17 @@ sequenceDiagram
 | Paid but not fulfilled | `payment_state = 'paid' and fulfillment_state in ('not_started', 'failed')` | Run fulfillment worker. |
 | Fulfillment stuck | `payment_state = 'paid' and fulfillment_state = 'processing'` | Inspect staleness; retry only through guarded repair path. |
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
-| Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
+| Cancellation failed, retryable | `reservation_state = 'cancellation_failed' and cancellation_failure_disposition = 'retryable' and cancellation_retry_at <= now()` | Retry Dotypos cancellation. |
+| Cancellation failed, manual review | `reservation_state = 'cancellation_failed' and cancellation_failure_disposition = 'manual_review'` | Exclude from automatic batches and investigate explicitly. |
+| Cancellation worker stopped | `reservation_state = 'cancellation_claimed'` with a stale paired claim | Take over with a new owner after the bounded five-minute database-clock lease. |
+| Legacy cancellation attempt | An old writer attempts `reservation_state = 'cancelling'` | The compatibility trigger aborts the write before `RETURNING`; only an ownership-aware worker can claim the provider boundary. |
+| Legacy cancellation with pending payment | `reservation_state in ('cancelling', 'cancellation_claimed', 'cancellation_failed') and payment_state = 'pending'` | After the ownership/lease guard, restore to `held` and run provider-payment reconciliation before considering cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
+
+Rollout is expand-first but is not zero-drain at the irreversible provider boundary. Before applying the migration, quiesce queue, cron, and supersession cancellation ingress and drain or terminate every old-version invocation; SQL cannot revoke provider permission already loaded into an old process. The migration then adds the ownership columns and `cancellation_claimed` state, converts already owner-stamped preview rows, converts every already-existing ownerless `cancelling` row to due retryable failure, installs the old-writer rejecting trigger, and enforces the state/owner equivalence. Promote the ownership-aware application only after migration, then resume cancellation ingress.
+
+Rollback is symmetric: quiesce and drain ownership-aware cancellation work first. Keep the migration and compatibility trigger; Drizzle has no down-migration path here. The immediately preceding owner-stamping binary is safe but fail-closed behind this schema: its `cancelling` plus owner/timestamp update violates the state/owner constraint, so its claim query errors before returning provider permission and it never reaches DELETE. Older ownerless writers also fail closed because the trigger aborts their claim transaction before `RETURNING`. Keep cancellation ingress quiesced and cleanup blocked until an ownership-aware version is restored. A later forward-only contract migration may remove the trigger only after every old writer is retired and no rollback to one is permitted.
 
 ## Live Test Safety Checklist
 

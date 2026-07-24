@@ -1,4 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import {
+  ExternalAPIError,
+  NetworkError,
+  ValidationError,
+} from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -13,9 +19,11 @@ import {
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, Effect, Layer, Logger, References } from "effect";
+import { StorageError } from "@/shared/backend/errors";
 import { createTracingLive } from "../observability/otel-tracing";
 import {
   CENSORED_LOG_VALUE,
+  CensoringLogger,
   censorLoggerOptions,
   censorLogValue,
   createCensoredOtelLogger,
@@ -25,6 +33,18 @@ import {
 
 class CustomValue {
   constructor(readonly secret: string) {}
+}
+
+class ArbitraryErrorShape extends Error {
+  readonly _tag: string;
+  readonly operation: string;
+
+  constructor(readonly syntheticIdentifier: string) {
+    super(syntheticIdentifier);
+    this.name = `${syntheticIdentifier}Error`;
+    this._tag = `${syntheticIdentifier}Error`;
+    this.operation = `lookup.${syntheticIdentifier}`;
+  }
 }
 
 describe("isSensitiveLogKey", () => {
@@ -62,6 +82,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("subject")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -234,7 +255,158 @@ describe("censorLogValue", () => {
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("preserves non-plain objects", () => {
+  test("projects Dotypos errors without retaining sensitive descriptions", () => {
+    const marker = "synthetic-sensitive-marker";
+    const errors = [
+      new ExternalAPIError({
+        service: "Dotypos",
+        operation: "createReservation",
+        statusCode: 503,
+        message: marker,
+        providerError: { errorDescription: marker },
+        cause: new Error(marker),
+      }),
+      new NetworkError({ message: marker, url: marker, cause: marker }),
+      new ValidationError({ message: marker, cause: marker }),
+    ];
+
+    const censored = censorLogValue(errors);
+    expect(JSON.stringify(censored)).not.toContain(marker);
+    expect(censored).toEqual([
+      {
+        _tag: "ExternalAPIError",
+        operation: "createReservation",
+        statusCode: 503,
+      },
+      { _tag: "NetworkError" },
+      { _tag: "ValidationError" },
+    ]);
+  });
+
+  test("projects plain provider errors recursively and redacts provider profile fields", () => {
+    const marker = "synthetic-sensitive-marker";
+    const input = {
+      providerError: {
+        error: marker,
+        errorDescription: marker,
+        code: 422,
+      },
+      nested: [
+        {
+          cause: {
+            error: marker,
+            code: 500,
+          },
+        },
+      ],
+      customerProfile: {
+        addressLine1: marker,
+        addressLine2: marker,
+        barcode: marker,
+        birthday: marker,
+        city: marker,
+        companyId: marker,
+        companyName: marker,
+        country: marker,
+        expireDate: marker,
+        externalId: marker,
+        headerPrint: marker,
+        hexColor: marker,
+        internalNote: marker,
+        modifiedBy: marker,
+        note: marker,
+        tags: [marker],
+        vatId: marker,
+        zip: marker,
+      },
+    };
+
+    const censored = censorLogValue(input);
+    expect(JSON.stringify(censored)).not.toContain(marker);
+    expect(censored).toMatchObject({
+      providerError: { code: 422 },
+      nested: [{ cause: { code: 500 } }],
+    });
+  });
+
+  test("projects serialized errors without dynamic stack or cause text", () => {
+    const marker = "synthetic-serialized-sensitive-marker";
+    const censored = censorLogValue({
+      nested: {
+        name: "NetworkError",
+        message: marker,
+        stack: `NetworkError: ${marker}`,
+        cause: marker,
+        url: marker,
+        operation: "createReservation",
+        statusCode: 503,
+      },
+    });
+
+    expect(JSON.stringify(censored)).not.toContain(marker);
+    expect(censored).toEqual({
+      nested: { _tag: "NetworkError" },
+    });
+  });
+
+  test("fails closed for a provider-derived custom error nested in a storage error", () => {
+    const marker = "SyntheticReservationIdentifier42";
+    const censored = censorLogValue(
+      new StorageError({
+        message: "Reservation delivery failed",
+        operation: "deliverReservationEmail",
+        cause: new EmailServiceError(
+          marker,
+          new ArbitraryErrorShape(marker),
+          "resend"
+        ),
+      })
+    );
+    const serialized = JSON.stringify(censored);
+
+    expect(serialized).not.toContain(marker);
+    expect(censored).toEqual({
+      _tag: "StorageError",
+      operation: "deliverReservationEmail",
+      cause: { _tag: "EmailServiceError" },
+    });
+  });
+
+  test("does not emit an arbitrary Error-shaped provider cause through the console sink", async () => {
+    const marker = "SyntheticConsoleIdentifier42";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const error = new StorageError({
+      message: "Reservation delivery failed",
+      operation: "deliverReservationEmail",
+      cause: new EmailServiceError(
+        marker,
+        new ArbitraryErrorShape(marker),
+        "resend"
+      ),
+    });
+
+    try {
+      await Effect.runPromise(
+        Effect.logError("delivery failed").pipe(
+          Effect.annotateLogs({ error }),
+          Effect.provide(Logger.layer([CensoringLogger]))
+        )
+      );
+      const serialized = JSON.stringify(errorOutput);
+      expect(serialized).not.toContain(marker);
+      expect(serialized).toContain("StorageError");
+      expect(serialized).toContain("EmailServiceError");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test("projects errors while preserving other non-plain objects", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -244,13 +416,39 @@ describe("censorLogValue", () => {
     const input = { thrown: error, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
-    expect(censored).toEqual(input);
-    expect(censored.thrown).toBe(error);
+    expect(censored).toEqual({ ...input, thrown: { _tag: "Error" } });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
-    expect((censorLogValue(error) as Error).message).toBe("boom");
+    expect(censorLogValue(error)).toEqual({ _tag: "Error" });
+  });
+
+  test("recursively projects action wrappers and Effect Causes", async () => {
+    const { PublicSafeActionError } = await import(
+      "@/shared/utils/safe-action-client"
+    );
+    const marker = "synthetic-sensitive-marker";
+    const cause = Cause.die(
+      new PublicSafeActionError({
+        message: "Safe public message",
+        cause: Cause.fail(
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation: "createReservation",
+            message: marker,
+            providerError: { errorDescription: marker },
+            cause: new Error(marker),
+          })
+        ),
+      })
+    );
+
+    const censored = censorLogValue(cause);
+    expect(JSON.stringify(censored)).not.toContain(marker);
+    expect(Cause.isCause(censored)).toBe(true);
+    expect(JSON.stringify(censored)).toContain("PublicSafeActionError");
+    expect(JSON.stringify(censored)).toContain("createReservation");
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -493,6 +691,63 @@ describe("createCensoredOtelLogger", () => {
     await provider.shutdown();
   });
 
+  test("does not emit nested plain provider errors to OTel", async () => {
+    const marker = "synthetic-provider-sensitive-marker";
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+
+    await Effect.runPromise(
+      Effect.logError("provider failure", {
+        nested: {
+          providerError: {
+            error: marker,
+            errorDescription: marker,
+            code: 502,
+          },
+        },
+      }).pipe(
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).not.toContain(marker);
+    expect(serialized).toContain("502");
+    await provider.shutdown();
+  });
+
+  test("does not emit serialized provider stacks or dynamic causes to OTel", async () => {
+    const marker = "synthetic-serialized-otel-marker";
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+
+    await Effect.runPromise(
+      Effect.logError("provider failure").pipe(
+        Effect.annotateLogs("providerFailure", {
+          name: "ExternalAPIError",
+          message: marker,
+          stack: `ExternalAPIError: ${marker}`,
+          cause: marker,
+          operation: "createReservation",
+          statusCode: 502,
+        }),
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).not.toContain(marker);
+    expect(serialized).toContain("ExternalAPIError");
+    expect(serialized).toContain("502");
+    await provider.shutdown();
+  });
+
   test("does not emit sensitive fields from Drizzle query errors", async () => {
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({
@@ -515,6 +770,39 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
+    await provider.shutdown();
+  });
+
+  test("does not emit a provider-derived custom error through the OTel sink", async () => {
+    const marker = "SyntheticOtelIdentifier42";
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    const error = new StorageError({
+      message: "Reservation delivery failed",
+      operation: "deliverReservationEmail",
+      cause: new EmailServiceError(
+        marker,
+        new ArbitraryErrorShape(marker),
+        "resend"
+      ),
+    });
+
+    await Effect.runPromise(
+      Effect.logError("delivery failed").pipe(
+        Effect.annotateLogs({ error }),
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).not.toContain(marker);
+    expect(serialized).toContain("StorageError");
+    expect(serialized).toContain("EmailServiceError");
+    expect(serialized).toContain("deliverReservationEmail");
+    expect(serialized).not.toContain("resend");
     await provider.shutdown();
   });
 });

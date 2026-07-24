@@ -3,17 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent } from "react";
 
-type CheckoutStatusAutoRefreshProps = {
+type CheckoutAutoRefreshProps = {
   readonly enabled: boolean;
   readonly intervalMs?: number;
 };
 
-const DEFAULT_STATUS_REFRESH_INTERVAL_MS = 5000;
+const DEFAULT_CHECKOUT_REFRESH_INTERVAL_MS = 5000;
 
-export function CheckoutStatusAutoRefresh({
+export function CheckoutAutoRefresh({
   enabled,
-  intervalMs = DEFAULT_STATUS_REFRESH_INTERVAL_MS,
-}: CheckoutStatusAutoRefreshProps) {
+  intervalMs = DEFAULT_CHECKOUT_REFRESH_INTERVAL_MS,
+}: CheckoutAutoRefreshProps) {
   const router = useRouter();
   const refreshStatus = useEffectEvent(() => {
     router.refresh();

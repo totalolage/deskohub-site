@@ -8,6 +8,7 @@ import {
   getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
+  getNormalizedCoworkReservationAttemptIdentity,
 } from "./cowork-reservation";
 
 const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
@@ -79,6 +80,65 @@ describe("cowork reservation schema", () => {
         entryTier: "basic",
       });
       expect(result.success).not.toHaveProperty("_tag");
+    }
+  });
+
+  test("projects every normalized cowork attempt identity field", () => {
+    const result = coworkReservationOrderSchema.safeParse({
+      kind: "cowork",
+      entryTier: "profi",
+      date: "2099-06-10",
+      coffee: false,
+      monitorOption: "2x27-qhd",
+      name: "  Synthetic Person  ",
+      email: "  synthetic@example.test  ",
+      phone: "  +420777777777  ",
+      message: "  Please use the quiet desk.  ",
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(
+        getNormalizedCoworkReservationAttemptIdentity(result.success)
+      ).toEqual({
+        kind: "cowork",
+        name: "Synthetic Person",
+        email: "synthetic@example.test",
+        phone: "+420777777777",
+        message: "Please use the quiet desk.",
+        date: "2099-06-10",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      });
+    }
+  });
+
+  test("normalizes an omitted or blank optional message to the same identity", () => {
+    const base = {
+      kind: "cowork" as const,
+      entryTier: "basic" as const,
+      date: "2099-06-10",
+      coffee: false,
+      name: "Synthetic Person",
+      email: "synthetic@example.test",
+      phone: "+420777777777",
+    };
+    const omitted = coworkReservationOrderSchema.safeParse(base);
+    const blank = coworkReservationOrderSchema.safeParse({
+      ...base,
+      message: "   ",
+    });
+
+    expect(Result.isSuccess(omitted)).toBe(true);
+    expect(Result.isSuccess(blank)).toBe(true);
+    if (Result.isSuccess(omitted) && Result.isSuccess(blank)) {
+      expect(
+        getNormalizedCoworkReservationAttemptIdentity(omitted.success)
+      ).toEqual(getNormalizedCoworkReservationAttemptIdentity(blank.success));
+      expect(
+        getNormalizedCoworkReservationAttemptIdentity(blank.success).message
+      ).toBeNull();
     }
   });
 

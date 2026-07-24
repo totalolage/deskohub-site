@@ -1,6 +1,10 @@
 import { expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import { browserDiagnosticsScript } from "../browser-scripts";
+import { openBrowserPage } from "../browser";
+import {
+  browserDiagnosticsScript,
+  payPageReadyScript,
+} from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -8,6 +12,7 @@ import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
   startCheckoutPaymentAttempt,
+  submitReservationForPayPage,
 } from "./payment";
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
@@ -73,6 +78,10 @@ test("retries a transient reservation preparation failure with the same checkout
       );
     }
 
+    if (commandArgs[0] === "eval" && options.input === payPageReadyScript) {
+      return success("true");
+    }
+
     if (commandArgs[0] === "snapshot") {
       return success(
         [
@@ -118,6 +127,81 @@ test("retries a transient reservation preparation failure with the same checkout
   expect(reservationSubmitAttempts).toBe(2);
   expect(clickedRefs).toEqual([]);
   expect(activatedRefs).toEqual(["@e2", "@e3"]);
+});
+
+test("waits for the production handoff to make a fenced fresh-candidate pay page payable", async () => {
+  const submitReservationScript = "submit-fresh-reservation";
+  const payPageUrl = `${checkoutUrl.replace("/order", "/pay")}?orderId=${orderId}`;
+  let payPageReadinessChecks = 0;
+  let reservationSubmitted = false;
+  const openedUrls: string[] = [];
+  const run = mock(async (_command, args, options = {}) => {
+    const browserArgs = args.slice(2);
+    const commandIndex = browserArgs.findIndex((arg) =>
+      ["eval", "get", "open"].includes(arg)
+    );
+    const commandArgs = browserArgs.slice(commandIndex);
+
+    if (
+      commandArgs[0] === "eval" &&
+      options.input === submitReservationScript
+    ) {
+      reservationSubmitted = true;
+      return success();
+    }
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(reservationSubmitted ? payPageUrl : checkoutUrl);
+    }
+    if (commandArgs[0] === "eval" && options.input === payPageReadyScript) {
+      payPageReadinessChecks += 1;
+      return success(String(payPageReadinessChecks > 1));
+    }
+    if (commandArgs[0] === "open") {
+      openedUrls.push(commandArgs[1] ?? "");
+      return success();
+    }
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  }) as unknown as Runner;
+
+  const result = await Effect.runPromise(
+    submitReservationForPayPage({
+      config: makeConfig(),
+      locale: "en-US",
+      run,
+      session: "fresh-candidate-session",
+      submitReservationScript,
+      timeouts: workspaceE2ETimeouts,
+    })
+  );
+
+  expect(result).toBe(orderId);
+  expect(payPageReadinessChecks).toBeGreaterThan(1);
+  expect(openedUrls).toEqual([]);
+});
+
+test.each([
+  {
+    label: "an off-origin pay page",
+    url: "https://off-origin.example.test/en-US/checkout/pay?payState=synthetic-capability",
+  },
+  {
+    label: "an insecure pay page",
+    url: `${checkoutUrl.replace("https:", "http:").replace("/order", "/pay")}?payState=synthetic-capability`,
+  },
+  {
+    label: "a protected-origin non-checkout path",
+    url: `${checkoutUrl.replace("/checkout/order", "/contact")}?payState=synthetic-capability`,
+  },
+])("rejects $label before attaching preview authorization", async ({ url }) => {
+  const run = mock(async () => success()) as unknown as Runner;
+
+  await expect(
+    openBrowserPage(makeConfig(), run, "unsafe-navigation-session", url, {
+      expectedLocalizedPath: "/en-US/checkout/pay",
+    }).pipe(Effect.runPromise)
+  ).rejects.toBeDefined();
+
+  expect(run).not.toHaveBeenCalled();
 });
 
 test("retries a hosted payment field when its first fill does not stick", async () => {

@@ -2,6 +2,7 @@ import { Effect, Layer } from "effect";
 import { createTracingLive } from "../shared/backend/observability/otel-tracing";
 import { createPostHogTracerProvider } from "../shared/backend/observability/posthog-tracing";
 import type { E2EEnvironment } from "./e2e-env";
+import { workspaceE2EError } from "./errors";
 
 const e2eServiceName = "deskohub-workspace-e2e";
 const e2eServiceNamespace = "deskohub";
@@ -20,7 +21,7 @@ export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
   return {
     shutdown: provider
       ? Effect.tryPromise({
-          catch: () => new Error("E2E trace provider shutdown failed"),
+          catch: () => workspaceE2EError("E2E trace provider shutdown failed"),
           try: async () => {
             try {
               await provider.forceFlush();

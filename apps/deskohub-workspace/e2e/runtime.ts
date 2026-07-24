@@ -24,7 +24,7 @@ export const makeRunner =
       timeoutMs?: number;
     } = {}
   ) => {
-    const printable = redact([command, ...args].join(" "));
+    const printable = formatRunnerCommand(command, args);
     if (options.logCommand !== false) log(`$ ${printable}`);
 
     const child = Bun.spawn([command, ...args], {
@@ -93,6 +93,9 @@ const baseChildEnv = (environment: E2EEnvironment) =>
 
 export type Runner = ReturnType<typeof makeRunner>;
 
+export const formatRunnerCommand = (command: string, args: readonly string[]) =>
+  redact([command, ...args].join(" "));
+
 export const assertSafeDatabaseUrl = (
   databaseUrl: string,
   label: string,
@@ -151,8 +154,53 @@ export const addRedaction = (value: string | undefined, force = false) => {
   );
 };
 
+const decodeQueryComponent = (value: string) => {
+  try {
+    return decodeURIComponent(value.replaceAll("+", " "));
+  } catch {
+    return value;
+  }
+};
+
+const decodeQueryKey = (value: string, layers = 2) => {
+  let decoded = value;
+  for (let layer = 0; layer < layers; layer += 1) {
+    const next = decodeQueryComponent(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+};
+
+const redactPayStateQuery = (value: string) =>
+  value.replace(
+    /([?&])([^?&\s"'<>]*?)(=|%(?:25)*(?:3d))([^&\s"'<>]*)/gi,
+    (parameter, delimiter, rawKey, separator) =>
+      decodeQueryKey(rawKey).toLowerCase() === "paystate"
+        ? `${delimiter}${rawKey}${separator}[redacted]`
+        : parameter
+  );
+
+const redactEncodedQuery = (value: string, remainingLayers: number): string => {
+  const structurallyRedacted = redactPayStateQuery(value);
+  if (structurallyRedacted !== value || remainingLayers === 0) {
+    return structurallyRedacted;
+  }
+  if (!/%(?:25)*(?:3f|26)/i.test(value)) return value;
+  try {
+    const decoded = decodeURIComponent(value);
+    if (decoded === value) return value;
+    const redacted = redactEncodedQuery(decoded, remainingLayers - 1);
+    return redacted === decoded ? value : encodeURIComponent(redacted);
+  } catch {
+    return value;
+  }
+};
+
 export const redact = (text: string) => {
-  let output = text;
+  let output = text.replace(/[^\s"'<>]+/g, (candidate) =>
+    redactEncodedQuery(candidate, 2)
+  );
   for (const secret of redactions)
     output = output.replaceAll(secret, "[redacted]");
   return output;

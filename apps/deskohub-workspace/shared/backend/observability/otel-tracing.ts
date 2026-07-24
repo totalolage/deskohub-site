@@ -1,6 +1,6 @@
 import * as OtelResource from "@effect/opentelemetry/Resource";
 import * as OtelTracer from "@effect/opentelemetry/Tracer";
-import type { TracerProvider } from "@opentelemetry/api";
+import { type TracerProvider, trace } from "@opentelemetry/api";
 import * as Layer from "effect/Layer";
 
 type TracingLiveOptions = {
@@ -8,6 +8,7 @@ type TracingLiveOptions = {
   readonly provider?: TracerProvider;
   readonly serviceName: string;
   readonly serviceVersion?: string;
+  readonly transformProvider?: (provider: TracerProvider) => TracerProvider;
 };
 
 export const createTracingLive = ({
@@ -15,10 +16,18 @@ export const createTracingLive = ({
   provider,
   serviceName,
   serviceVersion,
+  transformProvider,
 }: TracingLiveOptions) => {
   const providerLive = provider
-    ? Layer.succeed(OtelTracer.OtelTracerProvider, provider)
-    : OtelTracer.layerGlobalProvider;
+    ? Layer.succeed(
+        OtelTracer.OtelTracerProvider,
+        transformProvider ? transformProvider(provider) : provider
+      )
+    : transformProvider
+      ? Layer.sync(OtelTracer.OtelTracerProvider, () =>
+          transformProvider(trace.getTracerProvider())
+        )
+      : OtelTracer.layerGlobalProvider;
   const resourceLive = OtelResource.layer({
     attributes,
     serviceName,

@@ -368,6 +368,8 @@
   "checkoutPaymentRetryConsentBefore": "I confirm again that I agree to the",
   "checkoutPaymentRetryButton": "Try payment again",
   "checkoutPaymentRetryPending": "Preparing secure payment...",
+  "checkoutPayStabilizingTitle": "Preparing your secure payment.",
+  "checkoutPayStabilizingLead": "Your reservation is secured while we finish verification. This page will continue automatically.",
   "checkoutPaymentRetryError": "Payment could not be restarted. Please review the reservation details and try again.",
   "checkoutPaymentRetryCancelledBanner": "The previous payment was cancelled. You can start a fresh secure payment after confirming the terms again.",
   "checkoutPaymentRetryFailedBanner": "The previous payment did not complete. You can start a fresh secure payment after confirming the terms again.",

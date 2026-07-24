@@ -1,4 +1,10 @@
 import {
+  ExternalAPIError,
+  NetworkError,
+  ValidationError,
+} from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
+import {
   type AnyValue,
   type AnyValueMap,
   type LoggerProvider,
@@ -7,7 +13,9 @@ import {
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Logger, type LogLevel, References } from "effect";
+import { Cause, Effect, Logger, type LogLevel, References } from "effect";
+import { PublicSafeActionError } from "../../utils/safe-action-client";
+import { StorageError } from "../errors";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -38,13 +46,36 @@ const sensitiveLogKeyFragments = [
   "phone",
   "first name",
   "last name",
+  "subject",
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
+  "addressline1",
+  "addressline2",
+  "barcode",
+  "birthday",
+  "city",
+  "companyid",
+  "companyname",
+  "country",
+  "description",
+  "detail",
   "discountcode",
+  "error",
+  "expiredate",
+  "externalid",
+  "headerprint",
+  "hexcolor",
+  "internalnote",
+  "modifiedby",
+  "note",
   "exception.stacktrace",
   "submittedcode",
+  "stack",
+  "tags",
+  "vatid",
   "x-vercel-sc-headers",
+  "zip",
 ]);
 
 const sensitiveLogUrlSearchParams = new Set([
@@ -211,6 +242,147 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
+const isPlainDotyposProviderError = (
+  value: unknown
+): value is Record<string, unknown> =>
+  isPlainObject(value) &&
+  !("_tag" in value) &&
+  Object.keys(value).every((key) =>
+    ["code", "error", "errorDescription"].includes(key)
+  ) &&
+  ("errorDescription" in value ||
+    ("error" in value && ("code" in value || Object.keys(value).length <= 2)));
+
+const serializedKnownErrorTags = new Set([
+  "EmailServiceError",
+  "ExternalAPIError",
+  "NetworkError",
+  "PublicSafeActionError",
+  "StorageError",
+  "ValidationError",
+]);
+
+const getSerializedKnownErrorTag = (value: unknown): string | undefined => {
+  if (!isPlainObject(value)) return undefined;
+  const tag =
+    typeof value._tag === "string"
+      ? value._tag
+      : typeof value.name === "string"
+        ? value.name
+        : undefined;
+  return tag && serializedKnownErrorTags.has(tag) ? tag : undefined;
+};
+
+const projectTrustedErrorMetadata = (
+  value: object,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  const existing = seen.get(value);
+  if (existing) return existing;
+
+  if (value instanceof EmailServiceError) {
+    const result = { _tag: "EmailServiceError" };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof ExternalAPIError) {
+    const result = {
+      _tag: "ExternalAPIError",
+      operation: value.operation,
+      ...(typeof value.statusCode === "number" && {
+        statusCode: value.statusCode,
+      }),
+    };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof NetworkError) {
+    const result = { _tag: "NetworkError" };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof ValidationError) {
+    const result = { _tag: "ValidationError" };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof StorageError) {
+    const result: Record<string, unknown> = { _tag: "StorageError" };
+    seen.set(value, result);
+    if (value.operation) result.operation = value.operation;
+    if (typeof value.cause === "object" && value.cause !== null) {
+      const cause = censorErrorCause(value.cause, seen);
+      if (cause !== CENSORED_LOG_VALUE) result.cause = cause;
+    }
+    return result;
+  }
+
+  if (value instanceof PublicSafeActionError) {
+    const result: Record<string, unknown> = { _tag: "PublicSafeActionError" };
+    seen.set(value, result);
+    const cause = censorErrorCause(value.cause, seen);
+    if (cause !== CENSORED_LOG_VALUE) {
+      result.cause = cause;
+    }
+    return result;
+  }
+
+  if (value instanceof Error) {
+    const result = { _tag: "Error" };
+    seen.set(value, result);
+    return result;
+  }
+
+  return CENSORED_LOG_VALUE;
+};
+
+const projectSerializedKnownError = (
+  value: Record<string, unknown>,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  const tag = getSerializedKnownErrorTag(value);
+  if (!tag) return CENSORED_LOG_VALUE;
+
+  const existing = seen.get(value);
+  if (existing) return existing;
+
+  const result: Record<string, unknown> = { _tag: tag };
+  seen.set(value, result);
+  if (tag === "ExternalAPIError" && typeof value.statusCode === "number") {
+    result.statusCode = value.statusCode;
+  }
+  return result;
+};
+
+function censorErrorCause(
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown {
+  if (typeof value !== "object" || value === null) return CENSORED_LOG_VALUE;
+
+  if (
+    Cause.isCause(value) ||
+    isPlainDotyposProviderError(value) ||
+    isEffectDrizzleQueryError(value) ||
+    value instanceof EmailServiceError ||
+    value instanceof ExternalAPIError ||
+    value instanceof NetworkError ||
+    value instanceof PublicSafeActionError ||
+    value instanceof StorageError ||
+    value instanceof ValidationError ||
+    value instanceof Error ||
+    getSerializedKnownErrorTag(value) !== undefined
+  ) {
+    return censorLogValueInternal(value, seen);
+  }
+
+  return CENSORED_LOG_VALUE;
+}
+
 const censorQueryParameter = (
   value: unknown,
   seen: WeakMap<object, unknown>
@@ -254,8 +426,12 @@ const censorLogRecordValue = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
+  const normalizedKey = key.toLowerCase();
+  if (normalizedKey === "error" || normalizedKey === "cause") {
+    return censorErrorCause(value, seen);
+  }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  if (normalizedKey === "params") return censorQueryParams(value, seen);
   return censorLogValueInternal(value, seen);
 };
 
@@ -338,6 +514,23 @@ const censorLogValueInternal = (
 
   if (typeof value === "string") return censorUrlString(value);
 
+  if (Cause.isCause(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    seen.set(value, Cause.empty);
+    const result = Cause.fromReasons(
+      value.reasons.map((reason) =>
+        Cause.isFailReason(reason)
+          ? Cause.makeFailReason(censorErrorCause(reason.error, seen))
+          : Cause.isDieReason(reason)
+            ? Cause.makeDieReason(censorErrorCause(reason.defect, seen))
+            : Cause.makeInterruptReason(reason.fiberId)
+      )
+    );
+    seen.set(value, result);
+    return result;
+  }
+
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -349,6 +542,29 @@ const censorLogValueInternal = (
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
     return result;
+  }
+
+  if (
+    value instanceof EmailServiceError ||
+    value instanceof ExternalAPIError ||
+    value instanceof NetworkError ||
+    value instanceof PublicSafeActionError ||
+    value instanceof StorageError ||
+    value instanceof ValidationError ||
+    value instanceof Error
+  ) {
+    return projectTrustedErrorMetadata(value, seen);
+  }
+
+  if (isPlainDotyposProviderError(value)) {
+    return {
+      ...("code" in value &&
+        typeof value.code === "number" && { code: value.code }),
+    };
+  }
+
+  if (isPlainObject(value) && getSerializedKnownErrorTag(value) !== undefined) {
+    return projectSerializedKnownError(value, seen);
   }
 
   if (!isPlainObject(value)) return value;
@@ -379,6 +595,7 @@ export const censorLoggerOptions = (
   return {
     ...options,
     message: censorLogValue(options.message),
+    cause: censorLogValue(options.cause) as typeof options.cause,
     fiber: {
       ...fiber,
       getRef: (ref) => {
@@ -430,7 +647,17 @@ const toOtelValue = (value: unknown): AnyValue => {
   }
 
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(
+      Cause.isCause(value)
+        ? value.reasons.map((reason) =>
+            Cause.isFailReason(reason)
+              ? { _tag: "Fail", error: reason.error }
+              : Cause.isDieReason(reason)
+                ? { _tag: "Die", defect: reason.defect }
+                : { _tag: "Interrupt" }
+          )
+        : value
+    );
   } catch {
     return String(value);
   }

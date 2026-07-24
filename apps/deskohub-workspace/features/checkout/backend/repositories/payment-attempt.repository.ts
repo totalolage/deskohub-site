@@ -10,6 +10,7 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import { hasNoUnresolvedProviderAttachmentRecovery } from "@/features/reservation/backend/workspace-reservation.repository";
 
 export class PaymentAttemptStateError extends Data.TaggedError(
   "PaymentAttemptStateError"
@@ -142,7 +143,9 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                     "failed",
                     "cancelled",
                     "expired",
-                  ])
+                  ]),
+                  sql`${workspaceReservations.reservationHoldExpiresAt} > clock_timestamp()`,
+                  hasNoUnresolvedProviderAttachmentRecovery()
                 )
               )
               .returning({ id: workspaceReservations.id });

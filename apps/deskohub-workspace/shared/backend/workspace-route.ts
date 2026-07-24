@@ -43,7 +43,7 @@ export const defineWorkspaceRoute =
       withWorkspaceRequestContext(request.headers)
     );
     const effect = Effect.andThen(
-      scheduleWorkspaceTelemetryFlush(),
+      scheduleWorkspaceTelemetryFlush,
       invocation
     ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
     const signal =
