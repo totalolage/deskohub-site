@@ -22,6 +22,18 @@ mock.module("next/headers", () => ({
   },
 }));
 
+class ArbitraryErrorShape extends Error {
+  readonly _tag: string;
+  readonly operation: string;
+
+  constructor(readonly syntheticIdentifier: string) {
+    super(syntheticIdentifier);
+    this.name = `${syntheticIdentifier}Error`;
+    this._tag = `${syntheticIdentifier}Error`;
+    this.operation = `lookup.${syntheticIdentifier}`;
+  }
+}
+
 describe("Workspace actions", () => {
   test("starts the lifecycle after validation and provides Bot protection", async () => {
     const { BotProtectionService } = await import(
@@ -121,7 +133,7 @@ describe("Workspace actions", () => {
 
   test("censors provider-derived custom errors through generic action console logging", async () => {
     const { defineWorkspaceAction } = await import("./workspace-action");
-    const marker = "synthetic-email-provider-action-marker";
+    const marker = "SyntheticActionIdentifier42";
     const errorOutput: unknown[][] = [];
     const consoleError = spyOn(console, "error").mockImplementation(
       (...args: unknown[]) => {
@@ -140,7 +152,7 @@ describe("Workspace actions", () => {
             operation: "deliverReservationEmail",
             cause: new EmailServiceError(
               marker,
-              { providerMessage: marker },
+              new ArbitraryErrorShape(marker),
               "resend"
             ),
           })

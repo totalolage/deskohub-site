@@ -119,7 +119,6 @@ export const EmailServiceLive = Layer.effect(
     return {
       send: Effect.fn("email.send")(
         function* (message: EmailMessage) {
-          yield* Effect.annotateLogsScoped({ message });
           yield* Effect.logInfo("Email send started", {
             provider: provider.name,
           });
@@ -128,13 +127,8 @@ export const EmailServiceLive = Layer.effect(
             ...message,
             from: message.from || config.defaultFrom,
           };
-          yield* Effect.annotateLogsScoped({ finalMessage });
 
           yield* Effect.logInfo("Sending email", {
-            to: Array.isArray(finalMessage.to)
-              ? finalMessage.to.map((r) => r.email || r)
-              : finalMessage.to.email || finalMessage.to,
-            subject: finalMessage.subject,
             provider: provider.name,
           });
 
@@ -144,39 +138,21 @@ export const EmailServiceLive = Layer.effect(
                 "Email send failed, will retry if NetworkError",
                 {
                   errorType: error._tag,
-                  errorMessage: error.message,
                   willRetry: isRetryableEmailError(error),
-                  recipient: Array.isArray(finalMessage.to)
-                    ? finalMessage.to.map((r) => r.email || r)
-                    : finalMessage.to.email || finalMessage.to,
-                  subject: finalMessage.subject,
                   retryPolicy: getEmailRetryPolicyDescription(error),
                 }
               )
             ),
             Effect.retry(emailRetryPolicy),
             Effect.tap((sendResult) =>
-              Effect.gen(function* () {
-                yield* Effect.annotateLogsScoped({ result: sendResult });
-                yield* Effect.logInfo("Email sent successfully", {
-                  id: sendResult.id,
-                  provider: sendResult.provider,
-                  recipient: Array.isArray(finalMessage.to)
-                    ? finalMessage.to.map((r) => r.email || r)
-                    : finalMessage.to.email || finalMessage.to,
-                  subject: finalMessage.subject,
-                });
+              Effect.logInfo("Email sent successfully", {
+                provider: sendResult.provider,
               })
             ),
             Effect.tapError((error) =>
               Effect.logError("Email send failed - all retries exhausted", {
                 errorType: error._tag,
-                errorMessage: error.message,
                 provider: provider.name,
-                recipient: Array.isArray(finalMessage.to)
-                  ? finalMessage.to.map((r) => r.email || r)
-                  : finalMessage.to.email || finalMessage.to,
-                subject: finalMessage.subject,
                 maxRetriesReached: true,
               })
             )
@@ -184,23 +160,21 @@ export const EmailServiceLive = Layer.effect(
 
           return result;
         },
-        (effect, message) =>
+        (effect, _message) =>
           effect.pipe(
             Effect.scoped,
-            Effect.annotateLogs({ provider: provider.name, message })
+            Effect.annotateLogs({ provider: provider.name })
           )
       ),
 
       sendTemplate: Effect.fn("email.sendTemplate")(
         function* (recipient, template) {
-          yield* Effect.annotateLogsScoped({ recipient, template });
           yield* Effect.logInfo("Template email send started", {
             provider: provider.name,
             template: template.type,
           });
 
           const rendered = yield* templateService.render(template);
-          yield* Effect.annotateLogsScoped({ rendered });
           yield* Effect.logDebug("Template email rendered", {
             template: template.type,
           });
@@ -219,7 +193,6 @@ export const EmailServiceLive = Layer.effect(
               templateType: template.type,
             },
           };
-          yield* Effect.annotateLogsScoped({ message });
 
           return yield* provider.send(message).pipe(
             Effect.tapError((error) =>
@@ -227,46 +200,34 @@ export const EmailServiceLive = Layer.effect(
                 "Template email failed, will retry if NetworkError",
                 {
                   errorType: error._tag,
-                  errorMessage: error.message,
                   willRetry: isRetryableEmailError(error),
                   template: template.type,
-                  recipient: to.email,
-                  subject: message.subject,
                   retryPolicy: getEmailRetryPolicyDescription(error),
                 }
               )
             ),
             Effect.retry(emailRetryPolicy),
             Effect.tap((sendResult) =>
-              Effect.gen(function* () {
-                yield* Effect.annotateLogsScoped({ result: sendResult });
-                yield* Effect.logInfo("Template email sent successfully", {
-                  id: sendResult.id,
-                  template: template.type,
-                  recipient: to.email,
-                  subject: message.subject,
-                });
+              Effect.logInfo("Template email sent successfully", {
+                provider: sendResult.provider,
+                template: template.type,
               })
             ),
             Effect.tapError((error) =>
               Effect.logError("Template email failed - all retries exhausted", {
                 errorType: error._tag,
-                errorMessage: error.message,
                 template: template.type,
-                recipient: to.email,
-                subject: message.subject,
                 maxRetriesReached: true,
               })
             )
           );
         },
-        (effect, recipient, template) =>
+        (effect, _recipient, template) =>
           effect.pipe(
             Effect.scoped,
             Effect.annotateLogs({
               provider: provider.name,
-              recipient,
-              template,
+              template: template.type,
             })
           )
       ),
@@ -295,7 +256,6 @@ export const EmailServiceLive = Layer.effect(
             Effect.logError("Email service verification failed", {
               provider: provider.name,
               errorType: error._tag,
-              errorMessage: error.message,
             })
           )
         );

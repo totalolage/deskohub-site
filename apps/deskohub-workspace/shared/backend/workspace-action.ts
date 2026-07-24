@@ -127,6 +127,9 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   locale: args.ctx.locale,
 });
 
+// The error is immediately converted to a defect and cannot enter a typed
+// feature error channel.
+// @effect-diagnostics-next-line unknownInEffectCatch:off
 const readActionHeaders = Effect.tryPromise({
   try: () => headers(),
   catch: (cause) => cause,

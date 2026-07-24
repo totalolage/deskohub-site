@@ -56,12 +56,7 @@ const createResendProvider = (apiKey: string): EmailProvider => {
 
     send: Effect.fn("resend.send")(
       function* (message: EmailMessage) {
-        yield* Effect.annotateLogsScoped({ message });
-        yield* Effect.logInfo("Sending email via Resend", {
-          to: message.to,
-          subject: message.subject,
-          from: message.from,
-        });
+        yield* Effect.logInfo("Sending email via Resend");
 
         const result = yield* Effect.tryPromise({
           try: async () => {
@@ -147,15 +142,8 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           },
         }).pipe(
           Effect.tap((response) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ response });
-              yield* Effect.logDebug("Resend provider response received", {
-                response,
-              });
-              yield* Effect.logInfo("Resend tryPromise succeeded", {
-                hasData: !!response.data,
-                id: response.data?.id,
-              });
+            Effect.logInfo("Resend tryPromise succeeded", {
+              hasData: !!response.data,
             })
           ),
           Effect.tapError((error) =>
@@ -163,7 +151,6 @@ const createResendProvider = (apiKey: string): EmailProvider => {
               "Resend tryPromise failed - will retry if NetworkError",
               {
                 errorTag: error._tag,
-                errorMessage: error.message,
                 willRetry: isRetryableEmailError(error),
               }
             )
@@ -177,22 +164,12 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           timestamp: new Date(),
         } satisfies EmailSendResult;
 
-        yield* Effect.annotateLogsScoped({ result: sendResult });
-        yield* Effect.logDebug("Resend email send result created", {
-          result: sendResult,
-        });
-        yield* Effect.logInfo("Email sent successfully via Resend", {
-          id: result.data?.id,
-          response: result,
-        });
+        yield* Effect.logInfo("Email sent successfully via Resend");
 
         return sendResult;
       },
-      (effect, message) =>
-        effect.pipe(
-          Effect.scoped,
-          Effect.annotateLogs({ provider: "resend", message })
-        )
+      (effect, _message) =>
+        effect.pipe(Effect.scoped, Effect.annotateLogs({ provider: "resend" }))
     ),
 
     verify: Effect.gen(function* () {
@@ -209,14 +186,6 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           );
         },
       }).pipe(
-        Effect.tap((response) =>
-          Effect.gen(function* () {
-            yield* Effect.annotateLogsScoped({ response });
-            yield* Effect.logDebug("Resend verify provider response received", {
-              response,
-            });
-          })
-        ),
         Effect.flatMap((response) => {
           const resendError = response.error;
           if (!resendError) return Effect.succeed(true);
@@ -238,7 +207,6 @@ const createResendProvider = (apiKey: string): EmailProvider => {
         Effect.tapError((error) =>
           Effect.logError("Resend API key verification failed", {
             errorType: error._tag,
-            errorMessage: error.message,
           })
         )
       );

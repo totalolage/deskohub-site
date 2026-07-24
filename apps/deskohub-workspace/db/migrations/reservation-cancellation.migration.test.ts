@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const databases: PGlite[] = [];
 const cancellationMigrationUrl = new URL(
-  "./20260724172713_reservation_cancellation_ownership_fail_closed/migration.sql",
+  "./20260724182538_reservation_cancellation_ownership_fail_closed/migration.sql",
   import.meta.url
 );
 
@@ -427,7 +427,22 @@ describe("reservation cancellation ownership migration", () => {
           'synthetic-published-provider',
           null,
           null
+        ),
+        (
+          'deliberate-manual-review',
+          'cancellation_failed',
+          'not_started',
+          'synthetic-manual-provider',
+          null,
+          null
         )
+    `);
+    await database.exec(`
+      update workspace_reservations
+      set
+        cancellation_failure_disposition = 'manual_review',
+        cancellation_recovery_reason = 'hold_expired'
+      where id = 'deliberate-manual-review'
     `);
 
     await applyCancellationMigration(database);
@@ -435,35 +450,97 @@ describe("reservation cancellation ownership migration", () => {
     const upgraded = await database.query<{
       cancellation_claim_owner: string | null;
       cancellation_failure_disposition: string | null;
+      cancellation_recovery_reason: string | null;
+      has_retry_at: boolean;
       id: string;
+      retry_is_due: boolean;
       reservation_state: string;
     }>(`
       select
         id,
         reservation_state,
         cancellation_claim_owner,
-        cancellation_failure_disposition
+        cancellation_failure_disposition,
+        cancellation_recovery_reason,
+        cancellation_retry_at is not null as has_retry_at,
+        cancellation_retry_at <= now() as retry_is_due
       from workspace_reservations
       order by id
     `);
     expect(upgraded.rows).toEqual([
       {
+        id: "deliberate-manual-review",
+        reservation_state: "cancellation_failed",
+        cancellation_claim_owner: null,
+        cancellation_failure_disposition: "manual_review",
+        cancellation_recovery_reason: "hold_expired",
+        has_retry_at: false,
+        retry_is_due: null,
+      },
+      {
         id: "draft-owned",
         reservation_state: "cancellation_claimed",
         cancellation_claim_owner: "synthetic-owner",
         cancellation_failure_disposition: null,
+        cancellation_recovery_reason: null,
+        has_retry_at: false,
+        retry_is_due: null,
       },
       {
         id: "draft-ownerless",
         reservation_state: "cancellation_failed",
         cancellation_claim_owner: null,
         cancellation_failure_disposition: "retryable",
+        cancellation_recovery_reason: "retryable_failure",
+        has_retry_at: true,
+        retry_is_due: true,
       },
       {
         id: "published-held",
         reservation_state: "held",
         cancellation_claim_owner: null,
         cancellation_failure_disposition: null,
+        cancellation_recovery_reason: null,
+        has_retry_at: false,
+        retry_is_due: null,
+      },
+    ]);
+
+    const dueRetries = await database.query<{ id: string }>(`
+      select id
+      from workspace_reservations
+      where
+        reservation_state = 'cancellation_failed'
+        and cancellation_failure_disposition = 'retryable'
+        and cancellation_retry_at <= now()
+      order by id
+    `);
+    expect(dueRetries.rows).toEqual([{ id: "draft-ownerless" }]);
+
+    await applyCancellationMigration(database);
+    const replayedFailures = await database.query<{
+      cancellation_failure_disposition: string | null;
+      has_retry_at: boolean;
+      id: string;
+    }>(`
+      select
+        id,
+        cancellation_failure_disposition,
+        cancellation_retry_at is not null as has_retry_at
+      from workspace_reservations
+      where id in ('deliberate-manual-review', 'draft-ownerless')
+      order by id
+    `);
+    expect(replayedFailures.rows).toEqual([
+      {
+        id: "deliberate-manual-review",
+        cancellation_failure_disposition: "manual_review",
+        has_retry_at: false,
+      },
+      {
+        id: "draft-ownerless",
+        cancellation_failure_disposition: "retryable",
+        has_retry_at: true,
       },
     ]);
 

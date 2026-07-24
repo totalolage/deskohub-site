@@ -1,4 +1,10 @@
 import {
+  ExternalAPIError,
+  NetworkError,
+  ValidationError,
+} from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
+import {
   type AnyValue,
   type AnyValueMap,
   type LoggerProvider,
@@ -6,6 +12,8 @@ import {
 } from "@opentelemetry/api-logs";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Logger, type LogLevel, References } from "effect";
+import { PublicSafeActionError } from "../../utils/safe-action-client";
+import { StorageError } from "../errors";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -36,6 +44,7 @@ const sensitiveLogKeyFragments = [
   "phone",
   "first name",
   "last name",
+  "subject",
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
@@ -241,112 +250,108 @@ const isPlainDotyposProviderError = (
   ("errorDescription" in value ||
     ("error" in value && ("code" in value || Object.keys(value).length <= 2)));
 
-const stableErrorMetadataPattern = /^[A-Za-z][A-Za-z0-9_.:-]{0,80}$/u;
+const serializedKnownErrorTags = new Set([
+  "EmailServiceError",
+  "ExternalAPIError",
+  "NetworkError",
+  "PublicSafeActionError",
+  "StorageError",
+  "ValidationError",
+]);
 
-const isSerializedError = (
-  value: unknown
-): value is Record<string, unknown> => {
-  if (!isPlainObject(value)) return false;
+const getSerializedKnownErrorTag = (value: unknown): string | undefined => {
+  if (!isPlainObject(value)) return undefined;
   const tag =
     typeof value._tag === "string"
       ? value._tag
       : typeof value.name === "string"
         ? value.name
         : undefined;
-  return (
-    "stack" in value ||
-    (tag?.endsWith("Error") === true &&
-      ("message" in value || "cause" in value))
-  );
+  return tag && serializedKnownErrorTags.has(tag) ? tag : undefined;
 };
 
-const getStableErrorTag = (value: Record<string, unknown>) => {
-  const tag =
-    typeof value._tag === "string"
-      ? value._tag
-      : typeof value.name === "string"
-        ? value.name
-        : "Error";
-  return tag.endsWith("Error") && stableErrorMetadataPattern.test(tag)
-    ? tag
-    : "Error";
-};
-
-const projectStableErrorMetadata = (
-  value: object,
-  seen: WeakMap<object, unknown>
-): Record<string, unknown> => {
-  const existing = seen.get(value);
-  if (existing) return existing as Record<string, unknown>;
-
-  const record = value as Record<string, unknown>;
-  const result: Record<string, unknown> = {
-    _tag: getStableErrorTag(record),
-  };
-  seen.set(value, result);
-
-  if (
-    typeof record.operation === "string" &&
-    stableErrorMetadataPattern.test(record.operation)
-  ) {
-    result.operation = record.operation;
-  }
-  if (typeof record.statusCode === "number") {
-    result.statusCode = record.statusCode;
-  }
-  if (typeof record.code === "number") {
-    result.code = record.code;
-  }
-  if (typeof record.cause === "object" && record.cause !== null) {
-    result.cause = censorErrorCause(record.cause, seen);
-  }
-
-  return result;
-};
-
-const projectUnknownErrorMetadata = (
+const projectTrustedErrorMetadata = (
   value: object,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  const record = value as Record<string, unknown>;
-  const tag =
-    typeof record._tag === "string"
-      ? record._tag
-      : typeof record.name === "string"
-        ? record.name
-        : undefined;
+  const existing = seen.get(value);
+  if (existing) return existing;
 
-  if (
-    tag?.endsWith("Error") !== true ||
-    !stableErrorMetadataPattern.test(tag)
-  ) {
-    return CENSORED_LOG_VALUE;
+  if (value instanceof EmailServiceError) {
+    const result = { _tag: "EmailServiceError" };
+    seen.set(value, result);
+    return result;
   }
+
+  if (value instanceof ExternalAPIError) {
+    const result = {
+      _tag: "ExternalAPIError",
+      operation: value.operation,
+      ...(typeof value.statusCode === "number" && {
+        statusCode: value.statusCode,
+      }),
+    };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof NetworkError) {
+    const result = { _tag: "NetworkError" };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof ValidationError) {
+    const result = { _tag: "ValidationError" };
+    seen.set(value, result);
+    return result;
+  }
+
+  if (value instanceof StorageError) {
+    const result: Record<string, unknown> = { _tag: "StorageError" };
+    seen.set(value, result);
+    if (value.operation) result.operation = value.operation;
+    if (typeof value.cause === "object" && value.cause !== null) {
+      const cause = censorErrorCause(value.cause, seen);
+      if (cause !== CENSORED_LOG_VALUE) result.cause = cause;
+    }
+    return result;
+  }
+
+  if (value instanceof PublicSafeActionError) {
+    const result: Record<string, unknown> = { _tag: "PublicSafeActionError" };
+    seen.set(value, result);
+    const cause = censorErrorCause(value.cause, seen);
+    if (cause !== CENSORED_LOG_VALUE) {
+      result.cause = cause;
+    }
+    return result;
+  }
+
+  if (value instanceof Error) {
+    const result = { _tag: "Error" };
+    seen.set(value, result);
+    return result;
+  }
+
+  return CENSORED_LOG_VALUE;
+};
+
+const projectSerializedKnownError = (
+  value: Record<string, unknown>,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  const tag = getSerializedKnownErrorTag(value);
+  if (!tag) return CENSORED_LOG_VALUE;
 
   const existing = seen.get(value);
   if (existing) return existing;
 
   const result: Record<string, unknown> = { _tag: tag };
   seen.set(value, result);
-  if (
-    typeof record.operation === "string" &&
-    stableErrorMetadataPattern.test(record.operation)
-  ) {
-    result.operation = record.operation;
+  if (tag === "ExternalAPIError" && typeof value.statusCode === "number") {
+    result.statusCode = value.statusCode;
   }
-  if (typeof record.statusCode === "number") {
-    result.statusCode = record.statusCode;
-  }
-  if (typeof record.code === "number") {
-    result.code = record.code;
-  }
-  if (typeof record.cause === "object" && record.cause !== null) {
-    const cause = censorErrorCause(record.cause, seen);
-    if (cause !== CENSORED_LOG_VALUE) {
-      result.cause = cause;
-    }
-  }
-
   return result;
 };
 
@@ -358,19 +363,21 @@ function censorErrorCause(
 
   if (
     Cause.isCause(value) ||
-    ("_tag" in value &&
-      (value._tag === "ExternalAPIError" ||
-        value._tag === "NetworkError" ||
-        value._tag === "ValidationError")) ||
     isPlainDotyposProviderError(value) ||
-    isSerializedError(value) ||
     isEffectDrizzleQueryError(value) ||
-    value instanceof Error
+    value instanceof EmailServiceError ||
+    value instanceof ExternalAPIError ||
+    value instanceof NetworkError ||
+    value instanceof PublicSafeActionError ||
+    value instanceof StorageError ||
+    value instanceof ValidationError ||
+    value instanceof Error ||
+    getSerializedKnownErrorTag(value) !== undefined
   ) {
     return censorLogValueInternal(value, seen);
   }
 
-  return projectUnknownErrorMetadata(value, seen);
+  return CENSORED_LOG_VALUE;
 }
 
 const censorQueryParameter = (
@@ -521,34 +528,6 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (
-    typeof value === "object" &&
-    value !== null &&
-    "_tag" in value &&
-    (value._tag === "ExternalAPIError" ||
-      value._tag === "NetworkError" ||
-      value._tag === "ValidationError")
-  ) {
-    return value._tag === "ExternalAPIError"
-      ? {
-          _tag: value._tag,
-          ...("operation" in value && { operation: value.operation }),
-          ...("statusCode" in value && { statusCode: value.statusCode }),
-        }
-      : { _tag: value._tag };
-  }
-
-  if (isPlainDotyposProviderError(value)) {
-    return {
-      ...("code" in value &&
-        typeof value.code === "number" && { code: value.code }),
-    };
-  }
-
-  if (isSerializedError(value)) {
-    return projectStableErrorMetadata(value, seen);
-  }
-
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -562,8 +541,27 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (value instanceof Error) {
-    return projectStableErrorMetadata(value, seen);
+  if (
+    value instanceof EmailServiceError ||
+    value instanceof ExternalAPIError ||
+    value instanceof NetworkError ||
+    value instanceof PublicSafeActionError ||
+    value instanceof StorageError ||
+    value instanceof ValidationError ||
+    value instanceof Error
+  ) {
+    return projectTrustedErrorMetadata(value, seen);
+  }
+
+  if (isPlainDotyposProviderError(value)) {
+    return {
+      ...("code" in value &&
+        typeof value.code === "number" && { code: value.code }),
+    };
+  }
+
+  if (isPlainObject(value) && getSerializedKnownErrorTag(value) !== undefined) {
+    return projectSerializedKnownError(value, seen);
   }
 
   if (!isPlainObject(value)) return value;

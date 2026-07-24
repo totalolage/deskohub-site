@@ -54,7 +54,11 @@ SET
   "cancellation_failure_disposition" = 'retryable',
   "cancellation_retry_at" = COALESCE("cancellation_retry_at", now()),
   "cancellation_recovery_reason" = COALESCE("cancellation_recovery_reason", 'retryable_failure')
-WHERE "reservation_state" = 'cancellation_failed';--> statement-breakpoint
+WHERE
+  "reservation_state" = 'cancellation_failed'
+  AND "cancellation_failure_disposition" IS NULL
+  AND "cancellation_retry_at" IS NULL
+  AND "cancellation_recovery_reason" IS NULL;--> statement-breakpoint
 DROP INDEX IF EXISTS "workspace_reservations_cancellation_recovery_idx";--> statement-breakpoint
 CREATE INDEX "workspace_reservations_cancellation_recovery_idx" ON "workspace_reservations" ("reservation_state","cancellation_recovery_reason","cancellation_failure_disposition","cancellation_retry_at","cancellation_claimed_at") WHERE "reservation_state" in ('cancelling', 'cancellation_claimed', 'cancellation_failed');--> statement-breakpoint
 ALTER TABLE "workspace_reservations" DROP CONSTRAINT IF EXISTS "workspace_reservations_cancellation_claim_check";--> statement-breakpoint

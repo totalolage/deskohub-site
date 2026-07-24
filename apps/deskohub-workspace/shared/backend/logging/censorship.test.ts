@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   ExternalAPIError,
   NetworkError,
@@ -16,6 +16,7 @@ import { Cause, Effect, Layer, Logger, References } from "effect";
 import { StorageError } from "@/shared/backend/errors";
 import {
   CENSORED_LOG_VALUE,
+  CensoringLogger,
   censorLoggerOptions,
   censorLogValue,
   createCensoredOtelLogger,
@@ -24,6 +25,18 @@ import {
 
 class CustomValue {
   constructor(readonly secret: string) {}
+}
+
+class ArbitraryErrorShape extends Error {
+  readonly _tag: string;
+  readonly operation: string;
+
+  constructor(readonly syntheticIdentifier: string) {
+    super(syntheticIdentifier);
+    this.name = `${syntheticIdentifier}Error`;
+    this._tag = `${syntheticIdentifier}Error`;
+    this.operation = `lookup.${syntheticIdentifier}`;
+  }
 }
 
 describe("isSensitiveLogKey", () => {
@@ -61,6 +74,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("subject")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -311,21 +325,21 @@ describe("censorLogValue", () => {
 
     expect(JSON.stringify(censored)).not.toContain(marker);
     expect(censored).toEqual({
-      nested: {
-        _tag: "NetworkError",
-        operation: "createReservation",
-        statusCode: 503,
-      },
+      nested: { _tag: "NetworkError" },
     });
   });
 
   test("fails closed for a provider-derived custom error nested in a storage error", () => {
-    const marker = "synthetic-email-provider-sensitive-marker";
+    const marker = "SyntheticReservationIdentifier42";
     const censored = censorLogValue(
       new StorageError({
         message: "Reservation delivery failed",
         operation: "deliverReservationEmail",
-        cause: new EmailServiceError(marker, new CustomValue(marker), "resend"),
+        cause: new EmailServiceError(
+          marker,
+          new ArbitraryErrorShape(marker),
+          "resend"
+        ),
       })
     );
     const serialized = JSON.stringify(censored);
@@ -336,6 +350,40 @@ describe("censorLogValue", () => {
       operation: "deliverReservationEmail",
       cause: { _tag: "EmailServiceError" },
     });
+  });
+
+  test("does not emit an arbitrary Error-shaped provider cause through the console sink", async () => {
+    const marker = "SyntheticConsoleIdentifier42";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const error = new StorageError({
+      message: "Reservation delivery failed",
+      operation: "deliverReservationEmail",
+      cause: new EmailServiceError(
+        marker,
+        new ArbitraryErrorShape(marker),
+        "resend"
+      ),
+    });
+
+    try {
+      await Effect.runPromise(
+        Effect.logError("delivery failed").pipe(
+          Effect.annotateLogs({ error }),
+          Effect.provide(Logger.layer([CensoringLogger]))
+        )
+      );
+      const serialized = JSON.stringify(errorOutput);
+      expect(serialized).not.toContain(marker);
+      expect(serialized).toContain("StorageError");
+      expect(serialized).toContain("EmailServiceError");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   test("projects errors while preserving other non-plain objects", () => {
@@ -706,7 +754,7 @@ describe("createCensoredOtelLogger", () => {
   });
 
   test("does not emit a provider-derived custom error through the OTel sink", async () => {
-    const marker = "synthetic-email-provider-otel-marker";
+    const marker = "SyntheticOtelIdentifier42";
     const exporter = new InMemoryLogRecordExporter();
     const provider = new LoggerProvider({
       processors: [new SimpleLogRecordProcessor(exporter)],
@@ -714,7 +762,11 @@ describe("createCensoredOtelLogger", () => {
     const error = new StorageError({
       message: "Reservation delivery failed",
       operation: "deliverReservationEmail",
-      cause: new EmailServiceError(marker, new CustomValue(marker), "resend"),
+      cause: new EmailServiceError(
+        marker,
+        new ArbitraryErrorShape(marker),
+        "resend"
+      ),
     });
 
     await Effect.runPromise(
