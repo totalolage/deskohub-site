@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import type { RequireAllOrNone } from "type-fest";
 import {
   type CheckoutSummaryChangedKeys,
   checkoutSummaryChangedKeysSchema,
@@ -37,18 +38,13 @@ type BuildSignedPayStateBaseInput = {
   readonly ttlMilliseconds?: number;
 };
 
-type BuildSignedPayStateCodeInput =
-  | {
-      readonly submittedCode?: never;
-      readonly submittedCodeDiscountId?: never;
-    }
-  | {
-      readonly submittedCode: CanonicalDiscountCode;
-      readonly submittedCodeDiscountId: DiscountId;
-    };
+export type PayStateSubmittedCodeMetadata = RequireAllOrNone<{
+  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCodeDiscountId: DiscountId;
+}>;
 
 export type BuildSignedPayStateCommonInput = BuildSignedPayStateBaseInput &
-  BuildSignedPayStateCodeInput;
+  PayStateSubmittedCodeMetadata;
 
 export const buildSignedPayStateEnvelope = (
   envelope: Omit<

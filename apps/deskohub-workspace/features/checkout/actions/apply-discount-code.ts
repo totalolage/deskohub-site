@@ -46,11 +46,11 @@ export async function applyDiscountCodeForm(
     locale,
     payStateToken,
     submittedCode: typeof submittedCode === "string" ? submittedCode : "",
-  }).catch(() => undefined);
+  });
 
   if (
-    result?.data?.status === "applied" ||
-    result?.data?.status === "pricing_changed"
+    result.data?.status === "applied" ||
+    result.data?.status === "pricing_changed"
   ) {
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }

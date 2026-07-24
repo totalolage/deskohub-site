@@ -1,4 +1,4 @@
-import { Effect, Match, Option, Schema } from "effect";
+import { Effect, Match, Schema } from "effect";
 import {
   buildFreshCheckoutPayPath,
   CheckoutPricingService,
@@ -46,17 +46,13 @@ export const applyDiscountCodeToPayState = Effect.fn(
       const submittedCode = yield* normalizeSubmittedDiscountCode({
         submittedCode: input.submittedCode,
       }).pipe(
-        Effect.flatMap(
-          Option.match({
-            onNone: () =>
-              Effect.fail(
-                new DiscountCodeUnavailableError({
-                  reason: "invalid_syntax",
-                  message: "A discount code is required.",
-                })
-              ),
-            onSome: Effect.succeed,
-          })
+        Effect.flatMap(Effect.fromOption),
+        Effect.mapError(
+          () =>
+            new DiscountCodeUnavailableError({
+              reason: "invalid_syntax",
+              message: "A discount code is required.",
+            })
         )
       );
       const reservation = yield* payableReservations.requireCurrent({
@@ -79,29 +75,12 @@ export const applyDiscountCodeToPayState = Effect.fn(
             })
         )
       );
-      const result = yield* Match.value(state).pipe(
-        Match.when({ reservation: { kind: "cowork" } }, (coworkState) =>
-          pricing.applyDiscountCode({
-            reservation: coworkState.reservation,
-            dotyposCustomerId,
-            locale: input.locale,
-            quote: coworkState.quote,
-            submittedCode,
-          })
-        ),
-        Match.when(
-          { reservation: { kind: "meeting-room" } },
-          (meetingRoomState) =>
-            pricing.applyDiscountCode({
-              reservation: meetingRoomState.reservation,
-              dotyposCustomerId,
-              locale: input.locale,
-              quote: meetingRoomState.quote,
-              submittedCode,
-            })
-        ),
-        Match.exhaustive
-      );
+      const result = yield* pricing.applyDiscountCode({
+        ...state,
+        dotyposCustomerId,
+        locale: input.locale,
+        submittedCode,
+      });
       const currentReservation = yield* payableReservations.requireCurrent({
         orderId: state.orderId,
         checkoutSessionId: state.checkoutSessionId,
@@ -111,40 +90,25 @@ export const applyDiscountCodeToPayState = Effect.fn(
       }
 
       const freshPayUrl = yield* Match.value(result).pipe(
-        Match.when({ reservation: { kind: "cowork" } }, (coworkResult) =>
-          buildFreshCheckoutPayPath({
-            locale: input.locale,
-            reservation: coworkResult.reservation,
-            quote: coworkResult.quote,
-            orderId: state.orderId,
-            checkoutSessionId: state.checkoutSessionId,
-            ...(coworkResult.status === "pricing_changed"
-              ? { changedKeys: coworkResult.changedKeys }
-              : {
-                  submittedCode,
-                  submittedCodeDiscountId: coworkResult.submittedCodeDiscountId,
-                }),
-          })
-        ),
-        Match.when(
-          { reservation: { kind: "meeting-room" } },
-          (meetingRoomResult) =>
+        Match.discriminatorsExhaustive("status")({
+          applied: (applied) =>
             buildFreshCheckoutPayPath({
+              ...applied,
               locale: input.locale,
-              reservation: meetingRoomResult.reservation,
-              quote: meetingRoomResult.quote,
               orderId: state.orderId,
               checkoutSessionId: state.checkoutSessionId,
-              ...(meetingRoomResult.status === "pricing_changed"
-                ? { changedKeys: meetingRoomResult.changedKeys }
-                : {
-                    submittedCode,
-                    submittedCodeDiscountId:
-                      meetingRoomResult.submittedCodeDiscountId,
-                  }),
-            })
-        ),
-        Match.exhaustive
+              submittedCode,
+              submittedCodeDiscountId: applied.submittedCodeDiscountId,
+            }),
+          pricing_changed: (changed) =>
+            buildFreshCheckoutPayPath({
+              ...changed,
+              locale: input.locale,
+              orderId: state.orderId,
+              checkoutSessionId: state.checkoutSessionId,
+              changedKeys: changed.changedKeys,
+            }),
+        })
       );
 
       return { status: result.status, freshPayUrl };

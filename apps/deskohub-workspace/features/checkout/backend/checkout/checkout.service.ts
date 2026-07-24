@@ -63,7 +63,6 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 import {
   type BuildSignedPayStateInput,
   getSignedPayStateCheckoutSummary,
-  getSignedPayStateReissueInput,
   getSignedPayStateSubmittedCode,
   openPayState,
   type SignedPayState,
@@ -333,24 +332,6 @@ const mapCheckoutFailure = (cause: unknown) => {
 const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
-const hasAcceptedPaymentAttemptAmount = (input: {
-  readonly attempt: {
-    readonly amountValue: number;
-    readonly amountExponent: number;
-    readonly currency: string;
-  };
-  readonly total: WorkspaceMoney;
-}) => {
-  return workspaceMoneyEquals(
-    {
-      value: input.attempt.amountValue,
-      exponent: input.attempt.amountExponent,
-      currency: input.attempt.currency,
-    },
-    input.total
-  );
-};
-
 export const CheckoutServiceLive = Layer.effect(
   CheckoutService,
   Effect.gen(function* () {
@@ -595,10 +576,14 @@ export const CheckoutServiceLive = Layer.effect(
               isReusableAttemptState(attempt.state) &&
               attempt.securityToken &&
               attempt.providerRedirectUrl &&
-              hasAcceptedPaymentAttemptAmount({
-                attempt,
-                total: state.acceptedTotal,
-              })
+              workspaceMoneyEquals(
+                {
+                  value: attempt.amountValue,
+                  exponent: attempt.amountExponent,
+                  currency: attempt.currency,
+                },
+                state.acceptedTotal
+              )
             ) {
               yield* Effect.annotateLogsScoped({ attempt });
               yield* Effect.logInfo(
@@ -625,7 +610,7 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             const freshPayUrl = yield* getFreshPayUrl({
-              ...getSignedPayStateReissueInput(state),
+              ...state,
               locale,
               orderId: reservation.id,
             });

@@ -21,6 +21,7 @@ import {
   buildSignedMeetingRoomPayState,
   meetingRoomSignedPayStateSchema,
 } from "./meeting-room-pay-state";
+import type { PayStateSubmittedCodeMetadata } from "./pay-state-contract";
 
 export const payStateTokenQueryParam = "payState" as const;
 export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
@@ -45,7 +46,12 @@ export const signedPayStateSchema = Schema.Union([
     description: "Workspace checkout Pay state payload.",
   });
 
-export type SignedPayState = typeof signedPayStateSchema.Type;
+export type SignedPayState = typeof signedPayStateSchema.Type &
+  PayStateSubmittedCodeMetadata;
+
+const preserveSignedPayStateMetadataInvariant = (
+  state: typeof signedPayStateSchema.Type
+): SignedPayState => state as SignedPayState;
 
 export type PayStateKey = CheckoutStateKey;
 
@@ -86,17 +92,7 @@ export const getSignedPayStateSubmittedCodeApplication = (
 export const getSignedPayStateSubmittedCode = (
   state: SignedPayState,
   displayedDiscounts: readonly AppliedDiscount[] = state.quote.payment.discounts
-):
-  | {
-      readonly submittedCode: NonNullable<SignedPayState["submittedCode"]>;
-      readonly submittedCodeDiscountId: NonNullable<
-        SignedPayState["submittedCodeDiscountId"]
-      >;
-    }
-  | {
-      readonly submittedCode?: never;
-      readonly submittedCodeDiscountId?: never;
-    } => {
+): PayStateSubmittedCodeMetadata => {
   const application = displayedDiscounts.find(
     ({ discount }) => discount.id === state.submittedCodeDiscountId
   );
@@ -105,25 +101,6 @@ export const getSignedPayStateSubmittedCode = (
   return {
     submittedCode: state.submittedCode,
     submittedCodeDiscountId: application.discount.id,
-  };
-};
-
-export const getSignedPayStateReissueInput = (
-  state: SignedPayState
-): BuildSignedPayStateInput => {
-  const {
-    acceptedTotal: _acceptedTotal,
-    exp: _exp,
-    iat: _iat,
-    kid: _kid,
-    submittedCode: _submittedCode,
-    submittedCodeDiscountId: _submittedCodeDiscountId,
-    ...input
-  } = state;
-
-  return {
-    ...input,
-    ...getSignedPayStateSubmittedCode(state),
   };
 };
 
@@ -178,7 +155,10 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
 
   return yield* Schema.decodeUnknownEffect(signedPayStateSchema, {
     onExcessProperty: "error",
-  })(state).pipe(Effect.mapError(toPayStateTokenError));
+  })(state).pipe(
+    Effect.map(preserveSignedPayStateMetadataInvariant),
+    Effect.mapError(toPayStateTokenError)
+  );
 });
 
 export const sealPayState = Effect.fn("payState.seal")(function* (
@@ -197,6 +177,7 @@ export const sealPayState = Effect.fn("payState.seal")(function* (
 export const openPayState = Effect.fn("payState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, signedPayStateSchema, options).pipe(
+      Effect.map(preserveSignedPayStateMetadataInvariant),
       Effect.mapError(toPayStateTokenError)
     )
 );

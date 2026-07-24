@@ -130,16 +130,18 @@ describe("applyDiscountCodeToPayState", () => {
     expect(scenario.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "deny",
     });
-    expect(scenario.applyDiscountCode).toHaveBeenCalledWith({
-      reservation: expect.objectContaining({
-        entryTier: "basic",
-        date: reservation.date,
-      }),
-      dotyposCustomerId: "customer-id",
-      locale: "en-US",
-      quote,
-      submittedCode: "SAVE20",
-    });
+    expect(scenario.applyDiscountCode).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reservation: expect.objectContaining({
+          entryTier: "basic",
+          date: reservation.date,
+        }),
+        dotyposCustomerId: "customer-id",
+        locale: "en-US",
+        quote,
+        submittedCode: "SAVE20",
+      })
+    );
     expect(scenario.result.status).toBe("applied");
     if (scenario.result.status !== "applied") {
       throw new Error("Expected applied result");

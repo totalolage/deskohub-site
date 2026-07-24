@@ -4,7 +4,6 @@ import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
 import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
-  getSignedPayStateReissueInput,
   type SealPayStateForUrlResult,
   type SignedPayState,
   sealPayStateForUrl,
@@ -39,9 +38,6 @@ export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
 
 export const buildCheckoutPayContinuationPath = Effect.fn(
   "buildCheckoutPayContinuationPath"
-)((state: SignedPayState, options: CheckoutStateCryptoOptions = {}) => {
-  const { changedKeys: _changedKeys, ...continuation } =
-    getSignedPayStateReissueInput(state);
-
-  return buildFreshCheckoutPayPath(continuation, options);
-});
+)((state: SignedPayState, options: CheckoutStateCryptoOptions = {}) =>
+  buildFreshCheckoutPayPath({ ...state, changedKeys: undefined }, options)
+);
