@@ -297,6 +297,39 @@ const isReusableSubmissionReservation = (
     Temporal.Now.instant()
   ) > 0;
 
+const isExactFreshProviderCandidate = (input: {
+  readonly reservation: WorkspaceReservation;
+  readonly expected: WorkspaceReservation;
+  readonly providerCreationEpoch: string;
+}) => {
+  const marker = getHoldCreationMarker(input.reservation);
+  return (
+    input.reservation.reservationState === "held" &&
+    input.reservation.paymentState === "not_started" &&
+    typeof input.reservation.dotyposReservationId === "string" &&
+    input.reservation.dotyposReservationId ===
+      input.expected.dotyposReservationId &&
+    input.reservation.reservationCreatedAt !== null &&
+    input.expected.reservationCreatedAt !== null &&
+    input.reservation.reservationCreatedAt.equals(
+      input.expected.reservationCreatedAt
+    ) &&
+    input.reservation.reservationHoldExpiresAt !== null &&
+    input.expected.reservationHoldExpiresAt !== null &&
+    input.reservation.reservationHoldExpiresAt.equals(
+      input.expected.reservationHoldExpiresAt
+    ) &&
+    Temporal.Instant.compare(
+      input.reservation.reservationHoldExpiresAt,
+      Temporal.Now.instant()
+    ) > 0 &&
+    marker?._tag === "candidate" &&
+    marker.epoch === input.providerCreationEpoch &&
+    marker.dotyposReservationId === input.reservation.dotyposReservationId &&
+    marker.reservationCreatedAt.equals(input.reservation.reservationCreatedAt)
+  );
+};
+
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.paymentState === "pending" ||
   reservation.paymentState === "paid" ||
@@ -769,13 +802,23 @@ const requireDefinitiveReadyHold = Effect.fn(
   readonly providerCreationEpoch?: string;
 }) {
   const definitive = yield* input.reservations.findById(input.expected.id);
+  const isExactFreshCandidate =
+    definitive !== null &&
+    input.providerCreationEpoch !== undefined &&
+    isExactFreshProviderCandidate({
+      reservation: definitive,
+      expected: input.expected,
+      providerCreationEpoch: input.providerCreationEpoch,
+    });
   if (
     !definitive ||
-    !isReusableSubmissionReservation(definitive) ||
+    (!isReusableSubmissionReservation(definitive) && !isExactFreshCandidate) ||
     definitive.dotyposReservationId !== input.expected.dotyposReservationId ||
     getDifferentProviderAttachmentRecovery(definitive) ||
     (input.providerCreationEpoch !== undefined &&
-      getAttachedHoldCreationEpoch(definitive) !== input.providerCreationEpoch)
+      getAttachedHoldCreationEpoch(definitive) !==
+        input.providerCreationEpoch &&
+      !isExactFreshCandidate)
   ) {
     return yield* new CheckoutAttemptUnavailableError({
       reservation: definitive ?? input.expected,
@@ -1558,6 +1601,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         expected: {
           ...reservationDraft,
           dotyposReservationId,
+          reservationCreatedAt,
           reservationState: "held",
         } as WorkspaceReservation,
         providerCreationEpoch: providerEpoch,
