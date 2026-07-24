@@ -22,7 +22,6 @@ export async function register() {
     attributes: {
       "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
     },
-    instrumentations: ["fetch"],
   });
 
   const postHogLoggerProvider = createPostHogLoggerProvider({
