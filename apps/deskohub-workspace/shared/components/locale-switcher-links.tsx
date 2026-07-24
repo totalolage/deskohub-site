@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   type Locale,
@@ -37,16 +36,14 @@ export function LocaleSwitcherLinks({
           {languageLabels[locale]}
         </strong>
       ) : (
-        <Link
+        <a
           key={locale}
           href={getLocaleHref(locale)}
-          prefetch={false}
-          scroll={false}
           onClick={closeMenu}
           className="transition-colors hover:text-sunset-yellow"
         >
           {languageLabels[locale]}
-        </Link>
+        </a>
       );
     }
 
@@ -62,14 +59,12 @@ export function LocaleSwitcherLinks({
         {isCurrent ? (
           <strong className="text-white">{languageLabels[locale]}</strong>
         ) : (
-          <Link
+          <a
             href={getLocaleHref(locale)}
-            prefetch={false}
-            scroll={false}
             className="transition-colors hover:text-sunset-yellow"
           >
             {languageLabels[locale]}
-          </Link>
+          </a>
         )}
       </span>
     );

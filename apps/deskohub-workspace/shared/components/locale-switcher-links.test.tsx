@@ -70,10 +70,10 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
-test("disables prefetch for every alternate-locale header link", async () => {
+test("uses document navigation for every alternate-locale full-header link", async () => {
   const { SiteHeader } = await import("./site-header");
 
-  render(
+  const view = render(
     <SiteHeader
       contactHref="/en-US/contact"
       contactLabel="Contact"
@@ -83,27 +83,20 @@ test("disables prefetch for every alternate-locale header link", async () => {
     />
   );
 
-  const alternateLocaleLinks = capturedLinks.filter(
-    ({ href }) => href === "/cs-CZ"
-  );
-
-  expect(alternateLocaleLinks).toHaveLength(2);
-  expect(alternateLocaleLinks.every(({ prefetch }) => prefetch === false)).toBe(
-    true
-  );
+  expect(view.container.querySelectorAll('a[href="/cs-CZ"]')).toHaveLength(2);
+  expect(capturedLinks.filter(({ href }) => href === "/cs-CZ")).toEqual([]);
 });
 
-test("keeps alternate-locale prefetch disabled in the minimal header", async () => {
+test("uses document navigation for the alternate-locale minimal-header link", async () => {
   const { MinimalSiteHeader } = await import("./minimal-site-header");
 
-  render(
+  const view = render(
     <MinimalSiteHeader
       currentLocale="en-US"
       languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
     />
   );
 
-  expect(capturedLinks.filter(({ href }) => href === "/cs-CZ")).toEqual([
-    { href: "/cs-CZ", prefetch: false },
-  ]);
+  expect(view.container.querySelectorAll('a[href="/cs-CZ"]')).toHaveLength(1);
+  expect(capturedLinks.filter(({ href }) => href === "/cs-CZ")).toEqual([]);
 });
