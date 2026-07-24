@@ -194,11 +194,21 @@ const decodeQueryComponent = (value: string) => {
   }
 };
 
+const decodeQueryKey = (value: string, layers = 2) => {
+  let decoded = value;
+  for (let layer = 0; layer < layers; layer += 1) {
+    const next = decodeQueryComponent(decoded);
+    if (next === decoded) break;
+    decoded = next;
+  }
+  return decoded;
+};
+
 const redactPayStateQuery = (value: string) =>
   value.replace(
-    /([?&])([^?&\s"'<>]*?)(=|%3d)([^&\s"'<>]*)/gi,
+    /([?&])([^?&\s"'<>]*?)(=|%(?:25)*(?:3d))([^&\s"'<>]*)/gi,
     (parameter, delimiter, rawKey, separator) =>
-      decodeQueryComponent(rawKey).toLowerCase() === "paystate"
+      decodeQueryKey(rawKey).toLowerCase() === "paystate"
         ? `${delimiter}${rawKey}${separator}[redacted]`
         : parameter
   );

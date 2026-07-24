@@ -36,6 +36,21 @@ test.each([
     "https%3A%2F%2Fdeskohub.example.test%2Fen-US%2Fcheckout%2Fpay%3Fpay%2553tate%3Dsynthetic-outer-capability",
     "synthetic-outer-capability",
   ],
+  [
+    "doubly encoded raw key",
+    "https://deskohub.example.test/en-US/checkout/pay?pay%2553tate=synthetic-double-key-capability",
+    "synthetic-double-key-capability",
+  ],
+  [
+    "doubly encoded raw separator",
+    "https://deskohub.example.test/en-US/checkout/pay?payState%253Dsynthetic-double-separator-capability",
+    "synthetic-double-separator-capability",
+  ],
+  [
+    "mixed-case doubly encoded raw key and separator",
+    "https://deskohub.example.test/en-US/checkout/pay?PaY%2553tAtE%253dsynthetic-mixed-case-capability",
+    "synthetic-mixed-case-capability",
+  ],
 ])("structurally redacts a %s payState query", (_, url, capability) => {
   const command = formatRunnerCommand("agent-browser", ["open", url]);
   const subprocessOutput = redact(`browser stderr: ${url}`);

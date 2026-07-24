@@ -30,6 +30,10 @@ describe("reservation cancellation ownership migration", () => {
         reservation_state text not null,
         payment_state text not null,
         dotypos_reservation_id text,
+        reservation_hold_expires_at timestamptz,
+        reservation_hold_expired_at timestamptz,
+        reservation_confirmed_at timestamptz,
+        failure_code text,
         updated_at timestamptz not null default now(),
         constraint workspace_reservations_reservation_state_check
           check (reservation_state in (
@@ -45,9 +49,21 @@ describe("reservation cancellation ownership migration", () => {
           ))
       );
       insert into workspace_reservations
-        (id, reservation_state, payment_state, dotypos_reservation_id)
+        (
+          id,
+          reservation_state,
+          payment_state,
+          dotypos_reservation_id,
+          reservation_hold_expires_at
+        )
       values
-        ('rollout-reservation', 'held', 'not_started', 'synthetic-provider')
+        (
+          'rollout-reservation',
+          'held',
+          'not_started',
+          'synthetic-provider',
+          now() - interval '1 minute'
+        )
     `);
     await applyCancellationMigration(database);
     return database;
@@ -62,9 +78,13 @@ describe("reservation cancellation ownership migration", () => {
         cancellation_claimed_at = now(),
         cancellation_failure_disposition = null,
         cancellation_retry_at = null,
+        cancellation_recovery_reason = 'hold_expired',
+        reservation_hold_expired_at = now(),
+        failure_code = null,
         updated_at = now()
       where
         id = 'rollout-reservation'
+        and reservation_hold_expires_at <= now()
         and (
           reservation_state in ('held', 'hold_expired')
           or (
@@ -72,8 +92,35 @@ describe("reservation cancellation ownership migration", () => {
             and cancellation_failure_disposition = 'retryable'
             and cancellation_retry_at <= now()
           )
+          or (
+            reservation_state in ('cancelling', 'cancellation_claimed')
+            and (
+              (
+                cancellation_claim_owner is null
+                and cancellation_claimed_at is null
+                and updated_at <= now() - interval '5 minutes'
+              )
+              or (
+                cancellation_claim_owner is not null
+                and cancellation_claimed_at is not null
+                and cancellation_claimed_at <= now() - interval '5 minutes'
+              )
+            )
+          )
         )
-        and payment_state <> 'paid'
+        and payment_state in ('not_started', 'failed', 'cancelled', 'expired')
+        and reservation_confirmed_at is null
+        and (
+          failure_code is null
+          or (
+            failure_code not like 'hold_creation_candidate:%'
+            and failure_code not like 'hold_creation_candidate_compensating:%'
+            and failure_code not like 'hold_creation_orphan_recovery:%'
+            and failure_code not like 'hold_creation_orphan_processing:%'
+            and failure_code not like 'hold_creation_orphan_awaiting_visibility:%'
+            and failure_code not like 'hold_creation_orphan_verifying:%'
+          )
+        )
       returning id
     `);
 
@@ -86,11 +133,49 @@ describe("reservation cancellation ownership migration", () => {
         cancellation_claimed_at = now(),
         cancellation_failure_disposition = null,
         cancellation_retry_at = null,
+        cancellation_recovery_reason = 'hold_expired',
+        reservation_hold_expired_at = now(),
+        failure_code = null,
         updated_at = now()
       where
         id = 'rollout-reservation'
-        and reservation_state in ('held', 'hold_expired', 'cancellation_failed')
-        and payment_state <> 'paid'
+        and reservation_hold_expires_at <= now()
+        and (
+          reservation_state in ('held', 'hold_expired')
+          or (
+            reservation_state = 'cancellation_failed'
+            and cancellation_failure_disposition = 'retryable'
+            and cancellation_retry_at <= now()
+          )
+          or (
+            reservation_state = 'cancelling'
+            and (
+              (
+                cancellation_claim_owner is null
+                and cancellation_claimed_at is null
+                and updated_at <= now() - interval '5 minutes'
+              )
+              or (
+                cancellation_claim_owner is not null
+                and cancellation_claimed_at is not null
+                and cancellation_claimed_at <= now() - interval '5 minutes'
+              )
+            )
+          )
+        )
+        and payment_state in ('not_started', 'failed', 'cancelled', 'expired')
+        and reservation_confirmed_at is null
+        and (
+          failure_code is null
+          or (
+            failure_code not like 'hold_creation_candidate:%'
+            and failure_code not like 'hold_creation_candidate_compensating:%'
+            and failure_code not like 'hold_creation_orphan_recovery:%'
+            and failure_code not like 'hold_creation_orphan_processing:%'
+            and failure_code not like 'hold_creation_orphan_awaiting_visibility:%'
+            and failure_code not like 'hold_creation_orphan_verifying:%'
+          )
+        )
       returning id, reservation_state
     `);
 

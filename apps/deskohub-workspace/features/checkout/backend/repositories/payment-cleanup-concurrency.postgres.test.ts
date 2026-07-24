@@ -175,6 +175,7 @@ beforeEach(async () => {
   await admin.query(`
     drop table if exists payment_attempts;
     drop table if exists workspace_reservations;
+    drop function if exists block_payment_winner();
     drop function if exists uuid_generate_v7();
     create function uuid_generate_v7() returns uuid language sql volatile as $$
       select gen_random_uuid()
@@ -238,7 +239,7 @@ afterAll(async () => {
 });
 
 describe("payment and cleanup independent PostgreSQL sessions", () => {
-  test("payment wins its row lock before later due cleanup under READ COMMITTED", async () => {
+  test("payment wins the first row lock and cleanup rechecks the committed tuple", async () => {
     const blocker = await connectClient("payment-wins-blocker");
     const observer = await connectClient("payment-wins-observer");
     const isolation = await observer.query<{
@@ -250,44 +251,62 @@ describe("payment and cleanup independent PostgreSQL sessions", () => {
     await seedReservation(
       observer,
       "payment-wins",
-      "clock_timestamp() + interval '2 seconds'"
+      "clock_timestamp() + interval '5 minutes'"
     );
+    await observer.query(`
+      create function block_payment_winner() returns trigger
+      language plpgsql
+      as $$
+      begin
+        if
+          new.id = 'payment-wins'
+          and new.payment_state = 'pending'
+        then
+          perform pg_advisory_xact_lock(5543201);
+        end if;
+        return new;
+      end;
+      $$;
+      create trigger block_payment_winner
+      after update on workspace_reservations
+      for each row execute function block_payment_winner()
+    `);
     await blocker.query("begin");
     const blockerPid = Number(
       (await blocker.query<{ pid: number }>("select pg_backend_pid() as pid"))
         .rows[0]?.pid
     );
-    await blocker.query(
-      "select id from workspace_reservations where id = $1 for update",
-      ["payment-wins"]
-    );
+    await blocker.query("select pg_advisory_xact_lock(5543201)");
 
     const payment = createPayment("payment-wins");
     await waitForRowLock(observer, "payment-payment-wins", blockerPid);
-    await blocker.query("commit");
-    expect((await payment)._tag).toBe("Success");
-    await observer.query(
-      "select pg_sleep(greatest(0, extract(epoch from reservation_hold_expires_at - clock_timestamp()))) from workspace_reservations where id = $1",
-      ["payment-wins"]
+    const paymentPid = Number(
+      (
+        await observer.query<{ pid: number }>(
+          `
+            select pid
+            from pg_stat_activity
+            where application_name = $1
+          `,
+          ["payment-payment-wins"]
+        )
+      ).rows[0]?.pid
     );
-    const [databaseNow] = (
-      await observer.query<{ now: Date }>("select clock_timestamp() as now")
-    ).rows;
-    const cleanup = await runRepositories(
+    expect(paymentPid).toBeGreaterThan(0);
+    const cleanup = runRepositories(
       "cleanup-payment-wins",
       Effect.gen(function* () {
         const reservations = yield* WorkspaceReservationRepository;
-        return yield* reservations.claimCancellation({
+        return yield* reservations.claimSupersessionCancellation({
           id: "payment-wins",
           ownerId: "cleanup-owner",
-          recoveryReason: "hold_expired",
-          holdExpiredAt: Temporal.Instant.from(
-            databaseNow?.now.toISOString() ?? ""
-          ),
         });
       })
     );
-    expect(cleanup).toBeNull();
+    await waitForRowLock(observer, "cleanup-payment-wins", paymentPid);
+    await blocker.query("commit");
+    expect((await payment)._tag).toBe("Success");
+    expect(await cleanup).toBeNull();
     const stored = await observer.query<{
       attempt_count: number;
       cancellation_claim_owner: string | null;
