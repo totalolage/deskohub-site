@@ -855,7 +855,6 @@ const completeProviderHoldCandidate = Effect.fn(
   };
   readonly providerCreationEpoch: string;
   readonly reservationCreatedAt: Temporal.Instant;
-  readonly now: Temporal.Instant;
 }) {
   const stabilizationDeadline = getProviderHoldCandidateStabilizationDeadline(
     input.reservation
@@ -863,11 +862,6 @@ const completeProviderHoldCandidate = Effect.fn(
   if (!stabilizationDeadline) {
     return yield* new ReservationHoldCleanupScheduleError({
       message: "Provider candidate stabilization evidence is missing.",
-    });
-  }
-  if (Temporal.Instant.compare(input.now, stabilizationDeadline) < 0) {
-    return yield* new ReservationHoldCleanupScheduleError({
-      message: "Provider candidate stabilization remains pending.",
     });
   }
   yield* verifyExactProviderWinnerEvidence({
@@ -879,15 +873,10 @@ const completeProviderHoldCandidate = Effect.fn(
     reason: "hold_expired",
     orderId: input.reservation.id,
     reservationHoldExpiresAt: input.reservation.reservationHoldExpiresAt,
-    ...(Temporal.Instant.compare(
-      input.reservation.reservationHoldExpiresAt,
-      input.now
-    ) <= 0 && {
-      stabilizedProviderCandidate: {
-        providerCreationEpoch: input.providerCreationEpoch,
-        dotyposReservationId: input.reservation.dotyposReservationId,
-      },
-    }),
+    stabilizedProviderCandidate: {
+      providerCreationEpoch: input.providerCreationEpoch,
+      dotyposReservationId: input.reservation.dotyposReservationId,
+    },
   });
   const reservations = yield* WorkspaceReservationRepository;
   yield* reservations
@@ -1162,7 +1151,6 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
             reservation,
             providerCreationEpoch: payload.providerCreationEpoch,
             reservationCreatedAt,
-            now,
           })
         ),
         Match.tag("completed", () => Effect.succeed("cancelled" as const)),

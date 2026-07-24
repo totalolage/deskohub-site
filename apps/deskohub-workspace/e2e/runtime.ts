@@ -1,6 +1,7 @@
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
+import { isSensitiveUrlSearchParam } from "../shared/utils/sensitive-url-search-params";
 import type { E2EEnvironment } from "./e2e-env";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -172,17 +173,17 @@ const decodeQueryKey = (value: string, layers = 2) => {
   return decoded;
 };
 
-const redactPayStateQuery = (value: string) =>
+const redactSensitiveQuery = (value: string) =>
   value.replace(
     /([?&])([^?&\s"'<>]*?)(=|%(?:25)*(?:3d))([^&\s"'<>]*)/gi,
     (parameter, delimiter, rawKey, separator) =>
-      decodeQueryKey(rawKey).toLowerCase() === "paystate"
+      isSensitiveUrlSearchParam(decodeQueryKey(rawKey))
         ? `${delimiter}${rawKey}${separator}[redacted]`
         : parameter
   );
 
 const redactEncodedQuery = (value: string, remainingLayers: number): string => {
-  const structurallyRedacted = redactPayStateQuery(value);
+  const structurallyRedacted = redactSensitiveQuery(value);
   if (structurallyRedacted !== value || remainingLayers === 0) {
     return structurallyRedacted;
   }

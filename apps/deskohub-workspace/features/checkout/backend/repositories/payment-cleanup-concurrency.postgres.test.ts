@@ -394,45 +394,57 @@ describe("payment and cleanup independent PostgreSQL sessions", () => {
   });
 
   test("already-expired cleanup wins while payment is rejected by database time", async () => {
+    const blocker = await connectClient("expired-cleanup-wins-blocker");
     const observer = await connectClient("expired-cleanup-wins-observer");
     await seedReservation(
       observer,
       "expired-cleanup-wins",
       "clock_timestamp() - interval '1 microsecond'"
     );
-    const [databaseNow] = (
+    await blocker.query("begin");
+    const blockerPid = Number(
+      (await blocker.query<{ pid: number }>("select pg_backend_pid() as pid"))
+        .rows[0]?.pid
+    );
+    await blocker.query(
+      "select id from workspace_reservations where id = $1 for update",
+      ["expired-cleanup-wins"]
+    );
+    const beforeClaim = (
       await observer.query<{ now: Date }>("select clock_timestamp() as now")
-    ).rows;
-    const [cleanup, payment] = await Promise.all([
-      runRepositories(
-        "cleanup-expired-cleanup-wins",
-        Effect.gen(function* () {
-          const reservations = yield* WorkspaceReservationRepository;
-          return yield* reservations.claimCancellation({
-            id: "expired-cleanup-wins",
-            ownerId: "cleanup-owner",
-            recoveryReason: "hold_expired",
-            holdExpiredAt: Temporal.Instant.from(
-              databaseNow?.now.toISOString() ?? ""
-            ).add({ seconds: 1 }),
-          });
-        })
-      ),
-      createPayment("expired-cleanup-wins"),
-    ]);
-    expect(cleanup).toMatchObject({
+    ).rows[0]?.now;
+    const cleanup = runRepositories(
+      "cleanup-expired-cleanup-wins",
+      Effect.gen(function* () {
+        const reservations = yield* WorkspaceReservationRepository;
+        return yield* reservations.claimCancellation({
+          id: "expired-cleanup-wins",
+          ownerId: "cleanup-owner",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: Temporal.Instant.from("2099-01-01T00:00:00Z"),
+        });
+      })
+    );
+    await waitForRowLock(observer, "cleanup-expired-cleanup-wins", blockerPid);
+    const payment = createPayment("expired-cleanup-wins");
+    await waitForRowLock(observer, "payment-expired-cleanup-wins", blockerPid);
+    await blocker.query("commit");
+
+    expect(await cleanup).toMatchObject({
       reservationState: "cancellation_claimed",
       cancellationClaimOwner: "cleanup-owner",
     });
-    expect(payment._tag).toBe("Failure");
+    expect((await payment)._tag).toBe("Failure");
     const stored = await observer.query<{
       attempt_count: number;
       payment_state: string;
+      reservation_hold_expired_at: Date | null;
       reservation_state: string;
     }>(`
       select
         count(payment_attempts.id)::integer as attempt_count,
         workspace_reservations.payment_state,
+        workspace_reservations.reservation_hold_expired_at,
         workspace_reservations.reservation_state
       from workspace_reservations
       left join payment_attempts
@@ -443,7 +455,42 @@ describe("payment and cleanup independent PostgreSQL sessions", () => {
     expect(stored.rows[0]).toEqual({
       attempt_count: 0,
       payment_state: "not_started",
+      reservation_hold_expired_at: stored.rows[0]?.reservation_hold_expired_at,
       reservation_state: "cancellation_claimed",
     });
+    const expiredEvidence = stored.rows[0]?.reservation_hold_expired_at;
+    expect(expiredEvidence).not.toBeNull();
+    expect(expiredEvidence?.getTime()).toBeGreaterThanOrEqual(
+      beforeClaim?.getTime() ?? Number.POSITIVE_INFINITY
+    );
+    expect(expiredEvidence?.toISOString()).not.toBe("2099-01-01T00:00:00.000Z");
+  });
+
+  test("process-clock-ahead cleanup loses while the database deadline is future", async () => {
+    const observer = await connectClient("future-deadline-observer");
+    await seedReservation(
+      observer,
+      "future-deadline",
+      "clock_timestamp() + interval '5 minutes'"
+    );
+
+    const [cleanup, payment] = await Promise.all([
+      runRepositories(
+        "cleanup-future-deadline",
+        Effect.gen(function* () {
+          const reservations = yield* WorkspaceReservationRepository;
+          return yield* reservations.claimCancellation({
+            id: "future-deadline",
+            ownerId: "ahead-cleanup-owner",
+            recoveryReason: "hold_expired",
+            holdExpiredAt: Temporal.Instant.from("2099-01-01T00:00:00Z"),
+          });
+        })
+      ),
+      createPayment("future-deadline"),
+    ]);
+
+    expect(cleanup).toBeNull();
+    expect(payment._tag).toBe("Success");
   });
 });

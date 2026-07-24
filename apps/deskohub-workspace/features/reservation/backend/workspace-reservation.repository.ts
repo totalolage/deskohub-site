@@ -1566,14 +1566,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             "workspaceReservations.attachHold",
             input.id
           );
-          const attachedAt = Temporal.Now.instant();
           const candidateMarker = providerHoldCreationCandidateMarker(
             input.epoch,
             dotyposReservationId,
-            input.reservationCreatedAt,
-            attachedAt.add({
-              seconds: providerHoldCandidateStabilizationSeconds,
-            })
+            input.reservationCreatedAt
           );
           const loadSameAttachedHold = () =>
             db
@@ -1594,8 +1590,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               dotyposReservationId,
               reservationState: "held",
               reservationCreatedAt: input.reservationCreatedAt,
-              failureCode: candidateMarker,
-              updatedAt: attachedAt,
+              failureCode: sql`${candidateMarker} || ':' || floor(extract(epoch from clock_timestamp() + (${providerHoldCandidateStabilizationSeconds} * interval '1 second')) * 1000)::bigint::text || ':db'`,
+              updatedAt: sql`clock_timestamp()`,
             })
             .where(
               and(
@@ -1680,7 +1676,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .update(workspaceReservations)
           .set({
             failureCode: providerHoldCreationAttachedMarker(input.epoch),
-            updatedAt: Temporal.Now.instant(),
+            updatedAt: sql`clock_timestamp()`,
           })
           .where(
             and(
@@ -1709,7 +1705,14 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               eq(
                 workspaceReservations.reservationCreatedAt,
                 input.reservationCreatedAt
-              )
+              ),
+              sql`case
+                when split_part(${workspaceReservations.failureCode}, ':', 6) = 'db'
+                  then split_part(${workspaceReservations.failureCode}, ':', 5)::numeric
+                    <= extract(epoch from clock_timestamp()) * 1000
+                else ${workspaceReservations.updatedAt}
+                  <= clock_timestamp() - (${providerHoldCandidateStabilizationSeconds} * interval '1 second')
+              end`
             )
           )
           .returning({ id: workspaceReservations.id });
@@ -2263,7 +2266,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               cancellationRecoveryReason: input.recoveryReason,
               reservationHoldExpiredAt:
                 input.recoveryReason === "hold_expired"
-                  ? input.holdExpiredAt
+                  ? sql`clock_timestamp()`
                   : undefined,
               failureCode: null,
               updatedAt: sql`now()`,
@@ -2272,10 +2275,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               and(
                 eq(workspaceReservations.id, input.id),
                 input.recoveryReason === "hold_expired"
-                  ? lte(
-                      workspaceReservations.reservationHoldExpiresAt,
-                      input.holdExpiredAt
-                    )
+                  ? sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`
                   : undefined,
                 or(
                   inArray(workspaceReservations.reservationState, [
@@ -2427,10 +2427,6 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .set({
               reservationState: "cancelled",
               reservationCancelledAt: input.cancelledAt,
-              reservationHoldExpiredAt:
-                input.recoveryReason === "hold_expired"
-                  ? input.holdExpiredAt
-                  : undefined,
               cancellationClaimOwner: null,
               cancellationClaimedAt: null,
               cancellationFailureDisposition: null,
@@ -2613,10 +2609,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         const updated = yield* db
           .update(workspaceReservations)
           .set({
-            reservationHoldExpiredAt: input.holdExpiredAt,
+            reservationHoldExpiredAt: sql`clock_timestamp()`,
             cancellationRecoveryReason: "hold_expired",
             failureCode: input.failureCode,
-            updatedAt: Temporal.Now.instant(),
+            updatedAt: sql`clock_timestamp()`,
           })
           .where(
             and(
@@ -2624,10 +2620,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               eq(workspaceReservations.reservationState, "held"),
               sql`${workspaceReservations.paymentState} <> 'paid'`,
               hasNoUnresolvedProviderAttachmentRecovery(),
-              lte(
-                workspaceReservations.reservationHoldExpiresAt,
-                input.holdExpiredAt
-              )
+              sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`
             )
           )
           .returning({ id: workspaceReservations.id });
@@ -2887,10 +2880,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   and(
                     eq(workspaceReservations.reservationState, "held"),
                     sql`${workspaceReservations.paymentState} <> 'paid'`,
-                    lte(
-                      workspaceReservations.reservationHoldExpiresAt,
-                      input.now
-                    )
+                    sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`
                   ),
                   and(
                     eq(workspaceReservations.paymentState, "pending"),
@@ -2966,7 +2956,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       ),
       selectExpiredHoldDotyposReservationIds: Effect.fn(
         "workspaceReservations.selectExpiredHoldDotyposReservationIds"
-      )(function* (input) {
+      )(function* (_input) {
         const rows = yield* db
           .select({
             dotyposReservationId: workspaceReservations.dotyposReservationId,
@@ -2982,7 +2972,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "expired",
               ]),
               sql`${workspaceReservations.dotyposReservationId} is not null`,
-              lte(workspaceReservations.reservationHoldExpiresAt, input.now)
+              sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`
             )
           );
 

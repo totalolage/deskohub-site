@@ -1,18 +1,10 @@
-const SENSITIVE_QUERY_PARAMS = new Set([
-  "checkouttoken",
-  "paystate",
-  "paystateref",
-  "token",
-  "state",
-  "secret",
-  "x-vercel-protection-bypass",
-]);
+import { isSensitiveUrlSearchParam } from "@/shared/utils/sensitive-url-search-params";
 
 export function createPostHogPageUrl(href: string) {
   const url = new URL(href);
 
   for (const param of [...url.searchParams.keys()]) {
-    if (SENSITIVE_QUERY_PARAMS.has(param.toLowerCase())) {
+    if (isSensitiveUrlSearchParam(param)) {
       url.searchParams.delete(param);
     }
   }

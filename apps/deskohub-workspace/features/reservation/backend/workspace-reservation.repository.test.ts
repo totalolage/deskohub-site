@@ -197,7 +197,13 @@ describe("WorkspaceReservationRepository", () => {
               ) {
                 return [];
               }
-              Object.assign(row, values);
+              Object.assign(row, {
+                ...values,
+                failureCode:
+                  typeof values.failureCode === "string"
+                    ? values.failureCode
+                    : `hold_creation_candidate:${epoch}:${providerId}:${providerCreatedAt.epochMilliseconds}:${providerCreatedAt.add({ minutes: 2 }).epochMilliseconds}:db`,
+              });
               return [{ id: row.id }];
             }),
         }),
@@ -330,9 +336,17 @@ describe("WorkspaceReservationRepository", () => {
         where: () => ({
           returning: () =>
             Effect.sync(() => {
+              const persistedValues =
+                values.reservationState === "held" &&
+                typeof values.failureCode !== "string"
+                  ? {
+                      ...values,
+                      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${winnerCreatedAt.epochMilliseconds}:${winnerCreatedAt.add({ minutes: 2 }).epochMilliseconds}:db`,
+                    }
+                  : values;
               const failureCode =
-                typeof values.failureCode === "string"
-                  ? values.failureCode
+                typeof persistedValues.failureCode === "string"
+                  ? persistedValues.failureCode
                   : null;
               const canRecordCandidate =
                 failureCode?.startsWith(`hold_creation_candidate:${epoch}:`) &&
@@ -412,7 +426,7 @@ describe("WorkspaceReservationRepository", () => {
               ) {
                 return [];
               }
-              Object.assign(row, values);
+              Object.assign(row, persistedValues);
               return [{ id: row.id }];
             }),
         }),
@@ -789,13 +803,17 @@ describe("WorkspaceReservationRepository", () => {
       "      selectCancellationCandidates: Effect.fn("
     );
 
-    expect(attachment).toContain("failureCode: candidateMarker");
+    expect(attachment).toContain("providerHoldCandidateStabilizationSeconds");
+    expect(attachment).toContain("updatedAt: sql`clock_timestamp()`");
     expect(attachment).toContain("completeProviderHoldCandidate");
     expect(attachment).toContain(
       "failureCode: providerHoldCreationAttachedMarker(input.epoch)"
     );
     expect(attachment).toContain(
       'eq(workspaceReservations.paymentState, "not_started")'
+    );
+    expect(attachment).toContain(
+      "extract(epoch from clock_timestamp()) * 1000"
     );
     expect(recoverySelection).toContain("hold_creation_candidate:%");
     expect(recoverySelection).toContain(
@@ -846,7 +864,9 @@ describe("WorkspaceReservationRepository", () => {
       'markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")'
     );
 
-    expect(section).toContain("reservationHoldExpiredAt: input.holdExpiredAt");
+    expect(section).toContain(
+      "reservationHoldExpiredAt: sql`clock_timestamp()`"
+    );
     expect(section).toContain("failureCode: input.failureCode");
     expect(section).toContain(
       'eq(workspaceReservations.reservationState, "held")'
@@ -876,7 +896,7 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).not.toContain('"pending"');
     expect(section).toContain("dotyposReservationId} is not null");
     expect(section).toContain(
-      "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
+      "workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()"
     );
   });
 });
@@ -1082,6 +1102,178 @@ describe("WorkspaceReservationRepository different-provider ownership", () => {
 });
 
 describe("WorkspaceReservationRepository cancellation ownership", () => {
+  test("persists an attached candidate fence derived from the database clock", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-db-derived-fence-epoch";
+        const providerId = "synthetic-db-derived-fence-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const id = "db-derived-fence-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "creating_hold",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}`,
+            updatedAt: instant("2099-01-01T00:00:00Z"),
+          })
+        );
+
+        yield* repository.attachHold({
+          id,
+          epoch,
+          dotyposReservationId: providerId,
+          reservationCreatedAt: createdAt,
+        });
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+        const marker = stored && getHoldCreationMarker(stored);
+
+        expect(stored?.failureCode).toEndWith(":db");
+        expect(marker?._tag).toBe("candidate");
+        if (marker?._tag !== "candidate" || !marker.stabilizationDeadline) {
+          return yield* Effect.die(
+            "Expected a database-derived candidate stabilization deadline."
+          );
+        }
+        const fenceDurationMilliseconds =
+          marker.stabilizationDeadline.epochMilliseconds -
+          stored.updatedAt.epochMilliseconds;
+        expect(fenceDurationMilliseconds).toBeGreaterThanOrEqual(119_000);
+        expect(fenceDurationMilliseconds).toBeLessThanOrEqual(121_000);
+        expect(
+          (yield* repository
+            .completeProviderHoldCandidate({
+              id,
+              epoch,
+              dotyposReservationId: providerId,
+              reservationCreatedAt: createdAt,
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+      })
+    );
+  });
+
+  test("does not clear a fresh provider candidate when the process clock is ahead of the database", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-db-fence-epoch";
+        const providerId = "synthetic-db-fence-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const processDeadline = instant("2026-07-23T09:02:00Z");
+        const id = "fresh-db-fenced-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:${processDeadline.epochMilliseconds}`,
+            updatedAt: sql`now()`,
+          })
+        );
+
+        const completion = yield* repository
+          .completeProviderHoldCandidate({
+            id,
+            epoch,
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+          })
+          .pipe(Effect.result);
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(completion._tag).toBe("Failure");
+        expect(stored?.failureCode).toStartWith(
+          `hold_creation_candidate:${epoch}:`
+        );
+      })
+    );
+  });
+
+  test("does not select or claim a hold whose database deadline is future when the process clock is ahead", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "database-future-hold";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationHoldExpiresAt: sql`now() + interval '5 minutes'`,
+          })
+        );
+        const processNow = instant("2099-01-01T00:00:00Z");
+
+        const candidates = yield* repository.selectCancellationCandidates({
+          now: processNow,
+          limit: 25,
+        });
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "synthetic-ahead-process-worker",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: processNow,
+        });
+
+        expect(candidates.map((candidate) => candidate.id)).not.toContain(id);
+        expect(claimed).toBeNull();
+      })
+    );
+  });
+
+  test("allows one database-due candidate transition under concurrent clear delivery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-concurrent-clear-epoch";
+        const providerId = "synthetic-concurrent-clear-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const id = "concurrent-db-due-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:0:db`,
+            updatedAt: sql`now()`,
+          })
+        );
+        const complete = () =>
+          repository
+            .completeProviderHoldCandidate({
+              id,
+              epoch,
+              dotyposReservationId: providerId,
+              reservationCreatedAt: createdAt,
+            })
+            .pipe(Effect.result);
+
+        const completions = yield* Effect.all([complete(), complete()], {
+          concurrency: "unbounded",
+        });
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(completions.map(({ _tag }) => _tag)).toEqual([
+          "Success",
+          "Success",
+        ]);
+        expect(stored?.failureCode).toBe(`hold_creation_attached:${epoch}`);
+        expect(stored?.paymentState).toBe("not_started");
+      })
+    );
+  });
+
   test("allows exactly one competing owner to win a cancellation CAS", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {
@@ -1448,7 +1640,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           })
           .where(eq(workspaceReservations.id, "stale-audit"));
 
-        const holdExpiredAt = instant("2026-07-23T11:00:00Z");
+        const holdExpiredAt = instant("2099-01-01T00:00:00Z");
         expect(
           yield* repository.claimCancellation({
             id: "expired-audit",
@@ -1489,17 +1681,16 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           })
           .from(workspaceReservations)
           .orderBy(workspaceReservations.id);
-        expect(
-          rows.map((row) => ({
-            id: row.id,
-            reason: row.cancellationRecoveryReason,
-            expired: row.reservationHoldExpiredAt?.toString() ?? null,
-          }))
-        ).toEqual([
+        const summarizedRows = rows.map((row) => ({
+          id: row.id,
+          reason: row.cancellationRecoveryReason,
+          expired: row.reservationHoldExpiredAt?.toString() ?? null,
+        }));
+        expect(summarizedRows).toEqual([
           {
             id: "expired-audit",
             reason: "hold_expired",
-            expired: holdExpiredAt.toString(),
+            expired: summarizedRows[0]?.expired,
           },
           {
             id: "retry-audit",
@@ -1517,6 +1708,8 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
             expired: null,
           },
         ]);
+        expect(summarizedRows[0]?.expired).not.toBeNull();
+        expect(summarizedRows[0]?.expired).not.toBe(holdExpiredAt.toString());
       })
     );
   });

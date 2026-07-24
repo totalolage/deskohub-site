@@ -65,3 +65,51 @@ test.each([
     );
   }
 });
+
+test.each([
+  "checkoutToken",
+  "payState",
+  "payStateRef",
+  "token",
+  "state",
+  "secret",
+  "x-vercel-protection-bypass",
+  "name",
+  "message",
+  "_vercel_share",
+])("structurally redacts the case-insensitive %s capability across command, output, and failure paths", (key) => {
+  const capability = `synthetic-${key.toLowerCase()}-capability-marker`;
+  const mixedCaseKey = [...key]
+    .map((character, index) =>
+      index % 2 === 0 ? character.toUpperCase() : character.toLowerCase()
+    )
+    .join("");
+  const encodedKey = mixedCaseKey.replace(
+    /[A-Za-z0-9]/,
+    (character) => `%${character.charCodeAt(0).toString(16)}`
+  );
+  const doublyEncodedKey = encodedKey.replaceAll("%", "%25");
+  const urls = [
+    `https://deskohub.example.test/en-US/checkout/pay?${mixedCaseKey}=${capability}`,
+    `https://deskohub.example.test/en-US/checkout/pay?${encodedKey}%3D${capability}`,
+    `https://deskohub.example.test/en-US/checkout/pay?${doublyEncodedKey}%253D${capability}`,
+    encodeURIComponent(
+      `https://deskohub.example.test/en-US/checkout/pay?${mixedCaseKey}=${capability}`
+    ),
+  ];
+
+  for (const url of urls) {
+    const outputs = [
+      formatRunnerCommand("agent-browser", ["open", url]),
+      redact(`browser stderr: ${url}`),
+      formatWorkspaceE2EFailure(new Error(`navigation failed for ${url}`)),
+    ];
+
+    for (const output of outputs) {
+      expect(output).not.toContain(capability);
+      expect(decodeURIComponent(decodeURIComponent(output))).toContain(
+        "[redacted]"
+      );
+    }
+  }
+});

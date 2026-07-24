@@ -1425,15 +1425,26 @@ describe("prepareWorkspacePayState", () => {
       reservationState: "draft",
       failureCode: null,
     });
+    const databaseAttachTime = Temporal.Instant.from("2026-07-01T09:00:00Z");
     const fakeDatabase = {
       update: () => ({
         set: (values: Partial<WorkspaceReservation>) => ({
           where: () => ({
             returning: () =>
               Effect.sync(() => {
+                const executesDatabaseCandidateFence =
+                  values.reservationState === "held" &&
+                  typeof values.failureCode !== "string";
+                const databaseValues = executesDatabaseCandidateFence
+                  ? {
+                      ...values,
+                      failureCode: `hold_creation_candidate:${providerEpoch}:${providerReservationId}:${persisted.reservationCreatedAt?.epochMilliseconds}:${databaseAttachTime.add({ minutes: 2 }).epochMilliseconds}:db`,
+                      updatedAt: databaseAttachTime,
+                    }
+                  : values;
                 persisted = makeReusableReservation({
                   ...persisted,
-                  ...values,
+                  ...databaseValues,
                 });
                 return [{ id: persisted.id }];
               }),

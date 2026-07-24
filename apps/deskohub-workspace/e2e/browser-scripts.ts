@@ -1,3 +1,4 @@
+import { sensitiveUrlSearchParamKeys } from "../shared/utils/sensitive-url-search-params";
 import type { CheckoutData } from "./types";
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
@@ -196,11 +197,27 @@ export const payPageReadyScript = `
 
 export const browserDiagnosticsScript = String.raw`
 (() => {
+  const sensitiveKeys = new Set(${JSON.stringify(sensitiveUrlSearchParamKeys)});
+  const normalizeKey = (value) => {
+    let decoded = value;
+    for (let layer = 0; layer < 2; layer += 1) {
+      try {
+        const next = decodeURIComponent(decoded.replaceAll('+', ' '));
+        if (next === decoded) break;
+        decoded = next;
+      } catch {
+        break;
+      }
+    }
+    return decoded.toLowerCase();
+  };
   const cleanUrl = (value) => {
     try {
       const url = new URL(value);
-      for (const key of ['payState', 'checkoutToken', '_vercel_share', 'x-vercel-protection-bypass']) {
-        if (url.searchParams.has(key)) url.searchParams.set(key, '[redacted]');
+      for (const key of [...url.searchParams.keys()]) {
+        if (sensitiveKeys.has(normalizeKey(key))) {
+          url.searchParams.set(key, '[redacted]');
+        }
       }
       return url.toString();
     } catch {

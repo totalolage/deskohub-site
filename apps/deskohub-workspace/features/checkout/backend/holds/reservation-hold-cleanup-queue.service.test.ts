@@ -939,13 +939,21 @@ describe("ReservationHoldCleanupScheduleService", () => {
       failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}`,
       updatedAt: now,
     });
+    let databaseNow = now;
     const complete = mock(() =>
-      Effect.sync(() => {
-        row = makeReservation({
-          ...row,
-          failureCode: `hold_creation_attached:${epoch}`,
-        });
-      })
+      Temporal.Instant.compare(databaseNow, row.updatedAt.add({ minutes: 2 })) <
+      0
+        ? Effect.fail(
+            new Error(
+              "Synthetic repository database-clock candidate fence remains pending."
+            )
+          )
+        : Effect.sync(() => {
+            row = makeReservation({
+              ...row,
+              failureCode: `hold_creation_attached:${epoch}`,
+            });
+          })
     );
     const payload = getAttachmentCancellationScheduleMessage({
       recoveryKind: "attachment_unknown",
@@ -989,15 +997,16 @@ describe("ReservationHoldCleanupScheduleService", () => {
         Effect.runPromise
       )
     ).rejects.toBeDefined();
-    expect(complete).not.toHaveBeenCalled();
+    expect(complete).toHaveBeenCalledTimes(1);
     expect(row.failureCode).toStartWith("hold_creation_candidate:");
 
+    databaseNow = now.add({ minutes: 2 });
     const retry = await processReservationHoldCleanupScheduleMessage(
       payload,
-      now.add({ minutes: 2 })
+      now
     ).pipe(Effect.provide(layer), Effect.runPromise);
     expect(retry).toBe("cancelled");
-    expect(complete).toHaveBeenCalledTimes(1);
+    expect(complete).toHaveBeenCalledTimes(2);
     expect(row.failureCode).toBe(`hold_creation_attached:${epoch}`);
   });
 

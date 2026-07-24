@@ -15,6 +15,7 @@ import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Logger, type LogLevel, References } from "effect";
 import { PublicSafeActionError } from "../../utils/safe-action-client";
+import { isSensitiveUrlSearchParam } from "../../utils/sensitive-url-search-params";
 import { StorageError } from "../errors";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
@@ -78,23 +79,8 @@ const sensitiveLogExactKeys = new Set([
   "zip",
 ]);
 
-const sensitiveLogUrlSearchParams = new Set([
-  "checkouttoken",
-  "paystate",
-  "paystateref",
-  "x-vercel-protection-bypass",
-  "token",
-  "state",
-  "secret",
-  "name",
-  "message",
-]);
-
-const isSensitiveLogUrlSearchParam = (key: string): boolean =>
-  sensitiveLogUrlSearchParams.has(key.toLowerCase());
-
 const isSensitiveLogRecordKey = (key: string): boolean =>
-  isSensitiveLogKey(key) || isSensitiveLogUrlSearchParam(key);
+  isSensitiveLogKey(key) || isSensitiveUrlSearchParam(key);
 
 const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 
