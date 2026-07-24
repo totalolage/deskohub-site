@@ -2,6 +2,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
@@ -10,6 +11,7 @@ import {
 import { cleanup, render } from "@testing-library/react";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
+import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -32,6 +34,14 @@ mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
   submitWorkspaceReservation,
 }));
+
+beforeEach(() => {
+  workspaceUseAction.mockReturnValue({
+    execute: mock(),
+    isExecuting: false,
+    result: {},
+  });
+});
 
 describe("CheckoutPayPageSkeleton", () => {
   beforeAll(() => {

@@ -17,7 +17,8 @@ export type DiscountResolutionOperation =
   | "discover_advertised_discounts"
   | "affirm_advertisement"
   | "apply_customer_discount"
-  | "affirm_for_payment"
+  | "affirm_displayed_discounts"
+  | "apply_discount_code"
   | "normalize"
   | "load_definition"
   | "apply_candidate";

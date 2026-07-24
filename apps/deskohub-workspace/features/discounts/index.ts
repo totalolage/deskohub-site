@@ -14,16 +14,19 @@ export {
   type DiscountQuote,
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
+  discountIdSchema,
   discountProductIdentitySchema,
   discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type AppliedDiscountCodeQuote,
   type ApplyCustomerDiscountInput,
+  type ApplyDiscountCodeInput,
   type DiscountAdvertisementAffirmationInput,
-  type DiscountPaymentAffirmation,
-  type DiscountPaymentAffirmationInput,
   DiscountService,
+  type DisplayedDiscountAffirmation,
+  type DisplayedDiscountAffirmationInput,
   type IDiscountService,
 } from "./discount.service";
 export { normalizeSubmittedDiscountCode } from "./discount-code";

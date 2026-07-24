@@ -162,9 +162,11 @@ const createAttempt = (
   repository.create({
     workspaceReservationId: reservationId,
     providerOrderId,
-    amountValue: 1000,
-    amountExponent: 2,
-    currency: "CZK",
+    amount: {
+      value: 1000,
+      exponent: 2,
+      currency: "CZK",
+    },
   });
 
 const makeProviderEvidence = (input: {

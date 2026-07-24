@@ -2,6 +2,7 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
   mock,
@@ -19,26 +20,19 @@ import { Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
+  workspaceRouterPush as push,
+  workspaceUseAction,
+  workspaceUseSearchParams,
+} from "@/shared/testing/workspace-component-module-mocks";
+import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-const push = mock(() => undefined);
 const execute = mock(() => undefined);
 const getAdvertisedPrice = mock(() =>
   Promise.resolve({ data: advertisedPriceResponse })
 );
-
-mock.module("next/navigation", () => ({
-  unstable_rethrow: (error: unknown) => {
-    throw error;
-  },
-  useRouter: () => ({ push }),
-  useSearchParams: () =>
-    new URLSearchParams(
-      "entryTier=basic&date=2099-07-30&coffee=true&name=Ada%20Lovelace&email=ada%40example.test&phone=%2B420777777777"
-    ),
-}));
 
 mock.module("@/features/cookie-consent", () => ({
   useCookieConsent: () => ({ isAccepted: () => false }),
@@ -46,14 +40,6 @@ mock.module("@/features/cookie-consent", () => ({
 
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrice,
-}));
-
-mock.module("@/shared/utils/use-workspace-action", () => ({
-  useWorkspaceAction: () => ({
-    execute,
-    isExecuting: false,
-    result: {},
-  }),
 }));
 
 const { ReservationForm } = await import("./reservation-form");
@@ -132,6 +118,19 @@ const renderForm = () => {
 describe("ReservationForm advertised pricing", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
+  });
+
+  beforeEach(() => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams(
+        "entryTier=basic&date=2099-07-30&coffee=true&name=Ada%20Lovelace&email=ada%40example.test&phone=%2B420777777777"
+      )
+    );
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
   });
 
   afterEach(() => {

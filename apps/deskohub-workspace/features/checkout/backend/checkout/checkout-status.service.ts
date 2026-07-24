@@ -3,11 +3,7 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import type {
-  FulfillmentState,
-  PaymentAttempt,
-  PaymentState,
-} from "@/db/schema";
+import type { FulfillmentState, PaymentState } from "@/db/schema";
 import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
@@ -34,6 +30,7 @@ import {
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "../payment/provider-payment-finalization.service";
 import {
+  type PaymentAttempt,
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
@@ -335,11 +332,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           date,
           coffee: reservation.productCoffee,
           monitorOption,
-          price: {
-            value: attempt.amountValue,
-            exponent: attempt.amountExponent,
-            currency: attempt.currency,
-          },
+          price: attempt.amount,
         } satisfies WorkspaceCheckoutStatusSummary;
 
         yield* Effect.annotateLogsScoped({ summary });

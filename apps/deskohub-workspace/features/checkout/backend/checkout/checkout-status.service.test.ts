@@ -50,9 +50,11 @@ const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
   providerOrderId: "provider-order-id",
   securityToken: null,
   state: "paid",
-  amountValue: 55_000,
-  amountExponent: 2,
-  currency: "CZK",
+  amount: {
+    value: 55_000,
+    exponent: 2,
+    currency: "CZK",
+  },
   providerRedirectUrl: null,
   lastWebhookEventId: null,
   lastProviderOperationId: null,
@@ -510,7 +512,11 @@ describe("CheckoutStatusService", () => {
         Effect.succeed(
           makePaymentAttempt({
             state: "failed",
-            amountValue: 99_999,
+            amount: {
+              value: 99_999,
+              exponent: 2,
+              currency: "CZK",
+            },
           })
         )
       ),

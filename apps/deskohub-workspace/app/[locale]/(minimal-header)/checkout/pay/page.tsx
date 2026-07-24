@@ -5,17 +5,21 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
-  buildFreshCheckoutPayPath,
+  buildCheckoutPayContinuationPath,
+  discountCodeErrorQueryParam,
   getSignedPayStateCheckoutSummary,
+  getSignedPayStateSubmittedCodeApplication,
   openPayState,
   PayableReservationService,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
+import { CheckoutDiscountCodeForm } from "@/features/checkout/components/checkout-discount-code-form";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import {
   CheckoutPayPage,
   CheckoutPayStabilizingPage,
 } from "@/features/checkout/components/checkout-pay-page";
+import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -97,10 +101,14 @@ async function CheckoutPayContent({
   readonly searchParams: Promise<SearchParamsRecord>;
 }) {
   await connection();
+  const resolvedSearchParams = await searchParams;
   const payStateToken = getSearchParam(
-    await searchParams,
+    resolvedSearchParams,
     payStateTokenQueryParam
   );
+  const discountCodeError =
+    getSearchParam(resolvedSearchParams, discountCodeErrorQueryParam) ===
+    "unavailable";
 
   if (!payStateToken) {
     return runWithRequestLocale(locale, () => (
@@ -111,7 +119,8 @@ async function CheckoutPayContent({
   const opened = await Effect.gen(function* () {
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
-    const freshPayUrl = yield* buildFreshCheckoutPayPath(state).pipe(
+    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled;
+    const freshPayUrl = yield* buildCheckoutPayContinuationPath(state).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
     );
@@ -130,7 +139,7 @@ async function CheckoutPayContent({
         )
       );
 
-    return { state, freshPayUrl, availability };
+    return { state, freshPayUrl, availability, discountCodeEntryEnabled };
   }).pipe(
     Effect.provide(PayableReservationService.LiveWithDependencies),
     Effect.catch((cause) =>
@@ -148,7 +157,7 @@ async function CheckoutPayContent({
     ));
   }
 
-  const { availability, freshPayUrl, state } = opened;
+  const { availability, discountCodeEntryEnabled, freshPayUrl, state } = opened;
   const summary = getSignedPayStateCheckoutSummary(state);
 
   if (availability === "stabilizing") {
@@ -158,6 +167,8 @@ async function CheckoutPayContent({
       </CheckoutFlowLayout>
     ));
   }
+  const submittedCodeApplication =
+    getSignedPayStateSubmittedCodeApplication(state);
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -171,6 +182,17 @@ async function CheckoutPayContent({
     >
       <CheckoutPayPage
         changedKeys={state.changedKeys}
+        discountCodeForm={
+          <CheckoutDiscountCodeForm
+            appliedAdjustment={submittedCodeApplication?.discount.adjustment}
+            enabled={
+              discountCodeEntryEnabled && state.submittedCode === undefined
+            }
+            fieldError={discountCodeError}
+            locale={locale}
+            payStateToken={payStateToken}
+          />
+        }
         freshPayUrl={freshPayUrl}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}

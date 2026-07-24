@@ -3,7 +3,10 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { buildReservationQuote } from "@/features/checkout/reservation-quote";
-import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
+import {
+  canonicalDiscountCodeSchema,
+  discountIdSchema,
+} from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import type { PayStateKey, SignedPayState } from "./pay-state";
@@ -13,6 +16,7 @@ mock.module("server-only", () => ({}));
 const {
   buildPayStateQueryParams,
   buildSignedPayState,
+  getSignedPayStateSubmittedCodeApplication,
   openPayState,
   parsePayStateKey,
   payStateTokenQueryParam,
@@ -20,7 +24,7 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const { buildFreshCheckoutPayPath } = await import("./checkout-pay-url");
+const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -37,6 +41,9 @@ const rotatedKey: PayStateKey = runSync(
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
   "SUMMER50"
+);
+const submittedCodeDiscountId = Schema.decodeUnknownSync(discountIdSchema)(
+  "submitted-code-discount"
 );
 const strictParseOptions = { onExcessProperty: "error" } as const;
 const decodeSignedPayState = Schema.decodeUnknownSync(
@@ -66,7 +73,6 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
         quote: buildCoworkReservationQuote(baseReservation),
         orderId: "pay-state-test-order-id",
         checkoutSessionId: "pay-state-test-checkout-session-id",
-        submittedCode: canonicalCode,
         ttlMilliseconds: 10 * 60 * 1000,
       },
       { keys: [fixedKey], now: () => fixedNow }
@@ -131,7 +137,7 @@ describe("Pay URL state", () => {
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.checkoutSessionId).toBe("pay-state-test-checkout-session-id");
-    expect(state.submittedCode).toBe(canonicalCode);
+    expect(state.submittedCode).toBeUndefined();
     expect(token.split(".")).toHaveLength(4);
   });
 
@@ -161,6 +167,7 @@ describe("Pay URL state", () => {
           quote,
           orderId: "meeting-room-pay-state-test-order-id",
           submittedCode: canonicalCode,
+          submittedCodeDiscountId,
           changedKeys,
         },
         { keys: [fixedKey], now: () => fixedNow }
@@ -414,14 +421,72 @@ describe("Pay URL state", () => {
     ).toThrow('at ["submittedCode"]');
   });
 
+  test("requires submitted code metadata to occur together", () => {
+    expect(() =>
+      decodeSignedPayState({
+        ...buildState(),
+        submittedCode: canonicalCode,
+      })
+    ).toThrow('at ["submittedCodeDiscountId"]');
+    expect(() =>
+      decodeSignedPayState({
+        ...buildState(),
+        submittedCodeDiscountId,
+      })
+    ).toThrow('at ["submittedCodeDiscountId"]');
+  });
+
   test("does not expose plaintext PII in the encrypted URL token", () => {
-    const token = seal();
+    const token = seal(
+      buildState({
+        submittedCode: canonicalCode,
+        submittedCodeDiscountId,
+      })
+    );
 
     expect(token).not.toContain(baseReservation.name);
     expect(token).not.toContain(baseReservation.email);
     expect(token).not.toContain(baseReservation.phone);
     expect(token).not.toContain(baseReservation.message);
     expect(token).not.toContain("SUMMER50");
+  });
+
+  test("finds the submitted code application by its opaque id rather than position", () => {
+    const state = buildState();
+    const makeApplication = (id: string, value: number) => ({
+      discount: {
+        id: Schema.decodeUnknownSync(discountIdSchema)(id),
+        label: id,
+        adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+      },
+      subtotalBefore: state.quote.payment.undiscountedPrice,
+      amount: {
+        ...state.quote.payment.undiscountedPrice,
+        value,
+      },
+      subtotalAfter: {
+        ...state.quote.payment.undiscountedPrice,
+        value: state.quote.payment.undiscountedPrice.value - value,
+      },
+    });
+    const codeApplication = makeApplication(submittedCodeDiscountId, 1000);
+    const laterApplication = makeApplication("later-discount", 500);
+    const stateWithLaterDiscount = {
+      ...state,
+      submittedCode: canonicalCode,
+      submittedCodeDiscountId,
+      quote: {
+        ...state.quote,
+        payment: {
+          ...state.quote.payment,
+          discounts: [codeApplication, laterApplication],
+        },
+      },
+    };
+
+    expect(
+      getSignedPayStateSubmittedCodeApplication(stateWithLaterDiscount)
+    ).toEqual(codeApplication);
   });
 
   test("builds URL query params", () => {
@@ -445,20 +510,11 @@ describe("Pay URL state", () => {
       },
     });
     const path = runSync(
-      buildFreshCheckoutPayPath(
-        {
-          locale: reviewState.locale,
-          reservation: reviewState.reservation,
-          quote: reviewState.quote,
-          orderId: reviewState.orderId,
-          submittedCode: reviewState.submittedCode,
-        },
-        {
-          keys: [fixedKey],
-          now: () => fixedNow,
-          randomBytes: fixedRandomBytes,
-        }
-      )
+      buildCheckoutPayContinuationPath(reviewState, {
+        keys: [fixedKey],
+        now: () => fixedNow,
+        randomBytes: fixedRandomBytes,
+      })
     );
     const token = new URL(path, "https://deskohub.test").searchParams.get(
       payStateTokenQueryParam
@@ -473,6 +529,7 @@ describe("Pay URL state", () => {
     expect(continued.changedKeys).toBeUndefined();
     expect(continued.quote).toEqual(reviewState.quote);
     expect(continued.orderId).toBe(reviewState.orderId);
-    expect(continued.submittedCode).toBe(reviewState.submittedCode);
+    expect(continued.submittedCode).toBeUndefined();
+    expect(continued.submittedCodeDiscountId).toBeUndefined();
   });
 });

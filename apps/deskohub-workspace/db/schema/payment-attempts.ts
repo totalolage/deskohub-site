@@ -80,5 +80,5 @@ export const paymentAttempts = pgTable(
   ]
 );
 
-export type PaymentAttempt = typeof paymentAttempts.$inferSelect;
-export type NewPaymentAttempt = typeof paymentAttempts.$inferInsert;
+export type PaymentAttemptRow = typeof paymentAttempts.$inferSelect;
+export type NewPaymentAttemptRow = typeof paymentAttempts.$inferInsert;

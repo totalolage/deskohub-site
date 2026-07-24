@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import type { RequireAllOrNone } from "type-fest";
 import {
   type CheckoutSummaryChangedKeys,
   checkoutSummaryChangedKeysSchema,
@@ -7,6 +8,8 @@ import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-mo
 import {
   type CanonicalDiscountCode,
   canonicalDiscountCodeSchema,
+  type DiscountId,
+  discountIdSchema,
 } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
@@ -21,24 +24,36 @@ export const signedPayStateEnvelopeSchema = Schema.Struct({
   checkoutSessionId: Schema.optional(Schema.NonEmptyString),
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalDiscountCodeSchema),
+  submittedCodeDiscountId: Schema.optional(discountIdSchema),
   changedKeys: Schema.optional(checkoutSummaryChangedKeysSchema),
 });
 
 export type SignedPayStateEnvelope = typeof signedPayStateEnvelopeSchema.Type;
 
-export type BuildSignedPayStateCommonInput = {
+type BuildSignedPayStateBaseInput = {
   readonly locale: Locale;
   readonly orderId: string;
   readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly ttlMilliseconds?: number;
 };
 
+export type PayStateSubmittedCodeMetadata = RequireAllOrNone<{
+  readonly submittedCode: CanonicalDiscountCode;
+  readonly submittedCodeDiscountId: DiscountId;
+}>;
+
+export type BuildSignedPayStateCommonInput = BuildSignedPayStateBaseInput &
+  PayStateSubmittedCodeMetadata;
+
 export const buildSignedPayStateEnvelope = (
   envelope: Omit<
     SignedPayStateEnvelope,
-    "acceptedTotal" | "checkoutSessionId" | "submittedCode" | "changedKeys"
+    | "acceptedTotal"
+    | "checkoutSessionId"
+    | "submittedCode"
+    | "submittedCodeDiscountId"
+    | "changedKeys"
   >,
   input: BuildSignedPayStateCommonInput,
   acceptedTotal: SignedPayStateEnvelope["acceptedTotal"]
@@ -50,6 +65,9 @@ export const buildSignedPayStateEnvelope = (
   }),
   ...(input.submittedCode !== undefined && {
     submittedCode: input.submittedCode,
+  }),
+  ...(input.submittedCodeDiscountId !== undefined && {
+    submittedCodeDiscountId: input.submittedCodeDiscountId,
   }),
   ...(input.changedKeys !== undefined && {
     changedKeys: {

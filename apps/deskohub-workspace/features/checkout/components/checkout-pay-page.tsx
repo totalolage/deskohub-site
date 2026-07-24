@@ -3,7 +3,7 @@
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
@@ -32,6 +32,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly discountCodeForm?: ReactNode;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -66,6 +67,7 @@ export function CheckoutPayStabilizingPage({
 
 export function CheckoutPayPage({
   changedKeys,
+  discountCodeForm,
   freshPayUrl,
   locale,
   payStateToken,
@@ -154,6 +156,8 @@ export function CheckoutPayPage({
         locale={locale}
         summary={summary}
       />
+
+      {variant === "pay" && discountCodeForm}
 
       {isPricingChanged ? (
         <Button
