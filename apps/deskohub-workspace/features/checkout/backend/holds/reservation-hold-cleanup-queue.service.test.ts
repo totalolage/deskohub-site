@@ -450,7 +450,6 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
         return Effect.die(new Error("Synthetic provider cancellation defect"));
       }
       if (input.exitKind === "interruption") return Effect.never;
-      loserStatus = "CANCELLED";
       return Effect.fail(
         new NetworkError({
           message: "Synthetic cancellation response was lost",
@@ -507,7 +506,6 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
   });
   expect(firstOwnerId).toBeDefined();
 
-  loserStatus = "CANCELLED";
   if (input.retainOwnedVerification) {
     const lookupsBeforeLiveOwnerRetry = listReservations.mock.calls.length;
     await expect(Effect.runPromise(process(now))).rejects.toBeDefined();
@@ -515,6 +513,24 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
     expect(cancelReservation).toHaveBeenCalledTimes(1);
     deliveryNow = now.add({ minutes: 3 });
   }
+  const lookupsBeforeStaleVisibility = listReservations.mock.calls.length;
+  await expect(Effect.runPromise(process(deliveryNow))).rejects.toBeDefined();
+  expect(listReservations).toHaveBeenCalledTimes(
+    lookupsBeforeStaleVisibility + 2
+  );
+  expect(cancelReservation).toHaveBeenCalledTimes(1);
+  expect(complete).not.toHaveBeenCalled();
+  expect(getDifferentProviderAttachmentRecovery(row)).toMatchObject({
+    epoch,
+    dotyposReservationId: loserId,
+    reservationCreatedAt: loserCreatedAt,
+    phase: input.retainOwnedVerification ? "verifying" : "awaiting_visibility",
+  });
+
+  if (input.retainOwnedVerification) {
+    deliveryNow = deliveryNow.add({ minutes: 3 });
+  }
+  loserStatus = "CANCELLED";
   const redelivery = await Effect.runPromise(process(deliveryNow));
   const resolvedRecovery = row.failureCode;
   return {
@@ -2344,7 +2360,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.cancelReservation).toHaveBeenCalledTimes(1);
     expect(result.beginVerification).toHaveBeenCalledTimes(1);
     expect(result.complete).toHaveBeenCalledTimes(1);
-    expect(result.listReservations).toHaveBeenCalledTimes(3);
+    expect(result.listReservations).toHaveBeenCalledTimes(5);
     expect(result.completedOwnerId).toBeDefined();
     expect(result.completedOwnerId).not.toBe(result.firstOwnerId);
     expect(result.resolvedRecovery).toBe(
