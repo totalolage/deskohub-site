@@ -161,9 +161,11 @@ const createPayment = (reservationId: string) =>
       return yield* payments.create({
         workspaceReservationId: reservationId,
         providerOrderId: `provider-order-${reservationId}`,
-        amountValue: 1000,
-        amountExponent: 2,
-        currency: "CZK",
+        amount: {
+          value: 1000,
+          exponent: 2,
+          currency: "CZK",
+        },
       });
     }).pipe(Effect.result)
   );

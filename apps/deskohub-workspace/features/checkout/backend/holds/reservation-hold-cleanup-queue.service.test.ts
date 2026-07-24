@@ -3842,9 +3842,11 @@ describe("ReservationHoldCleanupScheduleService", () => {
         return yield* payments.create({
           workspaceReservationId: row.id,
           providerOrderId: "synthetic-composed-provider-order",
-          amountValue: 1000,
-          amountExponent: 2,
-          currency: "CZK",
+          amount: {
+            value: 1000,
+            exponent: 2,
+            currency: "CZK",
+          },
         });
       }).pipe(
         Effect.provide(
