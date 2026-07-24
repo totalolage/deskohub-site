@@ -179,6 +179,59 @@ default-branch workflow, an absent explicit value derives the same result from
 GitHub's event name. A rerun retains the original trigger classification and is
 distinguished by the GitHub run attempt.
 
+### Inspecting spans in PostHog
+
+Find the GitHub Actions run ID and attempt first. The trace correlation value is
+`<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`, for example `30116867811-1`.
+
+In the Workspace PostHog project:
+
+1. Open **Traces** and choose a time range that includes the E2E run.
+2. Filter the service name to `deskohub-workspace-e2e`.
+3. Filter the span attribute `e2e.run.id` to the correlation value.
+4. Open the resulting trace and confirm it contains one root `e2e.run` span,
+   one `e2e.case` span per executed case, and the expected `e2e.step` children.
+5. Use native span duration for elapsed time. Compare case and step durations
+   with `e2e.timeout_ms`; do not derive duration from log timestamps.
+6. Use `e2e.execution_context` to separate `manual` and `ci` runs, and inspect
+   `e2e.outcome` plus `e2e.failure.kind` when a span did not pass.
+
+For scripted inspection, authenticate `posthog-cli` to the EU Workspace
+project with a personal API key granting `tracing:read`. The public project
+token used by E2E can ingest spans but cannot read them. Query the PostHog
+management origin, `https://eu.posthog.com`, rather than the ingestion origin.
+
+Use `POST /api/projects/{project_id}/tracing/spans/count/` for aggregate arrival
+evidence and `POST /api/projects/{project_id}/tracing/spans/query/` for bounded
+duration inspection. Scope both requests with:
+
+```json
+{
+  "query": {
+    "dateRange": {
+      "date_from": "-1d"
+    },
+    "serviceNames": ["deskohub-workspace-e2e"],
+    "filterGroup": [
+      {
+        "key": "e2e.run.id",
+        "type": "span_attribute",
+        "operator": "exact",
+        "value": "<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>"
+      }
+    ]
+  }
+}
+```
+
+For the query endpoint, additionally set `rootSpans: false`,
+`flatSpans: true`, and a bounded `limit`. Report only span counts, names,
+durations, closed E2E attributes, and safe GitHub correlation values. Do not
+dump full attribute/resource objects, exception events, credentials, preview
+URLs, or provider/customer/reservation data. PostHog's query response represents
+span attributes such as `e2e.timeout_ms` as strings; `duration_nano` remains the
+native numeric duration.
+
 Trace export passes through the same shared censoring logic as normal Workspace
 logs. That shared boundary censors span attributes, event and link attributes,
 exception details, and span status messages. The E2E instrumentation itself
