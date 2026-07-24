@@ -4,6 +4,7 @@ import {
   BatchLogRecordProcessor,
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
+import { workspaceServiceResourceAttributes } from "../observability/workspace-service";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 const POSTHOG_LOGS_PATH = "/i/v1/logs";
@@ -44,8 +45,7 @@ export function createPostHogLoggerProvider({
   return new LoggerProvider({
     resource: resourceFromAttributes({
       "deployment.environment.name": vercelEnv,
-      "service.name": "deskohub-workspace",
-      "service.namespace": "deskohub",
+      ...workspaceServiceResourceAttributes,
       ...(vercelGitCommitSha ? { "service.version": vercelGitCommitSha } : {}),
     }),
     processors: [
