@@ -2755,7 +2755,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(stabilizationResult).toBe("cancelled");
     expect(row.failureCode).toBe(`hold_creation_attached:${epoch}`);
     expect(attemptedDeadlineIdentities).toEqual([
-      deadlineMessage.options.idempotencyKey,
+      `${deadlineMessage.options.idempotencyKey}:provider-candidate-stabilized:${epoch}:${providerId}`,
     ]);
     expect(acceptedDeadlineDeliveries).toBe(2);
   });
@@ -2843,6 +2843,10 @@ describe("ReservationHoldCleanupScheduleService", () => {
       reason: "hold_expired",
       orderId: row.id,
       reservationHoldExpiresAt: expiresAt,
+      stabilizedProviderCandidate: {
+        providerCreationEpoch: epoch,
+        dotyposReservationId: providerId,
+      },
     });
     expect(createPreparedReservation).not.toHaveBeenCalled();
   });

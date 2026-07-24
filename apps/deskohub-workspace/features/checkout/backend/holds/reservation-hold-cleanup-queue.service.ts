@@ -83,11 +83,17 @@ const ReservationHoldCleanupSchedulePayloadSchema = Schema.Union([
 export type ReservationHoldCleanupSchedulePayload =
   typeof ReservationHoldCleanupSchedulePayloadSchema.Encoded;
 
+type StabilizedProviderCandidateCleanupIdentity = {
+  readonly providerCreationEpoch: string;
+  readonly dotyposReservationId: string;
+};
+
 type ReservationCancellationScheduleInput =
   | {
       readonly reason: "hold_expired";
       readonly orderId: string;
       readonly reservationHoldExpiresAt: Temporal.Instant;
+      readonly stabilizedProviderCandidate?: StabilizedProviderCandidateCleanupIdentity;
     }
   | {
       readonly reason: "attachment_compensation";
@@ -162,10 +168,14 @@ export const getReservationHoldCleanupScheduleMessage = (
   input: {
     readonly orderId: string;
     readonly reservationHoldExpiresAt: Temporal.Instant;
+    readonly stabilizedProviderCandidate?: StabilizedProviderCandidateCleanupIdentity;
   },
   now = Temporal.Now.instant()
 ): ReservationHoldCleanupScheduleMessage => {
   const reservationHoldExpiresAtIso = input.reservationHoldExpiresAt.toString();
+  const stabilizedProviderCandidateIdentity = input.stabilizedProviderCandidate
+    ? `:provider-candidate-stabilized:${input.stabilizedProviderCandidate.providerCreationEpoch}:${input.stabilizedProviderCandidate.dotyposReservationId}`
+    : "";
   const delaySeconds = clamp(
     Math.ceil(
       (input.reservationHoldExpiresAt.epochMilliseconds -
@@ -192,7 +202,7 @@ export const getReservationHoldCleanupScheduleMessage = (
     options: {
       delaySeconds,
       retentionSeconds,
-      idempotencyKey: `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}`,
+      idempotencyKey: `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}${stabilizedProviderCandidateIdentity}`,
     },
   };
 };
@@ -866,6 +876,15 @@ const completeProviderHoldCandidate = Effect.fn(
     reason: "hold_expired",
     orderId: input.reservation.id,
     reservationHoldExpiresAt: input.reservation.reservationHoldExpiresAt,
+    ...(Temporal.Instant.compare(
+      input.reservation.reservationHoldExpiresAt,
+      input.now
+    ) <= 0 && {
+      stabilizedProviderCandidate: {
+        providerCreationEpoch: input.providerCreationEpoch,
+        dotyposReservationId: input.reservation.dotyposReservationId,
+      },
+    }),
   });
   return "cancelled" as const;
 });
@@ -1137,6 +1156,15 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
               reason: "hold_expired",
               orderId: reservation.id,
               reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
+              ...(Temporal.Instant.compare(
+                reservation.reservationHoldExpiresAt,
+                now
+              ) <= 0 && {
+                stabilizedProviderCandidate: {
+                  providerCreationEpoch: payload.providerCreationEpoch,
+                  dotyposReservationId: reservation.dotyposReservationId,
+                },
+              }),
             });
             return "cancelled" as const;
           })
