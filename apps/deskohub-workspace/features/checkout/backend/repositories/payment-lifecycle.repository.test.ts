@@ -2,8 +2,10 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import type { DiscountCommitment } from "@/features/discounts";
-import { getDiscountCommitmentPayload } from "@/features/discounts/commitment";
+import {
+  getDiscountCommitmentPayload,
+  makeDiscountCommitment,
+} from "@/features/discounts/commitment";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { validateDiscountCommitment } from "./payment-lifecycle.repository";
 
@@ -91,35 +93,39 @@ describe("PaymentLifecycleRepository", () => {
   test("rejects inconsistent committed money before opening a transaction", async () => {
     const discountId =
       Schema.decodeUnknownSync(discountIdSchema)("public-discount");
-    const commitment = {
+    const application = {
+      discount: {
+        id: discountId,
+        label: "Test discount",
+        adjustment: { kind: "percentage" as const, basisPoints: 2000 },
+      },
+      subtotalBefore: {
+        value: 35_000,
+        exponent: 2,
+        currency: "CZK",
+      },
+      amount: { value: 7000, exponent: 2, currency: "CZK" },
+      subtotalAfter: {
+        value: 27_999,
+        exponent: 2,
+        currency: "CZK",
+      },
+    };
+    const commitment = makeDiscountCommitment({
       product: { kind: "cowork", tier: "basic" },
       applications: [
         {
-          application: {
-            discount: {
-              id: discountId,
-              label: "Test discount",
-              adjustment: { kind: "percentage", basisPoints: 2000 },
+          application,
+          candidate: {
+            discount: application.discount,
+            provenance: {
+              providerNamespace: "test",
+              providerReference: "test",
             },
-            subtotalBefore: {
-              value: 35_000,
-              exponent: 2,
-              currency: "CZK",
-            },
-            amount: { value: 7000, exponent: 2, currency: "CZK" },
-            subtotalAfter: {
-              value: 27_999,
-              exponent: 2,
-              currency: "CZK",
-            },
-          },
-          provenance: {
-            providerNamespace: "test",
-            providerReference: "test",
           },
         },
       ],
-    } as unknown as DiscountCommitment;
+    });
 
     const result = await Effect.runPromise(
       Effect.result(

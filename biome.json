@@ -23,6 +23,7 @@
   "formatter": {
     "indentStyle": "space"
   },
+  "plugins": ["./lint/no-double-type-assertions.grit"],
   "linter": {
     "rules": {
       "recommended": true,

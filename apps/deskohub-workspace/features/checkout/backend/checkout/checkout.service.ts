@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import {
   type ExternalAPIError as NexiExternalAPIError,
+  type NetworkError as NexiNetworkError,
   NexiService,
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
@@ -57,6 +58,7 @@ import {
   LegalEvidenceEventRepositoryLive,
 } from "../repositories/legal-evidence-event.repository";
 import {
+  type PaymentAttempt,
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
@@ -365,7 +367,7 @@ const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
 const isDefinitiveHostedPaymentPageFailure = (
-  cause: NexiExternalAPIError | { readonly _tag: "NetworkError" }
+  cause: NexiExternalAPIError | NexiNetworkError
 ) =>
   cause._tag === "ExternalAPIError" &&
   cause.statusCode !== undefined &&
@@ -385,6 +387,53 @@ export const CheckoutServiceLive = Layer.effect(
     const posthogEvents = yield* PostHogEventService;
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
+
+    const handleHostedPaymentPageCreationFailure = Effect.fn(
+      "checkout.handleHostedPaymentPageCreationFailure"
+    )(
+      (input: {
+        readonly cause: NexiExternalAPIError | NexiNetworkError;
+        readonly attempt: PaymentAttempt;
+        readonly workspaceReservationId: string;
+      }) =>
+        Match.value(input.cause).pipe(
+          Match.when(isDefinitiveHostedPaymentPageFailure, () =>
+            Effect.gen(function* () {
+              const transition = yield* paymentLifecycle.markTerminal({
+                id: input.attempt.id,
+                workspaceReservationId: input.workspaceReservationId,
+                state: "failed",
+                failureCode: "nexi_hpp_create_failed",
+                providerStatus: "hpp_create_failed",
+              });
+
+              if (transition.changed) {
+                yield* capturePaymentFailed({
+                  attempt: transition.attempt,
+                  failureCode:
+                    transition.attempt.lastProviderStatus ??
+                    transition.attempt.failureCode ??
+                    "nexi_hpp_create_failed",
+                  failureReason: "nexi_hpp_create_failed",
+                  timestamp: transition.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              }
+            })
+          ),
+          Match.orElse(() =>
+            Effect.logError(
+              "Ambiguous hosted payment page creation failure retained the active attempt",
+              {
+                orderId: input.workspaceReservationId,
+                paymentAttemptId: input.attempt.id,
+                errorTag: input.cause._tag,
+              }
+            )
+          )
+        )
+    );
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -457,41 +506,11 @@ export const CheckoutServiceLive = Layer.effect(
           })
           .pipe(
             Effect.tapError((cause) =>
-              isDefinitiveHostedPaymentPageFailure(cause)
-                ? Effect.gen(function* () {
-                    const transition = yield* paymentLifecycle.markTerminal({
-                      id: attempt.id,
-                      workspaceReservationId: input.workspaceReservationId,
-                      state: "failed",
-                      failureCode: "nexi_hpp_create_failed",
-                      providerStatus: "hpp_create_failed",
-                    });
-
-                    if (transition.changed) {
-                      yield* capturePaymentFailed({
-                        attempt: transition.attempt,
-                        failureCode:
-                          transition.attempt.lastProviderStatus ??
-                          transition.attempt.failureCode ??
-                          "nexi_hpp_create_failed",
-                        failureReason: "nexi_hpp_create_failed",
-                        timestamp: transition.timestamp,
-                      }).pipe(
-                        Effect.provideService(
-                          PostHogEventService,
-                          posthogEvents
-                        )
-                      );
-                    }
-                  })
-                : Effect.logError(
-                    "Ambiguous hosted payment page creation failure retained the active attempt",
-                    {
-                      orderId: input.workspaceReservationId,
-                      paymentAttemptId: attempt.id,
-                      errorTag: cause._tag,
-                    }
-                  )
+              handleHostedPaymentPageCreationFailure({
+                cause,
+                attempt,
+                workspaceReservationId: input.workspaceReservationId,
+              })
             )
           );
         yield* Effect.annotateLogsScoped({ hostedPaymentPage });

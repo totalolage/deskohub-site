@@ -21,6 +21,7 @@ import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import {
   type WorkspaceMoney,
   workspaceMoneyEquals,
+  workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import {
   type DiscountCommitment,
@@ -117,7 +118,8 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly commitment: DiscountCommitment;
       }) {
         const commitment = getDiscountCommitmentPayload(input.commitment);
-        yield* validateDiscountCommitment(commitment);
+        const claimedApplication =
+          yield* validateDiscountCommitment(commitment);
         const now = Temporal.Now.instant();
 
         return yield* db
@@ -261,19 +263,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                         sequence: discountApplications.sequence,
                       });
 
-              const claimedApplicationIndex = commitment.applications.findIndex(
-                (application) => application.claim !== undefined
-              );
-              const claimedApplication =
-                claimedApplicationIndex < 0
-                  ? undefined
-                  : commitment.applications[claimedApplicationIndex];
-              const claim = claimedApplication?.claim;
-
-              if (claim && claimedApplication) {
+              if (claimedApplication) {
                 const applicationId = applicationRows.find(
                   (application) =>
-                    application.sequence === claimedApplicationIndex
+                    application.sequence === claimedApplication.index
                 )?.id;
 
                 if (!applicationId) {
@@ -281,13 +274,13 @@ export class PaymentLifecycleRepository extends Context.Service<
                     "reserve",
                     "claim_conflict",
                     "The claimed discount application was not persisted.",
-                    claim
+                    claimedApplication.claim
                   );
                 }
 
                 yield* reserveCodeClaim({
                   tx,
-                  claim,
+                  claim: claimedApplication.claim,
                   application: claimedApplication.application,
                   applicationId,
                   paymentAttemptId: attemptRow.id,
@@ -583,11 +576,17 @@ type CommitmentPayload = ReturnType<typeof getDiscountCommitmentPayload>;
 export const validateDiscountCommitment = Effect.fn(
   "PaymentLifecycle.validateDiscountCommitment"
 )(function* (commitment: CommitmentPayload) {
-  const claimedApplications = commitment.applications.filter(
-    (application) => application.claim !== undefined
+  const claimedApplicationIndex = commitment.applications.findIndex(
+    ({ claim }) => claim !== undefined
   );
 
-  if (claimedApplications.length > 1) {
+  if (
+    claimedApplicationIndex >= 0 &&
+    commitment.applications.some(
+      ({ claim }, index) =>
+        index > claimedApplicationIndex && claim !== undefined
+    )
+  ) {
     return yield* new DiscountClaimError({
       operation: "reserve",
       reason: "claim_conflict",
@@ -596,15 +595,18 @@ export const validateDiscountCommitment = Effect.fn(
   }
 
   for (const { application, claim } of commitment.applications) {
+    const amountInSubtotalUnit = workspaceMoneyWithValue(
+      application.amount.value,
+      application.subtotalBefore
+    );
+    const expectedSubtotalAfter = workspaceMoneyWithValue(
+      application.subtotalBefore.value - application.amount.value,
+      application.subtotalBefore
+    );
+
     if (
-      application.subtotalBefore.currency !== application.amount.currency ||
-      application.subtotalBefore.currency !==
-        application.subtotalAfter.currency ||
-      application.subtotalBefore.exponent !== application.amount.exponent ||
-      application.subtotalBefore.exponent !==
-        application.subtotalAfter.exponent ||
-      application.subtotalBefore.value - application.amount.value !==
-        application.subtotalAfter.value
+      !workspaceMoneyEquals(amountInSubtotalUnit, application.amount) ||
+      !workspaceMoneyEquals(expectedSubtotalAfter, application.subtotalAfter)
     ) {
       return yield* new DiscountClaimError({
         operation: "reserve",
@@ -627,6 +629,17 @@ export const validateDiscountCommitment = Effect.fn(
       );
     }
   }
+
+  if (claimedApplicationIndex < 0) return undefined;
+
+  const claimedApplication = commitment.applications[claimedApplicationIndex];
+  if (!claimedApplication?.claim) return undefined;
+
+  return {
+    index: claimedApplicationIndex,
+    application: claimedApplication.application,
+    claim: claimedApplication.claim,
+  };
 });
 
 const lifecycleStateError = (

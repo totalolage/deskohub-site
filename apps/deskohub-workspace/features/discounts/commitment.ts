@@ -1,4 +1,3 @@
-import { Schema } from "effect";
 import {
   getCanonicalWorkspaceProductIdentity,
   type WorkspaceProductIdentity,
@@ -6,14 +5,6 @@ import {
 import type { CalculatedDiscountApplication } from "./calculator";
 import type { AppliedDiscount } from "./contracts";
 import type { DiscountClaimInstruction, DiscountProvenance } from "./provider";
-
-const DiscountCommitmentSchema = Schema.ObjectKeyword.pipe(
-  Schema.brand("DiscountCommitment")
-);
-
-export type DiscountCommitment = Schema.Schema.Type<
-  typeof DiscountCommitmentSchema
->;
 
 export interface DiscountCommitmentApplication {
   readonly application: AppliedDiscount;
@@ -26,11 +17,27 @@ export interface DiscountCommitmentPayload {
   readonly applications: readonly DiscountCommitmentApplication[];
 }
 
+const readDiscountCommitment = Symbol("readDiscountCommitment");
+
+class DiscountCommitmentValue {
+  readonly #payload: DiscountCommitmentPayload;
+
+  constructor(payload: DiscountCommitmentPayload) {
+    this.#payload = payload;
+  }
+
+  [readDiscountCommitment]() {
+    return this.#payload;
+  }
+}
+
+export type DiscountCommitment = DiscountCommitmentValue;
+
 export const makeDiscountCommitment = (input: {
   readonly product: WorkspaceProductIdentity;
   readonly applications: readonly CalculatedDiscountApplication[];
-}): DiscountCommitment =>
-  Schema.decodeUnknownSync(DiscountCommitmentSchema)({
+}): DiscountCommitment => {
+  return new DiscountCommitmentValue({
     product: getCanonicalWorkspaceProductIdentity(input.product),
     applications: input.applications.map(({ application, candidate }) => ({
       application,
@@ -38,11 +45,11 @@ export const makeDiscountCommitment = (input: {
       ...(candidate.claim !== undefined && { claim: candidate.claim }),
     })),
   });
+};
 
 export const getDiscountCommitmentPayload = (
   commitment: DiscountCommitment
-): DiscountCommitmentPayload =>
-  commitment as unknown as DiscountCommitmentPayload;
+): DiscountCommitmentPayload => commitment[readDiscountCommitment]();
 
 type Assert<T extends true> = T;
 

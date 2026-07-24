@@ -23,5 +23,6 @@ describe("DiscountCommitment", () => {
       product: { kind: "cowork", tier: "basic" },
       applications: [],
     });
+    expect(Reflect.ownKeys(commitment)).toEqual([]);
   });
 });
