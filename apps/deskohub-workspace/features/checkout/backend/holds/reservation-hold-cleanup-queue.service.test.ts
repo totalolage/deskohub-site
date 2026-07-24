@@ -366,8 +366,13 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
   });
   let firstOwnerId: string | undefined;
   let completedOwnerId: string | undefined;
+  const claimOwnerIds: string[] = [];
+  const releaseInputs: Array<{ readonly ownerId: string }> = [];
   const claim = mock((claimInput) =>
     Effect.sync(() => {
+      if (claimOwnerIds.at(-1) !== claimInput.ownerId) {
+        claimOwnerIds.push(claimInput.ownerId);
+      }
       const recovery = getDifferentProviderAttachmentRecovery(row);
       if (!recovery) return false;
       const ownedByAnother =
@@ -403,16 +408,18 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
     })
   );
   const release = mock((releaseInput) =>
-    input.retainOwnedVerification
-      ? Effect.fail(new Error("Synthetic verification release failure"))
-      : Effect.sync(() => {
-          row = makeReservation({
-            ...row,
-            updatedAt: deliveryNow,
-            failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+    Effect.suspend(() => {
+      releaseInputs.push(releaseInput);
+      return input.retainOwnedVerification
+        ? Effect.fail(new Error("Synthetic verification release failure"))
+        : Effect.sync(() => {
+            row = makeReservation({
+              ...row,
+              updatedAt: deliveryNow,
+              failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+            });
           });
-          expect(releaseInput.ownerId).toBe(firstOwnerId);
-        })
+    })
   );
   const complete = mock((completeInput) =>
     Effect.sync(() => {
@@ -536,11 +543,13 @@ const runDifferentProviderCancellationBoundaryScenario = async (input: {
   return {
     beginVerification,
     cancelReservation,
+    claimOwnerIds,
     complete,
     completedOwnerId,
     firstOwnerId,
     listReservations,
     redelivery,
+    releaseInputs,
     resolvedRecovery,
   };
 };
@@ -2363,6 +2372,13 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.listReservations).toHaveBeenCalledTimes(5);
     expect(result.completedOwnerId).toBeDefined();
     expect(result.completedOwnerId).not.toBe(result.firstOwnerId);
+    const releaseOwnerIds = result.releaseInputs.map(({ ownerId }) => ownerId);
+    expect(releaseOwnerIds[0]).toBe(result.firstOwnerId);
+    expect(releaseOwnerIds).toEqual(result.claimOwnerIds.slice(0, -1));
+    expect(new Set(result.claimOwnerIds).size).toBe(
+      result.claimOwnerIds.length
+    );
+    expect(result.completedOwnerId).toBe(result.claimOwnerIds.at(-1));
     expect(result.resolvedRecovery).toBe(
       `hold_creation_orphan_resolved:synthetic-${scenario.exitKind}-boundary-epoch:synthetic-${scenario.exitKind}-boundary-loser:${now.epochMilliseconds}`
     );
