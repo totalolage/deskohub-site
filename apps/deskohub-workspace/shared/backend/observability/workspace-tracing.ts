@@ -3,17 +3,18 @@ import * as OtelTracer from "@effect/opentelemetry/Tracer";
 import type { TracerProvider } from "@opentelemetry/api";
 import * as Layer from "effect/Layer";
 import { env } from "@/env";
-
-export const WORKSPACE_OTEL_SERVICE_NAME = "deskohub-workspace";
-export const WORKSPACE_OTEL_SERVICE_NAMESPACE = "deskohub";
+import {
+  WORKSPACE_SERVICE_NAME,
+  WORKSPACE_SERVICE_NAMESPACE,
+} from "./workspace-service";
 
 const workspaceOtelResource = OtelResource.layer({
-  serviceName: WORKSPACE_OTEL_SERVICE_NAME,
+  serviceName: WORKSPACE_SERVICE_NAME,
   ...(env.VERCEL_GIT_COMMIT_SHA
     ? { serviceVersion: env.VERCEL_GIT_COMMIT_SHA }
     : {}),
   attributes: {
-    "service.namespace": WORKSPACE_OTEL_SERVICE_NAMESPACE,
+    "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
   },
 });
 
