@@ -26,6 +26,7 @@ import {
   getProviderHoldCandidateStabilizationDeadline,
   getResolvedDifferentProviderAttachmentRecovery,
   hasUnresolvedProviderAttachmentRecovery,
+  isRecoverableGenericAttachCancellationFailure,
   providerHoldCandidateStabilizationSeconds,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -665,7 +666,11 @@ const classifyAttachmentCompensation = (input: {
   if (
     reservation.reservationState === "cancellation_failed" &&
     sameProvider &&
-    sameCreationTime
+    sameCreationTime &&
+    ((hasExactAttachRecovery &&
+      reservation.cancellationFailureDisposition === "retryable" &&
+      reservation.cancellationRecoveryReason === "attachment_compensation") ||
+      isRecoverableGenericAttachCancellationFailure(reservation))
   ) {
     return AttachmentCompensationClassification.recoverable({
       claimCompensation: false,

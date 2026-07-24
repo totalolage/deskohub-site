@@ -865,7 +865,7 @@ describe("WorkspaceReservationRepository", () => {
     );
 
     expect(section).toContain(
-      "reservationHoldExpiredAt: sql`clock_timestamp()`"
+      `reservationHoldExpiredAt: sql\`coalesce(\${workspaceReservations.reservationHoldExpiredAt}, clock_timestamp())\``
     );
     expect(section).toContain("failureCode: input.failureCode");
     expect(section).toContain(
@@ -1603,6 +1603,226 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "attachment"));
         expect(owned?.cancellationClaimOwner).toBe("compensation-worker");
+      })
+    );
+  });
+
+  test("does not replace a different exact epoch or revive manual-review attachment recovery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const providerId = "synthetic-shared-attachment-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        yield* db.insert(workspaceReservations).values([
+          reservationRow("different-exact-epoch", {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "attach_failed_cancel_failed:synthetic-current-epoch",
+          }),
+          reservationRow("manual-review-attachment", {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "manual_review",
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "dotypos_reservation_status_not_cancellable",
+          }),
+        ]);
+        const attemptRecovery = (id: string) =>
+          repository
+            .markAttachFailedCancellationRequired({
+              id,
+              epoch: "synthetic-delayed-epoch",
+              dotyposReservationId: providerId,
+              reservationCreatedAt: providerCreatedAt,
+              failureCode: "attach_failed_cancel_failed",
+            })
+            .pipe(Effect.result);
+
+        const [differentEpoch, manualReview] = yield* Effect.all([
+          attemptRecovery("different-exact-epoch"),
+          attemptRecovery("manual-review-attachment"),
+        ]);
+        const stored = yield* db
+          .select({
+            id: workspaceReservations.id,
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .orderBy(workspaceReservations.id);
+
+        expect(differentEpoch._tag).toBe("Failure");
+        expect(manualReview._tag).toBe("Failure");
+        expect(stored).toEqual([
+          {
+            id: "different-exact-epoch",
+            disposition: "retryable",
+            failureCode: "attach_failed_cancel_failed:synthetic-current-epoch",
+          },
+          {
+            id: "manual-review-attachment",
+            disposition: "manual_review",
+            failureCode: "dotypos_reservation_status_not_cancellable",
+          },
+        ]);
+      })
+    );
+  });
+
+  test("restores only recognized retryable generic attachment failure and keeps its exact epoch through retry", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "legacy-generic-attachment-failure";
+        const epoch = "synthetic-restored-exact-epoch";
+        const providerId = "synthetic-restored-exact-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "dotypos_cancel_failed",
+          })
+        );
+
+        yield* repository.markAttachFailedCancellationRequired({
+          id,
+          epoch,
+          dotyposReservationId: providerId,
+          reservationCreatedAt: providerCreatedAt,
+          failureCode: "attach_failed_cancel_failed",
+        });
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "synthetic-restored-owner",
+          recoveryReason: "attachment_compensation",
+        });
+        expect(claimed?.failureCode).toBe(
+          `attach_failed_cancel_failed:${epoch}`
+        );
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "synthetic-restored-owner",
+          disposition: "retryable",
+          recoveryReason: "attachment_compensation",
+          failureCode: "dotypos_cancellation_status_read_failed",
+        });
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "retryable",
+          failureCode: `attach_failed_cancel_failed:${epoch}`,
+        });
+      })
+    );
+  });
+
+  test("preserves the first database expiry observation through cancellation retry", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "immutable-expiry-retry";
+        yield* db.insert(workspaceReservations).values(reservationRow(id));
+
+        const firstClaim = yield* repository.claimCancellation({
+          id,
+          ownerId: "first-expiry-owner",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+        });
+        expect(firstClaim?.reservationHoldExpiredAt).not.toBeNull();
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "first-expiry-owner",
+          disposition: "retryable",
+          recoveryReason: "hold_expired",
+          failureCode: "dotypos_cancel_failed",
+        });
+        yield* db
+          .update(workspaceReservations)
+          .set({ cancellationRetryAt: sql`now() - interval '1 minute'` })
+          .where(eq(workspaceReservations.id, id));
+        yield* Effect.sleep("5 millis");
+
+        const retryClaim = yield* repository.claimCancellation({
+          id,
+          ownerId: "retry-expiry-owner",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+        });
+
+        expect(
+          retryClaim?.reservationHoldExpiredAt?.equals(
+            firstClaim?.reservationHoldExpiredAt as Temporal.Instant
+          )
+        ).toBe(true);
+      })
+    );
+  });
+
+  test("preserves the first database expiry observation across pending-payment cleanup skips", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "immutable-expiry-skip";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            paymentState: "pending",
+            activePaymentAttemptId: "synthetic-pending-attempt",
+          })
+        );
+
+        yield* repository.recordHoldCleanupSkipped({
+          id,
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+          failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        });
+        const [first] = yield* db
+          .select({
+            reservationHoldExpiredAt:
+              workspaceReservations.reservationHoldExpiredAt,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+        expect(first?.reservationHoldExpiredAt).not.toBeNull();
+        yield* Effect.sleep("5 millis");
+        yield* repository.recordHoldCleanupSkipped({
+          id,
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+          failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        });
+        const [second] = yield* db
+          .select({
+            reservationHoldExpiredAt:
+              workspaceReservations.reservationHoldExpiredAt,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(
+          second?.reservationHoldExpiredAt?.equals(
+            first?.reservationHoldExpiredAt as Temporal.Instant
+          )
+        ).toBe(true);
       })
     );
   });

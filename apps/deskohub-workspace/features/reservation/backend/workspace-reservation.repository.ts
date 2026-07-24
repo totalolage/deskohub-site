@@ -531,6 +531,27 @@ export const getAttachCancellationRecovery = (
     : null;
 };
 
+const genericAttachCancellationFailureCodes = [
+  "dotypos_cancellation_status_read_failed",
+  "dotypos_cancel_failed",
+] as const;
+
+export const isRecoverableGenericAttachCancellationFailure = (
+  reservation: Pick<
+    WorkspaceReservation,
+    | "cancellationFailureDisposition"
+    | "cancellationRecoveryReason"
+    | "failureCode"
+    | "reservationState"
+  >
+) =>
+  reservation.reservationState === "cancellation_failed" &&
+  reservation.cancellationFailureDisposition === "retryable" &&
+  reservation.cancellationRecoveryReason === "attachment_compensation" &&
+  genericAttachCancellationFailureCodes.some(
+    (failureCode) => failureCode === reservation.failureCode
+  );
+
 export interface WorkspaceReservationRepository {
   readonly acquireDraft: (
     input: CreateWorkspaceReservationInput
@@ -1806,12 +1827,27 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                     "cancellation_failed"
                   ),
                   eq(
+                    workspaceReservations.cancellationFailureDisposition,
+                    "retryable"
+                  ),
+                  eq(
+                    workspaceReservations.cancellationRecoveryReason,
+                    "attachment_compensation"
+                  ),
+                  eq(
                     workspaceReservations.dotyposReservationId,
                     dotyposReservationId
                   ),
                   eq(
                     workspaceReservations.reservationCreatedAt,
                     input.reservationCreatedAt
+                  ),
+                  or(
+                    eq(workspaceReservations.failureCode, failureCode),
+                    inArray(
+                      workspaceReservations.failureCode,
+                      genericAttachCancellationFailureCodes
+                    )
                   )
                 )
               )
@@ -1825,12 +1861,18 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationCreatedAt: workspaceReservations.reservationCreatedAt,
             failureCode: workspaceReservations.failureCode,
             reservationState: workspaceReservations.reservationState,
+            cancellationFailureDisposition:
+              workspaceReservations.cancellationFailureDisposition,
+            cancellationRecoveryReason:
+              workspaceReservations.cancellationRecoveryReason,
           })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, input.id))
           .limit(1);
         if (
           existing?.reservationState === "cancellation_failed" &&
+          existing.cancellationFailureDisposition === "retryable" &&
+          existing.cancellationRecoveryReason === "attachment_compensation" &&
           existing.dotyposReservationId === dotyposReservationId &&
           existing.reservationCreatedAt?.equals(input.reservationCreatedAt) &&
           existing.failureCode === failureCode
@@ -2266,9 +2308,12 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               cancellationRecoveryReason: input.recoveryReason,
               reservationHoldExpiredAt:
                 input.recoveryReason === "hold_expired"
-                  ? sql`clock_timestamp()`
+                  ? sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, clock_timestamp())`
                   : undefined,
-              failureCode: null,
+              failureCode:
+                input.recoveryReason === "attachment_compensation"
+                  ? sql`${workspaceReservations.failureCode}`
+                  : null,
               updatedAt: sql`now()`,
             })
             .where(
@@ -2572,7 +2617,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 ? sql`now() + interval '1 minute'`
                 : null,
             cancellationRecoveryReason: input.recoveryReason,
-            failureCode: input.failureCode,
+            failureCode:
+              input.recoveryReason === "attachment_compensation"
+                ? sql`coalesce(${workspaceReservations.failureCode}, ${input.failureCode})`
+                : input.failureCode,
             updatedAt: sql`now()`,
           })
           .where(
@@ -2609,7 +2657,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         const updated = yield* db
           .update(workspaceReservations)
           .set({
-            reservationHoldExpiredAt: sql`clock_timestamp()`,
+            reservationHoldExpiredAt: sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, clock_timestamp())`,
             cancellationRecoveryReason: "hold_expired",
             failureCode: input.failureCode,
             updatedAt: sql`clock_timestamp()`,
