@@ -6,6 +6,7 @@ import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { runWorkspaceE2ECases } from "../suite";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
+import { E2ETelemetryService } from "./telemetry";
 
 interface IWorkspaceE2ECaseService {
   readonly makeCases: (input: {
@@ -30,12 +31,16 @@ export class WorkspaceE2ECaseService extends Context.Service<
     this,
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
+      const telemetry = yield* E2ETelemetryService;
       return {
         makeCases: (input) =>
           makeWorkspaceE2ECases(input).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient)
           ),
-        runCases: runWorkspaceE2ECases,
+        runCases: (input) =>
+          runWorkspaceE2ECases(input).pipe(
+            Effect.provideService(E2ETelemetryService, telemetry)
+          ),
       };
     })
   );

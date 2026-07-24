@@ -11,6 +11,12 @@ import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import {
+  type E2EOutcome,
+  type E2ETelemetry,
+  E2ETelemetryService,
+  toE2EOutcome,
+} from "./services/telemetry";
+import {
   formatWorkspaceE2EDuration,
   getWorkspaceE2ETimeoutMs,
 } from "./timeouts";
@@ -24,7 +30,9 @@ type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
   browserHarStarted: boolean;
   browserHarStopped: boolean;
+  durationMs?: number;
   failureCause?: Cause.Cause<WorkspaceE2EError>;
+  outcome?: E2EOutcome;
   readonly session: string;
   readonly testCase: WorkspaceE2ECase;
 };
@@ -39,9 +47,10 @@ export const runWorkspaceE2ECases = ({
   cases: readonly WorkspaceE2ECase[];
   run: Runner;
   sessionPrefix: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2ETelemetryService> =>
   Effect.scoped(
     Effect.gen(function* () {
+      const telemetry = yield* E2ETelemetryService;
       log(
         `Running ${cases.length} workspace e2e cases in parallel: ${cases
           .map((testCase) => testCase.id)
@@ -58,12 +67,12 @@ export const runWorkspaceE2ECases = ({
               testCase,
             })
           ),
-          (runtime) => finalizeCaseRuntime(runtime, run)
+          (runtime) => finalizeCaseRuntime(runtime, run, telemetry)
         )
       );
 
       yield* Effect.forEach(runtimes, (runtime) =>
-        runCase(runtime, run).pipe(Effect.forkChild)
+        runCase(runtime, run, telemetry).pipe(Effect.forkChild)
       ).pipe(
         Effect.andThen(Fiber.joinAll),
         Effect.tapCause(() =>
@@ -79,13 +88,19 @@ export const runWorkspaceE2ECases = ({
 
 const runCase = (
   runtime: WorkspaceE2ECaseRuntime,
-  run: Runner
+  run: Runner,
+  telemetry: E2ETelemetry
 ): Effect.Effect<void, WorkspaceE2EError> => {
   const startedAt = Date.now();
-  const runStep = makeStepRunner(runtime.testCase.id);
+  const runStep = makeStepRunner(runtime.testCase.id, telemetry);
 
   return Effect.gen(function* () {
     log(`CASE START ${runtime.testCase.id}`);
+    yield* telemetry.record({
+      caseId: runtime.testCase.id,
+      phase: "started",
+      scope: "case",
+    });
     runtime.browserHarStarted = yield* startBrowserDiagnostics(
       run,
       runtime.session
@@ -120,25 +135,28 @@ const runCase = (
     ),
     Effect.onExit((exit) =>
       Effect.sync(() => {
-        const elapsed = formatWorkspaceE2EDuration(Date.now() - startedAt);
-        const status = Exit.isSuccess(exit)
-          ? "PASS"
-          : Cause.hasInterruptsOnly(exit.cause)
-            ? "CANCEL"
-            : "FAIL";
-        log(`CASE ${status} ${runtime.testCase.id} (${elapsed})`);
+        runtime.durationMs = Date.now() - startedAt;
+        runtime.outcome = toE2EOutcome(exit);
       })
     )
   );
 };
 
 const makeStepRunner =
-  (caseId: string): WorkspaceE2EStepRunner =>
+  (caseId: string, telemetry: E2ETelemetry): WorkspaceE2EStepRunner =>
   <A>({ execute, id, timeoutMs }: WorkspaceE2EStep<A>) => {
     const startedAt = Date.now();
     const operation = `${caseId}/${id}`;
 
     return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
+      Effect.andThen(
+        telemetry.record({
+          caseId,
+          phase: "started",
+          scope: "step",
+          stepId: id,
+        })
+      ),
       Effect.andThen(
         execute.pipe(
           Effect.timeoutOrElse({
@@ -154,14 +172,25 @@ const makeStepRunner =
         )
       ),
       Effect.onExit((exit) =>
-        Effect.sync(() => {
-          const elapsed = formatWorkspaceE2EDuration(Date.now() - startedAt);
-          const status = Exit.isSuccess(exit)
-            ? "PASS"
-            : Cause.hasInterruptsOnly(exit.cause)
-              ? "CANCEL"
-              : "FAIL";
+        Effect.gen(function* () {
+          const durationMs = Date.now() - startedAt;
+          const elapsed = formatWorkspaceE2EDuration(durationMs);
+          const outcome = toE2EOutcome(exit);
+          const status =
+            outcome === "passed"
+              ? "PASS"
+              : outcome === "cancelled"
+                ? "CANCEL"
+                : "FAIL";
           log(`STEP ${status} ${operation} (${elapsed})`);
+          yield* telemetry.record({
+            caseId,
+            durationMs,
+            outcome,
+            phase: "finished",
+            scope: "step",
+            stepId: id,
+          });
         })
       )
     );
@@ -204,7 +233,8 @@ const captureFailureArtifacts = (
 
 const finalizeCaseRuntime = (
   runtime: WorkspaceE2ECaseRuntime,
-  run: Runner
+  run: Runner,
+  telemetry: E2ETelemetry
 ): Effect.Effect<void, never> =>
   Effect.gen(function* () {
     const failures: unknown[] = [];
@@ -226,6 +256,26 @@ const finalizeCaseRuntime = (
         closeBrowserSession(run, runtime.session)
       )
     );
+
+    const durationMs = runtime.durationMs ?? 0;
+    const outcome =
+      failures.length > 0 ? "failed" : (runtime.outcome ?? "cancelled");
+    const status =
+      outcome === "passed"
+        ? "PASS"
+        : outcome === "cancelled"
+          ? "CANCEL"
+          : "FAIL";
+    log(
+      `CASE ${status} ${runtime.testCase.id} (${formatWorkspaceE2EDuration(durationMs)})`
+    );
+    yield* telemetry.record({
+      caseId: runtime.testCase.id,
+      durationMs,
+      outcome,
+      phase: "finished",
+      scope: "case",
+    });
 
     if (failures.length > 0)
       return yield* Effect.die(

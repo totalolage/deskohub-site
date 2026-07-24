@@ -32,6 +32,13 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Run independent E2E cases with raw fail-fast Effect concurrency. Do not convert case effects to `Exit` before the parallel aggregate; doing so makes failures look successful to the parent and prevents sibling interruption.
 - Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
+- Preserve the E2E OTLP lifecycle contract when changing orchestration. The
+  overall run, every case, and every semantic step emit structured start and
+  terminal records through the censored Workspace logger. Keep the execution
+  context a closed `manual | ci` value, use only code-owned case/step IDs and
+  safe GitHub correlation metadata, and never attach preview URLs, provider or
+  database identifiers, customer/order/reservation data, raw errors, secrets,
+  or artifact contents.
 - Propagate Effect's `AbortSignal` through command runners into spawned processes so interruption actually cancels in-flight browser work. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
 
 Before inspecting production or provider logs, read `../deskohub-workspace-operations/references/diagnostics.md` and apply its redaction and summarization rules.

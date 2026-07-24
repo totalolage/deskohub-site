@@ -5,10 +5,13 @@ import { resolve } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 import { workspaceE2EError } from "./errors";
 import type { Runner } from "./runtime";
+import type { E2ETelemetryEvent } from "./services/telemetry";
+import { makeE2ETelemetryMock } from "./services/telemetry.mock";
 import { runWorkspaceE2ECases } from "./suite";
 import type { WorkspaceE2ECase } from "./types";
 
 test("runs checkout and terminal cases concurrently", async () => {
+  const telemetryEvents: E2ETelemetryEvent[] = [];
   const startedSessions: string[] = [];
   let startedCaseCount = 0;
   let releaseCases: () => void = () => undefined;
@@ -49,11 +52,32 @@ test("runs checkout and terminal cases concurrently", async () => {
       cases,
       run,
       sessionPrefix: "workspace-e2e-scheduling",
-    })
+    }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
   );
 
   expect(startedSessions).toContain("workspace-e2e-scheduling-payment-failed");
   expect(startedSessions).toContain("workspace-e2e-scheduling-checkout-cowork");
+  expect(telemetryEvents).toEqual(
+    expect.arrayContaining([
+      {
+        caseId: "payment-failed",
+        phase: "started",
+        scope: "case",
+      },
+      expect.objectContaining({
+        caseId: "payment-failed",
+        outcome: "passed",
+        phase: "finished",
+        scope: "case",
+      }),
+      expect.objectContaining({
+        caseId: "checkout-cowork",
+        outcome: "passed",
+        phase: "finished",
+        scope: "case",
+      }),
+    ])
+  );
 });
 
 test("cancels sibling cases when the first case fails", async () => {
@@ -98,17 +122,34 @@ test("cancels sibling cases when the first case fails", async () => {
   ];
 
   try {
+    const telemetryEvents: E2ETelemetryEvent[] = [];
     const exit = await Effect.runPromiseExit(
       runWorkspaceE2ECases({
         artifactRoot,
         cases,
         run: makeTestRunner(),
         sessionPrefix: "workspace-e2e-fail-fast",
-      })
+      }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(siblingInterrupted).toBe(true);
+    expect(telemetryEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          caseId: "first-failure",
+          outcome: "failed",
+          phase: "finished",
+          scope: "case",
+        }),
+        expect.objectContaining({
+          caseId: "cancelled-sibling",
+          outcome: "cancelled",
+          phase: "finished",
+          scope: "case",
+        }),
+      ])
+    );
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
   }
@@ -132,13 +173,14 @@ test("reports the semantic step that timed out", async () => {
   ];
 
   try {
+    const telemetryEvents: E2ETelemetryEvent[] = [];
     const exit = await Effect.runPromiseExit(
       runWorkspaceE2ECases({
         artifactRoot,
         cases,
         run: makeTestRunner(),
         sessionPrefix: "workspace-e2e-timeout",
-      })
+      }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -147,12 +189,30 @@ test("reports the semantic step that timed out", async () => {
         "checkout-timeout/wait-for-provider"
       );
     }
+    expect(telemetryEvents).toEqual(
+      expect.arrayContaining([
+        {
+          caseId: "checkout-timeout",
+          phase: "started",
+          scope: "step",
+          stepId: "wait-for-provider",
+        },
+        expect.objectContaining({
+          caseId: "checkout-timeout",
+          outcome: "failed",
+          phase: "finished",
+          scope: "step",
+          stepId: "wait-for-provider",
+        }),
+      ])
+    );
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
   }
 });
 
 test("propagates browser finalizer failures", async () => {
+  const telemetryEvents: E2ETelemetryEvent[] = [];
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: () => Effect.void,
@@ -170,7 +230,7 @@ test("propagates browser finalizer failures", async () => {
       cases,
       run,
       sessionPrefix: "workspace-e2e-finalizer",
-    })
+    }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
@@ -179,6 +239,16 @@ test("propagates browser finalizer failures", async () => {
       "Failed to finalize finalizer-failure e2e case"
     );
   }
+  expect(telemetryEvents).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        caseId: "finalizer-failure",
+        outcome: "failed",
+        phase: "finished",
+        scope: "case",
+      }),
+    ])
+  );
 });
 
 const makeTestRunner = (): Runner => async (_command, args) => ({

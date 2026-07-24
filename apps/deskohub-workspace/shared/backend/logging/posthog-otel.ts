@@ -12,6 +12,8 @@ const POSTHOG_LOGS_PATH = "/i/v1/logs";
 type PostHogLoggerProviderOptions = {
   readonly posthogHost?: string;
   readonly posthogProjectToken?: string;
+  readonly serviceName?: string;
+  readonly serviceNamespace?: string;
   readonly vercelEnv?: string;
   readonly vercelGitCommitSha?: string;
 };
@@ -34,6 +36,8 @@ export function getPostHogLogsEndpoint(posthogHost = DEFAULT_POSTHOG_HOST) {
 export function createPostHogLoggerProvider({
   posthogHost,
   posthogProjectToken,
+  serviceName,
+  serviceNamespace,
   vercelEnv,
   vercelGitCommitSha,
 }: PostHogLoggerProviderOptions) {
@@ -46,6 +50,8 @@ export function createPostHogLoggerProvider({
     resource: resourceFromAttributes({
       "deployment.environment.name": vercelEnv,
       ...workspaceServiceResourceAttributes,
+      ...(serviceName ? { "service.name": serviceName } : {}),
+      ...(serviceNamespace ? { "service.namespace": serviceNamespace } : {}),
       ...(vercelGitCommitSha ? { "service.version": vercelGitCommitSha } : {}),
     }),
     processors: [

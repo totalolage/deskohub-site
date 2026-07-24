@@ -133,6 +133,8 @@ jobs:
       TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
+      WORKSPACE_E2E_EXECUTION_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'ci' }}
+      WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
       - name: Publish pending commit status
@@ -263,6 +265,8 @@ jobs:
           DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
           DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
+          WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
+          WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ secrets.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
         run: bun run test:e2e
 
       - uses: actions/upload-artifact@v4

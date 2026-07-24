@@ -42,6 +42,10 @@ names. Inspect settings and deployment metadata without printing their values.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
 - Workspace E2E Dotypos URL, timeout, credentials, and tenant IDs.
+- `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when using a non-default ingest
+  region, `WORKSPACE_E2E_POSTHOG_HOST` in the `workspace-checkout-e2e` GitHub
+  environment. The token is the project ingest token, never a management API
+  key.
 - `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
   after the deployed payment/webhook path has completed.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
@@ -138,6 +142,38 @@ Failure artifacts remain available for seven days. The suite must retain
 fail-fast parallel aggregation, scoped browser sessions, cancellation
 propagation, bounded finalizers, case watchdogs, and discrete semantic-step
 timeouts.
+
+## Suite telemetry
+
+The Bun E2E process uses the same censored OTLP log pipeline as the Workspace
+application, with its own `deskohub-workspace-e2e` service name. It records
+closed, structured lifecycle data for the overall run, every case, and every
+semantic step:
+
+- start and terminal lifecycle events;
+- `passed`, `failed`, or `cancelled` outcomes;
+- duration in milliseconds;
+- the code-owned case and step IDs;
+- the exact target SHA and GitHub run correlation values when available.
+
+The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
+`ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:
+`workflow_dispatch` is `manual`, while the automatic
+`vercel.deployment.success` repository dispatch is `ci`. During rollout to the
+default-branch workflow, an absent explicit value derives the same result from
+GitHub's event name. A rerun retains the original trigger classification and is
+distinguished by the GitHub run attempt.
+
+Telemetry never includes preview URLs, database or provider identifiers,
+reservation/order/customer data, test contact fields, raw errors, credentials,
+or artifact contents. Export and shutdown are bounded and observational:
+PostHog availability must not replace the E2E result. Without a project ingest
+token, local execution remains usable with console logging only.
+
+These records cover every invocation that reaches `bun run test:e2e`. Failures
+in earlier workflow setup such as target resolution, dependency installation,
+or preview database migration remain represented by GitHub Actions rather than
+the in-process suite telemetry.
 
 For Nexi sandbox facts and cards, see
 [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
