@@ -51,6 +51,7 @@ export const assertReservationReplacement = ({
           timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
         });
         return yield* submitReservationForPayPage({
+          config,
           onOrderId: (orderId) => {
             state.orderId = orderId;
           },
@@ -85,6 +86,7 @@ export const assertReservationReplacement = ({
     });
     const secondOrderId = yield* runStep({
       execute: submitReservationForPayPage({
+        config,
         onOrderId: (orderId) => {
           state.orderId = orderId;
         },
@@ -164,12 +166,9 @@ const returnToPrefilledReservation = ({
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
     const browserActionTimeoutMs = getWorkspaceE2ETimeoutMs("browserAction");
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      reservationStepSelector,
-      { timeoutMs: browserActionTimeoutMs }
-    );
+    yield* waitForBrowserReactHydration(run, session, reservationStepSelector, {
+      timeoutMs: browserActionTimeoutMs,
+    });
     yield* activateBrowserElement(run, session, reservationStepSelector, {
       timeoutMs: browserActionTimeoutMs,
     });

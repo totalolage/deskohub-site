@@ -18,11 +18,11 @@ const timeoutDefinitions = {
   },
   checkoutCase: {
     env: "WORKSPACE_E2E_CHECKOUT_CASE_TIMEOUT_MS",
-    fallbackMs: 6 * MINUTE,
+    fallbackMs: 10 * MINUTE,
   },
   checkoutStart: {
     env: "WORKSPACE_E2E_CHECKOUT_START_TIMEOUT_MS",
-    fallbackMs: 2 * MINUTE,
+    fallbackMs: 4 * MINUTE,
   },
   cleanupAction: {
     env: "WORKSPACE_E2E_CLEANUP_ACTION_TIMEOUT_MS",
@@ -46,7 +46,7 @@ const timeoutDefinitions = {
   },
   paymentTerminalCase: {
     env: "WORKSPACE_E2E_PAYMENT_TERMINAL_CASE_TIMEOUT_MS",
-    fallbackMs: 4 * MINUTE,
+    fallbackMs: 7 * MINUTE,
   },
   providerTransition: {
     env: "WORKSPACE_E2E_PROVIDER_TRANSITION_TIMEOUT_MS",

@@ -18,6 +18,7 @@ import {
 import {
   browserDiagnosticsScript,
   payPageOrderIdScript,
+  payPageReadyScript,
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
@@ -45,6 +46,7 @@ const reservationStartRetryableErrorMessages = [
 ] as const;
 const reservationSubmitAttemptCount = 2;
 const hostedPaymentFieldFillAttemptCount = 3;
+const payPageRefreshIntervalMs = 5_000;
 
 const runBrowserCommand = (
   operation: string,
@@ -80,6 +82,7 @@ export const completeCheckout = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     yield* submitReservationForPayPage({
+      config,
       onOrderId,
       run,
       session,
@@ -129,6 +132,7 @@ export const startCheckoutPaymentAttempt = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     const orderId = yield* submitReservationForPayPage({
+      config,
       onOrderId,
       run,
       session,
@@ -140,11 +144,13 @@ export const startCheckoutPaymentAttempt = ({
   });
 
 export const submitReservationForPayPage = ({
+  config,
   onOrderId,
   run,
   session,
   submitReservationScript,
 }: {
+  config: WorkspaceE2EConfig;
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -152,6 +158,7 @@ export const submitReservationForPayPage = ({
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
+      config,
       onOrderId,
       run,
       session,
@@ -187,11 +194,13 @@ const readPayPageOrderId = (
   });
 
 const submitReservationAndWaitForPayPage = ({
+  config,
   onOrderId,
   run,
   session,
   submitReservationScript,
 }: {
+  config: WorkspaceE2EConfig;
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -214,7 +223,12 @@ const submitReservationAndWaitForPayPage = ({
           }
         );
 
-        const result = yield* waitForReservationStart(run, session, timeoutMs);
+        const result = yield* waitForReservationStart(
+          config,
+          run,
+          session,
+          timeoutMs
+        );
         if (
           result.status !== "retryable_error" ||
           attempt >= reservationSubmitAttemptCount
@@ -265,19 +279,32 @@ type ReservationStartResult =
     };
 
 const waitForReservationStart = (
+  config: WorkspaceE2EConfig,
   run: Runner,
   session: string,
   timeoutMs: number
 ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
   Effect.gen(function* () {
     let latest: ReservationStartDiagnostics | undefined;
+    let lastPayPageRefreshAt = 0;
 
     const reservationStartExit = yield* Effect.exit(
       pollUntil(
         Effect.gen(function* () {
           const url = yield* readBrowserUrl(run, session);
-          if (url?.includes("/checkout/pay"))
-            return { status: "ready" as const, url };
+          if (url?.includes("/checkout/pay")) {
+            if (yield* isPayPageReady(run, session)) {
+              return { status: "ready" as const, url };
+            }
+            const now = Date.now();
+            if (now - lastPayPageRefreshAt >= payPageRefreshIntervalMs) {
+              lastPayPageRefreshAt = now;
+              yield* openBrowserPage(config, run, session, url, {
+                timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+              });
+            }
+            return undefined;
+          }
 
           latest = yield* readReservationStartDiagnostics(run, session);
           if (isRetryableReservationStartError(latest)) {
@@ -310,6 +337,28 @@ const waitForReservationStart = (
       url: latest?.url,
     };
   });
+
+const isPayPageReady = (
+  run: Runner,
+  session: string
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "check checkout pay page readiness",
+    run,
+    session,
+    ["eval", "--stdin"],
+    {
+      allowFailure: true,
+      input: payPageReadyScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  ).pipe(
+    Effect.map(
+      (result) =>
+        result.exitCode === 0 && result.stdout.trim().toLowerCase() === "true"
+    )
+  );
 
 type ReservationStartDiagnostics = {
   readonly body?: string;

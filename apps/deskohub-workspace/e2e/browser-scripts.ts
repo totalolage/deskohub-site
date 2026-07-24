@@ -186,6 +186,14 @@ export const payPageOrderIdScript = `
 })()
 `;
 
+export const payPageReadyScript = `
+(() => {
+  const element = document.querySelector('#checkout-pay-legal-consent');
+  return element !== null &&
+    Object.keys(element).some((key) => key.startsWith('__reactProps$'));
+})()
+`;
+
 export const browserDiagnosticsScript = String.raw`
 (() => {
   const cleanUrl = (value) => {
