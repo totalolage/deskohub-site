@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertLocaleSwitcher } from "./locale";
 
@@ -75,4 +76,5 @@ const makeConfig = (): WorkspaceE2EConfig => ({
   baseUrl: "https://workspace.example",
   bypassSecret: undefined,
   expectedHost: "workspace.example",
+  timeouts: workspaceE2ETimeouts,
 });

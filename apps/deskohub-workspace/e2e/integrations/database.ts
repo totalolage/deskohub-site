@@ -13,10 +13,7 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
-import {
-  getWorkspaceE2ETimeoutMs,
-  workspaceE2EPollIntervalMs,
-} from "../timeouts";
+import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutRow,
@@ -42,7 +39,7 @@ export const waitForWebhookReplayRow = (
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
         label: `webhook replay checkout row for ${orderId}`,
-        timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+        timeoutMs: config.timeouts.datasource,
       }
     )
   );
@@ -134,7 +131,7 @@ export const validatePostgres = (
         {
           intervalMs: workspaceE2EPollIntervalMs.datasource,
           label: `Postgres checkout rows for ${orderId}`,
-          timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+          timeoutMs: config.timeouts.datasource,
         }
       );
 
@@ -379,7 +376,7 @@ export const markConsoleFulfillmentDeliveredForE2E = (
         {
           intervalMs: workspaceE2EPollIntervalMs.datasource,
           label: `console fulfillment marker for ${orderId}`,
-          timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+          timeoutMs: config.timeouts.datasource,
         }
       );
 
@@ -629,9 +626,9 @@ const assertNoLocalPii = (
 const makePool = (config: DatasourceConfig) =>
   new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
-    connectionTimeoutMillis: getWorkspaceE2ETimeoutMs("datasource"),
-    query_timeout: getWorkspaceE2ETimeoutMs("datasource"),
-    statement_timeout: getWorkspaceE2ETimeoutMs("datasource"),
+    connectionTimeoutMillis: config.timeouts.datasource,
+    query_timeout: config.timeouts.datasource,
+    statement_timeout: config.timeouts.datasource,
   });
 
 const withPool = <A>(

@@ -1,8 +1,7 @@
-import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Effect } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
+import type { E2EEnvironment } from "./e2e-env";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
@@ -10,7 +9,7 @@ export const repoRoot = resolve(workspaceDir, "../..");
 const redactions = new Set<string>();
 
 export const makeRunner =
-  () =>
+  (environment: E2EEnvironment) =>
   async (
     command: string,
     args: string[],
@@ -31,7 +30,7 @@ export const makeRunner =
     const child = Bun.spawn([command, ...args], {
       cwd: options.cwd,
       env: {
-        ...baseChildEnv(),
+        ...baseChildEnv(environment),
         ...options.env,
       },
       stderr: "pipe",
@@ -75,10 +74,19 @@ export const makeRunner =
     return result;
   };
 
-const baseChildEnv = () =>
+const childEnvironmentKeys = [
+  "CI",
+  "HOME",
+  "LANG",
+  "PATH",
+  "TMPDIR",
+  "USER",
+] as const;
+
+const baseChildEnv = (environment: E2EEnvironment) =>
   Object.fromEntries(
-    ["CI", "HOME", "LANG", "PATH", "TMPDIR", "USER"].flatMap((key) => {
-      const value = process.env[key];
+    childEnvironmentKeys.flatMap((key) => {
+      const value = environment[key];
       return value ? [[key, value]] : [];
     })
   );
@@ -88,8 +96,12 @@ export type Runner = ReturnType<typeof makeRunner>;
 export const formatRunnerCommand = (command: string, args: readonly string[]) =>
   redact([command, ...args].join(" "));
 
-export const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
-  const allowlist = requireEnv("WORKSPACE_E2E_DATABASE_ALLOWLIST")
+export const assertSafeDatabaseUrl = (
+  databaseUrl: string,
+  label: string,
+  databaseAllowlist: string
+) => {
+  const allowlist = databaseAllowlist
     .split(",")
     .map((value) => value.trim())
     .map(databaseAllowlistKey)
@@ -131,50 +143,6 @@ export const parseUrl = (value: string) => {
   } catch {
     return undefined;
   }
-};
-
-export const loadEnvFile = (path: string) =>
-  Effect.gen(function* () {
-    const values = new Map<string, string>();
-    const text = yield* Effect.promise(() =>
-      readFile(path, "utf8").catch(() => undefined)
-    );
-    if (text === undefined) return values;
-
-    for (const line of text.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const equals = trimmed.indexOf("=");
-      if (equals === -1) continue;
-      const key = trimmed.slice(0, equals).trim();
-      const value = unquoteEnv(trimmed.slice(equals + 1).trim());
-      values.set(key, value);
-      if (!env(key)) process.env[key] = value;
-    }
-
-    return values;
-  });
-
-const unquoteEnv = (value: string) => {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1).replaceAll("\\n", "\n");
-  }
-  return value;
-};
-
-export const requireEnv = (name: string) => {
-  const value = env(name);
-  assert(value, `${name} is required for workspace e2e`);
-  addRedaction(value);
-  return value;
-};
-
-export const env = (name: string) => {
-  const value = process.env[name]?.trim();
-  return value ? value : undefined;
 };
 
 export const addRedaction = (value: string | undefined, force = false) => {

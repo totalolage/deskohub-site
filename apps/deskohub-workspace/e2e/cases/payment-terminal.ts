@@ -18,7 +18,7 @@ import {
 } from "../integrations/database";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -74,7 +74,7 @@ export const assertPaymentTerminalPath = ({
         submitReservationScript: submitCoworkReservationScript,
       }),
       id: "start-checkout-payment",
-      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
+      timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
     yield* runStep({
@@ -85,7 +85,7 @@ export const assertPaymentTerminalPath = ({
         state,
       }),
       id: `prepare-${scenario.state}-payment-state`,
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
       execute: assertTerminalStatusPage({
@@ -96,12 +96,12 @@ export const assertPaymentTerminalPath = ({
         session,
       }),
       id: `assert-${scenario.state}-status-page`,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: restartReservation(run, session, scenario),
+      execute: restartReservation(run, session, scenario, config.timeouts),
       id: "restart-reservation",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
 
     log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
@@ -138,17 +138,18 @@ const preparePaymentTerminalState = ({
 const restartReservation = (
   run: Runner,
   session: string,
-  scenario: PaymentTerminalScenario
+  scenario: PaymentTerminalScenario,
+  timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    yield* activateStatusReserveAgain(run, session);
+    yield* activateStatusReserveAgain(run, session, timeouts);
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
         (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: timeouts.uiTransition,
     });
   });
 
@@ -183,15 +184,19 @@ const assertTerminalStatusPage = ({
         /Start a new reservation/i.test(text),
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
 
     log(`Checkout ${scenario.state} status page validated`);
   });
 
-export const activateStatusReserveAgain = (run: Runner, session: string) => {
+export const activateStatusReserveAgain = (
+  run: Runner,
+  session: string,
+  timeouts: WorkspaceE2ETimeouts
+) => {
   const selector = 'a[href="/en-US/checkout/order"]';
-  const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
+  const timeoutMs = timeouts.uiTransition;
 
   return Effect.gen(function* () {
     yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
