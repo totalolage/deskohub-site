@@ -151,7 +151,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           const currency = yield* Schema.decodeUnknownEffect(
             NexiCurrencySchema
-          )(attempt.currency).pipe(
+          )(attempt.amount.currency).pipe(
             Effect.tapError((cause) =>
               Effect.logError("Payment finalization currency decode failed", {
                 input,
@@ -178,7 +178,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             .verifyPaymentOutcome({
               orderId: attempt.providerOrderId,
               correlationId: reservation.correlationId,
-              amount: String(attempt.amountValue),
+              amount: String(attempt.amount.value),
               currency: getNexiCurrencyOverride() ?? currency,
               securityToken: attempt.securityToken,
             })

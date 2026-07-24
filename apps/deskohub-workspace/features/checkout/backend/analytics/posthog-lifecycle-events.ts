@@ -1,5 +1,7 @@
 import { Effect } from "effect";
-import type { PaymentAttempt, WorkspaceReservation } from "@/db/schema";
+import type { WorkspaceReservation } from "@/db/schema";
+import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
+import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
 import {
   type PostHogEventProperties,
   PostHogEventService,
@@ -16,21 +18,16 @@ const reservationProperties = (
 
 type PaymentLifecycleAttempt = Pick<
   PaymentAttempt,
-  | "amountExponent"
-  | "amountValue"
-  | "currency"
-  | "id"
-  | "providerOrderId"
-  | "workspaceReservationId"
+  "amount" | "id" | "providerOrderId" | "workspaceReservationId"
 >;
 
 const paymentProperties = (
   attempt: PaymentLifecycleAttempt
 ): PostHogEventProperties => ({
-  amount: attempt.amountValue / 10 ** attempt.amountExponent,
-  amount_exponent: attempt.amountExponent,
-  amount_value: attempt.amountValue,
-  currency: attempt.currency,
+  amount: toWorkspaceMoneyMajorAmount(attempt.amount),
+  amount_exponent: attempt.amount.exponent,
+  amount_value: attempt.amount.value,
+  currency: attempt.amount.currency,
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
   provider_order_id: attempt.providerOrderId,

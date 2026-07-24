@@ -191,22 +191,6 @@ describe("reservation quotes", () => {
     );
   });
 
-  test("fingerprints currency overrides", () => {
-    const reservation = coworkReservation({
-      entryTier: "basic",
-      coffee: true,
-    });
-    const czkQuote = buildQuote(reservation);
-    const eurQuote = buildQuote(reservation, { currencyOverride: "EUR" });
-
-    expect(eurQuote.items[0]?.amount).toEqual({
-      value: 35_000,
-      exponent: 2,
-      currency: "EUR",
-    });
-    expect(eurQuote.fingerprint).not.toBe(czkQuote.fingerprint);
-  });
-
   test("does not duplicate reservation data in quote output", () => {
     const quote = buildQuote(
       coworkReservation({ entryTier: "basic", coffee: false })

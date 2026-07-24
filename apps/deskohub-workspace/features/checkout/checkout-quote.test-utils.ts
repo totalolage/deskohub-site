@@ -10,7 +10,6 @@ export const buildCoworkReservationQuote = (
   order: CoworkReservationQuoteOrder,
   options: {
     readonly discountQuote?: DiscountQuote;
-    readonly currencyOverride?: string;
   } = {}
 ): CoworkReservationQuote =>
   Effect.runSync(calculateCoworkReservationQuote(order, options));

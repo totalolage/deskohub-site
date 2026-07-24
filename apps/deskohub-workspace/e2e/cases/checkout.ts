@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
-  clickBrowserElement,
+  activateHydratedBrowserElement,
   evalBrowserScript,
   openBrowserPage,
   waitForBrowserText,
@@ -250,7 +250,7 @@ const assertFulfillmentFailedSupportPath = ({
         timeoutMs: config.timeouts.browserAction,
       }
     );
-    yield* clickBrowserElement(
+    yield* activateHydratedBrowserElement(
       run,
       session,
       "#checkout-status-support-contact",

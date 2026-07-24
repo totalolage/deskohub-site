@@ -5,8 +5,11 @@ import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
   type SealPayStateForUrlResult,
+  type SignedPayState,
   sealPayStateForUrl,
 } from "./pay-state";
+
+export const discountCodeErrorQueryParam = "discountCodeError" as const;
 
 export const buildCheckoutPayPath = (
   locale: Locale,
@@ -31,4 +34,10 @@ export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
     const sealedState = yield* sealPayStateForUrl(freshState, options);
     return buildCheckoutPayPath(input.locale, sealedState);
   }
+);
+
+export const buildCheckoutPayContinuationPath = Effect.fn(
+  "buildCheckoutPayContinuationPath"
+)((state: SignedPayState, options: CheckoutStateCryptoOptions = {}) =>
+  buildFreshCheckoutPayPath({ ...state, changedKeys: undefined }, options)
 );

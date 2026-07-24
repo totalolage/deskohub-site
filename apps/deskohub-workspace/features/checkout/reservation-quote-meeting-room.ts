@@ -19,10 +19,7 @@ import {
 } from "@/features/checkout/product-identity";
 import { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
-import {
-  withWorkspaceMoneyCurrency,
-  workspaceMoneyCodec,
-} from "@/features/checkout/workspace-money";
+import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
@@ -101,7 +98,6 @@ export const getMeetingRoomReservationQuote = (
   reservation: MeetingRoomReservationDetails,
   options: {
     readonly discountQuote?: DiscountQuote;
-    readonly currencyOverride?: string;
   } = {}
 ): Effect.Effect<
   {
@@ -124,10 +120,7 @@ export const getMeetingRoomReservationQuote = (
     );
   }
 
-  const amount = withWorkspaceMoneyCurrency(
-    getWorkspaceMeetingRoomPriceForDuration(durationMinutes),
-    options.currencyOverride
-  );
+  const amount = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
   const discounts = options.discountQuote?.discounts ?? [];
   const expectedPrice = options.discountQuote?.discountedSubtotal ?? amount;
 

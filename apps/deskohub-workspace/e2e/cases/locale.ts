@@ -1,8 +1,7 @@
 import { Effect } from "effect";
 import {
-  activateBrowserElement,
+  activateHydratedBrowserElement,
   openBrowserPage,
-  waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -40,12 +39,12 @@ export const assertLocaleSwitcher = ({
       yield* runStep({
         execute: switchLocale(run, session, "cs-CZ", cycle, config.timeouts),
         id: `switch-to-czech-${cycle}`,
-        timeoutMs: config.timeouts.uiTransition,
+        timeoutMs: config.timeouts.browserNavigation,
       });
       yield* runStep({
         execute: switchLocale(run, session, "en-US", cycle, config.timeouts),
         id: `switch-to-english-${cycle}`,
-        timeoutMs: config.timeouts.uiTransition,
+        timeoutMs: config.timeouts.browserNavigation,
       });
     }
 
@@ -59,10 +58,11 @@ const activateLocaleSwitchLink = (
   timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    const timeoutMs = timeouts.uiTransition;
+    const timeoutMs = timeouts.browserNavigation;
     const selector = `nav[aria-label="Language switcher"] a[href^="/${locale}"]`;
-    yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
-    yield* activateBrowserElement(run, session, selector, { timeoutMs });
+    yield* activateHydratedBrowserElement(run, session, selector, {
+      timeoutMs,
+    });
   });
 
 const switchLocale = (
@@ -80,6 +80,6 @@ const switchLocale = (
         parseUrl(url)?.pathname.startsWith(`/${locale}`) ?? false,
       run,
       session,
-      timeoutMs: timeouts.uiTransition,
+      timeoutMs: timeouts.browserNavigation,
     });
   });

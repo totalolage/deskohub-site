@@ -2,12 +2,13 @@ import { Effect } from "effect";
 import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import {
+  getMeetingRoomCheckoutSummary,
   getMeetingRoomReservationQuote,
   type MeetingRoomReservationQuote,
 } from "@/features/checkout/reservation-quote-meeting-room";
 import type {
-  DiscountCalculationError,
   DiscountQuote,
+  DiscountResolutionError,
 } from "@/features/discounts";
 import type {
   MeetingRoomAdvertisedPriceReservation,
@@ -22,6 +23,8 @@ import {
   type ReservationAdvertisementQuoteInput,
   type ReservationCustomerQuote,
   type ReservationCustomerQuoteInput,
+  type ReservationDiscountCodePriceInput,
+  type ReservationDiscountCodePriceResult,
   type ReservationPaymentPriceAffirmation,
   type ReservationPaymentPriceAffirmationInput,
   reservationCheckoutPricing,
@@ -29,7 +32,7 @@ import {
 
 export type MeetingRoomCheckoutPricingError =
   | ReservationQuoteError
-  | DiscountCalculationError;
+  | DiscountResolutionError;
 
 export type MeetingRoomAdvertisementQuoteInput =
   ReservationAdvertisementQuoteInput<MeetingRoomAdvertisedPriceReservation>;
@@ -45,6 +48,12 @@ export type MeetingRoomCustomerQuoteInput =
 
 export type MeetingRoomPaymentPriceAffirmationInput =
   ReservationPaymentPriceAffirmationInput<
+    NormalizedMeetingRoomReservationOrder,
+    MeetingRoomReservationQuote
+  >;
+
+export type MeetingRoomDiscountCodePriceInput =
+  ReservationDiscountCodePriceInput<
     NormalizedMeetingRoomReservationOrder,
     MeetingRoomReservationQuote
   >;
@@ -67,6 +76,12 @@ export type MeetingRoomCustomerQuote = ReservationCustomerQuote<
 
 export type MeetingRoomPaymentPriceAffirmation =
   ReservationPaymentPriceAffirmation<
+    NormalizedMeetingRoomReservationOrder,
+    MeetingRoomReservationQuote
+  >;
+
+export type MeetingRoomDiscountCodePriceResult =
+  ReservationDiscountCodePriceResult<
     NormalizedMeetingRoomReservationOrder,
     MeetingRoomReservationQuote
   >;
@@ -125,4 +140,5 @@ export const meetingRoomCheckoutPricing = reservationCheckoutPricing<
 >({
   getPricingContext: getMeetingRoomPricingContext,
   buildQuote: buildMeetingRoomQuote,
+  getCheckoutSummary: getMeetingRoomCheckoutSummary,
 });

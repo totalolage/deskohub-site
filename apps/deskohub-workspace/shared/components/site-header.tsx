@@ -2,13 +2,9 @@
 
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import {
-  type Locale,
-  locales,
-  withLocalePrefixAndSearch,
-} from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
+import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -20,72 +16,6 @@ type SiteHeaderProps = {
   contactLabel: string;
   contactHref: string;
 };
-
-type LocaleSwitcherLinksProps = Pick<
-  SiteHeaderProps,
-  "currentLocale" | "languageLabels"
-> & {
-  closeMenu?: () => void;
-  isMobile?: boolean;
-};
-
-function LocaleSwitcherLinks({
-  currentLocale,
-  languageLabels,
-  closeMenu,
-  isMobile = false,
-}: LocaleSwitcherLinksProps) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
-  const getLocaleHref = (locale: Locale) =>
-    withLocalePrefixAndSearch(pathname, locale, searchParams);
-
-  return locales.map((locale, index) => {
-    const isCurrent = locale === currentLocale;
-
-    if (isMobile) {
-      return isCurrent ? (
-        <strong key={locale} className="text-white">
-          {languageLabels[locale]}
-        </strong>
-      ) : (
-        <Link
-          key={locale}
-          href={getLocaleHref(locale)}
-          scroll={false}
-          onClick={closeMenu}
-          className="transition-colors hover:text-sunset-yellow"
-        >
-          {languageLabels[locale]}
-        </Link>
-      );
-    }
-
-    return (
-      <span
-        key={locale}
-        className={cn(
-          index > 0 &&
-            "before:absolute before:translate-x-[0.5ch] before:text-white/28 before:content-['/']"
-        )}
-      >
-        {index > 0 && <br />}
-        {isCurrent ? (
-          <strong className="text-white">{languageLabels[locale]}</strong>
-        ) : (
-          <Link
-            href={getLocaleHref(locale)}
-            scroll={false}
-            className="transition-colors hover:text-sunset-yellow"
-          >
-            {languageLabels[locale]}
-          </Link>
-        )}
-      </span>
-    );
-  });
-}
 
 export function SiteHeader({
   currentLocale,

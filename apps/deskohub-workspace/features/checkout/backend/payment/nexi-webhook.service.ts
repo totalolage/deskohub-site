@@ -364,7 +364,7 @@ export const NexiWebhookServiceLive = Layer.effect(
 
           const currency = yield* Schema.decodeUnknownEffect(
             NexiCurrencySchema
-          )(attempt.currency).pipe(
+          )(attempt.amount.currency).pipe(
             Effect.mapError(
               (cause) =>
                 new NexiWebhookProcessingError({
@@ -389,7 +389,7 @@ export const NexiWebhookServiceLive = Layer.effect(
           const verificationInput = {
             orderId: attempt.providerOrderId,
             correlationId: reservation.correlationId,
-            amount: String(attempt.amountValue),
+            amount: String(attempt.amount.value),
             currency: getNexiCurrencyOverride() ?? currency,
             securityToken: attempt.securityToken,
           };

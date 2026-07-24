@@ -88,10 +88,10 @@ if (meetingRoomReservationData.kind !== "meeting-room") {
   throw new Error("Expected meeting-room reservation");
 }
 
-const money = (value: number) => ({
+const money = (value: number, currency = "CZK") => ({
   value,
   exponent: 2,
-  currency: "CZK",
+  currency,
 });
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
@@ -156,7 +156,10 @@ const buildPayStateToken = (input: {
         quote: input.quote ?? buildCoworkReservationQuote(reservationData),
         orderId: input.orderId,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
-        submittedCode: input.submittedCode,
+        ...(input.submittedCode !== undefined && {
+          submittedCode: input.submittedCode,
+          submittedCodeDiscountId: application.discount.id,
+        }),
         changedKeys: input.changedKeys,
         ttlMilliseconds: 10 * 60 * 1000,
       });
@@ -195,7 +198,10 @@ const buildMeetingRoomPayStateToken = (input: {
         orderId: input.orderId,
         checkoutSessionId:
           input.checkoutSessionId ?? "meeting-room-checkout-session-id",
-        submittedCode: input.submittedCode,
+        ...(input.submittedCode !== undefined && {
+          submittedCode: input.submittedCode,
+          submittedCodeDiscountId: application.discount.id,
+        }),
         ttlMilliseconds: 10 * 60 * 1000,
       });
       return yield* sealPayState(state);
@@ -214,9 +220,7 @@ const makeAttempt = (input: {
   provider: "nexi" as const,
   providerOrderId: input.id,
   state: input.state ?? ("created" as const),
-  amountValue: 55_000,
-  amountExponent: 2,
-  currency: "CZK",
+  amount: money(55_000),
   securityToken: input.securityToken ?? null,
   providerRedirectUrl: input.providerRedirectUrl ?? null,
   lastWebhookEventId: null,
@@ -493,6 +497,60 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("does not reuse an active attempt whose amount differs from the signed summary", async () => {
+    const orderId = "reservation-rejects-mismatched-provider-attempt";
+    const activeAttempt = makeAttempt({
+      id: "active-attempt",
+      orderId,
+      state: "pending",
+      securityToken: "active-security-token",
+      providerRedirectUrl: "https://payments.example/existing",
+    });
+    const harness = await createCheckoutHarness({
+      orderId,
+      acceptedQuote: buildCoworkReservationQuote(reservationData, {
+        discountQuote: discountedQuote,
+      }),
+      activeAttempt,
+      reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("does not reuse an active attempt persisted in a provider override currency", async () => {
+    const orderId = "reservation-rejects-provider-currency-attempt";
+    const activeAttempt = {
+      ...makeAttempt({
+        id: "active-attempt",
+        orderId,
+        state: "pending",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+      }),
+      amount: money(55_000, "EUR"),
+    };
+    const harness = await createCheckoutHarness({
+      orderId,
+      activeAttempt,
+      reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
   test("returns the existing pricing change for a review-required state before provider work", async () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-review-required",
@@ -560,9 +618,7 @@ describe("CheckoutService", () => {
     );
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
-        amountValue: 55_000,
-        amountExponent: 2,
-        currency: "CZK",
+        amount: money(55_000),
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -586,7 +642,9 @@ describe("CheckoutService", () => {
       await Effect.runPromise(harness.effect);
 
       expect(harness.createAttempt).toHaveBeenCalledWith(
-        expect.objectContaining({ currency: "CZK" })
+        expect.objectContaining({
+          amount: expect.objectContaining({ currency: "CZK" }),
+        })
       );
       expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
         expect.objectContaining({ currency: "CZK" })
@@ -676,6 +734,7 @@ describe("CheckoutService", () => {
     expect(freshState.reservation.kind).toBe("meeting-room");
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe(submittedCode);
+    expect(freshState.submittedCodeDiscountId).toBe(application.discount.id);
   });
 
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
@@ -769,9 +828,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(Effect.runSync(openPayState(freshToken ?? "")).submittedCode).toBe(
-      submittedCode
-    );
+    expect(
+      Effect.runSync(openPayState(freshToken ?? "")).submittedCode
+    ).toBeUndefined();
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
         quote: expect.objectContaining({

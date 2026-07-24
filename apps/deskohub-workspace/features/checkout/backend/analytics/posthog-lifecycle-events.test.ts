@@ -23,9 +23,11 @@ describe("PostHog lifecycle events", () => {
           id: attemptId,
           workspaceReservationId: reservationId,
           providerOrderId: "provider-order-id",
-          amountValue: 35_000,
-          amountExponent: 2,
-          currency: "CZK",
+          amount: {
+            value: 35_000,
+            exponent: 2,
+            currency: "CZK",
+          },
         },
         timestamp,
       }).pipe(

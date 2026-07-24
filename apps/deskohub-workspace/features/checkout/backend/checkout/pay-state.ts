@@ -1,6 +1,7 @@
 import { Data, Effect, Match, Schema } from "effect";
 import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
+import type { AppliedDiscount } from "@/features/discounts";
 import {
   type CheckoutStateCryptoOptions,
   type CheckoutStateKey,
@@ -20,6 +21,7 @@ import {
   buildSignedMeetingRoomPayState,
   meetingRoomSignedPayStateSchema,
 } from "./meeting-room-pay-state";
+import type { PayStateSubmittedCodeMetadata } from "./pay-state-contract";
 
 export const payStateTokenQueryParam = "payState" as const;
 export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
@@ -27,12 +29,29 @@ export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const signedPayStateSchema = Schema.Union([
   coworkSignedPayStateSchema,
   meetingRoomSignedPayStateSchema,
-]).annotate({
-  identifier: "SignedPayState",
-  description: "Workspace checkout Pay state payload.",
-});
+])
+  .check(
+    Schema.makeFilter(
+      ({ submittedCode, submittedCodeDiscountId }) =>
+        (submittedCode === undefined) ===
+          (submittedCodeDiscountId === undefined) || {
+          path: ["submittedCodeDiscountId"],
+          issue:
+            "submitted code and submitted code discount id must occur together",
+        }
+    )
+  )
+  .annotate({
+    identifier: "SignedPayState",
+    description: "Workspace checkout Pay state payload.",
+  });
 
-export type SignedPayState = typeof signedPayStateSchema.Type;
+export type SignedPayState = typeof signedPayStateSchema.Type &
+  PayStateSubmittedCodeMetadata;
+
+const preserveSignedPayStateMetadataInvariant = (
+  state: typeof signedPayStateSchema.Type
+): SignedPayState => state as SignedPayState;
 
 export type PayStateKey = CheckoutStateKey;
 
@@ -59,6 +78,31 @@ export const getSignedPayStateCheckoutSummary = (
     ),
     Match.exhaustive
   );
+
+export const getSignedPayStateSubmittedCodeApplication = (
+  state: SignedPayState
+): AppliedDiscount | undefined => {
+  if (state.submittedCodeDiscountId === undefined) return undefined;
+
+  return state.quote.payment.discounts.find(
+    ({ discount }) => discount.id === state.submittedCodeDiscountId
+  );
+};
+
+export const getSignedPayStateSubmittedCode = (
+  state: SignedPayState,
+  displayedDiscounts: readonly AppliedDiscount[] = state.quote.payment.discounts
+): PayStateSubmittedCodeMetadata => {
+  const application = displayedDiscounts.find(
+    ({ discount }) => discount.id === state.submittedCodeDiscountId
+  );
+  if (state.submittedCode === undefined || application === undefined) return {};
+
+  return {
+    submittedCode: state.submittedCode,
+    submittedCodeDiscountId: application.discount.id,
+  };
+};
 
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code: CheckoutStateTokenError["code"];
@@ -111,7 +155,10 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
 
   return yield* Schema.decodeUnknownEffect(signedPayStateSchema, {
     onExcessProperty: "error",
-  })(state).pipe(Effect.mapError(toPayStateTokenError));
+  })(state).pipe(
+    Effect.map(preserveSignedPayStateMetadataInvariant),
+    Effect.mapError(toPayStateTokenError)
+  );
 });
 
 export const sealPayState = Effect.fn("payState.seal")(function* (
@@ -130,6 +177,7 @@ export const sealPayState = Effect.fn("payState.seal")(function* (
 export const openPayState = Effect.fn("payState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, signedPayStateSchema, options).pipe(
+      Effect.map(preserveSignedPayStateMetadataInvariant),
       Effect.mapError(toPayStateTokenError)
     )
 );

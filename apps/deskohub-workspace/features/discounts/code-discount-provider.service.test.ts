@@ -6,7 +6,7 @@ import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   CodeDiscountProvider,
-  type CodeDiscountProviderInput,
+  type SubmittedCodeDiscountProviderInput,
 } from "./code-discount-provider.service";
 import { canonicalDiscountCodeSchema } from "./contracts";
 import {
@@ -43,7 +43,7 @@ const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
 );
 const product = { kind: "cowork", tier: "basic" } as const;
 
-const input: CodeDiscountProviderInput = {
+const input: SubmittedCodeDiscountProviderInput = {
   submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
   locale: "en-US",
@@ -124,14 +124,11 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
-const resolve = (
-  operation: "quote" | "revalidate" = "quote",
-  overrides: Partial<CodeDiscountProviderInput> = {}
-) =>
+const resolve = (overrides: Partial<SubmittedCodeDiscountProviderInput> = {}) =>
   Effect.gen(function* () {
     yield* TestClock.setTime(now);
     const provider = yield* CodeDiscountProvider;
-    return yield* provider[operation]({ ...input, ...overrides });
+    return yield* provider.quote({ ...input, ...overrides });
   });
 
 describe("CodeDiscountProvider", () => {
@@ -141,7 +138,13 @@ describe("CodeDiscountProvider", () => {
     const loadDefinition = mock(defaultLoadDefinition);
 
     const result = await runWithProvider(
-      resolve("quote", { submittedCode: undefined }),
+      Effect.gen(function* () {
+        const provider = yield* CodeDiscountProvider;
+        return yield* provider.revalidate({
+          ...input,
+          submittedCode: undefined,
+        });
+      }),
       {
         findByCode,
         loadAvailability,
@@ -210,7 +213,7 @@ describe("CodeDiscountProvider", () => {
     ["en-US", "Summer database sale"],
     ["cs-CZ", "Letní databázová sleva"],
   ] as const)("resolves the stored label for %s", async (locale, label) => {
-    const result = await runWithProvider(resolve("quote", { locale }));
+    const result = await runWithProvider(resolve({ locale }));
 
     expect(result[0]?.discount.label).toBe(label);
   });
@@ -319,7 +322,7 @@ describe("CodeDiscountProvider", () => {
     );
     const first = await runWithProvider(resolve(), { findByCode });
     const second = await runWithProvider(
-      resolve("quote", {
+      resolve({
         submittedCode: Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
           "WINTER50"
         ),
