@@ -45,6 +45,25 @@ export type ReservationState = (typeof reservationStates)[number];
 export type PaymentState = (typeof paymentStates)[number];
 export type FulfillmentState = (typeof fulfillmentStates)[number];
 
+export const cancellationFailureDispositions = [
+  "retryable",
+  "manual_review",
+] as const;
+
+export type CancellationFailureDisposition =
+  (typeof cancellationFailureDispositions)[number];
+
+export const cancellationRecoveryReasons = [
+  "hold_expired",
+  "attachment_compensation",
+  "supersession_recovery",
+  "retryable_failure",
+  "stale_claim_recovery",
+] as const;
+
+export type CancellationRecoveryReason =
+  (typeof cancellationRecoveryReasons)[number];
+
 const reservationStatesRequiringDotyposReservationId = [
   "held",
   "confirming",
@@ -86,6 +105,15 @@ export const workspaceReservations = pgTable(
     reservationCreatedAt: instant("reservation_created_at"),
     reservationConfirmedAt: instant("reservation_confirmed_at"),
     reservationCancelledAt: instant("reservation_cancelled_at"),
+    cancellationClaimOwner: text("cancellation_claim_owner"),
+    cancellationClaimedAt: instant("cancellation_claimed_at"),
+    cancellationFailureDisposition: text(
+      "cancellation_failure_disposition"
+    ).$type<CancellationFailureDisposition>(),
+    cancellationRetryAt: instant("cancellation_retry_at"),
+    cancellationRecoveryReason: text(
+      "cancellation_recovery_reason"
+    ).$type<CancellationRecoveryReason>(),
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
@@ -127,6 +155,33 @@ export const workspaceReservations = pgTable(
       "workspace_reservations_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
     ),
+    check(
+      "workspace_reservations_cancellation_claim_check",
+      sql`(
+        ${t.cancellationClaimOwner} is null
+        and ${t.cancellationClaimedAt} is null
+      ) or (
+        ${t.cancellationClaimOwner} is not null
+        and ${t.cancellationClaimedAt} is not null
+      )`
+    ),
+    check(
+      "workspace_reservations_cancellation_failure_check",
+      sql`(
+        ${t.cancellationFailureDisposition} is null
+        and ${t.cancellationRetryAt} is null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'retryable'
+        and ${t.cancellationRetryAt} is not null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'manual_review'
+        and ${t.cancellationRetryAt} is null
+      )`
+    ),
+    check(
+      "workspace_reservations_cancellation_recovery_reason_check",
+      sql`${t.cancellationRecoveryReason} is null or ${t.cancellationRecoveryReason} in (${quotedSqlList(cancellationRecoveryReasons)})`
+    ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey
     ),
@@ -148,6 +203,17 @@ export const workspaceReservations = pgTable(
     index("workspace_reservations_expired_holds_idx")
       .on(t.reservationHoldExpiresAt)
       .where(sql`${t.reservationState} = 'held'`),
+    index("workspace_reservations_cancellation_recovery_idx")
+      .on(
+        t.reservationState,
+        t.cancellationRecoveryReason,
+        t.cancellationFailureDisposition,
+        t.cancellationRetryAt,
+        t.cancellationClaimedAt
+      )
+      .where(
+        sql`${t.reservationState} in ('cancelling', 'cancellation_failed')`
+      ),
     index("workspace_reservations_dotypos_customer_idx").on(
       t.dotyposCustomerId
     ),

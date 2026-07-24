@@ -21,7 +21,7 @@ const makeReservation = (
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
-    customerAccessCode: "ACCESS-123",
+    customerAccessCode: "",
     reservationState: "held",
     paymentState: "not_started",
     fulfillmentState: "not_started",
@@ -35,6 +35,8 @@ const makeReservation = (
     reservationCreatedAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     reservationConfirmedAt: null,
     reservationCancelledAt: null,
+    cancellationClaimOwner: null,
+    cancellationClaimedAt: null,
     paidAt: null,
     fulfilledAt: null,
     fulfillmentFailedAt: null,
@@ -49,6 +51,7 @@ const runProcessMessage = async (
   message: unknown,
   input: {
     readonly findById?: ReturnType<typeof mock>;
+    readonly recordAttachmentCancellationHandoff?: ReturnType<typeof mock>;
     readonly cancelOrderHold?: ReturnType<typeof mock>;
     readonly now?: Temporal.Instant;
   } = {}
@@ -66,6 +69,9 @@ const runProcessMessage = async (
     input.findById ?? mock(() => Effect.succeed(makeReservation()));
   const cancelOrderHold =
     input.cancelOrderHold ?? mock(() => Effect.succeed("cancelled" as const));
+  const recordAttachmentCancellationHandoff =
+    input.recordAttachmentCancellationHandoff ??
+    mock(() => Effect.succeed(makeReservation()));
 
   const result = await processReservationHoldCleanupScheduleMessage(
     message,
@@ -75,6 +81,7 @@ const runProcessMessage = async (
       Layer.mergeAll(
         Layer.succeed(WorkspaceReservationRepository, {
           findById,
+          recordAttachmentCancellationHandoff,
         } as unknown as WorkspaceReservationRepositoryType),
         Layer.succeed(ReservationHoldCleanupService, {
           cancelOrderHold,
@@ -87,18 +94,245 @@ const runProcessMessage = async (
     Effect.runPromise
   );
 
-  return { result, findById, cancelOrderHold };
+  return {
+    result,
+    findById,
+    recordAttachmentCancellationHandoff,
+    cancelOrderHold,
+  };
 };
 
 const duePayload = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  reason: "hold_expired",
   orderId: "order-id",
   reservationHoldExpiresAtIso: expiresAt.toString(),
 };
 
+const attachmentPayload = {
+  schemaVersion: 2,
+  reason: "attachment_compensation",
+  orderId: "order-id",
+  dotyposReservationId: "provider-reservation-id",
+  reservationCreatedAtIso: now.toString(),
+};
+
 describe("ReservationHoldCleanupScheduleService", () => {
+  test("durably hands attachment identity to both marker and queue", async () => {
+    const {
+      enqueueAttachmentCancellationCompensation,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const recordAttachmentCancellationHandoff = mock(() =>
+      Effect.succeed(makeReservation())
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await enqueueAttachmentCancellationCompensation({
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            recordAttachmentCancellationHandoff,
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupScheduleService, {
+            enqueueCleanup,
+          })
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(recordAttachmentCancellationHandoff).toHaveBeenCalledWith({
+      id: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+      failureCode: "attach_failed_cancellation_required",
+    });
+    expect(enqueueCleanup).toHaveBeenCalledWith({
+      reason: "attachment_compensation",
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    });
+  });
+
+  test("enqueues the exact attachment identity when the marker write fails", async () => {
+    const {
+      enqueueAttachmentCancellationCompensation,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const enqueueCleanup = mock(() => Effect.void);
+
+    await enqueueAttachmentCancellationCompensation({
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            recordAttachmentCancellationHandoff: mock(() =>
+              Effect.fail(new Error("marker unavailable"))
+            ),
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupScheduleService, {
+            enqueueCleanup,
+          })
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(enqueueCleanup).toHaveBeenCalledWith({
+      reason: "attachment_compensation",
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    });
+  });
+
+  test("retains the database marker when attachment enqueue fails", async () => {
+    const {
+      enqueueAttachmentCancellationCompensation,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const recordAttachmentCancellationHandoff = mock(() =>
+      Effect.succeed(makeReservation())
+    );
+
+    await enqueueAttachmentCancellationCompensation({
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            recordAttachmentCancellationHandoff,
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupScheduleService, {
+            enqueueCleanup: mock(() =>
+              Effect.fail(new Error("queue unavailable"))
+            ),
+          })
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(recordAttachmentCancellationHandoff).toHaveBeenCalledTimes(1);
+  });
+
+  test("fails loudly when neither durable attachment handoff succeeds", async () => {
+    const {
+      AttachmentCancellationHandoffError,
+      enqueueAttachmentCancellationCompensation,
+      ReservationHoldCleanupScheduleService,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+
+    const error = await enqueueAttachmentCancellationCompensation({
+      orderId: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            recordAttachmentCancellationHandoff: mock(() =>
+              Effect.fail(new Error("marker unavailable"))
+            ),
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupScheduleService, {
+            enqueueCleanup: mock(() =>
+              Effect.fail(new Error("queue unavailable"))
+            ),
+          })
+        )
+      ),
+      Effect.flip,
+      Effect.runPromise
+    );
+
+    expect(error).toBeInstanceOf(AttachmentCancellationHandoffError);
+  });
+
+  test("materializes an identity-bearing attachment message before cancellation", async () => {
+    const recordAttachmentCancellationHandoff = mock(() =>
+      Effect.succeed(
+        makeReservation({
+          reservationState: "cancellation_failed",
+          cancellationRecoveryReason: "attachment_compensation",
+        })
+      )
+    );
+    const cancelOrderHold = mock(() => Effect.succeed("cancelled" as const));
+
+    const result = await runProcessMessage(attachmentPayload, {
+      recordAttachmentCancellationHandoff,
+      cancelOrderHold,
+    });
+
+    expect(result.result).toBe("cancelled");
+    expect(recordAttachmentCancellationHandoff).toHaveBeenCalledWith({
+      id: "order-id",
+      dotyposReservationId: "provider-reservation-id",
+      reservationCreatedAt: now,
+      failureCode: "attach_failed_cancellation_required",
+    });
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      recoveryReason: "attachment_compensation",
+    });
+    expect(result.findById).not.toHaveBeenCalled();
+  });
+
+  test("duplicate attachment delivery and later state changes never reassign ownership", async () => {
+    let delivery = 0;
+    const recordAttachmentCancellationHandoff = mock(() =>
+      Effect.succeed(
+        delivery++ === 0
+          ? makeReservation({
+              reservationState: "cancellation_failed",
+              cancellationRecoveryReason: "attachment_compensation",
+            })
+          : null
+      )
+    );
+    const cancelOrderHold = mock(() => Effect.succeed("cancelled" as const));
+
+    const first = await runProcessMessage(attachmentPayload, {
+      recordAttachmentCancellationHandoff,
+      cancelOrderHold,
+    });
+    const duplicate = await runProcessMessage(attachmentPayload, {
+      recordAttachmentCancellationHandoff,
+      cancelOrderHold,
+    });
+
+    expect(first.result).toBe("cancelled");
+    expect(duplicate.result).toBe("ignored");
+    expect(cancelOrderHold).toHaveBeenCalledTimes(1);
+  });
+
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
+      getAttachmentCancellationScheduleMessage,
       getReservationHoldCleanupScheduleMessage,
       reservationHoldCleanupScheduleMaxDelaySeconds,
       reservationHoldCleanupQueueTopic,
@@ -115,6 +349,22 @@ describe("ReservationHoldCleanupScheduleService", () => {
         delaySeconds: 600,
         retentionSeconds: 4200,
         idempotencyKey: `reservation-hold-cleanup:order-id:${expiresAt.toString()}`,
+      },
+    });
+    expect(
+      getAttachmentCancellationScheduleMessage({
+        orderId: "order-id",
+        dotyposReservationId: "provider-reservation-id",
+        reservationCreatedAt: now,
+      })
+    ).toEqual({
+      topic: reservationHoldCleanupQueueTopic,
+      payload: attachmentPayload,
+      options: {
+        delaySeconds: 0,
+        retentionSeconds: 604_800,
+        idempotencyKey:
+          "reservation-attachment-cancellation:order-id:provider-reservation-id",
       },
     });
 
@@ -155,6 +405,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     );
     const error = await service
       .enqueueCleanup({
+        reason: "hold_expired",
         orderId: "order-id",
         reservationHoldExpiresAt: expiresAt,
       })
@@ -213,6 +464,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("cancelled");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
+      recoveryReason: "hold_expired",
       holdExpiredAt: dueNow,
     });
 
@@ -234,9 +486,29 @@ describe("ReservationHoldCleanupScheduleService", () => {
       expect(retryResult.result).toBe("cancelled");
       expect(retryCancelOrderHold).toHaveBeenCalledWith({
         orderId: "order-id",
+        recoveryReason: "hold_expired",
         holdExpiredAt: dueNow,
       });
     }
+  });
+
+  test("keeps version-one hold-expiry messages recoverable", async () => {
+    const cancelOrderHold = mock(() => Effect.succeed("cancelled" as const));
+    const result = await runProcessMessage(
+      {
+        schemaVersion: 1,
+        orderId: "order-id",
+        reservationHoldExpiresAtIso: expiresAt.toString(),
+      },
+      { cancelOrderHold, now: dueNow }
+    );
+
+    expect(result.result).toBe("cancelled");
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      recoveryReason: "hold_expired",
+      holdExpiredAt: dueNow,
+    });
   });
 
   test("acks skipped cleanup while the reservation is still due", async () => {
@@ -252,6 +524,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(result.result).toBe("skipped");
     expect(cancelOrderHold).toHaveBeenCalledWith({
       orderId: "order-id",
+      recoveryReason: "hold_expired",
       holdExpiredAt: dueNow,
     });
     expect(findById).toHaveBeenCalledTimes(1);
@@ -279,5 +552,22 @@ describe("ReservationHoldCleanupScheduleService", () => {
       retryAfterSeconds: 60,
       initialDelaySeconds: 0,
     });
+
+    const queueRoute = await Bun.file(
+      new URL(
+        "../../../../app/api/queues/workspace/reservation-hold-cleanup/route.ts",
+        import.meta.url
+      )
+    ).text();
+    const cronRoute = await Bun.file(
+      new URL(
+        "../../../../app/api/cron/workspace/reservation-holds/route.ts",
+        import.meta.url
+      )
+    ).text();
+    expect(queueRoute).toContain(
+      "processReservationHoldCleanupScheduleMessage(message)"
+    );
+    expect(cronRoute).toContain("cleanup.sweepExpiredHolds(input)");
   });
 });

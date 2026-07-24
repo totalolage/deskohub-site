@@ -1,7 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
+  type CancellationRecoveryContext,
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -34,11 +37,21 @@ export class ReservationHoldCleanupError extends Data.TaggedError(
 
 export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
 
+export const getDotyposCancellationAction = (
+  status: "NEW" | "CANCELLED" | "CONFIRMED"
+) =>
+  ({
+    CANCELLED: "complete",
+    CONFIRMED: "refuse",
+    NEW: "delete",
+  })[status] as "complete" | "delete" | "refuse";
+
 export interface ReservationHoldCleanupService {
-  readonly cancelOrderHold: (input: {
-    readonly orderId: string;
-    readonly holdExpiredAt?: Temporal.Instant;
-  }) => Effect.Effect<
+  readonly cancelOrderHold: (
+    input: {
+      readonly orderId: string;
+    } & CancellationRecoveryContext
+  ) => Effect.Effect<
     ReservationHoldCleanupOutcome,
     ReservationHoldCleanupError
   >;
@@ -70,14 +83,15 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     const posthogEvents = yield* PostHogEventService;
 
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
-      function* (input: {
-        readonly orderId: string;
-        readonly holdExpiredAt?: Temporal.Instant;
-      }) {
+      function* (
+        input: {
+          readonly orderId: string;
+        } & CancellationRecoveryContext
+      ) {
         yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Reservation hold cancellation started");
 
-        const active = yield* reservations
+        let active = yield* reservations
           .findById(input.orderId)
           .pipe(
             Effect.mapError(
@@ -86,10 +100,38 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               )
             )
           );
-        yield* Effect.annotateLogsScoped({ activeReservation: active });
         yield* Effect.logDebug(
-          "Reservation hold cancellation active reservation loaded"
+          "Reservation hold cancellation active reservation loaded",
+          {
+            reservationState: active?.reservationState,
+            paymentState: active?.paymentState,
+          }
         );
+
+        if (
+          active?.paymentState === "pending" &&
+          (active.reservationState === "cancelling" ||
+            active.reservationState === "cancellation_failed")
+        ) {
+          active = yield* reservations
+            .restorePendingCancellationForReconciliation(active.id)
+            .pipe(
+              Effect.mapError(
+                ReservationHoldCleanupError.fromError(
+                  "Legacy pending cancellation could not be restored for payment reconciliation."
+                )
+              )
+            );
+          if (!active) {
+            yield* Effect.logInfo(
+              "Reservation hold cancellation skipped: pending cancellation is still actively owned"
+            );
+            return "skipped";
+          }
+          yield* Effect.logWarning(
+            "Legacy pending cancellation restored for provider reconciliation"
+          );
+        }
 
         if (
           active?.reservationState === "held" &&
@@ -112,7 +154,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           );
 
           const recordSkippedCleanupAttempt = () =>
-            input.holdExpiredAt
+            input.recoveryReason === "hold_expired"
               ? reservations
                   .recordHoldCleanupSkipped({
                     id: active.id,
@@ -180,8 +222,14 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           }
         }
 
-        const claimedFromNew = yield* reservations
-          .claimCancellation(input.orderId)
+        const ownerId = randomUUID();
+        const claimRecoveryContext = getRecoveryContextFromInput(input);
+        const claimed = yield* reservations
+          .claimCancellation({
+            id: input.orderId,
+            ownerId,
+            ...claimRecoveryContext,
+          })
           .pipe(
             Effect.mapError(
               ReservationHoldCleanupError.fromError(
@@ -189,23 +237,14 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               )
             )
           );
-        yield* Effect.annotateLogsScoped({ claimedFromNew });
-        yield* Effect.logDebug("Reservation hold cancellation claim completed");
+        yield* Effect.logDebug(
+          "Reservation hold cancellation claim completed",
+          {
+            claimed: claimed !== null,
+          }
+        );
 
-        const claimed =
-          claimedFromNew ??
-          (yield* reservations
-            .findById(input.orderId)
-            .pipe(
-              Effect.mapError(
-                ReservationHoldCleanupError.fromError(
-                  "Reservation hold cancellation state could not be loaded."
-                )
-              )
-            ));
-        yield* Effect.annotateLogsScoped({ claimed });
-
-        if (!claimed || claimed.reservationState !== "cancelling") {
+        if (!claimed) {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: claim not cancellable"
           );
@@ -217,63 +256,132 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           );
           return "skipped";
         }
-        if (claimed.paymentState === "paid") {
+        const markOwnedCancellationFailed = (
+          failureCode: string,
+          disposition: "retryable" | "manual_review"
+        ) =>
+          reservations
+            .markCancellationFailed({
+              id: claimed.id,
+              ownerId,
+              disposition,
+              recoveryReason: input.recoveryReason,
+              failureCode,
+            })
+            .pipe(
+              Effect.as(true),
+              Effect.catchTag("WorkspaceReservationStateError", () =>
+                Effect.logWarning(
+                  "Reservation cancellation failure marker skipped: ownership changed",
+                  { orderId: claimed.id }
+                ).pipe(Effect.as(false))
+              ),
+              Effect.mapError(
+                ReservationHoldCleanupError.fromError(
+                  "Reservation cancellation failure marker could not be stored."
+                )
+              )
+            );
+
+        yield* Effect.logInfo(
+          "Dotypos reservation hold live status read started"
+        );
+        const status = yield* dotypos
+          .getReservationStatus(claimed.dotyposReservationId)
+          .pipe(
+            Effect.tapError(() =>
+              markOwnedCancellationFailed(
+                "dotypos_cancellation_status_read_failed",
+                "retryable"
+              ).pipe(Effect.ignore)
+            ),
+            Effect.mapError(
+              ReservationHoldCleanupError.fromError(
+                "Dotypos reservation hold status could not be read."
+              )
+            )
+          );
+        const action = getDotyposCancellationAction(status);
+        yield* Effect.logInfo(
+          "Dotypos reservation hold live status read completed",
+          { status, action }
+        );
+
+        const owned = yield* reservations
+          .renewCancellationClaim({
+            id: claimed.id,
+            ownerId,
+            recoveryReason: input.recoveryReason,
+          })
+          .pipe(
+            Effect.mapError(
+              ReservationHoldCleanupError.fromError(
+                "Reservation cancellation ownership could not be reloaded."
+              )
+            )
+          );
+        if (!owned?.dotyposReservationId) {
           yield* Effect.logWarning(
-            "Reservation hold cancellation skipped: reservation paid"
+            "Reservation hold cancellation skipped: ownership changed before provider action"
           );
           return "skipped";
         }
 
-        yield* Effect.logInfo("Dotypos reservation hold cancellation started");
-        yield* dotypos.cancelReservation(claimed.dotyposReservationId).pipe(
-          Effect.tapError((cause) =>
-            Effect.gen(function* () {
-              yield* Effect.logError(
-                "Dotypos reservation hold cancellation failed",
-                { claimed, cause }
-              );
-              yield* reservations
-                .markCancellationFailed({
-                  id: claimed.id,
-                  failureCode: "dotypos_cancel_failed",
-                })
-                .pipe(
-                  Effect.tapError((markerCause) =>
-                    Effect.logError(
-                      "Reservation cancellation failure marker failed",
-                      {
-                        orderId: claimed.id,
-                        cause: markerCause,
-                      }
-                    )
-                  ),
-                  Effect.ignore
+        if (action === "refuse") {
+          yield* Effect.logWarning(
+            "Dotypos reservation hold cancellation refused for live provider status",
+            { status }
+          );
+          yield* markOwnedCancellationFailed(
+            "dotypos_reservation_status_not_cancellable",
+            "manual_review"
+          );
+          return "skipped";
+        }
+
+        if (action === "delete") {
+          yield* Effect.logInfo(
+            "Dotypos reservation hold cancellation started"
+          );
+          yield* dotypos.cancelReservation(owned.dotyposReservationId).pipe(
+            Effect.tapError((cause) =>
+              Effect.gen(function* () {
+                yield* Effect.logError(
+                  "Dotypos reservation hold cancellation failed",
+                  { orderId: claimed.id, cause }
                 );
-            })
-          ),
-          Effect.mapError(
-            ReservationHoldCleanupError.fromError(
-              "Dotypos reservation hold could not be cancelled."
+                yield* markOwnedCancellationFailed(
+                  "dotypos_cancel_failed",
+                  "retryable"
+                ).pipe(Effect.ignore);
+              })
+            ),
+            Effect.mapError(
+              ReservationHoldCleanupError.fromError(
+                "Dotypos reservation hold could not be cancelled."
+              )
             )
-          )
-        );
-        yield* Effect.logInfo(
-          "Dotypos reservation hold cancellation completed"
-        );
+          );
+          yield* Effect.logInfo(
+            "Dotypos reservation hold cancellation completed"
+          );
+        }
 
         yield* Effect.logInfo("Reservation hold cancelled marker started");
         const cancelledAt = Temporal.Now.instant();
+        const completionRecoveryContext = getRecoveryContextFromInput(input);
         const markedCancelled = yield* reservations
           .markCancelled({
             id: claimed.id,
+            ownerId,
             cancelledAt,
-            holdExpiredAt: input.holdExpiredAt,
+            ...completionRecoveryContext,
           })
           .pipe(
             Effect.as(true),
             Effect.catchTag("WorkspaceReservationStateError", () =>
               Effect.logWarning(
-                "Reservation hold cancellation marker skipped: reservation state changed",
+                "Reservation hold cancellation marker skipped: ownership changed",
                 { orderId: claimed.id }
               ).pipe(Effect.as(false))
             ),
@@ -286,7 +394,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         if (!markedCancelled) return "skipped";
         yield* Effect.logInfo("Reservation hold marked cancelled");
         yield* captureReservationAbandoned({
-          reservation: claimed,
+          reservation: owned,
           timestamp: cancelledAt,
         }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         return "cancelled";
@@ -301,21 +409,22 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ input });
           yield* Effect.logInfo("Expired reservation hold sweep started");
 
-          const orders = yield* reservations.selectExpiredHolds(input).pipe(
-            Effect.tapError((cause) =>
-              Effect.logError("Expired reservation hold selection failed", {
-                cause,
-              })
-            ),
-            Effect.mapError(
-              ReservationHoldCleanupError.fromError(
-                "Expired reservation holds could not be selected."
+          const orders = yield* reservations
+            .selectCancellationCandidates(input)
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Cancellation recovery selection failed", {
+                  cause,
+                })
+              ),
+              Effect.mapError(
+                ReservationHoldCleanupError.fromError(
+                  "Reservation cancellation candidates could not be selected."
+                )
               )
-            )
-          );
-          yield* Effect.annotateLogsScoped({ orders });
+            );
           yield* Effect.logInfo(
-            "Expired reservation hold sweep selection completed",
+            "Reservation cancellation recovery selection completed",
             {
               count: orders.length,
             }
@@ -330,9 +439,8 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             });
             const result = yield* cancelOrderHold({
               orderId: order.id,
-              holdExpiredAt: input.now,
+              ...getCancellationRecoveryContext(order, input.now),
             }).pipe(Effect.result);
-            yield* Effect.annotateLogsScoped({ order, result });
 
             yield* Match.value(result).pipe(
               Match.tag("Success", ({ success }) =>
@@ -377,6 +485,42 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     });
   })
 );
+
+const getCancellationRecoveryContext = (
+  reservation: WorkspaceReservation,
+  now: Temporal.Instant
+): CancellationRecoveryContext => {
+  if (reservation.reservationState === "held") {
+    return { recoveryReason: "hold_expired", holdExpiredAt: now };
+  }
+  if (reservation.reservationState === "cancelling") {
+    return { recoveryReason: "stale_claim_recovery" };
+  }
+  if (
+    reservation.cancellationRecoveryReason === "hold_expired" &&
+    reservation.reservationHoldExpiredAt
+  ) {
+    return {
+      recoveryReason: "hold_expired",
+      holdExpiredAt: reservation.reservationHoldExpiredAt,
+    };
+  }
+  const recoveryReason =
+    reservation.cancellationRecoveryReason ?? "retryable_failure";
+  return recoveryReason === "hold_expired"
+    ? { recoveryReason: "retryable_failure" }
+    : { recoveryReason };
+};
+
+const getRecoveryContextFromInput = (
+  input: CancellationRecoveryContext
+): CancellationRecoveryContext =>
+  input.recoveryReason === "hold_expired"
+    ? {
+        recoveryReason: "hold_expired",
+        holdExpiredAt: input.holdExpiredAt,
+      }
+    : { recoveryReason: input.recoveryReason };
 
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
