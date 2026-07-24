@@ -8,7 +8,10 @@ import type {
   Reservation,
   Table,
 } from "../generated/effect.gen";
-import { DotyposService } from "./service";
+import {
+  DotyposService,
+  hasValidDotyposReservationRequestEvidence,
+} from "./service";
 
 const config = {
   clientId: "client-id",
@@ -226,6 +229,56 @@ describe("DotyposService customer lookup", () => {
     });
   });
 
+  test("never logs provider customer profile objects", async () => {
+    const marker = "synthetic-profile-marker";
+    const matched = customer({
+      id: "synthetic-customer-id",
+      firstName: "Synthetic",
+      lastName: "Person",
+      email: "synthetic@example.test",
+      phone: "+420000000000",
+      addressLine1: marker,
+      addressLine2: marker,
+      barcode: marker,
+      birthday: marker,
+      city: marker,
+      companyId: marker,
+      companyName: marker,
+      country: marker,
+      externalId: marker,
+      headerPrint: marker,
+      internalNote: marker,
+      note: marker,
+      tags: [marker],
+      vatId: marker,
+      zip: marker,
+    });
+    const logs: CapturedLog[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer({
+          firstName: "Synthetic",
+          lastName: "Person",
+          email: "synthetic@example.test",
+          phone: "+420000000000",
+        });
+      }).pipe(Effect.provide(Logger.layer([captureLogs(logs)]))),
+      fetchMock
+    );
+
+    expect(logText(logs)).not.toContain(marker);
+  });
+
   test("does not cache failed token fetches", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
     let tokenAttempts = 0;
@@ -344,7 +397,7 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
-  test("logs createCustomer failures with provider details", async () => {
+  test("logs createCustomer failures without provider descriptions", async () => {
     const logs: CapturedLog[] = [];
     const providerDescription = `firstName=Ada; lastName=Lovelace; email=ada.secret@example.com; phone=+420 777 123 456; ${"x".repeat(700)}`;
     const fetchMock = mockDotyposFetch((request) => {
@@ -415,11 +468,6 @@ describe("DotyposService customer lookup", () => {
       errorTag: "ExternalAPIError",
       operation: "createCustomer",
       statusCode: 400,
-      providerError: {
-        error: "validation_failed",
-        errorDescription: providerDescription,
-        code: 400,
-      },
       createCustomerRequestFields: [
         "_cloudId",
         "addressLine1",
@@ -443,6 +491,7 @@ describe("DotyposService customer lookup", () => {
         "expireDate",
       ],
     });
+    expect(JSON.stringify(payload)).not.toContain(providerDescription);
     expect(failureLog.annotations).toMatchObject({
       lookupFields: ["email", "phone"],
       customerInputFields: ["firstName", "lastName", "email", "phone"],
@@ -652,7 +701,7 @@ describe("DotyposService reservations", () => {
     ).toHaveLength(1);
   });
 
-  test("creates reservations with the generated array payload and retries empty responses", async () => {
+  test("creates reservations with one generated array POST", async () => {
     let reservationAttempts = 0;
     const fetchMock = mockDotyposFetch(async (request) => {
       const url = new URL(request.url);
@@ -662,10 +711,16 @@ describe("DotyposService reservations", () => {
         request.method === "POST"
       ) {
         reservationAttempts += 1;
-        if (reservationAttempts === 1) {
-          return Response.json([]);
-        }
-        return Response.json([reservation()]);
+        return Response.json([
+          reservation({
+            id: " reservation-id ",
+            _branchId: ` ${config.branchId} `,
+            _cloudId: ` ${config.cloudId} `,
+            _customerId: " customer-id ",
+            _tableId: " table-id ",
+            note: "setup note",
+          }),
+        ]);
       }
       return new Response("Not found", { status: 404 });
     });
@@ -689,7 +744,7 @@ describe("DotyposService reservations", () => {
     );
 
     expect(result.id).toBe("reservation-id");
-    expect(reservationAttempts).toBe(2);
+    expect(reservationAttempts).toBe(1);
 
     const createCall = fetchMock.mock.calls.find(
       (call) =>
@@ -711,6 +766,447 @@ describe("DotyposService reservations", () => {
         note: "setup note",
       },
     ]);
+  });
+
+  test("prepares validation and authentication before the single-send operation", async () => {
+    let tokenAttempts = 0;
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        tokenAttempts += 1;
+        return tokenResponse();
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json([
+          reservation({
+            _customerId: "synthetic-customer-id",
+            _tableId: "synthetic-table-id",
+          }),
+        ]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const prepared = yield* dotypos.prepareReservationCreation({
+          customerId: "synthetic-customer-id",
+          tableId: "synthetic-table-id",
+          startDate: new Date("2026-06-20T10:00:00.000Z"),
+          endDate: new Date("2026-06-20T12:00:00.000Z"),
+          seats: 2,
+          status: "NEW",
+        });
+        expect(tokenAttempts).toBe(1);
+        expect(reservationAttempts).toBe(0);
+        yield* dotypos.createPreparedReservation(prepared);
+      }),
+      fetchMock
+    );
+
+    expect(tokenAttempts).toBe(1);
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test("consumes one prepared reservation operation at most once", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json([
+          reservation({
+            _customerId: "synthetic-customer-id",
+            _tableId: "synthetic-table-id",
+          }),
+        ]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const results = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        const prepared = yield* dotypos.prepareReservationCreation({
+          customerId: "synthetic-customer-id",
+          tableId: "synthetic-table-id",
+          startDate: new Date("2026-06-20T10:00:00.000Z"),
+          endDate: new Date("2026-06-20T12:00:00.000Z"),
+          seats: 2,
+          status: "NEW",
+        });
+        const send = dotypos
+          .createPreparedReservation(prepared)
+          .pipe(Effect.result);
+        return yield* Effect.all([send, send], { concurrency: "unbounded" });
+      }),
+      fetchMock
+    );
+
+    expect(reservationAttempts).toBe(1);
+    expect(results.filter((result) => result._tag === "Success")).toHaveLength(
+      1
+    );
+    expect(results.filter((result) => result._tag === "Failure")).toHaveLength(
+      1
+    );
+  });
+
+  test("binds an epoch-marked request to provider-visible request evidence", async () => {
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        const [sent] = (await request.json()) as [
+          {
+            readonly _branchId: string;
+            readonly _cloudId: string;
+            readonly _customerId: string;
+            readonly _tableId: string;
+            readonly startDate: number;
+            readonly endDate: number;
+            readonly seats: number;
+            readonly status: "NEW";
+            readonly note: string;
+          },
+        ];
+        return Response.json([
+          {
+            ...sent,
+            id: "evidence-reservation-id",
+            startDate: new Date(sent.startDate).toISOString(),
+            endDate: new Date(sent.endDate).toISOString(),
+            seats: String(sent.seats),
+            flags: "0",
+          },
+        ]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const created = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.createReservation({
+          customerId: "customer-id",
+          tableId: "table-id",
+          startDate: new Date("2026-06-20T10:00:00.000Z"),
+          endDate: new Date("2026-06-20T12:00:00.000Z"),
+          seats: 2,
+          status: "NEW",
+          note: "Payment order: synthetic-order\nProvider creation epoch: synthetic-epoch",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(hasValidDotyposReservationRequestEvidence(created)).toBe(true);
+    expect(
+      hasValidDotyposReservationRequestEvidence({
+        ...created,
+        _branchId: ` ${created._branchId} `,
+        _cloudId: ` ${created._cloudId} `,
+        _customerId: ` ${created._customerId} `,
+        _tableId: ` ${created._tableId} `,
+      })
+    ).toBe(true);
+    expect(created.note).toContain("Provider request evidence: ");
+    expect(
+      hasValidDotyposReservationRequestEvidence({
+        ...created,
+        _tableId: "different-table",
+      })
+    ).toBe(false);
+  });
+
+  test.each([
+    ["missing id", { id: undefined }],
+    ["wrong status", { status: "CONFIRMED" as const }],
+    ["wrong customer", { _customerId: "other-customer" }],
+    ["wrong table", { _tableId: "other-table" }],
+    ["wrong branch", { _branchId: "other-branch" }],
+    ["wrong cloud", { _cloudId: "other-cloud" }],
+    ["wrong start", { startDate: "2026-06-20T10:01:00.000Z" }],
+    ["wrong end", { endDate: "2026-06-20T12:01:00.000Z" }],
+    ["wrong seats", { seats: "3" }],
+    ["wrong note", { note: "other note" }],
+  ] as const)("rejects %s direct-create evidence without retrying", async (_label, overrides) => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json([
+          reservation({ note: "expected note", ...overrides }),
+        ]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+            note: "expected note",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({
+      _tag: "ExternalAPIError",
+      operation: "createReservation",
+    });
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test.each([
+    307, 308,
+  ])("uses manual redirects for reservation create status %i", async (status) => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        expect(request.redirect).toBe("manual");
+        return new Response(null, {
+          status,
+          headers: { Location: "/synthetic-redirect-target" },
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({ _tag: "ExternalAPIError" });
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test("fails authentication preparation before emitting a reservation POST", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        return Response.json(
+          { error: "synthetic_auth_failure", code: 503 },
+          { status: 503 }
+        );
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.prepareReservationCreation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({ _tag: "ExternalAPIError" });
+    expect(reservationAttempts).toBe(0);
+  });
+
+  test("does not retry an ambiguous empty reservation response", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json([]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({
+      _tag: "ExternalAPIError",
+    });
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test("does not choose from an ambiguous multiple reservation response", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json([
+          reservation({ id: "synthetic-reservation-a" }),
+          reservation({ id: "synthetic-reservation-b" }),
+        ]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "synthetic-customer-id",
+            tableId: "synthetic-table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({ _tag: "ExternalAPIError" });
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test("does not retry an ambiguous reservation network failure", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        throw new TypeError("Synthetic transport failure");
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({
+      _tag: "NetworkError",
+    });
+    expect(reservationAttempts).toBe(1);
+  });
+
+  test("does not retry an ambiguous reservation server failure", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        return Response.json(
+          { error: "synthetic_server_failure", code: 503 },
+          { status: 503 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.createReservation({
+            customerId: "customer-id",
+            tableId: "table-id",
+            startDate: new Date("2026-06-20T10:00:00.000Z"),
+            endDate: new Date("2026-06-20T12:00:00.000Z"),
+            seats: 2,
+            status: "NEW",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toMatchObject({
+      _tag: "ExternalAPIError",
+    });
+    expect(reservationAttempts).toBe(1);
   });
 
   test("confirms by reading ETag and patching with If-Match", async () => {

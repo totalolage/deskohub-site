@@ -90,6 +90,27 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
+  test("payment-attempt creation atomically excludes unresolved provider attachment recovery", async () => {
+    const repository = await Bun.file(
+      new URL(
+        "../../features/checkout/backend/repositories/payment-attempt.repository.ts",
+        import.meta.url
+      )
+    ).text();
+    const createSection = repository.slice(
+      repository.indexOf('create: Effect.fn("paymentAttempts.create")'),
+      repository.indexOf('findById: Effect.fn("paymentAttempts.findById")')
+    );
+
+    expect(createSection).toContain("db.transaction(");
+    expect(createSection).toContain(
+      "hasNoUnresolvedProviderAttachmentRecovery()"
+    );
+    expect(createSection.indexOf(".insert(paymentAttempts)")).toBeLessThan(
+      createSection.indexOf(".update(workspaceReservations)")
+    );
+  });
+
   test("webhook duplicate handling is retry-safe", async () => {
     const source = await readAppFile(
       "features/checkout/backend/payment/nexi-webhook.service.ts"
@@ -131,11 +152,20 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/reservation/actions/prepare-pay-state.ts"
     );
 
-    expect(source.indexOf("reservations.createDraft({")).toBeLessThan(
-      source.indexOf("createWorkspaceDotyposReservation({")
+    const providerBoundary = source.indexOf(
+      "reservations.beginProviderHoldCreation"
+    );
+    const providerCreate = source.indexOf("createWorkspaceDotyposReservation(");
+
+    expect(source.indexOf("reservations.acquireDraft({")).toBeLessThan(
+      providerBoundary
     );
     expect(source.indexOf("reservations.claimHoldCreation")).toBeLessThan(
-      source.indexOf("createWorkspaceDotyposReservation({")
+      providerBoundary
     );
+    expect(
+      source.indexOf("yield* prepareWorkspaceDotyposReservation({")
+    ).toBeLessThan(providerBoundary);
+    expect(providerBoundary).toBeLessThan(providerCreate);
   });
 });

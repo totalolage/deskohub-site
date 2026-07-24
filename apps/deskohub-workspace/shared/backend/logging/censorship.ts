@@ -5,7 +5,7 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Logger, type LogLevel, References } from "effect";
+import { Cause, Effect, Logger, type LogLevel, References } from "effect";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -39,9 +39,31 @@ const sensitiveLogKeyFragments = [
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
+  "addressline1",
+  "addressline2",
+  "barcode",
+  "birthday",
+  "city",
+  "companyid",
+  "companyname",
+  "country",
+  "description",
+  "detail",
   "discountcode",
+  "error",
+  "expiredate",
+  "externalid",
+  "headerprint",
+  "hexcolor",
+  "internalnote",
+  "modifiedby",
+  "note",
   "submittedcode",
+  "stack",
+  "tags",
+  "vatid",
   "x-vercel-sc-headers",
+  "zip",
 ]);
 
 const sensitiveLogUrlSearchParams = new Set([
@@ -208,6 +230,57 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
+const isPlainDotyposProviderError = (
+  value: unknown
+): value is Record<string, unknown> =>
+  isPlainObject(value) &&
+  !("_tag" in value) &&
+  Object.keys(value).every((key) =>
+    ["code", "error", "errorDescription"].includes(key)
+  ) &&
+  ("errorDescription" in value ||
+    ("error" in value && ("code" in value || Object.keys(value).length <= 2)));
+
+const stableErrorMetadataPattern = /^[A-Za-z][A-Za-z0-9_.:-]{0,80}$/u;
+
+const isSerializedError = (
+  value: unknown
+): value is Record<string, unknown> => {
+  if (!isPlainObject(value)) return false;
+  const tag =
+    typeof value._tag === "string"
+      ? value._tag
+      : typeof value.name === "string"
+        ? value.name
+        : undefined;
+  return (
+    "stack" in value ||
+    (tag?.endsWith("Error") === true &&
+      ("message" in value || "cause" in value))
+  );
+};
+
+const getStableErrorTag = (value: Record<string, unknown>) => {
+  const tag =
+    typeof value._tag === "string"
+      ? value._tag
+      : typeof value.name === "string"
+        ? value.name
+        : "Error";
+  return tag.endsWith("Error") && stableErrorMetadataPattern.test(tag)
+    ? tag
+    : "Error";
+};
+
+function censorErrorCause(
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown {
+  return typeof value === "object" && value !== null
+    ? censorLogValueInternal(value, seen)
+    : CENSORED_LOG_VALUE;
+}
+
 const censorQueryParameter = (
   value: unknown,
   seen: WeakMap<object, unknown>
@@ -251,6 +324,13 @@ const censorLogRecordValue = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
+  if (
+    key.toLowerCase() === "error" &&
+    typeof value === "object" &&
+    value !== null
+  ) {
+    return censorLogValueInternal(value, seen);
+  }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
   return censorLogValueInternal(value, seen);
@@ -335,6 +415,72 @@ const censorLogValueInternal = (
 
   if (typeof value === "string") return censorUrlString(value);
 
+  if (Cause.isCause(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    seen.set(value, Cause.empty);
+    const result = Cause.fromReasons(
+      value.reasons.map((reason) =>
+        Cause.isFailReason(reason)
+          ? Cause.makeFailReason(censorErrorCause(reason.error, seen))
+          : Cause.isDieReason(reason)
+            ? Cause.makeDieReason(censorErrorCause(reason.defect, seen))
+            : Cause.makeInterruptReason(reason.fiberId)
+      )
+    );
+    seen.set(value, result);
+    return result;
+  }
+
+  if (
+    typeof value === "object" &&
+    value !== null &&
+    "_tag" in value &&
+    (value._tag === "ExternalAPIError" ||
+      value._tag === "NetworkError" ||
+      value._tag === "ValidationError")
+  ) {
+    return value._tag === "ExternalAPIError"
+      ? {
+          _tag: value._tag,
+          ...("operation" in value && { operation: value.operation }),
+          ...("statusCode" in value && { statusCode: value.statusCode }),
+        }
+      : { _tag: value._tag };
+  }
+
+  if (isPlainDotyposProviderError(value)) {
+    return {
+      ...("code" in value &&
+        typeof value.code === "number" && { code: value.code }),
+    };
+  }
+
+  if (isSerializedError(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    const result: Record<string, unknown> = {
+      _tag: getStableErrorTag(value),
+    };
+    seen.set(value, result);
+    if (
+      typeof value.operation === "string" &&
+      stableErrorMetadataPattern.test(value.operation)
+    ) {
+      result.operation = value.operation;
+    }
+    if (typeof value.statusCode === "number") {
+      result.statusCode = value.statusCode;
+    }
+    if (typeof value.code === "number") {
+      result.code = value.code;
+    }
+    if (typeof value.cause === "object" && value.cause !== null) {
+      result.cause = censorErrorCause(value.cause, seen);
+    }
+    return result;
+  }
+
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -345,6 +491,19 @@ const censorLogValueInternal = (
     };
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
+    return result;
+  }
+
+  if (value instanceof Error) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    const result: Record<string, unknown> = {
+      _tag: getStableErrorTag(value as unknown as Record<string, unknown>),
+    };
+    seen.set(value, result);
+    if ("cause" in value && value.cause !== undefined) {
+      result.cause = censorErrorCause(value.cause, seen);
+    }
     return result;
   }
 
@@ -374,6 +533,7 @@ export const censorLoggerOptions = (
   return {
     ...options,
     message: censorLogValue(options.message),
+    cause: censorLogValue(options.cause) as typeof options.cause,
     fiber: {
       ...fiber,
       getRef: (ref) => {
@@ -425,7 +585,17 @@ const toOtelValue = (value: unknown): AnyValue => {
   }
 
   try {
-    return JSON.stringify(value);
+    return JSON.stringify(
+      Cause.isCause(value)
+        ? value.reasons.map((reason) =>
+            Cause.isFailReason(reason)
+              ? { _tag: "Fail", error: reason.error }
+              : Cause.isDieReason(reason)
+                ? { _tag: "Die", defect: reason.defect }
+                : { _tag: "Interrupt" }
+          )
+        : value
+    );
   } catch {
     return String(value);
   }

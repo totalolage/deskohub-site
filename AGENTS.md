@@ -16,4 +16,5 @@ If something in the project is surprising or unclear, alert the developer and na
 - Do not rename helpers scoped to test files as part of a production identifier scrub.
 - For schema-backed values passed around as types, prefer Standard Schema V1 types over library-specific schema types. Do not expose Zod or Effect Schema details in names or public type shapes unless callers need that specific API.
 - Never print or quote secrets, access codes, tokens, or sensitive production payloads. Load `$deskohub-workspace-operations` before production diagnostics.
+- Use the root-pinned, Effect-patched TypeScript 7.0.2 compiler for typechecks. Do not use app-local TypeScript 5.x, `tsgo`, or native-preview; a current TypeScript 6.x may exist only for development tooling.
 - In this secondary worktree, `main` may already be checked out in the primary repository. After fetching, create the next feature branch directly from `origin/main` instead of trying to switch this worktree to `main`.

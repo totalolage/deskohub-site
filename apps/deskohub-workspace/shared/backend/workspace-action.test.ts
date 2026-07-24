@@ -1,5 +1,6 @@
-import { describe, expect, mock, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { describe, expect, mock, spyOn, test } from "bun:test";
+import { ExternalAPIError } from "@deskohub/dotypos";
+import { Cause, Effect, Schema } from "effect";
 
 let actionHeaderReads = 0;
 
@@ -69,6 +70,51 @@ describe("Workspace actions", () => {
     await expect(action("input")).resolves.toEqual({
       serverError: "Public failure",
     });
+  });
+
+  test("censors nested provider Causes before action failure logging", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const { PublicSafeActionError } = await import(
+      "../utils/safe-action-client"
+    );
+    const marker = "synthetic-sensitive-action-marker";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.censored-provider-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new PublicSafeActionError({
+            message: "Safe public failure",
+            cause: Cause.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "createReservation",
+                message: marker,
+                providerError: { errorDescription: marker },
+                cause: new Error(marker),
+              })
+            ),
+          })
+        )
+    );
+
+    try {
+      await expect(action("input")).resolves.toEqual({
+        serverError: "Safe public failure",
+      });
+      expect(JSON.stringify(errorOutput)).not.toContain(marker);
+      expect(JSON.stringify(errorOutput)).toContain("PublicSafeActionError");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   test("supports stateful form actions explicitly", async () => {

@@ -2,13 +2,16 @@
 
 import { randomUUID } from "node:crypto";
 import {
+  canonicalizeDotyposEntityId,
   DotyposService,
   ValidationError as DotyposValidationError,
+  hasValidDotyposReservationRequestEvidence,
 } from "@deskohub/dotypos";
 import {
   Data,
   Duration,
   Effect,
+  Exit,
   Layer,
   Match,
   Predicate,
@@ -31,9 +34,11 @@ import {
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import {
   enqueueAttachmentCancellationCompensation,
-  enqueueReservationHoldCleanup,
+  enqueueProviderHoldCandidateRecovery,
   getDotyposCancellationAction,
   ReservationHoldCleanupScheduleService,
+  recoverPersistedProviderHoldCandidate,
+  verifyDifferentProviderAttachmentRecoveryEvidence,
 } from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
@@ -41,6 +46,8 @@ import {
 } from "@/features/checkout/backend/repositories";
 import {
   createWorkspaceDotyposReservation,
+  findWorkspaceDotyposReservationsByPaymentOrderId,
+  prepareWorkspaceDotyposReservation,
   splitCustomerName,
   WorkspaceCheckoutAccessCodeService,
   WorkspaceCheckoutAccessCodeServiceLive,
@@ -57,6 +64,12 @@ import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type CreateWorkspaceReservationInput,
+  getAttachCancellationRecovery,
+  getAttachedHoldCreationEpoch,
+  getDifferentProviderAttachmentRecovery,
+  getHoldCreationMarker,
+  type HoldCreationRecoveryReason,
+  hasUnresolvedProviderAttachmentRecovery,
   type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -89,6 +102,8 @@ import {
   type PreparePayStateInput,
   preparePayStateSchema,
 } from "./prepare-pay-state.schema";
+
+const maxReservationPreparationConflictRetries = 3;
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
@@ -137,7 +152,7 @@ const quotePreparedReservation = Effect.fn(
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
-  id: Schema.NonEmptyString,
+  id: Schema.Trim.check(Schema.isNonEmpty()),
 });
 
 const decodeDotyposEntityId = Effect.fn(
@@ -255,15 +270,32 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
   }
 );
 
-const isReusableSubmissionReservation = (reservation: WorkspaceReservation) =>
+type ReservationDraft = WorkspaceReservation & {
+  readonly reservationState: "draft";
+  readonly paymentState: "not_started";
+  readonly dotyposReservationId: null;
+  readonly reservationHoldExpiresAt: Temporal.Instant;
+};
+
+type ReusableReservationHold = WorkspaceReservation & {
+  readonly reservationState: "held";
+  readonly paymentState: "not_started";
+  readonly dotyposReservationId: string;
+  readonly reservationHoldExpiresAt: Temporal.Instant;
+};
+
+const isReusableSubmissionReservation = (
+  reservation: WorkspaceReservation
+): reservation is ReusableReservationHold =>
   reservation.reservationState === "held" &&
   reservation.paymentState === "not_started" &&
-  Boolean(reservation.dotyposReservationId) &&
-  (!reservation.reservationHoldExpiresAt ||
-    Temporal.Instant.compare(
-      reservation.reservationHoldExpiresAt,
-      Temporal.Now.instant()
-    ) > 0);
+  typeof reservation.dotyposReservationId === "string" &&
+  !hasUnresolvedProviderAttachmentRecovery(reservation) &&
+  reservation.reservationHoldExpiresAt !== null &&
+  Temporal.Instant.compare(
+    reservation.reservationHoldExpiresAt,
+    Temporal.Now.instant()
+  ) > 0;
 
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.paymentState === "pending" ||
@@ -274,27 +306,19 @@ const enqueueReservationHoldCleanup = Effect.fn(
   "preparePayState.enqueueReservationHoldCleanup"
 )(function* (input: {
   readonly orderId: string;
-  readonly reservationHoldExpiresAt: Temporal.Instant | null;
+  readonly reservationHoldExpiresAt: Temporal.Instant;
 }) {
-  if (!input.reservationHoldExpiresAt) {
-    yield* Effect.logWarning(
-      "Workspace reservation hold cleanup enqueue skipped: missing hold expiry",
-      { orderId: input.orderId }
-    );
-    return;
-  }
-
   const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
   const enqueue = cleanupSchedule
     .enqueueCleanup({
+      reason: "hold_expired",
       orderId: input.orderId,
       reservationHoldExpiresAt: input.reservationHoldExpiresAt,
     })
     .pipe(
-      Effect.tapError((cause) =>
+      Effect.tapError(() =>
         Effect.logError("Workspace reservation hold cleanup enqueue failed", {
           orderId: input.orderId,
-          cause,
         })
       )
     );
@@ -303,21 +327,35 @@ const enqueueReservationHoldCleanup = Effect.fn(
     Effect.timeoutOrElse({
       duration: Duration.seconds(2),
       orElse: () =>
-        Effect.logWarning(
-          "Workspace reservation hold cleanup enqueue timed out",
-          {
-            orderId: input.orderId,
-          }
+        Effect.fail(
+          new ReservationHoldCleanupScheduleError({
+            message: "Workspace reservation hold cleanup enqueue timed out",
+          })
         ),
-    }),
-    Effect.ignore
+    })
   );
 });
+class ReservationHoldCleanupScheduleError extends Data.TaggedError(
+  "ReservationHoldCleanupScheduleError"
+)<{ readonly message: string }> {}
+
 class PendingReservationTransition extends Data.TaggedError(
   "PendingReservationTransition"
 )<{
   readonly reservation: WorkspaceReservation;
 }> {}
+
+type PendingReservationTransitionResult = Data.TaggedEnum<{
+  settled: {
+    readonly reservation: WorkspaceReservation | null;
+  };
+  timed_out: {
+    readonly reservation: WorkspaceReservation;
+  };
+}>;
+
+const PendingReservationTransitionResult =
+  Data.taggedEnum<PendingReservationTransitionResult>();
 
 const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
   Schedule.modifyDelay((_, delay) =>
@@ -361,16 +399,347 @@ const waitForPendingReservationTransition = Effect.fn(
 
   return yield* findSettledReservation.pipe(
     Effect.retry(pendingHoldCreationRetryPolicy),
+    Effect.map((reservation) =>
+      PendingReservationTransitionResult.settled({ reservation })
+    ),
     Effect.catchTag("PendingReservationTransition", (error) =>
-      Effect.succeed(error.reservation)
+      Effect.succeed(
+        PendingReservationTransitionResult.timed_out({
+          reservation: error.reservation,
+        })
+      )
     )
+  );
+});
+
+const resolvePendingReservationTransition = Effect.fn(
+  "prepareCoworkPayState.resolvePendingReservationTransition"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly reservation: WorkspaceReservation;
+}) {
+  const reconcileStaleCompensation = (
+    reservation: WorkspaceReservation,
+    epoch: string
+  ) =>
+    Effect.gen(function* () {
+      return yield* reconcileProviderHoldCreation({
+        reservations: input.reservations,
+        reservation,
+        epoch,
+        purpose: "compensation",
+      });
+    });
+
+  if (
+    input.reservation.reservationState !== "creating_hold" &&
+    input.reservation.reservationState !== "cancelling"
+  ) {
+    return input.reservation;
+  }
+
+  if (input.reservation.reservationState === "creating_hold") {
+    const marker = getHoldCreationMarker(input.reservation);
+    if (
+      marker?._tag === "candidate" &&
+      input.reservation.dotyposReservationId &&
+      input.reservation.reservationHoldExpiresAt
+    ) {
+      return yield* recoverPersistedProviderHoldCandidate({
+        reservation: input.reservation as WorkspaceReservation & {
+          readonly dotyposReservationId: string;
+          readonly reservationHoldExpiresAt: Temporal.Instant;
+        },
+        providerCreationEpoch: marker.epoch,
+        reservationCreatedAt: marker.reservationCreatedAt,
+      });
+    }
+    if (
+      (marker?._tag === "provider_reconciliation" &&
+        Temporal.Instant.compare(
+          input.reservation.updatedAt,
+          Temporal.Now.instant().subtract({ seconds: 60 })
+        ) <= 0) ||
+      marker?._tag === "recovery_required"
+    ) {
+      return yield* reconcileProviderHoldCreation({
+        ...input,
+        epoch: marker.epoch,
+        purpose:
+          marker._tag === "recovery_required" &&
+          marker.reason === "compensation_incomplete"
+            ? "compensation"
+            : "creation",
+      });
+    }
+    if (
+      marker?._tag === "pre_provider" &&
+      Temporal.Instant.compare(
+        input.reservation.updatedAt,
+        Temporal.Now.instant().subtract({ seconds: 60 })
+      ) <= 0
+    ) {
+      const reclaimed =
+        yield* input.reservations.reclaimStalePreProviderHoldCreation({
+          id: input.reservation.id,
+          epoch: marker.epoch,
+          staleBefore: Temporal.Now.instant().subtract({ seconds: 60 }),
+        });
+      if (reclaimed) {
+        return yield* input.reservations.findById(input.reservation.id);
+      }
+    }
+    if (
+      marker?._tag === "compensating" &&
+      Temporal.Instant.compare(
+        input.reservation.updatedAt,
+        Temporal.Now.instant().subtract({ seconds: 60 })
+      ) <= 0
+    ) {
+      return yield* reconcileStaleCompensation(input.reservation, marker.epoch);
+    }
+  }
+
+  const transition = yield* waitForPendingReservationTransition({
+    reservations: input.reservations,
+    reservationId: input.reservation.id,
+  });
+
+  const settled = Match.value(transition).pipe(
+    Match.tag("settled", ({ reservation }) => reservation),
+    Match.tag("timed_out", ({ reservation }) => reservation),
+    Match.exhaustive
+  );
+  if (!settled) return null;
+  const marker = getHoldCreationMarker(settled);
+  if (
+    marker?._tag === "candidate" &&
+    settled.dotyposReservationId &&
+    settled.reservationHoldExpiresAt
+  ) {
+    return yield* recoverPersistedProviderHoldCandidate({
+      reservation: settled as WorkspaceReservation & {
+        readonly dotyposReservationId: string;
+        readonly reservationHoldExpiresAt: Temporal.Instant;
+      },
+      providerCreationEpoch: marker.epoch,
+      reservationCreatedAt: marker.reservationCreatedAt,
+    });
+  }
+  if (
+    marker?._tag === "compensating" &&
+    Temporal.Instant.compare(
+      settled.updatedAt,
+      Temporal.Now.instant().subtract({ seconds: 60 })
+    ) <= 0
+  ) {
+    return yield* reconcileStaleCompensation(settled, marker.epoch);
+  }
+  if (marker?._tag !== "pre_provider") return settled;
+  const reclaimed =
+    yield* input.reservations.reclaimStalePreProviderHoldCreation({
+      id: settled.id,
+      epoch: marker.epoch,
+      staleBefore: Temporal.Now.instant().subtract({ seconds: 60 }),
+    });
+  return reclaimed ? yield* input.reservations.findById(settled.id) : settled;
+});
+
+const currentProviderEvidenceTimestamp = () => {
+  const now = Temporal.Now.instant();
+  return Temporal.Instant.fromEpochMilliseconds(now.epochMilliseconds);
+};
+
+const reconcileProviderHoldCreation = Effect.fn(
+  "prepareCoworkPayState.reconcileProviderHoldCreation"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly reservation: WorkspaceReservation;
+  readonly epoch: string;
+  readonly purpose?: "creation" | "compensation";
+}) {
+  const purpose = input.purpose ?? "creation";
+  const requireRecovery = (reason: HoldCreationRecoveryReason) =>
+    purpose === "compensation"
+      ? Effect.void
+      : input.reservations.requireHoldCreationRecovery({
+          id: input.reservation.id,
+          epoch: input.epoch,
+          reason,
+        });
+  const matches = yield* findWorkspaceDotyposReservationsByPaymentOrderId({
+    paymentOrderId: input.reservation.id,
+    providerCreationEpoch: input.epoch,
+  }).pipe(Effect.tapError(() => requireRecovery("read_failed")));
+  if (matches.length !== 1) {
+    yield* requireRecovery(
+      matches.length === 0 ? "zero_matches" : "multiple_matches"
+    );
+    yield* Effect.logWarning(
+      "Workspace Dotypos reservation hold reconciliation remains pending",
+      {
+        reservationId: input.reservation.id,
+        matchCount: matches.length,
+      }
+    );
+    return input.reservation;
+  }
+
+  const [match] = matches;
+  if (!match) return input.reservation;
+  const dotyposReservationId = canonicalizeDotyposEntityId(match.id);
+  if (!dotyposReservationId) {
+    yield* requireRecovery("missing_id");
+    yield* Effect.logWarning(
+      "Workspace Dotypos reservation hold reconciliation found no usable ID",
+      { reservationId: input.reservation.id }
+    );
+    return input.reservation;
+  }
+
+  if (
+    canonicalizeDotyposEntityId(match._customerId) !==
+      canonicalizeDotyposEntityId(input.reservation.dotyposCustomerId) ||
+    !hasValidDotyposReservationRequestEvidence(match)
+  ) {
+    yield* requireRecovery("unsafe_status");
+    yield* Effect.logWarning(
+      "Workspace Dotypos reservation hold reconciliation refused mismatched evidence",
+      { reservationId: input.reservation.id }
+    );
+    return input.reservation;
+  }
+
+  if (match.status === "CANCELLED") {
+    yield* input.reservations.releaseHoldCreation({
+      id: input.reservation.id,
+      epoch: input.epoch,
+    });
+    return yield* input.reservations.findById(input.reservation.id);
+  }
+
+  if (purpose === "compensation" && match.status === "NEW") {
+    const reservationCreatedAt =
+      input.reservation.reservationCreatedAt ??
+      currentProviderEvidenceTimestamp();
+    yield* enqueueAttachmentCancellationCompensation({
+      recoveryKind: "unattached",
+      orderId: input.reservation.id,
+      providerCreationEpoch: input.epoch,
+      dotyposReservationId,
+      reservationCreatedAt,
+    });
+    return (
+      (yield* input.reservations.findById(input.reservation.id)) ??
+      input.reservation
+    );
+  }
+
+  if (
+    match.status !== "NEW" ||
+    input.reservation.reservationHoldExpiresAt === null
+  ) {
+    yield* requireRecovery("unsafe_status");
+    yield* Effect.logWarning(
+      "Workspace Dotypos reservation hold reconciliation refused provider state",
+      {
+        reservationId: input.reservation.id,
+        providerStatus: match.status,
+      }
+    );
+    return input.reservation;
+  }
+
+  const reservationCreatedAt =
+    input.reservation.reservationCreatedAt ??
+    currentProviderEvidenceTimestamp();
+  yield* input.reservations.recordProviderHoldCandidate({
+    epoch: input.epoch,
+    id: input.reservation.id,
+    dotyposReservationId,
+    reservationCreatedAt,
+  });
+  yield* input.reservations
+    .attachHold({
+      epoch: input.epoch,
+      id: input.reservation.id,
+      dotyposReservationId,
+      reservationCreatedAt,
+    })
+    .pipe(
+      Effect.catch(
+        Effect.fn(function* (cause) {
+          yield* enqueueAttachmentCancellationCompensation({
+            recoveryKind: "attachment_unknown",
+            orderId: input.reservation.id,
+            providerCreationEpoch: input.epoch,
+            dotyposReservationId,
+            reservationCreatedAt,
+          });
+          const definitive = yield* input.reservations.findById(
+            input.reservation.id
+          );
+          if (
+            definitive?.reservationState === "held" &&
+            definitive.dotyposReservationId === dotyposReservationId
+          ) {
+            return;
+          }
+          return yield* cause;
+        })
+      )
+    );
+  yield* enqueueProviderHoldCandidateRecovery({
+    orderId: input.reservation.id,
+    providerCreationEpoch: input.epoch,
+    dotyposReservationId,
+    reservationCreatedAt,
+  });
+  return yield* input.reservations.findById(input.reservation.id);
+});
+
+const reconcileDifferentProviderAttachmentRecovery = Effect.fn(
+  "prepareCoworkPayState.reconcileDifferentProviderAttachmentRecovery"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly reservation: WorkspaceReservation;
+  readonly epoch: string;
+  readonly dotyposReservationId: string;
+  readonly reservationCreatedAt: Temporal.Instant;
+}) {
+  yield* enqueueAttachmentCancellationCompensation({
+    recoveryKind: "different_provider",
+    orderId: input.reservation.id,
+    providerCreationEpoch: input.epoch,
+    dotyposReservationId: input.dotyposReservationId,
+    reservationCreatedAt: input.reservationCreatedAt,
+  });
+  if (!input.reservation.dotyposReservationId) {
+    return input.reservation;
+  }
+  yield* verifyDifferentProviderAttachmentRecoveryEvidence({
+    reservation: input.reservation as WorkspaceReservation & {
+      readonly dotyposReservationId: string;
+    },
+    providerCreationEpoch: input.epoch,
+    losingDotyposReservationId: input.dotyposReservationId,
+  });
+  yield* input.reservations.completeDifferentProviderAttachmentRecovery({
+    id: input.reservation.id,
+    epoch: input.epoch,
+    dotyposReservationId: input.dotyposReservationId,
+    reservationCreatedAt: input.reservationCreatedAt,
+  });
+  return (
+    (yield* input.reservations.findById(input.reservation.id)) ??
+    input.reservation
   );
 });
 
 class CheckoutAttemptUnavailableError extends Data.TaggedError(
   "CheckoutAttemptUnavailableError"
 )<{
-  readonly reservation: WorkspaceReservation;
+  readonly reservation?: WorkspaceReservation;
 }> {}
 
 const ensureReservationAvailable = (input: {
@@ -392,6 +761,107 @@ const ensureReservationAvailable = (input: {
     })
   );
 
+const requireDefinitiveReadyHold = Effect.fn(
+  "prepareCoworkPayState.requireDefinitiveReadyHold"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly expected: WorkspaceReservation;
+  readonly providerCreationEpoch?: string;
+}) {
+  const definitive = yield* input.reservations.findById(input.expected.id);
+  if (
+    !definitive ||
+    !isReusableSubmissionReservation(definitive) ||
+    definitive.dotyposReservationId !== input.expected.dotyposReservationId ||
+    getDifferentProviderAttachmentRecovery(definitive) ||
+    (input.providerCreationEpoch !== undefined &&
+      getAttachedHoldCreationEpoch(definitive) !== input.providerCreationEpoch)
+  ) {
+    return yield* new CheckoutAttemptUnavailableError({
+      reservation: definitive ?? input.expected,
+    });
+  }
+  return definitive;
+});
+
+export type ReservationPreparationDecision = Data.TaggedEnum<{
+  create_hold: {
+    readonly checkoutSessionId: string;
+    readonly epoch: string;
+    readonly reservation: ReservationDraft;
+  };
+  reuse_hold: {
+    readonly checkoutSessionId: string;
+    readonly reservation: ReusableReservationHold;
+  };
+}>;
+
+export const ReservationPreparationDecision =
+  Data.taggedEnum<ReservationPreparationDecision>();
+
+export const decideReservationPreparation = Effect.fn(
+  "prepareCoworkPayState.decideReservationPreparation"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly checkoutSessionId: string;
+  readonly reservation: WorkspaceReservation;
+}) {
+  if (isReusableSubmissionReservation(input.reservation)) {
+    return ReservationPreparationDecision.reuse_hold({
+      checkoutSessionId: input.checkoutSessionId,
+      reservation: input.reservation,
+    });
+  }
+
+  if (
+    input.reservation.reservationState !== "draft" ||
+    input.reservation.paymentState !== "not_started" ||
+    input.reservation.dotyposReservationId !== null ||
+    input.reservation.reservationHoldExpiresAt === null
+  ) {
+    return yield* new CheckoutAttemptUnavailableError({
+      reservation: input.reservation,
+    });
+  }
+
+  const epoch = yield* input.reservations.claimHoldCreation(
+    input.reservation.id
+  );
+  if (epoch) {
+    return ReservationPreparationDecision.create_hold({
+      checkoutSessionId: input.checkoutSessionId,
+      epoch,
+      reservation: input.reservation as ReservationDraft,
+    });
+  }
+
+  const transition = yield* waitForPendingReservationTransition({
+    reservations: input.reservations,
+    reservationId: input.reservation.id,
+  });
+
+  return yield* Match.value(transition).pipe(
+    Match.tag("settled", ({ reservation }) =>
+      reservation && isReusableSubmissionReservation(reservation)
+        ? Effect.succeed(
+            ReservationPreparationDecision.reuse_hold({
+              checkoutSessionId: input.checkoutSessionId,
+              reservation,
+            })
+          )
+        : Effect.fail(
+            new CheckoutAttemptUnavailableError({
+              reservation: reservation ?? input.reservation,
+            })
+          )
+    ),
+    Match.tag("timed_out", ({ reservation }) =>
+      Effect.fail(new CheckoutAttemptUnavailableError({ reservation }))
+    ),
+    Match.exhaustive
+  );
+});
+
 const prepareReservationDraft = Effect.fn(
   "preparePayState.prepareReservationDraft"
 )(function* (input: {
@@ -407,10 +877,38 @@ const prepareReservationDraft = Effect.fn(
   const dotypos = yield* DotyposService;
   const availability = yield* WorkspaceAvailabilityService;
   let checkoutSessionId = input.checkoutSessionId;
+  let conflictRetries = 0;
+  const decideWithCleanup = (reservation: WorkspaceReservation) =>
+    Effect.gen(function* () {
+      let cleanupScheduled = false;
+      if (
+        reservation.reservationState === "held" &&
+        reservation.dotyposReservationId &&
+        reservation.reservationHoldExpiresAt
+      ) {
+        yield* enqueueReservationHoldCleanup({
+          orderId: reservation.id,
+          reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
+        });
+        cleanupScheduled = true;
+      }
+      const decision = yield* decideReservationPreparation({
+        reservations,
+        checkoutSessionId,
+        reservation,
+      });
+      if (decision._tag === "reuse_hold" && !cleanupScheduled) {
+        yield* enqueueReservationHoldCleanup({
+          orderId: decision.reservation.id,
+          reservationHoldExpiresAt:
+            decision.reservation.reservationHoldExpiresAt,
+        });
+      }
+      return decision;
+    });
 
   while (true) {
-    const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
-    const checkoutAttemptKey = deriveCheckoutAttemptKey({
+    let checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
@@ -419,12 +917,26 @@ const prepareReservationDraft = Effect.fn(
     let existingAttempt =
       yield* reservations.findByAttemptKey(checkoutAttemptKey);
     if (
-      existingAttempt?.reservationState === "creating_hold" ||
-      existingAttempt?.reservationState === "cancelling"
+      !existingAttempt &&
+      checkoutSessionId === input.checkoutSessionId &&
+      input.checkoutAttemptId !== input.checkoutSessionId
     ) {
-      existingAttempt = yield* waitForPendingReservationTransition({
+      const rotatedAttemptKey = deriveCheckoutAttemptKey({
+        checkoutSessionId: input.checkoutAttemptId,
+        checkoutAttemptId: input.checkoutAttemptId,
+        reservation: input.reservation,
+      });
+      existingAttempt = yield* reservations.findByAttemptKey(rotatedAttemptKey);
+      if (existingAttempt) {
+        checkoutSessionId = input.checkoutAttemptId;
+        checkoutAttemptKey = rotatedAttemptKey;
+      }
+    }
+    const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
+    if (existingAttempt) {
+      existingAttempt = yield* resolvePendingReservationTransition({
         reservations,
-        reservationId: existingAttempt.id,
+        reservation: existingAttempt,
       });
     }
 
@@ -438,25 +950,36 @@ const prepareReservationDraft = Effect.fn(
     }
 
     if (existingAttempt) {
+      const attachCancellationRecovery =
+        getAttachCancellationRecovery(existingAttempt);
+      if (attachCancellationRecovery) {
+        yield* enqueueAttachmentCancellationCompensation({
+          recoveryKind: "unattached",
+          orderId: existingAttempt.id,
+          providerCreationEpoch: attachCancellationRecovery.epoch,
+          dotyposReservationId: attachCancellationRecovery.dotyposReservationId,
+          reservationCreatedAt:
+            existingAttempt.reservationCreatedAt ?? Temporal.Now.instant(),
+        });
+        return yield* new CheckoutAttemptUnavailableError({
+          reservation: existingAttempt,
+        });
+      }
+      const differentProviderRecovery =
+        getDifferentProviderAttachmentRecovery(existingAttempt);
+      if (differentProviderRecovery) {
+        existingAttempt = yield* reconcileDifferentProviderAttachmentRecovery({
+          reservations,
+          reservation: existingAttempt,
+          ...differentProviderRecovery,
+        });
+      }
       if (
         existingAttempt.reservationState === "draft" ||
-        (isReusableSubmissionReservation(existingAttempt) &&
-          !mustRotateCheckoutSession(existingAttempt))
+        existingAttempt.reservationState === "held" ||
+        isReusableSubmissionReservation(existingAttempt)
       ) {
-        return {
-          checkoutSessionId,
-          reservationDraft: existingAttempt,
-        };
-      }
-
-      if (mustRotateCheckoutSession(existingAttempt)) {
-        if (checkoutSessionId === input.checkoutAttemptId) {
-          return yield* new CheckoutAttemptUnavailableError({
-            reservation: existingAttempt,
-          });
-        }
-        checkoutSessionId = input.checkoutAttemptId;
-        continue;
+        return yield* decideWithCleanup(existingAttempt);
       }
 
       return yield* new CheckoutAttemptUnavailableError({
@@ -466,16 +989,48 @@ const prepareReservationDraft = Effect.fn(
 
     const currentReservation =
       yield* reservations.findCurrentByCheckoutSessionKey(checkoutSessionKey);
+    const currentMarker =
+      currentReservation && getHoldCreationMarker(currentReservation);
+    const isPriorPreProviderAttempt =
+      currentReservation?.reservationState === "draft" ||
+      (currentReservation?.reservationState === "creating_hold" &&
+        currentMarker?._tag === "pre_provider");
+    if (
+      isPriorPreProviderAttempt &&
+      currentReservation &&
+      checkoutSessionId !== input.checkoutAttemptId
+    ) {
+      const retired = yield* reservations.retirePreProviderDraft({
+        id: currentReservation.id,
+        checkoutAttemptKey: currentReservation.checkoutAttemptKey,
+      });
+      if (!retired) {
+        conflictRetries += 1;
+        if (conflictRetries >= maxReservationPreparationConflictRetries) {
+          return yield* new CheckoutAttemptUnavailableError({
+            reservation: currentReservation,
+          });
+        }
+        continue;
+      }
+      checkoutSessionId = input.checkoutAttemptId;
+      continue;
+    }
     if (
       currentReservation?.reservationState === "creating_hold" ||
       currentReservation?.reservationState === "cancelling" ||
       currentReservation?.reservationState === "draft"
     ) {
-      const settledReservation = yield* waitForPendingReservationTransition({
+      const transition = yield* waitForPendingReservationTransition({
         reservations,
         reservationId: currentReservation.id,
         pendingStates: ["draft", "creating_hold", "cancelling"],
       });
+      const settledReservation = Match.value(transition).pipe(
+        Match.tag("settled", ({ reservation }) => reservation),
+        Match.tag("timed_out", ({ reservation }) => reservation),
+        Match.exhaustive
+      );
       if (
         settledReservation?.reservationState === "draft" ||
         settledReservation?.reservationState === "creating_hold" ||
@@ -507,12 +1062,24 @@ const prepareReservationDraft = Effect.fn(
     }
 
     if (currentReservation) {
+      if (hasUnresolvedProviderAttachmentRecovery(currentReservation)) {
+        return yield* new CheckoutAttemptUnavailableError({
+          reservation: currentReservation,
+        });
+      }
+
       const cancellationOwnerId = randomUUID();
       const claimed = yield* reservations.claimSupersessionCancellation({
         id: currentReservation.id,
         ownerId: cancellationOwnerId,
       });
       if (!claimed) {
+        conflictRetries += 1;
+        if (conflictRetries >= maxReservationPreparationConflictRetries) {
+          return yield* new CheckoutAttemptUnavailableError({
+            reservation: currentReservation,
+          });
+        }
         continue;
       }
 
@@ -637,10 +1204,7 @@ const prepareReservationDraft = Effect.fn(
             },
           })
         ),
-        Effect.map((reservationDraft) => ({
-          checkoutSessionId,
-          reservationDraft,
-        })),
+        Effect.flatMap((reservation) => decideWithCleanup(reservation)),
         Effect.tapError(() =>
           reservations
             .markCancelled({
@@ -658,19 +1222,41 @@ const prepareReservationDraft = Effect.fn(
       availability,
       reservation: input.reservation,
     });
-    const reservationDraft = yield* reservations.createDraft({
+    const acquisition = yield* reservations.acquireDraft({
       ...input.draft,
       checkoutSessionKey,
       checkoutAttemptKey,
     });
-    if (reservationDraft.checkoutAttemptKey !== checkoutAttemptKey) {
-      continue;
-    }
+    const preparationDecision = yield* Match.value(acquisition).pipe(
+      Match.tag("created", ({ reservation }) => decideWithCleanup(reservation)),
+      Match.tag("conflict_unresolved", () =>
+        Effect.fail(new CheckoutAttemptUnavailableError({}))
+      ),
+      Match.tag("existing_attempt", ({ reservation }) =>
+        resolvePendingReservationTransition({
+          reservations,
+          reservation,
+        }).pipe(
+          Effect.flatMap((resolvedReservation) =>
+            resolvedReservation
+              ? decideWithCleanup(resolvedReservation)
+              : Effect.fail(
+                  new CheckoutAttemptUnavailableError({ reservation })
+                )
+          )
+        )
+      ),
+      Match.tag("session_occupied", ({ reservation }) => {
+        conflictRetries += 1;
+        return conflictRetries >= maxReservationPreparationConflictRetries
+          ? Effect.fail(new CheckoutAttemptUnavailableError({ reservation }))
+          : Effect.succeed(null);
+      }),
+      Match.exhaustive
+    );
+    if (!preparationDecision) continue;
 
-    return {
-      checkoutSessionId,
-      reservationDraft,
-    };
+    return preparationDecision;
   }
 });
 
@@ -703,7 +1289,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       accepted: input.legalConsent === true,
       acceptedAt,
     });
-    yield* Effect.annotateLogsScoped({ privacyEvidence });
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
@@ -747,20 +1332,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const dotyposCustomerId = yield* getDotyposCustomerId(customer.id);
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
-
-    const prepared = yield* quotePreparedReservation({
-      advertisement,
-      dotyposCustomerId,
-      locale: input.locale,
-    });
-    yield* Effect.annotateLogsScoped({ quote: prepared.quote });
-    yield* Effect.logDebug("Workspace reservation quote built");
-
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const customerAccessCode = yield* accessCodes.generateCustomerAccessCode;
 
-    const preparedDraft = yield* prepareReservationDraft({
+    const preparationDecision = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
@@ -774,236 +1350,251 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservationHoldExpiresAt: holdExpiresAt,
       },
     });
-    const { checkoutSessionId, reservationDraft } = preparedDraft;
-    yield* Effect.annotateLogsScoped({ reservationDraft });
-    yield* Effect.logInfo("Workspace reservation draft ready");
+    const { checkoutSessionId, reservation: reservationDraft } =
+      preparationDecision;
+    yield* Effect.logInfo("Workspace reservation preparation decided", {
+      decision: preparationDecision._tag,
+      reservationId: reservationDraft.id,
+    });
 
-    if (isReusableSubmissionReservation(reservationDraft)) {
-      yield* Effect.logInfo(
-        "Existing workspace reservation hold reused for an immediate retry"
-      );
-      yield* reservations.updateReservationDetails({
-        id: reservationDraft.id,
-        reservationDetails: getStoredWorkspaceReservationDetails(
-          input.reservation
+    return yield* Effect.gen(function* () {
+      const prepared = yield* quotePreparedReservation({
+        advertisement,
+        dotyposCustomerId: yield* getDotyposCustomerId(
+          reservationDraft.dotyposCustomerId
         ),
         locale: input.locale,
       });
+      yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+      yield* Effect.logDebug("Workspace reservation quote built");
+
+      const reusedResult = yield* Match.value(preparationDecision).pipe(
+        Match.tag("create_hold", () => Effect.succeed(null)),
+        Match.tag("reuse_hold", ({ reservation }) =>
+          Effect.gen(function* () {
+            yield* Effect.logInfo(
+              "Existing workspace reservation hold reused for an immediate retry"
+            );
+
+            yield* legalEvents.recordMany(
+              Object.values(privacyEvidence).map((evidence) => ({
+                workspaceReservationId: reservation.id,
+                evidence,
+              }))
+            );
+            const definitiveReservation = yield* requireDefinitiveReadyHold({
+              reservations,
+              expected: reservation,
+            });
+            yield* Effect.logInfo("Workspace reservation checkout prep ready");
+
+            return yield* toReadyResult({
+              locale: input.locale,
+              prepared,
+              reservationId: definitiveReservation.id,
+              checkoutSessionId,
+              changedKeys: advertisement.changedKeys,
+            });
+          })
+        ),
+        Match.exhaustive
+      );
+      if (reusedResult) return reusedResult;
+      if (preparationDecision._tag !== "create_hold") {
+        return yield* new CheckoutAttemptUnavailableError({
+          reservation: reservationDraft,
+        });
+      }
+      const providerEpoch = preparationDecision.epoch;
+      const persistedHoldExpiresAt = reservationDraft.reservationHoldExpiresAt;
+
+      yield* Effect.logDebug("Workspace reservation hold creation claimed");
+
+      const checkoutDetails = getReservationCheckoutDetails({
+        locale: input.locale,
+        prepared,
+        legalEvidence: privacyEvidence,
+      });
+      const preparedDotyposReservation =
+        yield* prepareWorkspaceDotyposReservation({
+          paymentOrderId: reservationDraft.id,
+          providerCreationEpoch: providerEpoch,
+          dotyposCustomerId: reservationDraft.dotyposCustomerId,
+          checkoutDetails,
+          reservation: checkoutDetails.reservation,
+          status: "NEW",
+        });
+      const { dotyposReservationId, reservationCreatedAt } =
+        yield* Effect.uninterruptibleMask((restore) =>
+          Effect.gen(function* () {
+            const providerBoundaryStarted =
+              yield* reservations.beginProviderHoldCreation({
+                id: reservationDraft.id,
+                epoch: providerEpoch,
+              });
+            if (!providerBoundaryStarted) {
+              return yield* new CheckoutAttemptUnavailableError({
+                reservation: reservationDraft,
+              });
+            }
+            const dotyposReservation = yield* restore(
+              createWorkspaceDotyposReservation(preparedDotyposReservation)
+            );
+            const dotyposReservationId = yield* decodeDotyposEntityId({
+              value: dotyposReservation,
+              missingIdMessage: "Dotypos reservation was created without an ID",
+            });
+            yield* Effect.logInfo("Workspace Dotypos reservation hold created");
+
+            const reservationCreatedAt = currentProviderEvidenceTimestamp();
+            const exactProviderEvidence = {
+              recoveryKind: "attachment_unknown" as const,
+              orderId: reservationDraft.id,
+              providerCreationEpoch: providerEpoch,
+              dotyposReservationId,
+              reservationCreatedAt,
+            };
+            let exactEvidenceHandoffAttempted = false;
+
+            yield* reservations
+              .recordProviderHoldCandidate({
+                epoch: providerEpoch,
+                id: reservationDraft.id,
+                dotyposReservationId,
+                reservationCreatedAt,
+              })
+              .pipe(
+                Effect.catchCause((cause) =>
+                  enqueueAttachmentCancellationCompensation(
+                    exactProviderEvidence
+                  ).pipe(Effect.andThen(Effect.failCause(cause)))
+                )
+              );
+            yield* reservations
+              .attachHold({
+                epoch: providerEpoch,
+                id: reservationDraft.id,
+                dotyposReservationId,
+                reservationCreatedAt,
+              })
+              .pipe(
+                Effect.catch(
+                  Effect.fn(function* (cause) {
+                    yield* Effect.logError(
+                      "Workspace reservation hold attach failed; scheduling owned cancellation compensation",
+                      { reservationId: reservationDraft.id }
+                    );
+
+                    exactEvidenceHandoffAttempted = true;
+                    yield* enqueueAttachmentCancellationCompensation(
+                      exactProviderEvidence
+                    );
+                    const definitiveReservation = yield* reservations.findById(
+                      reservationDraft.id
+                    );
+                    if (
+                      definitiveReservation?.reservationState === "held" &&
+                      definitiveReservation.dotyposReservationId ===
+                        dotyposReservationId
+                    ) {
+                      return;
+                    }
+                    if (
+                      definitiveReservation?.reservationState === "held" &&
+                      definitiveReservation.dotyposReservationId &&
+                      definitiveReservation.dotyposReservationId !==
+                        dotyposReservationId &&
+                      getAttachedHoldCreationEpoch(definitiveReservation) ===
+                        providerEpoch
+                    ) {
+                      return yield* new CheckoutAttemptUnavailableError({
+                        reservation: definitiveReservation,
+                      });
+                    }
+                    return yield* cause;
+                  })
+                ),
+                Effect.onExit((exit) =>
+                  Exit.isFailure(exit) && !exactEvidenceHandoffAttempted
+                    ? enqueueAttachmentCancellationCompensation(
+                        exactProviderEvidence
+                      ).pipe(Effect.exit, Effect.asVoid)
+                    : Effect.void
+                )
+              );
+            exactEvidenceHandoffAttempted = true;
+            yield* enqueueProviderHoldCandidateRecovery({
+              orderId: reservationDraft.id,
+              providerCreationEpoch: providerEpoch,
+              dotyposReservationId,
+              reservationCreatedAt,
+            });
+
+            return { dotyposReservationId, reservationCreatedAt };
+          })
+        );
+      yield* Effect.logInfo("Workspace reservation hold attached");
+      yield* enqueueReservationHoldCleanup({
+        orderId: reservationDraft.id,
+        reservationHoldExpiresAt: persistedHoldExpiresAt,
+      });
+      yield* captureReservationStarted({
+        reservation: {
+          id: reservationDraft.id,
+          dotyposReservationId,
+        },
+        timestamp: reservationCreatedAt,
+      });
+
       yield* legalEvents.recordMany(
         Object.values(privacyEvidence).map((evidence) => ({
           workspaceReservationId: reservationDraft.id,
           evidence,
         }))
       );
+
+      const definitiveReservation = yield* requireDefinitiveReadyHold({
+        reservations,
+        expected: {
+          ...reservationDraft,
+          dotyposReservationId,
+          reservationState: "held",
+        } as WorkspaceReservation,
+        providerCreationEpoch: providerEpoch,
+      });
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return yield* toReadyResult({
         locale: input.locale,
         prepared,
-        reservationId: reservationDraft.id,
+        reservationId: definitiveReservation.id,
         checkoutSessionId,
         changedKeys: advertisement.changedKeys,
       });
-    }
-
-    const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
-    if (!claimed) {
-      const claimConflictReservation =
-        yield* waitForPendingReservationTransition({
-          reservations,
-          reservationId: reservationDraft.id,
-        });
-      yield* Effect.annotateLogsScoped({ claimConflictReservation });
-
-      if (
-        claimConflictReservation &&
-        isReusableSubmissionReservation(claimConflictReservation)
-      ) {
-        yield* Effect.logInfo(
-          "Existing workspace reservation hold reused for an immediate retry"
-        );
-
-        const reusedPrepared = yield* quotePreparedReservation({
-          advertisement,
-          dotyposCustomerId: yield* getDotyposCustomerId(
-            claimConflictReservation.dotyposCustomerId
-          ),
-          locale: input.locale,
-        });
-
-        yield* reservations.updateReservationDetails({
-          id: claimConflictReservation.id,
-          reservationDetails: getStoredWorkspaceReservationDetails(
-            input.reservation
-          ),
-          locale: input.locale,
-        });
-        yield* legalEvents.recordMany(
-          Object.values(privacyEvidence).map((evidence) => ({
-            workspaceReservationId: claimConflictReservation.id,
-            evidence,
-          }))
-        );
-        yield* Effect.logInfo("Workspace reservation checkout prep ready");
-
-        return yield* toReadyResult({
-          locale: input.locale,
-          prepared: reusedPrepared,
-          reservationId: claimConflictReservation.id,
-          checkoutSessionId,
-          changedKeys: advertisement.changedKeys,
-        });
-      }
-
-      yield* Effect.logError(
-        "Workspace reservation hold creation claim failed"
-      );
-
-      return {
-        status: "error" as const,
-        message: m.reservationErrorMessage({}, { locale: input.locale }),
-      };
-    }
-    yield* Effect.logDebug("Workspace reservation hold creation claimed");
-
-    const checkoutDetails = getReservationCheckoutDetails({
-      locale: input.locale,
-      prepared,
-      legalEvidence: privacyEvidence,
-    });
-    yield* Effect.annotateLogsScoped({ checkoutDetails });
-    const dotyposReservation = yield* createWorkspaceDotyposReservation({
-      paymentOrderId: reservationDraft.id,
-      dotyposCustomerId,
-      checkoutDetails,
-      reservation: checkoutDetails.reservation,
-      status: "NEW",
     }).pipe(
-      Effect.tapError(
-        Effect.fn(function* (cause) {
-          yield* Effect.logError(
-            "Workspace Dotypos reservation hold creation failed",
-            {
-              cause,
-            }
-          );
-
-          yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-            Effect.tapError((releaseCause) =>
-              Effect.logError("Reservation hold creation release failed", {
-                cause: releaseCause,
+      Effect.ensuring(
+        Match.value(preparationDecision).pipe(
+          Match.tag("create_hold", ({ epoch, reservation }) =>
+            reservations
+              .reclaimPreProviderHoldCreation({
+                id: reservation.id,
+                epoch,
               })
-            ),
-            Effect.ignore
-          );
-        })
-      )
-    );
-    yield* Effect.annotateLogsScoped({ dotyposReservation });
-
-    const dotyposReservationId = yield* decodeDotyposEntityId({
-      value: dotyposReservation,
-      missingIdMessage: "Dotypos reservation was created without an ID",
-    }).pipe(
-      Effect.tapError(
-        Effect.fn(function* (cause) {
-          yield* Effect.logError(
-            "Workspace Dotypos reservation hold was created without an ID",
-            {
-              cause,
-            }
-          );
-
-          yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-            Effect.tapError((releaseCause) =>
-              Effect.logError("Reservation hold creation release failed", {
-                cause: releaseCause,
-              })
-            ),
-            Effect.ignore
-          );
-        })
-      )
-    );
-    yield* Effect.annotateLogsScoped({ dotyposReservationId });
-    yield* Effect.logInfo("Workspace Dotypos reservation hold created");
-
-    const reservationCreatedAt = Temporal.Now.instant();
-
-    yield* reservations
-      .attachHold({
-        id: reservationDraft.id,
-        dotyposReservationId,
-        reservationCreatedAt,
-        reservationHoldExpiresAt: holdExpiresAt,
-      })
-      .pipe(
-        Effect.catch(
-          Effect.fn(function* (cause) {
-            yield* Effect.logError(
-              "Workspace reservation hold attach failed; scheduling owned cancellation compensation",
-              {
-                cause,
-              }
-            );
-
-            yield* enqueueAttachmentCancellationCompensation({
-              orderId: reservationDraft.id,
-              dotyposReservationId,
-              reservationCreatedAt,
-            }).pipe(
-              Effect.tapError((markerCause) =>
-                Effect.logFatal(
-                  "Workspace reservation hold cancellation compensation marker failed",
-                  {
-                    reservationDraftId: reservationDraft.id,
-                    dotyposReservationId,
-                    cause: markerCause,
-                  }
-                )
+              .pipe(
+                Effect.catchCause(() =>
+                  Effect.logError(
+                    "Reservation pre-provider hold creation reclaim failed",
+                    { reservationId: reservation.id }
+                  )
+                ),
+                Effect.asVoid
               )
-            );
-            yield* Effect.logWarning(
-              "Workspace reservation hold cancellation compensation enqueued",
-              {
-                reservationDraftId: reservationDraft.id,
-                dotyposReservationId,
-              }
-            );
-
-            return yield* cause;
-          })
+          ),
+          Match.tag("reuse_hold", () => Effect.void),
+          Match.exhaustive
         )
-      );
-    yield* Effect.logInfo("Workspace reservation hold attached");
-    yield* enqueueReservationHoldCleanup({
-      orderId: reservationDraft.id,
-      reservationHoldExpiresAt: holdExpiresAt,
-    });
-    yield* captureReservationStarted({
-      reservation: {
-        id: reservationDraft.id,
-        dotyposReservationId,
-      },
-      timestamp: reservationCreatedAt,
-    });
-
-    yield* legalEvents.recordMany(
-      Object.values(privacyEvidence).map((evidence) => ({
-        workspaceReservationId: reservationDraft.id,
-        evidence,
-      }))
+      )
     );
-
-    yield* Effect.logInfo("Workspace reservation checkout prep ready");
-
-    return yield* toReadyResult({
-      locale: input.locale,
-      prepared,
-      reservationId: reservationDraft.id,
-      checkoutSessionId,
-      changedKeys: advertisement.changedKeys,
-    });
   },
   (effect, input) =>
     effect.pipe(

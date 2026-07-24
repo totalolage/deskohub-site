@@ -4,6 +4,7 @@ import {
   DotyposService,
   type ExternalAPIError,
   type NetworkError,
+  type PreparedDotyposReservationCreation,
   type Reservation,
   ValidationError,
 } from "@deskohub/dotypos";
@@ -31,27 +32,33 @@ import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;
+  readonly providerCreationEpoch: string;
   readonly dotyposCustomerId: string;
   readonly checkoutDetails: CheckoutDetails;
   readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
 }
 
-export const createWorkspaceDotyposReservation: (
+export interface PreparedWorkspaceDotyposReservation {
+  readonly paymentOrderId: string;
+  readonly reservationInput: CreateDotyposReservationInput;
+  readonly providerRequest: PreparedDotyposReservationCreation;
+}
+
+export const prepareWorkspaceDotyposReservation: (
   input: CreateWorkspaceDotyposReservationInput
 ) => Effect.Effect<
-  Reservation,
+  PreparedWorkspaceDotyposReservation,
   ExternalAPIError | NetworkError | ValidationError,
   DotyposService | WorkspaceTableAssignmentService
-> = Effect.fn("createWorkspaceDotyposReservation")(
+> = Effect.fn("prepareWorkspaceDotyposReservation")(
   function* (input) {
-    yield* Effect.annotateLogsScoped({ input });
     yield* Effect.logInfo(
       "Workspace Dotypos reservation creation input received"
     );
 
-    const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
+    const dotypos = yield* DotyposService;
     const reservationIntervalInput = Match.value(input.reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ date }) => getCoworkReservationIntervalInput(date),
@@ -76,23 +83,21 @@ export const createWorkspaceDotyposReservation: (
       status: input.status,
       note: formatWorkspaceReservationNote(input),
     };
-    yield* Effect.annotateLogsScoped({ reservationInput });
+    const providerRequest =
+      yield* dotypos.prepareReservationCreation(reservationInput);
     yield* Effect.logInfo("Workspace Dotypos reservation input built");
 
-    yield* Effect.logInfo("Workspace Dotypos reservation creation started");
-    const reservation = yield* dotypos.createReservation(reservationInput);
-    yield* Effect.annotateLogsScoped({ reservation });
-    yield* Effect.logInfo("Workspace Dotypos reservation creation completed");
-
-    return reservation;
+    return {
+      paymentOrderId: input.paymentOrderId,
+      providerRequest,
+      reservationInput,
+    };
   },
   (effect, input) =>
     effect.pipe(
       Effect.scoped,
-      Effect.tapError((cause) =>
-        Effect.logError("Workspace Dotypos reservation creation failed", {
-          cause,
-        })
+      Effect.tapError(() =>
+        Effect.logError("Workspace Dotypos reservation preparation failed")
       ),
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
@@ -104,11 +109,63 @@ export const createWorkspaceDotyposReservation: (
     )
 );
 
+export const createWorkspaceDotyposReservation: (
+  input: PreparedWorkspaceDotyposReservation
+) => Effect.Effect<
+  Reservation,
+  ExternalAPIError | NetworkError | ValidationError,
+  DotyposService
+> = Effect.fn("createWorkspaceDotyposReservation")(
+  function* (input) {
+    const dotypos = yield* DotyposService;
+
+    yield* Effect.logInfo("Workspace Dotypos reservation creation started");
+    const reservation = yield* dotypos.createPreparedReservation(
+      input.providerRequest
+    );
+    yield* Effect.logInfo("Workspace Dotypos reservation creation completed");
+
+    return reservation;
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.tapError(() =>
+        Effect.logError("Workspace Dotypos reservation creation failed")
+      ),
+      Effect.annotateLogs({
+        paymentOrderId: input.paymentOrderId,
+        reservationStatus: input.reservationInput.status,
+      })
+    )
+);
+
+export const findWorkspaceDotyposReservationsByPaymentOrderId = Effect.fn(
+  "findWorkspaceDotyposReservationsByPaymentOrderId"
+)(function* (input: {
+  readonly paymentOrderId: string;
+  readonly providerCreationEpoch: string;
+}) {
+  const dotypos = yield* DotyposService;
+  const paymentOrderLine = `Payment order: ${input.paymentOrderId}`;
+  const providerEpochLine = `Provider creation epoch: ${input.providerCreationEpoch}`;
+  const reservations = yield* dotypos.listReservations();
+
+  return reservations.filter((reservation) => {
+    const lines = reservation.note?.split(/\r?\n/u);
+    return (
+      lines?.includes(paymentOrderLine) && lines.includes(providerEpochLine)
+    );
+  });
+});
+
 export const formatWorkspaceReservationNote = (
   input: Pick<
     CreateWorkspaceDotyposReservationInput,
     "checkoutDetails" | "paymentOrderId" | "reservation"
-  >
+  > &
+    Partial<
+      Pick<CreateWorkspaceDotyposReservationInput, "providerCreationEpoch">
+    >
 ) => {
   const { checkoutDetails, reservation } = input;
   const { productLabel, reservationRows } = Match.value(reservation).pipe(
@@ -142,6 +199,9 @@ export const formatWorkspaceReservationNote = (
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
+    input.providerCreationEpoch
+      ? `Provider creation epoch: ${input.providerCreationEpoch}`
+      : null,
     `Product: ${productLabel}`,
     ...reservationRows,
     `Price: ${formatWorkspaceMoney(
