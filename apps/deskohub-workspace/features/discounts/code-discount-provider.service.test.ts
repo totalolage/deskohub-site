@@ -70,6 +70,7 @@ const availability = (
   customerAllowed: false,
   activeUseCount: 0,
   customerHasRedeemed: false,
+  customerHasReserved: false,
   ...overrides,
 });
 
@@ -173,7 +174,6 @@ describe("CodeDiscountProvider", () => {
     expect(loadAvailability).toHaveBeenCalledWith({
       codeId,
       dotyposCustomerId: "customer-1",
-      at: nowInstant,
     });
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -336,16 +336,18 @@ describe("CodeDiscountProvider", () => {
     expect(second[0]?.claim?.codeId).toBe(secondCodeId);
   });
 
-  test("leaves a live same-customer reservation for atomic admission", async () => {
-    const result = await runWithProvider(resolve(), {
+  test("rejects a live same-customer reservation before atomic admission", async () => {
+    const result = await runWithProvider(resolve().pipe(Effect.result), {
       loadAvailability: () =>
         Effect.succeed(
-          availability({ activeUseCount: 1, customerHasRedeemed: false })
+          availability({ activeUseCount: 1, customerHasReserved: true })
         ),
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.claim?.codeId).toBe(codeId);
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { reason: "claim_conflict", codeId },
+    });
   });
 
   test("fails explicitly when the product is not targeted", async () => {

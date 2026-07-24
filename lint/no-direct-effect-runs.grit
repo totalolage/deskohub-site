@@ -1,0 +1,17 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `Effect.$method($...)` as $call where {
+      $method <: r"run[A-Z].*",
+      register_diagnostic(
+        span = $call,
+        message = "Use the matching Workspace Effect runner or boundary so logging, cancellation, and telemetry policy are applied.",
+        severity = "error"
+      )
+    }
+  }
+}

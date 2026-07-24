@@ -1,0 +1,42 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/shared/backend/(?:standalone-workspace-effect|workspace-action|workspace-effect)\.ts$",
+  $body <: contains bubble {
+    or {
+      or {
+        `import $_ from $source` as $statement,
+        `import $source` as $statement
+      } where {
+        $source <: or {
+          `"@deskohub/next-effect"`,
+          `"@deskohub/next-effect/effect-action"`
+        },
+        register_diagnostic(
+          span = $statement,
+          message = "Use the app-owned Workspace Effect runner or action boundary instead of importing @deskohub/next-effect directly.",
+          severity = "error"
+        )
+      },
+      JsExport() as $statement where {
+        $statement <: r".*\sfrom\s+[\"']@deskohub/next-effect(?:/effect-action)?[\"'];?",
+        register_diagnostic(
+          span = $statement,
+          message = "Use the app-owned Workspace Effect runner or action boundary instead of importing @deskohub/next-effect directly.",
+          severity = "error"
+        )
+      },
+      TsImportEqualsDeclaration() as $statement where {
+        $statement <: r".*require\(\s*[\"']@deskohub/next-effect(?:/effect-action)?[\"']\s*\).*",
+        register_diagnostic(
+          span = $statement,
+          message = "Use the app-owned Workspace Effect runner or action boundary instead of importing @deskohub/next-effect directly.",
+          severity = "error"
+        )
+      }
+    }
+  }
+}

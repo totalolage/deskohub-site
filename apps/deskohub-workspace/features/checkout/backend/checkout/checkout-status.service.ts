@@ -34,6 +34,7 @@ import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
+import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 
@@ -87,14 +88,18 @@ export interface CheckoutStatusService {
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<
     CheckoutStatusViewModel,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | PaymentLifecycleRepositoryError
+    | WorkspaceReservationDetailsMalformedError
   >;
   readonly refreshStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<
     CheckoutStatusViewModel,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | PaymentLifecycleRepositoryError
+    | WorkspaceReservationDetailsMalformedError
   >;
 }
 

@@ -33,7 +33,8 @@ export { normalizeSubmittedDiscountCode } from "./discount-code";
 export {
   DiscountCalculationError,
   type DiscountCalculationFailureReason,
-  DiscountClaimConflictError,
+  DiscountClaimError,
+  type DiscountClaimFailureReason,
   DiscountCodeUnavailableError,
   type DiscountCodeUnavailableReason,
   type DiscountError,

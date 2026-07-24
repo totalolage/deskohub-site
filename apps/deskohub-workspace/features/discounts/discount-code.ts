@@ -1,7 +1,10 @@
 import { Data, Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
-import { TemporalInstantSchema } from "@/shared/utils";
-import { canonicalDiscountCodeSchema } from "./contracts";
+import {
+  TemporalInstantSchema,
+  temporalInstantToIsoString,
+} from "@/shared/utils";
+import { canonicalDiscountCodeSchema, type Discount } from "./contracts";
 import { DiscountCodeUnavailableError } from "./errors";
 import {
   type DiscountCodeId,
@@ -24,6 +27,7 @@ export type DiscountCodeAvailability = {
   readonly customerAllowed: boolean;
   readonly activeUseCount: number;
   readonly customerHasRedeemed: boolean;
+  readonly customerHasReserved: boolean;
 };
 
 export class DiscountCodeConfigurationError extends Data.TaggedError(
@@ -33,6 +37,21 @@ export class DiscountCodeConfigurationError extends Data.TaggedError(
   readonly message: string;
   readonly cause: unknown;
 }> {}
+
+export const getDiscountCodeTiming = (
+  validUntil: Temporal.Instant | null
+): Pick<Discount, "expiresAt" | "countdownStartsAt"> => {
+  if (validUntil === null) {
+    return {};
+  }
+
+  return {
+    expiresAt: temporalInstantToIsoString(validUntil),
+    countdownStartsAt: temporalInstantToIsoString(
+      validUntil.subtract({ hours: 1 })
+    ),
+  };
+};
 
 export const normalizeSubmittedDiscountCode = Effect.fn(
   "DiscountCode.normalizeSubmitted"
@@ -128,6 +147,7 @@ const discountCodeAvailabilitySchema = Schema.Struct({
   customerAllowed: Schema.Boolean,
   activeUseCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   customerHasRedeemed: Schema.Boolean,
+  customerHasReserved: Schema.Boolean,
 });
 
 const uppercaseAscii = (value: string) =>

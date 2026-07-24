@@ -31,6 +31,7 @@ import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
+import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import {
   type WebhookEventIdentity,
   WebhookEventRepository,
@@ -129,6 +130,7 @@ export const NexiWebhookServiceLive = Layer.effect(
   Effect.gen(function* () {
     const webhookEvents = yield* WebhookEventRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
+    const paymentLifecycle = yield* PaymentLifecycleRepository;
     const reservations = yield* WorkspaceReservationRepository;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
@@ -435,7 +437,7 @@ export const NexiWebhookServiceLive = Layer.effect(
           if (verification.status === "success") {
             yield* Effect.logInfo("Nexi webhook paid transition started");
 
-            const transition = yield* paymentAttempts.markPaidForReservation({
+            const transition = yield* paymentLifecycle.markPaid({
               id: attempt.id,
               workspaceReservationId: reservation.id,
               webhookEventId: eventId,
@@ -481,16 +483,15 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
             yield* Effect.logInfo("Nexi webhook terminal transition started");
 
-            const transition =
-              yield* paymentAttempts.markTerminalForReservation({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-                state: terminalState,
-                failureCode: "nexi_payment_failed",
-                webhookEventId: eventId,
-                providerOperationId,
-                providerStatus,
-              });
+            const transition = yield* paymentLifecycle.markTerminal({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+              state: terminalState,
+              failureCode: "nexi_payment_failed",
+              webhookEventId: eventId,
+              providerOperationId,
+              providerStatus,
+            });
             if (transition.changed) {
               if (terminalState === "failed") {
                 yield* capturePaymentFailed({
@@ -576,6 +577,7 @@ export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PaymentLifecycleRepository.Live),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

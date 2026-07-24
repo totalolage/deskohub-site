@@ -157,23 +157,6 @@ export interface WorkspaceReservationRepository {
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
-  readonly markPaymentPaid: (input: {
-    readonly id: string;
-    readonly paymentAttemptId: string;
-    readonly paidAt: Temporal.Instant;
-  }) => Effect.Effect<
-    void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
-  >;
-  readonly markPaymentTerminal: (input: {
-    readonly id: string;
-    readonly paymentAttemptId: string;
-    readonly paymentState: "failed" | "cancelled" | "expired";
-    readonly failureCode: string;
-  }) => Effect.Effect<
-    void,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
-  >;
   readonly claimPaidFulfillment: (input: {
     readonly id: string;
     readonly staleProcessingBefore: Temporal.Instant;
@@ -688,65 +671,6 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "workspaceReservations.recordHoldCleanupSkipped",
           input.id,
           "Only unpaid expired held reservations can record skipped cleanup."
-        );
-      }),
-      markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")(
-        function* (input) {
-          const updated = yield* db
-            .update(workspaceReservations)
-            .set({
-              paymentState: "paid",
-              paidAt: input.paidAt,
-              failureCode: null,
-              updatedAt: Temporal.Now.instant(),
-            })
-            .where(
-              and(
-                eq(workspaceReservations.id, input.id),
-                eq(workspaceReservations.reservationState, "held"),
-                eq(workspaceReservations.paymentState, "pending"),
-                eq(
-                  workspaceReservations.activePaymentAttemptId,
-                  input.paymentAttemptId
-                )
-              )
-            )
-            .returning({ id: workspaceReservations.id });
-          yield* ensureUpdated(
-            updated,
-            "workspaceReservations.markPaymentPaid",
-            input.id,
-            "Only the active pending attempt on a held reservation can mark payment paid."
-          );
-        }
-      ),
-      markPaymentTerminal: Effect.fn(
-        "workspaceReservations.markPaymentTerminal"
-      )(function* (input) {
-        const updated = yield* db
-          .update(workspaceReservations)
-          .set({
-            paymentState: input.paymentState,
-            failureCode: input.failureCode,
-            updatedAt: Temporal.Now.instant(),
-          })
-          .where(
-            and(
-              eq(workspaceReservations.id, input.id),
-              eq(workspaceReservations.reservationState, "held"),
-              eq(workspaceReservations.paymentState, "pending"),
-              eq(
-                workspaceReservations.activePaymentAttemptId,
-                input.paymentAttemptId
-              )
-            )
-          )
-          .returning({ id: workspaceReservations.id });
-        yield* ensureUpdated(
-          updated,
-          "workspaceReservations.markPaymentTerminal",
-          input.id,
-          "Only the active pending attempt on a held reservation can mark payment terminal."
         );
       }),
       claimPaidFulfillment: Effect.fn(

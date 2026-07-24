@@ -15,10 +15,7 @@ import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "../payment/provider-payment-finalization.service";
-import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "../repositories/payment-attempt.repository";
+import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -64,7 +61,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
   ReservationHoldCleanupService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
-    const paymentAttempts = yield* PaymentAttemptRepository;
+    const paymentLifecycle = yield* PaymentLifecycleRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
     const posthogEvents = yield* PostHogEventService;
@@ -100,10 +97,18 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           yield* Effect.logInfo(
             "Reservation hold cancellation provider finalization started"
           );
-          const result = yield* finalization.finalizePendingProviderPayment({
-            orderId: active.id,
-            paymentAttemptId,
-          });
+          const result = yield* finalization
+            .finalizePendingProviderPayment({
+              orderId: active.id,
+              paymentAttemptId,
+            })
+            .pipe(
+              Effect.mapError(
+                ReservationHoldCleanupError.fromError(
+                  "Payment lifecycle finalization failed during hold cleanup."
+                )
+              )
+            );
           yield* Effect.annotateLogsScoped({
             providerFinalizationResult: result,
           });
@@ -138,8 +143,8 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Reservation hold cancellation expiring not-verifiable payment attempt"
             );
-            const expired = yield* paymentAttempts
-              .markTerminalForReservation({
+            const expired = yield* paymentLifecycle
+              .markTerminal({
                 id: paymentAttemptId,
                 workspaceReservationId: active.id,
                 state: "expired",
@@ -156,17 +161,24 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                     }
                   )
                 ),
-                Effect.result
+                Effect.catchTag("PaymentLifecycleStateError", () =>
+                  Effect.succeed(undefined)
+                ),
+                Effect.mapError(
+                  ReservationHoldCleanupError.fromError(
+                    "Payment attempt expiration failed during hold cleanup."
+                  )
+                )
               );
-            if (expired._tag === "Failure") {
+            if (!expired) {
               yield* Effect.logWarning(
-                "Reservation hold cancellation skipped: payment attempt expiration failed"
+                "Reservation hold cancellation skipped: payment attempt state changed"
               );
               yield* recordSkippedCleanupAttempt();
               return "skipped";
             }
             yield* Effect.annotateLogsScoped({
-              paymentAttemptExpirationChanged: expired.success.changed,
+              paymentAttemptExpirationChanged: expired.changed,
             });
             yield* Effect.logInfo(
               "Reservation hold cancellation expired not-verifiable payment attempt"
@@ -381,7 +393,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PaymentLifecycleRepository.Live),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

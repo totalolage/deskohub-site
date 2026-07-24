@@ -7,6 +7,7 @@ import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
+import { getDiscountCommitmentPayload } from "./commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
   canonicalDiscountCodeSchema,
@@ -887,7 +888,8 @@ describe("DiscountService", () => {
       providers
     );
 
-    expect(result.commitment).toEqual({
+    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+      product,
       applications: [
         {
           application: result.quote.discounts[0],
@@ -941,7 +943,8 @@ describe("DiscountService", () => {
     );
 
     expect(result.quote.discounts).toHaveLength(1);
-    expect(result.commitment).toEqual({
+    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+      product,
       applications: [
         {
           application: result.quote.discounts[0],
@@ -1001,7 +1004,10 @@ describe("DiscountService", () => {
     );
 
     expect(result.quote.discounts).toEqual([]);
-    expect(result.commitment).toEqual({ applications: [] });
+    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+      product,
+      applications: [],
+    });
   });
 
   test("keeps successful displayed discounts when another provider fails", async () => {

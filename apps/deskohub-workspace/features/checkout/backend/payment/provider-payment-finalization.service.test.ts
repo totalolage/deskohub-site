@@ -10,8 +10,23 @@ import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import {
+  type IPaymentLifecycleRepository,
+  PaymentLifecycleRepository,
+} from "../repositories/payment-lifecycle.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
+
+const paymentLifecycleLayer = (
+  overrides: Partial<IPaymentLifecycleRepository> = {}
+) =>
+  Layer.succeed(PaymentLifecycleRepository, {
+    createAttempt: () => Effect.die("not used"),
+    attachProviderSession: () => Effect.die("not used"),
+    markPaid: () => Effect.die("not used"),
+    markTerminal: () => Effect.die("not used"),
+    ...overrides,
+  });
 
 const paidNotStartedReservation = {
   id: "reservation-id",
@@ -110,6 +125,7 @@ describe("ProviderPaymentFinalizationService", () => {
                   PaymentAttemptRepository,
                   {} as PaymentAttemptRepositoryType
                 ),
+                paymentLifecycleLayer(),
                 Layer.succeed(PostHogEventService, {
                   capture: () => Effect.void,
                 }),
@@ -177,6 +193,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 PaymentAttemptRepository,
                 {} as PaymentAttemptRepositoryType
               ),
+              paymentLifecycleLayer(),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),
@@ -266,6 +283,10 @@ describe("ProviderPaymentFinalizationService", () => {
                   fulfillPaidOrder,
                 }),
                 Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+                paymentLifecycleLayer({
+                  markPaid: markPaidForReservation,
+                  markTerminal: markTerminalForReservation,
+                }),
                 Layer.succeed(PostHogEventService, {
                   capture: mock(() => Effect.void),
                 }),
@@ -356,6 +377,7 @@ describe("ProviderPaymentFinalizationService", () => {
                   Effect.succeed({ ...pendingAttempt, securityToken: null })
                 ),
               } as unknown as PaymentAttemptRepositoryType),
+              paymentLifecycleLayer(),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),
@@ -371,6 +393,72 @@ describe("ProviderPaymentFinalizationService", () => {
 
     expect(result).toBe("not_verifiable");
     expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+  });
+
+  test("propagates lifecycle persistence failures instead of returning not_pending", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "../fulfillment/paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+    const persistenceFailure = new EffectDrizzleQueryError({
+      query: "payment lifecycle paid transition",
+      params: [],
+      cause: "database unavailable",
+    });
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ProviderPaymentFinalizationService;
+      return yield* service.finalizePendingProviderPayment({
+        orderId: "reservation-id",
+        paymentAttemptId: "attempt-id",
+      });
+    }).pipe(
+      Effect.provide(
+        ProviderPaymentFinalizationServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(pendingReservation)),
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(WorkspacePaidFulfillmentService, {
+                fulfillPaidOrder: mock(() => Effect.void),
+              }),
+              Layer.succeed(PaymentAttemptRepository, {
+                findById: mock(() => Effect.succeed(pendingAttempt)),
+              } as unknown as PaymentAttemptRepositoryType),
+              paymentLifecycleLayer({
+                markPaid: mock(() => Effect.fail(persistenceFailure)),
+              }),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(NexiService, {
+                verifyPaymentOutcome: mock(() =>
+                  Effect.succeed(buildVerification("success"))
+                ),
+              } as unknown as NexiServiceType)
+            )
+          )
+        )
+      ),
+      Effect.result,
+      Effect.runPromise
+    );
+
+    expect(result).toMatchObject({ failure: persistenceFailure });
   });
 
   test("returns provider_verification_failed when Nexi verification errors", async () => {
@@ -423,9 +511,11 @@ describe("ProviderPaymentFinalizationService", () => {
               }),
               Layer.succeed(PaymentAttemptRepository, {
                 findById: mock(() => Effect.succeed(pendingAttempt)),
-                markPaidForReservation,
-                markTerminalForReservation,
               } as unknown as PaymentAttemptRepositoryType),
+              paymentLifecycleLayer({
+                markPaid: markPaidForReservation,
+                markTerminal: markTerminalForReservation,
+              }),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),

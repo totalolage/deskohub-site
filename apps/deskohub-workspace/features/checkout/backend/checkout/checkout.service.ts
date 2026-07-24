@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
-import { NexiService } from "@deskohub/nexi";
+import {
+  type ExternalAPIError as NexiExternalAPIError,
+  type NetworkError as NexiNetworkError,
+  NexiService,
+} from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
@@ -20,6 +24,7 @@ import {
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
+import type { DiscountCommitment } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CheckoutLegalAcceptanceSnapshot,
@@ -53,13 +58,18 @@ import {
   LegalEvidenceEventRepositoryLive,
 } from "../repositories/legal-evidence-event.repository";
 import {
+  type PaymentAttempt,
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
+import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { CheckoutPricingServiceLiveWithDependencies } from "./checkout-pricing.runtime";
-import { CheckoutPricingService } from "./checkout-pricing.service";
+import {
+  CheckoutPricingService,
+  type PaymentPriceAffirmation,
+} from "./checkout-pricing.service";
 import {
   type BuildSignedPayStateInput,
   getSignedPayStateCheckoutSummary,
@@ -257,6 +267,30 @@ const getCheckoutLegalEvidence = (input: {
   });
 };
 
+const getCheckoutDetails = (
+  prepared: PaymentPriceAffirmation,
+  locale: Locale,
+  legalEvidence: LegalEvidenceMap
+) =>
+  Match.value(prepared).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ quote, reservation }) =>
+        getCoworkCheckoutDetails({
+          locale,
+          reservation,
+          quote,
+          legalEvidence,
+        }),
+      "meeting-room": ({ quote, reservation }) =>
+        getMeetingRoomCheckoutDetails({
+          locale,
+          reservation,
+          quote,
+          legalEvidence,
+        }),
+    })
+  );
+
 const openFinalPayState: (
   payStateToken: string,
   locale: Locale
@@ -332,6 +366,15 @@ const mapCheckoutFailure = (cause: unknown) => {
 const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
+const isDefinitiveHostedPaymentPageFailure = (
+  cause: NexiExternalAPIError | NexiNetworkError
+) =>
+  cause._tag === "ExternalAPIError" &&
+  cause.statusCode !== undefined &&
+  cause.statusCode >= 400 &&
+  cause.statusCode < 500 &&
+  ![408, 409, 425, 429].includes(cause.statusCode);
+
 export const CheckoutServiceLive = Layer.effect(
   CheckoutService,
   Effect.gen(function* () {
@@ -339,10 +382,58 @@ export const CheckoutServiceLive = Layer.effect(
     const nexi = yield* NexiService;
     const reservations = yield* WorkspaceReservationRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
+    const paymentLifecycle = yield* PaymentLifecycleRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const posthogEvents = yield* PostHogEventService;
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
+
+    const handleHostedPaymentPageCreationFailure = Effect.fn(
+      "checkout.handleHostedPaymentPageCreationFailure"
+    )(
+      (input: {
+        readonly cause: NexiExternalAPIError | NexiNetworkError;
+        readonly attempt: PaymentAttempt;
+        readonly workspaceReservationId: string;
+      }) =>
+        Match.value(input.cause).pipe(
+          Match.when(isDefinitiveHostedPaymentPageFailure, () =>
+            Effect.gen(function* () {
+              const transition = yield* paymentLifecycle.markTerminal({
+                id: input.attempt.id,
+                workspaceReservationId: input.workspaceReservationId,
+                state: "failed",
+                failureCode: "nexi_hpp_create_failed",
+                providerStatus: "hpp_create_failed",
+              });
+
+              if (transition.changed) {
+                yield* capturePaymentFailed({
+                  attempt: transition.attempt,
+                  failureCode:
+                    transition.attempt.lastProviderStatus ??
+                    transition.attempt.failureCode ??
+                    "nexi_hpp_create_failed",
+                  failureReason: "nexi_hpp_create_failed",
+                  timestamp: transition.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              }
+            })
+          ),
+          Match.orElse(() =>
+            Effect.logError(
+              "Ambiguous hosted payment page creation failure retained the active attempt",
+              {
+                orderId: input.workspaceReservationId,
+                paymentAttemptId: input.attempt.id,
+                errorTag: input.cause._tag,
+              }
+            )
+          )
+        )
+    );
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -351,8 +442,17 @@ export const CheckoutServiceLive = Layer.effect(
         readonly checkoutSessionId?: string;
         readonly locale: Locale;
         readonly total: WorkspaceMoney;
+        readonly commitment: DiscountCommitment;
       }) {
-        yield* Effect.annotateLogsScoped({ providerSessionInput: input });
+        yield* Effect.annotateLogsScoped({
+          providerSessionInput: {
+            workspaceReservationId: input.workspaceReservationId,
+            correlationId: input.correlationId,
+            checkoutSessionId: input.checkoutSessionId,
+            locale: input.locale,
+            total: input.total,
+          },
+        });
         yield* Effect.logInfo("Checkout provider session start requested");
 
         yield* payableReservations.requireCurrent({
@@ -363,15 +463,7 @@ export const CheckoutServiceLive = Layer.effect(
           "Checkout provider session reservation revalidated"
         );
 
-        const attempt = yield* paymentAttempts.create({
-          workspaceReservationId: input.workspaceReservationId,
-          providerOrderId: generateNexiOrderId(),
-          amount: input.total,
-        });
-        yield* Effect.annotateLogsScoped({ attempt });
-        yield* Effect.logInfo("Checkout payment attempt created");
-
-        yield* Effect.logInfo("Nexi hosted payment page creation started");
+        const providerOrderId = generateNexiOrderId();
         const nexiAmount = yield* toNexiAmount(
           withWorkspaceMoneyCurrency(input.total, getNexiCurrencyOverride())
         ).pipe(
@@ -383,8 +475,30 @@ export const CheckoutServiceLive = Layer.effect(
               })
           )
         );
+        const notificationUrl = yield* getNotificationUrl;
+        const resultUrl = yield* getCheckoutOrderReturnUrl(
+          input.locale,
+          input.workspaceReservationId
+        );
+        const cancelUrl = yield* getCheckoutPaymentRetryUrl(
+          input.locale,
+          input.workspaceReservationId,
+          "cancelled"
+        );
         yield* Effect.annotateLogsScoped({ nexiAmount });
-        yield* Effect.logDebug("Checkout provider session amount encoded");
+        yield* Effect.logDebug("Checkout provider session inputs prepared");
+
+        const attempt = yield* paymentLifecycle.createAttempt({
+          workspaceReservationId: input.workspaceReservationId,
+          providerOrderId,
+          amount: input.total,
+          commitment: input.commitment,
+          locale: input.locale,
+        });
+        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.logInfo("Checkout payment attempt created");
+
+        yield* Effect.logInfo("Nexi hosted payment page creation started");
         const hostedPaymentPage = yield* nexi
           .createHostedPaymentPage({
             orderId: attempt.providerOrderId,
@@ -392,63 +506,25 @@ export const CheckoutServiceLive = Layer.effect(
             amount: nexiAmount.amount,
             currency: nexiAmount.currency,
             locale: input.locale,
-            notificationUrl: yield* getNotificationUrl,
-            resultUrl: yield* getCheckoutOrderReturnUrl(
-              input.locale,
-              input.workspaceReservationId
-            ),
-            cancelUrl: yield* getCheckoutPaymentRetryUrl(
-              input.locale,
-              input.workspaceReservationId,
-              "cancelled"
-            ),
+            notificationUrl,
+            resultUrl,
+            cancelUrl,
           })
           .pipe(
-            Effect.tapError(() =>
-              Effect.gen(function* () {
-                const transition =
-                  yield* paymentAttempts.markTerminalForReservation({
-                    id: attempt.id,
-                    workspaceReservationId: input.workspaceReservationId,
-                    state: "failed",
-                    failureCode: "nexi_hpp_create_failed",
-                    providerStatus: "hpp_create_failed",
-                  });
-
-                if (transition.changed) {
-                  yield* capturePaymentFailed({
-                    attempt: transition.attempt,
-                    failureCode:
-                      transition.attempt.lastProviderStatus ??
-                      transition.attempt.failureCode ??
-                      "nexi_hpp_create_failed",
-                    failureReason: "nexi_hpp_create_failed",
-                    timestamp: transition.timestamp,
-                  }).pipe(
-                    Effect.provideService(PostHogEventService, posthogEvents)
-                  );
-                }
-              }).pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Payment attempt terminal marker failed after checkout creation failure",
-                    {
-                      orderId: input.workspaceReservationId,
-                      paymentAttemptId: attempt.id,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              )
+            Effect.tapError((cause) =>
+              handleHostedPaymentPageCreationFailure({
+                cause,
+                attempt,
+                workspaceReservationId: input.workspaceReservationId,
+              })
             )
           );
         yield* Effect.annotateLogsScoped({ hostedPaymentPage });
         yield* Effect.logInfo("Nexi hosted payment page creation completed");
 
         yield* Effect.logInfo("Checkout hosted payment page attach started");
-        const attachedAttempt = yield* paymentAttempts
-          .attachHostedPaymentPage({
+        const attachedAttempt = yield* paymentLifecycle
+          .attachProviderSession({
             id: attempt.id,
             securityToken: hostedPaymentPage.securityToken,
             providerRedirectUrl: hostedPaymentPage.hostedPage,
@@ -696,23 +772,10 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalDocuments,
           });
-          const checkoutDetails = Match.value(prepared).pipe(
-            Match.discriminatorsExhaustive("kind")({
-              cowork: ({ quote, reservation: freshReservation }) =>
-                getCoworkCheckoutDetails({
-                  locale,
-                  reservation: freshReservation,
-                  quote,
-                  legalEvidence,
-                }),
-              "meeting-room": ({ quote, reservation: freshReservation }) =>
-                getMeetingRoomCheckoutDetails({
-                  locale,
-                  reservation: freshReservation,
-                  quote,
-                  legalEvidence,
-                }),
-            })
+          const checkoutDetails = getCheckoutDetails(
+            prepared,
+            locale,
+            legalEvidence
           );
           yield* Effect.annotateLogsScoped({ legalEvidence, checkoutDetails });
           yield* Effect.logInfo(
@@ -728,7 +791,8 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout legal evidence recorded"
           );
 
-          if (!reservation.dotyposReservationId) {
+          const dotyposReservationId = reservation.dotyposReservationId;
+          if (!dotyposReservationId) {
             return yield* new CheckoutError({
               message:
                 "Held reservation is missing its Dotypos reservation ID.",
@@ -736,7 +800,7 @@ export const CheckoutServiceLive = Layer.effect(
           }
 
           yield* dotypos.updateReservation({
-            reservationId: reservation.dotyposReservationId,
+            reservationId: dotyposReservationId,
             note: formatWorkspaceReservationNote({
               paymentOrderId: reservation.id,
               checkoutDetails,
@@ -753,7 +817,68 @@ export const CheckoutServiceLive = Layer.effect(
             checkoutSessionId: state.checkoutSessionId,
             locale,
             total: prepared.quote.payment.expectedPrice,
-          });
+            commitment: prepared.commitment,
+          }).pipe(
+            Effect.catchTag("DiscountClaimError", (cause) =>
+              Effect.gen(function* () {
+                yield* Effect.logError(
+                  "Accepted discount claim admission changed the payable price",
+                  {
+                    discountBoundary: "claim_admission",
+                    discountOperation: cause.operation,
+                    discountErrorReason: cause.reason,
+                  }
+                );
+                const refreshed = yield* pricing.affirmForPayment({
+                  ...state,
+                  dotyposCustomerId,
+                  locale,
+                });
+                const refreshedSummary = Match.value(refreshed).pipe(
+                  Match.discriminatorsExhaustive("kind")({
+                    cowork: ({ quote }) => quote.summary,
+                    "meeting-room": ({ quote }) =>
+                      getMeetingRoomCheckoutSummary(quote),
+                  })
+                );
+                const changedKeys = getCheckoutSummaryChangedKeys(
+                  acceptedSummary,
+                  refreshedSummary
+                );
+                const refreshedCheckoutDetails = getCheckoutDetails(
+                  refreshed,
+                  locale,
+                  legalEvidence
+                );
+                yield* dotypos.updateReservation({
+                  reservationId: dotyposReservationId,
+                  note: formatWorkspaceReservationNote({
+                    paymentOrderId: reservation.id,
+                    checkoutDetails: refreshedCheckoutDetails,
+                    reservation: refreshedCheckoutDetails.reservation,
+                  }),
+                });
+                const freshPayUrl = yield* getFreshPayUrl({
+                  ...refreshed,
+                  locale,
+                  orderId: reservation.id,
+                  checkoutSessionId: state.checkoutSessionId,
+                  ...getSignedPayStateSubmittedCode(
+                    state,
+                    refreshed.quote.payment.discounts
+                  ),
+                  changedKeys,
+                });
+
+                return {
+                  status: "pricing_changed" as const,
+                  changedKeys,
+                  freshSummary: refreshedSummary,
+                  freshPayUrl,
+                };
+              })
+            )
+          );
         },
         (effect, input, locale) =>
           effect.pipe(
@@ -773,6 +898,7 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(PayableReservationService.Live),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),
+  Layer.provide(PaymentLifecycleRepository.Live),
   Layer.provide(PaymentAttemptRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),

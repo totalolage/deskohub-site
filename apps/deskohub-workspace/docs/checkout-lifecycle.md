@@ -393,6 +393,12 @@ sequenceDiagram
   end
 ```
 
+A definitive Nexi HPP rejection atomically marks the attempt failed and releases
+its reserved code claim. A network, retryable provider, conflict, rate-limit, or
+otherwise ambiguous creation/attachment failure retains the created attempt and
+reserved claim. That active attempt blocks a second charge while webhook,
+return/status reconciliation, and hold cleanup determine the terminal outcome.
+
 ### Webhook Success And Dotypos Confirmation
 
 ```mermaid

@@ -23,6 +23,12 @@
   "formatter": {
     "indentStyle": "space"
   },
+  "plugins": [
+    "./lint/no-direct-effect-runs.grit",
+    "./lint/no-direct-next-effect-imports.grit",
+    "./lint/no-direct-process-env.grit",
+    "./lint/no-double-type-assertions.grit"
+  ],
   "linter": {
     "rules": {
       "recommended": true,

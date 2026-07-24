@@ -1,0 +1,17 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    TsAsExpression() as $assertion where {
+      $assertion <: r".*\sas\s+unknown\s+as\s+.*",
+      register_diagnostic(
+        span = $assertion,
+        message = "Do not launder a value through chained type assertions. Model or validate the value so its type is inferred.",
+        severity = "error"
+      )
+    }
+  }
+}

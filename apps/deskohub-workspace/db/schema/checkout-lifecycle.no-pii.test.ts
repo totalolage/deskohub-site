@@ -66,28 +66,28 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const reservationRepository = await readAppFile(
       "features/reservation/backend/workspace-reservation.repository.ts"
     );
-    const paymentAttemptRepository = await readAppFile(
-      "features/checkout/backend/repositories/payment-attempt.repository.ts"
+    const paymentLifecycleRepository = await readAppFile(
+      "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
     );
 
     expect(reservationRepository).toContain(
       'eq(workspaceReservations.reservationState, "cancelling")'
     );
     expect(reservationRepository).toContain(
-      'eq(workspaceReservations.paymentState, "pending")'
-    );
-    expect(reservationRepository).toContain(
       "workspaceReservations.reservationConfirmedAt} is null"
     );
-    expect(reservationRepository).toContain(
+    expect(paymentLifecycleRepository).toContain(
       "workspaceReservations.activePaymentAttemptId"
     );
-    expect(paymentAttemptRepository).toContain(
-      'inArray(paymentAttempts.state, ["created", "pending"])'
+    expect(paymentLifecycleRepository).toContain(
+      'eq(workspaceReservations.paymentState, "pending")'
     );
-    expect(paymentAttemptRepository).toContain(
-      'eq(paymentAttempts.state, "pending")'
+    expect(paymentLifecycleRepository).toContain(
+      "inArray(paymentAttempts.state"
     );
+    expect(paymentLifecycleRepository).toContain('"created"');
+    expect(paymentLifecycleRepository).toContain('"pending"');
+    expect(paymentLifecycleRepository).toContain('"paid"');
   });
 
   test("webhook duplicate handling is retry-safe", async () => {
@@ -112,12 +112,14 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/checkout/backend/payment/nexi-webhook.service.ts"
     );
     const repository = await readAppFile(
-      "features/checkout/backend/repositories/payment-attempt.repository.ts"
+      "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
     );
 
-    expect(source).toContain("paymentAttempts.markPaidForReservation");
-    expect(source).toContain("paymentAttempts.markTerminalForReservation");
-    expect(repository).toContain("db.transaction(");
+    expect(source).toContain("paymentLifecycle.markPaid");
+    expect(source).toContain("paymentLifecycle.markTerminal");
+    expect(repository).toContain(".transaction(");
+    expect(repository).toContain("yield* redeemCodeClaim");
+    expect(repository).toContain("yield* releaseCodeClaim");
     expect(repository).toContain(
       "Only the active pending attempt on a held reservation can mark payment paid."
     );
