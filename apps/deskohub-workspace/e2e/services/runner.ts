@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { DatasourceConfig } from "../config";
+import type { E2EEnvironment } from "../e2e-env";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
@@ -118,37 +119,39 @@ export class WorkspaceE2ERunnerService extends Context.Service<
   );
 }
 
-const E2ETelemetryLive = E2ETelemetryService.Live.pipe(
-  Layer.provideMerge(E2ERunContextService.Live)
-);
-
-const WorkspaceE2ECoreLive = Layer.mergeAll(
-  FetchHttpClient.layer,
-  WorkspaceE2EPathService.Live,
-  WorkspaceE2ERedactionService.Live,
-  WorkspaceE2EConfigService.Live,
-  WorkspaceE2ECleanupService.Live,
-  E2ETelemetryLive
-);
-
-const WorkspaceE2ECaseLive = WorkspaceE2ECaseService.Live.pipe(
-  Layer.provideMerge(WorkspaceE2ECoreLive)
-);
-
-const WorkspaceE2EEnvFileLive = WorkspaceE2EEnvFileService.Live.pipe(
-  Layer.provideMerge(WorkspaceE2ECaseLive)
-);
-
-const WorkspaceE2ECommandRunnerLive =
-  WorkspaceE2ECommandRunnerService.Live.pipe(
-    Layer.provideMerge(WorkspaceE2EEnvFileLive)
+export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
+  const E2ETelemetryLive = E2ETelemetryService.Live.pipe(
+    Layer.provideMerge(E2ERunContextService.layer(environment))
   );
 
-const WorkspaceE2EPreviewReadinessLive =
-  WorkspaceE2EPreviewReadinessService.Live.pipe(
-    Layer.provideMerge(WorkspaceE2ECommandRunnerLive)
+  const WorkspaceE2ECoreLive = Layer.mergeAll(
+    FetchHttpClient.layer,
+    WorkspaceE2EPathService.Live,
+    WorkspaceE2ERedactionService.Live,
+    WorkspaceE2EConfigService.Live,
+    WorkspaceE2ECleanupService.Live,
+    E2ETelemetryLive
   );
 
-export const WorkspaceE2ELive = WorkspaceE2ERunnerService.Live.pipe(
-  Layer.provide(WorkspaceE2EPreviewReadinessLive)
-);
+  const WorkspaceE2ECaseLive = WorkspaceE2ECaseService.Live.pipe(
+    Layer.provideMerge(WorkspaceE2ECoreLive)
+  );
+
+  const WorkspaceE2EEnvFileLive = WorkspaceE2EEnvFileService.Live.pipe(
+    Layer.provideMerge(WorkspaceE2ECaseLive)
+  );
+
+  const WorkspaceE2ECommandRunnerLive =
+    WorkspaceE2ECommandRunnerService.Live.pipe(
+      Layer.provideMerge(WorkspaceE2EEnvFileLive)
+    );
+
+  const WorkspaceE2EPreviewReadinessLive =
+    WorkspaceE2EPreviewReadinessService.Live.pipe(
+      Layer.provideMerge(WorkspaceE2ECommandRunnerLive)
+    );
+
+  return WorkspaceE2ERunnerService.Live.pipe(
+    Layer.provide(WorkspaceE2EPreviewReadinessLive)
+  );
+};

@@ -7,14 +7,15 @@ import {
   startBrowserDiagnostics,
   stopBrowserHar,
 } from "./browser";
-import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
+import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import {
   type E2EOutcome,
+  type E2EResult,
   type E2ETelemetry,
   E2ETelemetryService,
-  toE2EOutcome,
+  toE2EResult,
 } from "./services/telemetry";
 import {
   formatWorkspaceE2EDuration,
@@ -26,13 +27,20 @@ import type {
   WorkspaceE2EStepRunner,
 } from "./types";
 
+const e2eOutcomeStatus: Record<E2EOutcome, string> = {
+  cancelled: "CANCEL",
+  failed: "FAIL",
+  passed: "PASS",
+  timed_out: "TIMEOUT",
+};
+
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
   browserHarStarted: boolean;
   browserHarStopped: boolean;
   durationMs?: number;
   failureCause?: Cause.Cause<WorkspaceE2EError>;
-  outcome?: E2EOutcome;
+  result?: E2EResult;
   readonly session: string;
   readonly testCase: WorkspaceE2ECase;
 };
@@ -109,7 +117,7 @@ const runCase = (
         duration: `${getWorkspaceE2ETimeoutMs("browserAction")} millis`,
         orElse: () =>
           Effect.fail(
-            workspaceE2EError(
+            workspaceE2ETimeoutError(
               `Timed out starting browser diagnostics for ${runtime.testCase.id}`,
               { operation: `${runtime.testCase.id} browser diagnostics` }
             )
@@ -122,7 +130,7 @@ const runCase = (
       duration: `${runtime.testCase.timeoutMs} millis`,
       orElse: () =>
         Effect.fail(
-          workspaceE2EError(
+          workspaceE2ETimeoutError(
             `Timed out running ${runtime.testCase.id} e2e case after ${formatWorkspaceE2EDuration(runtime.testCase.timeoutMs)}`,
             { operation: `${runtime.testCase.id} e2e case` }
           )
@@ -136,7 +144,7 @@ const runCase = (
     Effect.onExit((exit) =>
       Effect.sync(() => {
         runtime.durationMs = Date.now() - startedAt;
-        runtime.outcome = toE2EOutcome(exit);
+        runtime.result = toE2EResult(exit);
       })
     )
   );
@@ -163,7 +171,7 @@ const makeStepRunner =
             duration: `${timeoutMs} millis`,
             orElse: () =>
               Effect.fail(
-                workspaceE2EError(
+                workspaceE2ETimeoutError(
                   `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
                   { operation }
                 )
@@ -175,21 +183,17 @@ const makeStepRunner =
         Effect.gen(function* () {
           const durationMs = Date.now() - startedAt;
           const elapsed = formatWorkspaceE2EDuration(durationMs);
-          const outcome = toE2EOutcome(exit);
-          const status =
-            outcome === "passed"
-              ? "PASS"
-              : outcome === "cancelled"
-                ? "CANCEL"
-                : "FAIL";
+          const result = toE2EResult(exit);
+          const { outcome } = result;
+          const status = e2eOutcomeStatus[outcome];
           log(`STEP ${status} ${operation} (${elapsed})`);
           yield* telemetry.record({
             caseId,
             durationMs,
-            outcome,
             phase: "finished",
             scope: "step",
             stepId: id,
+            ...result,
           });
         })
       )
@@ -258,23 +262,21 @@ const finalizeCaseRuntime = (
     );
 
     const durationMs = runtime.durationMs ?? 0;
-    const outcome =
-      failures.length > 0 ? "failed" : (runtime.outcome ?? "cancelled");
-    const status =
-      outcome === "passed"
-        ? "PASS"
-        : outcome === "cancelled"
-          ? "CANCEL"
-          : "FAIL";
+    const result: E2EResult =
+      failures.length > 0
+        ? { failureKind: "error", outcome: "failed" }
+        : (runtime.result ?? { outcome: "cancelled" });
+    const { outcome } = result;
+    const status = e2eOutcomeStatus[outcome];
     log(
       `CASE ${status} ${runtime.testCase.id} (${formatWorkspaceE2EDuration(durationMs)})`
     );
     yield* telemetry.record({
       caseId: runtime.testCase.id,
       durationMs,
-      outcome,
       phase: "finished",
       scope: "case",
+      ...result,
     });
 
     if (failures.length > 0)
@@ -295,7 +297,9 @@ const runFinalizer = <A>(
       duration: `${getWorkspaceE2ETimeoutMs("cleanupAction")} millis`,
       orElse: () =>
         Effect.fail(
-          workspaceE2EError(`Timed out running ${operation}`, { operation })
+          workspaceE2ETimeoutError(`Timed out running ${operation}`, {
+            operation,
+          })
         ),
     }),
     Effect.asVoid

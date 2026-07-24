@@ -1,21 +1,25 @@
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
+import { makeE2EEnvironment } from "./e2e-env";
 import { makeE2ETelemetryRuntime } from "./telemetry-runtime";
 
 describe("E2E telemetry runtime", () => {
   test("keeps local E2E runnable without PostHog configuration", async () => {
-    const runtime = makeE2ETelemetryRuntime({});
+    const runtime = makeE2ETelemetryRuntime(makeE2EEnvironment({}));
 
     expect(runtime.telemetryEnabled).toBe(false);
-    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    await expect(Effect.runPromise(runtime.shutdown)).resolves.toBeUndefined();
   });
 
   test("accepts the dedicated E2E PostHog configuration", async () => {
-    const runtime = makeE2ETelemetryRuntime({
-      WORKSPACE_E2E_POSTHOG_HOST: "https://us.i.posthog.com",
-      WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: "phc_test",
-    });
+    const runtime = makeE2ETelemetryRuntime(
+      makeE2EEnvironment({
+        WORKSPACE_E2E_POSTHOG_HOST: "https://us.i.posthog.com",
+        WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: "phc_test",
+      })
+    );
 
     expect(runtime.telemetryEnabled).toBe(true);
-    await expect(runtime.shutdown()).resolves.toBeUndefined();
+    await expect(Effect.runPromise(runtime.shutdown)).resolves.toBeUndefined();
   });
 });

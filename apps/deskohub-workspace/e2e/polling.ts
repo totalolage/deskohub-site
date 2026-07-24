@@ -1,5 +1,5 @@
 import { Effect, Schedule } from "effect";
-import { type WorkspaceE2EError, workspaceE2EError } from "./errors";
+import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import { formatWorkspaceE2EDuration } from "./timeouts";
 
 export const pollUntil = <A, E, R>(
@@ -14,7 +14,7 @@ export const pollUntil = <A, E, R>(
     const startedAt = Date.now();
     let attempts = 0;
     const timeoutError = () =>
-      workspaceE2EError(
+      workspaceE2ETimeoutError(
         `Timed out waiting for ${options.label} after ${attempts} attempts (${formatWorkspaceE2EDuration(Date.now() - startedAt)})`,
         { operation: options.label }
       );

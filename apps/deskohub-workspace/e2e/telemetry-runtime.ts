@@ -8,6 +8,7 @@ import {
   createPostHogLoggerProvider,
   flushPostHogLogs,
 } from "../shared/backend/logging/posthog-otel";
+import type { E2EEnvironment } from "./e2e-env";
 import { loadEnvFile, workspaceDir } from "./runtime";
 
 const telemetryShutdownTimeoutMs = 5_000;
@@ -15,9 +16,7 @@ const telemetryShutdownTimeoutMs = 5_000;
 export const loadLocalE2EEnvironment = () =>
   Effect.runPromise(loadEnvFile(resolve(workspaceDir, ".env.local")));
 
-export const makeE2ETelemetryRuntime = (
-  environment: NodeJS.ProcessEnv = process.env
-) => {
+export const makeE2ETelemetryRuntime = (environment: E2EEnvironment) => {
   const provider = createPostHogLoggerProvider({
     posthogHost:
       environment.WORKSPACE_E2E_POSTHOG_HOST ??
@@ -35,14 +34,21 @@ export const makeE2ETelemetryRuntime = (
     loggerLayer: provider
       ? createWorkspaceOtelLoggerLive(provider)
       : WorkspaceLoggerLive,
-    shutdown: async () => {
-      if (!provider) return;
-      await flushPostHogLogs({
-        provider,
-        timeoutMs: telemetryShutdownTimeoutMs,
-      });
-      await settleWithin(provider.shutdown(), telemetryShutdownTimeoutMs);
-    },
+    shutdown: provider
+      ? Effect.tryPromise({
+          catch: (cause) => cause,
+          try: async () => {
+            await flushPostHogLogs({
+              provider,
+              timeoutMs: telemetryShutdownTimeoutMs,
+            });
+            await provider.shutdown();
+          },
+        }).pipe(
+          Effect.timeout(`${telemetryShutdownTimeoutMs} millis`),
+          Effect.ignoreCause
+        )
+      : Effect.void,
     telemetryEnabled: provider !== undefined,
   };
 };
@@ -51,14 +57,3 @@ export const runE2EEffect = <A, E>(
   effect: Effect.Effect<A, E>,
   loggerLayer: Layer.Layer<never>
 ) => Effect.runPromiseExit(effect.pipe(Effect.provide(loggerLayer)));
-
-const settleWithin = async (task: Promise<void>, timeoutMs: number) => {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([
-    task.catch(() => undefined),
-    new Promise<void>((resolve) => {
-      timeout = setTimeout(resolve, timeoutMs);
-    }),
-  ]);
-  if (timeout) clearTimeout(timeout);
-};

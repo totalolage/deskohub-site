@@ -199,10 +199,18 @@ test("reports the semantic step that timed out", async () => {
         },
         expect.objectContaining({
           caseId: "checkout-timeout",
-          outcome: "failed",
+          failureKind: "timeout",
+          outcome: "timed_out",
           phase: "finished",
           scope: "step",
           stepId: "wait-for-provider",
+        }),
+        expect.objectContaining({
+          caseId: "checkout-timeout",
+          failureKind: "timeout",
+          outcome: "timed_out",
+          phase: "finished",
+          scope: "case",
         }),
       ])
     );

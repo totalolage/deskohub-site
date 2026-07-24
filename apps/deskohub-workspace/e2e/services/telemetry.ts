@@ -1,8 +1,29 @@
 import { randomUUID } from "node:crypto";
-import { Cause, Context, Effect, Exit, Layer } from "effect";
+import { Cause, Context, Effect, Exit, Layer, Option } from "effect";
+import type { E2EEnvironment } from "../e2e-env";
+import { isWorkspaceE2ETimeout } from "../errors";
 
 export type E2EExecutionContext = "ci" | "manual";
-export type E2EOutcome = "cancelled" | "failed" | "passed";
+export type E2EOutcome = "cancelled" | "failed" | "passed" | "timed_out";
+export type E2EFailureKind = "defect" | "error" | "timeout";
+
+export type E2EResult =
+  | {
+      readonly outcome: "cancelled" | "passed";
+    }
+  | {
+      readonly failureKind: Exclude<E2EFailureKind, "timeout">;
+      readonly outcome: "failed";
+    }
+  | {
+      readonly failureKind: "timeout";
+      readonly outcome: "timed_out";
+    };
+
+type E2EFinishedEvent = {
+  readonly durationMs: number;
+  readonly phase: "finished";
+} & E2EResult;
 
 export type E2ERunContext = {
   readonly executionContext: E2EExecutionContext;
@@ -18,38 +39,29 @@ export type E2ETelemetryEvent =
       readonly phase: "started";
       readonly scope: "run";
     }
-  | {
-      readonly durationMs: number;
-      readonly outcome: E2EOutcome;
-      readonly phase: "finished";
+  | (E2EFinishedEvent & {
       readonly scope: "run";
-    }
+    })
   | {
       readonly caseId: string;
       readonly phase: "started";
       readonly scope: "case";
     }
-  | {
+  | (E2EFinishedEvent & {
       readonly caseId: string;
-      readonly durationMs: number;
-      readonly outcome: E2EOutcome;
-      readonly phase: "finished";
       readonly scope: "case";
-    }
+    })
   | {
       readonly caseId: string;
       readonly phase: "started";
       readonly scope: "step";
       readonly stepId: string;
     }
-  | {
+  | (E2EFinishedEvent & {
       readonly caseId: string;
-      readonly durationMs: number;
-      readonly outcome: E2EOutcome;
-      readonly phase: "finished";
       readonly scope: "step";
       readonly stepId: string;
-    };
+    });
 
 interface IE2ERunContextService {
   readonly value: E2ERunContext;
@@ -59,9 +71,10 @@ export class E2ERunContextService extends Context.Service<
   E2ERunContextService,
   IE2ERunContextService
 >()("E2ERunContextService") {
-  static Live = Layer.sync(this, () => ({
-    value: makeE2ERunContext(process.env),
-  }));
+  static layer = (environment: E2EEnvironment) =>
+    Layer.sync(this, () => ({
+      value: makeE2ERunContext(environment),
+    }));
 }
 
 export interface E2ETelemetry {
@@ -88,7 +101,7 @@ export class E2ETelemetryService extends Context.Service<
 }
 
 export const makeE2ERunContext = (
-  environment: NodeJS.ProcessEnv,
+  environment: E2EEnvironment,
   makeManualRunId: () => string = () => randomUUID()
 ): E2ERunContext => {
   const executionContext = parseE2EExecutionContext(
@@ -96,10 +109,10 @@ export const makeE2ERunContext = (
     environment.GITHUB_ACTIONS,
     environment.GITHUB_EVENT_NAME
   );
-  const githubRunId = nonEmpty(environment.GITHUB_RUN_ID);
-  const githubRunAttempt = positiveInteger(environment.GITHUB_RUN_ATTEMPT);
-  const prNumber = positiveInteger(environment.WORKSPACE_E2E_PR_NUMBER);
-  const targetSha = fullCommitSha(environment.TARGET_SHA);
+  const githubRunId = environment.GITHUB_RUN_ID;
+  const githubRunAttempt = environment.GITHUB_RUN_ATTEMPT;
+  const prNumber = environment.WORKSPACE_E2E_PR_NUMBER;
+  const targetSha = environment.TARGET_SHA;
   const runId =
     githubRunId && githubRunAttempt
       ? `${githubRunId}-${githubRunAttempt}`
@@ -115,29 +128,31 @@ export const makeE2ERunContext = (
   };
 };
 
-export const parseE2EExecutionContext = (
-  value: string | undefined,
-  githubActions: string | undefined,
-  githubEventName?: string
+const parseE2EExecutionContext = (
+  value: E2EEnvironment["WORKSPACE_E2E_EXECUTION_CONTEXT"],
+  githubActions: E2EEnvironment["GITHUB_ACTIONS"],
+  githubEventName: E2EEnvironment["GITHUB_EVENT_NAME"]
 ): E2EExecutionContext => {
-  const normalized = nonEmpty(value);
-  if (normalized === "ci" || normalized === "manual") return normalized;
-  if (normalized) {
-    throw new Error(
-      "WORKSPACE_E2E_EXECUTION_CONTEXT must be either 'manual' or 'ci'"
-    );
-  }
+  if (value) return value;
   if (githubActions === "true")
     return githubEventName === "workflow_dispatch" ? "manual" : "ci";
   return "manual";
 };
 
-export const toE2EOutcome = <A, E>(exit: Exit.Exit<A, E>): E2EOutcome =>
-  Exit.isSuccess(exit)
-    ? "passed"
-    : Cause.hasInterruptsOnly(exit.cause)
-      ? "cancelled"
-      : "failed";
+export const toE2EResult = <A, E>(exit: Exit.Exit<A, E>): E2EResult => {
+  if (Exit.isSuccess(exit)) return { outcome: "passed" };
+  if (Cause.hasInterruptsOnly(exit.cause)) return { outcome: "cancelled" };
+
+  const error = Cause.findErrorOption(exit.cause);
+  if (Option.isSome(error) && isWorkspaceE2ETimeout(error.value)) {
+    return { failureKind: "timeout", outcome: "timed_out" };
+  }
+
+  return {
+    failureKind: Cause.hasDies(exit.cause) ? "defect" : "error",
+    outcome: "failed",
+  };
+};
 
 export const withE2ERunTelemetry = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
@@ -151,9 +166,9 @@ export const withE2ERunTelemetry = <A, E, R>(
       Effect.onExit((exit) =>
         telemetry.record({
           durationMs: now() - startedAt,
-          outcome: toE2EOutcome(exit),
           phase: "finished",
           scope: "run",
+          ...toE2EResult(exit),
         })
       )
     );
@@ -169,6 +184,7 @@ export const toE2ETelemetryAnnotations = (
   "e2e.scope": event.scope,
   "e2e.phase": event.phase,
   ...("outcome" in event ? { "e2e.outcome": event.outcome } : {}),
+  ...("failureKind" in event ? { "e2e.failure.kind": event.failureKind } : {}),
   ...("durationMs" in event
     ? { "e2e.duration_ms": Math.max(0, Math.round(event.durationMs)) }
     : {}),
@@ -185,27 +201,3 @@ export const toE2ETelemetryAnnotations = (
     : {}),
   ...(runContext.targetSha ? { "git.commit.sha": runContext.targetSha } : {}),
 });
-
-const nonEmpty = (value: string | undefined) => {
-  const normalized = value?.trim();
-  return normalized ? normalized : undefined;
-};
-
-const positiveInteger = (value: string | undefined) => {
-  const normalized = nonEmpty(value);
-  if (!normalized) return undefined;
-  const number = Number(normalized);
-  if (!Number.isSafeInteger(number) || number <= 0) {
-    throw new Error("Workspace E2E numeric telemetry context is invalid");
-  }
-  return number;
-};
-
-const fullCommitSha = (value: string | undefined) => {
-  const normalized = nonEmpty(value);
-  if (!normalized) return undefined;
-  if (!/^[0-9a-f]{40}$/.test(normalized)) {
-    throw new Error("TARGET_SHA must be a full lowercase Git commit SHA");
-  }
-  return normalized;
-};
