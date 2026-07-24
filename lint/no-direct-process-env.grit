@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:app|db|features|shared)/.*\.(?:ts|tsx)$|.*apps/deskohub-workspace/proxy\.ts$",
+  not $name <: r".*\.(?:test|test-utils)\.(?:ts|tsx)$",
+  not $name <: r".*apps/deskohub-workspace/shared/backend/logging/censorship\.ts$",
+  not $name <: r".*apps/deskohub-workspace/shared/testing/.*",
+  $body <: contains bubble {
+    or {
+      `process.env.$property` as $access where {
+        $property <: not `NODE_ENV`
+      },
+      `process.env[$_]` as $access
+    } where {
+      register_diagnostic(
+        span = $access,
+        message = "Use the typed Workspace env from '@/env'; direct process.env access belongs only in the environment adapter or test setup.",
+        severity = "error"
+      )
+    }
+  }
+}
