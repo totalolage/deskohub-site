@@ -5,20 +5,14 @@ import {
   beforeEach,
   describe,
   expect,
-  mock,
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import { workspaceUseFeatureFlagEnabled as useFeatureFlagEnabled } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-
-const useFeatureFlagEnabled = mock();
-
-mock.module("@/features/feature-flags/react", () => ({
-  useFeatureFlagEnabled,
-}));
 
 describe("MeetingRoomPageFeature", () => {
   beforeAll(() => {

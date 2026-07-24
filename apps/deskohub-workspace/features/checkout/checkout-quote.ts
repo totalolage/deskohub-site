@@ -13,7 +13,6 @@ import {
   addWorkspaceMoney,
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
-  withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
@@ -261,18 +260,13 @@ export const calculateCoworkReservationQuote = Effect.fn(
   order: CoworkReservationQuoteOrderInput,
   options: {
     readonly discountQuote?: DiscountQuote;
-    readonly currencyOverride?: string;
   } = {}
 ) {
   const normalizedOrder = yield* normalizeCoworkReservationQuoteOrder(order);
   const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
-  const productPrice = withWorkspaceMoneyCurrency(
-    product.price,
-    options.currencyOverride
-  );
-  const coffeePrice = withWorkspaceMoneyCurrency(
-    getWorkspaceProductCoffeeLinePriceForTier(normalizedOrder.entryTier),
-    options.currencyOverride
+  const productPrice = product.price;
+  const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(
+    normalizedOrder.entryTier
   );
   const productIdentity = workspaceCoworkProductIdentitySchema.make({
     kind: "cowork",

@@ -4,12 +4,28 @@ import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
-  type PaymentAttempt,
+  type PaymentAttemptRow,
   type PaymentState,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+
+const withPaymentAttemptAmount = (attempt: PaymentAttemptRow) => {
+  const { amountExponent, amountValue, currency, ...paymentAttempt } = attempt;
+
+  return {
+    ...paymentAttempt,
+    amount: {
+      value: amountValue,
+      exponent: amountExponent,
+      currency,
+    },
+  };
+};
+
+export type PaymentAttempt = ReturnType<typeof withPaymentAttemptAmount>;
 
 export class PaymentAttemptStateError extends Data.TaggedError(
   "PaymentAttemptStateError"
@@ -29,9 +45,7 @@ export interface PaymentAttemptRepository {
   readonly create: (input: {
     readonly workspaceReservationId: string;
     readonly providerOrderId: string;
-    readonly amountValue: number;
-    readonly amountExponent: number;
-    readonly currency: string;
+    readonly amount: WorkspaceMoney;
   }) => Effect.Effect<
     PaymentAttempt,
     EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
@@ -114,9 +128,9 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                 provider: "nexi",
                 providerOrderId: input.providerOrderId,
                 state: "created",
-                amountValue: input.amountValue,
-                amountExponent: input.amountExponent,
-                currency: input.currency,
+                amountValue: input.amount.value,
+                amountExponent: input.amount.exponent,
+                currency: input.amount.currency,
               })
               .returning();
 
@@ -156,7 +170,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               });
             }
 
-            return attempt;
+            return withPaymentAttemptAmount(attempt);
           })
         );
         return yield* transaction;
@@ -167,7 +181,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           .from(paymentAttempts)
           .where(eq(paymentAttempts.id, id))
           .limit(1);
-        return attempt ?? null;
+        return attempt ? withPaymentAttemptAmount(attempt) : null;
       }),
       findByProviderOrderId: Effect.fn("paymentAttempts.findByProviderOrderId")(
         function* (providerOrderId) {
@@ -176,7 +190,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
             .from(paymentAttempts)
             .where(eq(paymentAttempts.providerOrderId, providerOrderId))
             .limit(1);
-          return attempt ?? null;
+          return attempt ? withPaymentAttemptAmount(attempt) : null;
         }
       ),
       findDisplayableForReservation: Effect.fn(
@@ -211,7 +225,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
             desc(paymentAttempts.updatedAt)
           )
           .limit(1);
-        return attempt ?? null;
+        return attempt ? withPaymentAttemptAmount(attempt) : null;
       }),
       attachHostedPaymentPage: Effect.fn(
         "paymentAttempts.attachHostedPaymentPage"
@@ -243,7 +257,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           });
         }
 
-        return attempt;
+        return withPaymentAttemptAmount(attempt);
       }),
       markPaid: Effect.fn("paymentAttempts.markPaid")(function* (input) {
         const updated = yield* db
@@ -360,7 +374,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
             if (reservation)
               return {
-                attempt,
+                attempt: withPaymentAttemptAmount(attempt),
                 changed: true,
                 timestamp: reservation.paidAt ?? input.paidAt,
               };
@@ -381,7 +395,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
             if (consistent)
               return {
-                attempt,
+                attempt: withPaymentAttemptAmount(attempt),
                 changed: false,
                 timestamp: consistent.paidAt ?? input.paidAt,
               };
@@ -459,7 +473,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
             if (reservation)
               return {
-                attempt,
+                attempt: withPaymentAttemptAmount(attempt),
                 changed: true,
                 timestamp: reservation.updatedAt,
               };
@@ -480,7 +494,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
             if (consistent)
               return {
-                attempt,
+                attempt: withPaymentAttemptAmount(attempt),
                 changed: false,
                 timestamp: consistent.updatedAt,
               };

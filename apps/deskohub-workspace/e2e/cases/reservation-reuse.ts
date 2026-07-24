@@ -1,13 +1,13 @@
 import { Effect } from "effect";
 import {
-  activateBrowserElement,
-  evalBrowserScript,
+  activateHydratedBrowserElement,
   openBrowserPage,
+  waitForBrowserCondition,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import {
-  getAssertPrefilledReservationScript,
+  getPrefilledReservationConditionScript,
   submitCoworkReservationScript,
 } from "../browser-scripts";
 import { submitReservationForPayPage } from "../checkout/payment";
@@ -173,15 +173,12 @@ const returnToPrefilledReservation = ({
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
     const browserActionTimeoutMs = timeouts.browserAction;
-    yield* waitForBrowserReactHydration(
+    yield* activateHydratedBrowserElement(
       run,
       session,
       reservationStepSelector,
       { timeoutMs: browserActionTimeoutMs }
     );
-    yield* activateBrowserElement(run, session, reservationStepSelector, {
-      timeoutMs: browserActionTimeoutMs,
-    });
     yield* waitForBrowserUrl({
       description: "prefilled reservation page",
       matches: (value) => {
@@ -201,14 +198,13 @@ const returnToPrefilledReservation = ({
       "#reservation-privacy-consent",
       { timeoutMs: timeouts.uiTransition }
     );
-    yield* evalBrowserScript(
-      "assert prefilled reservation fields",
+    yield* waitForBrowserCondition(
       run,
       session,
-      getAssertPrefilledReservationScript(data),
+      "prefilled reservation fields",
+      getPrefilledReservationConditionScript(data),
       {
-        logOutput: false,
-        timeoutMs: timeouts.browserAction,
+        timeoutMs: timeouts.uiTransition,
       }
     );
   });

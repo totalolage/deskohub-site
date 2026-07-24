@@ -91,6 +91,24 @@ export const waitForBrowserReactHydration = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserCondition = (
+  run: Runner,
+  session: string,
+  description: string,
+  condition: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    `wait for ${description}`,
+    run,
+    session,
+    ["wait", "--fn", condition],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+
 export const waitForBrowserTextContent = (
   run: Runner,
   session: string,
@@ -224,6 +242,17 @@ export const activateBrowserElement = (
   Effect.gen(function* () {
     yield* focusBrowserElement(run, session, selector, options);
     yield* pressBrowserKey(run, session, "Enter", options);
+  });
+
+export const activateHydratedBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* waitForBrowserReactHydration(run, session, selector, options);
+    yield* activateBrowserElement(run, session, selector, options);
   });
 
 export const readInteractiveSnapshot = (

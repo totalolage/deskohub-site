@@ -7,6 +7,8 @@ import {
   type CoworkCheckoutPricingError,
   type CoworkCustomerQuote,
   type CoworkCustomerQuoteInput,
+  type CoworkDiscountCodePriceInput,
+  type CoworkDiscountCodePriceResult,
   type CoworkPaymentPriceAffirmation,
   type CoworkPaymentPriceAffirmationInput,
   coworkCheckoutPricing,
@@ -19,6 +21,8 @@ import {
   type MeetingRoomCheckoutPricingError,
   type MeetingRoomCustomerQuote,
   type MeetingRoomCustomerQuoteInput,
+  type MeetingRoomDiscountCodePriceInput,
+  type MeetingRoomDiscountCodePriceResult,
   type MeetingRoomPaymentPriceAffirmation,
   type MeetingRoomPaymentPriceAffirmationInput,
   meetingRoomCheckoutPricing,
@@ -60,6 +64,14 @@ export type PaymentPriceAffirmation =
   | CoworkPaymentPriceAffirmation
   | MeetingRoomPaymentPriceAffirmation;
 
+export type DiscountCodePriceInput =
+  | CoworkDiscountCodePriceInput
+  | MeetingRoomDiscountCodePriceInput;
+
+export type DiscountCodePriceResult =
+  | CoworkDiscountCodePriceResult
+  | MeetingRoomDiscountCodePriceResult;
+
 export interface ICheckoutPricingService {
   readonly quoteAdvertisement: (
     input: AdvertisementQuoteInput
@@ -73,6 +85,9 @@ export interface ICheckoutPricingService {
   readonly affirmForPayment: (
     input: PaymentPriceAffirmationInput
   ) => Effect.Effect<PaymentPriceAffirmation, CheckoutPricingError>;
+  readonly applyDiscountCode: (
+    input: DiscountCodePriceInput
+  ) => Effect.Effect<DiscountCodePriceResult, CheckoutPricingError>;
 }
 
 export class CheckoutPricingService extends Context.Service<
@@ -147,11 +162,28 @@ export class CheckoutPricingService extends Context.Service<
         )
       );
 
+      const applyDiscountCode = Effect.fn(
+        "CheckoutPricingService.applyDiscountCode"
+      )((input: DiscountCodePriceInput) =>
+        Match.value(input).pipe(
+          Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+            cowork.applyDiscountCode(coworkInput)
+          ),
+          Match.when(
+            { reservation: { kind: "meeting-room" } },
+            (meetingRoomInput) =>
+              meetingRoom.applyDiscountCode(meetingRoomInput)
+          ),
+          Match.exhaustive
+        )
+      );
+
       return {
         quoteAdvertisement,
         affirmAdvertisement,
         quoteForCustomer,
         affirmForPayment,
+        applyDiscountCode,
       } satisfies ICheckoutPricingService;
     })
   );

@@ -31,11 +31,14 @@ const discountProviders = Layer.mergeAll(
   CodeDiscountProvider.Live
 ).pipe(Layer.provide(providerDependencies));
 
-const discountServiceDependencies = Layer.merge(
-  discountProviders,
+export const DiscountReleaseGateServiceLiveWithDependencies =
   DiscountReleaseGateService.Live.pipe(
     Layer.provide(WorkspaceFeatureFlagServiceLive)
-  )
+  );
+
+const discountServiceDependencies = Layer.merge(
+  discountProviders,
+  DiscountReleaseGateServiceLiveWithDependencies
 );
 
 const processScope = Scope.makeUnsafe();

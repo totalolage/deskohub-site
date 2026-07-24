@@ -101,7 +101,10 @@ WHERE dc.id = :'code_id';
 COMMIT;
 ```
 
-For all cowork tiers, insert the three explicit targets `cowork:basic`, `cowork:plus`, and `cowork:profi`, with matching product JSON. There is no wildcard target.
+For all cowork tiers, insert the three explicit product identities with tiers
+`basic`, `plus`, and `profi`. Runtime keys such as `cowork:basic` are derived
+from those decoded identities; they are not stored separately. There is no
+wildcard target.
 
 For a fixed-money benefit, leave `percentage_basis_points` null and set the complete fixed tuple instead:
 
@@ -147,17 +150,15 @@ Setting `max_uses` to `NULL` removes only the global limit. It does not remove t
 
 ## Manage product targets and customer allowlists
 
-Add targets only with a matching canonical key and strict product snapshot:
+Add targets using the strict product identity snapshot:
 
 ```sql
 INSERT INTO discount_product_targets (
   discount_id,
-  product_key,
   product_identity
 )
 SELECT
   discount_id,
-  'cowork:plus',
   '{"kind":"cowork","tier":"plus"}'::jsonb
 FROM discount_codes
 WHERE code = 'LETO50';
