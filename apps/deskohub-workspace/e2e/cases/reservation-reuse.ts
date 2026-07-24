@@ -14,7 +14,7 @@ import { submitReservationForPayPage } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
-import { readCheckoutRow } from "../integrations/database";
+import { readCheckoutRow, waitForCheckoutRow } from "../integrations/database";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
@@ -218,9 +218,8 @@ const readHeldReservation = (
   orderId: string
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const row = yield* readCheckoutRow(datasourceConfig, orderId);
+    const row = yield* waitForCheckoutRow(datasourceConfig, orderId);
     return yield* tryWorkspaceE2ESync("assert held reservation row", () => {
-      assert(row, "held reservation row missing");
       assert(
         row.reservation_state === "held",
         "reservation was not held before payment"

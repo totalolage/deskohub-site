@@ -212,6 +212,18 @@ export const readCheckoutRow = (
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
   withPool(config, (pool) => queryCheckoutRow(pool, orderId));
 
+export const waitForCheckoutRow = (
+  config: DatasourceConfig,
+  orderId: string
+): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
+  withPool(config, (pool) =>
+    pollUntil(queryCheckoutRow(pool, orderId), {
+      intervalMs: workspaceE2EPollIntervalMs.datasource,
+      label: "checkout row",
+      timeoutMs: config.timeouts.datasource,
+    })
+  );
+
 export const readLatestCleanupCheckoutRow = (
   config: DatasourceConfig,
   createdAfter: Date,

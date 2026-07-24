@@ -18,6 +18,20 @@ test("reads persisted reservation details without legacy product columns", async
   expect(source).not.toContain("wr.product_monitor_option");
 });
 
+test("polls for checkout rows before asserting reservation replacement state", async () => {
+  const databaseSource = await Bun.file(
+    fileURLToPath(new URL("./database.ts", import.meta.url))
+  ).text();
+  const reservationReplacementSource = await Bun.file(
+    fileURLToPath(new URL("../cases/reservation-reuse.ts", import.meta.url))
+  ).text();
+
+  expect(databaseSource).toContain("pollUntil(queryCheckoutRow(pool, orderId)");
+  expect(reservationReplacementSource).toContain(
+    "waitForCheckoutRow(datasourceConfig, orderId)"
+  );
+});
+
 test("replays Nexi notification against the exact protected preview", async () => {
   const requests: Array<{
     body: string;
