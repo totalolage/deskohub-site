@@ -1607,6 +1607,116 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
     );
   });
 
+  test("legacy attachment handoff cannot revive matching manual-review recovery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "legacy-manual-review-attachment";
+        const providerId = "legacy-manual-review-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        const failureCode = "attach_failed_cancellation_required";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "manual_review",
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode,
+          })
+        );
+
+        expect(
+          yield* repository.recordAttachmentCancellationHandoff({
+            id,
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            failureCode,
+          })
+        ).toBeNull();
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            retryAt: workspaceReservations.cancellationRetryAt,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "manual_review",
+          retryAt: null,
+          failureCode,
+        });
+      })
+    );
+  });
+
+  test("stale takeover and provider retry failure preserve exact attachment epoch evidence", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "stale-exact-attachment-recovery";
+        const epoch = "synthetic-stale-attachment-epoch";
+        const exactFailureCode = `attach_failed_cancel_failed:${epoch}`;
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_claimed",
+            dotyposReservationId: "synthetic-stale-attachment-provider",
+            reservationCreatedAt: instant("2026-07-23T09:00:00Z"),
+            cancellationClaimOwner: "interrupted-attachment-worker",
+            cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: exactFailureCode,
+          })
+        );
+        yield* db.execute(
+          sql.raw(`
+          update workspace_reservations
+          set cancellation_claimed_at = now() - interval '5 minutes'
+          where id = 'stale-exact-attachment-recovery'
+        `)
+        );
+
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "daily-stale-recovery-worker",
+          recoveryReason: "stale_claim_recovery",
+        });
+        expect(claimed).toMatchObject({
+          reservationState: "cancellation_claimed",
+          cancellationClaimOwner: "daily-stale-recovery-worker",
+          cancellationRecoveryReason: "stale_claim_recovery",
+          failureCode: exactFailureCode,
+        });
+
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "daily-stale-recovery-worker",
+          disposition: "retryable",
+          recoveryReason: "stale_claim_recovery",
+          failureCode: "dotypos_cancellation_status_read_failed",
+        });
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            recoveryReason: workspaceReservations.cancellationRecoveryReason,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "retryable",
+          recoveryReason: "stale_claim_recovery",
+          failureCode: exactFailureCode,
+        });
+      })
+    );
+  });
+
   test("does not replace a different exact epoch or revive manual-review attachment recovery", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {

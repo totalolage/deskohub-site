@@ -1391,6 +1391,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                     workspaceReservations.cancellationRecoveryReason,
                     "attachment_compensation"
                   ),
+                  eq(
+                    workspaceReservations.cancellationFailureDisposition,
+                    "retryable"
+                  ),
                   eq(workspaceReservations.failureCode, input.failureCode)
                 )
               )
@@ -2313,7 +2317,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               failureCode:
                 input.recoveryReason === "attachment_compensation"
                   ? sql`${workspaceReservations.failureCode}`
-                  : null,
+                  : sql`case
+                      when ${workspaceReservations.failureCode} like 'attach_failed_cancel_failed:%'
+                        then ${workspaceReservations.failureCode}
+                      else null
+                    end`,
               updatedAt: sql`now()`,
             })
             .where(
@@ -2620,7 +2628,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             failureCode:
               input.recoveryReason === "attachment_compensation"
                 ? sql`coalesce(${workspaceReservations.failureCode}, ${input.failureCode})`
-                : input.failureCode,
+                : sql`case
+                    when ${workspaceReservations.failureCode} like 'attach_failed_cancel_failed:%'
+                      then ${workspaceReservations.failureCode}
+                    else ${input.failureCode}
+                  end`,
             updatedAt: sql`now()`,
           })
           .where(

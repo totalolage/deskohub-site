@@ -771,6 +771,41 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(cancelOrderHold).toHaveBeenCalledTimes(1);
   });
 
+  test("legacy epoch-less redelivery cannot revive manual-review attachment recovery", async () => {
+    const manualReview = makeReservation({
+      reservationState: "cancellation_failed",
+      dotyposReservationId: attachmentPayload.dotyposReservationId,
+      reservationCreatedAt: now,
+      cancellationFailureDisposition: "manual_review",
+      cancellationRecoveryReason: "attachment_compensation",
+      failureCode: "attach_failed_cancellation_required",
+    });
+    const recordAttachmentCancellationHandoff = mock(() =>
+      Effect.succeed(
+        manualReview.cancellationFailureDisposition === "retryable"
+          ? manualReview
+          : null
+      )
+    );
+    const cancelOrderHold = mock(() =>
+      Effect.die("Manual-review recovery must remain terminal")
+    );
+
+    const result = await runProcessMessage(attachmentPayload, {
+      recordAttachmentCancellationHandoff,
+      cancelOrderHold,
+    });
+
+    expect(result.result).toBe("ignored");
+    expect(recordAttachmentCancellationHandoff).toHaveBeenCalledWith({
+      id: attachmentPayload.orderId,
+      dotyposReservationId: attachmentPayload.dotyposReservationId,
+      reservationCreatedAt: now,
+      failureCode: "attach_failed_cancellation_required",
+    });
+    expect(cancelOrderHold).not.toHaveBeenCalled();
+  });
+
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
       getAttachmentCancellationScheduleMessage,
@@ -1776,6 +1811,178 @@ describe("ReservationHoldCleanupScheduleService", () => {
       dotyposReservationId: expect.stringContaining(recoveryKind),
       failureCode: expect.stringContaining("attach_failed_cancel_failed:"),
     });
+  });
+
+  test("daily stale takeover preserves exact evidence through provider failure and redelivery", async () => {
+    const {
+      getAttachmentCancellationScheduleMessage,
+      processReservationHoldCleanupScheduleMessage,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { ReservationHoldCleanupServiceLive } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const epoch = "synthetic-stale-redelivery-epoch";
+    const providerId = "synthetic-stale-redelivery-provider";
+    const providerCreatedAt = Temporal.Instant.from("2026-06-01T09:55:00.000Z");
+    const exactFailureCode = `attach_failed_cancel_failed:${epoch}`;
+    let row = makeReservation({
+      reservationState: "cancellation_claimed",
+      dotyposReservationId: providerId,
+      reservationCreatedAt: providerCreatedAt,
+      cancellationClaimOwner: "interrupted-attachment-worker",
+      cancellationClaimedAt: providerCreatedAt,
+      cancellationFailureDisposition: null,
+      cancellationRecoveryReason: "attachment_compensation",
+      failureCode: exactFailureCode,
+    });
+    const claimCancellation = mock((input) =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          reservationState: "cancellation_claimed",
+          cancellationClaimOwner: input.ownerId,
+          cancellationClaimedAt: now,
+          cancellationFailureDisposition: null,
+          cancellationRetryAt: null,
+          cancellationRecoveryReason: input.recoveryReason,
+          failureCode: exactFailureCode,
+        });
+        return row;
+      })
+    );
+    const markCancellationFailed = mock((input) =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          reservationState: "cancellation_failed",
+          cancellationClaimOwner: null,
+          cancellationClaimedAt: null,
+          cancellationFailureDisposition: input.disposition,
+          cancellationRetryAt: now.add({ minutes: 1 }),
+          cancellationRecoveryReason: input.recoveryReason,
+          failureCode: exactFailureCode,
+        });
+      })
+    );
+    const markCancelled = mock(() =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          reservationState: "cancelled",
+          cancellationClaimOwner: null,
+          cancellationClaimedAt: null,
+          cancellationFailureDisposition: null,
+          cancellationRetryAt: null,
+          failureCode: exactFailureCode,
+        });
+      })
+    );
+    const markAttachFailedCancellationRequired = mock(() =>
+      Effect.die("Exact stale-takeover evidence must not need restoration")
+    );
+    let providerReads = 0;
+    const getReservationStatus = mock(() => {
+      providerReads += 1;
+      return providerReads === 1
+        ? Effect.fail(new Error("Synthetic provider status failure"))
+        : Effect.succeed("CANCELLED" as const);
+    });
+    const cancelReservation = mock(() => Effect.void);
+    const reservations = Layer.succeed(WorkspaceReservationRepository, {
+      selectCancellationCandidates: mock(() => Effect.succeed([row])),
+      findById: mock(() => Effect.sync(() => row)),
+      claimCancellation,
+      renewCancellationClaim: mock(() => Effect.sync(() => row)),
+      markCancellationFailed,
+      markCancelled,
+      markAttachFailedCancellationRequired,
+    } as unknown as WorkspaceReservationRepositoryType);
+    const dotypos = Layer.succeed(DotyposService, {
+      getReservationStatus,
+      cancelReservation,
+    } as unknown as typeof DotyposService.Service);
+    const cleanup = ReservationHoldCleanupServiceLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          reservations,
+          dotypos,
+          Layer.succeed(ProviderPaymentFinalizationService, {
+            finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+          } as never),
+          Layer.succeed(PaymentAttemptRepository, {
+            markTerminalForReservation: mock(() => Effect.die("not used")),
+          } as never),
+          Layer.succeed(PostHogEventService, {
+            capture: () => Effect.void,
+          })
+        )
+      )
+    );
+    const payload = getAttachmentCancellationScheduleMessage({
+      recoveryKind: "unattached",
+      orderId: row.id,
+      providerCreationEpoch: epoch,
+      dotyposReservationId: providerId,
+      reservationCreatedAt: providerCreatedAt,
+    }).payload;
+
+    const result = await Effect.gen(function* () {
+      const cleanupService = yield* ReservationHoldCleanupService;
+      const sweep = yield* cleanupService.sweepExpiredHolds({
+        now,
+        limit: 25,
+      });
+      expect(sweep).toEqual({ cancelled: 0, skipped: 0, failed: 1 });
+      expect(row).toMatchObject({
+        reservationState: "cancellation_failed",
+        cancellationFailureDisposition: "retryable",
+        cancellationRecoveryReason: "stale_claim_recovery",
+        failureCode: exactFailureCode,
+      });
+
+      return yield* processReservationHoldCleanupScheduleMessage(payload, now);
+    }).pipe(
+      Effect.provide(Layer.mergeAll(reservations, dotypos, cleanup)),
+      Effect.runPromise
+    );
+
+    expect(result).toBe("cancelled");
+    expect(claimCancellation).toHaveBeenNthCalledWith(1, {
+      id: row.id,
+      ownerId: expect.any(String),
+      recoveryReason: "stale_claim_recovery",
+    });
+    expect(claimCancellation).toHaveBeenNthCalledWith(2, {
+      id: row.id,
+      ownerId: expect.any(String),
+      recoveryReason: "attachment_compensation",
+    });
+    expect(markCancellationFailed).toHaveBeenCalledWith({
+      id: row.id,
+      ownerId: expect.any(String),
+      disposition: "retryable",
+      recoveryReason: "stale_claim_recovery",
+      failureCode: "dotypos_cancellation_status_read_failed",
+    });
+    expect(markAttachFailedCancellationRequired).not.toHaveBeenCalled();
+    expect(row).toMatchObject({
+      reservationState: "cancelled",
+      failureCode: exactFailureCode,
+    });
+    expect(getReservationStatus).toHaveBeenCalledTimes(2);
+    expect(cancelReservation).not.toHaveBeenCalled();
   });
 
   test.each([

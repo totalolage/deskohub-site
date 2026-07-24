@@ -668,13 +668,12 @@ const classifyAttachmentCompensation = (input: {
     sameProvider &&
     sameCreationTime &&
     ((hasExactAttachRecovery &&
-      reservation.cancellationFailureDisposition === "retryable" &&
-      reservation.cancellationRecoveryReason === "attachment_compensation") ||
+      reservation.cancellationFailureDisposition === "retryable") ||
       isRecoverableGenericAttachCancellationFailure(reservation))
   ) {
     return AttachmentCompensationClassification.recoverable({
       claimCompensation: false,
-      preserveMarker: true,
+      preserveMarker: !hasExactAttachRecovery,
     });
   }
   if (
