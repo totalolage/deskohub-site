@@ -3,7 +3,11 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  DotyposService,
+  ExternalAPIError,
+  NetworkError,
+} from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -327,6 +331,201 @@ const runAttachmentRedeliveryScenario = async (input: {
     row,
     cancellationAttempts,
     markAttachFailedCancellationRequired,
+  };
+};
+
+const runDifferentProviderCancellationBoundaryScenario = async (input: {
+  readonly exitKind:
+    | "typed_failure"
+    | "defect"
+    | "interruption"
+    | "ambiguous_transport";
+  readonly retainOwnedVerification: boolean;
+}) => {
+  const {
+    getAttachmentCancellationScheduleMessage,
+    processReservationHoldCleanupScheduleMessage,
+  } = await import("./reservation-hold-cleanup-queue.service");
+  const {
+    getDifferentProviderAttachmentRecovery,
+    WorkspaceReservationRepository,
+  } = await import(
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const epoch = `synthetic-${input.exitKind}-boundary-epoch`;
+  const winnerId = `synthetic-${input.exitKind}-boundary-winner`;
+  const loserId = `synthetic-${input.exitKind}-boundary-loser`;
+  const loserCreatedAt = now;
+  let deliveryNow = now;
+  let loserStatus: "NEW" | "CANCELLED" = "NEW";
+  let row = makeReservation({
+    dotyposReservationId: winnerId,
+    reservationCreatedAt: loserCreatedAt,
+    updatedAt: deliveryNow,
+    failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+  });
+  let firstOwnerId: string | undefined;
+  let completedOwnerId: string | undefined;
+  const claim = mock((claimInput) =>
+    Effect.sync(() => {
+      const recovery = getDifferentProviderAttachmentRecovery(row);
+      if (!recovery) return false;
+      const ownedByAnother =
+        (recovery.phase === "processing" || recovery.phase === "verifying") &&
+        recovery.ownerId !== claimInput.ownerId;
+      if (
+        ownedByAnother &&
+        Temporal.Instant.compare(row.updatedAt, claimInput.staleBefore) > 0
+      ) {
+        return false;
+      }
+      const verificationOnly =
+        recovery.phase === "awaiting_visibility" ||
+        recovery.phase === "verifying";
+      row = makeReservation({
+        ...row,
+        updatedAt: deliveryNow,
+        failureCode: verificationOnly
+          ? `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${claimInput.ownerId}`
+          : `hold_creation_orphan_processing:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${claimInput.ownerId}`,
+      });
+      return true;
+    })
+  );
+  const beginVerification = mock((beginInput) =>
+    Effect.sync(() => {
+      firstOwnerId ??= beginInput.ownerId;
+      row = makeReservation({
+        ...row,
+        updatedAt: deliveryNow,
+        failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${beginInput.ownerId}`,
+      });
+    })
+  );
+  const release = mock((releaseInput) =>
+    input.retainOwnedVerification
+      ? Effect.fail(new Error("Synthetic verification release failure"))
+      : Effect.sync(() => {
+          row = makeReservation({
+            ...row,
+            updatedAt: deliveryNow,
+            failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+          });
+          expect(releaseInput.ownerId).toBe(firstOwnerId);
+        })
+  );
+  const complete = mock((completeInput) =>
+    Effect.sync(() => {
+      completedOwnerId = completeInput.ownerId;
+      row = makeReservation({
+        ...row,
+        failureCode: `hold_creation_orphan_resolved:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+      });
+    })
+  );
+  const listReservations = mock(() =>
+    Effect.succeed(
+      makeDefinitiveWinnerAndLoserEvidence({
+        reservation: row,
+        epoch,
+        winnerId,
+        loserId,
+        loserStatus,
+      })
+    )
+  );
+  const cancelReservation = mock(() =>
+    Effect.suspend(() => {
+      if (input.exitKind === "typed_failure") {
+        return Effect.fail(
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation: "cancelReservation",
+            statusCode: 503,
+            message: "Synthetic provider cancellation failure",
+          })
+        );
+      }
+      if (input.exitKind === "defect") {
+        return Effect.die(new Error("Synthetic provider cancellation defect"));
+      }
+      if (input.exitKind === "interruption") return Effect.never;
+      loserStatus = "CANCELLED";
+      return Effect.fail(
+        new NetworkError({
+          message: "Synthetic cancellation response was lost",
+        })
+      );
+    })
+  );
+  const payload = getAttachmentCancellationScheduleMessage({
+    recoveryKind: "different_provider",
+    orderId: row.id,
+    providerCreationEpoch: epoch,
+    dotyposReservationId: loserId,
+    reservationCreatedAt: loserCreatedAt,
+  }).payload;
+  const layer = Layer.mergeAll(
+    Layer.succeed(WorkspaceReservationRepository, {
+      findById: mock(() => Effect.sync(() => row)),
+      recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
+      claimDifferentProviderAttachmentRecovery: claim,
+      beginDifferentProviderAttachmentCancellationVerification:
+        beginVerification,
+      releaseDifferentProviderAttachmentRecovery: release,
+      completeDifferentProviderAttachmentRecovery: complete,
+    } as unknown as WorkspaceReservationRepositoryType),
+    Layer.succeed(ReservationHoldCleanupService, {
+      cancelOrderHold: mock(() => Effect.die("must not cancel winner")),
+      sweepExpiredHolds: mock(() =>
+        Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+      ),
+    } satisfies ReservationHoldCleanupServiceType),
+    Layer.succeed(DotyposService, {
+      listReservations,
+      cancelReservation,
+    } as unknown as typeof DotyposService.Service)
+  );
+  const process = (processNow: Temporal.Instant) =>
+    processReservationHoldCleanupScheduleMessage(payload, processNow).pipe(
+      Effect.provide(layer)
+    );
+  const first = process(now).pipe(
+    ...(input.exitKind === "interruption" ? [Effect.timeout("10 millis")] : [])
+  );
+  await expect(Effect.runPromise(first)).rejects.toBeDefined();
+
+  const boundaryRecovery = getDifferentProviderAttachmentRecovery(row);
+  expect(cancelReservation).toHaveBeenCalledTimes(1);
+  expect(beginVerification).toHaveBeenCalledTimes(1);
+  expect(complete).not.toHaveBeenCalled();
+  expect(boundaryRecovery).toMatchObject({
+    epoch,
+    dotyposReservationId: loserId,
+    reservationCreatedAt: loserCreatedAt,
+    phase: input.retainOwnedVerification ? "verifying" : "awaiting_visibility",
+  });
+  expect(firstOwnerId).toBeDefined();
+
+  loserStatus = "CANCELLED";
+  if (input.retainOwnedVerification) {
+    const lookupsBeforeLiveOwnerRetry = listReservations.mock.calls.length;
+    await expect(Effect.runPromise(process(now))).rejects.toBeDefined();
+    expect(listReservations).toHaveBeenCalledTimes(lookupsBeforeLiveOwnerRetry);
+    expect(cancelReservation).toHaveBeenCalledTimes(1);
+    deliveryNow = now.add({ minutes: 3 });
+  }
+  const redelivery = await Effect.runPromise(process(deliveryNow));
+  const resolvedRecovery = row.failureCode;
+  return {
+    beginVerification,
+    cancelReservation,
+    complete,
+    completedOwnerId,
+    firstOwnerId,
+    listReservations,
+    redelivery,
+    resolvedRecovery,
   };
 };
 
@@ -1341,6 +1540,14 @@ describe("ReservationHoldCleanupScheduleService", () => {
       failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
     });
     const complete = mock(() => Effect.void);
+    const beginVerification = mock((input) =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${input.ownerId}`,
+        });
+      })
+    );
     const claim = mock((input) =>
       Effect.sync(() => {
         row = makeReservation({
@@ -1354,7 +1561,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       Effect.sync(() => {
         row = makeReservation({
           ...row,
-          failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
+          failureCode: `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`,
         });
       })
     );
@@ -1384,43 +1591,64 @@ describe("ReservationHoldCleanupScheduleService", () => {
       dotyposReservationId: loserId,
       reservationCreatedAt: loserCreatedAt,
     }).payload;
+    const listReservations = mock(() => Effect.succeed(providerEvidence));
+    const cancelReservation = mock(() =>
+      Effect.die("definitive cancelled evidence must not recancel")
+    );
 
-    await expect(
-      processReservationHoldCleanupScheduleMessage(payload, dueNow).pipe(
-        Effect.provide(
-          Layer.mergeAll(
-            Layer.succeed(WorkspaceReservationRepository, {
-              findById: mock(() => Effect.sync(() => row)),
-              recordDifferentProviderAttachmentRecovery: mock(
-                () => Effect.void
-              ),
-              claimDifferentProviderAttachmentRecovery: claim,
-              releaseDifferentProviderAttachmentRecovery: release,
-              completeDifferentProviderAttachmentRecovery: complete,
-            } as unknown as WorkspaceReservationRepositoryType),
-            Layer.succeed(ReservationHoldCleanupService, {
-              cancelOrderHold: mock(() =>
-                Effect.die("must not cancel the winner")
-              ),
-              sweepExpiredHolds: mock(() =>
-                Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
-              ),
-            } satisfies ReservationHoldCleanupServiceType),
-            Layer.succeed(DotyposService, {
-              listReservations: mock(() => Effect.succeed(providerEvidence)),
-              cancelReservation: mock(() =>
-                Effect.die("definitive cancelled evidence must not recancel")
-              ),
-            } as unknown as typeof DotyposService.Service)
-          )
-        ),
-        Effect.runPromise
-      )
-    ).rejects.toBeDefined();
+    const error = await processReservationHoldCleanupScheduleMessage(
+      payload,
+      dueNow
+    ).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          Layer.succeed(WorkspaceReservationRepository, {
+            findById: mock(() => Effect.sync(() => row)),
+            recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
+            claimDifferentProviderAttachmentRecovery: claim,
+            beginDifferentProviderAttachmentCancellationVerification:
+              beginVerification,
+            releaseDifferentProviderAttachmentRecovery: release,
+            completeDifferentProviderAttachmentRecovery: complete,
+          } as unknown as WorkspaceReservationRepositoryType),
+          Layer.succeed(ReservationHoldCleanupService, {
+            cancelOrderHold: mock(() =>
+              Effect.die("must not cancel the winner")
+            ),
+            sweepExpiredHolds: mock(() =>
+              Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+            ),
+          } satisfies ReservationHoldCleanupServiceType),
+          Layer.succeed(DotyposService, {
+            listReservations,
+            cancelReservation,
+          } as unknown as typeof DotyposService.Service)
+        )
+      ),
+      Effect.flip,
+      Effect.runPromise
+    );
 
+    expect(error.message).toBe(
+      "Different-provider attachment recovery remains fenced pending definitive evidence."
+    );
+    expect(error.cause).toMatchObject({
+      message: "Provider attachment evidence is not definitive.",
+    });
+    expect(beginVerification).toHaveBeenCalledTimes(1);
+    expect(beginVerification).toHaveBeenCalledWith({
+      id: row.id,
+      epoch,
+      dotyposReservationId: loserId,
+      reservationCreatedAt: loserCreatedAt,
+      ownerId: expect.any(String),
+    });
+    expect(listReservations).toHaveBeenCalledTimes(2);
+    expect(cancelReservation).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
     expect(complete).not.toHaveBeenCalled();
-    expect(row.failureCode).toStartWith(
-      `hold_creation_orphan_recovery:${epoch}:${loserId}:`
+    expect(row.failureCode).toBe(
+      `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}`
     );
   });
 
@@ -2085,6 +2313,43 @@ describe("ReservationHoldCleanupScheduleService", () => {
       `hold_creation_orphan_resolved:${epoch}:${loserId}:${now.epochMilliseconds}`
     );
     expect(cancelReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    {
+      label: "typed provider failure",
+      exitKind: "typed_failure" as const,
+      retainOwnedVerification: false,
+    },
+    {
+      label: "provider defect",
+      exitKind: "defect" as const,
+      retainOwnedVerification: false,
+    },
+    {
+      label: "provider interruption",
+      exitKind: "interruption" as const,
+      retainOwnedVerification: false,
+    },
+    {
+      label: "ambiguous transport with stale takeover",
+      exitKind: "ambiguous_transport" as const,
+      retainOwnedVerification: true,
+    },
+  ])("never resends after $label inside cancellation", async (scenario) => {
+    const result =
+      await runDifferentProviderCancellationBoundaryScenario(scenario);
+
+    expect(result.redelivery).toBe("cancelled");
+    expect(result.cancelReservation).toHaveBeenCalledTimes(1);
+    expect(result.beginVerification).toHaveBeenCalledTimes(1);
+    expect(result.complete).toHaveBeenCalledTimes(1);
+    expect(result.listReservations).toHaveBeenCalledTimes(3);
+    expect(result.completedOwnerId).toBeDefined();
+    expect(result.completedOwnerId).not.toBe(result.firstOwnerId);
+    expect(result.resolvedRecovery).toBe(
+      `hold_creation_orphan_resolved:synthetic-${scenario.exitKind}-boundary-epoch:synthetic-${scenario.exitKind}-boundary-loser:${now.epochMilliseconds}`
+    );
   });
 
   test.each([
