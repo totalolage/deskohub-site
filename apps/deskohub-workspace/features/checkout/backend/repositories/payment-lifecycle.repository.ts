@@ -1,4 +1,4 @@
-import { and, count, eq, inArray, lte } from "drizzle-orm";
+import { and, count, eq, inArray } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -31,10 +31,12 @@ import type {
   AppliedDiscount,
   DiscountAdjustment,
 } from "@/features/discounts/contracts";
+import { getDiscountCodeTiming } from "@/features/discounts/discount-code";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
+import type { Locale } from "@/features/i18n";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
@@ -66,6 +68,7 @@ export interface IPaymentLifecycleRepository {
     readonly providerOrderId: string;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
+    readonly locale: Locale;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
   readonly attachProviderSession: (input: {
     readonly id: string;
@@ -116,11 +119,11 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly providerOrderId: string;
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
+        readonly locale: Locale;
       }) {
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication =
           yield* validateDiscountCommitment(commitment);
-        const now = Temporal.Now.instant();
 
         return yield* db
           .transaction((tx) =>
@@ -148,6 +151,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .limit(1)
                 .for("update");
 
+              const now = Temporal.Now.instant();
               if (
                 !reservation?.reservationHoldExpiresAt ||
                 Temporal.Instant.compare(
@@ -284,9 +288,9 @@ export class PaymentLifecycleRepository extends Context.Service<
                   application: claimedApplication.application,
                   applicationId,
                   paymentAttemptId: attemptRow.id,
+                  locale: input.locale,
                   reservationCustomerId: reservation.dotyposCustomerId,
                   reservationExpiresAt: reservation.reservationHoldExpiresAt,
-                  now,
                 });
               }
 
@@ -691,9 +695,9 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly application: AppliedDiscount;
     readonly applicationId: DiscountApplicationId;
     readonly paymentAttemptId: string;
+    readonly locale: Locale;
     readonly reservationCustomerId: string;
     readonly reservationExpiresAt: Temporal.Instant;
-    readonly now: Temporal.Instant;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
       return yield* claimError(
@@ -742,44 +746,6 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         input.claim
       );
     }
-    if (
-      code.validFrom &&
-      Temporal.Instant.compare(input.now, code.validFrom) < 0
-    ) {
-      return yield* claimError(
-        "reserve",
-        "not_started",
-        "The accepted discount code is not valid yet.",
-        input.claim
-      );
-    }
-    if (
-      code.validUntil &&
-      Temporal.Instant.compare(input.now, code.validUntil) >= 0
-    ) {
-      return yield* claimError(
-        "reserve",
-        "expired",
-        "The accepted discount code has expired.",
-        input.claim
-      );
-    }
-
-    yield* input.tx
-      .update(discountCodeRedemptions)
-      .set({
-        state: "released",
-        releasedAt: input.now,
-        releaseReason: "reservation_expired_before_reuse",
-        updatedAt: input.now,
-      })
-      .where(
-        and(
-          eq(discountCodeRedemptions.codeId, input.claim.codeId),
-          eq(discountCodeRedemptions.state, "reserved"),
-          lte(discountCodeRedemptions.reservationExpiresAt, input.now)
-        )
-      );
 
     const [target] = yield* input.tx
       .select({ discountId: discountProductTargets.discountId })
@@ -798,6 +764,37 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         "reserve",
         "product_ineligible",
         "The accepted discount code no longer targets this product.",
+        input.claim
+      );
+    }
+
+    const claimedAt = Temporal.Now.instant();
+    if (Temporal.Instant.compare(input.reservationExpiresAt, claimedAt) <= 0) {
+      return yield* lifecycleStateError(
+        "createAttempt",
+        input.paymentAttemptId,
+        "Discount claims can only be reserved for a current held reservation."
+      );
+    }
+    if (
+      code.validFrom &&
+      Temporal.Instant.compare(claimedAt, code.validFrom) < 0
+    ) {
+      return yield* claimError(
+        "reserve",
+        "not_started",
+        "The accepted discount code is not valid yet.",
+        input.claim
+      );
+    }
+    if (
+      code.validUntil &&
+      Temporal.Instant.compare(claimedAt, code.validUntil) >= 0
+    ) {
+      return yield* claimError(
+        "reserve",
+        "expired",
+        "The accepted discount code has expired.",
         input.claim
       );
     }
@@ -824,14 +821,17 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
           })
       )
     );
+    const currentTiming = getDiscountCodeTiming(code.validUntil);
     if (
       !discountAdjustmentsEqual(
         currentDefinition.adjustment,
         input.application.discount.adjustment
       ) ||
-      !Object.values(currentDefinition.labels).includes(
-        input.application.discount.label
-      )
+      currentDefinition.labels[input.locale] !==
+        input.application.discount.label ||
+      currentTiming.expiresAt !== input.application.discount.expiresAt ||
+      currentTiming.countdownStartsAt !==
+        input.application.discount.countdownStartsAt
     ) {
       return yield* claimError(
         "reserve",
@@ -929,8 +929,8 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       dotyposCustomerId: input.claim.dotyposCustomerId,
       state: "reserved",
       reservationExpiresAt: input.reservationExpiresAt,
-      reservedAt: input.now,
-      updatedAt: input.now,
+      reservedAt: claimedAt,
+      updatedAt: claimedAt,
     });
   }
 );

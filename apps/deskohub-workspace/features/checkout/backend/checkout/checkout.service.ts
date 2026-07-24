@@ -463,16 +463,7 @@ export const CheckoutServiceLive = Layer.effect(
           "Checkout provider session reservation revalidated"
         );
 
-        const attempt = yield* paymentLifecycle.createAttempt({
-          workspaceReservationId: input.workspaceReservationId,
-          providerOrderId: generateNexiOrderId(),
-          amount: input.total,
-          commitment: input.commitment,
-        });
-        yield* Effect.annotateLogsScoped({ attempt });
-        yield* Effect.logInfo("Checkout payment attempt created");
-
-        yield* Effect.logInfo("Nexi hosted payment page creation started");
+        const providerOrderId = generateNexiOrderId();
         const nexiAmount = yield* toNexiAmount(
           withWorkspaceMoneyCurrency(input.total, getNexiCurrencyOverride())
         ).pipe(
@@ -484,8 +475,30 @@ export const CheckoutServiceLive = Layer.effect(
               })
           )
         );
+        const notificationUrl = yield* getNotificationUrl;
+        const resultUrl = yield* getCheckoutOrderReturnUrl(
+          input.locale,
+          input.workspaceReservationId
+        );
+        const cancelUrl = yield* getCheckoutPaymentRetryUrl(
+          input.locale,
+          input.workspaceReservationId,
+          "cancelled"
+        );
         yield* Effect.annotateLogsScoped({ nexiAmount });
-        yield* Effect.logDebug("Checkout provider session amount encoded");
+        yield* Effect.logDebug("Checkout provider session inputs prepared");
+
+        const attempt = yield* paymentLifecycle.createAttempt({
+          workspaceReservationId: input.workspaceReservationId,
+          providerOrderId,
+          amount: input.total,
+          commitment: input.commitment,
+          locale: input.locale,
+        });
+        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.logInfo("Checkout payment attempt created");
+
+        yield* Effect.logInfo("Nexi hosted payment page creation started");
         const hostedPaymentPage = yield* nexi
           .createHostedPaymentPage({
             orderId: attempt.providerOrderId,
@@ -493,16 +506,9 @@ export const CheckoutServiceLive = Layer.effect(
             amount: nexiAmount.amount,
             currency: nexiAmount.currency,
             locale: input.locale,
-            notificationUrl: yield* getNotificationUrl,
-            resultUrl: yield* getCheckoutOrderReturnUrl(
-              input.locale,
-              input.workspaceReservationId
-            ),
-            cancelUrl: yield* getCheckoutPaymentRetryUrl(
-              input.locale,
-              input.workspaceReservationId,
-              "cancelled"
-            ),
+            notificationUrl,
+            resultUrl,
+            cancelUrl,
           })
           .pipe(
             Effect.tapError((cause) =>

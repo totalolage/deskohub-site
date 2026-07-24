@@ -161,6 +161,7 @@ describe("stored discount code configuration", () => {
           customerAllowed: false,
           activeUseCount: 0,
           customerHasRedeemed: false,
+          customerHasReserved: false,
         },
       }).pipe(Effect.result)
     );

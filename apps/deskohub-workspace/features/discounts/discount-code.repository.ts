@@ -36,7 +36,6 @@ interface FindDiscountCodeInput {
 interface LoadDiscountCodeAvailabilityInput {
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: string;
-  readonly at: Temporal.Instant;
 }
 
 export class DiscountCodeRepository extends Context.Service<
@@ -76,6 +75,7 @@ export class DiscountCodeRepository extends Context.Service<
           customerAllowed: allowlistRows[0]?.customerAllowed ?? false,
           activeUseCount: activeClaimRows[0]?.activeUseCount ?? 0,
           customerHasRedeemed: activeClaimRows[0]?.customerHasRedeemed ?? false,
+          customerHasReserved: activeClaimRows[0]?.customerHasReserved ?? false,
         };
 
         return yield* decodeDiscountCodeAvailability({

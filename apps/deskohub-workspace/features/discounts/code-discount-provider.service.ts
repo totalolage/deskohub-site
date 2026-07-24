@@ -5,12 +5,12 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { temporalInstantToIsoString } from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
-import type {
-  DiscountCodeAvailability,
-  DiscountCodeConfiguration,
-  DiscountCodeConfigurationError,
+import {
+  type DiscountCodeAvailability,
+  type DiscountCodeConfiguration,
+  type DiscountCodeConfigurationError,
+  getDiscountCodeTiming,
 } from "./discount-code";
 import { DiscountCodeRepository } from "./discount-code.repository";
 import type { DiscountDefinition } from "./discount-definition";
@@ -77,7 +77,6 @@ export class CodeDiscountProvider extends Context.Service<
         "CodeDiscountProvider.loadCodeAvailability"
       )(
         (input: {
-          readonly at: Temporal.Instant;
           readonly configuration: DiscountCodeConfiguration;
           readonly dotyposCustomerId: DotyposCustomerId;
         }) =>
@@ -85,7 +84,6 @@ export class CodeDiscountProvider extends Context.Service<
             .loadAvailability({
               codeId: input.configuration.id,
               dotyposCustomerId: input.dotyposCustomerId,
-              at: input.at,
             })
             .pipe(Effect.mapError(toDiscountCodeProviderError))
       );
@@ -116,6 +114,7 @@ export class CodeDiscountProvider extends Context.Service<
             Effect.tap(validateDiscountCodeUnexpired),
             Effect.bind("availability", loadCodeAvailability),
             Effect.tap(validateCustomerNotRedeemed),
+            Effect.tap(validateCustomerNotReserved),
             Effect.tap(validateUsageAvailable),
             Effect.tap(validateCustomerAllowed),
             Effect.bind("definition", loadDiscountDefinition),
@@ -213,6 +212,14 @@ const validateCustomerNotRedeemed = (input: {
 }) =>
   input.availability.customerHasRedeemed
     ? unavailable(input.configuration, "already_redeemed")
+    : Effect.void;
+
+const validateCustomerNotReserved = (input: {
+  readonly availability: DiscountCodeAvailability;
+  readonly configuration: DiscountCodeConfiguration;
+}) =>
+  input.availability.customerHasReserved
+    ? unavailable(input.configuration, "claim_conflict")
     : Effect.void;
 
 const validateUsageAvailable = (input: {
@@ -316,21 +323,6 @@ const toDiscountCodeCandidate = (input: {
       dotyposCustomerId: input.dotyposCustomerId,
       product: input.product,
     },
-  };
-};
-
-const getDiscountCodeTiming = (
-  validUntil: Temporal.Instant | null
-): Pick<DiscountCandidate["discount"], "expiresAt" | "countdownStartsAt"> => {
-  if (validUntil === null) {
-    return {};
-  }
-
-  return {
-    expiresAt: temporalInstantToIsoString(validUntil),
-    countdownStartsAt: temporalInstantToIsoString(
-      validUntil.subtract({ hours: 1 })
-    ),
   };
 };
 

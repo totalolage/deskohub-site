@@ -37,6 +37,9 @@ describe("PaymentLifecycleRepository", () => {
     expect(createAttempt).toContain(".update(workspaceReservations)");
     expect(createAttempt).toContain(".insert(discountApplications)");
     expect(createAttempt).toContain("yield* reserveCodeClaim");
+    expect(createAttempt.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
+      createAttempt.indexOf('.for("update")')
+    );
     expect(createAttempt.indexOf(".insert(paymentAttempts)")).toBeLessThan(
       createAttempt.indexOf(".insert(discountApplications)")
     );
@@ -45,7 +48,7 @@ describe("PaymentLifecycleRepository", () => {
     );
   });
 
-  test("locks the code, releases stale claims, then counts active claims before admission", async () => {
+  test("locks the code and leaves claim release to owning terminal transitions", async () => {
     const source = await readRepository();
     const reserveClaim = sliceFrom(
       source,
@@ -55,18 +58,22 @@ describe("PaymentLifecycleRepository", () => {
 
     expect(reserveClaim).toContain(".from(discountCodes)");
     expect(reserveClaim).toContain('.for("update")');
-    expect(reserveClaim).toContain(
+    expect(reserveClaim).not.toContain(".update(discountCodeRedemptions)");
+    expect(reserveClaim).not.toContain(
       'releaseReason: "reservation_expired_before_reuse"'
+    );
+    expect(reserveClaim.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
+      reserveClaim.lastIndexOf('.for("update")')
+    );
+    expect(reserveClaim).toContain(
+      "Temporal.Instant.compare(input.reservationExpiresAt, claimedAt)"
+    );
+    expect(reserveClaim).toContain("getDiscountCodeTiming(code.validUntil)");
+    expect(reserveClaim).toContain(
+      "currentDefinition.labels[input.locale] !=="
     );
     expect(reserveClaim).toContain(
       'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
-    );
-    expect(
-      reserveClaim.indexOf('releaseReason: "reservation_expired_before_reuse"')
-    ).toBeLessThan(
-      reserveClaim.lastIndexOf(
-        'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
-      )
     );
     expect(reserveClaim).toContain(".insert(discountCodeRedemptions)");
   });

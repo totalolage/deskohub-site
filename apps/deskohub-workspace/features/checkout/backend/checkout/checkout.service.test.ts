@@ -476,6 +476,36 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 };
 
 describe("CheckoutService", () => {
+  test("prepares fallible local provider inputs before committing an attempt", async () => {
+    const source = await Bun.file(
+      new URL("./checkout.service.ts", import.meta.url)
+    ).text();
+    const start = source.indexOf(
+      'const startProviderSession = Effect.fn("checkout.startProviderSession")'
+    );
+    const end = source.indexOf("    return CheckoutService.of({", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const startProviderSession = source.slice(start, end);
+    const createAttemptAt = startProviderSession.indexOf(
+      "paymentLifecycle.createAttempt"
+    );
+
+    expect(createAttemptAt).toBeGreaterThanOrEqual(0);
+    expect(startProviderSession.indexOf("toNexiAmount(")).toBeLessThan(
+      createAttemptAt
+    );
+    expect(
+      startProviderSession.indexOf("yield* getNotificationUrl")
+    ).toBeLessThan(createAttemptAt);
+    expect(
+      startProviderSession.indexOf("yield* getCheckoutOrderReturnUrl(")
+    ).toBeLessThan(createAttemptAt);
+    expect(
+      startProviderSession.indexOf("yield* getCheckoutPaymentRetryUrl(")
+    ).toBeLessThan(createAttemptAt);
+  });
+
   test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {
     const orderId = "reservation-reuses-provider-attempt";
     const activeAttempt = makeAttempt({

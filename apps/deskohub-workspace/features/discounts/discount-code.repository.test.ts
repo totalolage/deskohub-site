@@ -17,7 +17,6 @@ describe("discount code availability queries", () => {
       db,
       codeId,
       dotyposCustomerId: "customer-1",
-      at: Temporal.Instant.from("2026-07-15T12:00:00.000Z"),
     }).allowlist.toSQL();
 
     expect(sql).toContain("count(*)");
@@ -28,32 +27,30 @@ describe("discount code availability queries", () => {
     expect(params).toEqual(["customer-1", codeId]);
   });
 
-  test("counts redeemed and only live reserved claims", () => {
+  test("counts every unreleased claim and detects the current customer's state", () => {
     const db = drizzle.mock({ schema });
-    const at = Temporal.Instant.from("2026-07-15T12:00:00.000Z");
     const { sql, params } = buildDiscountCodeAvailabilityQueries({
       db,
       codeId,
       dotyposCustomerId: "customer-1",
-      at,
     }).activeClaims.toSQL();
 
     expect(sql).toContain("count(*)");
     expect(sql).toContain(
       `coalesce(bool_or("dotypos_customer_id" = $1 and "state" = 'redeemed'), false)`
     );
-    expect(sql).toContain('"state" = $3');
-    expect(sql).toContain('"discount_code_redemptions"."state" = $4');
     expect(sql).toContain(
-      '"discount_code_redemptions"."reservation_expires_at" > $5'
+      `coalesce(bool_or("dotypos_customer_id" = $2 and "state" = 'reserved'), false)`
     );
+    expect(sql).toContain('"discount_code_redemptions"."state" in ($4, $5)');
+    expect(sql).not.toContain("reservation_expires_at");
     expect(sql).not.toContain("released");
     expect(params).toEqual([
       "customer-1",
+      "customer-1",
       codeId,
-      "redeemed",
       "reserved",
-      "2026-07-15T12:00:00.000000Z",
+      "redeemed",
     ]);
   });
 });

@@ -25,6 +25,7 @@ export type DiscountCodeUnavailableReason =
   | "expired"
   | "usage_limit_reached"
   | "already_redeemed"
+  | "claim_conflict"
   | "customer_ineligible"
   | "product_ineligible"
   | "no_eligible_subtotal";
