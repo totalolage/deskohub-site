@@ -12,7 +12,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { relations } from "@/db/relations";
 import { paymentAttempts, workspaceReservations } from "@/db/schema";
 import {
-  WorkspaceReservationRepository,
+  type WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -261,16 +261,29 @@ describe("PaymentAttemptRepository real database admission", () => {
     );
   });
 
-  test("uses database time to reject missing, reached, and expired hold deadlines", async () => {
+  test("uses database time and strictly rejects the exact hold deadline", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {
         const { db } = yield* WorkspaceDatabase;
         const payments = yield* PaymentAttemptRepository;
+        yield* db.execute(
+          sql.raw(`
+          create function public.clock_timestamp()
+          returns timestamptz
+          language sql
+          stable
+          as $$
+            select timestamptz '2035-06-01T10:00:00Z'
+          $$
+        `)
+        );
+        yield* db.execute(sql.raw("set search_path = public, pg_catalog"));
+
         const cases = [
           ["missing", "null"],
-          ["expired", "clock_timestamp() - interval '1 millisecond'"],
-          ["reached", "clock_timestamp()"],
-          ["future", "clock_timestamp() + interval '1 minute'"],
+          ["expired", "timestamptz '2035-06-01T09:59:59.999999Z'"],
+          ["reached", "timestamptz '2035-06-01T10:00:00Z'"],
+          ["future", "timestamptz '2035-06-01T10:00:00.000001Z'"],
         ] as const;
 
         for (const [id, deadlineSql] of cases) {
@@ -303,32 +316,46 @@ describe("PaymentAttemptRepository real database admission", () => {
     );
   });
 
-  test("lets cleanup win a real expired-hold payment race without persisting an attempt", async () => {
+  test("rejects payment when database expiry wins between attempt insert and link CAS", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {
         const { db } = yield* WorkspaceDatabase;
         const payments = yield* PaymentAttemptRepository;
-        const reservations = yield* WorkspaceReservationRepository;
-        const id = "expired-payment-race";
-        yield* db.insert(workspaceReservations).values(
-          reservationRow(id, {
-            reservationHoldExpiresAt: Temporal.Now.instant().subtract({
-              seconds: 1,
-            }),
-          })
+        const id = "database-expiry-payment-race";
+        yield* db.insert(workspaceReservations).values(reservationRow(id));
+        yield* db.execute(
+          sql.raw(`
+          create sequence payment_expiry_interleaving_observed
+        `)
+        );
+        yield* db.execute(
+          sql.raw(`
+          create function expire_hold_after_attempt_insert()
+          returns trigger
+          language plpgsql
+          as $$
+          begin
+            perform nextval('payment_expiry_interleaving_observed');
+            update workspace_reservations
+            set reservation_hold_expires_at =
+              clock_timestamp() - interval '1 microsecond'
+            where id = new.workspace_reservation_id;
+            return new;
+          end
+          $$
+        `)
+        );
+        yield* db.execute(
+          sql.raw(`
+          create trigger expire_hold_before_payment_link
+          after insert on payment_attempts
+          for each row
+          execute function expire_hold_after_attempt_insert()
+        `)
         );
 
-        const [paymentResult, cleanupClaim] = yield* Effect.all(
-          [
-            createAttempt(payments, id).pipe(Effect.result),
-            reservations.claimCancellation({
-              id,
-              ownerId: "synthetic-cleanup-owner",
-              recoveryReason: "hold_expired",
-              holdExpiredAt: Temporal.Now.instant(),
-            }),
-          ],
-          { concurrency: "unbounded" }
+        const paymentResult = yield* createAttempt(payments, id).pipe(
+          Effect.result
         );
 
         expect(paymentResult._tag).toBe("Failure");
@@ -337,7 +364,12 @@ describe("PaymentAttemptRepository real database admission", () => {
             PaymentAttemptStateError
           );
         }
-        expect(cleanupClaim).not.toBeNull();
+        const [interleaving] = yield* db
+          .select({
+            observed: sql<number>`last_value::integer`,
+          })
+          .from(sql`payment_expiry_interleaving_observed`);
+        expect(interleaving?.observed).toBe(1);
         expect(yield* db.select().from(paymentAttempts)).toEqual([]);
         const [stored] = yield* db
           .select()
@@ -345,9 +377,8 @@ describe("PaymentAttemptRepository real database admission", () => {
           .where(eq(workspaceReservations.id, id));
         expect(stored).toMatchObject({
           activePaymentAttemptId: null,
-          cancellationClaimOwner: "synthetic-cleanup-owner",
           paymentState: "not_started",
-          reservationState: "cancelling",
+          reservationState: "held",
         });
       })
     );
