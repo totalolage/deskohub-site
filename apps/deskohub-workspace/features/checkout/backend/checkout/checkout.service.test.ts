@@ -88,10 +88,10 @@ if (meetingRoomReservationData.kind !== "meeting-room") {
   throw new Error("Expected meeting-room reservation");
 }
 
-const money = (value: number) => ({
+const money = (value: number, currency = "CZK") => ({
   value,
   exponent: 2,
-  currency: "CZK",
+  currency,
 });
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
@@ -220,9 +220,7 @@ const makeAttempt = (input: {
   provider: "nexi" as const,
   providerOrderId: input.id,
   state: input.state ?? ("created" as const),
-  amountValue: 55_000,
-  amountExponent: 2,
-  currency: "CZK",
+  amount: money(55_000),
   securityToken: input.securityToken ?? null,
   providerRedirectUrl: input.providerRedirectUrl ?? null,
   lastWebhookEventId: null,
@@ -536,7 +534,7 @@ describe("CheckoutService", () => {
         securityToken: "active-security-token",
         providerRedirectUrl: "https://payments.example/existing",
       }),
-      currency: "EUR",
+      amount: money(55_000, "EUR"),
     };
     const harness = await createCheckoutHarness({
       orderId,
@@ -620,9 +618,7 @@ describe("CheckoutService", () => {
     );
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
-        amountValue: 55_000,
-        amountExponent: 2,
-        currency: "CZK",
+        amount: money(55_000),
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -646,7 +642,9 @@ describe("CheckoutService", () => {
       await Effect.runPromise(harness.effect);
 
       expect(harness.createAttempt).toHaveBeenCalledWith(
-        expect.objectContaining({ currency: "CZK" })
+        expect.objectContaining({
+          amount: expect.objectContaining({ currency: "CZK" }),
+        })
       );
       expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
         expect.objectContaining({ currency: "CZK" })

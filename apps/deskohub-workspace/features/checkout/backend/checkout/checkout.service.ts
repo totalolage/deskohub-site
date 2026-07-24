@@ -366,9 +366,7 @@ export const CheckoutServiceLive = Layer.effect(
         const attempt = yield* paymentAttempts.create({
           workspaceReservationId: input.workspaceReservationId,
           providerOrderId: generateNexiOrderId(),
-          amountValue: input.total.value,
-          amountExponent: input.total.exponent,
-          currency: input.total.currency,
+          amount: input.total,
         });
         yield* Effect.annotateLogsScoped({ attempt });
         yield* Effect.logInfo("Checkout payment attempt created");
@@ -576,14 +574,7 @@ export const CheckoutServiceLive = Layer.effect(
               isReusableAttemptState(attempt.state) &&
               attempt.securityToken &&
               attempt.providerRedirectUrl &&
-              workspaceMoneyEquals(
-                {
-                  value: attempt.amountValue,
-                  exponent: attempt.amountExponent,
-                  currency: attempt.currency,
-                },
-                state.acceptedTotal
-              )
+              workspaceMoneyEquals(attempt.amount, state.acceptedTotal)
             ) {
               yield* Effect.annotateLogsScoped({ attempt });
               yield* Effect.logInfo(
