@@ -11,7 +11,8 @@
     "./generated/*": "./src/generated/*.ts"
   },
   "scripts": {
-    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/dotypos-api.yaml --name DotyposClient --output ./src/generated/effect.gen.ts"
+    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/dotypos-api.yaml --name DotyposClient --output ./src/generated/effect.gen.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "effect": "4.0.0-beta.85",

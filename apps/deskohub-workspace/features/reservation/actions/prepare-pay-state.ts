@@ -442,13 +442,11 @@ const resolvePendingReservationTransition = Effect.fn(
     reservation: WorkspaceReservation,
     epoch: string
   ) =>
-    Effect.gen(function* () {
-      return yield* reconcileProviderHoldCreation({
-        reservations: input.reservations,
-        reservation,
-        epoch,
-        purpose: "compensation",
-      });
+    reconcileProviderHoldCreation({
+      reservations: input.reservations,
+      reservation,
+      epoch,
+      purpose: "compensation",
     });
 
   if (

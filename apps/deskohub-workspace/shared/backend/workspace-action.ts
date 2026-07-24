@@ -117,7 +117,7 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     })
   );
 
-  return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation);
+  return Effect.andThen(scheduleWorkspaceTelemetryFlush, invocation);
 };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(

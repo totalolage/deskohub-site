@@ -1,5 +1,5 @@
 import { NextEffect } from "@deskohub/next-effect";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { after } from "next/server";
 import {
   createWorkspaceOtelLoggerLive,
@@ -9,6 +9,7 @@ import {
   flushPostHogLogs,
   getRegisteredPostHogLoggerProvider,
 } from "./logging/posthog-otel";
+import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 
 type WorkspaceEffectBoundary = "action" | "route" | "run" | "task";
 
@@ -41,7 +42,7 @@ export const defineWorkspaceTask =
       runWorkspaceEffect(operation, { boundary: "task" })
     );
 
-export const scheduleWorkspaceTelemetryFlush = () =>
+export const scheduleWorkspaceTelemetryFlush = Effect.suspend(() =>
   getRegisteredPostHogLoggerProvider()
     ? // The scheduling error is logged and deliberately removed below.
       // @effect-diagnostics-next-line unknownInEffectCatch:off
@@ -59,14 +60,20 @@ export const scheduleWorkspaceTelemetryFlush = () =>
         ),
         Effect.ignore
       )
-    : Effect.void;
+    : Effect.void
+);
 
 const registeredLoggerProvider = getRegisteredPostHogLoggerProvider();
 
-const workspaceRuntime = NextEffect.make({
-  layer: registeredLoggerProvider
+const WorkspaceObservabilityLive = Layer.merge(
+  registeredLoggerProvider
     ? createWorkspaceOtelLoggerLive(registeredLoggerProvider)
     : WorkspaceLoggerLive,
+  WorkspaceTracingLive
+);
+
+const workspaceRuntime = NextEffect.make({
+  layer: WorkspaceObservabilityLive,
 });
 
 // The flush error is logged and deliberately removed below.
