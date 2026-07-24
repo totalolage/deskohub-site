@@ -3854,6 +3854,8 @@ describe("prepareWorkspacePayState", () => {
     "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
     "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
     "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+    "hold_creation_orphan_awaiting_visibility:synthetic-epoch:synthetic-loser:1780308000000",
+    "hold_creation_orphan_verifying:synthetic-epoch:synthetic-loser:1780308000000:synthetic-owner",
   ])("returns a bounded retryable outcome instead of looping on unresolved supersession recovery: %s", async (failureCode) => {
     const current = makeReusableReservation({
       id: "unresolved-supersession-reservation",

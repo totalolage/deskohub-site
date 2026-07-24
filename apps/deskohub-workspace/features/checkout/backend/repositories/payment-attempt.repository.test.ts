@@ -15,6 +15,8 @@ const unresolvedRecoveryMarkers = [
   "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
   "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
   "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+  "hold_creation_orphan_awaiting_visibility:synthetic-epoch:synthetic-loser:1780308000000",
+  "hold_creation_orphan_verifying:synthetic-epoch:synthetic-loser:1780308000000:synthetic-owner",
 ] as const;
 
 describe("PaymentAttemptRepository", () => {
@@ -174,6 +176,8 @@ describe("PaymentAttemptRepository", () => {
                         "hold_creation_candidate_compensating:",
                         "hold_creation_orphan_recovery:",
                         "hold_creation_orphan_processing:",
+                        "hold_creation_orphan_awaiting_visibility:",
+                        "hold_creation_orphan_verifying:",
                       ].some((prefix) =>
                         stagedReservation.failureCode?.startsWith(prefix)
                       )

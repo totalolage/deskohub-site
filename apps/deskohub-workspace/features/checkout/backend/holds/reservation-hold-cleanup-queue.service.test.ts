@@ -1091,6 +1091,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
                 return true;
               })
             ),
+            beginDifferentProviderAttachmentCancellationVerification: mock(
+              () => Effect.void
+            ),
             releaseDifferentProviderAttachmentRecovery: mock(() => Effect.void),
             completeDifferentProviderAttachmentRecovery: mock(() =>
               Effect.sync(() => {
@@ -1285,6 +1288,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
             findById: mock(() => Effect.sync(() => row)),
             recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
             claimDifferentProviderAttachmentRecovery: claim,
+            beginDifferentProviderAttachmentCancellationVerification: mock(
+              () => Effect.void
+            ),
             releaseDifferentProviderAttachmentRecovery: mock(() => Effect.void),
             completeDifferentProviderAttachmentRecovery: complete,
           } as unknown as WorkspaceReservationRepositoryType),
@@ -1774,6 +1780,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
         findById: mock(() => Effect.sync(() => row)),
         recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification: mock(
+          () => Effect.void
+        ),
         releaseDifferentProviderAttachmentRecovery: release,
         completeDifferentProviderAttachmentRecovery: complete,
       } as unknown as WorkspaceReservationRepositoryType),
@@ -1842,18 +1851,36 @@ describe("ReservationHoldCleanupScheduleService", () => {
     });
     const claim = mock((input) =>
       Effect.sync(() => {
+        const awaitingVisibility = row.failureCode?.startsWith(
+          `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+        );
         row = makeReservation({
           ...row,
-          failureCode: `hold_creation_orphan_processing:${epoch}:${loserId}:${input.ownerId}`,
+          failureCode: awaitingVisibility
+            ? `hold_creation_orphan_verifying:${epoch}:${loserId}:${now.epochMilliseconds}:${input.ownerId}`
+            : `hold_creation_orphan_processing:${epoch}:${loserId}:${input.ownerId}`,
         });
         return true;
       })
     );
-    const release = mock(() =>
+    const beginVerification = mock((input) =>
       Effect.sync(() => {
         row = makeReservation({
           ...row,
-          failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}`,
+          failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${now.epochMilliseconds}:${input.ownerId}`,
+        });
+      })
+    );
+    const release = mock(() =>
+      Effect.sync(() => {
+        const verificationStarted = row.failureCode?.startsWith(
+          `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+        );
+        row = makeReservation({
+          ...row,
+          failureCode: verificationStarted
+            ? `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${now.epochMilliseconds}`
+            : `hold_creation_orphan_recovery:${epoch}:${loserId}`,
         });
       })
     );
@@ -1896,6 +1923,8 @@ describe("ReservationHoldCleanupScheduleService", () => {
         findById: mock(() => Effect.sync(() => row)),
         recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification:
+          beginVerification,
         releaseDifferentProviderAttachmentRecovery: release,
         completeDifferentProviderAttachmentRecovery: complete,
       } as unknown as WorkspaceReservationRepositoryType),
@@ -1919,7 +1948,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     ).rejects.toBeDefined();
     expect(release).toHaveBeenCalledTimes(1);
     expect(row.failureCode).toBe(
-      `hold_creation_orphan_recovery:${epoch}:${loserId}`
+      `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${now.epochMilliseconds}`
     );
 
     const redelivery = await processReservationHoldCleanupScheduleMessage(
@@ -1930,6 +1959,130 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(redelivery).toBe("cancelled");
     expect(row.failureCode).toBe(
       `hold_creation_orphan_resolved:${epoch}:${loserId}`
+    );
+    expect(cancelReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not resend after interruption while post-cancellation visibility is pending", async () => {
+    const {
+      getAttachmentCancellationScheduleMessage,
+      processReservationHoldCleanupScheduleMessage,
+    } = await import("./reservation-hold-cleanup-queue.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const epoch = "synthetic-post-cancellation-interruption-epoch";
+    const winnerId = "synthetic-post-cancellation-interruption-winner";
+    const loserId = "synthetic-post-cancellation-interruption-loser";
+    let row = makeReservation({
+      dotyposReservationId: winnerId,
+      failureCode: `hold_creation_orphan_recovery:${epoch}:${loserId}:${now.epochMilliseconds}`,
+    });
+    const claim = mock((input) =>
+      Effect.sync(() => {
+        const verificationOnly = row.failureCode?.startsWith(
+          `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+        );
+        row = makeReservation({
+          ...row,
+          failureCode: verificationOnly
+            ? `hold_creation_orphan_verifying:${epoch}:${loserId}:${now.epochMilliseconds}:${input.ownerId}`
+            : `hold_creation_orphan_processing:${epoch}:${loserId}:${now.epochMilliseconds}:${input.ownerId}`,
+        });
+        return true;
+      })
+    );
+    const beginVerification = mock((input) =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${now.epochMilliseconds}:${input.ownerId}`,
+        });
+      })
+    );
+    const release = mock(() =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          failureCode: row.failureCode?.startsWith(
+            `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+          )
+            ? `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${now.epochMilliseconds}`
+            : `hold_creation_orphan_recovery:${epoch}:${loserId}:${now.epochMilliseconds}`,
+        });
+      })
+    );
+    const complete = mock(() =>
+      Effect.sync(() => {
+        row = makeReservation({
+          ...row,
+          failureCode: `hold_creation_orphan_resolved:${epoch}:${loserId}:${now.epochMilliseconds}`,
+        });
+      })
+    );
+    const cancelReservation = mock(() => Effect.void);
+    let evidenceLookup = 0;
+    const listReservations = mock(() => {
+      evidenceLookup += 1;
+      if (evidenceLookup === 2) return Effect.never;
+      return Effect.succeed(
+        makeDefinitiveWinnerAndLoserEvidence({
+          reservation: row,
+          epoch,
+          winnerId,
+          loserId,
+          loserStatus: evidenceLookup === 4 ? "CANCELLED" : "NEW",
+        })
+      );
+    });
+    const payload = getAttachmentCancellationScheduleMessage({
+      recoveryKind: "different_provider",
+      orderId: row.id,
+      providerCreationEpoch: epoch,
+      dotyposReservationId: loserId,
+      reservationCreatedAt: now,
+    }).payload;
+    const layer = Layer.mergeAll(
+      Layer.succeed(WorkspaceReservationRepository, {
+        findById: mock(() => Effect.sync(() => row)),
+        recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
+        claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification:
+          beginVerification,
+        releaseDifferentProviderAttachmentRecovery: release,
+        completeDifferentProviderAttachmentRecovery: complete,
+      } as unknown as WorkspaceReservationRepositoryType),
+      Layer.succeed(ReservationHoldCleanupService, {
+        cancelOrderHold: mock(() => Effect.die("must not cancel winner")),
+        sweepExpiredHolds: mock(() =>
+          Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+        ),
+      } satisfies ReservationHoldCleanupServiceType),
+      Layer.succeed(DotyposService, {
+        listReservations,
+        cancelReservation,
+      } as unknown as typeof DotyposService.Service)
+    );
+
+    await expect(
+      processReservationHoldCleanupScheduleMessage(payload, now).pipe(
+        Effect.provide(layer),
+        Effect.timeout("10 millis"),
+        Effect.runPromise
+      )
+    ).rejects.toBeDefined();
+    expect(row.failureCode).toBe(
+      `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:${now.epochMilliseconds}`
+    );
+
+    const redelivery = await processReservationHoldCleanupScheduleMessage(
+      payload,
+      now
+    ).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(redelivery).toBe("cancelled");
+    expect(row.failureCode).toBe(
+      `hold_creation_orphan_resolved:${epoch}:${loserId}:${now.epochMilliseconds}`
     );
     expect(cancelReservation).toHaveBeenCalledTimes(1);
   });
@@ -2146,6 +2299,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
         findById: mock(() => Effect.sync(() => row)),
         recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification: mock(
+          () => Effect.void
+        ),
         releaseDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         completeDifferentProviderAttachmentRecovery: mock(() =>
           Effect.sync(() => {
@@ -2254,6 +2410,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
         findById: mock(() => Effect.sync(() => row)),
         recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification: mock(
+          () => Effect.void
+        ),
         releaseDifferentProviderAttachmentRecovery: release,
         completeDifferentProviderAttachmentRecovery: mock(() =>
           Effect.sync(() => {
@@ -2376,6 +2535,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
         findById: mock(() => Effect.sync(() => row)),
         recordDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         claimDifferentProviderAttachmentRecovery: claim,
+        beginDifferentProviderAttachmentCancellationVerification: mock(
+          () => Effect.void
+        ),
         releaseDifferentProviderAttachmentRecovery: release,
         completeDifferentProviderAttachmentRecovery: complete,
       } as unknown as WorkspaceReservationRepositoryType),
@@ -2478,6 +2640,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
             });
             return true;
           })
+        ),
+        beginDifferentProviderAttachmentCancellationVerification: mock(
+          () => Effect.void
         ),
         releaseDifferentProviderAttachmentRecovery: mock(() => Effect.void),
         completeDifferentProviderAttachmentRecovery: complete,
@@ -3103,6 +3268,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
           return true;
         })
       ),
+      beginDifferentProviderAttachmentCancellationVerification: mock(
+        () => Effect.void
+      ),
       releaseDifferentProviderAttachmentRecovery: mock((input) =>
         Effect.sync(() => {
           row = makeReservation({
@@ -3552,6 +3720,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
                 });
                 return true;
               })
+            ),
+            beginDifferentProviderAttachmentCancellationVerification: mock(
+              () => Effect.void
             ),
             releaseDifferentProviderAttachmentRecovery: mock(() => Effect.void),
             completeDifferentProviderAttachmentRecovery: mock(() =>
