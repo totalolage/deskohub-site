@@ -18,7 +18,7 @@ import { readCheckoutRow } from "../integrations/database";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -48,7 +48,7 @@ export const assertReservationReplacement = ({
     const firstOrderId = yield* runStep({
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-          timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+          timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
           onOrderId: (orderId) => {
@@ -57,17 +57,18 @@ export const assertReservationReplacement = ({
           run,
           session,
           submitReservationScript: submitCoworkReservationScript,
+          timeouts: config.timeouts,
         });
       }),
       id: "prepare-reservation-hold",
-      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
+      timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = firstOrderId;
 
     const firstRow = yield* runStep({
       execute: readHeldReservation(datasourceConfig, firstOrderId),
       id: "read-initial-reservation-hold",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     state.checkoutRow = firstRow;
     const firstDotyposReservationId = yield* tryWorkspaceE2ESync(
@@ -79,9 +80,14 @@ export const assertReservationReplacement = ({
     );
 
     yield* runStep({
-      execute: returnToPrefilledReservation({ data, run, session }),
+      execute: returnToPrefilledReservation({
+        data,
+        run,
+        session,
+        timeouts: config.timeouts,
+      }),
       id: "return-to-prefilled-reservation",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     const secondOrderId = yield* runStep({
       execute: submitReservationForPayPage({
@@ -91,14 +97,15 @@ export const assertReservationReplacement = ({
         run,
         session,
         submitReservationScript: submitCoworkReservationScript,
+        timeouts: config.timeouts,
       }),
       id: "resubmit-prefilled-reservation",
-      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
+      timeoutMs: config.timeouts.checkoutStart,
     });
     const secondRow = yield* runStep({
       execute: readHeldReservation(datasourceConfig, secondOrderId),
       id: "read-replacement-reservation-hold",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     const secondDotyposReservationId = yield* tryWorkspaceE2ESync(
       "read replacement Dotypos reservation id",
@@ -122,7 +129,7 @@ export const assertReservationReplacement = ({
         )
       ),
       id: "read-superseded-reservation",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     const firstDotyposStatus = yield* runStep({
       execute: readDotyposReservationStatus(
@@ -130,7 +137,7 @@ export const assertReservationReplacement = ({
         firstDotyposReservationId
       ),
       id: "read-superseded-dotypos-status",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
     const secondDotyposStatus = yield* runStep({
       execute: readDotyposReservationStatus(
@@ -138,7 +145,7 @@ export const assertReservationReplacement = ({
         secondDotyposReservationId
       ),
       id: "read-replacement-dotypos-status",
-      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      timeoutMs: config.timeouts.datasource,
     });
 
     yield* assertReplacedReservation({
@@ -156,14 +163,16 @@ const returnToPrefilledReservation = ({
   data,
   run,
   session,
+  timeouts,
 }: {
   data: CheckoutData;
   run: Runner;
   session: string;
+  timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
-    const browserActionTimeoutMs = getWorkspaceE2ETimeoutMs("browserAction");
+    const browserActionTimeoutMs = timeouts.browserAction;
     yield* waitForBrowserReactHydration(
       run,
       session,
@@ -184,13 +193,13 @@ const returnToPrefilledReservation = ({
       },
       run,
       session,
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: timeouts.uiTransition,
     });
     yield* waitForBrowserReactHydration(
       run,
       session,
       "#reservation-privacy-consent",
-      { timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition") }
+      { timeoutMs: timeouts.uiTransition }
     );
     yield* evalBrowserScript(
       "assert prefilled reservation fields",
@@ -199,7 +208,7 @@ const returnToPrefilledReservation = ({
       getAssertPrefilledReservationScript(data),
       {
         logOutput: false,
-        timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
+        timeoutMs: timeouts.browserAction,
       }
     );
   });

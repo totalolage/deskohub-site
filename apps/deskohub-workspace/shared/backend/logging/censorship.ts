@@ -4,6 +4,8 @@ import {
   type LoggerProvider,
   SeverityNumber,
 } from "@opentelemetry/api-logs";
+import { resourceFromAttributes } from "@opentelemetry/resources";
+import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
 
@@ -40,6 +42,7 @@ const sensitiveLogKeyFragments = [
 
 const sensitiveLogExactKeys = new Set([
   "discountcode",
+  "exception.stacktrace",
   "submittedcode",
   "x-vercel-sc-headers",
 ]);
@@ -363,8 +366,10 @@ const censorLogValueInternal = (
   return result;
 };
 
-export const censorLogValue = (value: unknown): unknown =>
+export const censorTelemetryValue = (value: unknown): unknown =>
   censorLogValueInternal(value, new WeakMap());
+
+export const censorLogValue = censorTelemetryValue;
 
 export const censorLoggerOptions = (
   options: Logger.Options<unknown>
@@ -470,6 +475,78 @@ export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
       });
     })
   );
+
+export const createCensoredOtelSpanExporter = (
+  spanExporter: SpanExporter
+): SpanExporter => ({
+  export: (spans, resultCallback) =>
+    spanExporter.export(spans.map(censorReadableSpan), resultCallback),
+  forceFlush: () => spanExporter.forceFlush?.() ?? Promise.resolve(),
+  shutdown: () => spanExporter.shutdown(),
+});
+
+const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
+  attributes: censorTelemetryValue(
+    span.attributes
+  ) as ReadableSpan["attributes"],
+  droppedAttributesCount: span.droppedAttributesCount,
+  droppedEventsCount: span.droppedEventsCount,
+  droppedLinksCount: span.droppedLinksCount,
+  duration: span.duration,
+  ended: span.ended,
+  endTime: span.endTime,
+  events: span.events.map((event) => {
+    const attributes = censorTelemetryValue(
+      event.attributes
+    ) as typeof event.attributes;
+    const isException =
+      event.attributes !== undefined &&
+      Object.keys(event.attributes).some((key) => key.startsWith("exception."));
+
+    return {
+      ...event,
+      attributes,
+      name: isException ? "exception" : event.name,
+    };
+  }),
+  instrumentationScope: span.instrumentationScope,
+  kind: span.kind,
+  links: span.links.map((link) => ({
+    ...link,
+    attributes: censorTelemetryValue(link.attributes) as typeof link.attributes,
+  })),
+  name: span.name,
+  parentSpanContext: span.parentSpanContext,
+  resource: resourceFromAttributes(
+    censorOtelResourceAttributes(span.resource.attributes),
+    span.resource.schemaUrl ? { schemaUrl: span.resource.schemaUrl } : undefined
+  ),
+  spanContext: () => span.spanContext(),
+  startTime: span.startTime,
+  status: span.status.message
+    ? { ...span.status, message: CENSORED_LOG_VALUE }
+    : span.status,
+});
+
+const trustedOtelResourceIdentityKeys = [
+  "service.name",
+  "telemetry.sdk.name",
+] as const;
+
+const censorOtelResourceAttributes = (
+  attributes: ReadableSpan["resource"]["attributes"]
+): ReadableSpan["resource"]["attributes"] => {
+  const censored = censorTelemetryValue(
+    attributes
+  ) as ReadableSpan["resource"]["attributes"];
+
+  for (const key of trustedOtelResourceIdentityKeys) {
+    const value = attributes[key];
+    if (value !== undefined) censored[key] = value;
+  }
+
+  return censored;
+};
 
 export const WorkspaceLoggerLive = Logger.layer([CensoringLogger]);
 

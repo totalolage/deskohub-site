@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { browserDiagnosticsScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
@@ -194,6 +195,7 @@ test("retries a hosted payment field when its first fill does not stick", async 
       data: makeCheckoutData(),
       run,
       session: "hosted-payment-test",
+      timeouts: workspaceE2ETimeouts,
     })
   );
 
@@ -258,6 +260,7 @@ test("activates freshly discovered hosted-payment targets with the keyboard", as
       data: makeCheckoutData(),
       run,
       session: "test-session",
+      timeouts: workspaceE2ETimeouts,
     })
   );
 
@@ -282,6 +285,7 @@ const makeConfig = (): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
   bypassSecret: "test-protection-bypass",
   expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+  timeouts: workspaceE2ETimeouts,
 });
 
 const makeCheckoutData = (): CheckoutData => ({

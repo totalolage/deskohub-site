@@ -89,7 +89,21 @@
       "persistent": true
     },
     "test:e2e": {
-      "cache": false
+      "cache": false,
+      "passThroughEnv": [
+        "GITHUB_ACTIONS",
+        "GITHUB_EVENT_NAME",
+        "GITHUB_RUN_ATTEMPT",
+        "GITHUB_RUN_ID",
+        "TARGET_SHA",
+        "WORKSPACE_E2E_BASE_URL",
+        "WORKSPACE_E2E_DATABASE_ALLOWLIST",
+        "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
+        "WORKSPACE_E2E_EXECUTION_CONTEXT",
+        "WORKSPACE_E2E_POSTHOG_HOST",
+        "WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN",
+        "WORKSPACE_E2E_PR_NUMBER"
+      ]
     },
     "lint": {
       "dependsOn": ["^lint"],

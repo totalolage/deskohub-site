@@ -11,7 +11,7 @@ import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 
@@ -43,30 +43,30 @@ export const assertContactForm = ({
 
     yield* runStep({
       execute: openBrowserPage(config, run, session, url.toString(), {
-        timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+        timeoutMs: config.timeouts.browserNavigation,
       }).pipe(Effect.asVoid),
       id: "open-contact-form",
-      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+      timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
       execute: waitForBrowserReactFormAction(
         run,
         session,
         "#contact-form form",
-        { timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition") }
+        { timeoutMs: config.timeouts.uiTransition }
       ),
       id: "wait-for-contact-form-hydration",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: fillContactForm(run, session, data),
+      execute: fillContactForm(run, session, data, config.timeouts),
       id: "fill-contact-form",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: submitContactForm(run, session),
+      execute: submitContactForm(run, session, config.timeouts),
       id: "submit-contact-form",
-      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+      timeoutMs: config.timeouts.uiTransition,
     });
     log("Contact form e2e passed");
   });
@@ -74,10 +74,11 @@ export const assertContactForm = ({
 const fillContactForm = (
   run: Runner,
   session: string,
-  data: { email: string; message: string; name: string; phone: string }
+  data: { email: string; message: string; name: string; phone: string },
+  timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    const timeoutMs = getWorkspaceE2ETimeoutMs("browserAction");
+    const timeoutMs = timeouts.browserAction;
     yield* fillBrowserField(run, session, "#contact-name", data.name, {
       timeoutMs,
     });
@@ -92,9 +93,13 @@ const fillContactForm = (
     });
   });
 
-const submitContactForm = (run: Runner, session: string) =>
+const submitContactForm = (
+  run: Runner,
+  session: string,
+  timeouts: WorkspaceE2ETimeouts
+) =>
   Effect.gen(function* () {
-    const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
+    const timeoutMs = timeouts.uiTransition;
     yield* focusBrowserElement(
       run,
       session,

@@ -1,4 +1,3 @@
-import { resolve } from "node:path";
 import { Context, Effect, Layer } from "effect";
 import {
   assertNexiSandbox as assertNexiSandboxConfig,
@@ -7,6 +6,7 @@ import {
   getDatasourceConfig,
   type WorkspaceE2EConfig,
 } from "../config";
+import type { E2EEnvironment } from "../e2e-env";
 import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
@@ -15,7 +15,6 @@ import {
 import {
   addRedaction,
   assertSafeDatabaseUrl,
-  loadEnvFile,
   log,
   makeRunner,
   type Runner,
@@ -24,10 +23,6 @@ import {
   scriptDir,
   workspaceDir,
 } from "../runtime";
-import {
-  getWorkspaceE2ETimeoutMs,
-  type WorkspaceE2ETimeout,
-} from "../timeouts";
 
 export type CommandResult = Awaited<ReturnType<Runner>>;
 export type RunCommandOptions = Parameters<Runner>[2];
@@ -62,31 +57,6 @@ export class WorkspaceE2ERedactionService extends Context.Service<
   });
 }
 
-interface IWorkspaceE2EEnvFileService {
-  readonly load: (
-    path: string
-  ) => Effect.Effect<Map<string, string>, WorkspaceE2EError>;
-  readonly loadLocalEnv: Effect.Effect<Map<string, string>, WorkspaceE2EError>;
-}
-
-export class WorkspaceE2EEnvFileService extends Context.Service<
-  WorkspaceE2EEnvFileService,
-  IWorkspaceE2EEnvFileService
->()("WorkspaceE2EEnvFileService") {
-  static Live = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const paths = yield* WorkspaceE2EPathService;
-      const load = (path: string) => loadEnvFile(path);
-
-      return {
-        load,
-        loadLocalEnv: load(resolve(paths.workspaceDir, ".env.local")),
-      };
-    })
-  );
-}
-
 interface IWorkspaceE2EConfigService {
   readonly assertDatasourceSafety: (
     config: DatasourceConfig
@@ -99,33 +69,39 @@ interface IWorkspaceE2EConfigService {
     DatasourceConfig,
     WorkspaceE2EError
   >;
-  readonly getTimeoutMs: (timeout: WorkspaceE2ETimeout) => number;
 }
 
 export class WorkspaceE2EConfigService extends Context.Service<
   WorkspaceE2EConfigService,
   IWorkspaceE2EConfigService
 >()("WorkspaceE2EConfigService") {
-  static Live = Layer.succeed(this, {
-    assertDatasourceSafety: (config) =>
-      tryWorkspaceE2ESync("assert datasource safety", () => {
-        assertSafeDatabaseUrl(config.databaseUrl, "DATABASE_URL");
-        assertSafeDatabaseUrl(
-          config.databaseUrlUnpooled,
-          "DATABASE_URL_UNPOOLED"
-        );
-      }),
-    assertNexiSandbox: (origin) =>
-      tryWorkspaceE2ESync("assert Nexi sandbox configuration", () =>
-        assertNexiSandboxConfig(origin)
+  static layer = (environment: E2EEnvironment) =>
+    Layer.succeed(this, {
+      assertDatasourceSafety: (config) =>
+        tryWorkspaceE2ESync("assert datasource safety", () => {
+          assertSafeDatabaseUrl(
+            config.databaseUrl,
+            "DATABASE_URL",
+            environment.WORKSPACE_E2E_DATABASE_ALLOWLIST
+          );
+          assertSafeDatabaseUrl(
+            config.databaseUrlUnpooled,
+            "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
+            environment.WORKSPACE_E2E_DATABASE_ALLOWLIST
+          );
+        }),
+      assertNexiSandbox: (origin) =>
+        tryWorkspaceE2ESync("assert Nexi sandbox configuration", () =>
+          assertNexiSandboxConfig(origin)
+        ),
+      getConfig: tryWorkspaceE2ESync("read workspace e2e config", () =>
+        getConfig(environment)
       ),
-    getConfig: tryWorkspaceE2ESync("read workspace e2e config", getConfig),
-    getDatasourceConfig: tryWorkspaceE2ESync(
-      "read workspace e2e datasource config",
-      getDatasourceConfig
-    ),
-    getTimeoutMs: getWorkspaceE2ETimeoutMs,
-  });
+      getDatasourceConfig: tryWorkspaceE2ESync(
+        "read workspace e2e datasource config",
+        () => getDatasourceConfig(environment)
+      ),
+    });
 }
 
 interface IWorkspaceE2ECommandRunnerService {
@@ -141,11 +117,14 @@ export class WorkspaceE2ECommandRunnerService extends Context.Service<
   WorkspaceE2ECommandRunnerService,
   IWorkspaceE2ECommandRunnerService
 >()("WorkspaceE2ECommandRunnerService") {
-  static Live = Layer.succeed(this, makeCommandRunnerService());
+  static layer = (environment: E2EEnvironment) =>
+    Layer.succeed(this, makeCommandRunnerService(environment));
 }
 
-function makeCommandRunnerService(): IWorkspaceE2ECommandRunnerService {
-  const runner = makeRunner();
+function makeCommandRunnerService(
+  environment: E2EEnvironment
+): IWorkspaceE2ECommandRunnerService {
+  const runner = makeRunner(environment);
   return {
     getRunner: Effect.succeed(runner),
     run: (command, args, options) =>

@@ -41,7 +41,11 @@ names. Inspect settings and deployment metadata without printing their values.
 - Neon integration-managed `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
-- Workspace E2E Dotypos URL, timeout, credentials, and tenant IDs.
+- Workspace E2E Dotypos URL, credentials, and tenant IDs.
+- GitHub Actions variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when
+  using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
+  `workspace-checkout-e2e` environment. The token is the public project ingest
+  token, never a management API key or secret.
 - `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
   after the deployed payment/webhook path has completed.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
@@ -102,6 +106,18 @@ preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
 The runner does not deploy, pull Vercel environment files, inspect deployments,
 or mutate aliases/domains.
 
+The runner relies on Bun to load dotenv files before the entry module executes.
+`e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
+validates, and decodes the exact runner configuration once, before telemetry or
+Effect Layers are constructed. Other E2E modules receive that immutable typed
+configuration and must not read ambient environment variables. Application-only
+variables are not projected into the E2E configuration, and E2E telemetry uses
+only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
+
+All case, step, provider, browser, datasource, artifact, and cleanup timeouts
+are static checked-in values in `e2e/timeouts.ts`. The runner does not accept
+environment-variable timeout overrides.
+
 Webhook replay is only a deterministic notification trigger. The deployed
 handler must still fetch authoritative order state from Nexi before applying a
 payment transition. Keep raw payloads, credentials, customer data, and
@@ -138,6 +154,100 @@ Failure artifacts remain available for seven days. The suite must retain
 fail-fast parallel aggregation, scoped browser sessions, cancellation
 propagation, bounded finalizers, case watchdogs, and discrete semantic-step
 timeouts.
+
+## Suite telemetry
+
+The Bun E2E process exports an OTLP trace to PostHog under its own
+`deskohub-workspace-e2e` service name. One root `e2e.run` span contains an
+`e2e.case` child for every case, and every semantic step is an `e2e.step` child
+of its case. Span names are fixed and low-cardinality; code-owned case and step
+IDs are attributes.
+
+PostHog's native span duration is the authoritative elapsed time. Case and step
+spans also record their configured `e2e.timeout_ms`, which allows actual
+duration to be compared with the watchdog that governed the operation. Terminal
+attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
+`cancelled`, plus the closed failure kinds `error`, `defect`, and `timeout`.
+The exact target SHA and GitHub run correlation values are included when
+available.
+
+The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
+`ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:
+`workflow_dispatch` is `manual`, while the automatic
+`vercel.deployment.success` repository dispatch is `ci`. During rollout to the
+default-branch workflow, an absent explicit value derives the same result from
+GitHub's event name. A rerun retains the original trigger classification and is
+distinguished by the GitHub run attempt.
+
+### Inspecting spans in PostHog
+
+Find the GitHub Actions run ID and attempt first. The trace correlation value is
+`<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`, for example `30116867811-1`.
+
+In the Workspace PostHog project:
+
+1. Open **Traces** and choose a time range that includes the E2E run.
+2. Filter the service name to `deskohub-workspace-e2e`.
+3. Filter the span attribute `e2e.run.id` to the correlation value.
+4. Open the resulting trace and confirm it contains one root `e2e.run` span,
+   one `e2e.case` span per executed case, and the expected `e2e.step` children.
+5. Use native span duration for elapsed time. Compare case and step durations
+   with `e2e.timeout_ms`; do not derive duration from log timestamps.
+6. Use `e2e.execution_context` to separate `manual` and `ci` runs, and inspect
+   `e2e.outcome` plus `e2e.failure.kind` when a span did not pass.
+
+For scripted inspection, authenticate `posthog-cli` to the EU Workspace
+project with a personal API key granting `tracing:read`. The public project
+token used by E2E can ingest spans but cannot read them. Query the PostHog
+management origin, `https://eu.posthog.com`, rather than the ingestion origin.
+
+Use `POST /api/projects/{project_id}/tracing/spans/count/` for aggregate arrival
+evidence and `POST /api/projects/{project_id}/tracing/spans/query/` for bounded
+duration inspection. Scope both requests with:
+
+```json
+{
+  "query": {
+    "dateRange": {
+      "date_from": "-1d"
+    },
+    "serviceNames": ["deskohub-workspace-e2e"],
+    "filterGroup": [
+      {
+        "key": "e2e.run.id",
+        "type": "span_attribute",
+        "operator": "exact",
+        "value": "<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>"
+      }
+    ]
+  }
+}
+```
+
+For the query endpoint, additionally set `rootSpans: false`,
+`flatSpans: true`, and a bounded `limit`. Report only span counts, names,
+durations, closed E2E attributes, and safe GitHub correlation values. Do not
+dump full attribute/resource objects, exception events, credentials, preview
+URLs, or provider/customer/reservation data. PostHog's query response represents
+span attributes such as `e2e.timeout_ms` as strings; `duration_nano` remains the
+native numeric duration.
+
+Trace export passes through the same shared censoring logic as normal Workspace
+logs. That shared boundary censors span attributes, event and link attributes,
+exception details, and span status messages. The E2E instrumentation itself
+adds only closed, code-owned values and never adds preview URLs, database or
+provider identifiers, reservation/order/customer data, test contact fields,
+raw errors, credentials, or artifact contents.
+
+Export and shutdown are bounded and observational: PostHog availability must
+not replace the E2E result. Without a project ingest token, local execution
+remains usable without remote traces; the existing console progress output
+remains available but is not the telemetry source of truth.
+
+These spans cover every invocation that reaches `bun run test:e2e`. Failures
+in earlier workflow setup such as target resolution, dependency installation,
+or preview database migration remain represented by GitHub Actions rather than
+the in-process suite telemetry.
 
 For Nexi sandbox facts and cards, see
 [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).

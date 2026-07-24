@@ -1,17 +1,25 @@
 import { describe, expect, test } from "bun:test";
+import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
   LoggerProvider,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import {
+  BasicTracerProvider,
+  InMemorySpanExporter,
+  SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, Effect, Layer, Logger, References } from "effect";
+import { createTracingLive } from "../observability/otel-tracing";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
   censorLogValue,
   createCensoredOtelLogger,
+  createCensoredOtelSpanExporter,
   isSensitiveLogKey,
 } from "./censorship";
 
@@ -158,6 +166,18 @@ describe("censorLogValue", () => {
     });
     expect(input.nested.apiKey).toBe("secret-api-key");
     expect(input.credentials[0]?.password).toBe("secret-password");
+  });
+
+  test("redacts telemetry-shaped name keys in ordinary payloads", () => {
+    expect(
+      censorLogValue({
+        "service.name": "private customer value",
+        "telemetry.sdk.name": "private provider value",
+      })
+    ).toEqual({
+      "service.name": CENSORED_LOG_VALUE,
+      "telemetry.sdk.name": CENSORED_LOG_VALUE,
+    });
   });
 
   test("handles cycles while preserving the censored cycle shape", () => {
@@ -495,6 +515,62 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
+    await provider.shutdown();
+  });
+});
+
+describe("createCensoredOtelSpanExporter", () => {
+  test("applies the shared telemetry censorship policy to span data", async () => {
+    const exporter = new InMemorySpanExporter();
+    const privateValue = "private@example.com";
+    const provider = new BasicTracerProvider({
+      resource: resourceFromAttributes({
+        email: privateValue,
+        "service.name": "censorship-test",
+        sessionDuration: 456,
+      }),
+      spanProcessors: [
+        new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+      ],
+    });
+
+    await Effect.runPromise(
+      Effect.fail(new Error(privateValue)).pipe(
+        Effect.withSpan("safe.operation", {
+          attributes: {
+            email: privateValue,
+            sessionDuration: 123,
+          },
+        }),
+        Effect.exit,
+        Effect.provide(
+          createTracingLive({
+            provider,
+            serviceName: "censorship-test",
+          })
+        )
+      )
+    );
+
+    const [span] = exporter.getFinishedSpans();
+    expect(span?.attributes).toMatchObject({
+      email: CENSORED_LOG_VALUE,
+      sessionDuration: 123,
+    });
+    expect(span?.events[0]?.name).toBe("exception");
+    expect(span?.resource.attributes).toMatchObject({
+      email: CENSORED_LOG_VALUE,
+      "service.name": "censorship-test",
+      sessionDuration: 456,
+    });
+    const serialized = JSON.stringify({
+      attributes: span?.attributes,
+      events: span?.events,
+      resource: span?.resource.attributes,
+      status: span?.status,
+    });
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(privateValue);
     await provider.shutdown();
   });
 });

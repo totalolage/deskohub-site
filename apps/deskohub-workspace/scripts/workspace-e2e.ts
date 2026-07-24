@@ -1,10 +1,21 @@
-import { formatWorkspaceE2EFailure } from "../e2e/errors";
-import { workspaceE2E } from "../e2e/workspace-e2e";
-import { runStandaloneWorkspaceEffect } from "../shared/backend/standalone-workspace-effect";
+import "../shared/polyfills/temporal";
 
-workspaceE2E
-  .pipe(runStandaloneWorkspaceEffect("workspace.e2e"))
-  .catch((error) => {
-    process.stderr.write(`${formatWorkspaceE2EFailure(error)}\n`);
-    process.exit(1);
-  });
+import { Cause, Exit } from "effect";
+import { makeE2EEnvironment } from "../e2e/e2e-env";
+import { formatWorkspaceE2EFailure } from "../e2e/errors";
+import {
+  makeE2ETelemetryRuntime,
+  runE2EEffect,
+} from "../e2e/telemetry-runtime";
+import { makeWorkspaceE2E } from "../e2e/workspace-e2e";
+
+const environment = makeE2EEnvironment();
+const telemetry = makeE2ETelemetryRuntime(environment);
+const exit = await runE2EEffect(makeWorkspaceE2E(environment), telemetry);
+
+if (Exit.isFailure(exit)) {
+  process.stderr.write(
+    `${formatWorkspaceE2EFailure(Cause.squash(exit.cause))}\n`
+  );
+  process.exit(1);
+}

@@ -10,7 +10,6 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
-import { getWorkspaceE2ETimeoutMs } from "../timeouts";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -54,9 +53,9 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run locale switch e2e case", cause)
             )
-          ),
+        ),
         id: "locale-switch",
-        timeoutMs: getWorkspaceE2ETimeoutMs("localeCase"),
+        timeoutMs: config.timeouts.localeCase,
       },
       {
         execute: ({ runStep, session }) =>
@@ -64,9 +63,9 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run contact form e2e case", cause)
             )
-          ),
+        ),
         id: "contact-form",
-        timeoutMs: getWorkspaceE2ETimeoutMs("contactCase"),
+        timeoutMs: config.timeouts.contactCase,
       },
     ];
     let nextDateIndex = 0;
@@ -98,9 +97,9 @@ export const makeWorkspaceE2ECases = ({
                 cause
               )
             )
-          ),
+        ),
         id: `payment-${scenario.state}`,
-        timeoutMs: getWorkspaceE2ETimeoutMs("paymentTerminalCase"),
+        timeoutMs: config.timeouts.paymentTerminalCase,
       });
     }
 
@@ -132,9 +131,9 @@ export const makeWorkspaceE2ECases = ({
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run reservation replacement e2e case", cause)
           )
-        ),
+      ),
       id: "reservation-replacement",
-      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutCase"),
+      timeoutMs: config.timeouts.checkoutCase,
     });
 
     for (const flow of checkoutFlows) {
@@ -163,9 +162,9 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
             )
-          ),
+        ),
         id: `checkout-${flow.id}`,
-        timeoutMs: getWorkspaceE2ETimeoutMs("checkoutCase"),
+        timeoutMs: config.timeouts.checkoutCase,
       });
     }
 
