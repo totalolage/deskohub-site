@@ -46,6 +46,9 @@ const createSchemaStatements = `
     fulfillment_state text not null,
     active_payment_attempt_id text,
     active_payment_evidence_conflicted boolean not null default false,
+    payment_reconciliation_attempt_id text,
+    payment_reconciliation_claim_id text,
+    payment_reconciliation_claim_expires_at timestamptz,
     reservation_hold_expires_at timestamptz,
     paid_at timestamptz,
     failure_code text,
@@ -312,12 +315,13 @@ const admit = (
     readonly acceptedPricing?: typeof noDiscountPricing;
     readonly affirmedPricing?: typeof noDiscountPricing;
     readonly allowNewAdmission?: boolean;
+    readonly providerOrderId?: string;
   } = {}
 ) =>
   repository.admitPaymentStart({
     workspaceReservationId: reservationId,
     checkoutSessionKey: `session-${reservationId}`,
-    providerOrderId: `provider-order-${reservationId}`,
+    providerOrderId: input.providerOrderId ?? `provider-order-${reservationId}`,
     acceptedPricing: input.acceptedPricing ?? noDiscountPricing,
     affirmedPricing: input.affirmedPricing ?? noDiscountPricing,
     commitment: input.commitment ?? emptyCommitment,
@@ -348,6 +352,83 @@ describe("PaymentLifecycleRepository database behavior", () => {
             .from(paymentAttempts)
             .where(eq(paymentAttempts.workspaceReservationId, "concurrent"))
         ).toHaveLength(1);
+      })
+    );
+  });
+
+  test("a durable provider reconciliation claim fences replacement admission", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("reconciliation-claim");
+
+        const admitted = yield* admit(repository, "reconciliation-claim");
+        expect(admitted.outcome).toBe("created");
+        if (admitted.outcome !== "created") return;
+
+        const claim = yield* repository.claimProviderReconciliation({
+          id: admitted.attempt.id,
+          workspaceReservationId: "reconciliation-claim",
+        });
+        expect(claim.outcome).toBe("claimed");
+        if (claim.outcome !== "claimed") return;
+
+        expect(yield* admit(repository, "reconciliation-claim")).toEqual({
+          outcome: "unavailable",
+          reason: "active_attempt",
+        });
+        expect(
+          yield* db
+            .select()
+            .from(paymentAttempts)
+            .where(
+              eq(paymentAttempts.workspaceReservationId, "reconciliation-claim")
+            )
+        ).toHaveLength(1);
+
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            paymentReconciliationClaimExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+          })
+          .where(eq(workspaceReservations.id, "reconciliation-claim"));
+        expect(
+          (yield* repository
+            .markPaid({
+              id: admitted.attempt.id,
+              workspaceReservationId: "reconciliation-claim",
+              paidAt: Temporal.Instant.from("2026-07-25T00:00:00Z"),
+              reconciliationClaimId: claim.claimId,
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        const takeover = yield* repository.claimProviderReconciliation({
+          id: admitted.attempt.id,
+          workspaceReservationId: "reconciliation-claim",
+        });
+        expect(takeover.outcome).toBe("claimed");
+        if (takeover.outcome !== "claimed") return;
+        expect(takeover.claimId).not.toBe(claim.claimId);
+
+        yield* repository.releaseProviderReconciliation({
+          id: admitted.attempt.id,
+          workspaceReservationId: "reconciliation-claim",
+          claimId: claim.claimId,
+        });
+        expect(
+          (yield* db
+            .select({
+              claimId: workspaceReservations.paymentReconciliationClaimId,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, "reconciliation-claim")))[0]
+        ).toEqual({ claimId: takeover.claimId });
+        yield* repository.releaseProviderReconciliation({
+          id: admitted.attempt.id,
+          workspaceReservationId: "reconciliation-claim",
+          claimId: takeover.claimId,
+        });
       })
     );
   });
@@ -1167,6 +1248,71 @@ describe("PaymentLifecycleRepository database behavior", () => {
               eq(discountCodeRedemptions.paymentAttemptId, admission.attempt.id)
             ))[0]
         ).toEqual({ state: "reserved" });
+      })
+    );
+  });
+
+  test("materializes a late old-attempt conflict as a reservation-wide fence", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("late-old-order");
+
+        const oldAdmission = yield* admit(repository, "late-old-order", {
+          providerOrderId: "provider-order-old",
+        });
+        expect(oldAdmission.outcome).toBe("created");
+        if (oldAdmission.outcome !== "created") return;
+        yield* repository.markTerminal({
+          id: oldAdmission.attempt.id,
+          workspaceReservationId: "late-old-order",
+          state: "failed",
+          failureCode: "verified_failure",
+        });
+
+        const replacement = yield* admit(repository, "late-old-order", {
+          providerOrderId: "provider-order-replacement",
+        });
+        expect(replacement.outcome).toBe("created");
+        if (replacement.outcome !== "created") return;
+
+        yield* repository.recordEvidenceConflict({
+          id: oldAdmission.attempt.id,
+          workspaceReservationId: "late-old-order",
+          conflictCodes: ["provider_terminal_state"],
+        });
+
+        const settlement = yield* repository
+          .markPaid({
+            id: replacement.attempt.id,
+            workspaceReservationId: "late-old-order",
+            paidAt: Temporal.Instant.from("2026-07-25T00:00:00Z"),
+          })
+          .pipe(Effect.result);
+        expect(settlement._tag).toBe("Failure");
+
+        const [reservation] = yield* db
+          .select({
+            activeAttemptId: workspaceReservations.activePaymentAttemptId,
+            paymentState: workspaceReservations.paymentState,
+            evidenceConflicted:
+              workspaceReservations.activePaymentEvidenceConflicted,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, "late-old-order"));
+        expect(reservation).toEqual({
+          activeAttemptId: replacement.attempt.id,
+          paymentState: "pending",
+          evidenceConflicted: true,
+        });
+        expect(
+          yield* db
+            .select({ state: paymentAttempts.state })
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, replacement.attempt.id))
+        ).toEqual([{ state: "created" }]);
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(0);
       })
     );
   });

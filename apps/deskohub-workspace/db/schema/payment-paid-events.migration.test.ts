@@ -1,6 +1,23 @@
 import { describe, expect, test } from "bun:test";
 
 describe("payment paid event migration contract", () => {
+  test("composes from the committed current-main internal-payment snapshot", async () => {
+    const predecessor = await Bun.file(
+      new URL(
+        "../migrations/20260724235932_living_sentry/snapshot.json",
+        import.meta.url
+      )
+    ).json();
+    const paymentSnapshot = await Bun.file(
+      new URL(
+        "../migrations/20260725004304_payment_admission_settlement/snapshot.json",
+        import.meta.url
+      )
+    ).json();
+
+    expect(paymentSnapshot.prevIds).toEqual([predecessor.id]);
+  });
+
   test("installs both mixed-version triggers and the idempotent backfill", async () => {
     const migration = await Bun.file(
       new URL(
@@ -54,7 +71,14 @@ describe("payment paid event migration contract", () => {
       "provider evidence conflict rejects active attempt replacement"
     );
     expect(migration).toContain(
-      'WHERE conflict."payment_attempt_id" = OLD."active_payment_attempt_id"'
+      'reservation."id" = attempt."workspace_reservation_id"'
+    );
+    expect(migration).toContain('"payment_reconciliation_claim_id" text');
+    expect(migration).toContain(
+      '"payment_reconciliation_claim_expires_at" timestamp with time zone'
+    );
+    expect(migration).toContain(
+      "reservation is owned by authoritative provider reconciliation"
     );
   });
 });

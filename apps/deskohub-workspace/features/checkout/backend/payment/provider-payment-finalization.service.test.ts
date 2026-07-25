@@ -25,6 +25,13 @@ const paymentLifecycleLayer = (
     admitPaymentStart: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
     markProviderStartFailed: () => Effect.die("not used"),
+    claimProviderReconciliation: () =>
+      Effect.succeed({
+        outcome: "claimed" as const,
+        claimId: "claim-id",
+        attempt: pendingAttempt,
+      }),
+    releaseProviderReconciliation: () => Effect.void,
     recordEvidenceConflict: () => Effect.void,
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),
@@ -102,7 +109,17 @@ describe("ProviderPaymentFinalizationService", () => {
       );
       const { NexiService } = await import("@deskohub/nexi");
 
-      const fulfillPaidOrder = mock(() => Effect.void);
+      let reconciliationClaimHeld = true;
+      const releaseProviderReconciliation = mock(() =>
+        Effect.sync(() => {
+          reconciliationClaimHeld = false;
+        })
+      );
+      const fulfillPaidOrder = mock(() =>
+        Effect.sync(() => {
+          expect(reconciliationClaimHeld).toBeFalse();
+        })
+      );
       const verifyPaymentOutcome = mock(() =>
         Effect.succeed(buildVerification("success"))
       );
@@ -143,7 +160,10 @@ describe("ProviderPaymentFinalizationService", () => {
                     })
                   ),
                 } as unknown as PaymentAttemptRepositoryType),
-                paymentLifecycleLayer({ markPaid }),
+                paymentLifecycleLayer({
+                  markPaid,
+                  releaseProviderReconciliation,
+                }),
                 Layer.succeed(PostHogEventService, {
                   capture: () => Effect.void,
                 }),
@@ -396,7 +416,7 @@ describe("ProviderPaymentFinalizationService", () => {
     },
     {
       verificationStatus: "success" as const,
-      expected: "not_pending" as const,
+      expected: "manual_review" as const,
       changed: false,
       conflict: true,
       conflictReason: "state_conflict" as const,
@@ -442,6 +462,13 @@ describe("ProviderPaymentFinalizationService", () => {
       changed: false,
       conflict: false,
       mismatches: ["orderId", "amount", "currency"] as const,
+    },
+    {
+      verificationStatus: "manual_review" as const,
+      expected: "verification_mismatch" as const,
+      changed: false,
+      conflict: false,
+      mismatches: ["operationEvidence"] as const,
     },
   ]) {
     test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
@@ -627,11 +654,17 @@ describe("ProviderPaymentFinalizationService", () => {
         expect(recordEvidenceConflict).toHaveBeenCalledWith({
           id: "attempt-id",
           workspaceReservationId: "reservation-id",
-          conflictCodes: [
-            "provider_order_identity",
-            "provider_amount",
-            "provider_currency",
-          ],
+          conflictCodes:
+            "mismatches" in scenario &&
+            scenario.mismatches.some(
+              (mismatch) => mismatch === "operationEvidence"
+            )
+              ? ["provider_operation_evidence"]
+              : [
+                  "provider_order_identity",
+                  "provider_amount",
+                  "provider_currency",
+                ],
         });
       }
     });
@@ -727,6 +760,7 @@ describe("ProviderPaymentFinalizationService", () => {
       params: [],
       cause: "database unavailable",
     });
+    const releaseProviderReconciliation = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
       const service = yield* ProviderPaymentFinalizationService;
@@ -750,6 +784,7 @@ describe("ProviderPaymentFinalizationService", () => {
               } as unknown as PaymentAttemptRepositoryType),
               paymentLifecycleLayer({
                 markPaid: mock(() => Effect.fail(persistenceFailure)),
+                releaseProviderReconciliation,
               }),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -768,6 +803,11 @@ describe("ProviderPaymentFinalizationService", () => {
     );
 
     expect(result).toMatchObject({ failure: persistenceFailure });
+    expect(releaseProviderReconciliation).toHaveBeenCalledWith({
+      id: pendingAttempt.id,
+      workspaceReservationId: pendingAttempt.workspaceReservationId,
+      claimId: "claim-id",
+    });
   });
 
   test("returns provider_verification_failed when Nexi verification errors", async () => {

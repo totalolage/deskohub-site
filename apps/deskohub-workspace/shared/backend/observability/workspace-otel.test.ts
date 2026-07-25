@@ -57,7 +57,9 @@ describe("workspace production OTel configuration", () => {
       "exception.stacktrace": marker,
       "http.url": credentialUrl,
     });
-    span.recordException(new Error(marker));
+    const dynamicException = new Error(marker);
+    dynamicException.name = marker;
+    span.recordException(dynamicException);
     span.setStatus({ code: SpanStatusCode.ERROR, message: marker });
     span.end();
     await provider.forceFlush();

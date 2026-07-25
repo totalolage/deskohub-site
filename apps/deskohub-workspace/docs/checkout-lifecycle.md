@@ -101,7 +101,10 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `payment_state` | text enum | yes | Aggregate payment state across attempts. |
 | `fulfillment_state` | text enum | yes | Local post-payment/legal-delivery workflow state. |
 | `active_payment_attempt_id` | text | no | Current payment attempt, if a Nexi session exists. |
-| `active_payment_evidence_conflicted` | boolean | yes | Database-materialized fence for conflicts on the exact active attempt. |
+| `active_payment_evidence_conflicted` | boolean | yes | Monotonic reservation-wide manual-review fence materialized from conflicts on any attempt belonging to the reservation, including late evidence for a replaced attempt. |
+| `payment_reconciliation_attempt_id` | text | no | Exact attempt whose authoritative provider lookup currently owns the reservation. |
+| `payment_reconciliation_claim_id` | text | no | Opaque durable ownership claim. Admission, replacement, cleanup, and settlement by another writer fail closed until the owner settles or releases it. |
+| `payment_reconciliation_claim_expires_at` | timestamptz | no | Database-clock recovery deadline. After a crashed owner exceeds it, only another read-only reconciliation may take over the exact attempt; new admission remains fail-closed, while unresolved-v2 and conflict guards continue to fence cleanup. |
 | `reservation_hold_expires_at` | timestamptz | no | Local hold deadline used for cleanup scheduling. Mirrors Deskohub hold policy, not Dotypos facts. |
 | `reservation_hold_expired_at` | timestamptz | no | When local cleanup observed the hold as expired. |
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
@@ -322,7 +325,11 @@ Allowed payment transitions:
 
 Admission version 2 is intentionally disabled unless `WORKSPACE_PAYMENT_ADMISSION_VERSION=2`. Use this exact order:
 
-1. Apply `20260725004304_payment_admission_settlement` while the old application version is still serving. Do not enable the environment gate.
+1. Apply `20260724235932_living_sentry` and then
+   `20260725004304_payment_admission_settlement` while the old application
+   version is still serving. The first migration adds the zero-total/internal
+   payment representation now present on `origin/main`; the second adds the
+   settlement/admission contract. Do not enable the environment gate.
 2. Deploy the settlement-capable application version everywhere with the gate unset. At this point webhook, provider-finalization, and cleanup callers can settle both legacy and version 2 attempts, and the paid-event table already exists, but no version 2 admission can start.
 3. Drain every older web instance, background process, scheduled cleanup invocation, and queued job that can write payment state. Verify the active deployment/version inventory contains only the settlement-capable version.
 4. Set `WORKSPACE_PAYMENT_ADMISSION_VERSION=2` and redeploy all checkout-serving instances. Treat the environment value plus the deployment-version inventory as one gate: do not enable while an old writer can still run.
@@ -567,7 +574,8 @@ sequenceDiagram
 
 Deploy settlement support before enabling admission version 2:
 
-1. Apply `20260725004304_payment_admission_settlement`. The migration creates
+1. Apply `20260724235932_living_sentry`, then
+   `20260725004304_payment_admission_settlement`. The latter migration creates
    `payment_paid_events`, installs both paid-transition triggers, and backfills
    every internally consistent paid attempt/reservation pair in one migration
    transaction.
@@ -606,24 +614,49 @@ Rollback is a separate exact version gate and must never be performed merely
 by unsetting admission. First unset `WORKSPACE_PAYMENT_ADMISSION_VERSION` and
 deploy the settlement-capable version everywhere; this stops only new v2
 attempts and keeps attached-session reuse and stable-order reconciliation
-running. Keep the additive migration and all eight triggers installed. Drain
-and reconcile until this count is zero:
+running. Keep the additive migration and all conflict, reconciliation, rollback,
+and paid-event triggers installed. Drain and reconcile until this active-state
+count is zero. It intentionally does not trust the active link:
 
 ```sql
 select count(*)
 from payment_attempts attempt
-join workspace_reservations reservation
-  on reservation.id = attempt.workspace_reservation_id
-  and reservation.active_payment_attempt_id = attempt.id
 where attempt.admission_version = 2
-  and attempt.state in ('created', 'pending')
-  and reservation.payment_state = 'pending';
+  and attempt.state in ('created', 'pending');
 ```
 
-Then repeat the deployment inventory, missing-paid-event, and invalid-event
-checks. A rollback to a pre-v2 binary is prohibited unless all five checks are
-recorded at zero/current-only and no old queue or cron invocation remains.
-The zero count covers both unattached starts and attached pending sessions.
+Also require both integrity gates to be zero:
+
+```sql
+select count(*)
+from payment_attempts attempt
+left join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+where attempt.admission_version = 2
+  and attempt.state in ('created', 'pending')
+  and reservation.id is null;
+
+select count(*)
+from payment_attempts attempt
+join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+where attempt.admission_version = 2
+  and attempt.state in ('created', 'pending')
+  and (
+    reservation.active_payment_attempt_id is distinct from attempt.id
+    or reservation.payment_state is distinct from 'pending'
+  );
+```
+
+Then repeat the deployment inventory, reconciliation-claim,
+missing-paid-event, and invalid-event checks. A rollback to a pre-v2 binary is
+prohibited unless every check is recorded at zero/current-only and no old queue
+or cron invocation remains. No row with `payment_reconciliation_claim_id` may
+remain: unexpired owners must finish, while expired claims must be taken over
+by exact-attempt read-only reconciliation and then released or explicitly
+reviewed before rollback. The active-state count covers unattached
+starts and attached pending sessions, including orphaned or mismatched rows
+that a link-based count would miss.
 Before recording it, verify that no v2 row remains active with a different
 pricing fingerprint or ordered displayed-discount identity; a same-total
 commitment is not equivalent. The database rollback and conflict fences remain

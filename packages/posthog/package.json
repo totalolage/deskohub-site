@@ -13,6 +13,7 @@
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",
+    "generated:check": "bun scripts/check-generated.ts",
     "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"
   },

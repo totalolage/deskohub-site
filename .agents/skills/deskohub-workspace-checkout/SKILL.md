@@ -23,6 +23,13 @@ Any change to price facts accepted at the immediately preceding boundary returns
 
 Treat a created payment attempt's provider-start lease as ownership, not merely as a timeout. A definitive provider-start failure may terminalize only the exact, still-unexpired lease by database clock; an expired owner must not change or replace that lease or an attached provider session. Nexi HPP creation has no documented idempotency contract, so execute its state-creating POST exactly once for each durable attempt and never retry or repeat it after an ambiguous exit. Configure the native provider Fetch transport with redirects rejected: a 307/308 can otherwise replay the POST and forward its credential, and redirect rejection is an ambiguous exit. A durable `created` attempt means that POST may already have reached Nexi. After its lease expires, reconcile the stable provider order with a read-only lookup; reconcile all order, amount, currency, token, status, and relevant-operation evidence collectively. Multiple operations, conflicting facts, or success followed by terminal evidence require manual review and must never settle automatically. A remotely unambiguous terminal result may settle the unattached attempt, while pending, unavailable, mismatched, or otherwise unverified state remains unresolved and must not be expired by hold cleanup. Only the local attach operation may be retried, and it must accept only an exact idempotent match. Admission rollout gates block only new attempts and must not block reuse or stable-order reconciliation for an already-admitted attempt.
 
+Before any authoritative provider-order lookup, durably claim the exact active
+attempt on its reservation. Admission, active-attempt replacement, cleanup
+cancellation, and competing settlement must fail closed while the claim exists;
+settle under the exact claim or release it after a non-terminal result. Late
+contradictory evidence for an older attempt must materialize a reservation-wide
+manual-review fence even if another attempt became active.
+
 Treat the unauthenticated webhook only as a trigger for an authoritative read-only
 provider lookup. Every webhook operation field is delivery-local evidence and
 must agree with the admitted order/amount/currency and the lookup's actual

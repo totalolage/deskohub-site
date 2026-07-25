@@ -301,11 +301,19 @@ const resolvePaymentOutcomeEvidence = (
     TERMINAL_OPERATION_TYPES.has(operationType ?? "") ||
     TERMINAL_OPERATION_TYPES.has(lastOperationType ?? "") ||
     laterTerminalOperationResults.has(operationResult ?? "");
+  const authorizationExecutionIsIncomplete =
+    operationType === AUTHORIZATION_OPERATION_TYPE &&
+    operationResult === EXECUTED_OPERATION_RESULT &&
+    (order.orderStatus?.authorizedAmount === undefined ||
+      order.orderStatus.capturedAmount === undefined ||
+      providerOrder?.amount === undefined ||
+      providerOrder.currency === undefined);
   if (
     paymentOperations.length > 1 ||
     operationIsIncomplete ||
     operationTypeDiverges ||
-    laterTerminalEvidence
+    laterTerminalEvidence ||
+    authorizationExecutionIsIncomplete
   ) {
     mismatches.push("operationEvidence");
   }

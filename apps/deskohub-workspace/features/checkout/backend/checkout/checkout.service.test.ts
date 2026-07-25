@@ -414,6 +414,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     admitPaymentStart: createAttempt,
     attachProviderSession: attachHostedPaymentPage,
     markProviderStartFailed,
+    claimProviderReconciliation: mock(() => Effect.die("not used")),
+    releaseProviderReconciliation: mock(() => Effect.die("not used")),
     recordEvidenceConflict,
     markPaid: mock(() =>
       Effect.succeed({

@@ -54,6 +54,8 @@ const sensitiveLogKeyFragments = [
 
 const sensitiveLogExactKeys = new Set([
   "discountcode",
+  "exception.type",
+  "error.type",
   "exception.stacktrace",
   "providerredirecturl",
   "redirecturl",

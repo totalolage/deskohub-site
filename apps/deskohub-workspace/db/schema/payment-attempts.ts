@@ -26,7 +26,7 @@ export const paymentAttemptStates = [
 
 export type PaymentAttemptState = (typeof paymentAttemptStates)[number];
 
-export const paymentProviders = ["nexi"] as const;
+export const paymentProviders = ["nexi", "internal"] as const;
 
 export type PaymentProvider = (typeof paymentProviders)[number];
 
@@ -44,7 +44,7 @@ export const paymentAttempts = pgTable(
       .notNull()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
-    providerOrderId: text("provider_order_id").notNull(),
+    providerOrderId: text("provider_order_id"),
     admissionVersion: integer("admission_version").notNull().default(1),
     pricingFingerprint: text("pricing_fingerprint"),
     displayedDiscountIds: jsonb("displayed_discount_ids").$type<
@@ -78,6 +78,18 @@ export const paymentAttempts = pgTable(
       sql`${t.state} in (${quotedSqlList(paymentAttemptStates)})`
     ),
     check("payment_attempts_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
+    check(
+      "payment_attempts_amount_check",
+      sql`(${t.provider} = 'nexi' and ${t.amountValue} > 0) or (${t.provider} = 'internal' and ${t.amountValue} = 0)`
+    ),
+    check(
+      "payment_attempts_provider_fields_check",
+      sql`(${t.provider} = 'nexi' and ${t.providerOrderId} is not null) or (${t.provider} = 'internal' and ${t.providerOrderId} is null and ${t.securityToken} is null and ${t.providerRedirectUrl} is null and ${t.lastWebhookEventId} is null and ${t.lastProviderOperationId} is null and ${t.lastProviderStatus} is null)`
+    ),
+    check(
+      "payment_attempts_internal_state_check",
+      sql`${t.provider} <> 'internal' or (${t.state} = 'paid' and ${t.failureCode} is null)`
+    ),
     check(
       "payment_attempts_admission_version_check",
       sql`${t.admissionVersion} in (1, 2)`
@@ -113,10 +125,9 @@ export const paymentAttempts = pgTable(
       "payment_attempts_failure_code_check",
       sql`${t.state} not in (${quotedSqlList(paymentAttemptStatesRequiringFailureCode)}) or ${t.failureCode} is not null`
     ),
-    uniqueIndex("payment_attempts_provider_order_unique_idx").on(
-      t.provider,
-      t.providerOrderId
-    ),
+    uniqueIndex("payment_attempts_nexi_order_unique_idx")
+      .on(t.providerOrderId)
+      .where(sql`${t.provider} = 'nexi'`),
     index("payment_attempts_workspace_reservation_idx").on(
       t.workspaceReservationId
     ),

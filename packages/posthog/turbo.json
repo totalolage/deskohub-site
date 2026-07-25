@@ -7,8 +7,15 @@
       "env": ["POSTHOG_OPENAPI_SCHEMA_URL"],
       "outputs": ["src/generated/**"]
     },
+    "generated:check": {
+      "inputs": [
+        "scripts/check-generated.ts",
+        "src/generated/effect.gen.ts",
+        "src/generated/effect.gen.sha256"
+      ]
+    },
     "typecheck": {
-      "dependsOn": ["generate"]
+      "dependsOn": ["generated:check"]
     }
   }
 }

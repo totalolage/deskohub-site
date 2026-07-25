@@ -25,6 +25,8 @@ function sanitizePostHogEvent(
   event: PostHogBeforeSendEvent,
   posthogEnvironment: string
 ) {
+  if (event.event === "$autocapture") return null;
+
   event.properties = sanitizePostHogProperties(
     event.properties,
     posthogEnvironment
@@ -107,6 +109,7 @@ function PostHogClient({
 
           return sanitizedEvent;
         },
+        autocapture: false,
         capture_pageleave: true,
         capture_pageview: "history_change",
         defaults: "2026-01-30",

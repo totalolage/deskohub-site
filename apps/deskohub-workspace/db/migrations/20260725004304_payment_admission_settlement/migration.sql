@@ -21,6 +21,9 @@ ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_id" text;--> sta
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_expires_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_evidence_conflicted" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "active_payment_evidence_conflicted" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "payment_reconciliation_attempt_id" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "payment_reconciliation_claim_id" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "payment_reconciliation_claim_expires_at" timestamp with time zone;--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_paid_events_attempt_unique_idx" ON "payment_paid_events" ("payment_attempt_id");--> statement-breakpoint
 CREATE INDEX "payment_paid_events_reservation_idx" ON "payment_paid_events" ("workspace_reservation_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_evidence_conflicts_attempt_code_unique_idx" ON "payment_evidence_conflicts" ("payment_attempt_id","conflict_code");--> statement-breakpoint
@@ -47,6 +50,8 @@ ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_provider_start_l
         and btrim("provider_start_lease_id") <> ''
         and "provider_start_lease_expires_at" is not null
       ));
+--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_payment_reconciliation_claim_check" CHECK (("payment_reconciliation_attempt_id" is null and "payment_reconciliation_claim_id" is null and "payment_reconciliation_claim_expires_at" is null) or ("payment_reconciliation_attempt_id" is not null and "payment_reconciliation_claim_id" is not null and "payment_reconciliation_claim_expires_at" is not null));
 --> statement-breakpoint
 CREATE FUNCTION "guard_unverified_v2_terminal_settlement"() RETURNS trigger
 LANGUAGE plpgsql
@@ -82,9 +87,11 @@ BEGIN
   SET "provider_evidence_conflicted" = true
   WHERE "id" = NEW."payment_attempt_id";
 
-  UPDATE "workspace_reservations"
+  UPDATE "workspace_reservations" AS reservation
   SET "active_payment_evidence_conflicted" = true
-  WHERE "active_payment_attempt_id" = NEW."payment_attempt_id";
+  FROM "payment_attempts" AS attempt
+  WHERE attempt."id" = NEW."payment_attempt_id"
+    AND reservation."id" = attempt."workspace_reservation_id";
 
   RETURN NEW;
 END;
@@ -153,6 +160,23 @@ CREATE FUNCTION "guard_unverified_v2_reservation_terminal"() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 BEGIN
+  IF OLD."payment_reconciliation_claim_id" IS NOT NULL
+    AND OLD."payment_reconciliation_claim_expires_at" > clock_timestamp()
+    AND (
+      OLD."payment_state" IS DISTINCT FROM NEW."payment_state"
+      OR OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+      OR OLD."active_payment_attempt_id" IS DISTINCT FROM NEW."active_payment_attempt_id"
+    )
+    AND current_setting(
+      'deskohub.provider_reconciliation_claim_id',
+      true
+    ) IS DISTINCT FROM OLD."payment_reconciliation_claim_id"
+  THEN
+    RAISE EXCEPTION
+      'reservation is owned by authoritative provider reconciliation'
+      USING ERRCODE = '23514';
+  END IF;
+
   IF NEW."active_payment_attempt_id" IS DISTINCT FROM OLD."active_payment_attempt_id"
   THEN
     IF OLD."active_payment_attempt_id" IS NOT NULL
@@ -234,7 +258,7 @@ END;
 $$;
 --> statement-breakpoint
 CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"
-BEFORE UPDATE OF "payment_state", "reservation_state", "active_payment_attempt_id", "active_payment_evidence_conflicted"
+BEFORE UPDATE OF "payment_state", "reservation_state", "active_payment_attempt_id", "active_payment_evidence_conflicted", "payment_reconciliation_attempt_id", "payment_reconciliation_claim_id", "payment_reconciliation_claim_expires_at"
 ON "workspace_reservations"
 FOR EACH ROW
 EXECUTE FUNCTION "guard_unverified_v2_reservation_terminal"();

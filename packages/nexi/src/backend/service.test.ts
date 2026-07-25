@@ -45,6 +45,22 @@ const runWithService = <A, E>(
   return Effect.runPromise(effect.pipe(Effect.provide(serviceLayer)));
 };
 
+const runWithDefaultService = <A, E>(
+  effect: Effect.Effect<A, E, NexiService>,
+  runtimeConfig: typeof config
+) =>
+  Effect.runPromise(
+    effect.pipe(
+      Effect.provide(
+        NexiService.Default.pipe(
+          Layer.provide(
+            Layer.succeed(NexiRuntimeConfig, runtimeConfig)
+          )
+        )
+      )
+    )
+  );
+
 const mockNexiFetch = (response: Response) => {
   const fetchMock = mock(
     async (_input: RequestInfo | URL, _init?: RequestInit) => response.clone()
@@ -216,7 +232,7 @@ describe("NexiService hosted payment pages", () => {
     });
 
     try {
-      const result = await runWithService(
+      const result = await runWithDefaultService(
         Effect.gen(function* () {
           const nexi = yield* NexiService;
           return yield* nexi
@@ -232,7 +248,6 @@ describe("NexiService hosted payment pages", () => {
             })
             .pipe(Effect.result);
         }),
-        globalThis.fetch,
         {
           ...config,
           baseUrl: server.origin,
@@ -268,7 +283,7 @@ describe("NexiService hosted payment pages", () => {
     });
 
     try {
-      const result = await runWithService(
+      const result = await runWithDefaultService(
         Effect.gen(function* () {
           const nexi = yield* NexiService;
           return yield* nexi
@@ -284,7 +299,6 @@ describe("NexiService hosted payment pages", () => {
             })
             .pipe(Effect.result);
         }),
-        globalThis.fetch,
         {
           ...config,
           baseUrl: redirector.origin,
@@ -466,6 +480,93 @@ describe("NexiService verifyPaymentOutcome", () => {
         mismatches: [],
       }).providerOperationId
     ).toBeUndefined();
+  });
+
+  test("requires complete authorized and captured evidence for executed authorization", async () => {
+    for (const [name, order, expected] of [
+      [
+        "complete",
+        {
+          orderStatus: {
+            lastOperationType: "AUTHORIZATION",
+            authorizedAmount: "5000",
+            capturedAmount: "5000",
+            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+          },
+          operations: [
+            {
+              orderId: "order-id",
+              operationId: "authorization-id",
+              operationType: "AUTHORIZATION",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        "success",
+      ],
+      [
+        "missing-authorized",
+        {
+          orderStatus: {
+            lastOperationType: "AUTHORIZATION",
+            capturedAmount: "5000",
+            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+          },
+          operations: [
+            {
+              orderId: "order-id",
+              operationId: "authorization-id",
+              operationType: "AUTHORIZATION",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        "manual_review",
+      ],
+      [
+        "missing-captured",
+        {
+          orderStatus: {
+            lastOperationType: "AUTHORIZATION",
+            authorizedAmount: "5000",
+            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+          },
+          operations: [
+            {
+              orderId: "order-id",
+              operationId: "authorization-id",
+              operationType: "AUTHORIZATION",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        },
+        "manual_review",
+      ],
+    ] as const) {
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const nexi = yield* NexiService;
+          return yield* nexi.verifyPaymentOutcome({
+            orderId: "order-id",
+            correlationId: name,
+            amount: "5000",
+            currency: "CZK",
+          });
+        }),
+        mockNexiFetch(Response.json(order))
+      );
+
+      expect(result.status).toBe(expected);
+      expect(result.mismatches).toEqual(
+        expected === "success" ? [] : ["operationEvidence"]
+      );
+    }
   });
 
   test("classifies success, failure, pending, and mismatches", async () => {

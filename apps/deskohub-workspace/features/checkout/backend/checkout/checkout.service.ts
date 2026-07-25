@@ -563,6 +563,11 @@ export const CheckoutServiceLive = Layer.effect(
         }
 
         const attempt = admission.attempt;
+        if (attempt.provider !== "nexi" || !attempt.providerOrderId) {
+          return yield* Effect.die(
+            "Provider admission returned a non-Nexi payment attempt."
+          );
+        }
         yield* Effect.logInfo("Checkout payment attempt admitted");
 
         yield* Effect.logInfo("Nexi hosted payment page creation started");

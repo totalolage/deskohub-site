@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Effect, Schema } from "effect";
 
 export const locales = ["cs-CZ", "en-US"] as const;
@@ -122,23 +123,33 @@ export const deriveNexiWebhookEventIdentity = (
 ): NexiWebhookEventIdentity => {
   const normalized = normalizeNexiWebhookNotification(notification);
   const explicitEventId = normalized.eventId;
-  if (explicitEventId) return { eventId: explicitEventId, source: "provider" };
-
   const operation = normalized.operation;
+  if (
+    explicitEventId &&
+    isBoundedNexiProviderIdentifier(explicitEventId)
+  ) {
+    return { eventId: explicitEventId, source: "provider" };
+  }
+  const identity = explicitEventId
+    ? ["provider", explicitEventId]
+    : [
+        "derived",
+        operation.orderId,
+        operation.operationId ?? "",
+        operation.operationType ?? "",
+        operation.operationResult ?? "",
+        normalized.eventTime ?? operation.operationTime ?? "",
+        operation.operationAmount ?? "",
+        operation.operationCurrency ?? "",
+      ];
   return {
-    eventId: [
-      "nexi",
-      operation.orderId,
-      operation.operationId ?? "no-operation-id",
-      operation.operationType ?? "no-operation-type",
-      operation.operationResult ?? "no-operation-result",
-      normalized.eventTime ?? operation.operationTime ?? "no-operation-time",
-      operation.operationAmount ?? "no-operation-amount",
-      operation.operationCurrency ?? "no-operation-currency",
-    ].join(":"),
-    source: "derived",
+    eventId: `nexi:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`,
+    source: explicitEventId ? "provider" : "derived",
   };
 };
+
+export const isBoundedNexiProviderIdentifier = (value: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
 
 export const checkNexiWebhookSecurityToken = (input: {
   readonly notificationSecurityToken: string | undefined;

@@ -50,9 +50,7 @@ describe("Nexi webhook types", () => {
       deriveNexiWebhookEventIdentity({
         operation: notification.operation,
       }).eventId
-    ).toBe(
-      "nexi:order-id:operation-id:CAPTURE:EXECUTED:2026-06-20T10:01:00Z:5000:CZK"
-    );
+    ).toMatch(/^nexi:[a-f0-9]{64}$/);
   });
 
   test("reports security token match, mismatch, and absence", () => {

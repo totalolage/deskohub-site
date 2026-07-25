@@ -7,6 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import type { BeforeSendFn } from "posthog-js";
 import {
@@ -181,6 +182,23 @@ describe("PostHogAnalytics feature flag overrides", () => {
       expect(serializedEvents).not.toContain(unsafeValue);
     }
     expect(serializedEvents).toContain('"errorCategory":"transport_failure"');
+
+    const autocaptureMarker = randomUUID();
+    const autocapture = beforeSend?.({
+      event: "$autocapture",
+      properties: {
+        $current_url: `https://deskohub.test/checkout?payState=${autocaptureMarker}`,
+        $elements: [
+          {
+            href: `https://deskohub.test/checkout?payState=${autocaptureMarker}`,
+            text: autocaptureMarker,
+            attr__data_contact: autocaptureMarker,
+          },
+        ],
+      },
+    } as NonNullable<Parameters<BeforeSendFn>[0]>);
+    expect(autocapture).toBeNull();
+    expect(JSON.stringify(sentEvents)).not.toContain(autocaptureMarker);
 
     await act(async () => {
       view.rerender(
