@@ -1,6 +1,6 @@
+import { deepStrictEqual } from "node:assert/strict";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { deepStrictEqual } from "node:assert/strict";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -145,6 +145,115 @@ export const validatePostgres = (
         data
       );
       log("Postgres checkout tables validated");
+      return row;
+    })
+  );
+
+export const ZERO_TOTAL_DISCOUNT_CODE = "E2E_ZERO_TOTAL";
+
+const zeroTotalDiscountId = "019c91dd-c560-7e55-b9d8-c95065efd51d";
+const zeroTotalDiscountCodeId = "019c91de-61d7-7ccb-adb8-f4de2a5a32b8";
+
+export const seedZeroTotalDiscountCode = (
+  config: DatasourceConfig
+): Effect.Effect<void, WorkspaceE2EError> =>
+  withPool(config, (pool) =>
+    Effect.gen(function* () {
+      yield* query(
+        pool,
+        "seed zero-total discount definition",
+        `insert into discounts (
+          id,
+          labels,
+          percentage_basis_points,
+          created_at,
+          updated_at
+        ) values ($1, $2::jsonb, 10000, now(), now())
+        on conflict (id) do update
+        set labels = excluded.labels,
+          percentage_basis_points = excluded.percentage_basis_points,
+          fixed_amount_value = null,
+          fixed_amount_exponent = null,
+          fixed_amount_currency = null,
+          updated_at = now()`,
+        [
+          zeroTotalDiscountId,
+          JSON.stringify({
+            "cs-CZ": "E2E sleva 100 %",
+            "en-US": "E2E 100% discount",
+          }),
+        ]
+      );
+      yield* query(
+        pool,
+        "seed zero-total discount target",
+        `insert into discount_product_targets (discount_id, product_identity)
+        values ($1, $2::jsonb)
+        on conflict do nothing`,
+        [zeroTotalDiscountId, JSON.stringify({ kind: "cowork", tier: "basic" })]
+      );
+      yield* query(
+        pool,
+        "seed zero-total discount code",
+        `insert into discount_codes (
+          id,
+          discount_id,
+          code,
+          enabled,
+          max_uses,
+          created_at,
+          updated_at
+        ) values ($1, $2, $3, true, null, now(), now())
+        on conflict (code) do update
+        set discount_id = excluded.discount_id,
+          enabled = true,
+          valid_from = null,
+          valid_until = null,
+          max_uses = null,
+          updated_at = now()`,
+        [zeroTotalDiscountCodeId, zeroTotalDiscountId, ZERO_TOTAL_DISCOUNT_CODE]
+      );
+      log("Zero-total checkout discount fixture seeded");
+    })
+  );
+
+export const validateInternalPostgres = (
+  config: DatasourceConfig,
+  data: CheckoutData,
+  orderId: string,
+  onRow?: (row: CheckoutRow) => void
+): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
+  withPool(config, (pool) =>
+    Effect.gen(function* () {
+      const row = yield* pollUntil(
+        queryCheckoutRow(pool, orderId).pipe(
+          Effect.tap((checkoutRow) =>
+            checkoutRow ? Effect.sync(() => onRow?.(checkoutRow)) : Effect.void
+          ),
+          Effect.map((checkoutRow) =>
+            checkoutRow && isInternalPostgresComplete(checkoutRow, config)
+              ? checkoutRow
+              : undefined
+          )
+        ),
+        {
+          intervalMs: workspaceE2EPollIntervalMs.datasource,
+          label: `internal Postgres checkout rows for ${orderId}`,
+          timeoutMs: config.timeouts.datasource,
+        }
+      );
+
+      yield* assertInternalPostgresRow(row, data, config);
+      yield* assertInternalDiscountState(pool, row);
+      yield* assertLegalEvidence(pool, orderId, data.locale);
+      yield* assertNoLocalPii(
+        pool,
+        orderId,
+        row.payment_attempt_id,
+        row.webhook_id,
+        data
+      );
+      log("Internal Postgres checkout tables validated");
       return row;
     })
   );
@@ -407,6 +516,18 @@ const isPostgresComplete = (row: CheckoutRow, config: DatasourceConfig) =>
   row.currency === config.expectedCurrency &&
   row.webhook_state === "processed";
 
+const isInternalPostgresComplete = (
+  row: CheckoutRow,
+  config: DatasourceConfig
+) =>
+  row.reservation_state === "confirmed" &&
+  row.payment_state === "paid" &&
+  row.fulfillment_state === "fulfilled" &&
+  row.payment_attempt_state === "paid" &&
+  row.provider === "internal" &&
+  row.amount_value === 0 &&
+  row.currency === config.expectedCurrency;
+
 export const assertPaymentTerminalRow = (
   row: CheckoutRow,
   scenario: PaymentTerminalScenario
@@ -534,6 +655,126 @@ const assertPostgresRow = (
       "webhook error code should be null"
     );
   });
+
+const assertInternalPostgresRow = (
+  row: CheckoutRow,
+  data: CheckoutData,
+  config: DatasourceConfig
+): Effect.Effect<void, WorkspaceE2EError> =>
+  tryWorkspaceE2ESync("assert internal Postgres checkout row", () => {
+    assert(row.reservation_state === "confirmed", "reservation not confirmed");
+    assert(row.payment_state === "paid", "reservation payment was not paid");
+    assert(
+      row.fulfillment_state === "fulfilled",
+      "reservation fulfillment was not fulfilled"
+    );
+    assert(row.active_payment_attempt_id, "active payment attempt missing");
+    assert(
+      row.payment_attempt_id === row.active_payment_attempt_id,
+      "active payment attempt mismatch"
+    );
+    assert(row.provider === "internal", "payment provider should be internal");
+    assert(row.payment_attempt_state === "paid", "internal attempt not paid");
+    assert(row.amount_value === 0, "internal payment amount should be zero");
+    assert(row.amount_exponent !== null, "payment amount exponent missing");
+    assert(
+      row.currency === config.expectedCurrency,
+      `expected ${config.expectedCurrency} currency`
+    );
+    assert(
+      row.provider_order_id === null,
+      "internal provider order ID present"
+    );
+    assert(row.security_token === null, "internal security token present");
+    assert(
+      row.provider_redirect_url === null,
+      "internal provider redirect URL present"
+    );
+    assert(
+      row.last_webhook_event_id === null,
+      "internal webhook event ID present"
+    );
+    assert(
+      row.last_provider_operation_id === null,
+      "internal provider operation ID present"
+    );
+    assert(
+      row.last_provider_status === null,
+      "internal provider status present"
+    );
+    assert(row.payment_failure_code === null, "internal failure code present");
+    assert(row.webhook_id === null, "internal payment created a webhook row");
+    assert(row.paid_at, "paid_at missing");
+    assert(row.reservation_confirmed_at, "reservation confirmation missing");
+    assert(row.fulfilled_at, "fulfilled_at missing");
+    deepStrictEqual(
+      row.reservation_details,
+      data.expectedReservationDetails,
+      "unexpected reservation details"
+    );
+  });
+
+const assertInternalDiscountState = (
+  pool: Pool,
+  row: CheckoutRow
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* query<InternalDiscountApplicationRow>(
+      pool,
+      "read internal discount application and claim",
+      `select
+        da.subtotal_before_value,
+        da.applied_amount_value,
+        da.subtotal_after_value,
+        dcr.state as redemption_state,
+        dcr.redeemed_at
+      from discount_applications da
+      left join discount_code_redemptions dcr
+        on dcr.application_id = da.id
+      where da.payment_attempt_id = $1`,
+      [row.payment_attempt_id]
+    );
+
+    yield* tryWorkspaceE2ESync(
+      "assert internal discount application and claim",
+      () => assertInternalDiscountApplications(result.rows)
+    );
+  });
+
+interface InternalDiscountApplicationRow {
+  readonly applied_amount_value: number;
+  readonly redemption_state: string | null;
+  readonly redeemed_at: Date | null;
+  readonly subtotal_after_value: number;
+  readonly subtotal_before_value: number;
+}
+
+export const assertInternalDiscountApplications = (
+  rows: readonly InternalDiscountApplicationRow[]
+) => {
+  const redeemedApplications = rows.filter(
+    ({ redemption_state }) => redemption_state === "redeemed"
+  );
+  assert(
+    redeemedApplications.length === 1,
+    "expected one redeemed code application"
+  );
+  const application = redeemedApplications[0];
+  assert(application, "redeemed code application missing");
+  assert(
+    application.applied_amount_value === application.subtotal_before_value,
+    "discount did not cover the full subtotal"
+  );
+  assert(
+    application.subtotal_after_value === 0,
+    "discount subtotal after should be zero"
+  );
+  assert(
+    application.redemption_state === "redeemed",
+    "discount code claim was not redeemed"
+  );
+  assert(application.redeemed_at, "discount code redeemed_at missing");
+};
 
 const assertLegalEvidence = (
   pool: Pool,

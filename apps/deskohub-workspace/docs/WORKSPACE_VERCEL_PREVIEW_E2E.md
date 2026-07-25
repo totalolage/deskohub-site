@@ -48,6 +48,12 @@ names. Inspect settings and deployment metadata without printing their values.
   token, never a management API key or secret.
 - `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
   after the deployed payment/webhook path has completed.
+- The non-sensitive Preview-only
+  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":false,"customer_discounts":false,"discount_codes":true}`.
+  The zero-total case requires code entry and deliberately disables automatic
+  sources so its seeded code is the only discount source. Set this before the
+  immutable Git preview is built; the runner never mutates deployment
+  configuration.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
 Do not use production Nexi, Dotypos, email, or database credentials in Preview.

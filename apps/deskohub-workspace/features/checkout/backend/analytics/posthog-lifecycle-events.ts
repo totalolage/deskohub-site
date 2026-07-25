@@ -18,7 +18,7 @@ const reservationProperties = (
 
 type PaymentLifecycleAttempt = Pick<
   PaymentAttempt,
-  "amount" | "id" | "providerOrderId" | "workspaceReservationId"
+  "amount" | "id" | "provider" | "providerOrderId" | "workspaceReservationId"
 >;
 
 const paymentProperties = (
@@ -30,7 +30,10 @@ const paymentProperties = (
   currency: attempt.amount.currency,
   reservation_id: attempt.workspaceReservationId,
   payment_attempt_id: attempt.id,
-  provider_order_id: attempt.providerOrderId,
+  provider: attempt.provider,
+  ...(attempt.providerOrderId
+    ? { provider_order_id: attempt.providerOrderId }
+    : {}),
 });
 
 const captureLifecycleEvent = (input: {

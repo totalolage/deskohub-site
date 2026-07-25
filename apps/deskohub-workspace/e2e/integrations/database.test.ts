@@ -5,7 +5,10 @@ import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
-import { replayNexiWebhook } from "./database";
+import {
+  assertInternalDiscountApplications,
+  replayNexiWebhook,
+} from "./database";
 
 test("reads persisted reservation details without legacy product columns", async () => {
   const source = await Bun.file(
@@ -85,6 +88,27 @@ test("replays Nexi notification against the exact protected preview", async () =
     },
     securityToken: "test-security-token",
   });
+});
+
+test("accepts automatic discounts stacked before the redeemed zero-total code", () => {
+  expect(() =>
+    assertInternalDiscountApplications([
+      {
+        applied_amount_value: 100,
+        redemption_state: null,
+        redeemed_at: null,
+        subtotal_after_value: 900,
+        subtotal_before_value: 1000,
+      },
+      {
+        applied_amount_value: 900,
+        redemption_state: "redeemed",
+        redeemed_at: new Date("2099-07-24T12:00:00.000Z"),
+        subtotal_after_value: 0,
+        subtotal_before_value: 900,
+      },
+    ])
+  ).not.toThrow();
 });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

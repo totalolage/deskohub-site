@@ -34,7 +34,7 @@ describe("CheckoutSteps", () => {
       <CheckoutSteps
         activeStepKey="pay"
         locale="en-US"
-        stepHrefs={{ order: reservationHref }}
+        stepLinks={{ order: { href: reservationHref, prefetch: false } }}
       />
     );
     const reservationLabel = m.checkoutOrderStepReservation(

@@ -63,13 +63,22 @@ export type PaymentLifecycleRepositoryError =
   | SqlError;
 
 export interface IPaymentLifecycleRepository {
-  readonly createAttempt: (input: {
+  readonly createPendingNexiAttempt: (input: {
     readonly workspaceReservationId: string;
     readonly providerOrderId: string;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
+  readonly completeInternalPayment: (input: {
+    readonly workspaceReservationId: string;
+    readonly amount: WorkspaceMoney;
+    readonly commitment: DiscountCommitment;
+    readonly locale: Locale;
+  }) => Effect.Effect<
+    PaymentLifecycleTransition,
+    PaymentLifecycleRepositoryError
+  >;
   readonly attachProviderSession: (input: {
     readonly id: string;
     readonly securityToken: string;
@@ -112,8 +121,8 @@ export class PaymentLifecycleRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const createAttempt = Effect.fn(
-        "PaymentLifecycleRepository.createAttempt"
+      const createPendingNexiAttempt = Effect.fn(
+        "PaymentLifecycleRepository.createPendingNexiAttempt"
       )(function* (input: {
         readonly workspaceReservationId: string;
         readonly providerOrderId: string;
@@ -160,7 +169,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 ) <= 0
               ) {
                 return yield* new PaymentLifecycleStateError({
-                  operation: "PaymentLifecycleRepository.createAttempt",
+                  operation:
+                    "PaymentLifecycleRepository.createPendingNexiAttempt",
                   paymentAttemptId: input.providerOrderId,
                   message:
                     "Payment attempts can only be created for a current held reservation.",
@@ -210,91 +220,227 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               if (!linked) {
                 return yield* new PaymentLifecycleStateError({
-                  operation: "PaymentLifecycleRepository.createAttempt",
+                  operation:
+                    "PaymentLifecycleRepository.createPendingNexiAttempt",
                   paymentAttemptId: attemptRow.id,
                   message:
                     "Payment attempts can only be linked to held unpaid reservations.",
                 });
               }
 
-              const applicationRows =
-                commitment.applications.length === 0
-                  ? []
-                  : yield* tx
-                      .insert(discountApplications)
-                      .values(
-                        commitment.applications.map(
-                          ({ application, provenance }, sequence) => ({
-                            paymentAttemptId: attemptRow.id,
-                            workspaceReservationId:
-                              input.workspaceReservationId,
-                            sequence,
-                            publicDiscountId: application.discount.id,
-                            label: application.discount.label,
-                            adjustment: application.discount.adjustment,
-                            productIdentity: commitment.product,
-                            subtotalBeforeValue:
-                              application.subtotalBefore.value,
-                            subtotalBeforeExponent:
-                              application.subtotalBefore.exponent,
-                            subtotalBeforeCurrency:
-                              application.subtotalBefore.currency,
-                            appliedAmountValue: application.amount.value,
-                            appliedAmountExponent: application.amount.exponent,
-                            appliedAmountCurrency: application.amount.currency,
-                            subtotalAfterValue: application.subtotalAfter.value,
-                            subtotalAfterExponent:
-                              application.subtotalAfter.exponent,
-                            subtotalAfterCurrency:
-                              application.subtotalAfter.currency,
-                            expiresAt: application.discount.expiresAt
-                              ? Temporal.Instant.from(
-                                  application.discount.expiresAt
-                                )
-                              : null,
-                            countdownStartsAt: application.discount
-                              .countdownStartsAt
-                              ? Temporal.Instant.from(
-                                  application.discount.countdownStartsAt
-                                )
-                              : null,
-                            provenance,
-                          })
-                        )
-                      )
-                      .returning({
-                        id: discountApplications.id,
-                        sequence: discountApplications.sequence,
-                      });
-
-              if (claimedApplication) {
-                const applicationId = applicationRows.find(
-                  (application) =>
-                    application.sequence === claimedApplication.index
-                )?.id;
-
-                if (!applicationId) {
-                  return yield* claimError(
-                    "reserve",
-                    "claim_conflict",
-                    "The claimed discount application was not persisted.",
-                    claimedApplication.claim
-                  );
-                }
-
-                yield* reserveCodeClaim({
-                  tx,
-                  claim: claimedApplication.claim,
-                  application: claimedApplication.application,
-                  applicationId,
-                  paymentAttemptId: attemptRow.id,
-                  locale: input.locale,
-                  reservationCustomerId: reservation.dotyposCustomerId,
-                  reservationExpiresAt: reservation.reservationHoldExpiresAt,
-                });
-              }
+              const applicationRows = yield* persistDiscountApplications({
+                tx,
+                commitment,
+                paymentAttemptId: attemptRow.id,
+                workspaceReservationId: input.workspaceReservationId,
+              });
+              yield* reserveCommittedCodeClaim({
+                tx,
+                claimedApplication,
+                applicationRows,
+                paymentAttemptId: attemptRow.id,
+                locale: input.locale,
+                reservationCustomerId: reservation.dotyposCustomerId,
+                reservationExpiresAt: reservation.reservationHoldExpiresAt,
+              });
 
               return toPaymentAttempt(attemptRow);
+            })
+          )
+          .pipe(
+            Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
+              Effect.fail(
+                new DiscountClaimError({
+                  operation: "reserve",
+                  reason: "claim_conflict",
+                  message:
+                    "The discount code was claimed by another payment attempt.",
+                  cause,
+                })
+              )
+            )
+          );
+      });
+
+      const completeInternalPayment = Effect.fn(
+        "PaymentLifecycleRepository.completeInternalPayment"
+      )(function* (input: {
+        readonly workspaceReservationId: string;
+        readonly amount: WorkspaceMoney;
+        readonly commitment: DiscountCommitment;
+        readonly locale: Locale;
+      }) {
+        const commitment = getDiscountCommitmentPayload(input.commitment);
+        const claimedApplication = yield* validateInternalPaymentCommitment(
+          commitment,
+          input.amount
+        );
+
+        if (input.amount.value !== 0) {
+          return yield* lifecycleStateError(
+            "completeInternalPayment",
+            input.workspaceReservationId,
+            "Internal payments require an exactly zero payable amount."
+          );
+        }
+
+        return yield* db
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              const [reservation] = yield* tx
+                .select({
+                  id: workspaceReservations.id,
+                  activePaymentAttemptId:
+                    workspaceReservations.activePaymentAttemptId,
+                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                  paidAt: workspaceReservations.paidAt,
+                  paymentState: workspaceReservations.paymentState,
+                  reservationHoldExpiresAt:
+                    workspaceReservations.reservationHoldExpiresAt,
+                  reservationState: workspaceReservations.reservationState,
+                })
+                .from(workspaceReservations)
+                .where(
+                  eq(workspaceReservations.id, input.workspaceReservationId)
+                )
+                .limit(1)
+                .for("update");
+
+              const paidAt = Temporal.Now.instant();
+
+              if (
+                reservation?.paymentState === "paid" &&
+                reservation.activePaymentAttemptId
+              ) {
+                const [existingAttempt] = yield* tx
+                  .select()
+                  .from(paymentAttempts)
+                  .where(
+                    and(
+                      eq(
+                        paymentAttempts.id,
+                        reservation.activePaymentAttemptId
+                      ),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      ),
+                      eq(paymentAttempts.provider, "internal"),
+                      eq(paymentAttempts.state, "paid")
+                    )
+                  )
+                  .limit(1);
+
+                if (
+                  existingAttempt &&
+                  workspaceMoneyEquals(
+                    toPaymentAttempt(existingAttempt).amount,
+                    input.amount
+                  )
+                ) {
+                  return {
+                    attempt: toPaymentAttempt(existingAttempt),
+                    changed: false,
+                    timestamp: reservation.paidAt ?? existingAttempt.updatedAt,
+                  };
+                }
+              }
+
+              if (
+                reservation?.reservationState !== "held" ||
+                !reservation.reservationHoldExpiresAt ||
+                Temporal.Instant.compare(
+                  reservation.reservationHoldExpiresAt,
+                  paidAt
+                ) <= 0 ||
+                !["not_started", "failed", "cancelled", "expired"].includes(
+                  reservation.paymentState
+                )
+              ) {
+                return yield* lifecycleStateError(
+                  "completeInternalPayment",
+                  input.workspaceReservationId,
+                  "Internal payments can only complete a current held unpaid reservation."
+                );
+              }
+
+              const [attemptRow] = yield* tx
+                .insert(paymentAttempts)
+                .values({
+                  id: postgresUuidV7,
+                  workspaceReservationId: input.workspaceReservationId,
+                  provider: "internal",
+                  providerOrderId: null,
+                  state: "paid",
+                  amountValue: input.amount.value,
+                  amountExponent: input.amount.exponent,
+                  currency: input.amount.currency,
+                  createdAt: paidAt,
+                  updatedAt: paidAt,
+                })
+                .returning();
+
+              if (!attemptRow) {
+                return yield* Effect.die(
+                  "Internal payment attempt insert returned no row."
+                );
+              }
+
+              const [completedReservation] = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  activePaymentAttemptId: attemptRow.id,
+                  paymentState: "paid",
+                  paidAt,
+                  failureCode: null,
+                  updatedAt: paidAt,
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.workspaceReservationId),
+                    eq(workspaceReservations.reservationState, "held"),
+                    inArray(workspaceReservations.paymentState, [
+                      "not_started",
+                      "failed",
+                      "cancelled",
+                      "expired",
+                    ])
+                  )
+                )
+                .returning({ id: workspaceReservations.id });
+
+              if (!completedReservation) {
+                return yield* lifecycleStateError(
+                  "completeInternalPayment",
+                  attemptRow.id,
+                  "Internal payment could not atomically complete the held reservation."
+                );
+              }
+
+              const applicationRows = yield* persistDiscountApplications({
+                tx,
+                commitment,
+                paymentAttemptId: attemptRow.id,
+                workspaceReservationId: input.workspaceReservationId,
+              });
+              const claimedAt = yield* reserveCommittedCodeClaim({
+                tx,
+                claimedApplication,
+                applicationRows,
+                paymentAttemptId: attemptRow.id,
+                locale: input.locale,
+                reservationCustomerId: reservation.dotyposCustomerId,
+                reservationExpiresAt: reservation.reservationHoldExpiresAt,
+              });
+              if (claimedAt) {
+                yield* redeemCodeClaim(tx, attemptRow.id, claimedAt);
+              }
+
+              return {
+                attempt: toPaymentAttempt(attemptRow),
+                changed: true,
+                timestamp: paidAt,
+              };
             })
           )
           .pipe(
@@ -566,7 +712,8 @@ export class PaymentLifecycleRepository extends Context.Service<
       );
 
       return {
-        createAttempt,
+        createPendingNexiAttempt,
+        completeInternalPayment,
         attachProviderSession,
         markPaid,
         markTerminal,
@@ -646,6 +793,25 @@ export const validateDiscountCommitment = Effect.fn(
   };
 });
 
+export const validateInternalPaymentCommitment = Effect.fn(
+  "PaymentLifecycle.validateInternalPaymentCommitment"
+)(function* (commitment: CommitmentPayload, amount: WorkspaceMoney) {
+  const claimedApplication = yield* validateDiscountCommitment(commitment);
+  const finalSubtotal =
+    commitment.applications.at(-1)?.application.subtotalAfter;
+
+  if (!finalSubtotal || !workspaceMoneyEquals(finalSubtotal, amount)) {
+    return yield* new DiscountClaimError({
+      operation: "reserve",
+      reason: "money_mismatch",
+      message:
+        "An internal payment commitment must reduce the discountable subtotal to its payable amount.",
+    });
+  }
+
+  return claimedApplication;
+});
+
 const lifecycleStateError = (
   operation: string,
   paymentAttemptId: string,
@@ -687,6 +853,104 @@ const discountAdjustmentsEqual = (
 type TransactionClient = Parameters<
   Parameters<WorkspaceDatabaseClient["transaction"]>[0]
 >[0];
+
+type ClaimedApplication = {
+  readonly index: number;
+  readonly application: AppliedDiscount;
+  readonly claim: DiscountClaimInstruction;
+};
+
+type PersistedApplication = {
+  readonly id: DiscountApplicationId;
+  readonly sequence: number;
+};
+
+const persistDiscountApplications = Effect.fn(
+  "PaymentLifecycle.persistDiscountApplications"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly commitment: CommitmentPayload;
+  readonly paymentAttemptId: string;
+  readonly workspaceReservationId: string;
+}) {
+  if (input.commitment.applications.length === 0) {
+    return [] satisfies PersistedApplication[];
+  }
+
+  return yield* input.tx
+    .insert(discountApplications)
+    .values(
+      input.commitment.applications.map(
+        ({ application, provenance }, sequence) => ({
+          paymentAttemptId: input.paymentAttemptId,
+          workspaceReservationId: input.workspaceReservationId,
+          sequence,
+          publicDiscountId: application.discount.id,
+          label: application.discount.label,
+          adjustment: application.discount.adjustment,
+          productIdentity: input.commitment.product,
+          subtotalBeforeValue: application.subtotalBefore.value,
+          subtotalBeforeExponent: application.subtotalBefore.exponent,
+          subtotalBeforeCurrency: application.subtotalBefore.currency,
+          appliedAmountValue: application.amount.value,
+          appliedAmountExponent: application.amount.exponent,
+          appliedAmountCurrency: application.amount.currency,
+          subtotalAfterValue: application.subtotalAfter.value,
+          subtotalAfterExponent: application.subtotalAfter.exponent,
+          subtotalAfterCurrency: application.subtotalAfter.currency,
+          expiresAt: application.discount.expiresAt
+            ? Temporal.Instant.from(application.discount.expiresAt)
+            : null,
+          countdownStartsAt: application.discount.countdownStartsAt
+            ? Temporal.Instant.from(application.discount.countdownStartsAt)
+            : null,
+          provenance,
+        })
+      )
+    )
+    .returning({
+      id: discountApplications.id,
+      sequence: discountApplications.sequence,
+    });
+});
+
+const reserveCommittedCodeClaim = Effect.fn(
+  "PaymentLifecycle.reserveCommittedCodeClaim"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly claimedApplication: ClaimedApplication | undefined;
+  readonly applicationRows: readonly PersistedApplication[];
+  readonly paymentAttemptId: string;
+  readonly locale: Locale;
+  readonly reservationCustomerId: string;
+  readonly reservationExpiresAt: Temporal.Instant;
+}) {
+  if (!input.claimedApplication) return;
+
+  const applicationId = input.applicationRows.find(
+    (application) => application.sequence === input.claimedApplication?.index
+  )?.id;
+
+  if (!applicationId) {
+    return yield* claimError(
+      "reserve",
+      "claim_conflict",
+      "The claimed discount application was not persisted.",
+      input.claimedApplication.claim
+    );
+  }
+
+  return yield* reserveCodeClaim({
+    tx: input.tx,
+    claim: input.claimedApplication.claim,
+    application: input.claimedApplication.application,
+    applicationId,
+    paymentAttemptId: input.paymentAttemptId,
+    locale: input.locale,
+    reservationCustomerId: input.reservationCustomerId,
+    reservationExpiresAt: input.reservationExpiresAt,
+  });
+});
 
 const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
   function* (input: {
@@ -771,7 +1035,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     const claimedAt = Temporal.Now.instant();
     if (Temporal.Instant.compare(input.reservationExpiresAt, claimedAt) <= 0) {
       return yield* lifecycleStateError(
-        "createAttempt",
+        "reserveCodeClaim",
         input.paymentAttemptId,
         "Discount claims can only be reserved for a current held reservation."
       );
@@ -932,6 +1196,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       reservedAt: claimedAt,
       updatedAt: claimedAt,
     });
+    return claimedAt;
   }
 );
 

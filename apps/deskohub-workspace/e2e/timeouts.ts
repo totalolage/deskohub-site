@@ -15,6 +15,7 @@ export const workspaceE2ETimeouts = {
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
   uiTransition: 45 * SECOND,
+  zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;
 
 export type WorkspaceE2ETimeouts = Readonly<

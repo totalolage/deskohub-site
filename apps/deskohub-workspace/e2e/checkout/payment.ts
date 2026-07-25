@@ -419,8 +419,7 @@ const submitPaymentAndWaitForHostedPage = ({
   timeouts: WorkspaceE2ETimeouts;
 }) =>
   Effect.gen(function* () {
-    yield* clickCheckoutPayConsent(run, session);
-    yield* activateCheckoutPayButton(run, session);
+    yield* submitCheckoutPayment(run, session);
 
     return yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
@@ -430,6 +429,12 @@ const submitPaymentAndWaitForHostedPage = ({
       session,
       timeoutMs: timeouts.providerTransition,
     });
+  });
+
+export const submitCheckoutPayment = (run: Runner, session: string) =>
+  Effect.gen(function* () {
+    yield* clickCheckoutPayConsent(run, session);
+    yield* activateCheckoutPayButton(run, session);
   });
 
 const clickCheckoutPayConsent = (run: Runner, session: string) =>

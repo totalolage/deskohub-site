@@ -2,7 +2,7 @@
 
 This document is the Phase 1 contract for the Workspace checkout database rewrite. It supersedes the earlier `payment_orders`-centered model for new implementation work.
 
-The local database is a Deskohub workflow, payment, legal, and recovery ledger. Dotypos remains the source of truth for customer facts and reservation facts. Nexi remains the source of truth for payment processing facts. The local database must not become a customer profile store, a reservation fact store, a raw provider payload archive, or a return-state token store.
+The local database is a Deskohub workflow, payment, legal, and recovery ledger. Dotypos remains the source of truth for customer facts and reservation facts. Nexi remains the source of truth for external payment processing facts; an exactly zero payable total completes through an internal paid attempt without contacting Nexi. The local database must not become a customer profile store, a reservation fact store, a raw provider payload archive, or a return-state token store.
 
 ## Core lifecycle tables
 
@@ -46,7 +46,7 @@ Discount code entry belongs on the order-summary page as an independent form wit
 - A valid code returns a new signed summary containing the code discount. It does not create a payment attempt, persist an application, or reserve code capacity.
 - Once present in the signed summary, a code follows the same final affirmation and payment-lifecycle rules as every other discount.
 
-The hard payment invariant is that a provider session amount must exactly equal the last signed summary price shown to the customer. Order submission freshly affirms exactly the discounts in that summary and compares the complete quote fingerprint and total. A mismatch—or a failure to persist applications or admit a claim atomically—returns `pricing_changed`; the transaction rolls back and Nexi is not called.
+The hard payment invariant is that the accepted payment attempt amount must exactly equal the last signed summary price shown to the customer. Order submission freshly affirms exactly the discounts in that summary and compares the complete quote fingerprint and total. A mismatch—or a failure to persist applications or admit a claim atomically—returns `pricing_changed`; the transaction rolls back and Nexi is not called. A positive total creates a Nexi attempt and HPP session. An exactly zero total atomically creates an already-paid `internal` attempt, marks the reservation paid, persists application snapshots, and immediately redeems any admitted code claim; it never prepares or calls Nexi.
 
 Advertised, signed, and freshly affirmed quotes and local payment attempts always retain the catalog currency. The controlled non-production Nexi sandbox currency override is a provider-adapter exception only: Workspace applies it immediately before HPP creation and again when constructing Nexi verification arguments. The override never changes locally persisted payment facts, the customer-visible quote, its numeric minor-unit value, or its exponent, and it is unavailable for production or the live Nexi origin.
 
@@ -57,7 +57,7 @@ Advertised, signed, and freshly affirmed quotes and local payment attempts alway
 | Customer name, email, phone | Dotypos customer | Store only `dotypos_customer_id`. Never store as columns, JSON, event text, or raw payload. |
 | Dotypos reservation date, service options, staff note, reservation status | Dotypos reservation | Store `dotypos_reservation_id` and local workflow timestamps/states only. Read Dotypos when reservation facts are needed. |
 | Checkout session and attempt idempotency | Deskohub workflow | Store only the HMAC session and attempt keys. The object payloads used to derive them are transient and must not be persisted. |
-| Payment session and terminal state | Nexi plus Deskohub workflow | Store payment attempts, Nexi order IDs, non-PII security tokens, operation IDs/statuses, redirect URL if needed for retry support, and local payment state. |
+| Payment session and terminal state | Nexi plus Deskohub workflow | Store positive Nexi attempts with their external identifiers and store zero-total internal attempts without external fields. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
 | Legal acceptance | Deskohub legal evidence | Store document keys, paths, hashes, acceptance booleans, timestamps, locale, source, and idempotency keys. Never store rendered legal documents or customer contact data. |
 
@@ -99,13 +99,13 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `reservation_state` | text enum | yes | Local reservation workflow state. |
 | `payment_state` | text enum | yes | Aggregate payment state across attempts. |
 | `fulfillment_state` | text enum | yes | Local post-payment/legal-delivery workflow state. |
-| `active_payment_attempt_id` | text | no | Current payment attempt, if a Nexi session exists. |
+| `active_payment_attempt_id` | text | no | Current Nexi or internal payment attempt. |
 | `reservation_hold_expires_at` | timestamptz | no | Local hold deadline used for cleanup scheduling. Mirrors Deskohub hold policy, not Dotypos facts. |
 | `reservation_hold_expired_at` | timestamptz | no | When local cleanup observed the hold as expired. |
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
 | `reservation_confirmed_at` | timestamptz | no | When paid workflow confirmed the Dotypos reservation. |
 | `reservation_cancelled_at` | timestamptz | no | When Dotypos cancellation succeeded or Dotypos already reported cancellation. |
-| `paid_at` | timestamptz | no | When a verified Nexi attempt made the workflow paid. |
+| `paid_at` | timestamptz | no | When a verified Nexi attempt or atomic internal completion made the workflow paid. |
 | `fulfilled_at` | timestamptz | no | When all required post-payment work completed. |
 | `fulfillment_failed_at` | timestamptz | no | Most recent fulfillment failure time. |
 | `failure_code` | text | no | Normalized non-PII workflow failure code. |
@@ -130,14 +130,14 @@ Indexes and constraints:
 
 ### `payment_attempts`
 
-One row per Nexi HPP/session creation attempt. Retries create new attempts instead of overwriting prior attempt history.
+One row per payment attempt. Positive totals create Nexi HPP/session attempts. Exactly zero totals create one already-paid internal attempt in the same transaction that marks the reservation paid. Retries never overwrite attempt history.
 
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local payment attempt ID. |
 | `workspace_reservation_id` | text | yes | Parent workflow row. |
-| `provider` | text enum | yes | Initial value: `nexi`. |
-| `provider_order_id` | text | yes | Nexi order ID, normally the value sent to `order.orderId`. Unique for Nexi. |
+| `provider` | text enum | yes | `nexi` for positive external payment or `internal` for zero-total completion. |
+| `provider_order_id` | text | no | Nexi order ID, normally the value sent to `order.orderId`. Required and unique for Nexi; forbidden for internal attempts. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
@@ -155,10 +155,11 @@ Indexes and constraints:
 
 - Primary key on `id`.
 - Foreign key to `workspace_reservations(id)`.
-- Unique index on `(provider, provider_order_id)`.
+- Partial unique index on `provider_order_id` for Nexi attempts.
 - Index on `workspace_reservation_id`.
 - Recovery index on `(state, created_at)`.
-- `provider = 'nexi'` for the initial implementation.
+- Nexi attempts have a positive amount and a non-null provider order ID.
+- Internal attempts have an exactly zero amount, are inserted already paid, and have no provider order ID, security token, redirect URL, webhook ID, provider operation ID, provider status, or failure code.
 - `amount_exponent` must be between `0` and `20`.
 - `currency` must be uppercase three-letter text.
 - `failure_code` must be non-null for failed/cancelled/expired terminal states.
@@ -246,9 +247,9 @@ Forbidden reservation transitions:
 
 Aggregate `workspace_reservations.payment_state` values:
 
-- `not_started`: no active Nexi session exists.
-- `pending`: at least one Nexi attempt is awaiting a terminal result.
-- `paid`: Nexi verification confirmed successful payment.
+- `not_started`: no active payment attempt exists.
+- `pending`: a Nexi attempt is awaiting a terminal result.
+- `paid`: Nexi verification or an atomic zero-total internal completion confirmed successful payment.
 - `failed`: Nexi verification returned payment failure.
 - `cancelled`: Nexi/customer cancelled payment.
 - `expired`: Nexi/session/hold expiry ended the payment workflow.
@@ -266,7 +267,9 @@ Allowed payment transitions:
 
 - Reservation aggregate: `not_started -> pending -> paid`.
 - Reservation aggregate: `not_started -> pending -> failed|cancelled|expired`.
+- Zero-total reservation aggregate: `not_started|failed|cancelled|expired -> paid` atomically with insertion of an already-paid internal attempt.
 - Attempt: `created -> pending -> paid|failed|cancelled|expired`.
+- Internal attempt: inserted directly as `paid`; no later provider or terminal transition applies.
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
 - Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
@@ -370,7 +373,7 @@ sequenceDiagram
   end
 ```
 
-### Payment Attempt And Nexi Redirect
+### Payment Attempt And Completion
 
 ```mermaid
 sequenceDiagram
@@ -384,12 +387,16 @@ sequenceDiagram
   App->>App: Freshly affirm exactly the signed-summary discounts and total
   alt fingerprint, total, or claim admission changed
     App-->>Customer: pricing_changed + refreshed signed summary; no payment session
-  else signed price affirmed
+  else positive signed price affirmed
     App->>DB: In one transaction create/link attempt, persist discount applications, and reserve code claim
     App->>Nexi: POST /orders/hpp with the exact signed-summary amount
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
     App-->>Customer: Redirect to hostedPage
+  else exactly zero signed price affirmed
+    App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
+    App->>App: Invoke idempotent paid fulfillment
+    App-->>Customer: Redirect to local successful checkout status
   end
 ```
 
@@ -496,6 +503,7 @@ sequenceDiagram
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.
 - Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.
+- Confirm internal attempts are exactly zero, already paid, and contain no Nexi identifiers, security token, redirect URL, webhook, operation, or provider-status fields.
 - Confirm webhook handling verifies through Nexi before marking payment paid or terminal unsuccessful.
 - Confirm failure/cancel/expired payment paths cancel unpaid Dotypos holds or leave guarded local state for retry.
 - Confirm test data uses clearly fake customers and test payment instruments.

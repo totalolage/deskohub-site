@@ -1,6 +1,7 @@
 import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { makeCoworkCheckoutData, selectAvailableCoworkDates } from "./data";
@@ -27,6 +28,17 @@ test("does not reuse checkout phone numbers in later monthly runs", () => {
   expect(julyPhones.size).toBe(100);
   expect(augustPhones.size).toBe(100);
   expect(julyPhones.intersection(augustPhones).size).toBe(0);
+});
+
+test("keeps generated emails valid for the longest checkout flow identifier", () => {
+  const data = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "cowork-reservation-replacement"
+  );
+
+  expect(Schema.is(reservationCustomerEmailSchema)(data.email)).toBe(true);
+  expect(data.email.split("@")[0]?.length).toBeLessThanOrEqual(64);
 });
 
 test("loads availability through the provided HTTP client", async () => {
