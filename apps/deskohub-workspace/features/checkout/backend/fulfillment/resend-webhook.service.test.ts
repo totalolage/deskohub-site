@@ -8,7 +8,7 @@ import type {
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -413,6 +413,18 @@ describe("ResendWebhookService", () => {
         name: "Deskohub Workspace",
       },
     };
+    const errorMessages: string[] = [];
+    const logger = Logger.make((options) => {
+      if (options.logLevel === "Error") {
+        errorMessages.push(
+          String(
+            Array.isArray(options.message)
+              ? options.message[0]
+              : options.message
+          )
+        );
+      }
+    });
 
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
@@ -472,10 +484,14 @@ describe("ResendWebhookService", () => {
           )
         )
       ),
+      Effect.provide(Logger.layer([logger])),
       Effect.runPromise
     );
 
     expect(send).toHaveBeenCalledTimes(2);
+    expect(errorMessages).toContain(
+      "Workspace reservation internal email failed"
+    );
     expect(sentMessages[0]?.tags).toEqual([
       "workspace-paid-reservation-access",
     ]);

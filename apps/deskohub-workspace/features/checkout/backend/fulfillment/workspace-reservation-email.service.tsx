@@ -939,7 +939,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             const locationMapAttachment =
               yield* createWorkspaceLocationMapAttachment().pipe(
                 Effect.catch((cause) =>
-                  Effect.logWarning(
+                  Effect.logError(
                     "Workspace reservation location map attachment skipped",
                     {
                       cause,
@@ -951,7 +951,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             const networkQrAttachment =
               yield* createWorkspaceNetworkQrAttachment(networkDetails).pipe(
                 Effect.catch((cause) =>
-                  Effect.logWarning(
+                  Effect.logError(
                     "Workspace reservation Wi-Fi QR attachment skipped",
                     {
                       cause,
@@ -966,7 +966,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
                   locale
                 ).pipe(
                   Effect.catch((cause) =>
-                    Effect.logWarning(
+                    Effect.logError(
                       "Workspace reservation table map attachment skipped",
                       {
                         cause,
@@ -1076,7 +1076,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
 
           yield* emailService.send(internalMessage).pipe(
             Effect.tapError((cause) =>
-              Effect.logWarning("Workspace reservation internal email failed", {
+              Effect.logError("Workspace reservation internal email failed", {
                 cause,
                 workspaceReservationId: reservation.id,
               })
