@@ -17,6 +17,7 @@ import { Cause, Effect, Layer, Logger, References } from "effect";
 import { createTracingLive } from "../observability/otel-tracing";
 import {
   CENSORED_LOG_VALUE,
+  CensoringLogger,
   censorLoggerOptions,
   censorLogValue,
   createCensoredOtelLogger,
@@ -469,6 +470,74 @@ describe("censorLoggerOptions", () => {
 
     expect(censoredAnnotations.session).toBe("public-session");
     expect(censoredAnnotations.sessionId).toBe("ph-session");
+  });
+
+  test("projects nested Effect failures and defects before console and OTLP sinks", async () => {
+    const failureMarker = randomUUID();
+    const defectMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${failureMarker}`;
+    const cause = Cause.combine(
+      Cause.fail({ hostedPage, providerResponse: { token: failureMarker } }),
+      Cause.die(new Error(defectMarker))
+    );
+    const consoleOutput: unknown[] = [];
+    const captureConsole = {
+      assert: () => undefined,
+      clear: () => undefined,
+      count: () => undefined,
+      countReset: () => undefined,
+      debug: (...values: unknown[]) => consoleOutput.push(values),
+      dir: () => undefined,
+      dirxml: () => undefined,
+      error: (...values: unknown[]) => consoleOutput.push(values),
+      group: () => undefined,
+      groupCollapsed: () => undefined,
+      groupEnd: () => undefined,
+      info: (...values: unknown[]) => consoleOutput.push(values),
+      log: (...values: unknown[]) => consoleOutput.push(values),
+      table: () => undefined,
+      time: () => undefined,
+      timeEnd: () => undefined,
+      timeLog: () => undefined,
+      trace: (...values: unknown[]) => consoleOutput.push(values),
+      warn: (...values: unknown[]) => consoleOutput.push(values),
+    };
+    const options = {
+      message: ["payment reconciliation failed", cause],
+      logLevel: "Info",
+      cause,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations
+            ? { providerCause: cause }
+            : ref === References.CurrentLogSpans
+              ? []
+              : captureConsole,
+      },
+    } as Logger.Options<unknown>;
+
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    try {
+      CensoringLogger.log(options);
+      Effect.runSync(createCensoredOtelLogger(provider)).log(options);
+      await provider.forceFlush();
+    } finally {
+      await provider.shutdown();
+    }
+
+    const serialized = JSON.stringify({
+      consoleOutput,
+      otlp: exporter.getFinishedLogRecords(),
+    });
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(failureMarker);
+    expect(serialized).not.toContain(defectMarker);
+    expect(serialized).not.toContain(hostedPage);
   });
 
   test("recursively censors params emitted by Drizzle EffectLogger", async () => {

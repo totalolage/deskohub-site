@@ -80,7 +80,7 @@ export interface NexiWebhookSecurityTokenCheck {
 export type NexiFailureStatusKind = "cancelled" | "expired" | "failed";
 
 export interface NexiPaymentMetadata {
-  readonly providerOperationId: string;
+  readonly providerOperationId?: string;
   readonly providerStatus?: string;
 }
 
@@ -178,8 +178,7 @@ export const classifyNexiFailureStatus = (
 export const getNexiPaymentMetadata = (
   verification: PaymentVerificationResult
 ): NexiPaymentMetadata => ({
-  providerOperationId:
-    verification.provider.operationId ?? verification.provider.orderId,
+  providerOperationId: verification.provider.operationId,
   providerStatus:
     verification.provider.orderStatus ??
     (verification.provider.captureExecuted ? "capture_executed" : undefined),
@@ -215,11 +214,78 @@ export type PaymentOutcomeStatus =
 export interface ProviderPaymentFacts {
   readonly orderId: string;
   readonly operationId?: string;
+  readonly operationType?: string;
   readonly amount?: string;
   readonly currency?: string;
   readonly orderStatus?: string;
   readonly captureExecuted: boolean;
 }
+
+const normalizedEvidence = (value: string | undefined) =>
+  cleanOptionalString(value)?.toUpperCase();
+
+/**
+ * Webhook facts are an additional provider observation, not authority to
+ * overwrite the read-only order lookup. Every fact the provider supplied must
+ * agree with both the admitted local identity and the reconciled order.
+ */
+export const isNexiWebhookEvidenceConsistent = (input: {
+  readonly notification: NexiWebhookNotification;
+  readonly expectedOrderId: string;
+  readonly expectedAmount: string;
+  readonly expectedCurrency: string;
+  readonly verification: PaymentVerificationResult;
+}): boolean => {
+  const operation = normalizeNexiWebhookNotification(
+    input.notification
+  ).operation;
+  const provider = input.verification.provider;
+
+  if (
+    operation.orderId !== input.expectedOrderId ||
+    operation.orderId !== provider.orderId
+  ) {
+    return false;
+  }
+  if (
+    operation.operationId !== undefined &&
+    operation.operationId !== provider.operationId
+  ) {
+    return false;
+  }
+  if (
+    operation.operationType !== undefined &&
+    normalizedEvidence(operation.operationType) !==
+      normalizedEvidence(provider.operationType)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationResult !== undefined &&
+    normalizedEvidence(operation.operationResult) !==
+      normalizedEvidence(provider.orderStatus)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationAmount !== undefined &&
+    (operation.operationAmount !== input.expectedAmount ||
+      operation.operationAmount !== provider.amount)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationCurrency !== undefined &&
+    (normalizedEvidence(operation.operationCurrency) !==
+      normalizedEvidence(input.expectedCurrency) ||
+      normalizedEvidence(operation.operationCurrency) !==
+        normalizedEvidence(provider.currency))
+  ) {
+    return false;
+  }
+
+  return true;
+};
 
 export interface PaymentVerificationResult {
   readonly status: PaymentOutcomeStatus;

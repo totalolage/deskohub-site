@@ -618,6 +618,116 @@ describe("PaymentLifecycleRepository database behavior", () => {
     );
   });
 
+  test("recovers exact discounted v1 sessions and reconciles ambiguous v1 starts read-only", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        const fixture = discountFixture();
+
+        const seedLegacyDiscountedAttempt = (
+          reservationId: string,
+          state: "created" | "pending"
+        ) =>
+          Effect.gen(function* () {
+            yield* seedReservation(reservationId);
+            const attemptId = `${reservationId}-attempt`;
+            yield* db.insert(paymentAttempts).values({
+              id: attemptId,
+              workspaceReservationId: reservationId,
+              provider: "nexi",
+              providerOrderId: `${reservationId}-provider-order`,
+              admissionVersion: 1,
+              securityToken: state === "pending" ? "opaque-session" : null,
+              providerRedirectUrl:
+                state === "pending" ? "https://provider.invalid/hpp" : null,
+              state,
+              amountValue: 900,
+              amountExponent: 2,
+              currency: "CZK",
+            });
+            const application = fixture.pricing.discounts[0];
+            yield* db.insert(discountApplications).values({
+              paymentAttemptId: attemptId,
+              workspaceReservationId: reservationId,
+              sequence: 0,
+              publicDiscountId: application.discount.id,
+              label: application.discount.label,
+              adjustment: application.discount.adjustment,
+              productIdentity: { kind: "cowork", tier: "basic" },
+              subtotalBeforeValue: application.subtotalBefore.value,
+              subtotalBeforeExponent: application.subtotalBefore.exponent,
+              subtotalBeforeCurrency: application.subtotalBefore.currency,
+              appliedAmountValue: application.amount.value,
+              appliedAmountExponent: application.amount.exponent,
+              appliedAmountCurrency: application.amount.currency,
+              subtotalAfterValue: application.subtotalAfter.value,
+              subtotalAfterExponent: application.subtotalAfter.exponent,
+              subtotalAfterCurrency: application.subtotalAfter.currency,
+              provenance: {
+                providerNamespace: "test",
+                providerReference: "legacy",
+              },
+            });
+            yield* db
+              .update(workspaceReservations)
+              .set({
+                activePaymentAttemptId: attemptId,
+                paymentState: "pending",
+              })
+              .where(eq(workspaceReservations.id, reservationId));
+          });
+
+        const admitLegacy = (
+          reservationId: string,
+          pricing = fixture.pricing
+        ) =>
+          repository.admitPaymentStart({
+            workspaceReservationId: reservationId,
+            checkoutSessionKey: `session-${reservationId}`,
+            providerOrderId: `${reservationId}-new-provider-order`,
+            acceptedPricing: pricing,
+            affirmedPricing: pricing,
+            commitment: fixture.commitment,
+            locale: "en-US",
+            allowNewAdmission: false,
+          });
+
+        yield* seedLegacyDiscountedAttempt(
+          "legacy-discounted-attached",
+          "pending"
+        );
+        expect((yield* admitLegacy("legacy-discounted-attached")).outcome).toBe(
+          "reuse"
+        );
+
+        yield* seedLegacyDiscountedAttempt(
+          "legacy-discounted-created",
+          "created"
+        );
+        expect((yield* admitLegacy("legacy-discounted-created")).outcome).toBe(
+          "reconciling"
+        );
+
+        const contradictoryPricing = {
+          ...fixture.pricing,
+          discounts: [
+            {
+              ...fixture.pricing.discounts[0],
+              amount: money(101),
+            },
+          ],
+        };
+        expect(
+          yield* admitLegacy("legacy-discounted-created", contradictoryPricing)
+        ).toEqual({
+          outcome: "pricing_changed",
+          reason: "discount_commitment_mismatch",
+        });
+      })
+    );
+  });
+
   test("database fence blocks legacy rollback cleanup of unresolved v2 starts", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {

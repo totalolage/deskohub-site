@@ -152,6 +152,7 @@ const makeNexiService = Effect.gen(function* () {
         provider: {
           orderId: evidence.providerOrderId,
           operationId: evidence.providerOperationId,
+          operationType: evidence.providerOperationType,
           amount: evidence.providerAmount?.amount,
           currency: evidence.providerAmount?.currency,
           orderStatus: evidence.providerStatus,
@@ -206,18 +207,20 @@ export class NexiService extends Context.Service<
 const isFailureStatus = (status: string | undefined) =>
   status ? failureOperationResults.has(status.toUpperCase()) : false;
 
-const isPaymentOperationType = (operationType: string | undefined) =>
-  operationType === AUTHORIZATION_OPERATION_TYPE ||
-  operationType === CAPTURE_OPERATION_TYPE;
+const isPaymentOperationType = (operationType: string | undefined) => {
+  const normalized = operationType?.toUpperCase();
+  return (
+    normalized === AUTHORIZATION_OPERATION_TYPE ||
+    normalized === CAPTURE_OPERATION_TYPE
+  );
+};
 
 const resolvePaymentOutcomeEvidence = (
   input: VerifyPaymentOutcomeInput,
   order: OrderResponse
 ) => {
   const providerOrder = order.orderStatus?.order;
-  const paymentOperations = (order.operations ?? []).filter((operation) =>
-    isPaymentOperationType(operation.operationType)
-  );
+  const paymentOperations = order.operations ?? [];
   const operation =
     paymentOperations.length === 1 ? paymentOperations[0] : null;
   const providerAmount =
@@ -271,14 +274,26 @@ const resolvePaymentOutcomeEvidence = (
     .map((item) => item.operationResult?.toUpperCase())
     .filter((value): value is string => value !== undefined);
   const orderStatus = order.orderStatus?.lastOperationType?.toUpperCase();
-  const hasSuccessEvidence =
-    operationResults.includes(EXECUTED_OPERATION_RESULT) ||
-    orderStatus === EXECUTED_OPERATION_RESULT;
-  const hasFailureEvidence =
-    operationResults.some(isFailureStatus) || isFailureStatus(orderStatus);
+  const statusEvidence = [
+    ...operationResults,
+    ...(orderStatus === undefined ? [] : [orderStatus]),
+  ];
+  const distinctStatusEvidence = new Set(statusEvidence);
+  const operationIsIncomplete =
+    paymentOperations.length > 0 &&
+    paymentOperations.some(
+      (item) =>
+        !isPaymentOperationType(item.operationType) ||
+        item.operationResult === undefined
+    );
+  const terminalOrderWithoutOperation =
+    paymentOperations.length === 0 &&
+    (orderStatus === EXECUTED_OPERATION_RESULT || isFailureStatus(orderStatus));
   if (
     paymentOperations.length > 1 ||
-    (hasSuccessEvidence && hasFailureEvidence)
+    operationIsIncomplete ||
+    terminalOrderWithoutOperation ||
+    distinctStatusEvidence.size > 1
   ) {
     mismatches.push("operationEvidence");
   }
@@ -302,6 +317,7 @@ const resolvePaymentOutcomeEvidence = (
     mismatches,
     providerOrderId,
     providerOperationId: operation?.operationId,
+    providerOperationType: operation?.operationType,
     providerAmount,
     providerStatus,
     captureExecuted:

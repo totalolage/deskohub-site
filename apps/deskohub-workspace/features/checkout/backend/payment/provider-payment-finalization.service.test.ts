@@ -226,9 +226,17 @@ describe("ProviderPaymentFinalizationService", () => {
     },
     {
       verificationStatus: "success" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+    },
+    {
+      verificationStatus: "success" as const,
       expected: "not_pending" as const,
       changed: false,
       conflict: true,
+      conflictReason: "state_conflict" as const,
     },
     {
       verificationStatus: "failure" as const,
@@ -244,9 +252,10 @@ describe("ProviderPaymentFinalizationService", () => {
     },
     {
       verificationStatus: "failure" as const,
-      expected: "not_pending" as const,
+      expected: "manual_review" as const,
       changed: false,
       conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
     },
     {
       verificationStatus: "manual_review" as const,
@@ -282,6 +291,10 @@ describe("ProviderPaymentFinalizationService", () => {
                 paymentAttemptId: pendingAttempt.id,
                 message:
                   "The paid replay conflicts with recorded provider evidence.",
+                reason:
+                  "conflictReason" in scenario
+                    ? scenario.conflictReason
+                    : undefined,
               })
             )
           : Effect.succeed({
@@ -298,6 +311,10 @@ describe("ProviderPaymentFinalizationService", () => {
                 paymentAttemptId: pendingAttempt.id,
                 message:
                   "The terminal replay conflicts with the recorded lifecycle outcome.",
+                reason:
+                  "conflictReason" in scenario
+                    ? scenario.conflictReason
+                    : undefined,
               })
             )
           : Effect.succeed({

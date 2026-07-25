@@ -11,7 +11,7 @@ import type {
   SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Logger, type LogLevel, References } from "effect";
+import { Cause, Effect, Logger, type LogLevel, References } from "effect";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -267,6 +267,28 @@ const censorLogValueInternal = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
+  if (Cause.isCause(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    seen.set(value, Cause.empty);
+
+    const reasons = value.reasons.map((reason) => {
+      if (Cause.isFailReason(reason)) {
+        return Cause.fail(censorLogValueInternal(reason.error, seen));
+      }
+      if (Cause.isDieReason(reason)) {
+        return Cause.die(censorLogValueInternal(reason.defect, seen));
+      }
+      return Cause.interrupt(reason.fiberId);
+    });
+    const result = reasons.reduce(
+      (combined, reason) => Cause.combine(combined, reason),
+      Cause.empty as Cause.Cause<unknown>
+    );
+    seen.set(value, result);
+    return result;
+  }
+
   if (Array.isArray(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -390,6 +412,7 @@ export const censorLoggerOptions = (
   return {
     ...options,
     message: censorLogValue(options.message),
+    cause: censorLogValue(options.cause) as Logger.Options<unknown>["cause"],
     fiber: {
       ...fiber,
       getRef: (ref) => {

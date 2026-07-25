@@ -4,6 +4,7 @@ import {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   getNexiPaymentMetadata,
+  isNexiWebhookEvidenceConsistent,
   NexiCurrencySchema,
   NexiService,
   type PaymentVerificationResult,
@@ -409,7 +410,19 @@ export const NexiWebhookServiceLive = Layer.effect(
           yield* failOnVerificationMismatch({
             eventId,
             orderId: providerOrderId,
-            verification,
+            verification: isNexiWebhookEvidenceConsistent({
+              notification: envelope,
+              expectedOrderId: attempt.providerOrderId,
+              expectedAmount: String(attempt.amount.value),
+              expectedCurrency: verificationInput.currency,
+              verification,
+            })
+              ? verification
+              : {
+                  ...verification,
+                  status: "manual_review",
+                  mismatches: [...verification.mismatches, "operationEvidence"],
+                },
             webhookEvents,
           });
 

@@ -40,6 +40,7 @@ export type ProviderPaymentFinalizationResult =
   | "not_verifiable"
   | "provider_verification_failed"
   | "verification_mismatch"
+  | "manual_review"
   | "pending"
   | "paid"
   | "terminal";
@@ -233,7 +234,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           if (verification.status === "success") {
             yield* Effect.logInfo("Payment finalization mark paid started");
-            const paidSuccess = yield* paymentLifecycle
+            const paidSettlement = yield* paymentLifecycle
               .markPaid({
                 id: attempt.id,
                 workspaceReservationId: reservation.id,
@@ -243,20 +244,30 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 paidAt: Temporal.Now.instant(),
               })
               .pipe(
+                Effect.map((transition) => ({
+                  outcome: "settled" as const,
+                  transition,
+                })),
                 Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                   Effect.gen(function* () {
                     yield* Effect.logWarning(
-                      "Payment finalization mark paid returned not_pending",
+                      "Payment finalization mark paid returned lifecycle conflict",
                       { cause }
                     );
-                    return undefined;
+                    return {
+                      outcome:
+                        cause.reason === "provider_evidence_conflict"
+                          ? ("manual_review" as const)
+                          : ("not_pending" as const),
+                    };
                   })
                 )
               );
 
-            if (!paidSuccess) {
-              return "not_pending";
+            if (paidSettlement.outcome !== "settled") {
+              return paidSettlement.outcome;
             }
+            const paidSuccess = paidSettlement.transition;
             if (paidSuccess.changed) {
               yield* capturePaymentCompleted({
                 attempt: paidSuccess.attempt,
@@ -293,7 +304,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
 
             yield* Effect.logInfo("Payment finalization mark terminal started");
-            const terminalSuccess = yield* paymentLifecycle
+            const terminalSettlement = yield* paymentLifecycle
               .markTerminal({
                 id: attempt.id,
                 workspaceReservationId: reservation.id,
@@ -304,20 +315,30 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 providerStatus,
               })
               .pipe(
+                Effect.map((transition) => ({
+                  outcome: "settled" as const,
+                  transition,
+                })),
                 Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                   Effect.gen(function* () {
                     yield* Effect.logWarning(
-                      "Payment finalization mark terminal returned not_pending",
+                      "Payment finalization mark terminal returned lifecycle conflict",
                       { cause }
                     );
-                    return undefined;
+                    return {
+                      outcome:
+                        cause.reason === "provider_evidence_conflict"
+                          ? ("manual_review" as const)
+                          : ("not_pending" as const),
+                    };
                   })
                 )
               );
 
-            if (!terminalSuccess) {
-              return "not_pending";
+            if (terminalSettlement.outcome !== "settled") {
+              return terminalSettlement.outcome;
             }
+            const terminalSuccess = terminalSettlement.transition;
             if (terminalSuccess.changed) {
               if (terminalState === "failed") {
                 yield* capturePaymentFailed({

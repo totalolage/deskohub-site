@@ -33,6 +33,7 @@ import type {
   AppliedDiscount,
   DiscountAdjustment,
 } from "@/features/discounts/contracts";
+import { isAppliedDiscount } from "@/features/discounts/contracts";
 import { getDiscountCodeTiming } from "@/features/discounts/discount-code";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
 import { DiscountClaimError } from "@/features/discounts/errors";
@@ -50,6 +51,7 @@ export class PaymentLifecycleStateError extends Data.TaggedError(
   readonly operation: string;
   readonly paymentAttemptId: string;
   readonly message: string;
+  readonly reason?: "state_conflict" | "provider_evidence_conflict";
 }> {}
 
 export interface PaymentLifecycleTransition {
@@ -777,7 +779,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   return yield* lifecycleStateError(
                     "markPaid",
                     input.id,
-                    "The paid replay conflicts with recorded provider evidence and requires manual review."
+                    "The paid replay conflicts with recorded provider evidence and requires manual review.",
+                    "provider_evidence_conflict"
                   );
                 }
 
@@ -988,7 +991,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   return yield* lifecycleStateError(
                     "markTerminal",
                     input.id,
-                    "The terminal replay conflicts with the recorded lifecycle outcome and requires manual review."
+                    "The terminal replay conflicts with the recorded lifecycle outcome and requires manual review.",
+                    "provider_evidence_conflict"
                   );
                 }
                 const [consistent] = yield* tx
@@ -1268,11 +1272,8 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
       .for("update");
     if (!attempt) return null;
 
-    const applications = yield* input.tx
-      .select({
-        id: discountApplications.publicDiscountId,
-        label: discountApplications.label,
-      })
+    const applicationRows = yield* input.tx
+      .select()
       .from(discountApplications)
       .where(eq(discountApplications.paymentAttemptId, attempt.id))
       .orderBy(asc(discountApplications.sequence));
@@ -1280,6 +1281,40 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
       id: discount.id,
       label: discount.label,
     }));
+    const legacyApplications = applicationRows.map((application) => ({
+      discount: {
+        id: application.publicDiscountId,
+        label: application.label,
+        adjustment: application.adjustment,
+        ...(application.expiresAt
+          ? { expiresAt: application.expiresAt.toString() }
+          : {}),
+        ...(application.countdownStartsAt
+          ? { countdownStartsAt: application.countdownStartsAt.toString() }
+          : {}),
+      },
+      subtotalBefore: {
+        value: application.subtotalBeforeValue,
+        exponent: application.subtotalBeforeExponent,
+        currency: application.subtotalBeforeCurrency,
+      },
+      amount: {
+        value: application.appliedAmountValue,
+        exponent: application.appliedAmountExponent,
+        currency: application.appliedAmountCurrency,
+      },
+      subtotalAfter: {
+        value: application.subtotalAfterValue,
+        exponent: application.subtotalAfterExponent,
+        currency: application.subtotalAfterCurrency,
+      },
+    }));
+    const legacyPricingMatches =
+      legacyApplications.every(isAppliedDiscount) &&
+      legacyApplications.length === input.pricing.discounts.length &&
+      legacyApplications.every((application, index) =>
+        discountApplicationsEqual(application, input.pricing.discounts[index])
+      );
     const amountMatches = workspaceMoneyEquals(
       {
         value: attempt.amountValue,
@@ -1294,13 +1329,18 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
       Boolean(attempt.securityToken) &&
       Boolean(attempt.providerRedirectUrl) &&
       amountMatches &&
-      expectedDiscounts.length === 0 &&
-      applications.length === 0;
+      legacyPricingMatches;
+    const isSafeCreatedLegacyReconciliation =
+      attempt.admissionVersion === 1 &&
+      attempt.state === "created" &&
+      amountMatches &&
+      legacyPricingMatches;
 
     return {
       attempt,
       pricingMatches:
         isSafeAttachedLegacyReuse ||
+        isSafeCreatedLegacyReconciliation ||
         (attempt.admissionVersion === 2 &&
           attempt.pricingFingerprint === input.pricing.fingerprint &&
           amountMatches &&
@@ -1308,10 +1348,10 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
             attempt.displayedDiscountIds ?? [],
             expectedDiscounts.map(({ id }) => id)
           ) &&
-          applications.length === expectedDiscounts.length &&
-          applications.every(
+          applicationRows.length === expectedDiscounts.length &&
+          applicationRows.every(
             (application, index) =>
-              application.id === expectedDiscounts[index]?.id &&
+              application.publicDiscountId === expectedDiscounts[index]?.id &&
               application.label === expectedDiscounts[index]?.label
           )),
     };
@@ -1369,12 +1409,14 @@ const hasNoUnresolvedProviderAttachmentRecovery = () =>
 const lifecycleStateError = (
   operation: string,
   paymentAttemptId: string,
-  message: string
+  message: string,
+  reason: "state_conflict" | "provider_evidence_conflict" = "state_conflict"
 ) =>
   new PaymentLifecycleStateError({
     operation: `PaymentLifecycleRepository.${operation}`,
     paymentAttemptId,
     message,
+    reason,
   });
 
 const claimError = (

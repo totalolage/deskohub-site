@@ -455,6 +455,19 @@ describe("NexiService verifyPaymentOutcome", () => {
     );
   });
 
+  test("does not fabricate an operation ID from the provider order ID", () => {
+    expect(
+      getNexiPaymentMetadata({
+        status: "pending",
+        provider: {
+          orderId: "order-id",
+          captureExecuted: false,
+        },
+        mismatches: [],
+      }).providerOperationId
+    ).toBeUndefined();
+  });
+
   test("classifies success, failure, pending, and mismatches", async () => {
     const cases: Array<{
       name: string;
@@ -559,6 +572,41 @@ describe("NexiService verifyPaymentOutcome", () => {
       {
         orderStatus: {
           lastOperationType: "REFUNDED",
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            operationId: "capture-id",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+          },
+        ],
+      },
+      {
+        orderStatus: {
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            operationId: "capture-id",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+          },
+          {
+            operationId: "untyped-later-id",
+            operationResult: "REFUNDED",
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+          },
+        ],
+      },
+      {
+        orderStatus: {
+          lastOperationType: "PENDING",
           order: { orderId: "order-id", amount: "5000", currency: "CZK" },
         },
         operations: [
