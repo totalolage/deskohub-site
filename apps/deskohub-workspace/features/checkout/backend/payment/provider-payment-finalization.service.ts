@@ -33,6 +33,7 @@ import {
   type PaymentLifecycleRepositoryError,
 } from "../repositories/payment-lifecycle.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import { getProviderEvidenceConflictCodes } from "./provider-evidence-conflict";
 
 export type ProviderPaymentFinalizationResult =
   | "not_found"
@@ -217,6 +218,11 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             verification.status === "manual_review" ||
             verification.mismatches.length > 0
           ) {
+            yield* paymentLifecycle.recordEvidenceConflict({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+              conflictCodes: getProviderEvidenceConflictCodes(verification),
+            });
             yield* Effect.logWarning(
               "Payment finalization returned verification_mismatch"
             );
@@ -250,6 +256,13 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 })),
                 Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                   Effect.gen(function* () {
+                    if (cause.reason === "provider_evidence_conflict") {
+                      yield* paymentLifecycle.recordEvidenceConflict({
+                        id: attempt.id,
+                        workspaceReservationId: reservation.id,
+                        conflictCodes: ["provider_terminal_state"],
+                      });
+                    }
                     yield* Effect.logWarning(
                       "Payment finalization mark paid returned lifecycle conflict",
                       { cause }
@@ -321,6 +334,13 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 })),
                 Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                   Effect.gen(function* () {
+                    if (cause.reason === "provider_evidence_conflict") {
+                      yield* paymentLifecycle.recordEvidenceConflict({
+                        id: attempt.id,
+                        workspaceReservationId: reservation.id,
+                        conflictCodes: ["provider_terminal_state"],
+                      });
+                    }
                     yield* Effect.logWarning(
                       "Payment finalization mark terminal returned lifecycle conflict",
                       { cause }

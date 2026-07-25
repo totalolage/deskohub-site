@@ -25,6 +25,7 @@ const paymentLifecycleLayer = (
     admitPaymentStart: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
     markProviderStartFailed: () => Effect.die("not used"),
+    recordEvidenceConflict: () => Effect.void,
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),
     ...overrides,
@@ -65,12 +66,13 @@ const pendingAttempt = {
 };
 
 const buildVerification = (
-  status: PaymentVerificationResult["status"]
+  status: PaymentVerificationResult["status"],
+  includeOperationId = true
 ): PaymentVerificationResult => ({
   status,
   provider: {
     orderId: "provider-order-id",
-    operationId: "operation-id",
+    ...(includeOperationId ? { operationId: "operation-id" } : {}),
     amount: "35000",
     currency: "CZK",
     orderStatus: status === "failure" ? "DECLINED" : "EXECUTED",
@@ -258,10 +260,27 @@ describe("ProviderPaymentFinalizationService", () => {
       conflictReason: "provider_evidence_conflict" as const,
     },
     {
+      verificationStatus: "success" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+      includeOperationId: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+      includeOperationId: false,
+    },
+    {
       verificationStatus: "manual_review" as const,
       expected: "verification_mismatch" as const,
       changed: false,
       conflict: false,
+      mismatches: ["orderId", "amount", "currency"] as const,
     },
   ]) {
     test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
@@ -329,6 +348,7 @@ describe("ProviderPaymentFinalizationService", () => {
             })
       );
       const fulfillPaidOrder = mock(() => Effect.void);
+      const recordEvidenceConflict = mock(() => Effect.void);
       const paymentAttempts = {
         findById: mock(() => Effect.succeed(pendingAttempt)),
         markPaidForReservation,
@@ -339,7 +359,16 @@ describe("ProviderPaymentFinalizationService", () => {
       } as unknown as WorkspaceReservationRepositoryType;
       const nexi = {
         verifyPaymentOutcome: mock(() =>
-          Effect.succeed(buildVerification(scenario.verificationStatus))
+          Effect.succeed({
+            ...buildVerification(
+              scenario.verificationStatus,
+              !(
+                "includeOperationId" in scenario &&
+                scenario.includeOperationId === false
+              )
+            ),
+            mismatches: "mismatches" in scenario ? scenario.mismatches : [],
+          } as PaymentVerificationResult)
         ),
       } as unknown as NexiServiceType;
 
@@ -361,6 +390,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 }),
                 Layer.succeed(PaymentAttemptRepository, paymentAttempts),
                 paymentLifecycleLayer({
+                  recordEvidenceConflict,
                   markPaid: markPaidForReservation,
                   markTerminal: markTerminalForReservation,
                 }),
@@ -394,6 +424,16 @@ describe("ProviderPaymentFinalizationService", () => {
         );
         if (scenario.conflict) {
           expect(fulfillPaidOrder).not.toHaveBeenCalled();
+          if (
+            "conflictReason" in scenario &&
+            scenario.conflictReason === "provider_evidence_conflict"
+          ) {
+            expect(recordEvidenceConflict).toHaveBeenCalledWith({
+              id: "attempt-id",
+              workspaceReservationId: "reservation-id",
+              conflictCodes: ["provider_terminal_state"],
+            });
+          }
         } else {
           expect(fulfillPaidOrder).toHaveBeenCalledWith({
             orderId: "reservation-id",
@@ -412,10 +452,27 @@ describe("ProviderPaymentFinalizationService", () => {
         );
         expect(markPaidForReservation).not.toHaveBeenCalled();
         expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        if (scenario.conflict) {
+          expect(recordEvidenceConflict).toHaveBeenCalledWith({
+            id: "attempt-id",
+            workspaceReservationId: "reservation-id",
+            conflictCodes: ["provider_terminal_state"],
+          });
+        }
       } else {
         expect(markPaidForReservation).not.toHaveBeenCalled();
         expect(markTerminalForReservation).not.toHaveBeenCalled();
         expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        expect(recordEvidenceConflict).toHaveBeenCalledWith({
+          id: "attempt-id",
+          workspaceReservationId: "reservation-id",
+          conflictCodes: [
+            "provider_order_identity",
+            "provider_amount",
+            "provider_currency",
+            "provider_operation_evidence",
+          ],
+        });
       }
     });
   }

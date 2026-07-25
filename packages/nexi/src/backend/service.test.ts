@@ -479,10 +479,14 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "success",
         order: {
           orderStatus: {
+            lastOperationType: "CAPTURE",
+            authorizedAmount: "5000",
+            capturedAmount: "5000",
             order: { orderId: "order-id", amount: "5000", currency: "CZK" },
           },
           operations: [
             {
+              orderId: "order-id",
               operationId: "capture-id",
               operationType: "CAPTURE",
               operationResult: "EXECUTED",
@@ -516,10 +520,17 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "pending",
         order: {
           orderStatus: {
-            lastOperationType: "PENDING",
+            lastOperationType: "AUTHORIZATION",
             order: { orderId: "order-id", amount: "5000", currency: "CZK" },
           },
-          operations: [],
+          operations: [
+            {
+              orderId: "order-id",
+              operationId: "authorization-id",
+              operationType: "AUTHORIZATION",
+              operationResult: "PENDING",
+            },
+          ],
         },
         status: "pending",
         mismatches: [],
@@ -571,7 +582,58 @@ describe("NexiService verifyPaymentOutcome", () => {
     const cases: ReadonlyArray<OrderResponse> = [
       {
         orderStatus: {
-          lastOperationType: "REFUNDED",
+          lastOperationType: "CAPTURE",
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            orderId: "different-order-id",
+            operationId: "capture-id",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+          },
+        ],
+      },
+      {
+        orderStatus: {
+          lastOperationType: "CAPTURE",
+          authorizedAmount: "5000",
+          capturedAmount: "5000",
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            orderId: "order-id",
+            operationId: "capture-id",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+            amount: { amount: "5000", currency: "CZK" },
+            operationAmount: "7000",
+            operationCurrency: "EUR",
+          },
+        ],
+      },
+      {
+        orderStatus: {
+          lastOperationType: "CAPTURE",
+          authorizedAmount: "4000",
+          capturedAmount: "5000",
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            orderId: "order-id",
+            operationId: "capture-id",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+          },
+        ],
+      },
+      {
+        orderStatus: {
+          lastOperationType: "REFUND",
           order: { orderId: "order-id", amount: "5000", currency: "CZK" },
         },
         operations: [
@@ -584,6 +646,27 @@ describe("NexiService verifyPaymentOutcome", () => {
           },
         ],
       },
+      ...(["REFUND", "VOID", "CANCEL"] as const).map((operationType) => ({
+        orderStatus: {
+          lastOperationType: operationType,
+          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+        },
+        operations: [
+          {
+            orderId: "order-id",
+            operationId: `${operationType.toLowerCase()}-id`,
+            operationType,
+            operationResult:
+              operationType === "REFUND"
+                ? ("REFUNDED" as const)
+                : operationType === "VOID"
+                  ? ("VOIDED" as const)
+                  : ("CANCELED" as const),
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+          },
+        ],
+      })),
       {
         orderStatus: {
           order: { orderId: "order-id", amount: "5000", currency: "CZK" },
@@ -606,7 +689,7 @@ describe("NexiService verifyPaymentOutcome", () => {
       },
       {
         orderStatus: {
-          lastOperationType: "PENDING",
+          lastOperationType: "AUTHORIZATION",
           order: { orderId: "order-id", amount: "5000", currency: "CZK" },
         },
         operations: [
@@ -654,7 +737,7 @@ describe("NexiService verifyPaymentOutcome", () => {
           },
           {
             operationId: "refund-id",
-            operationType: "CAPTURE",
+            operationType: "REFUND",
             operationResult: "REFUNDED",
             operationAmount: "5000",
             operationCurrency: "CZK",
@@ -663,7 +746,7 @@ describe("NexiService verifyPaymentOutcome", () => {
       },
     ];
 
-    for (const order of cases) {
+    for (const [index, order] of cases.entries()) {
       const result = await runWithService(
         Effect.gen(function* () {
           const nexi = yield* NexiService;
@@ -678,7 +761,16 @@ describe("NexiService verifyPaymentOutcome", () => {
       );
 
       expect(result.status).toBe("manual_review");
-      expect(result.mismatches).toContain("operationEvidence");
+      if (index === 0) {
+        expect(result.mismatches).toContain("orderId");
+      } else if (index === 1) {
+        expect(result.mismatches).toContain("amount");
+        expect(result.mismatches).toContain("currency");
+      } else if (index === 2) {
+        expect(result.mismatches).toContain("amount");
+      } else {
+        expect(result.mismatches).toContain("operationEvidence");
+      }
     }
   });
 

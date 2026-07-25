@@ -168,6 +168,8 @@ components:
     Operation:
       type: object
       properties:
+        orderId:
+          type: string
         operationId:
           type: string
         operationType:
@@ -175,6 +177,9 @@ components:
           enum:
             - AUTHORIZATION
             - CAPTURE
+            - VOID
+            - REFUND
+            - CANCEL
         operationResult:
           type: string
           enum:
@@ -231,6 +236,12 @@ components:
           type: string
         lastOperationType:
           type: string
+          enum:
+            - AUTHORIZATION
+            - CAPTURE
+            - VOID
+            - REFUND
+            - CANCEL
         order:
           $ref: "#/components/schemas/OrderStatusOrder"
     OrderResponse:

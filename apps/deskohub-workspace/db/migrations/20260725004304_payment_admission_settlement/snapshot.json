@@ -56,6 +56,12 @@
     },
     {
       "isRlsEnabled": false,
+      "name": "payment_evidence_conflicts",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
       "name": "payment_paid_events",
       "entityType": "tables",
       "schema": "public"
@@ -1214,6 +1220,58 @@
       "name": "id",
       "entityType": "columns",
       "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "conflict_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_observed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
       "table": "payment_paid_events"
     },
     {
@@ -2053,6 +2111,55 @@
           "asc": true,
           "nullsFirst": false,
           "opclass": null
+        },
+        {
+          "value": "conflict_code",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "payment_evidence_conflicts_attempt_code_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "payment_attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "payment_evidence_conflicts_attempt_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "payment_attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
         }
       ],
       "isUnique": true,
@@ -2505,6 +2612,23 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "payment_evidence_conflicts_6dfdhHtTg6gr_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "payment_attempt_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "payment_attempts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "name": "payment_paid_events_payment_attempt_id_payment_attempts_id_fkey",
       "entityType": "fks",
@@ -2625,6 +2749,16 @@
       "name": "payment_attempts_pkey",
       "schema": "public",
       "table": "payment_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "payment_evidence_conflicts_pkey",
+      "schema": "public",
+      "table": "payment_evidence_conflicts",
       "entityType": "pks"
     },
     {
@@ -2860,6 +2994,13 @@
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "value": "\"conflict_code\" in ('provider_order_identity', 'provider_amount', 'provider_currency', 'provider_security_token', 'provider_operation_evidence', 'provider_terminal_state')",
+      "name": "payment_evidence_conflicts_code_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
     },
     {
       "value": "\"provider\" in ('nexi')",

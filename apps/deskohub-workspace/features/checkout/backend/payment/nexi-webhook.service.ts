@@ -39,6 +39,7 @@ import {
   WebhookEventRepositoryLive,
 } from "../repositories/webhook-event.repository";
 import { getNexiCurrencyOverride } from "./nexi-currency";
+import { getProviderEvidenceConflictCodes } from "./provider-evidence-conflict";
 
 type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"
@@ -333,6 +334,31 @@ export const NexiWebhookServiceLive = Layer.effect(
           });
           yield* Effect.logDebug("Nexi webhook security token checked");
           if (tokenCheck.status === "mismatch") {
+            yield* paymentLifecycle
+              .recordEvidenceConflict({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                conflictCodes: ["provider_security_token"],
+              })
+              .pipe(
+                Effect.mapError(
+                  () =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_transition_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi provider evidence conflict could not be recorded.",
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
+                  )
+                )
+              );
             yield* Effect.logWarning(
               "Nexi webhook security token mismatch detected"
             );
@@ -407,22 +433,59 @@ export const NexiWebhookServiceLive = Layer.effect(
             );
           yield* Effect.logInfo("Nexi webhook payment verification completed");
 
+          const collectiveVerification = isNexiWebhookEvidenceConsistent({
+            notification: envelope,
+            expectedOrderId: attempt.providerOrderId,
+            expectedAmount: String(attempt.amount.value),
+            expectedCurrency: verificationInput.currency,
+            verification,
+          })
+            ? verification
+            : {
+                ...verification,
+                status: "manual_review" as const,
+                mismatches: [
+                  ...verification.mismatches,
+                  "operationEvidence" as const,
+                ],
+              };
+          if (
+            collectiveVerification.status === "manual_review" ||
+            collectiveVerification.mismatches.length > 0
+          ) {
+            yield* paymentLifecycle
+              .recordEvidenceConflict({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                conflictCodes: getProviderEvidenceConflictCodes(
+                  collectiveVerification
+                ),
+              })
+              .pipe(
+                Effect.mapError(
+                  () =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_transition_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi provider evidence conflict could not be recorded.",
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
+                  )
+                )
+              );
+          }
+
           yield* failOnVerificationMismatch({
             eventId,
             orderId: providerOrderId,
-            verification: isNexiWebhookEvidenceConsistent({
-              notification: envelope,
-              expectedOrderId: attempt.providerOrderId,
-              expectedAmount: String(attempt.amount.value),
-              expectedCurrency: verificationInput.currency,
-              verification,
-            })
-              ? verification
-              : {
-                  ...verification,
-                  status: "manual_review",
-                  mismatches: [...verification.mismatches, "operationEvidence"],
-                },
+            verification: collectiveVerification,
             webhookEvents,
           });
 
@@ -444,6 +507,18 @@ export const NexiWebhookServiceLive = Layer.effect(
                 paidAt: Temporal.Now.instant(),
               })
               .pipe(
+                Effect.catchTag("PaymentLifecycleStateError", (cause) =>
+                  paymentLifecycle
+                    .recordEvidenceConflict({
+                      id: attempt.id,
+                      workspaceReservationId: reservation.id,
+                      conflictCodes:
+                        cause.reason === "provider_evidence_conflict"
+                          ? ["provider_terminal_state"]
+                          : [],
+                    })
+                    .pipe(Effect.andThen(Effect.fail(cause)))
+                ),
                 Effect.mapError(
                   () =>
                     new NexiWebhookProcessingError({
@@ -511,6 +586,18 @@ export const NexiWebhookServiceLive = Layer.effect(
                 providerStatus,
               })
               .pipe(
+                Effect.catchTag("PaymentLifecycleStateError", (cause) =>
+                  paymentLifecycle
+                    .recordEvidenceConflict({
+                      id: attempt.id,
+                      workspaceReservationId: reservation.id,
+                      conflictCodes:
+                        cause.reason === "provider_evidence_conflict"
+                          ? ["provider_terminal_state"]
+                          : [],
+                    })
+                    .pipe(Effect.andThen(Effect.fail(cause)))
+                ),
                 Effect.mapError(
                   () =>
                     new NexiWebhookProcessingError({

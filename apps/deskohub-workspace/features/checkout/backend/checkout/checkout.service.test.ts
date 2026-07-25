@@ -413,6 +413,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     admitPaymentStart: createAttempt,
     attachProviderSession: attachHostedPaymentPage,
     markProviderStartFailed,
+    recordEvidenceConflict: mock(() => Effect.void),
     markPaid: mock(() =>
       Effect.succeed({
         attempt: createdAttempt,

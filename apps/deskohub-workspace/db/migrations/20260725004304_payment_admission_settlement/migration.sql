@@ -6,6 +6,14 @@ CREATE TABLE "payment_paid_events" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "payment_evidence_conflicts" (
+	"id" text PRIMARY KEY DEFAULT uuid_generate_v7(),
+	"payment_attempt_id" text NOT NULL,
+	"conflict_code" text NOT NULL,
+	"first_observed_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "payment_evidence_conflicts_code_check" CHECK ("conflict_code" in ('provider_order_identity', 'provider_amount', 'provider_currency', 'provider_security_token', 'provider_operation_evidence', 'provider_terminal_state'))
+);
+--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "admission_version" integer DEFAULT 1 NOT NULL;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "pricing_fingerprint" text;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "displayed_discount_ids" jsonb;--> statement-breakpoint
@@ -13,8 +21,11 @@ ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_id" text;--> sta
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_expires_at" timestamp with time zone;--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_paid_events_attempt_unique_idx" ON "payment_paid_events" ("payment_attempt_id");--> statement-breakpoint
 CREATE INDEX "payment_paid_events_reservation_idx" ON "payment_paid_events" ("workspace_reservation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "payment_evidence_conflicts_attempt_code_unique_idx" ON "payment_evidence_conflicts" ("payment_attempt_id","conflict_code");--> statement-breakpoint
+CREATE INDEX "payment_evidence_conflicts_attempt_idx" ON "payment_evidence_conflicts" ("payment_attempt_id");--> statement-breakpoint
 ALTER TABLE "payment_paid_events" ADD CONSTRAINT "payment_paid_events_payment_attempt_id_payment_attempts_id_fkey" FOREIGN KEY ("payment_attempt_id") REFERENCES "payment_attempts"("id");--> statement-breakpoint
 ALTER TABLE "payment_paid_events" ADD CONSTRAINT "payment_paid_events_giQ5HaGGnRd4_fkey" FOREIGN KEY ("workspace_reservation_id") REFERENCES "workspace_reservations"("id");--> statement-breakpoint
+ALTER TABLE "payment_evidence_conflicts" ADD CONSTRAINT "payment_evidence_conflicts_6dfdhHtTg6gr_fkey" FOREIGN KEY ("payment_attempt_id") REFERENCES "payment_attempts"("id") ON DELETE CASCADE;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_admission_version_check" CHECK ("admission_version" in (1, 2));--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_pricing_identity_check" CHECK ("admission_version" < 2 or (
         "pricing_fingerprint" is not null
@@ -40,7 +51,7 @@ LANGUAGE plpgsql
 AS $$
 BEGIN
   IF OLD."admission_version" = 2
-    AND OLD."state" = 'created'
+    AND OLD."state" IN ('created', 'pending')
     AND NEW."state" IN ('failed', 'cancelled', 'expired')
     AND current_setting(
       'deskohub.verified_v2_terminal_settlement',
@@ -48,7 +59,7 @@ BEGIN
     ) IS DISTINCT FROM 'on'
   THEN
     RAISE EXCEPTION
-      'unverified v2 provider start cannot be terminalized'
+      'active v2 payment cannot be terminalized without verified settlement'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;
@@ -77,11 +88,11 @@ BEGIN
       WHERE attempt."id" = OLD."active_payment_attempt_id"
         AND attempt."workspace_reservation_id" = OLD."id"
         AND attempt."admission_version" = 2
-        AND attempt."state" = 'created'
+        AND attempt."state" IN ('created', 'pending')
     )
   THEN
     RAISE EXCEPTION
-      'reservation with unverified v2 provider start cannot be terminalized'
+      'reservation with active v2 payment cannot be terminalized without verified settlement'
       USING ERRCODE = '23514';
   END IF;
   RETURN NEW;

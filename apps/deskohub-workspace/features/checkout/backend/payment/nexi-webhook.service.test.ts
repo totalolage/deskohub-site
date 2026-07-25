@@ -211,6 +211,7 @@ describe("NexiWebhookService", () => {
           admitPaymentStart: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
           markProviderStartFailed: mock(() => Effect.die("unused")),
+          recordEvidenceConflict: mock(() => Effect.void),
           markPaid: markPaidForReservation,
           markTerminal: mock(() => Effect.die("unused")),
         },
@@ -291,6 +292,7 @@ describe("NexiWebhookService", () => {
             admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markProviderStartFailed: mock(() => Effect.die("unused")),
+            recordEvidenceConflict: mock(() => Effect.void),
             markPaid: mock(() => Effect.die("unused")),
             markTerminal,
           },
@@ -355,6 +357,7 @@ describe("NexiWebhookService", () => {
               admitPaymentStart: mock(() => Effect.die("unused")),
               attachProviderSession: mock(() => Effect.die("unused")),
               markProviderStartFailed: mock(() => Effect.die("unused")),
+              recordEvidenceConflict: mock(() => Effect.void),
               markPaid: mock(() => Effect.die("unused")),
               markTerminal: mock(() =>
                 Effect.fail(
@@ -424,6 +427,7 @@ describe("NexiWebhookService", () => {
             admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markProviderStartFailed: mock(() => Effect.die("unused")),
+            recordEvidenceConflict: mock(() => Effect.void),
             markPaid: mock(() =>
               Effect.fail(
                 new PaymentLifecycleStateError({
@@ -463,6 +467,7 @@ describe("NexiWebhookService", () => {
     const markFailed = mock(() => Effect.void);
     const markPaid = mock(() => Effect.die("unused"));
     const fulfillPaidOrder = mock(() => Effect.die("unused"));
+    const recordEvidenceConflict = mock(() => Effect.void);
     const contradictoryPayload = {
       ...payload,
       operation: {
@@ -494,6 +499,7 @@ describe("NexiWebhookService", () => {
               admitPaymentStart: mock(() => Effect.die("unused")),
               attachProviderSession: mock(() => Effect.die("unused")),
               markProviderStartFailed: mock(() => Effect.die("unused")),
+              recordEvidenceConflict,
               markPaid,
               markTerminal: mock(() => Effect.die("unused")),
             },
@@ -519,6 +525,11 @@ describe("NexiWebhookService", () => {
     expect(markProcessed).not.toHaveBeenCalled();
     expect(markPaid).not.toHaveBeenCalled();
     expect(fulfillPaidOrder).not.toHaveBeenCalled();
+    expect(recordEvidenceConflict).toHaveBeenCalledWith({
+      id: "attempt-id",
+      workspaceReservationId: "reservation-id",
+      conflictCodes: ["provider_operation_evidence"],
+    });
   });
 
   test("keeps manual-review provider evidence failed and unprocessed", async () => {
@@ -546,6 +557,7 @@ describe("NexiWebhookService", () => {
             admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markProviderStartFailed: mock(() => Effect.die("unused")),
+            recordEvidenceConflict: mock(() => Effect.void),
             markPaid,
             markTerminal,
           },
@@ -602,6 +614,7 @@ describe("NexiWebhookService", () => {
             admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markProviderStartFailed: mock(() => Effect.die("unused")),
+            recordEvidenceConflict: mock(() => Effect.void),
             markPaid: mock(() =>
               Effect.succeed({
                 attempt: { ...attempt, state: "paid" as const },

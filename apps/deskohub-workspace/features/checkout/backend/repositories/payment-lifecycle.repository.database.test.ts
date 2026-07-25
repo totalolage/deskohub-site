@@ -13,6 +13,7 @@ import {
   discountApplications,
   discountCodeRedemptions,
   paymentAttempts,
+  paymentEvidenceConflicts,
   paymentPaidEvents,
   workspaceReservations,
 } from "@/db/schema";
@@ -155,6 +156,13 @@ const createSchemaStatements = `
     paid_at timestamptz not null,
     created_at timestamptz not null default now(),
     unique (payment_attempt_id)
+  );
+  create table payment_evidence_conflicts (
+    id text primary key default gen_random_uuid()::text,
+    payment_attempt_id text not null references payment_attempts(id) on delete cascade,
+    conflict_code text not null,
+    first_observed_at timestamptz not null default now(),
+    unique (payment_attempt_id, conflict_code)
   )
 `
   .split(";")
@@ -784,6 +792,128 @@ describe("PaymentLifecycleRepository database behavior", () => {
             providerStatus: "definitive_rejection",
           })
         ).toMatchObject({ outcome: "settled" });
+
+        yield* seedReservation("rollback-attached");
+        const discounted = discountFixture();
+        const attachedAdmission = yield* admit(
+          repository,
+          "rollback-attached",
+          {
+            commitment: discounted.commitment,
+            acceptedPricing: discounted.pricing,
+            affirmedPricing: discounted.pricing,
+          }
+        );
+        expect(attachedAdmission.outcome).toBe("created");
+        if (attachedAdmission.outcome !== "created") return;
+        expect(
+          yield* repository.attachProviderSession({
+            id: attachedAdmission.attempt.id,
+            workspaceReservationId: "rollback-attached",
+            checkoutSessionKey: "session-rollback-attached",
+            providerOrderId: "provider-order-rollback-attached",
+            providerStartLeaseId: attachedAdmission.providerStartLeaseId,
+            securityToken: "synthetic-session-marker",
+            providerRedirectUrl: "https://provider.invalid/session",
+          })
+        ).toMatchObject({ outcome: "attached" });
+
+        const legacySameTotalReader = yield* db.execute(sql`
+          select attempt.id
+          from payment_attempts attempt
+          join workspace_reservations reservation
+            on reservation.id = attempt.workspace_reservation_id
+          where attempt.id = ${attachedAdmission.attempt.id}
+            and reservation.active_payment_attempt_id = attempt.id
+            and reservation.payment_state = 'pending'
+            and attempt.state in ('created', 'pending')
+            and attempt.security_token is not null
+            and attempt.provider_redirect_url is not null
+            and attempt.amount_value = ${discounted.pricing.total.value}
+        `);
+        expect(legacySameTotalReader.rows).toHaveLength(1);
+
+        const contradictoryPricing = {
+          ...discounted.pricing,
+          fingerprint: "same-total-different-discount-identity",
+          discounts: [
+            {
+              ...discounted.pricing.discounts[0],
+              discount: {
+                ...discounted.pricing.discounts[0].discount,
+                id: Schema.decodeUnknownSync(discountIdSchema)(
+                  "different-displayed-discount"
+                ),
+                label: "Different displayed discount",
+              },
+            },
+          ],
+        };
+        expect(
+          yield* admit(repository, "rollback-attached", {
+            commitment: discounted.commitment,
+            acceptedPricing: contradictoryPricing,
+            affirmedPricing: contradictoryPricing,
+            allowNewAdmission: false,
+          })
+        ).toMatchObject({ outcome: "pricing_changed" });
+
+        expect(
+          (yield* db
+            .update(paymentAttempts)
+            .set({ state: "expired", failureCode: "legacy_cleanup" })
+            .where(eq(paymentAttempts.id, attachedAdmission.attempt.id))
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* db
+            .update(workspaceReservations)
+            .set({ paymentState: "expired", failureCode: "legacy_cleanup" })
+            .where(eq(workspaceReservations.id, "rollback-attached"))
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+      })
+    );
+  });
+
+  test("records normalized provider evidence conflicts idempotently", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("evidence-conflict");
+        const admission = yield* admit(repository, "evidence-conflict");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        const input = {
+          id: admission.attempt.id,
+          workspaceReservationId: "evidence-conflict",
+          conflictCodes: [
+            "provider_order_identity",
+            "provider_amount",
+            "provider_order_identity",
+          ] as const,
+        };
+        yield* repository.recordEvidenceConflict(input);
+        yield* repository.recordEvidenceConflict(input);
+
+        expect(
+          yield* db
+            .select({
+              conflictCode: paymentEvidenceConflicts.conflictCode,
+            })
+            .from(paymentEvidenceConflicts)
+            .where(
+              eq(
+                paymentEvidenceConflicts.paymentAttemptId,
+                admission.attempt.id
+              )
+            )
+        ).toEqual([
+          { conflictCode: "provider_order_identity" },
+          { conflictCode: "provider_amount" },
+        ]);
       })
     );
   });
@@ -1068,16 +1198,31 @@ describe("PaymentLifecycleRepository database behavior", () => {
               )
             ))[0]
         ).toMatchObject({ state: "released" });
-        expect(
-          yield* repository
-            .markTerminal({
-              id: paidAdmission.attempt.id,
-              workspaceReservationId: "paid",
-              state: "expired",
-              failureCode: "stale_cleanup",
-            })
-            .pipe(Effect.flip)
-        ).toBeInstanceOf(PaymentLifecycleStateError);
+        const paidToTerminalConflict = yield* repository
+          .markTerminal({
+            id: paidAdmission.attempt.id,
+            workspaceReservationId: "paid",
+            state: "expired",
+            failureCode: "stale_cleanup",
+          })
+          .pipe(Effect.flip);
+        expect(paidToTerminalConflict).toBeInstanceOf(
+          PaymentLifecycleStateError
+        );
+        expect(paidToTerminalConflict).toMatchObject({
+          reason: "provider_evidence_conflict",
+        });
+
+        const terminalToPaidConflict = yield* repository
+          .markPaid({
+            id: terminalAdmission.attempt.id,
+            workspaceReservationId: "terminal",
+            paidAt: paidAt.add({ seconds: 4 }),
+          })
+          .pipe(Effect.flip);
+        expect(terminalToPaidConflict).toMatchObject({
+          reason: "provider_evidence_conflict",
+        });
       })
     );
   });

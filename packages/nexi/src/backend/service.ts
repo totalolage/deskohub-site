@@ -19,6 +19,7 @@ const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
 const DEFAULT_ACTION_TYPE = "PAY";
 const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
+const TERMINAL_OPERATION_TYPES = new Set(["VOID", "REFUND", "CANCEL"]);
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
 
 const localeToNexiLanguage: Record<Locale, "CZE" | "ENG"> = {
@@ -33,9 +34,8 @@ const failureOperationResults = new Set([
   "THREEDS_FAILED",
   "FAILED",
   "CANCELED",
-  "VOIDED",
-  "REFUNDED",
 ]);
+const laterTerminalOperationResults = new Set(["VOIDED", "REFUNDED"]);
 
 const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
   Match.value(error).pipe(
@@ -224,17 +224,22 @@ const resolvePaymentOutcomeEvidence = (
   const operation =
     paymentOperations.length === 1 ? paymentOperations[0] : null;
   const providerAmount =
-    getOperationAmount(operation ?? undefined) ?? providerOrder ?? order.amount;
+    getRepresentativeOperationAmount(operation ?? undefined) ??
+    providerOrder ??
+    order.amount;
   const providerOrderId =
     providerOrder?.orderId ?? order.orderId ?? input.orderId;
-  const providerStatus =
-    operation?.operationResult ?? order.orderStatus?.lastOperationType;
+  const providerStatus = operation?.operationResult;
   const mismatches: Array<PaymentVerificationResult["mismatches"][number]> = [];
 
   addEvidenceMismatch(
     mismatches,
     "orderId",
-    [providerOrder?.orderId, order.orderId],
+    [
+      providerOrder?.orderId,
+      order.orderId,
+      ...paymentOperations.map((item) => item.orderId),
+    ],
     input.orderId
   );
   addEvidenceMismatch(
@@ -243,7 +248,12 @@ const resolvePaymentOutcomeEvidence = (
     [
       providerOrder?.amount,
       order.amount?.amount,
-      ...paymentOperations.map((item) => getOperationAmount(item)?.amount),
+      order.orderStatus?.authorizedAmount,
+      order.orderStatus?.capturedAmount,
+      ...paymentOperations.flatMap((item) => [
+        item.amount?.amount,
+        item.operationAmount,
+      ]),
     ],
     input.amount
   );
@@ -253,7 +263,10 @@ const resolvePaymentOutcomeEvidence = (
     [
       providerOrder?.currency,
       order.amount?.currency,
-      ...paymentOperations.map((item) => getOperationAmount(item)?.currency),
+      ...paymentOperations.flatMap((item) => [
+        item.amount?.currency,
+        item.operationCurrency,
+      ]),
     ],
     input.currency
   );
@@ -270,15 +283,9 @@ const resolvePaymentOutcomeEvidence = (
     mismatches.push("securityToken");
   }
 
-  const operationResults = paymentOperations
-    .map((item) => item.operationResult?.toUpperCase())
-    .filter((value): value is string => value !== undefined);
-  const orderStatus = order.orderStatus?.lastOperationType?.toUpperCase();
-  const statusEvidence = [
-    ...operationResults,
-    ...(orderStatus === undefined ? [] : [orderStatus]),
-  ];
-  const distinctStatusEvidence = new Set(statusEvidence);
+  const operationType = operation?.operationType?.toUpperCase();
+  const operationResult = operation?.operationResult?.toUpperCase();
+  const lastOperationType = order.orderStatus?.lastOperationType?.toUpperCase();
   const operationIsIncomplete =
     paymentOperations.length > 0 &&
     paymentOperations.some(
@@ -286,27 +293,29 @@ const resolvePaymentOutcomeEvidence = (
         !isPaymentOperationType(item.operationType) ||
         item.operationResult === undefined
     );
-  const terminalOrderWithoutOperation =
-    paymentOperations.length === 0 &&
-    (orderStatus === EXECUTED_OPERATION_RESULT || isFailureStatus(orderStatus));
+  const operationTypeDiverges =
+    operationType !== undefined &&
+    lastOperationType !== undefined &&
+    operationType !== lastOperationType;
+  const laterTerminalEvidence =
+    TERMINAL_OPERATION_TYPES.has(operationType ?? "") ||
+    TERMINAL_OPERATION_TYPES.has(lastOperationType ?? "") ||
+    laterTerminalOperationResults.has(operationResult ?? "");
   if (
     paymentOperations.length > 1 ||
     operationIsIncomplete ||
-    terminalOrderWithoutOperation ||
-    distinctStatusEvidence.size > 1
+    operationTypeDiverges ||
+    laterTerminalEvidence
   ) {
     mismatches.push("operationEvidence");
   }
 
   const status: PaymentOutcomeStatus = (() => {
     if (mismatches.length > 0) return "manual_review";
-    if (operation?.operationResult === EXECUTED_OPERATION_RESULT) {
+    if (operationResult === EXECUTED_OPERATION_RESULT) {
       return "success";
     }
-    if (
-      isFailureStatus(operation?.operationResult) ||
-      (operation === null && isFailureStatus(orderStatus))
-    ) {
+    if (isFailureStatus(operationResult)) {
       return "failure";
     }
     return "pending";
@@ -344,7 +353,7 @@ const addEvidenceMismatch = (
   }
 };
 
-const getOperationAmount = (
+const getRepresentativeOperationAmount = (
   operation:
     | {
         readonly amount?: {

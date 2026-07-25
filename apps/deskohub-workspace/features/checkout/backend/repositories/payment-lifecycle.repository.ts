@@ -14,7 +14,9 @@ import {
   discountCodes,
   discountProductTargets,
   discounts,
+  type PaymentEvidenceConflictCode,
   paymentAttempts,
+  paymentEvidenceConflicts,
   paymentPaidEvents,
   workspaceReservations,
 } from "@/db/schema";
@@ -138,6 +140,11 @@ export interface IPaymentLifecycleRepository {
     ProviderStartFailureSettlement,
     PaymentLifecycleRepositoryError
   >;
+  readonly recordEvidenceConflict: (input: {
+    readonly id: string;
+    readonly workspaceReservationId: string;
+    readonly conflictCodes: readonly PaymentEvidenceConflictCode[];
+  }) => Effect.Effect<void, PaymentLifecycleRepositoryError>;
   readonly markPaid: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
@@ -740,6 +747,52 @@ export class PaymentLifecycleRepository extends Context.Service<
         );
       });
 
+      const recordEvidenceConflict = Effect.fn(
+        "PaymentLifecycleRepository.recordEvidenceConflict"
+      )(function* (input: {
+        readonly id: string;
+        readonly workspaceReservationId: string;
+        readonly conflictCodes: readonly PaymentEvidenceConflictCode[];
+      }) {
+        if (input.conflictCodes.length === 0) return;
+
+        yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const [attempt] = yield* tx
+              .select({ id: paymentAttempts.id })
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  )
+                )
+              )
+              .limit(1)
+              .for("update");
+            if (!attempt) {
+              return yield* lifecycleStateError(
+                "recordEvidenceConflict",
+                input.id,
+                "Provider evidence cannot be recorded for a different reservation."
+              );
+            }
+
+            yield* tx
+              .insert(paymentEvidenceConflicts)
+              .values(
+                [...new Set(input.conflictCodes)].map((conflictCode) => ({
+                  paymentAttemptId: input.id,
+                  conflictCode,
+                }))
+              )
+              .onConflictDoNothing();
+          })
+        );
+      });
+
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
         function* (input: {
           readonly id: string;
@@ -828,7 +881,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* lifecycleStateError(
                   "markPaid",
                   input.id,
-                  "A terminal unsuccessful attempt cannot be marked paid."
+                  "A terminal unsuccessful attempt cannot be marked paid.",
+                  "provider_evidence_conflict"
                 );
               }
 
@@ -974,7 +1028,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* lifecycleStateError(
                   "markTerminal",
                   input.id,
-                  "A paid attempt cannot be overwritten by stale terminal settlement."
+                  "A paid attempt cannot be overwritten by stale terminal settlement.",
+                  "provider_evidence_conflict"
                 );
               }
 
@@ -1032,10 +1087,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 };
               }
 
-              if (
-                currentAttempt.admissionVersion === 2 &&
-                currentAttempt.state === "created"
-              ) {
+              if (currentAttempt.admissionVersion === 2) {
                 yield* authorizeVerifiedV2TerminalSettlement(tx);
               }
 
@@ -1142,6 +1194,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         admitPaymentStart,
         attachProviderSession,
         markProviderStartFailed,
+        recordEvidenceConflict,
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;

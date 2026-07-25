@@ -561,7 +561,7 @@ Deploy settlement support before enabling admission version 2:
    event triggers plus `payment_attempts_guard_unverified_v2_terminal` and
    `workspace_reservations_guard_unverified_v2_terminal`. The guard pair is
    the rollback fence: code that predates v2 admission cannot terminalize an
-   unresolved v2 provider start.
+   active v2 provider start or attached pending session.
 4. Drain every old writer and verify the deployment/version inventory contains
    no process running code from before this migration contract.
 5. Rerun the migration's final idempotent
@@ -593,16 +593,20 @@ join workspace_reservations reservation
   on reservation.id = attempt.workspace_reservation_id
   and reservation.active_payment_attempt_id = attempt.id
 where attempt.admission_version = 2
-  and attempt.state = 'created'
+  and attempt.state in ('created', 'pending')
   and reservation.payment_state = 'pending';
 ```
 
 Then repeat the deployment inventory, missing-paid-event, and invalid-event
 checks. A rollback to a pre-v2 binary is prohibited unless all four checks are
 recorded at zero/current-only and no old queue or cron invocation remains.
-The database rollback fence remains installed after binary rollback: an
-accidentally delayed legacy cleanup transaction receives a constraint error
-before it can terminalize the attempt or cancel the hold. Removing the fence
+The zero count covers both unattached starts and attached pending sessions.
+Before recording it, verify that no v2 row remains active with a different
+pricing fingerprint or ordered displayed-discount identity; a same-total
+commitment is not equivalent. The database rollback fence remains installed
+after binary rollback: an accidentally delayed legacy cleanup transaction
+receives a constraint error before it can terminalize either active v2 state
+or cancel the hold. Removing the fence
 or rolling back this migration requires a later, separately reviewed
 retirement migration after the same zero-count/version proof; it is not part
 of application rollback.

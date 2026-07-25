@@ -29,6 +29,8 @@ describe("payment paid event migration contract", () => {
     );
     expect(migration).toContain("deskohub.verified_v2_terminal_settlement");
     expect(migration).toContain('OLD."admission_version" = 2');
-    expect(migration).toContain("attempt.\"state\" = 'created'");
+    expect(migration).toContain("attempt.\"state\" IN ('created', 'pending')");
+    expect(migration).toContain("OLD.\"state\" IN ('created', 'pending')");
+    expect(migration).toContain('CREATE TABLE "payment_evidence_conflicts"');
   });
 });
