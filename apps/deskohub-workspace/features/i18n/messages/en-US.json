@@ -425,6 +425,7 @@
   "reservationEmailBusinessSubject": "New Workspace reservation - {name} - {date}",
   "reservationEmailConfirmationSubject": "Reservation received - Deskohub Workspace",
   "reservationEmailTierLabel": "Entry tier",
+  "reservationEmailReservationLabel": "Reservation",
   "reservationEmailDateLabel": "Reservation date",
   "reservationEmailTimeLabel": "Reservation time",
   "reservationEmailCoffeeLabel": "Coffee",

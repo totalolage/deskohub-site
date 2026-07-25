@@ -426,6 +426,7 @@
   "reservationEmailBusinessSubject": "Nová rezervace Workspace - {name} - {date}",
   "reservationEmailConfirmationSubject": "Rezervace přijata - Deskohub Workspace",
   "reservationEmailTierLabel": "Vstup",
+  "reservationEmailReservationLabel": "Rezervace",
   "reservationEmailDateLabel": "Datum rezervace",
   "reservationEmailTimeLabel": "Čas rezervace",
   "reservationEmailCoffeeLabel": "Káva",

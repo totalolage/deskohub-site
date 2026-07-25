@@ -5,7 +5,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
-import type { WorkspaceReservationEmailService as WorkspaceReservationEmailServiceType } from "./workspace-reservation-email.service";
+import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and waits for delivery before fulfillment", async () => {
@@ -44,6 +44,11 @@ describe("WorkspacePaidFulfillmentService", () => {
     };
     const emailReservation = {
       ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
       customer: { email: "customer@example.com" },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
@@ -84,7 +89,7 @@ describe("WorkspacePaidFulfillmentService", () => {
               } satisfies IWorkspaceReservationService),
               Layer.succeed(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
-              } satisfies WorkspaceReservationEmailServiceType),
+              } satisfies IWorkspaceReservationEmailService),
               Layer.succeed(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
@@ -141,6 +146,11 @@ describe("WorkspacePaidFulfillmentService", () => {
     };
     const emailReservation = {
       ...claimed,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
       customer: { email: "customer@example.com" },
       reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
@@ -178,7 +188,7 @@ describe("WorkspacePaidFulfillmentService", () => {
               } satisfies IWorkspaceReservationService),
               Layer.succeed(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
-              } satisfies WorkspaceReservationEmailServiceType),
+              } satisfies IWorkspaceReservationEmailService),
               Layer.succeed(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })

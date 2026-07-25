@@ -8,7 +8,7 @@ import type {
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger } from "effect";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -390,10 +390,9 @@ describe("ResendWebhookService", () => {
       WorkspaceCheckoutNetworkDetailsService,
       workspaceCheckoutPlaceholderNetworkDetails,
     } = await import("./network-details.service");
-    const {
-      WorkspaceReservationEmailService,
-      WorkspaceReservationEmailServiceLive,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
     const sentMessages: EmailMessage[] = [];
     const send = mock((message: EmailMessage) => {
       sentMessages.push(message);
@@ -414,6 +413,18 @@ describe("ResendWebhookService", () => {
         name: "Deskohub Workspace",
       },
     };
+    const errorMessages: string[] = [];
+    const logger = Logger.make((options) => {
+      if (options.logLevel === "Error") {
+        errorMessages.push(
+          String(
+            Array.isArray(options.message)
+              ? options.message[0]
+              : options.message
+          )
+        );
+      }
+    });
 
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
@@ -421,18 +432,25 @@ describe("ResendWebhookService", () => {
         reservation: {
           id: "reservation-id",
           locale: "en-US",
-          productTier: "test-tier",
-          productCoffee: false,
-          productMonitorOption: null,
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: false,
+          },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
           customerAccessCode: "ACCESS-123",
           customer: {
+            _cloudId: "customer-id",
             email: "customer@example.com",
             firstName: "Ada",
             lastName: "Lovelace",
             companyName: null,
             phone: "123456789",
+            points: null,
+            flags: "0",
+            display: true,
+            deleted: false,
           },
           reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
           reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),
@@ -452,11 +470,11 @@ describe("ResendWebhookService", () => {
               },
             ],
           },
-        } as never,
+        },
       });
     }).pipe(
       Effect.provide(
-        WorkspaceReservationEmailServiceLive.pipe(
+        WorkspaceReservationEmailService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(EmailServiceTag, emailService),
@@ -466,10 +484,14 @@ describe("ResendWebhookService", () => {
           )
         )
       ),
+      Effect.provide(Logger.layer([logger])),
       Effect.runPromise
     );
 
     expect(send).toHaveBeenCalledTimes(2);
+    expect(errorMessages).toContain(
+      "Workspace reservation internal email failed"
+    );
     expect(sentMessages[0]?.tags).toEqual([
       "workspace-paid-reservation-access",
     ]);
@@ -728,6 +750,11 @@ describe("ResendWebhookService", () => {
     const sendPaidReservationEmails = mock(() => Effect.void);
     const emailReservation = {
       ...claimedReservation,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
       customer: { email: "customer@example.com" },
       reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),

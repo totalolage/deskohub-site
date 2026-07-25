@@ -27,9 +27,6 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   dotyposCustomerId: "987654321",
   dotyposReservationId: "123456789",
   customerAccessCode: "4829",
-  productTier: "profi",
-  productCoffee: true,
-  productMonitorOption: "2x27-qhd",
   reservationDetails: {
     kind: "cowork",
     entryTier: "profi",
