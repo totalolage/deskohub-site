@@ -46,7 +46,7 @@ export function CheckoutSummaryDiscountDetails({
         <TooltipContent
           align="end"
           collisionPadding={16}
-          className="w-[min(20rem,calc(100vw-2rem))] p-4"
+          className="w-[min(22rem,calc(100vw-2rem))] p-4"
           side="top"
         >
           <CheckoutSummaryDiscountDetailsContent
