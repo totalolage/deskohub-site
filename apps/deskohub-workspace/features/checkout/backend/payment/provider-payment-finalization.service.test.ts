@@ -13,6 +13,7 @@ import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from ".
 import {
   type IPaymentLifecycleRepository,
   PaymentLifecycleRepository,
+  PaymentLifecycleStateError,
 } from "../repositories/payment-lifecycle.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
@@ -21,8 +22,18 @@ const paymentLifecycleLayer = (
   overrides: Partial<IPaymentLifecycleRepository> = {}
 ) =>
   Layer.succeed(PaymentLifecycleRepository, {
-    createPendingNexiAttempt: () => Effect.die("not used"),
+    admitPaymentStart: () => Effect.die("not used"),
+    completeInternalPayment: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
+    markProviderStartFailed: () => Effect.die("not used"),
+    claimProviderReconciliation: () =>
+      Effect.succeed({
+        outcome: "claimed" as const,
+        claimId: "claim-id",
+        attempt: pendingAttempt,
+      }),
+    releaseProviderReconciliation: () => Effect.void,
+    recordEvidenceConflict: () => Effect.void,
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),
     ...overrides,
@@ -63,12 +74,13 @@ const pendingAttempt = {
 };
 
 const buildVerification = (
-  status: PaymentVerificationResult["status"]
+  status: PaymentVerificationResult["status"],
+  includeOperationId = true
 ): PaymentVerificationResult => ({
   status,
   provider: {
     orderId: "provider-order-id",
-    operationId: "operation-id",
+    ...(includeOperationId ? { operationId: "operation-id" } : {}),
     amount: "35000",
     currency: "CZK",
     orderStatus: status === "failure" ? "DECLINED" : "EXECUTED",
@@ -98,7 +110,27 @@ describe("ProviderPaymentFinalizationService", () => {
       );
       const { NexiService } = await import("@deskohub/nexi");
 
-      const fulfillPaidOrder = mock(() => Effect.void);
+      let reconciliationClaimHeld = true;
+      const releaseProviderReconciliation = mock(() =>
+        Effect.sync(() => {
+          reconciliationClaimHeld = false;
+        })
+      );
+      const fulfillPaidOrder = mock(() =>
+        Effect.sync(() => {
+          expect(reconciliationClaimHeld).toBeFalse();
+        })
+      );
+      const verifyPaymentOutcome = mock(() =>
+        Effect.succeed(buildVerification("success"))
+      );
+      const markPaid = mock(() =>
+        Effect.succeed({
+          attempt: { ...pendingAttempt, state: "paid" as const },
+          changed: false,
+          timestamp: Temporal.Now.instant(),
+        })
+      );
       const reservations = {
         findById: mock(() =>
           Effect.succeed({ ...paidNotStartedReservation, fulfillmentState })
@@ -121,15 +153,24 @@ describe("ProviderPaymentFinalizationService", () => {
               Layer.mergeAll(
                 Layer.succeed(WorkspaceReservationRepository, reservations),
                 Layer.succeed(WorkspacePaidFulfillmentService, fulfillment),
-                Layer.succeed(
-                  PaymentAttemptRepository,
-                  {} as PaymentAttemptRepositoryType
-                ),
-                paymentLifecycleLayer(),
+                Layer.succeed(PaymentAttemptRepository, {
+                  findById: mock(() =>
+                    Effect.succeed({
+                      ...pendingAttempt,
+                      state: "paid" as const,
+                    })
+                  ),
+                } as unknown as PaymentAttemptRepositoryType),
+                paymentLifecycleLayer({
+                  markPaid,
+                  releaseProviderReconciliation,
+                }),
                 Layer.succeed(PostHogEventService, {
                   capture: () => Effect.void,
                 }),
-                Layer.succeed(NexiService, {} as NexiServiceType)
+                Layer.succeed(NexiService, {
+                  verifyPaymentOutcome,
+                } as unknown as NexiServiceType)
               )
             )
           )
@@ -141,6 +182,8 @@ describe("ProviderPaymentFinalizationService", () => {
       expect(fulfillPaidOrder).toHaveBeenCalledWith({
         orderId: "reservation-id",
       });
+      expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
+      expect(markPaid).toHaveBeenCalledTimes(1);
     });
   }
 
@@ -164,6 +207,16 @@ describe("ProviderPaymentFinalizationService", () => {
     const { NexiService } = await import("@deskohub/nexi");
 
     const fulfillPaidOrder = mock(() => Effect.void);
+    const verifyPaymentOutcome = mock(() =>
+      Effect.succeed(buildVerification("success"))
+    );
+    const markPaid = mock(() =>
+      Effect.succeed({
+        attempt: { ...pendingAttempt, state: "paid" as const },
+        changed: false,
+        timestamp: Temporal.Now.instant(),
+      })
+    );
     const reservations = {
       findById: mock(() =>
         Effect.succeed({
@@ -189,15 +242,21 @@ describe("ProviderPaymentFinalizationService", () => {
             Layer.mergeAll(
               Layer.succeed(WorkspaceReservationRepository, reservations),
               Layer.succeed(WorkspacePaidFulfillmentService, fulfillment),
-              Layer.succeed(
-                PaymentAttemptRepository,
-                {} as PaymentAttemptRepositoryType
-              ),
-              paymentLifecycleLayer(),
+              Layer.succeed(PaymentAttemptRepository, {
+                findById: mock(() =>
+                  Effect.succeed({
+                    ...pendingAttempt,
+                    state: "paid" as const,
+                  })
+                ),
+              } as unknown as PaymentAttemptRepositoryType),
+              paymentLifecycleLayer({ markPaid }),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),
-              Layer.succeed(NexiService, {} as NexiServiceType)
+              Layer.succeed(NexiService, {
+                verifyPaymentOutcome,
+              } as unknown as NexiServiceType)
             )
           )
         )
@@ -205,15 +264,222 @@ describe("ProviderPaymentFinalizationService", () => {
       Effect.runPromise
     );
 
-    expect(result).toBe("not_pending");
+    expect(result).toBe("paid");
     expect(fulfillPaidOrder).not.toHaveBeenCalled();
+    expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
+    expect(markPaid).toHaveBeenCalledTimes(1);
   });
 
+  for (const includeOperationId of [true, false]) {
+    for (const direction of [
+      "paid_after_failed",
+      "terminal_after_paid",
+    ] as const) {
+      test(`reconciles ${direction} as manual review with provider operation id present=${includeOperationId}`, async () => {
+        const {
+          ProviderPaymentFinalizationService,
+          ProviderPaymentFinalizationServiceLive,
+        } = await import("./provider-payment-finalization.service");
+        const { PaymentAttemptRepository } = await import(
+          "../repositories/payment-attempt.repository"
+        );
+        const { WorkspacePaidFulfillmentService } = await import(
+          "../fulfillment/paid-fulfillment.service"
+        );
+        const { WorkspaceReservationRepository } = await import(
+          "@/features/reservation/backend/workspace-reservation.repository"
+        );
+        const { PostHogEventService } = await import(
+          "@/shared/backend/analytics/posthog-event.service"
+        );
+        const { NexiService } = await import("@deskohub/nexi");
+
+        const providerStatus =
+          direction === "paid_after_failed" ? "success" : "failure";
+        const localState =
+          direction === "paid_after_failed" ? "failed" : "paid";
+        const markPaid = mock(() =>
+          Effect.fail(
+            new PaymentLifecycleStateError({
+              operation: "markPaid",
+              paymentAttemptId: pendingAttempt.id,
+              message: "Opposing terminal provider evidence.",
+              reason: "provider_evidence_conflict",
+            })
+          )
+        );
+        const markTerminal = mock(() =>
+          Effect.fail(
+            new PaymentLifecycleStateError({
+              operation: "markTerminal",
+              paymentAttemptId: pendingAttempt.id,
+              message: "Opposing terminal provider evidence.",
+              reason: "provider_evidence_conflict",
+            })
+          )
+        );
+        const recordEvidenceConflict = mock(() => Effect.void);
+        const fulfillPaidOrder = mock(() => Effect.void);
+        const verifyPaymentOutcome = mock(() =>
+          Effect.succeed(buildVerification(providerStatus, includeOperationId))
+        );
+
+        const result = await Effect.gen(function* () {
+          const service = yield* ProviderPaymentFinalizationService;
+          return yield* service.finalizePendingProviderPayment({
+            orderId: "reservation-id",
+            paymentAttemptId: "attempt-id",
+          });
+        }).pipe(
+          Effect.provide(
+            ProviderPaymentFinalizationServiceLive.pipe(
+              Layer.provide(
+                Layer.mergeAll(
+                  Layer.succeed(WorkspaceReservationRepository, {
+                    findById: mock(() =>
+                      Effect.succeed({
+                        ...paidNotStartedReservation,
+                        paymentState: localState,
+                      })
+                    ),
+                  } as unknown as WorkspaceReservationRepositoryType),
+                  Layer.succeed(WorkspacePaidFulfillmentService, {
+                    fulfillPaidOrder,
+                  }),
+                  Layer.succeed(PaymentAttemptRepository, {
+                    findById: mock(() =>
+                      Effect.succeed({
+                        ...pendingAttempt,
+                        state: localState,
+                        failureCode:
+                          localState === "failed"
+                            ? "nexi_payment_failed"
+                            : null,
+                      })
+                    ),
+                  } as unknown as PaymentAttemptRepositoryType),
+                  paymentLifecycleLayer({
+                    recordEvidenceConflict,
+                    markPaid,
+                    markTerminal,
+                  }),
+                  Layer.succeed(PostHogEventService, {
+                    capture: () => Effect.void,
+                  }),
+                  Layer.succeed(NexiService, {
+                    verifyPaymentOutcome,
+                  } as unknown as NexiServiceType)
+                )
+              )
+            )
+          ),
+          Effect.runPromise
+        );
+
+        expect(result).toBe("manual_review");
+        expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
+        expect(recordEvidenceConflict).toHaveBeenCalledWith({
+          id: "attempt-id",
+          workspaceReservationId: "reservation-id",
+          conflictCodes: ["provider_terminal_state"],
+        });
+        expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        if (direction === "paid_after_failed") {
+          expect(markPaid).toHaveBeenCalledTimes(1);
+          expect(markTerminal).not.toHaveBeenCalled();
+        } else {
+          expect(markTerminal).toHaveBeenCalledTimes(1);
+          expect(markPaid).not.toHaveBeenCalled();
+        }
+      });
+    }
+  }
+
   for (const scenario of [
-    { verificationStatus: "success" as const, expected: "paid" as const },
-    { verificationStatus: "failure" as const, expected: "terminal" as const },
+    {
+      verificationStatus: "success" as const,
+      expected: "paid" as const,
+      changed: true,
+      conflict: false,
+    },
+    {
+      verificationStatus: "success" as const,
+      expected: "paid" as const,
+      changed: false,
+      conflict: false,
+    },
+    {
+      verificationStatus: "success" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+    },
+    {
+      verificationStatus: "success" as const,
+      expected: "not_pending" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "state_conflict" as const,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "terminal" as const,
+      changed: true,
+      conflict: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "terminal" as const,
+      changed: false,
+      conflict: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "not_pending" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "state_conflict" as const,
+    },
+    {
+      verificationStatus: "success" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+      includeOperationId: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "manual_review" as const,
+      changed: false,
+      conflict: true,
+      conflictReason: "provider_evidence_conflict" as const,
+      includeOperationId: false,
+    },
+    {
+      verificationStatus: "manual_review" as const,
+      expected: "verification_mismatch" as const,
+      changed: false,
+      conflict: false,
+      mismatches: ["orderId", "amount", "currency"] as const,
+    },
+    {
+      verificationStatus: "manual_review" as const,
+      expected: "verification_mismatch" as const,
+      changed: false,
+      conflict: false,
+      mismatches: ["operationEvidence"] as const,
+    },
   ]) {
-    test(`finalizes pending ${scenario.verificationStatus} provider payments`, async () => {
+    test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
       const {
         ProviderPaymentFinalizationService,
         ProviderPaymentFinalizationServiceLive,
@@ -233,25 +499,52 @@ describe("ProviderPaymentFinalizationService", () => {
       const { NexiService } = await import("@deskohub/nexi");
 
       const markPaidForReservation = mock(() =>
-        Effect.succeed({
-          attempt: { ...pendingAttempt, state: "paid" as const },
-          changed: true,
-          timestamp: Temporal.Now.instant(),
-        })
+        scenario.conflict && scenario.verificationStatus === "success"
+          ? Effect.fail(
+              new PaymentLifecycleStateError({
+                operation: "markPaid",
+                paymentAttemptId: pendingAttempt.id,
+                message:
+                  "The paid replay conflicts with recorded provider evidence.",
+                reason:
+                  "conflictReason" in scenario
+                    ? scenario.conflictReason
+                    : undefined,
+              })
+            )
+          : Effect.succeed({
+              attempt: { ...pendingAttempt, state: "paid" as const },
+              changed: scenario.changed,
+              timestamp: Temporal.Now.instant(),
+            })
       );
       const markTerminalForReservation = mock(() =>
-        Effect.succeed({
-          attempt: {
-            ...pendingAttempt,
-            state: "failed" as const,
-            failureCode: "nexi_payment_failed",
-            lastProviderStatus: "DECLINED",
-          },
-          changed: true,
-          timestamp: Temporal.Now.instant(),
-        })
+        scenario.conflict
+          ? Effect.fail(
+              new PaymentLifecycleStateError({
+                operation: "markTerminal",
+                paymentAttemptId: pendingAttempt.id,
+                message:
+                  "The terminal replay conflicts with the recorded lifecycle outcome.",
+                reason:
+                  "conflictReason" in scenario
+                    ? scenario.conflictReason
+                    : undefined,
+              })
+            )
+          : Effect.succeed({
+              attempt: {
+                ...pendingAttempt,
+                state: "failed" as const,
+                failureCode: "nexi_payment_failed",
+                lastProviderStatus: "DECLINED",
+              },
+              changed: scenario.changed,
+              timestamp: Temporal.Now.instant(),
+            })
       );
       const fulfillPaidOrder = mock(() => Effect.void);
+      const recordEvidenceConflict = mock(() => Effect.void);
       const paymentAttempts = {
         findById: mock(() => Effect.succeed(pendingAttempt)),
         markPaidForReservation,
@@ -262,7 +555,16 @@ describe("ProviderPaymentFinalizationService", () => {
       } as unknown as WorkspaceReservationRepositoryType;
       const nexi = {
         verifyPaymentOutcome: mock(() =>
-          Effect.succeed(buildVerification(scenario.verificationStatus))
+          Effect.succeed({
+            ...buildVerification(
+              scenario.verificationStatus,
+              !(
+                "includeOperationId" in scenario &&
+                scenario.includeOperationId === false
+              )
+            ),
+            mismatches: "mismatches" in scenario ? scenario.mismatches : [],
+          } as PaymentVerificationResult)
         ),
       } as unknown as NexiServiceType;
 
@@ -284,6 +586,7 @@ describe("ProviderPaymentFinalizationService", () => {
                 }),
                 Layer.succeed(PaymentAttemptRepository, paymentAttempts),
                 paymentLifecycleLayer({
+                  recordEvidenceConflict,
                   markPaid: markPaidForReservation,
                   markTerminal: markTerminalForReservation,
                 }),
@@ -307,7 +610,7 @@ describe("ProviderPaymentFinalizationService", () => {
         securityToken: "security-token",
       });
 
-      if (scenario.expected === "paid") {
+      if (scenario.verificationStatus === "success") {
         expect(markPaidForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",
@@ -315,11 +618,27 @@ describe("ProviderPaymentFinalizationService", () => {
             webhookEventId: "event-id",
           })
         );
-        expect(fulfillPaidOrder).toHaveBeenCalledWith({
-          orderId: "reservation-id",
-        });
+        if (scenario.conflict) {
+          expect(fulfillPaidOrder).not.toHaveBeenCalled();
+          if (
+            "conflictReason" in scenario &&
+            scenario.conflictReason === "provider_evidence_conflict"
+          ) {
+            expect(recordEvidenceConflict).toHaveBeenCalledWith({
+              id: "attempt-id",
+              workspaceReservationId: "reservation-id",
+              conflictCodes: ["provider_terminal_state"],
+            });
+          } else {
+            expect(recordEvidenceConflict).not.toHaveBeenCalled();
+          }
+        } else {
+          expect(fulfillPaidOrder).toHaveBeenCalledWith({
+            orderId: "reservation-id",
+          });
+        }
         expect(markTerminalForReservation).not.toHaveBeenCalled();
-      } else {
+      } else if (scenario.verificationStatus === "failure") {
         expect(markTerminalForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",
@@ -331,11 +650,43 @@ describe("ProviderPaymentFinalizationService", () => {
         );
         expect(markPaidForReservation).not.toHaveBeenCalled();
         expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        if (
+          scenario.conflict &&
+          "conflictReason" in scenario &&
+          scenario.conflictReason === "provider_evidence_conflict"
+        ) {
+          expect(recordEvidenceConflict).toHaveBeenCalledWith({
+            id: "attempt-id",
+            workspaceReservationId: "reservation-id",
+            conflictCodes: ["provider_terminal_state"],
+          });
+        } else if (scenario.conflict) {
+          expect(recordEvidenceConflict).not.toHaveBeenCalled();
+        }
+      } else {
+        expect(markPaidForReservation).not.toHaveBeenCalled();
+        expect(markTerminalForReservation).not.toHaveBeenCalled();
+        expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        expect(recordEvidenceConflict).toHaveBeenCalledWith({
+          id: "attempt-id",
+          workspaceReservationId: "reservation-id",
+          conflictCodes:
+            "mismatches" in scenario &&
+            scenario.mismatches.some(
+              (mismatch) => mismatch === "operationEvidence"
+            )
+              ? ["provider_operation_evidence"]
+              : [
+                  "provider_order_identity",
+                  "provider_amount",
+                  "provider_currency",
+                ],
+        });
       }
     });
   }
 
-  test("returns not_verifiable for pending attempts missing local verification data", async () => {
+  test("verifies an unattached created attempt by stable provider order identity", async () => {
     const {
       ProviderPaymentFinalizationService,
       ProviderPaymentFinalizationServiceLive,
@@ -354,7 +705,9 @@ describe("ProviderPaymentFinalizationService", () => {
     );
     const { NexiService } = await import("@deskohub/nexi");
 
-    const verifyPaymentOutcome = mock(() => Effect.die("not used"));
+    const verifyPaymentOutcome = mock(() =>
+      Effect.succeed(buildVerification("pending"))
+    );
     const result = await Effect.gen(function* () {
       const service = yield* ProviderPaymentFinalizationService;
       return yield* service.finalizePendingProviderPayment({
@@ -391,8 +744,89 @@ describe("ProviderPaymentFinalizationService", () => {
       Effect.runPromise
     );
 
-    expect(result).toBe("not_verifiable");
-    expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+    expect(result).toBe("pending");
+    expect(verifyPaymentOutcome).toHaveBeenCalledWith({
+      orderId: "provider-order-id",
+      correlationId: "correlation-id",
+      amount: "35000",
+      currency: "EUR",
+    });
+  });
+
+  test("does not settle or fulfill incomplete authoritative terminal evidence", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "../fulfillment/paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    for (const providerStatus of ["EXECUTED", "DECLINED"] as const) {
+      const markPaid = mock(() => Effect.die("must not mark paid"));
+      const markTerminal = mock(() => Effect.die("must not mark terminal"));
+      const fulfillPaidOrder = mock(() => Effect.die("must not fulfill"));
+      const verifyPaymentOutcome = mock(() =>
+        Effect.succeed({
+          status: "pending" as const,
+          provider: {
+            orderId: "provider-order-id",
+            orderStatus: providerStatus,
+            captureExecuted: false,
+          },
+          mismatches: [],
+        })
+      );
+
+      const result = await Effect.gen(function* () {
+        const service = yield* ProviderPaymentFinalizationService;
+        return yield* service.finalizePendingProviderPayment({
+          orderId: "reservation-id",
+          paymentAttemptId: "attempt-id",
+        });
+      }).pipe(
+        Effect.provide(
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(WorkspaceReservationRepository, {
+                  findById: mock(() => Effect.succeed(pendingReservation)),
+                } as unknown as WorkspaceReservationRepositoryType),
+                Layer.succeed(WorkspacePaidFulfillmentService, {
+                  fulfillPaidOrder,
+                }),
+                Layer.succeed(PaymentAttemptRepository, {
+                  findById: mock(() => Effect.succeed(pendingAttempt)),
+                } as unknown as PaymentAttemptRepositoryType),
+                paymentLifecycleLayer({ markPaid, markTerminal }),
+                Layer.succeed(PostHogEventService, {
+                  capture: () => Effect.void,
+                }),
+                Layer.succeed(NexiService, {
+                  verifyPaymentOutcome,
+                } as unknown as NexiServiceType)
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(result).toBe("pending");
+      expect(markPaid).not.toHaveBeenCalled();
+      expect(markTerminal).not.toHaveBeenCalled();
+      expect(fulfillPaidOrder).not.toHaveBeenCalled();
+    }
   });
 
   test("propagates lifecycle persistence failures instead of returning not_pending", async () => {
@@ -418,6 +852,7 @@ describe("ProviderPaymentFinalizationService", () => {
       params: [],
       cause: "database unavailable",
     });
+    const releaseProviderReconciliation = mock(() => Effect.void);
 
     const result = await Effect.gen(function* () {
       const service = yield* ProviderPaymentFinalizationService;
@@ -441,6 +876,7 @@ describe("ProviderPaymentFinalizationService", () => {
               } as unknown as PaymentAttemptRepositoryType),
               paymentLifecycleLayer({
                 markPaid: mock(() => Effect.fail(persistenceFailure)),
+                releaseProviderReconciliation,
               }),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -459,6 +895,11 @@ describe("ProviderPaymentFinalizationService", () => {
     );
 
     expect(result).toMatchObject({ failure: persistenceFailure });
+    expect(releaseProviderReconciliation).toHaveBeenCalledWith({
+      id: pendingAttempt.id,
+      workspaceReservationId: pendingAttempt.workspaceReservationId,
+      claimId: "claim-id",
+    });
   });
 
   test("returns provider_verification_failed when Nexi verification errors", async () => {

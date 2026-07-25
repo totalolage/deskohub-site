@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   jsonb,
@@ -77,6 +78,16 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<FulfillmentState>(),
     activePaymentAttemptId: text("active_payment_attempt_id"),
+    activePaymentEvidenceConflicted: boolean(
+      "active_payment_evidence_conflicted"
+    )
+      .notNull()
+      .default(false),
+    paymentReconciliationAttemptId: text("payment_reconciliation_attempt_id"),
+    paymentReconciliationClaimId: text("payment_reconciliation_claim_id"),
+    paymentReconciliationClaimExpiresAt: instant(
+      "payment_reconciliation_claim_expires_at"
+    ),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),
@@ -126,6 +137,10 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
+    ),
+    check(
+      "workspace_reservations_payment_reconciliation_claim_check",
+      sql`(${t.paymentReconciliationAttemptId} is null and ${t.paymentReconciliationClaimId} is null and ${t.paymentReconciliationClaimExpiresAt} is null) or (${t.paymentReconciliationAttemptId} is not null and ${t.paymentReconciliationClaimId} is not null and ${t.paymentReconciliationClaimExpiresAt} is not null)`
     ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey

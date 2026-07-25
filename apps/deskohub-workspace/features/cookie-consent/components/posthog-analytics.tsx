@@ -25,6 +25,10 @@ function sanitizePostHogEvent(
   event: PostHogBeforeSendEvent,
   posthogEnvironment: string
 ) {
+  if (event.event === "$autocapture" || event.event === "$snapshot") {
+    return null;
+  }
+
   event.properties = sanitizePostHogProperties(
     event.properties,
     posthogEnvironment
@@ -107,9 +111,11 @@ function PostHogClient({
 
           return sanitizedEvent;
         },
+        autocapture: false,
         capture_pageleave: true,
         capture_pageview: "history_change",
         defaults: "2026-01-30",
+        disable_session_recording: true,
         internal_or_test_user_hostname: null,
         opt_out_useragent_filter: process.env.NODE_ENV === "development",
         person_profiles: "identified_only",
@@ -127,7 +133,6 @@ function PostHogClient({
 
     applyFeatureFlagOverrides(posthog, featureFlagOverrides);
     posthog.opt_in_capturing();
-    posthog.startSessionRecording();
   }, [
     analyticsAccepted,
     featureFlagOverrides,

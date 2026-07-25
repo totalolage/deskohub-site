@@ -1,7 +1,10 @@
 import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { ExternalAPIError, NetworkError } from "../errors";
-import type { CreateHostedPaymentPageRequest } from "../generated/effect.gen";
+import type {
+  CreateHostedPaymentPageRequest,
+  OrderResponse,
+} from "../generated/effect.gen";
 import type {
   CreateHostedPaymentPageInput,
   Locale,
@@ -9,6 +12,7 @@ import type {
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
 } from "../types";
+import { normalizeNexiProviderOperationId } from "../types";
 import { NexiGeneratedClient } from "./api";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
@@ -16,6 +20,7 @@ const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
 const DEFAULT_ACTION_TYPE = "PAY";
 const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
+const TERMINAL_OPERATION_TYPES = new Set(["VOID", "REFUND", "CANCEL"]);
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
 
 const localeToNexiLanguage: Record<Locale, "CZE" | "ENG"> = {
@@ -30,9 +35,8 @@ const failureOperationResults = new Set([
   "THREEDS_FAILED",
   "FAILED",
   "CANCELED",
-  "VOIDED",
-  "REFUNDED",
 ]);
+const laterTerminalOperationResults = new Set(["VOIDED", "REFUNDED"]);
 
 const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
   Match.value(error).pipe(
@@ -72,8 +76,6 @@ const makeNexiService = Effect.gen(function* () {
 
   const createHostedPaymentPage = Effect.fn("createHostedPaymentPage")(
     function* (input: CreateHostedPaymentPageInput) {
-      yield* Effect.annotateLogsScoped({ input });
-
       const request: CreateHostedPaymentPageRequest = {
         order: {
           orderId: input.orderId,
@@ -92,7 +94,6 @@ const makeNexiService = Effect.gen(function* () {
         },
       };
 
-      yield* Effect.annotateLogsScoped({ requestBody: request });
       yield* Effect.logInfo("Nexi hosted payment page request started");
 
       const response = yield* nexiClient
@@ -101,15 +102,12 @@ const makeNexiService = Effect.gen(function* () {
           payload: request,
         })
         .pipe(
-          Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
+          Effect.tapError(() =>
             Effect.logError("Nexi hosted payment page request failed", {
-              error,
+              outcome: "unavailable_or_ambiguous",
             })
           )
         );
-
-      yield* Effect.annotateLogsScoped({ providerResponse: response });
 
       const result = {
         orderId: response.orderId ?? input.orderId,
@@ -117,13 +115,11 @@ const makeNexiService = Effect.gen(function* () {
         securityToken: response.securityToken,
       };
 
-      yield* Effect.annotateLogsScoped({ result });
       yield* Effect.logInfo("Nexi hosted payment page request completed");
 
       return result;
     },
-    (effect, input) =>
-      effect.pipe(Effect.annotateLogs({ ...input }), Effect.scoped)
+    (effect) => effect.pipe(Effect.scoped)
   );
 
   const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
@@ -137,82 +133,42 @@ const makeNexiService = Effect.gen(function* () {
         })
         .pipe(
           Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
-            Effect.logError("Nexi order lookup failed", { error })
+          Effect.tapError(() =>
+            Effect.logError("Nexi order lookup failed", {
+              outcome: "unavailable",
+            })
           )
         );
 
-      yield* Effect.logDebug("Nexi order lookup result", { order });
-
-      const providerOrder = order.orderStatus?.order;
-      const operations = order.operations ?? [];
-      const executedPaymentOperation = operations.find(
-        (operation) =>
-          isPaymentOperationType(operation.operationType) &&
-          operation.operationResult === EXECUTED_OPERATION_RESULT
-      );
-      const failedOperation = operations.find((operation) =>
-        isFailureStatus(operation.operationResult)
-      );
-      const providerAmount =
-        getOperationAmount(executedPaymentOperation) ?? providerOrder;
-      const providerSecurityToken =
-        executedPaymentOperation?.securityToken ?? order.securityToken;
-      const providerOrderId = providerOrder?.orderId ?? order.orderId;
-      const providerOperationId =
-        executedPaymentOperation?.operationId ?? failedOperation?.operationId;
-
-      yield* Effect.logDebug("Nexi selected payment operations", {
-        executedPaymentOperation,
-        failedOperation,
-      });
-
-      const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
-        [];
-      if (providerOrderId !== input.orderId) mismatches.push("orderId");
-      if (providerAmount?.amount !== input.amount) mismatches.push("amount");
-      if (providerAmount?.currency !== input.currency)
-        mismatches.push("currency");
-      if (
-        providerSecurityToken &&
-        providerSecurityToken !== input.securityToken
-      )
-        mismatches.push("securityToken");
-
-      const providerStatus =
-        executedPaymentOperation?.operationResult ??
-        failedOperation?.operationResult ??
-        order.orderStatus?.lastOperationType;
-
-      const status: PaymentOutcomeStatus = (() => {
-        if (mismatches.length > 0) return "failure";
-        if (executedPaymentOperation) return "success";
-        if (failedOperation || isFailureStatus(providerStatus)) {
-          return "failure";
-        }
-        return "pending";
-      })();
+      const evidence = resolvePaymentOutcomeEvidence(input, order);
 
       yield* Effect.logDebug("Nexi payment outcome status resolved", {
-        mismatches,
-        providerStatus,
-        status,
+        mismatches: evidence.mismatches,
+        providerStatus: evidence.providerStatus,
+        status: evidence.status,
       });
 
       const result = {
-        status,
+        status: evidence.status,
         provider: {
-          orderId: providerOrderId ?? input.orderId,
-          operationId: providerOperationId,
-          amount: providerAmount?.amount,
-          currency: providerAmount?.currency,
-          orderStatus: providerStatus,
-          captureExecuted: Boolean(executedPaymentOperation),
+          orderId: evidence.providerOrderId,
+          operationId: evidence.providerOperationId,
+          operationType: evidence.providerOperationType,
+          amount: evidence.providerAmount?.amount,
+          currency: evidence.providerAmount?.currency,
+          orderStatus: evidence.providerStatus,
+          captureExecuted: evidence.captureExecuted,
         },
-        mismatches,
+        mismatches: evidence.mismatches,
       };
 
-      yield* Effect.annotateLogsScoped({ result });
+      yield* Effect.annotateLogsScoped({
+        verificationResult: {
+          status: result.status,
+          mismatches: result.mismatches,
+          hasProviderOperation: Boolean(result.provider.operationId),
+        },
+      });
       yield* Effect.logInfo("Nexi payment outcome verification completed");
 
       return result;
@@ -230,6 +186,14 @@ const makeNexiService = Effect.gen(function* () {
   };
 });
 
+const NexiFetchHttpClientLive = FetchHttpClient.layer.pipe(
+  Layer.provide(
+    Layer.succeed(FetchHttpClient.RequestInit, {
+      redirect: "error",
+    })
+  )
+);
+
 export class NexiService extends Context.Service<
   NexiService,
   Effect.Success<typeof makeNexiService>
@@ -237,18 +201,177 @@ export class NexiService extends Context.Service<
   static DefaultWithoutDependencies = Layer.effect(this, makeNexiService);
   static Default = this.DefaultWithoutDependencies.pipe(
     Layer.provide(NexiGeneratedClient.Live),
-    Layer.provide(FetchHttpClient.layer)
+    Layer.provide(NexiFetchHttpClientLive)
   );
 }
 
 const isFailureStatus = (status: string | undefined) =>
   status ? failureOperationResults.has(status.toUpperCase()) : false;
 
-const isPaymentOperationType = (operationType: string | undefined) =>
-  operationType === AUTHORIZATION_OPERATION_TYPE ||
-  operationType === CAPTURE_OPERATION_TYPE;
+const isPaymentOperationType = (operationType: string | undefined) => {
+  const normalized = operationType?.toUpperCase();
+  return (
+    normalized === AUTHORIZATION_OPERATION_TYPE ||
+    normalized === CAPTURE_OPERATION_TYPE
+  );
+};
 
-const getOperationAmount = (
+const resolvePaymentOutcomeEvidence = (
+  input: VerifyPaymentOutcomeInput,
+  order: OrderResponse
+) => {
+  const providerOrder = order.orderStatus?.order;
+  const paymentOperations = order.operations ?? [];
+  const operation =
+    paymentOperations.length === 1 ? paymentOperations[0] : null;
+  const providerAmount =
+    getRepresentativeOperationAmount(operation ?? undefined) ??
+    providerOrder ??
+    order.amount;
+  const providerOrderId =
+    providerOrder?.orderId ?? order.orderId ?? input.orderId;
+  const providerStatus = operation?.operationResult;
+  const mismatches: Array<PaymentVerificationResult["mismatches"][number]> = [];
+
+  addEvidenceMismatch(
+    mismatches,
+    "orderId",
+    [
+      providerOrder?.orderId,
+      order.orderId,
+      ...paymentOperations.map((item) => item.orderId),
+    ],
+    input.orderId
+  );
+  addEvidenceMismatch(
+    mismatches,
+    "amount",
+    [
+      providerOrder?.amount,
+      order.amount?.amount,
+      order.orderStatus?.authorizedAmount,
+      order.orderStatus?.capturedAmount,
+      ...paymentOperations.flatMap((item) => [
+        item.amount?.amount,
+        item.operationAmount,
+      ]),
+    ],
+    input.amount
+  );
+  addEvidenceMismatch(
+    mismatches,
+    "currency",
+    [
+      providerOrder?.currency,
+      order.amount?.currency,
+      ...paymentOperations.flatMap((item) => [
+        item.amount?.currency,
+        item.operationCurrency,
+      ]),
+    ],
+    input.currency
+  );
+
+  const securityTokens = [
+    order.securityToken,
+    ...paymentOperations.map((item) => item.securityToken),
+  ].filter((value): value is string => value !== undefined);
+  if (
+    new Set(securityTokens).size > 1 ||
+    (input.securityToken !== undefined &&
+      securityTokens.some((value) => value !== input.securityToken))
+  ) {
+    mismatches.push("securityToken");
+  }
+
+  const operationType = operation?.operationType?.toUpperCase();
+  const operationResult = operation?.operationResult?.toUpperCase();
+  const lastOperationType = order.orderStatus?.lastOperationType?.toUpperCase();
+  const operationAmountEvidence = getOperationAmountEvidence(
+    operation ?? undefined
+  );
+  const operationIsIncomplete =
+    paymentOperations.length !== 1 ||
+    !hasText(operation?.orderId) ||
+    !normalizeNexiProviderOperationId(operation?.operationId) ||
+    !hasText(operation?.operationType) ||
+    !hasText(operation?.operationResult) ||
+    !operationAmountEvidence.complete;
+  const operationTypeIsContradictory =
+    operationType !== undefined && !isPaymentOperationType(operationType);
+  const operationTypeDiverges =
+    operationType !== undefined &&
+    lastOperationType !== undefined &&
+    operationType !== lastOperationType;
+  const laterTerminalEvidence =
+    TERMINAL_OPERATION_TYPES.has(operationType ?? "") ||
+    TERMINAL_OPERATION_TYPES.has(lastOperationType ?? "") ||
+    laterTerminalOperationResults.has(operationResult ?? "");
+  const authorizationExecutionIsIncomplete =
+    operationType === AUTHORIZATION_OPERATION_TYPE &&
+    operationResult === EXECUTED_OPERATION_RESULT &&
+    (order.orderStatus?.authorizedAmount === undefined ||
+      order.orderStatus.capturedAmount === undefined ||
+      providerOrder?.amount === undefined ||
+      providerOrder.currency === undefined);
+  if (
+    paymentOperations.length > 1 ||
+    operationTypeIsContradictory ||
+    operationTypeDiverges ||
+    laterTerminalEvidence
+  ) {
+    mismatches.push("operationEvidence");
+  }
+
+  const status: PaymentOutcomeStatus = (() => {
+    if (mismatches.length > 0) return "manual_review";
+    if (operationIsIncomplete || authorizationExecutionIsIncomplete) {
+      return "pending";
+    }
+    if (operationResult === EXECUTED_OPERATION_RESULT) {
+      return "success";
+    }
+    if (isFailureStatus(operationResult)) {
+      return "failure";
+    }
+    return "pending";
+  })();
+
+  return {
+    status,
+    mismatches,
+    providerOrderId,
+    providerOperationId: normalizeNexiProviderOperationId(
+      operation?.operationId
+    ),
+    providerOperationType: operation?.operationType,
+    providerAmount,
+    providerStatus,
+    captureExecuted:
+      status === "success" &&
+      operation?.operationType === CAPTURE_OPERATION_TYPE,
+  };
+};
+
+const addEvidenceMismatch = (
+  mismatches: Array<PaymentVerificationResult["mismatches"][number]>,
+  mismatch: PaymentVerificationResult["mismatches"][number],
+  evidence: ReadonlyArray<string | undefined>,
+  expected: string | undefined
+) => {
+  const present = evidence.filter(
+    (value): value is string => value !== undefined
+  );
+  if (
+    present.length === 0 ||
+    expected === undefined ||
+    present.some((value) => value !== expected)
+  ) {
+    mismatches.push(mismatch);
+  }
+};
+
+const getRepresentativeOperationAmount = (
   operation:
     | {
         readonly amount?: {
@@ -269,3 +392,37 @@ const getOperationAmount = (
     currency: operation.operationCurrency,
   };
 };
+
+const getOperationAmountEvidence = (
+  operation:
+    | {
+        readonly amount?: {
+          readonly amount?: string;
+          readonly currency?: string;
+        };
+        readonly operationAmount?: string;
+        readonly operationCurrency?: string;
+      }
+    | undefined
+) => {
+  if (!operation) return { complete: false };
+
+  const nestedPresent = operation.amount !== undefined;
+  const nestedComplete =
+    hasText(operation.amount?.amount) && hasText(operation.amount?.currency);
+  const flatPresent =
+    operation.operationAmount !== undefined ||
+    operation.operationCurrency !== undefined;
+  const flatComplete =
+    hasText(operation.operationAmount) && hasText(operation.operationCurrency);
+
+  return {
+    complete:
+      (nestedComplete || flatComplete) &&
+      (!nestedPresent || nestedComplete) &&
+      (!flatPresent || flatComplete),
+  };
+};
+
+const hasText = (value: string | undefined): boolean =>
+  value !== undefined && value.trim().length > 0;

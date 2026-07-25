@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Effect, Schema } from "effect";
 
 export const locales = ["cs-CZ", "en-US"] as const;
@@ -80,13 +81,26 @@ export interface NexiWebhookSecurityTokenCheck {
 export type NexiFailureStatusKind = "cancelled" | "expired" | "failed";
 
 export interface NexiPaymentMetadata {
-  readonly providerOperationId: string;
+  readonly providerOperationId?: string;
   readonly providerStatus?: string;
 }
 
-const cleanOptionalString = (value: string | undefined) => {
+const cleanOptionalString = (value: string | null | undefined) => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+};
+
+const digestNexiProviderIdentifier = (kind: "event" | "operation", value: string) =>
+  `nexi-${kind}:${createHash("sha256").update(value).digest("hex")}`;
+
+export const normalizeNexiProviderOperationId = (
+  value: string | null | undefined
+): string | undefined => {
+  const cleaned = cleanOptionalString(value);
+  if (!cleaned) return undefined;
+  return isBoundedNexiProviderIdentifier(cleaned)
+    ? cleaned
+    : digestNexiProviderIdentifier("operation", cleaned);
 };
 
 export const normalizeNexiWebhookNotification = (
@@ -97,7 +111,9 @@ export const normalizeNexiWebhookNotification = (
   securityToken: cleanOptionalString(notification.securityToken),
   operation: {
     orderId: notification.operation.orderId,
-    operationId: cleanOptionalString(notification.operation.operationId),
+    operationId: normalizeNexiProviderOperationId(
+      notification.operation.operationId
+    ),
     operationType: cleanOptionalString(notification.operation.operationType),
     operationResult: cleanOptionalString(
       notification.operation.operationResult
@@ -122,23 +138,38 @@ export const deriveNexiWebhookEventIdentity = (
 ): NexiWebhookEventIdentity => {
   const normalized = normalizeNexiWebhookNotification(notification);
   const explicitEventId = normalized.eventId;
-  if (explicitEventId) return { eventId: explicitEventId, source: "provider" };
-
   const operation = normalized.operation;
+  if (
+    explicitEventId &&
+    isBoundedNexiProviderIdentifier(explicitEventId)
+  ) {
+    return { eventId: explicitEventId, source: "provider" };
+  }
+  const identity = explicitEventId
+    ? [
+        "provider",
+        explicitEventId,
+        operation.orderId,
+        operation.operationId ?? "",
+      ]
+    : [
+        "derived",
+        operation.orderId,
+        operation.operationId ?? "",
+        operation.operationType ?? "",
+        operation.operationResult ?? "",
+        normalized.eventTime ?? operation.operationTime ?? "",
+        operation.operationAmount ?? "",
+        operation.operationCurrency ?? "",
+      ];
   return {
-    eventId: [
-      "nexi",
-      operation.orderId,
-      operation.operationId ?? "no-operation-id",
-      operation.operationType ?? "no-operation-type",
-      operation.operationResult ?? "no-operation-result",
-      normalized.eventTime ?? operation.operationTime ?? "no-operation-time",
-      operation.operationAmount ?? "no-operation-amount",
-      operation.operationCurrency ?? "no-operation-currency",
-    ].join(":"),
-    source: "derived",
+    eventId: `nexi:${createHash("sha256").update(JSON.stringify(identity)).digest("hex")}`,
+    source: explicitEventId ? "provider" : "derived",
   };
 };
+
+export const isBoundedNexiProviderIdentifier = (value: string): boolean =>
+  /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(value);
 
 export const checkNexiWebhookSecurityToken = (input: {
   readonly notificationSecurityToken: string | undefined;
@@ -147,11 +178,16 @@ export const checkNexiWebhookSecurityToken = (input: {
   const notificationSecurityToken = cleanOptionalString(
     input.notificationSecurityToken
   );
-  if (!notificationSecurityToken) return { status: "absent" };
+  const expectedSecurityToken = cleanOptionalString(
+    input.expectedSecurityToken
+  );
+  if (!notificationSecurityToken || !expectedSecurityToken) {
+    return { status: "absent" };
+  }
 
   return {
     status:
-      notificationSecurityToken === input.expectedSecurityToken
+      notificationSecurityToken === expectedSecurityToken
         ? "match"
         : "mismatch",
   };
@@ -173,8 +209,9 @@ export const classifyNexiFailureStatus = (
 export const getNexiPaymentMetadata = (
   verification: PaymentVerificationResult
 ): NexiPaymentMetadata => ({
-  providerOperationId:
-    verification.provider.operationId ?? verification.provider.orderId,
+  providerOperationId: normalizeNexiProviderOperationId(
+    verification.provider.operationId
+  ),
   providerStatus:
     verification.provider.orderStatus ??
     (verification.provider.captureExecuted ? "capture_executed" : undefined),
@@ -198,24 +235,95 @@ export interface VerifyPaymentOutcomeInput {
   /** Integer minor-unit/scaled amount string, matching the submitted order amount. */
   readonly amount: string;
   readonly currency?: NexiCurrency;
-  readonly securityToken: string;
+  readonly securityToken?: string;
 }
 
-export type PaymentOutcomeStatus = "success" | "failure" | "pending";
+export type PaymentOutcomeStatus =
+  | "success"
+  | "failure"
+  | "pending"
+  | "manual_review";
 
 export interface ProviderPaymentFacts {
   readonly orderId: string;
   readonly operationId?: string;
+  readonly operationType?: string;
   readonly amount?: string;
   readonly currency?: string;
   readonly orderStatus?: string;
   readonly captureExecuted: boolean;
 }
 
+const normalizedEvidence = (value: string | undefined) =>
+  cleanOptionalString(value)?.toUpperCase();
+
+/**
+ * Webhook facts are an additional provider observation, not authority to
+ * overwrite the read-only order lookup. Every fact the provider supplied must
+ * agree with both the admitted local identity and the reconciled order.
+ */
+export const isNexiWebhookEvidenceConsistent = (input: {
+  readonly notification: NexiWebhookNotification;
+  readonly expectedOrderId: string;
+  readonly expectedAmount: string;
+  readonly expectedCurrency: string;
+  readonly verification: PaymentVerificationResult;
+}): boolean => {
+  const operation = normalizeNexiWebhookNotification(
+    input.notification
+  ).operation;
+  const provider = input.verification.provider;
+
+  if (
+    operation.orderId !== input.expectedOrderId ||
+    operation.orderId !== provider.orderId
+  ) {
+    return false;
+  }
+  if (
+    operation.operationId !== undefined &&
+    operation.operationId !== provider.operationId
+  ) {
+    return false;
+  }
+  if (
+    operation.operationType !== undefined &&
+    normalizedEvidence(operation.operationType) !==
+      normalizedEvidence(provider.operationType)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationResult !== undefined &&
+    normalizedEvidence(operation.operationResult) !==
+      normalizedEvidence(provider.orderStatus)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationAmount !== undefined &&
+    (operation.operationAmount !== input.expectedAmount ||
+      operation.operationAmount !== provider.amount)
+  ) {
+    return false;
+  }
+  if (
+    operation.operationCurrency !== undefined &&
+    (normalizedEvidence(operation.operationCurrency) !==
+      normalizedEvidence(input.expectedCurrency) ||
+      normalizedEvidence(operation.operationCurrency) !==
+        normalizedEvidence(provider.currency))
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
 export interface PaymentVerificationResult {
   readonly status: PaymentOutcomeStatus;
   readonly provider: ProviderPaymentFacts;
   readonly mismatches: ReadonlyArray<
-    "orderId" | "amount" | "currency" | "securityToken"
+    "orderId" | "amount" | "currency" | "securityToken" | "operationEvidence"
   >;
 }

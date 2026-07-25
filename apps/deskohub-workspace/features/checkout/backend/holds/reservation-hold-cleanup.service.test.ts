@@ -250,7 +250,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
-  test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
+  test("does not expire or cancel a payment attempt whose remote state is not verifiable", async () => {
     const { PaymentLifecycleRepository } = await import(
       "../repositories/payment-lifecycle.repository"
     );
@@ -269,23 +269,11 @@ describe("ReservationHoldCleanupService", () => {
     const orderId = "reservation-cleanup-not-verifiable";
     const attemptId = "attempt-cleanup-not-verifiable";
     const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
-    const claimed = {
-      id: orderId,
-      reservationState: "cancelling",
-      paymentState: "expired",
-      dotyposReservationId: "dotypos-reservation-id",
-      dotyposCustomerId: "dotypos-customer-id",
-    };
-    const claimCancellation = mock(() => Effect.succeed(claimed));
+    const claimCancellation = mock(() => Effect.succeed(null));
     const cancelReservation = mock(() => Effect.void);
     const markCancelled = mock(() => Effect.void);
-    const markTerminalForReservation = mock(() =>
-      Effect.succeed({
-        attempt: { id: attemptId, state: "expired" },
-        changed: true,
-        timestamp: Temporal.Now.instant(),
-      })
-    );
+    const recordHoldCleanupSkipped = mock(() => Effect.void);
+    const markTerminalForReservation = mock(() => Effect.die("not used"));
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
@@ -313,6 +301,7 @@ describe("ReservationHoldCleanupService", () => {
                 ),
                 claimCancellation,
                 markCancelled,
+                recordHoldCleanupSkipped,
               } as unknown as WorkspaceReservationRepositoryType),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -327,24 +316,21 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
-    expect(markTerminalForReservation).toHaveBeenCalledWith({
-      id: attemptId,
-      workspaceReservationId: orderId,
-      state: "expired",
-      failureCode: "payment_not_verifiable_before_cleanup",
-    });
-    expect(claimCancellation).toHaveBeenCalledWith(orderId);
-    expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
-    expect(markCancelled).toHaveBeenCalledWith({
+    expect(markTerminalForReservation).not.toHaveBeenCalled();
+    expect(claimCancellation).not.toHaveBeenCalled();
+    expect(cancelReservation).not.toHaveBeenCalled();
+    expect(markCancelled).not.toHaveBeenCalled();
+    expect(recordHoldCleanupSkipped).toHaveBeenCalledWith({
       id: orderId,
-      cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt,
+      failureCode: "payment_outcome_unconfirmed_before_cleanup",
     });
   });
 
-  test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
-    const { PaymentLifecycleRepository, PaymentLifecycleStateError } =
-      await import("../repositories/payment-lifecycle.repository");
+  test("does not enter terminal settlement for a stale unverified attempt", async () => {
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -376,15 +362,7 @@ describe("ReservationHoldCleanupService", () => {
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
               Layer.succeed(PaymentLifecycleRepository, {
-                markTerminal: mock(() =>
-                  Effect.fail(
-                    new PaymentLifecycleStateError({
-                      operation: "PaymentLifecycleRepository.markTerminal",
-                      paymentAttemptId: attemptId,
-                      message: "stale",
-                    })
-                  )
-                ),
+                markTerminal: mock(() => Effect.die("not used")),
               } as unknown as IPaymentLifecycleRepository),
               Layer.succeed(WorkspaceReservationRepository, {
                 findById: mock(() =>

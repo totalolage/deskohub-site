@@ -8,6 +8,7 @@
   },
   "scripts": {
     "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/nexi-api.yaml --name NexiClient --output ./src/generated/effect.gen.ts",
+    "test": "bun test",
     "typecheck": "bun run generate && tsc --project tsconfig.json"
   },
   "dependencies": {

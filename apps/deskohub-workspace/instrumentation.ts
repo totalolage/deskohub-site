@@ -7,22 +7,14 @@ import {
   createPostHogLoggerProvider,
   registerPostHogLoggerProvider,
 } from "./shared/backend/logging/posthog-otel";
-import {
-  WORKSPACE_SERVICE_NAME,
-  WORKSPACE_SERVICE_NAMESPACE,
-} from "./shared/backend/observability/workspace-service";
+import { createWorkspaceOtelConfiguration } from "./shared/backend/observability/workspace-otel";
 
 export { flushPostHogLogs } from "./shared/backend/logging/posthog-otel";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  registerOTel({
-    serviceName: WORKSPACE_SERVICE_NAME,
-    attributes: {
-      "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
-    },
-  });
+  registerOTel(createWorkspaceOtelConfiguration());
 
   const postHogLoggerProvider = createPostHogLoggerProvider({
     posthogHost: env.NEXT_PUBLIC_POSTHOG_HOST,

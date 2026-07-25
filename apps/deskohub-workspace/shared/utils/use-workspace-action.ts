@@ -28,35 +28,19 @@ type UseWorkspaceActionOptions<
   }) => void;
 };
 
-const getTransportErrorDetails = (error: unknown) => {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-    };
-  }
-
-  return {
-    name: typeof error,
-    message: String(error),
-  };
-};
-
-const captureTransportError = ({
+export const captureWorkspaceActionTransportError = ({
   actionName,
   error,
 }: {
   readonly actionName: string;
   readonly error: unknown;
 }) => {
-  const details = getTransportErrorDetails(error);
+  void error;
 
   try {
     posthog.capture("workspace_safe_action_transport_error", {
       actionName,
-      errorName: details.name,
-      errorMessage: details.message,
-      path: globalThis.location?.pathname,
+      errorCategory: "transport_failure",
     });
   } catch {}
 };
@@ -77,7 +61,7 @@ export function useWorkspaceAction<
     error: unknown,
     input: WorkspaceActionTransportErrorInput<Schema>
   ) => {
-    captureTransportError({ actionName, error });
+    captureWorkspaceActionTransportError({ actionName, error });
     try {
       onTransportError?.({ error, input });
     } catch {}

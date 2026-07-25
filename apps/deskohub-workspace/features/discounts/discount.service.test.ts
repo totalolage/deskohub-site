@@ -7,7 +7,7 @@ import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
-import { getDiscountCommitmentPayload } from "./commitment";
+import { materializeDiscountCommitment } from "./commitment";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
   canonicalDiscountCodeSchema,
@@ -888,8 +888,12 @@ describe("DiscountService", () => {
       providers
     );
 
-    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+    expect(
+      materializeDiscountCommitment(result.commitment, result.quote.discounts)
+    ).toEqual({
+      status: "ready",
       product,
+      displayedDiscountIds: [result.quote.discounts[0]?.discount.id],
       applications: [
         {
           application: result.quote.discounts[0],
@@ -943,8 +947,12 @@ describe("DiscountService", () => {
     );
 
     expect(result.quote.discounts).toHaveLength(1);
-    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+    expect(
+      materializeDiscountCommitment(result.commitment, result.quote.discounts)
+    ).toEqual({
+      status: "ready",
       product,
+      displayedDiscountIds: [result.quote.discounts[0]?.discount.id],
       applications: [
         {
           application: result.quote.discounts[0],
@@ -1004,8 +1012,12 @@ describe("DiscountService", () => {
     );
 
     expect(result.quote.discounts).toEqual([]);
-    expect(getDiscountCommitmentPayload(result.commitment)).toEqual({
+    expect(
+      materializeDiscountCommitment(result.commitment, result.quote.discounts)
+    ).toEqual({
+      status: "ready",
       product,
+      displayedDiscountIds: [],
       applications: [],
     });
   });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -16,6 +17,7 @@ import { Cause, Effect, Layer, Logger, References } from "effect";
 import { createTracingLive } from "../observability/otel-tracing";
 import {
   CENSORED_LOG_VALUE,
+  CensoringLogger,
   censorLoggerOptions,
   censorLogValue,
   createCensoredOtelLogger,
@@ -148,7 +150,7 @@ describe("censorLogValue", () => {
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,
         submittedCode: CENSORED_LOG_VALUE,
-        params: '["SUMMER50"]',
+        params: CENSORED_LOG_VALUE,
         query: "select * from discount_codes where code = $1",
         discountCodeId: "safe-discount-code-id",
         name: CENSORED_LOG_VALUE,
@@ -180,6 +182,41 @@ describe("censorLogValue", () => {
     });
   });
 
+  test("recursively censors plural failure containers with synthetic sensitive markers", () => {
+    const markers = Array.from({ length: 6 }, () => randomUUID());
+    const input = {
+      integration: {
+        errors: [{ detail: markers[0], nested: { payload: markers[1] } }],
+        providerErrors: {
+          primary: { response: markers[2] },
+          secondary: [markers[3]],
+        },
+        nested: {
+          failures: new Map<string, unknown>([
+            ["first", { detail: markers[4] }],
+            ["second", markers[5]],
+          ]),
+        },
+      },
+    };
+
+    const censored = censorLogValue(input);
+    const serialized = JSON.stringify(censored);
+
+    expect(censored).toEqual({
+      integration: {
+        errors: CENSORED_LOG_VALUE,
+        providerErrors: CENSORED_LOG_VALUE,
+        nested: {
+          failures: CENSORED_LOG_VALUE,
+        },
+      },
+    });
+    for (const marker of markers) {
+      expect(serialized).not.toContain(marker);
+    }
+  });
+
   test("handles cycles while preserving the censored cycle shape", () => {
     const input: { name: string; self?: unknown; token?: string } = {
       name: "cycle",
@@ -194,7 +231,7 @@ describe("censorLogValue", () => {
     expect(censored.self).toBe(censored);
   });
 
-  test("redacts sensitive fields inside query params without hiding safe values", () => {
+  test("keeps all database query parameters opaque", () => {
     const input = {
       params: [
         "visible",
@@ -203,8 +240,33 @@ describe("censorLogValue", () => {
     };
 
     expect(censorLogValue(input)).toEqual({
-      params: ["visible", { email: CENSORED_LOG_VALUE, sessionDuration: 123 }],
+      params: [CENSORED_LOG_VALUE, CENSORED_LOG_VALUE],
     });
+  });
+
+  test("censors production-shaped HPP URL aliases", () => {
+    const markers = Array.from({ length: 5 }, () => randomUUID());
+    const censored = censorLogValue({
+      providerResponse: {
+        hostedPage: `https://provider.example/hosted?opaque=${markers[0]}`,
+      },
+      hosted_page: `https://provider.example/hosted?opaque=${markers[1]}`,
+      hppUrl: `https://provider.example/hosted?opaque=${markers[2]}`,
+      paymentSessionUrl: `https://provider.example/hosted?opaque=${markers[3]}`,
+      providerRedirectUrl: `https://provider.example/hosted?opaque=${markers[4]}`,
+    });
+    const serialized = JSON.stringify(censored);
+
+    expect(censored).toEqual({
+      providerResponse: { hostedPage: CENSORED_LOG_VALUE },
+      hosted_page: CENSORED_LOG_VALUE,
+      hppUrl: CENSORED_LOG_VALUE,
+      paymentSessionUrl: CENSORED_LOG_VALUE,
+      providerRedirectUrl: CENSORED_LOG_VALUE,
+    });
+    for (const marker of markers) {
+      expect(serialized).not.toContain(marker);
+    }
   });
 
   test("projects Drizzle query errors without exposing their dynamic message", () => {
@@ -220,21 +282,12 @@ describe("censorLogValue", () => {
     const censored = censorLogValue({ cause: error });
     const serialized = JSON.stringify(censored);
 
-    expect(censored).toEqual({
-      cause: {
-        _tag: "EffectDrizzleQueryError",
-        query: "select * from customers where email = $1",
-        params: [
-          "visible",
-          { email: CENSORED_LOG_VALUE, sessionDuration: 123 },
-        ],
-      },
-    });
+    expect(censored).toEqual({ cause: CENSORED_LOG_VALUE });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("preserves non-plain objects", () => {
+  test("fails closed for non-plain values while projecting errors", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -244,13 +297,34 @@ describe("censorLogValue", () => {
     const input = { thrown: error, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
-    expect(censored).toEqual(input);
-    expect(censored.thrown).toBe(error);
-    expect(censored.date).toBe(date);
-    expect(censored.set).toBe(set);
-    expect(censored.custom).toBe(custom);
-    expect(censored.promise).toBe(promise);
-    expect((censorLogValue(error) as Error).message).toBe("boom");
+    expect(censored).toEqual({
+      thrown: {
+        name: "Error",
+        message: CENSORED_LOG_VALUE,
+      },
+      date: CENSORED_LOG_VALUE,
+      set: CENSORED_LOG_VALUE,
+      custom: CENSORED_LOG_VALUE,
+      promise: CENSORED_LOG_VALUE,
+    });
+    expect(censorLogValue(error)).toEqual({
+      name: "Error",
+      message: CENSORED_LOG_VALUE,
+    });
+  });
+
+  test("fails closed for direct primitive and custom failure values", () => {
+    const marker = randomUUID();
+
+    for (const value of [
+      marker,
+      42,
+      true,
+      new CustomValue(marker),
+      new URL(`https://example.test/?value=${marker}`),
+    ]) {
+      expect(censorLogValue(value)).toBe(CENSORED_LOG_VALUE);
+    }
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -276,7 +350,7 @@ describe("censorLogValue", () => {
     expect(censored.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("sessionDuration")).toBe(123);
     expect(censored.get("nested")).toEqual({ apiKey: CENSORED_LOG_VALUE });
-    expect(censored.get(objectKey)).toBe("visible");
+    expect(censored.get(objectKey)).toBe(CENSORED_LOG_VALUE);
     expect(input.get("password")).toBe("secret-password");
     expect(input.get("headers:authorization")).toBe("Bearer secret");
     expect(input.get("payState")).toBe("pay-state-secret");
@@ -285,40 +359,32 @@ describe("censorLogValue", () => {
     expect(input.get("nested")).toEqual({ apiKey: "secret-api-key" });
   });
 
-  test("redacts sensitive relative URL query params", () => {
+  test("fails closed for direct relative URLs", () => {
     expect(
       censorLogValue(
         "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&discountCode=SUMMER50&submittedCode=SUMMER50&visible=safe#summary"
       )
-    ).toBe(
-      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts sensitive bare relative URL query params", () => {
+  test("fails closed for direct bare relative URLs", () => {
     expect(
       censorLogValue(
         "checkout/pay?payState=secret&checkoutToken=token&visible=safe#summary"
       )
-    ).toBe(
-      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts bare relative URL query params case-insensitively", () => {
+  test("fails closed for direct bare relative URLs case-insensitively", () => {
     expect(
       censorLogValue("checkout/pay?PayState=secret&CHECKOUTTOKEN=token")
-    ).toBe(
-      `checkout/pay?PayState=${encodeURIComponent(CENSORED_LOG_VALUE)}&CHECKOUTTOKEN=${encodeURIComponent(CENSORED_LOG_VALUE)}`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts production-observed name and message URL query params", () => {
+  test("fails closed for direct production-observed form URLs", () => {
     expect(
       censorLogValue("contact?name=Ada&message=Private&visible=safe")
-    ).toBe(
-      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
   test("redacts Headers and URLSearchParams by key without mutating input", () => {
@@ -374,12 +440,15 @@ describe("censorLogValue", () => {
 
 describe("censorLoggerOptions", () => {
   test("redacts message values and annotation values or sensitive annotation keys", () => {
+    const hostedPageMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const annotations = {
       request: { headers: { authorization: "Bearer secret" } },
       sessionToken: "session-secret",
+      providerResponse: { hostedPage },
     };
     const options = {
-      message: { password: "secret", safe: "visible" },
+      message: { password: "secret", safe: "visible", hostedPage },
       logLevel: "Info",
       cause: Cause.empty,
       date: new Date(0),
@@ -398,11 +467,16 @@ describe("censorLoggerOptions", () => {
     expect(censored.message).toEqual({
       password: CENSORED_LOG_VALUE,
       safe: "visible",
+      hostedPage: CENSORED_LOG_VALUE,
     });
     expect(censoredAnnotations.request).toEqual({
       headers: { authorization: CENSORED_LOG_VALUE },
     });
     expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
+    expect(censoredAnnotations.providerResponse).toEqual({
+      hostedPage: CENSORED_LOG_VALUE,
+    });
+    expect(JSON.stringify(censored)).not.toContain(hostedPageMarker);
     expect(annotations.sessionToken).toBe("session-secret");
   });
 
@@ -432,6 +506,95 @@ describe("censorLoggerOptions", () => {
     expect(censoredAnnotations.sessionId).toBe("ph-session");
   });
 
+  test("projects nested Effect failures and defects before console and OTLP sinks", async () => {
+    const failureMarker = randomUUID();
+    const defectMarker = randomUUID();
+    const primitiveFailureMarker = randomUUID();
+    const urlDefectMarker = randomUUID();
+    const customDefectMarker = randomUUID();
+    const errorNameMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${failureMarker}`;
+    const dynamicError = new Error(defectMarker);
+    dynamicError.name = errorNameMarker;
+    const cause = Cause.combine(
+      Cause.combine(
+        Cause.fail({ hostedPage, providerResponse: { token: failureMarker } }),
+        Cause.fail(primitiveFailureMarker)
+      ),
+      Cause.combine(
+        Cause.die(dynamicError),
+        Cause.combine(
+          Cause.die(
+            `https://provider.example/defect?opaque=${urlDefectMarker}`
+          ),
+          Cause.die(new CustomValue(customDefectMarker))
+        )
+      )
+    );
+    const consoleOutput: unknown[] = [];
+    const captureConsole = {
+      assert: () => undefined,
+      clear: () => undefined,
+      count: () => undefined,
+      countReset: () => undefined,
+      debug: (...values: unknown[]) => consoleOutput.push(values),
+      dir: () => undefined,
+      dirxml: () => undefined,
+      error: (...values: unknown[]) => consoleOutput.push(values),
+      group: () => undefined,
+      groupCollapsed: () => undefined,
+      groupEnd: () => undefined,
+      info: (...values: unknown[]) => consoleOutput.push(values),
+      log: (...values: unknown[]) => consoleOutput.push(values),
+      table: () => undefined,
+      time: () => undefined,
+      timeEnd: () => undefined,
+      timeLog: () => undefined,
+      trace: (...values: unknown[]) => consoleOutput.push(values),
+      warn: (...values: unknown[]) => consoleOutput.push(values),
+    };
+    const options = {
+      message: ["payment reconciliation failed", cause],
+      logLevel: "Info",
+      cause,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations
+            ? { providerCause: cause }
+            : ref === References.CurrentLogSpans
+              ? []
+              : captureConsole,
+      },
+    } as Logger.Options<unknown>;
+
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    try {
+      CensoringLogger.log(options);
+      Effect.runSync(createCensoredOtelLogger(provider)).log(options);
+      await provider.forceFlush();
+    } finally {
+      await provider.shutdown();
+    }
+
+    const serialized = JSON.stringify({
+      consoleOutput,
+      otlp: exporter.getFinishedLogRecords(),
+    });
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(failureMarker);
+    expect(serialized).not.toContain(defectMarker);
+    expect(serialized).not.toContain(primitiveFailureMarker);
+    expect(serialized).not.toContain(urlDefectMarker);
+    expect(serialized).not.toContain(customDefectMarker);
+    expect(serialized).not.toContain(errorNameMarker);
+    expect(serialized).not.toContain(hostedPage);
+  });
+
   test("recursively censors params emitted by Drizzle EffectLogger", async () => {
     let capturedParams: unknown;
     const captureLogger = Logger.make((options) => {
@@ -456,9 +619,9 @@ describe("censorLoggerOptions", () => {
     );
 
     expect(capturedParams).toEqual([
-      '"visible"',
-      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
-      "42",
+      CENSORED_LOG_VALUE,
+      CENSORED_LOG_VALUE,
+      CENSORED_LOG_VALUE,
     ]);
   });
 });
@@ -483,7 +646,7 @@ describe("createCensoredOtelLogger", () => {
 
     const record = exporter.getFinishedLogRecords()[0];
 
-    expect(record?.body).toBe("safe message");
+    expect(record?.body).toBe(CENSORED_LOG_VALUE);
     expect(record?.severityNumber).toBe(9);
     expect(record?.severityText).toBe("info");
     expect(record?.attributes).toMatchObject({
@@ -517,15 +680,62 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).not.toContain("Failed query");
     await provider.shutdown();
   });
+
+  test("censors attach values and raw failures through Drizzle and OTel logging", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    const credentialValue = randomUUID();
+    const queryValue = randomUUID();
+    const rawCauseValue = randomUUID();
+    const hostedPageValue = randomUUID();
+    const redirectUrl = `https://provider.example/hosted?opaque=${queryValue}`;
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const logger = yield* EffectLogger;
+        yield* logger.logQuery("update payment_attempts set fields = $1", [
+          credentialValue,
+          redirectUrl,
+        ]);
+        yield* Effect.logError("Checkout hosted payment page attach failed", {
+          providerRedirectUrl: redirectUrl,
+          hostedPage: `https://provider.example/hosted?opaque=${hostedPageValue}`,
+          cause: new Error(rawCauseValue),
+        });
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            EffectLogger.layer,
+            Logger.layer([createCensoredOtelLogger(provider)])
+          )
+        )
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(credentialValue);
+    expect(serialized).not.toContain(queryValue);
+    expect(serialized).not.toContain(rawCauseValue);
+    expect(serialized).not.toContain(hostedPageValue);
+    expect(serialized).not.toContain(redirectUrl);
+    await provider.shutdown();
+  });
 });
 
 describe("createCensoredOtelSpanExporter", () => {
   test("applies the shared telemetry censorship policy to span data", async () => {
     const exporter = new InMemorySpanExporter();
     const privateValue = "private@example.com";
+    const hostedPageMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const provider = new BasicTracerProvider({
       resource: resourceFromAttributes({
         email: privateValue,
+        paymentSessionUrl: hostedPage,
         "service.name": "censorship-test",
         sessionDuration: 456,
       }),
@@ -539,6 +749,7 @@ describe("createCensoredOtelSpanExporter", () => {
         Effect.withSpan("safe.operation", {
           attributes: {
             email: privateValue,
+            hostedPage,
             sessionDuration: 123,
           },
         }),
@@ -555,11 +766,13 @@ describe("createCensoredOtelSpanExporter", () => {
     const [span] = exporter.getFinishedSpans();
     expect(span?.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
+      hostedPage: CENSORED_LOG_VALUE,
       sessionDuration: 123,
     });
     expect(span?.events[0]?.name).toBe("exception");
     expect(span?.resource.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
+      paymentSessionUrl: CENSORED_LOG_VALUE,
       "service.name": "censorship-test",
       sessionDuration: 456,
     });
@@ -571,6 +784,7 @@ describe("createCensoredOtelSpanExporter", () => {
     });
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain(privateValue);
+    expect(serialized).not.toContain(hostedPageMarker);
     await provider.shutdown();
   });
 });

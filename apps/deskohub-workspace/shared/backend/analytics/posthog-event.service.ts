@@ -7,7 +7,10 @@ import {
   PostHogRuntimeConfigLive,
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
-import { censorLogValue } from "@/shared/backend/logging/censorship";
+import {
+  censorLogValue,
+  censorSpanLabel,
+} from "@/shared/backend/logging/censorship";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 
 export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
@@ -110,7 +113,14 @@ export const makePostHogEventService = ({
       );
       const properties = compactProperties({
         ...censoredProperties,
-        ...contextProperties.spanMetadata,
+        ...(contextProperties.spanMetadata["effect.span_name"]
+          ? {
+              ...contextProperties.spanMetadata,
+              "effect.span_name": censorSpanLabel(
+                contextProperties.spanMetadata["effect.span_name"]
+              ),
+            }
+          : {}),
         "deployment.environment.name": config.environment,
         "service.name": config.serviceName,
         "service.namespace": config.serviceNamespace,

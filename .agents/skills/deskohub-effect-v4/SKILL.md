@@ -13,3 +13,5 @@ Read only the references relevant to the change:
 - For discriminated unions, `_tag` construction, and Effect Match, read [references/tagged-unions-and-match.md](references/tagged-unions-and-match.md).
 
 For a broad service or feature refactor, read all relevant references before editing. Update the relevant reference when developer feedback changes a durable convention.
+
+At production logging and telemetry boundaries, project Effect `Cause` values structurally and make every failure or defect payload opaque. Do not recursively retain unkeyed primitives, dynamic `Error` metadata, URLs, containers, or unsupported non-plain defect values. Apply the same censorship before console, OTLP, and direct analytics-event emission; exporter censorship does not protect a separate event client.
