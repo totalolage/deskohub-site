@@ -482,7 +482,7 @@ describe("WorkspaceAvailabilityService", () => {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
         kind: "cowork",
-        tier: "profi",
+        entryTier: "profi",
         monitorOption: "2x27-qhd",
       });
     }
@@ -553,7 +553,7 @@ describe("WorkspaceAvailabilityService", () => {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
         kind: "cowork",
-        tier: "basic",
+        entryTier: "basic",
       });
     }
   });

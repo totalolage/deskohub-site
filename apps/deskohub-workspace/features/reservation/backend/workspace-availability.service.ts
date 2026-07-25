@@ -63,7 +63,7 @@ type WorkspaceAvailabilityError =
 type WorkspaceTableUnavailableReservation =
   | {
       readonly kind: typeof coworkReservationKind;
-      readonly tier: WorkspaceCoworkProductTier;
+      readonly entryTier: WorkspaceCoworkProductTier;
       readonly monitorOption?: WorkspaceProductMonitorOption;
     }
   | {
@@ -309,7 +309,7 @@ const implementation = Effect.gen(function* () {
             }),
             cowork: (coworkQuery) => ({
               kind: coworkReservationKind,
-              tier: coworkQuery.entryTier,
+              entryTier: coworkQuery.entryTier,
               ...(coworkQuery.monitorOption && {
                 monitorOption: coworkQuery.monitorOption,
               }),
