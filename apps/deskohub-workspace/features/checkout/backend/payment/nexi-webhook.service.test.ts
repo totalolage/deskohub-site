@@ -187,7 +187,7 @@ describe("NexiWebhookService", () => {
           findByProviderOrderId: mock(() => Effect.succeed(attempt)),
         } as unknown as PaymentAttemptRepositoryType,
         paymentLifecycle: {
-          createAttempt: mock(() => Effect.die("unused")),
+          createPendingNexiAttempt: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
           markPaid: markPaidForReservation,
           markTerminal: mock(() => Effect.die("unused")),
@@ -257,7 +257,7 @@ describe("NexiWebhookService", () => {
             findByProviderOrderId: mock(() => Effect.succeed(attempt)),
           } as unknown as PaymentAttemptRepositoryType,
           paymentLifecycle: {
-            createAttempt: mock(() => Effect.die("unused")),
+            createPendingNexiAttempt: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markPaid: mock(() =>
               Effect.succeed({

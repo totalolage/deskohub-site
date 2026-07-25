@@ -7,7 +7,10 @@ import {
   makeDiscountCommitment,
 } from "@/features/discounts/commitment";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { validateDiscountCommitment } from "./payment-lifecycle.repository";
+import {
+  validateDiscountCommitment,
+  validateInternalPaymentCommitment,
+} from "./payment-lifecycle.repository";
 
 const readRepository = () =>
   Bun.file(
@@ -25,26 +28,90 @@ const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
 describe("PaymentLifecycleRepository", () => {
   test("owns attempt, reservation, applications, and claim admission in one transaction", async () => {
     const source = await readRepository();
-    const createAttempt = sliceFrom(
+    const createPendingNexiAttempt = sliceFrom(
       source,
-      "const createAttempt = Effect.fn(",
+      "const createPendingNexiAttempt = Effect.fn(",
+      "      const completeInternalPayment"
+    );
+
+    expect(createPendingNexiAttempt).toContain(".transaction");
+    expect(createPendingNexiAttempt).toContain('.for("update")');
+    expect(createPendingNexiAttempt).toContain(".insert(paymentAttempts)");
+    expect(createPendingNexiAttempt).toContain(
+      ".update(workspaceReservations)"
+    );
+    expect(createPendingNexiAttempt).toContain(
+      "yield* persistDiscountApplications"
+    );
+    expect(createPendingNexiAttempt).toContain(
+      "yield* reserveCommittedCodeClaim"
+    );
+    expect(
+      createPendingNexiAttempt.indexOf("Temporal.Now.instant()")
+    ).toBeGreaterThan(createPendingNexiAttempt.indexOf('.for("update")'));
+    expect(
+      createPendingNexiAttempt.indexOf(".insert(paymentAttempts)")
+    ).toBeLessThan(
+      createPendingNexiAttempt.indexOf("yield* persistDiscountApplications")
+    );
+    expect(
+      createPendingNexiAttempt.indexOf("yield* persistDiscountApplications")
+    ).toBeLessThan(
+      createPendingNexiAttempt.indexOf("yield* reserveCommittedCodeClaim")
+    );
+  });
+
+  test("atomically completes an internal payment with applications and immediate claim redemption", async () => {
+    const source = await readRepository();
+    const completeInternalPayment = sliceFrom(
+      source,
+      "const completeInternalPayment = Effect.fn(",
       "      const attachProviderSession"
     );
 
-    expect(createAttempt).toContain(".transaction");
-    expect(createAttempt).toContain('.for("update")');
-    expect(createAttempt).toContain(".insert(paymentAttempts)");
-    expect(createAttempt).toContain(".update(workspaceReservations)");
-    expect(createAttempt).toContain(".insert(discountApplications)");
-    expect(createAttempt).toContain("yield* reserveCodeClaim");
-    expect(createAttempt.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
-      createAttempt.indexOf('.for("update")')
+    expect(completeInternalPayment).toContain(".transaction");
+    expect(completeInternalPayment).toContain('.for("update")');
+    expect(completeInternalPayment).toContain('provider: "internal"');
+    expect(completeInternalPayment).toContain('state: "paid"');
+    expect(completeInternalPayment).toContain(".insert(paymentAttempts)");
+    expect(completeInternalPayment).toContain(".update(workspaceReservations)");
+    expect(completeInternalPayment).toContain(
+      "yield* persistDiscountApplications"
     );
-    expect(createAttempt.indexOf(".insert(paymentAttempts)")).toBeLessThan(
-      createAttempt.indexOf(".insert(discountApplications)")
+    expect(completeInternalPayment).toContain(
+      "yield* reserveCommittedCodeClaim"
     );
-    expect(createAttempt.indexOf(".insert(discountApplications)")).toBeLessThan(
-      createAttempt.indexOf("yield* reserveCodeClaim")
+    expect(completeInternalPayment).toContain("yield* redeemCodeClaim");
+    expect(
+      completeInternalPayment.indexOf("Temporal.Now.instant()")
+    ).toBeGreaterThan(completeInternalPayment.indexOf('.for("update")'));
+    expect(
+      completeInternalPayment.indexOf("yield* reserveCommittedCodeClaim")
+    ).toBeLessThan(completeInternalPayment.indexOf("yield* redeemCodeClaim"));
+  });
+
+  test("uses the admitted claim timestamp for immediate internal redemption", async () => {
+    const source = await readRepository();
+    const completeInternalPayment = sliceFrom(
+      source,
+      "const completeInternalPayment = Effect.fn(",
+      "      const attachProviderSession"
+    );
+    const reserveClaim = sliceFrom(
+      source,
+      'const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")',
+      'const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")'
+    );
+
+    expect(reserveClaim).toContain("return claimedAt");
+    expect(completeInternalPayment).toContain(
+      "const claimedAt = yield* reserveCommittedCodeClaim"
+    );
+    expect(completeInternalPayment).toContain(
+      "yield* redeemCodeClaim(tx, attemptRow.id, claimedAt)"
+    );
+    expect(completeInternalPayment).not.toContain(
+      "yield* redeemCodeClaim(tx, attemptRow.id, paidAt)"
     );
   });
 
@@ -88,7 +155,7 @@ describe("PaymentLifecycleRepository", () => {
     const terminal = sliceFrom(
       source,
       'const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")',
-      "      return {\n        createAttempt,"
+      "      return {\n        createPendingNexiAttempt,"
     );
 
     expect(paid).toContain("db.transaction");
@@ -137,6 +204,35 @@ describe("PaymentLifecycleRepository", () => {
     const result = await Effect.runPromise(
       Effect.result(
         validateDiscountCommitment(getDiscountCommitmentPayload(commitment))
+      )
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        _tag: "DiscountClaimError",
+        operation: "reserve",
+        reason: "money_mismatch",
+      },
+    });
+  });
+
+  test("rejects an internal payment without a full-discount commitment", async () => {
+    const commitment = makeDiscountCommitment({
+      product: { kind: "cowork", tier: "basic" },
+      applications: [],
+    });
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        validateInternalPaymentCommitment(
+          getDiscountCommitmentPayload(commitment),
+          {
+            value: 0,
+            exponent: 2,
+            currency: "CZK",
+          }
+        )
       )
     );
 

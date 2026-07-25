@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { submitCoworkReservationScript } from "../browser-scripts";
@@ -12,6 +13,8 @@ import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
 
 let checkoutContactSequence = 0;
+const emailLocalPartLimit = 64;
+const deliveredEmailPrefix = "delivered+";
 
 export const checkoutFlows: readonly CheckoutFlow[] = [
   {
@@ -29,12 +32,18 @@ const makeCheckoutContact = (flowId: string) => {
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
   const sequence = String(checkoutContactSequence % 100).padStart(2, "0");
-  const emailKey = `${flowId}-${runId}-${sequence}`
-    .toLowerCase()
-    .replaceAll(/[^a-z0-9]+/g, "-");
+  const uniqueSuffix = randomUUID().slice(0, 8);
+  const normalizedFlowId = flowId.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-");
+  const uniqueEmailKey = `${runId}-${sequence}-${uniqueSuffix}`;
+  const maxEmailFlowIdLength =
+    emailLocalPartLimit -
+    deliveredEmailPrefix.length -
+    uniqueEmailKey.length -
+    1;
+  const emailKey = `${normalizedFlowId.slice(0, maxEmailFlowIdLength)}-${uniqueEmailKey}`;
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
   const phone = `+4207${runId.slice(2, 8)}${sequence}`;
-  const email = `delivered+${emailKey}@resend.dev`;
+  const email = `${deliveredEmailPrefix}${emailKey}@resend.dev`;
   const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
   return { email, message, name, phone };

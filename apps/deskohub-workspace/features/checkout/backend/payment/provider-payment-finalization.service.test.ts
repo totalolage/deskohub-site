@@ -21,7 +21,7 @@ const paymentLifecycleLayer = (
   overrides: Partial<IPaymentLifecycleRepository> = {}
 ) =>
   Layer.succeed(PaymentLifecycleRepository, {
-    createAttempt: () => Effect.die("not used"),
+    createPendingNexiAttempt: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),

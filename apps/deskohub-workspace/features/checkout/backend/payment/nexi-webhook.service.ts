@@ -28,6 +28,7 @@ import {
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
 } from "../fulfillment/paid-fulfillment.service";
 import {
+  isNexiPaymentAttempt,
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
@@ -347,7 +348,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             );
           }
 
-          if (!attempt.securityToken) {
+          if (!isNexiPaymentAttempt(attempt) || !attempt.securityToken) {
             yield* Effect.logWarning(
               "Nexi webhook payment attempt is missing security token"
             );

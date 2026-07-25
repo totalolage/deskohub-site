@@ -40,7 +40,11 @@ export function CheckoutDiscountCodeForm({
   const action = applyDiscountCodeForm.bind(null, locale, payStateToken);
 
   return (
-    <form action={action} className="space-y-3">
+    <form
+      action={action}
+      className="space-y-3"
+      id="checkout-discount-code-form"
+    >
       <Label htmlFor="checkout-discount-code">
         {m.checkoutDiscountCodeLabel({}, { locale })}
       </Label>

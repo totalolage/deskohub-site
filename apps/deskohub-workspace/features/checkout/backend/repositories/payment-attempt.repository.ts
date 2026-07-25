@@ -23,6 +23,16 @@ export const toPaymentAttempt = (attempt: PaymentAttemptRow) => {
 
 export type PaymentAttempt = ReturnType<typeof toPaymentAttempt>;
 
+export type NexiPaymentAttempt = PaymentAttempt & {
+  readonly provider: "nexi";
+  readonly providerOrderId: string;
+};
+
+export const isNexiPaymentAttempt = (
+  attempt: PaymentAttempt
+): attempt is NexiPaymentAttempt =>
+  attempt.provider === "nexi" && attempt.providerOrderId !== null;
+
 export interface IPaymentAttemptRepository {
   readonly findById: (
     id: string
@@ -63,7 +73,12 @@ export class PaymentAttemptRepository extends Context.Service<
         const [attempt] = yield* db
           .select()
           .from(paymentAttempts)
-          .where(eq(paymentAttempts.providerOrderId, providerOrderId))
+          .where(
+            and(
+              eq(paymentAttempts.provider, "nexi"),
+              eq(paymentAttempts.providerOrderId, providerOrderId)
+            )
+          )
           .limit(1);
         return attempt ? toPaymentAttempt(attempt) : null;
       });

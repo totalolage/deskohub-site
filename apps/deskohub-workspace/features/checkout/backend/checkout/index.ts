@@ -3,6 +3,7 @@ export * from "./checkout.service";
 export * from "./checkout-pay-url";
 export * from "./checkout-pricing.service";
 export * from "./checkout-status.service";
+export * from "./checkout-status-url";
 export * from "./pay-state";
 export * from "./pay-state.server";
 export * from "./payable-reservation.service";

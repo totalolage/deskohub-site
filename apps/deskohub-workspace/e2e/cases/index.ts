@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { submitCoworkReservationScript } from "../browser-scripts";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,
@@ -16,6 +17,7 @@ import type {
   WorkspaceE2ECase,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
+import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
 import { assertLocaleSwitcher } from "./locale";
 import {
@@ -44,7 +46,7 @@ export const makeWorkspaceE2ECases = ({
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
-      checkoutFlows.length + terminalScenarios.length + 1
+      checkoutFlows.length + terminalScenarios.length + 2
     );
     const cases: WorkspaceE2ECase[] = [
       {
@@ -53,7 +55,7 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run locale switch e2e case", cause)
             )
-        ),
+          ),
         id: "locale-switch",
         timeoutMs: config.timeouts.localeCase,
       },
@@ -63,7 +65,7 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError("run contact form e2e case", cause)
             )
-        ),
+          ),
         id: "contact-form",
         timeoutMs: config.timeouts.contactCase,
       },
@@ -97,7 +99,7 @@ export const makeWorkspaceE2ECases = ({
                 cause
               )
             )
-        ),
+          ),
         id: `payment-${scenario.state}`,
         timeoutMs: config.timeouts.paymentTerminalCase,
       });
@@ -131,9 +133,40 @@ export const makeWorkspaceE2ECases = ({
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run reservation replacement e2e case", cause)
           )
-      ),
+        ),
       id: "reservation-replacement",
       timeoutMs: config.timeouts.checkoutCase,
+    });
+
+    const zeroTotalDate = yield* requireCheckoutDate(
+      checkoutDates,
+      nextDateIndex
+    );
+    const zeroTotalData = makeCoworkCheckoutData(
+      config.baseUrl,
+      zeroTotalDate,
+      "cowork-zero-total"
+    );
+    nextDateIndex += 1;
+    const zeroTotalState = trackCheckoutState(flowStates, zeroTotalData);
+    cases.push({
+      execute: ({ runStep, session }) =>
+        executeZeroTotalCheckout({
+          config,
+          data: zeroTotalData,
+          datasourceConfig,
+          run,
+          runStep,
+          session,
+          state: zeroTotalState,
+          submitReservationScript: submitCoworkReservationScript,
+        }).pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("run zero-total checkout e2e case", cause)
+          )
+        ),
+      id: "checkout-zero-total",
+      timeoutMs: config.timeouts.zeroTotalCheckoutCase,
     });
 
     for (const flow of checkoutFlows) {
@@ -162,7 +195,7 @@ export const makeWorkspaceE2ECases = ({
             Effect.mapError((cause) =>
               toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
             )
-        ),
+          ),
         id: `checkout-${flow.id}`,
         timeoutMs: config.timeouts.checkoutCase,
       });

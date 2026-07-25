@@ -162,7 +162,7 @@ const waitForCheckoutStatusPage = (
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
 
-const assertFulfilledStatusPage = ({
+export const assertFulfilledStatusPage = ({
   config,
   locale,
   orderId,

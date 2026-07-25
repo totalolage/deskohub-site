@@ -80,7 +80,7 @@ describe("CheckoutDiscountCodeForm", () => {
     expect(codeInput.name).toBe("submittedCode");
     expect(codeInput.value).toBe("");
     expect(codeInput.getAttribute("data-ph-mask")).not.toBeNull();
-    expect(codeInput.closest("form")).not.toBeNull();
+    expect(codeInput.closest("form")?.id).toBe("checkout-discount-code-form");
   });
 
   test("shows one field error while retaining the form", async () => {

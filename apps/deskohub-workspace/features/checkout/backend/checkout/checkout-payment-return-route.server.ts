@@ -1,17 +1,13 @@
 import { Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
-import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import {
-  type CheckoutStatusReturnOutcome,
-  CheckoutStatusService,
-} from "./checkout-status.service";
-import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
+import { CheckoutStatusService } from "./checkout-status.service";
+import { getCheckoutStatusPath } from "./checkout-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
@@ -26,21 +22,6 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
     outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
-
-const getCheckoutStatusRedirectPath = (input: {
-  readonly locale: Locale;
-  readonly orderId: string;
-  readonly outcome: CheckoutStatusReturnOutcome;
-}) => {
-  const url = new URL(
-    `/${input.locale}/checkout/status/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  url.searchParams.set("outcome", input.outcome);
-  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  return `${url.pathname}${url.search}`;
-};
 
 const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (
@@ -79,7 +60,12 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
 
     return NextResponse.redirect(
       new URL(
-        getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
+        getCheckoutStatusPath({
+          locale,
+          orderId,
+          outcome,
+          setBypassCookie: true,
+        }),
         request.url
       )
     );

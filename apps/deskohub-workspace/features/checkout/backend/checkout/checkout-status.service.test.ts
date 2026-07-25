@@ -229,7 +229,7 @@ describe("CheckoutStatusService", () => {
     expect(cancelOrderHold).not.toHaveBeenCalled();
   });
 
-  test("reconstructs a paid fulfilled reservation summary without PII", async () => {
+  test("reconstructs an internal zero-total fulfilled reservation without PII", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
       "./checkout-status.service"
     );
@@ -258,7 +258,17 @@ describe("CheckoutStatusService", () => {
     } as unknown as WorkspaceReservationRepositoryType;
     const paymentAttempts = {
       findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt())
+        Effect.succeed(
+          makePaymentAttempt({
+            provider: "internal",
+            providerOrderId: null,
+            amount: {
+              value: 0,
+              exponent: 2,
+              currency: "CZK",
+            },
+          })
+        )
       ),
     } as unknown as PaymentAttemptRepositoryType;
     const finalization: ProviderPaymentFinalizationServiceType = {
@@ -353,7 +363,7 @@ describe("CheckoutStatusService", () => {
         date: "2026-06-20",
         coffee: false,
         monitorOption: "2x27-qhd",
-        price: { value: 55_000, exponent: 2, currency: "CZK" },
+        price: { value: 0, exponent: 2, currency: "CZK" },
       },
       tableMap: {
         assignedTableId: "assigned-table",

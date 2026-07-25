@@ -5,6 +5,7 @@ import {
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
+  getCheckoutStatusPath,
 } from "@/features/checkout/backend/checkout";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
@@ -96,19 +97,6 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   return `${url.pathname}${url.search}`;
 };
 
-const getCheckoutStatusRedirectPath = (input: {
-  readonly locale: string;
-  readonly orderId: string;
-}) => {
-  const url = new URL(
-    `/${input.locale}/checkout/status/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  return `${url.pathname}${url.search}`;
-};
-
 const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
   Object.fromEntries(url.searchParams);
 
@@ -142,7 +130,14 @@ const handleCheckoutResult = Effect.fn("handleCheckoutResult")(function* (
   }
 
   return NextResponse.redirect(
-    new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
+    new URL(
+      getCheckoutStatusPath({
+        locale,
+        orderId,
+        setBypassCookie: true,
+      }),
+      request.url
+    )
   );
 });
 

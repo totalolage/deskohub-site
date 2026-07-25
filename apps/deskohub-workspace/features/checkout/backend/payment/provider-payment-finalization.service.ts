@@ -25,6 +25,7 @@ import {
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
 } from "../fulfillment/paid-fulfillment.service";
 import {
+  isNexiPaymentAttempt,
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
@@ -150,7 +151,11 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           yield* Effect.logDebug(
             "Payment finalization attempt lookup completed"
           );
-          if (!attempt?.securityToken) {
+          if (
+            !attempt ||
+            !isNexiPaymentAttempt(attempt) ||
+            !attempt.securityToken
+          ) {
             yield* Effect.logWarning(
               "Payment finalization returned not_verifiable"
             );

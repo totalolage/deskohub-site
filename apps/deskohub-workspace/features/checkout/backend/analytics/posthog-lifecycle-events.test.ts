@@ -22,6 +22,7 @@ describe("PostHog lifecycle events", () => {
         attempt: {
           id: attemptId,
           workspaceReservationId: reservationId,
+          provider: "nexi",
           providerOrderId: "provider-order-id",
           amount: {
             value: 35_000,
@@ -55,8 +56,58 @@ describe("PostHog lifecycle events", () => {
       amount_value: 35_000,
       currency: "CZK",
       payment_attempt_id: attemptId,
+      provider: "nexi",
       provider_order_id: "provider-order-id",
       reservation_id: reservationId,
+    });
+  });
+
+  test("captures an internal zero-total payment without external provider fields", async () => {
+    const { capturePaymentCompleted } = await import(
+      "./posthog-lifecycle-events"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const captures: CapturePostHogEventInput[] = [];
+    const attemptId = "019edbd2-82f7-7cc0-8536-f2b3874d62d6";
+    const reservationId = "019edbcf-5026-7ecc-821b-eda46998eaab";
+    const timestamp = Temporal.Instant.from("2026-06-17T12:00:00.000Z");
+
+    await Effect.runPromise(
+      capturePaymentCompleted({
+        attempt: {
+          id: attemptId,
+          workspaceReservationId: reservationId,
+          provider: "internal",
+          providerOrderId: null,
+          amount: {
+            value: 0,
+            exponent: 2,
+            currency: "CZK",
+          },
+        },
+        timestamp,
+      }).pipe(
+        Effect.provide(
+          Layer.succeed(PostHogEventService, {
+            capture: (input) =>
+              Effect.sync(() => {
+                captures.push(input);
+              }),
+          })
+        )
+      )
+    );
+
+    expect(captures[0]?.properties).toEqual({
+      amount: 0,
+      amount_exponent: 2,
+      amount_value: 0,
+      currency: "CZK",
+      reservation_id: reservationId,
+      payment_attempt_id: attemptId,
+      provider: "internal",
     });
   });
 });
