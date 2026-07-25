@@ -631,7 +631,6 @@ describe("ProviderPaymentFinalizationService", () => {
             "provider_order_identity",
             "provider_amount",
             "provider_currency",
-            "provider_operation_evidence",
           ],
         });
       }

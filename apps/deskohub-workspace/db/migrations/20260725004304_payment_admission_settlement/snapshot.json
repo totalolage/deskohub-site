@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "2cb12bae-5e7c-44c2-b6eb-d0c8d510bd44",
+  "id": "7af2ab07-f398-40de-a2a9-9ed6aa7f01ae",
   "prevIds": [
-    "083a1001-8f45-4d9d-8e55-a567c13902e6"
+    "2cb12bae-5e7c-44c2-b6eb-d0c8d510bd44"
   ],
   "ddl": [
     {
@@ -1054,6 +1054,19 @@
       "table": "payment_attempts"
     },
     {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "provider_evidence_conflicted",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
       "type": "text",
       "typeSchema": null,
       "notNull": false,
@@ -1608,6 +1621,19 @@
       "generated": null,
       "identity": null,
       "name": "active_payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "active_payment_evidence_conflicted",
       "entityType": "columns",
       "schema": "public",
       "table": "workspace_reservations"

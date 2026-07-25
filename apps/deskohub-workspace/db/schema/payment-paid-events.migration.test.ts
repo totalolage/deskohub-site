@@ -27,10 +27,28 @@ describe("payment paid event migration contract", () => {
     expect(migration).toContain(
       'CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"'
     );
+    expect(migration).toContain(
+      'CREATE TRIGGER "payment_evidence_conflicts_materialize"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "payment_attempts_guard_provider_evidence_conflict"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "payment_attempts_reject_provider_evidence_conflicted_settlement"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "workspace_reservations_reject_provider_evidence_conflicted_settlement"'
+    );
     expect(migration).toContain("deskohub.verified_v2_terminal_settlement");
     expect(migration).toContain('OLD."admission_version" = 2');
     expect(migration).toContain("attempt.\"state\" IN ('created', 'pending')");
     expect(migration).toContain("OLD.\"state\" IN ('created', 'pending')");
     expect(migration).toContain('CREATE TABLE "payment_evidence_conflicts"');
+    expect(migration).toContain(
+      '"active_payment_evidence_conflicted" boolean DEFAULT false NOT NULL'
+    );
+    expect(migration).toContain(
+      "NEW.\"reservation_state\" IN (\n      'hold_expired',\n      'cancelling',\n      'cancelled'"
+    );
   });
 });

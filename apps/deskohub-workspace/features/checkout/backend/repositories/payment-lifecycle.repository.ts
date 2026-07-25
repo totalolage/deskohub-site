@@ -650,6 +650,38 @@ export class PaymentLifecycleRepository extends Context.Service<
       }) {
         return yield* db.transaction((tx) =>
           Effect.gen(function* () {
+            const [currentAttempt] = yield* tx
+              .select({ id: paymentAttempts.id })
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  )
+                )
+              )
+              .limit(1)
+              .for("update");
+            if (!currentAttempt) {
+              return { outcome: "lost" as const };
+            }
+
+            const [existingConflict] = yield* tx
+              .select({ id: paymentEvidenceConflicts.id })
+              .from(paymentEvidenceConflicts)
+              .where(eq(paymentEvidenceConflicts.paymentAttemptId, input.id))
+              .limit(1);
+            if (existingConflict) {
+              return yield* lifecycleStateError(
+                "markProviderStartFailed",
+                input.id,
+                "Recorded provider evidence conflicts require manual review before provider-start failure settlement.",
+                "provider_evidence_conflict"
+              );
+            }
+
             yield* authorizeVerifiedV2TerminalSettlement(tx);
 
             const [attempt] = yield* tx
@@ -898,6 +930,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "A terminal unsuccessful attempt cannot be marked paid.",
                   "provider_evidence_conflict"
                 );
+              }
+
+              if (currentAttempt.admissionVersion === 2) {
+                yield* authorizeVerifiedV2TerminalSettlement(tx);
               }
 
               const [attempt] = yield* tx

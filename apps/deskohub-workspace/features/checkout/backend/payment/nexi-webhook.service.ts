@@ -404,9 +404,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             correlationId: reservation.correlationId,
             amount: String(attempt.amount.value),
             currency: getNexiCurrencyOverride() ?? currency,
-            ...(attempt.securityToken
-              ? { securityToken: attempt.securityToken }
-              : {}),
+            securityToken: attempt.securityToken ?? envelope.securityToken,
           };
           yield* Effect.logInfo("Nexi webhook payment verification started");
 

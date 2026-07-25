@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   jsonb,
@@ -77,6 +78,11 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<FulfillmentState>(),
     activePaymentAttemptId: text("active_payment_attempt_id"),
+    activePaymentEvidenceConflicted: boolean(
+      "active_payment_evidence_conflicted"
+    )
+      .notNull()
+      .default(false),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),

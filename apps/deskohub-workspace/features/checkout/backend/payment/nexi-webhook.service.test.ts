@@ -242,6 +242,7 @@ describe("NexiWebhookService", () => {
       correlationId: "correlation-id",
       amount: "35000",
       currency: "EUR",
+      securityToken: "security-token",
     });
     expect(markPaidForReservation).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -258,6 +259,94 @@ describe("NexiWebhookService", () => {
     );
     expect(markFailed).not.toHaveBeenCalled();
   });
+
+  for (const providerStatus of ["success", "failure"] as const) {
+    test(`fences unattached ${providerStatus} settlement when provider token aliases contradict the webhook`, async () => {
+      const markProcessed = mock(() => Effect.void);
+      const markFailed = mock(() => Effect.void);
+      const recordEvidenceConflict = mock(() => Effect.void);
+      const markPaid = mock(() => Effect.die("unused"));
+      const markTerminal = mock(() => Effect.die("unused"));
+      const fulfillPaidOrder = mock(() => Effect.die("unused"));
+      const verifyPaymentOutcome = mock(
+        (input: { readonly securityToken?: string }) =>
+          input.securityToken === payload.securityToken
+            ? Effect.succeed({
+                ...verification,
+                status: "manual_review" as const,
+                provider: {
+                  ...verification.provider,
+                  orderStatus:
+                    providerStatus === "success" ? "EXECUTED" : "DECLINED",
+                  captureExecuted: providerStatus === "success",
+                },
+                mismatches: ["securityToken" as const],
+              })
+            : Effect.die("webhook token was not used as expected evidence")
+      );
+
+      const result = await Effect.runPromise(
+        Effect.result(
+          await buildWebhookEffect(
+            {
+              webhookEvents: {
+                insertReceived: mock(() =>
+                  Effect.succeed({ status: "inserted", event: receivedEvent })
+                ),
+                linkPaymentAttempt: mock(() => Effect.void),
+                markProcessed,
+                markFailed,
+                claimRetry: mock(() => Effect.die("unused")),
+              } as unknown as WebhookEventRepositoryType,
+              paymentAttempts: {
+                findByProviderOrderId: mock(() =>
+                  Effect.succeed({
+                    ...attempt,
+                    state: "created" as const,
+                    securityToken: null,
+                    providerRedirectUrl: null,
+                  })
+                ),
+              } as unknown as PaymentAttemptRepositoryType,
+              paymentLifecycle: {
+                admitPaymentStart: mock(() => Effect.die("unused")),
+                attachProviderSession: mock(() => Effect.die("unused")),
+                markProviderStartFailed: mock(() => Effect.die("unused")),
+                recordEvidenceConflict,
+                markPaid,
+                markTerminal,
+              },
+              reservations: {
+                findById: mock(() => Effect.succeed(reservation as never)),
+              } as unknown as WorkspaceReservationRepositoryType,
+              nexi: { verifyPaymentOutcome } as unknown as NexiServiceType,
+              fulfillment: { fulfillPaidOrder },
+            },
+            providerStatus === "success" ? payload : failurePayload
+          )
+        )
+      );
+
+      expect(result._tag).toBe("Failure");
+      expect(verifyPaymentOutcome).toHaveBeenCalledWith(
+        expect.objectContaining({ securityToken: payload.securityToken })
+      );
+      expect(recordEvidenceConflict).toHaveBeenCalledWith({
+        id: attempt.id,
+        workspaceReservationId: reservation.id,
+        conflictCodes: ["provider_security_token"],
+      });
+      expect(markFailed).toHaveBeenCalledWith({
+        type: "eventId",
+        eventId: payload.eventId,
+        errorCode: "nexi_webhook_verification_mismatch",
+      });
+      expect(markProcessed).not.toHaveBeenCalled();
+      expect(markPaid).not.toHaveBeenCalled();
+      expect(markTerminal).not.toHaveBeenCalled();
+      expect(fulfillPaidOrder).not.toHaveBeenCalled();
+    });
+  }
 
   test("settles a provider failure idempotently and marks the event processed", async () => {
     const markProcessed = mock(() => Effect.void);

@@ -18,10 +18,7 @@ export const getProviderEvidenceConflictCodes = (
   const conflictCodes = verification.mismatches.map(
     (mismatch) => conflictCodeByMismatch[mismatch]
   );
-  if (
-    verification.status === "manual_review" &&
-    !conflictCodes.includes("provider_operation_evidence")
-  ) {
+  if (verification.status === "manual_review" && conflictCodes.length === 0) {
     conflictCodes.push("provider_operation_evidence");
   }
   return [...new Set(conflictCodes)];

@@ -101,6 +101,7 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | `payment_state` | text enum | yes | Aggregate payment state across attempts. |
 | `fulfillment_state` | text enum | yes | Local post-payment/legal-delivery workflow state. |
 | `active_payment_attempt_id` | text | no | Current payment attempt, if a Nexi session exists. |
+| `active_payment_evidence_conflicted` | boolean | yes | Database-materialized fence for conflicts on the exact active attempt. |
 | `reservation_hold_expires_at` | timestamptz | no | Local hold deadline used for cleanup scheduling. Mirrors Deskohub hold policy, not Dotypos facts. |
 | `reservation_hold_expired_at` | timestamptz | no | When local cleanup observed the hold as expired. |
 | `reservation_created_at` | timestamptz | no | When Dotypos reservation creation succeeded. |
@@ -146,6 +147,7 @@ same durable attempt for stable-order reconciliation.
 | `displayed_discount_ids` | jsonb array | version 2 | Ordered public discount IDs displayed in the admitted summary. |
 | `provider_start_lease_id` | text | created version 2 attempts | Opaque short lease fencing one HPP start/attach owner. |
 | `provider_start_lease_expires_at` | timestamptz | created version 2 attempts | Database-clock lease deadline. |
+| `provider_evidence_conflicted` | boolean | yes | Monotonic database-materialized settlement fence. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
@@ -288,7 +290,9 @@ Allowed payment transitions:
 
 - Reservation aggregate: `not_started -> pending -> paid`.
 - Reservation aggregate: `not_started -> pending -> failed|cancelled|expired`.
-- Attempt: `created -> pending -> paid|failed|cancelled|expired`.
+- Attempt: `created -> pending` when attachment succeeds, and
+  `(created|pending) -> paid|failed|cancelled|expired` after authoritative
+  verification.
 - A verified provider result may settle `created` directly when HPP creation succeeded remotely but its response or local attachment was ambiguous.
 - A durable version 2 `created` attempt means the state-creating Nexi POST may
   already have reached the provider. The POST is never retried and an expired
@@ -479,7 +483,7 @@ sequenceDiagram
   Webhook->>Webhook: Compare notification securityToken if present
   Webhook->>Nexi: GET /orders/{provider_order_id}
   Nexi-->>Webhook: Verified payment result
-  Webhook->>DB: In one transaction mark attempt/reservation paid and redeem reserved discount claim
+  Webhook->>DB: Atomically mark (created|pending) attempt/reservation paid, redeem claim, and enqueue payment_paid_events
   Webhook->>DB: Claim fulfillment_state=processing and reservation_state=confirming
   Fulfillment->>Dotypos: Confirm/finalize reservation using dotyposReservationId
   Dotypos-->>Fulfillment: Confirmation success
@@ -503,7 +507,7 @@ sequenceDiagram
   Return->>DB: Load active payment attempt
   Return->>Nexi: Verify provider_order_id when needed
   Nexi-->>Return: Terminal unsuccessful or pending result
-  Return->>DB: In one transaction mark attempt/reservation terminal and release reserved discount claim
+  Return->>DB: In one transaction mark (created|pending) attempt/reservation terminal and release reserved discount claim
   Return->>Cleanup: Request unpaid hold cancellation
   Cleanup->>DB: Claim reservation_state=cancelling
   Cleanup->>Dotypos: Cancel Dotypos reservation hold
@@ -561,17 +565,20 @@ Deploy settlement support before enabling admission version 2:
    an expired lease enters read-only reconciliation and never issues another
    provider POST.
 3. Verify the non-internal trigger inventory contains exactly the two paid
-   event triggers plus `payment_attempts_guard_unverified_v2_terminal` and
-   `workspace_reservations_guard_unverified_v2_terminal`. The guard pair is
-   the rollback fence: code that predates v2 admission cannot terminalize an
-   active v2 provider start or attached pending session.
+   event triggers, the two v2 rollback guards,
+   `payment_evidence_conflicts_materialize`, the monotonic attempt-conflict
+   guard, and the attempt/reservation conflict-settlement replay guards. These
+   materialized conflict flags fence legacy paid and unsuccessful-terminal
+   writes for every admission version. The reservation guard also rejects entry into
+   `hold_expired`, `cancelling`, or `cancelled` while the exact active v2
+   attempt remains `created` or `pending`.
 4. Drain every old writer and verify the deployment/version inventory contains
    no process running code from before this migration contract.
 5. Rerun the migration's final idempotent
    `INSERT ... SELECT ... ON CONFLICT DO NOTHING` reconciliation.
-6. Require both verification counts below to be zero, record counts only, and
+6. Require all three verification counts below to be zero, record counts only, and
    then enable `WORKSPACE_PAYMENT_ADMISSION_VERSION=2`.
-7. Repeat both zero-count checks before an S5-07 consumer starts processing
+7. Repeat all three zero-count checks before an S5-07 consumer starts processing
    paid events.
 
 The old-writer drain is an exact version gate: record the immutable
@@ -586,7 +593,7 @@ Rollback is a separate exact version gate and must never be performed merely
 by unsetting admission. First unset `WORKSPACE_PAYMENT_ADMISSION_VERSION` and
 deploy the settlement-capable version everywhere; this stops only new v2
 attempts and keeps attached-session reuse and stable-order reconciliation
-running. Keep the additive migration and all four triggers installed. Drain
+running. Keep the additive migration and all eight triggers installed. Drain
 and reconcile until this count is zero:
 
 ```sql
@@ -601,13 +608,14 @@ where attempt.admission_version = 2
 ```
 
 Then repeat the deployment inventory, missing-paid-event, and invalid-event
-checks. A rollback to a pre-v2 binary is prohibited unless all four checks are
+checks. A rollback to a pre-v2 binary is prohibited unless all five checks are
 recorded at zero/current-only and no old queue or cron invocation remains.
 The zero count covers both unattached starts and attached pending sessions.
 Before recording it, verify that no v2 row remains active with a different
 pricing fingerprint or ordered displayed-discount identity; a same-total
-commitment is not equivalent. The database rollback fence remains installed
-after binary rollback: an accidentally delayed legacy cleanup transaction
+commitment is not equivalent. The database rollback and conflict fences remain
+installed after binary rollback: an accidentally delayed legacy cleanup
+transaction
 receives a constraint error before it can terminalize either active v2 state
 or cancel the hold. Removing the fence
 or rolling back this migration requires a later, separately reviewed
@@ -625,9 +633,29 @@ where not trigger.tgisinternal
     'payment_attempts_enqueue_paid_event',
     'workspace_reservations_enqueue_paid_event',
     'payment_attempts_guard_unverified_v2_terminal',
-    'workspace_reservations_guard_unverified_v2_terminal'
+    'workspace_reservations_guard_unverified_v2_terminal',
+    'payment_evidence_conflicts_materialize',
+    'payment_attempts_guard_provider_evidence_conflict',
+    'payment_attempts_reject_provider_evidence_conflicted_settlement',
+    'workspace_reservations_reject_provider_evidence_conflicted_settlement'
   )
 order by trigger.tgname;
+```
+
+Conflict-materialization verification:
+
+```sql
+select count(*)
+from payment_evidence_conflicts conflict
+join payment_attempts attempt
+  on attempt.id = conflict.payment_attempt_id
+join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+where not attempt.provider_evidence_conflicted
+   or (
+     reservation.active_payment_attempt_id = attempt.id
+     and not reservation.active_payment_evidence_conflicted
+   );
 ```
 
 Idempotent reconciliation:

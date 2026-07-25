@@ -589,6 +589,11 @@ export const CheckoutServiceLive = Layer.effect(
           );
         yield* Effect.logInfo("Nexi hosted payment page creation completed");
         if (hostedPaymentPage.orderId !== attempt.providerOrderId) {
+          yield* paymentLifecycle.recordEvidenceConflict({
+            id: attempt.id,
+            workspaceReservationId: input.workspaceReservationId,
+            conflictCodes: ["provider_order_identity"],
+          });
           yield* Effect.logError(
             "Nexi hosted payment page order identity mismatch"
           );

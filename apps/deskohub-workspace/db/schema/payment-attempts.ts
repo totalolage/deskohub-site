@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   integer,
@@ -51,6 +52,9 @@ export const paymentAttempts = pgTable(
     >(),
     providerStartLeaseId: text("provider_start_lease_id"),
     providerStartLeaseExpiresAt: instant("provider_start_lease_expires_at"),
+    providerEvidenceConflicted: boolean("provider_evidence_conflicted")
+      .notNull()
+      .default(false),
     securityToken: text("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     amountValue: integer("amount_value").notNull(),

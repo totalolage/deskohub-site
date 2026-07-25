@@ -404,6 +404,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       },
     })
   );
+  const recordEvidenceConflict = mock(() => Effect.void);
   const paymentAttempts = {
     findById: findAttempt,
     findByProviderOrderId: mock(() => Effect.succeed(null)),
@@ -413,7 +414,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     admitPaymentStart: createAttempt,
     attachProviderSession: attachHostedPaymentPage,
     markProviderStartFailed,
-    recordEvidenceConflict: mock(() => Effect.void),
+    recordEvidenceConflict,
     markPaid: mock(() =>
       Effect.succeed({
         attempt: createdAttempt,
@@ -532,6 +533,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     findAttempt,
     attachHostedPaymentPage,
     markProviderStartFailed,
+    recordEvidenceConflict,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -1167,6 +1169,11 @@ describe("CheckoutService", () => {
     expect(result).toEqual({ status: "in_progress" });
     expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
     expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.recordEvidenceConflict).toHaveBeenCalledWith({
+      id: `attempt-reservation-provider-order-mismatch`,
+      workspaceReservationId: "reservation-provider-order-mismatch",
+      conflictCodes: ["provider_order_identity"],
+    });
   });
 
   test("never returns an HPP after guarded attach loses its lease", async () => {
