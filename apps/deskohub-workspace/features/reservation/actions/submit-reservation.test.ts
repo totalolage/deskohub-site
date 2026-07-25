@@ -152,7 +152,7 @@ describe("submitWorkspaceReservation", () => {
           message: "workspace_table_unavailable",
           cause: new WorkspaceTableUnavailableError({
             date: "2099-07-30",
-            reservation: { kind: "cowork", tier: "basic" },
+            reservation: { kind: "cowork", entryTier: "basic" },
           }),
         })
       )
@@ -168,8 +168,39 @@ describe("submitWorkspaceReservation", () => {
       message: getReservationAvailabilityUnavailableMessage({
         date: "2099-07-30",
         locale: "en-US",
-        tier: "basic",
+        reservation: { kind: "cowork", entryTier: "basic" },
       }),
+    });
+  });
+
+  test("maps meeting-room availability failures from their typed cause", async () => {
+    const { CheckoutError } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const { m } = await import("@/features/i18n");
+    const { WorkspaceTableUnavailableError } = await import(
+      "@/features/reservation/backend/workspace-availability.service"
+    );
+    const createHostedPaymentCheckout = mock(() =>
+      Effect.fail(
+        new CheckoutError({
+          message: "workspace_table_unavailable",
+          cause: new WorkspaceTableUnavailableError({
+            date: "2099-07-30",
+            reservation: { kind: "meeting-room" },
+          }),
+        })
+      )
+    );
+    const scenario = await runSubmitReservation({
+      createHostedPaymentCheckout,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationMeetingRoomUnavailable({}, { locale: "en-US" }),
     });
   });
 });

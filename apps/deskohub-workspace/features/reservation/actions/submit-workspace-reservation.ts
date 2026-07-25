@@ -27,14 +27,14 @@ const getSubmitReservationErrorMessage = (
       ? error.cause
       : undefined;
 
-  if (!unavailableCause || unavailableCause.reservation.kind !== "cowork") {
+  if (!unavailableCause) {
     return m.reservationErrorMessage({}, { locale: input.locale });
   }
 
   return getReservationAvailabilityUnavailableMessage({
     date: unavailableCause.date,
     locale: input.locale,
-    tier: unavailableCause.reservation.tier,
+    reservation: unavailableCause.reservation,
   });
 };
 
