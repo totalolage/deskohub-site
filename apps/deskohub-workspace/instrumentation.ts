@@ -19,8 +19,6 @@ export async function register() {
 
   registerOTel({
     serviceName: WORKSPACE_SERVICE_NAME,
-    // Effect HttpClient owns outbound request tracing; do not wrap global fetch.
-    instrumentations: [],
     attributes: {
       "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
     },

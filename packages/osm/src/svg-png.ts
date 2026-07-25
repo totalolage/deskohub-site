@@ -21,7 +21,7 @@ export const generateSvgPngBuffer = Effect.fn("osm.generateSvgPngBuffer")(
     renderSvg(svg).pipe(
       Effect.bindTo("base"),
       Effect.bind("textOverlays", () =>
-        Effect.forEach(options.textOverlays ?? [], renderTextOverlay, {
+        Effect.all((options.textOverlays ?? []).map(renderTextOverlay), {
           concurrency: "inherit",
         })
       ),

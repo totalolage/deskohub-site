@@ -9,7 +9,6 @@ import type {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -462,8 +461,7 @@ describe("ResendWebhookService", () => {
             Layer.mergeAll(
               Layer.succeed(EmailServiceTag, emailService),
               Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live,
-              FetchHttpClient.layer
+              WorkspaceCheckoutNetworkDetailsService.Live
             )
           )
         )

@@ -19,7 +19,7 @@ export interface StaticMapImageOptions {
   readonly quality?: number;
 }
 
-export const staticMapDefaults = {
+const staticMapDefaults = {
   zoom: 16,
   quality: 84,
 } as const;
@@ -63,10 +63,13 @@ interface StaticMapInput {
 }
 
 const fetchTileComposites = ({ tiles, tileUrl, userAgent }: StaticMapInput) =>
-  Effect.forEach(tiles, ({ left, tile, top }) =>
-    fetchTile({ tile, tileUrl, userAgent }).pipe(
-      Effect.map((input) => ({ input, left, top }))
-    )
+  Effect.all(
+    tiles.map(({ left, tile, top }) =>
+      fetchTile({ tile, tileUrl, userAgent }).pipe(
+        Effect.map((input) => ({ input, left, top }))
+      )
+    ),
+    { concurrency: "inherit" }
   );
 
 const renderTiledMap = ({

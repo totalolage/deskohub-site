@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { NextResponse } from "next/server";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
@@ -10,7 +9,7 @@ import {
 export const GET = defineWorkspaceRoute(
   {
     operation: "workspaceLocationMap.get",
-    cancellation: "continue-after-disconnect",
+    cancellation: "interrupt-on-disconnect",
   },
   (_request) =>
     generateWorkspaceLocationMapImage().pipe(
@@ -28,7 +27,6 @@ export const GET = defineWorkspaceRoute(
         mapWorkspaceInternalRouteFailure(
           "Workspace location map could not be generated."
         )
-      ),
-      Effect.provide(FetchHttpClient.layer)
+      )
     )
 );

@@ -13,7 +13,6 @@ import type {
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer, Option } from "effect";
-import { HttpClient } from "effect/unstable/http";
 import { generateSvgPngBuffer, type SvgPngTextOverlay } from "osm";
 import { env } from "@/env";
 import {
@@ -136,8 +135,7 @@ const createInternalReservationSubject = (
 
 const createWorkspaceLocationMapAttachment = (): Effect.Effect<
   EmailAttachment,
-  EmailServiceError,
-  HttpClient.HttpClient
+  EmailServiceError
 > =>
   generateWorkspaceLocationMapImage().pipe(
     Effect.map((content) => ({
@@ -873,7 +871,6 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
     const emailConfig = yield* EmailConfigTag;
-    const httpClient = yield* HttpClient.HttpClient;
     const networkDetailsService = yield* WorkspaceCheckoutNetworkDetailsService;
 
     return WorkspaceReservationEmailService.of({
@@ -908,7 +905,6 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         if (customerEmail) {
           const locationMapAttachment =
             yield* createWorkspaceLocationMapAttachment().pipe(
-              Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.catch((cause) =>
                 Effect.logWarning(
                   "Workspace reservation location map attachment skipped",

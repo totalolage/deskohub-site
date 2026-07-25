@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-import { FetchHttpClient } from "effect/unstable/http";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { isLocale, type Locale, m } from "@/features/i18n";
@@ -31,7 +29,6 @@ export default async function WorkspaceMapPreviewPage({
 async function WorkspaceMapPreviewContent({ locale }: { locale: Locale }) {
   await connection();
   const image = await generateWorkspaceLocationMapImage().pipe(
-    Effect.provide(FetchHttpClient.layer),
     runStandaloneWorkspaceEffect("workspaceLocationMap.preview")
   );
   const imageSrc = `data:image/jpeg;base64,${image.toString("base64")}`;
