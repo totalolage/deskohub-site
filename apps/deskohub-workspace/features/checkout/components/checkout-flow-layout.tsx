@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import Link from "next/link";
+import type { ComponentProps, ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -8,14 +9,16 @@ type CheckoutFlowLayoutProps = {
   readonly activeStepKey: CheckoutStepKey;
   readonly children: ReactNode;
   readonly locale: Locale;
-  readonly stepHrefs?: Partial<Record<CheckoutStepKey, string>>;
+  readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
 };
 
 type CheckoutStepsProps = {
   readonly activeStepKey: CheckoutStepKey;
   readonly locale: Locale;
-  readonly stepHrefs?: Partial<Record<CheckoutStepKey, string>>;
+  readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
 };
+
+type CheckoutStepLink = Pick<ComponentProps<typeof Link>, "href" | "prefetch">;
 
 export const checkoutFlowSteps = [
   { key: "order", getLabel: m.checkoutOrderStepReservation },
@@ -28,7 +31,7 @@ export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
 export function CheckoutSteps({
   activeStepKey,
   locale,
-  stepHrefs,
+  stepLinks,
 }: CheckoutStepsProps) {
   return (
     <ol
@@ -37,7 +40,7 @@ export function CheckoutSteps({
     >
       {checkoutFlowSteps.map((step, index) => {
         const isCurrentStep = step.key === activeStepKey;
-        const href = stepHrefs?.[step.key];
+        const link = stepLinks?.[step.key];
         const content = (
           <>
             <span
@@ -57,16 +60,16 @@ export function CheckoutSteps({
         );
         const className = cn(
           "flex items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68",
-          href &&
+          link &&
             "transition hover:border-white/28 hover:bg-white/12 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
         );
 
         return (
           <li key={step.key} aria-current={isCurrentStep ? "step" : undefined}>
-            {href ? (
-              <a className={className} href={href}>
+            {link ? (
+              <Link className={className} {...link}>
                 {content}
-              </a>
+              </Link>
             ) : (
               <div className={className}>{content}</div>
             )}
@@ -81,7 +84,7 @@ export function CheckoutFlowLayout({
   activeStepKey,
   children,
   locale,
-  stepHrefs,
+  stepLinks,
 }: CheckoutFlowLayoutProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
@@ -94,7 +97,7 @@ export function CheckoutFlowLayout({
             <CheckoutSteps
               activeStepKey={activeStepKey}
               locale={locale}
-              stepHrefs={stepHrefs}
+              stepLinks={stepLinks}
             />
             {children}
           </div>

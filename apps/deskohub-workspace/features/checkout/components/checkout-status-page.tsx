@@ -245,9 +245,12 @@ export function CheckoutStatusPage({
 
         {showSupportButton && (
           <Button asChild className="h-12 px-6 mt-6 w-full">
-            <a href={supportContactHref} id="checkout-status-support-contact">
+            <Link
+              href={supportContactHref}
+              id="checkout-status-support-contact"
+            >
               {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
-            </a>
+            </Link>
           </Button>
         )}
 

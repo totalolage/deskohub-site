@@ -153,10 +153,13 @@ async function CheckoutPayContent({
     <CheckoutFlowLayout
       activeStepKey="pay"
       locale={locale}
-      stepHrefs={{
-        order: `/${locale}/checkout/order?${new URLSearchParams({
-          [payStateTokenQueryParam]: payStateToken,
-        })}`,
+      stepLinks={{
+        order: {
+          href: `/${locale}/checkout/order?${new URLSearchParams({
+            [payStateTokenQueryParam]: payStateToken,
+          })}`,
+          prefetch: false,
+        },
       }}
     >
       <CheckoutPayPage

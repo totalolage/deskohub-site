@@ -14,19 +14,26 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-const nextLinkHrefs: string[] = [];
+type CapturedLink = {
+  readonly href: string;
+  readonly prefetch: boolean | null | undefined;
+};
+
+const capturedLinks: CapturedLink[] = [];
 
 mock.module("next/link", () => ({
   default: ({
     children,
     href,
+    prefetch,
     ...props
   }: Omit<ComponentProps<"a">, "href"> & {
     readonly children?: ReactNode;
     readonly href: string | URL;
+    readonly prefetch?: boolean | null;
   }) => {
     const stringHref = href.toString();
-    nextLinkHrefs.push(stringHref);
+    capturedLinks.push({ href: stringHref, prefetch });
     return (
       <a href={stringHref} {...props}>
         {children}
@@ -40,7 +47,7 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  nextLinkHrefs.length = 0;
+  capturedLinks.length = 0;
 });
 
 afterEach(() => {
@@ -51,25 +58,30 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
-test("uses document navigation to reopen a signed reservation state", async () => {
+test("uses a Next Link without prefetch to reopen signed reservation state", async () => {
   const { CheckoutSteps } = await import("./checkout-flow-layout");
   const reservationHref = "/en-US/checkout/order?payState=encrypted-pay-state";
 
-  const view = render(
+  render(
     <CheckoutSteps
       activeStepKey="pay"
       locale="en-US"
-      stepHrefs={{ order: reservationHref }}
+      stepLinks={{
+        order: {
+          href: reservationHref,
+          prefetch: false,
+        },
+      }}
     />
   );
 
-  expect(
-    view.getByRole("link", { name: /reservation/i }).getAttribute("href")
-  ).toBe(reservationHref);
-  expect(nextLinkHrefs).not.toContain(reservationHref);
+  expect(capturedLinks).toContainEqual({
+    href: reservationHref,
+    prefetch: false,
+  });
 });
 
-test("uses document navigation for the failed-fulfillment support handoff", async () => {
+test("uses an ordinary Next Link for the failed-fulfillment support handoff", async () => {
   const { CheckoutStatusPage } = await import("./checkout-status-page");
 
   const view = render(
@@ -77,7 +89,7 @@ test("uses document navigation for the failed-fulfillment support handoff", asyn
       locale="en-US"
       status={{
         fulfillmentStatus: "failed",
-        orderId: "document-navigation-order",
+        orderId: "next-navigation-order",
         paymentStatus: "paid",
         returnOutcome: "success",
         status: "fulfillment_failed",
@@ -95,5 +107,8 @@ test("uses document navigation for the failed-fulfillment support handoff", asyn
       .getAttribute("href") ?? "";
 
   expect(supportHref).toStartWith("/en-US/contact?");
-  expect(nextLinkHrefs).not.toContain(supportHref);
+  expect(capturedLinks).toContainEqual({
+    href: supportHref,
+    prefetch: undefined,
+  });
 });
