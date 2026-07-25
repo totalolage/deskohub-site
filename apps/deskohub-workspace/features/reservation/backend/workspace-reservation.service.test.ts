@@ -201,29 +201,22 @@ describe("WorkspaceReservationService", () => {
     expect(details.tableMap).toBeUndefined();
   });
 
-  test("accepts Dotypos millisecond timestamp strings", async () => {
-    const details = await Effect.runPromise(
-      detailsEffect({
-        dotyposReservation: makeDotyposReservation({
-          startDate: String(
-            Temporal.Instant.from("2026-06-15T06:00:00Z").epochMilliseconds
-          ),
-          endDate: String(
-            Temporal.Instant.from("2026-06-16T06:00:00Z").epochMilliseconds
-          ),
-        }),
-      })
+  test("rejects a Dotypos reservation whose end precedes its start", async () => {
+    const error = await Effect.runPromise(
+      Effect.flip(
+        detailsEffect({
+          dotyposReservation: makeDotyposReservation({
+            startDate: "2026-06-16T06:00:00Z",
+            endDate: "2026-06-15T06:00:00Z",
+          }),
+        })
+      )
     );
 
-    expect(
-      details.reservedFrom.equals(
-        Temporal.Instant.from("2026-06-15T06:00:00.000Z")
-      )
-    ).toBe(true);
-    expect(
-      details.reservedUntil.equals(
-        Temporal.Instant.from("2026-06-16T06:00:00.000Z")
-      )
-    ).toBe(true);
+    expect(error).toBeInstanceOf(WorkspaceReservationDetailsError);
+    expect(error).toMatchObject({
+      reservationId: "reservation-id",
+      errorCode: "dotypos_reservation_date_invalid",
+    });
   });
 });

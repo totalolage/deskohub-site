@@ -4,12 +4,6 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
-import {
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
-  type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
-} from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
@@ -23,8 +17,10 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
+import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
@@ -49,68 +45,93 @@ export type CheckoutStatusKind =
   | "cancelled"
   | "expired";
 
-export type WorkspaceCheckoutStatusSummary = {
-  readonly tier: WorkspaceProductTier;
-  readonly date: string;
-  readonly coffee: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
+type CheckoutReservationStatusKind = Exclude<CheckoutStatusKind, "not_found">;
+
+type CheckoutStatusSummaryBase = {
   readonly price: WorkspaceMoney;
+  readonly reservedFrom: Temporal.Instant;
+  readonly reservedUntil: Temporal.Instant;
 };
 
-export type WorkspaceCheckoutStatusContactPrefill = {
+export type CheckoutCoworkStatusSummary = CheckoutStatusSummaryBase &
+  StoredCoworkReservationDetails;
+
+export type CheckoutMeetingRoomStatusSummary = CheckoutStatusSummaryBase &
+  StoredMeetingRoomReservationDetails;
+
+export type CheckoutStatusSummary =
+  | CheckoutCoworkStatusSummary
+  | CheckoutMeetingRoomStatusSummary;
+
+export type CheckoutStatusContactPrefill = {
   readonly name?: string;
   readonly email?: string;
   readonly phone?: string;
 };
 
-export type WorkspaceCheckoutTableMap = WorkspaceTableMap;
+export type CheckoutStatusTableMap = WorkspaceTableMap;
 
-export type CheckoutStatusViewModel = {
+type CheckoutStatusViewModelBase = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
-  readonly status: CheckoutStatusKind;
-  readonly paymentStatus?: PaymentState;
-  readonly fulfillmentStatus?: FulfillmentState;
-  readonly summary?: WorkspaceCheckoutStatusSummary;
-  readonly tableMap?: WorkspaceCheckoutTableMap;
-  readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
+
+type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
+  readonly status: CheckoutReservationStatusKind;
+  readonly paymentStatus: PaymentState;
+  readonly fulfillmentStatus: FulfillmentState;
+  readonly tableMap?: CheckoutStatusTableMap;
+  readonly supportContactPrefill?: CheckoutStatusContactPrefill;
+};
+
+type CheckoutCoworkStatusViewModel = CheckoutReservationStatusViewModelBase & {
+  readonly kind: "cowork";
+  readonly summary?: CheckoutCoworkStatusSummary;
+};
+
+type CheckoutMeetingRoomStatusViewModel =
+  CheckoutReservationStatusViewModelBase & {
+    readonly kind: "meeting-room";
+    readonly summary?: CheckoutMeetingRoomStatusSummary;
+  };
+
+type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
+  readonly kind: undefined;
+  readonly status: "not_found";
+  readonly summary?: undefined;
+};
+
+export type CheckoutStatusViewModel =
+  | CheckoutCoworkStatusViewModel
+  | CheckoutMeetingRoomStatusViewModel
+  | CheckoutStatusNotFoundViewModel;
 
 type CheckoutStatusReconstruction = {
-  readonly summary?: WorkspaceCheckoutStatusSummary;
-  readonly tableMap?: WorkspaceCheckoutTableMap;
-  readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
+  readonly summary?: CheckoutStatusSummary;
+  readonly tableMap?: CheckoutStatusTableMap;
+  readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
 
-export interface CheckoutStatusService {
+type CheckoutStatusError =
+  | EffectDrizzleQueryError
+  | PaymentLifecycleRepositoryError
+  | WorkspaceReservationDetailsMalformedError;
+
+export interface ICheckoutStatusService {
   readonly getStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<
-    CheckoutStatusViewModel,
-    | EffectDrizzleQueryError
-    | PaymentLifecycleRepositoryError
-    | WorkspaceReservationDetailsMalformedError
-  >;
+  }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
   readonly refreshStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<
-    CheckoutStatusViewModel,
-    | EffectDrizzleQueryError
-    | PaymentLifecycleRepositoryError
-    | WorkspaceReservationDetailsMalformedError
-  >;
+  }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
 }
-
-export const CheckoutStatusService = Context.Service<CheckoutStatusService>(
-  "CheckoutStatusService"
-);
 
 const toCheckoutStatusKind = (
   paymentState: PaymentState,
   fulfillmentState: FulfillmentState
-): CheckoutStatusKind => {
+): CheckoutReservationStatusKind => {
   if (paymentState === "paid") {
     switch (fulfillmentState) {
       case "fulfilled":
@@ -134,22 +155,6 @@ const toCheckoutStatusKind = (
       return "cancelled";
     case "expired":
       return "expired";
-  }
-};
-
-const toPragueReservationDate = (startDate: string | number) => {
-  try {
-    const instant =
-      typeof startDate === "number" || /^\d+$/.test(startDate)
-        ? Temporal.Instant.fromEpochMilliseconds(Number(startDate))
-        : Temporal.Instant.from(startDate);
-
-    return instant
-      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-      .toPlainDate()
-      .toString();
-  } catch {
-    return undefined;
   }
 };
 
@@ -180,331 +185,348 @@ const getCustomerContactName = (customer: Customer) =>
 
 const getSupportContactPrefill = (
   customer: Customer
-): WorkspaceCheckoutStatusContactPrefill | undefined => {
-  const prefill = {
+): CheckoutStatusContactPrefill | undefined => {
+  const prefill: CheckoutStatusContactPrefill = {
     name: getCustomerContactName(customer),
     email: toOptionalString(customer.email),
     phone: toOptionalString(customer.phone),
-  } satisfies WorkspaceCheckoutStatusContactPrefill;
+  };
 
   return prefill.name || prefill.email || prefill.phone ? prefill : undefined;
 };
 
-export const CheckoutStatusServiceLive = Layer.effect(
-  CheckoutStatusService,
-  Effect.gen(function* () {
-    const reservations = yield* WorkspaceReservationRepository;
-    const paymentAttempts = yield* PaymentAttemptRepository;
-    const dotypos = yield* DotyposService;
-    const finalization = yield* ProviderPaymentFinalizationService;
-    const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
+const emptyCheckoutStatusReconstruction: CheckoutStatusReconstruction = {};
 
-    const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
-      function* (reservation: WorkspaceReservation) {
-        yield* Effect.annotateLogsScoped({ reservation });
-        yield* Effect.logDebug(
-          "Checkout status summary reconstruction started"
+const implementation = Effect.gen(function* () {
+  const reservations = yield* WorkspaceReservationRepository;
+  const paymentAttempts = yield* PaymentAttemptRepository;
+  const dotypos = yield* DotyposService;
+  const finalization = yield* ProviderPaymentFinalizationService;
+  const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
+
+  const reconstructSummary = Effect.fn(
+    "CheckoutStatusService.reconstructSummary"
+  )(
+    function* (reservation: WorkspaceReservation) {
+      yield* Effect.logDebug("Checkout status summary reconstruction started");
+
+      if (!reservation.dotyposReservationId) {
+        yield* Effect.logWarning(
+          "Checkout status summary missing Dotypos reservation id"
         );
+        return emptyCheckoutStatusReconstruction;
+      }
 
-        const productTier = reservation.productTier ?? undefined;
-        const monitorOption = reservation.productMonitorOption ?? undefined;
+      const attempt = yield* paymentAttempts.findDisplayableForReservation({
+        workspaceReservationId: reservation.id,
+        activePaymentAttemptId: reservation.activePaymentAttemptId ?? undefined,
+        paymentState: reservation.paymentState,
+      });
+      yield* Effect.logDebug(
+        "Checkout status summary attempt lookup completed"
+      );
 
-        if (!reservation.dotyposReservationId) {
-          yield* Effect.logWarning(
-            "Checkout status summary missing Dotypos reservation id"
-          );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-
-        if (!isWorkspaceProductTier(productTier)) {
-          yield* Effect.logWarning(
-            "Checkout status summary invalid product tier"
-          );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-
-        if (
-          monitorOption !== undefined &&
-          !isWorkspaceProductMonitorOption(monitorOption)
-        ) {
-          yield* Effect.logWarning(
-            "Checkout status summary invalid monitor option"
-          );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-
-        const attempt = yield* paymentAttempts.findDisplayableForReservation({
-          workspaceReservationId: reservation.id,
-          activePaymentAttemptId:
-            reservation.activePaymentAttemptId ?? undefined,
-          paymentState: reservation.paymentState,
-        });
-        yield* Effect.annotateLogsScoped({ attempt });
-        yield* Effect.logDebug(
-          "Checkout status summary attempt lookup completed"
+      if (!attempt) {
+        yield* Effect.logWarning(
+          "Checkout status summary missing payment attempt"
         );
+        return emptyCheckoutStatusReconstruction;
+      }
+      yield* Effect.annotateLogsScoped({
+        paymentAttemptId: attempt.id,
+        paymentAttemptState: attempt.state,
+      });
 
-        if (!attempt) {
-          yield* Effect.logWarning(
-            "Checkout status summary missing payment attempt"
-          );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-
-        if (!canUseAttemptForSummary(attempt, reservation)) {
-          yield* Effect.logWarning(
-            "Checkout status summary unusable payment attempt"
-          );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-
-        const dotyposReservation = yield* dotypos
-          .getReservation(reservation.dotyposReservationId)
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning(
-                "Checkout status summary reservation load failed",
-                {
-                  reservationId: reservation.id,
-                  dotyposReservationId: reservation.dotyposReservationId,
-                  cause,
-                }
-              )
-            ),
-            Effect.option
-          );
-
-        const dotyposReservationValue = yield* Match.value(
-          dotyposReservation
-        ).pipe(
-          Match.tag("None", () =>
-            Effect.gen(function* () {
-              yield* Effect.logWarning(
-                "Checkout status summary missing Dotypos reservation"
-              );
-              return undefined;
-            })
-          ),
-          Match.tag("Some", ({ value }) => Effect.succeed(value)),
-          Match.exhaustive
+      if (!canUseAttemptForSummary(attempt, reservation)) {
+        yield* Effect.logWarning(
+          "Checkout status summary unusable payment attempt"
         );
+        return emptyCheckoutStatusReconstruction;
+      }
 
-        if (!dotyposReservationValue) {
-          return {} satisfies CheckoutStatusReconstruction;
-        }
-        yield* Effect.annotateLogsScoped({ dotyposReservation });
-        yield* Effect.logDebug(
-          "Checkout status summary Dotypos reservation loaded"
-        );
-
-        const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
+      const dotyposReservation = yield* dotypos
+        .getReservation(reservation.dotyposReservationId)
+        .pipe(
           Effect.tapError((cause) =>
-            Effect.logWarning("Checkout status table map load failed", {
-              reservationId: reservation.id,
-              dotyposReservationId: reservation.dotyposReservationId,
-              cause,
-            })
-          ),
-          Effect.option,
-          Effect.when(seatingMapFeatureFlag.isEnabled),
-          Effect.map(Option.flatten),
-          Effect.map(
-            Option.map((tables) =>
-              getWorkspaceTableMap(dotyposReservationValue.reservation, tables)
+            Effect.logWarning(
+              "Checkout status summary reservation load failed",
+              { cause }
             )
           ),
-          Effect.map(Option.getOrUndefined)
+          Effect.orElseSucceed(() => undefined)
         );
 
-        const date = toPragueReservationDate(
-          dotyposReservationValue.reservation.startDate
+      if (!dotyposReservation) {
+        yield* Effect.logWarning(
+          "Checkout status summary missing Dotypos reservation"
         );
+        return emptyCheckoutStatusReconstruction;
+      }
+      yield* Effect.logDebug(
+        "Checkout status summary Dotypos reservation loaded"
+      );
 
-        if (!date) {
-          yield* Effect.logWarning(
-            "Checkout status summary invalid reservation date"
-          );
-          return {
-            ...(tableMap ? { tableMap } : {}),
-            supportContactPrefill: getSupportContactPrefill(
-              dotyposReservationValue.customer
-            ),
-          } satisfies CheckoutStatusReconstruction;
-        }
+      const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning("Checkout status table map load failed", {
+            cause,
+          })
+        ),
+        Effect.option,
+        Effect.when(seatingMapFeatureFlag.isEnabled),
+        Effect.map(Option.flatten),
+        Effect.map(
+          Option.map((tables) =>
+            getWorkspaceTableMap(dotyposReservation.reservation, tables)
+          )
+        ),
+        Effect.map(Option.getOrUndefined)
+      );
 
-        const summary = {
-          tier: productTier,
-          date,
-          coffee: reservation.productCoffee,
-          monitorOption,
-          price: attempt.amount,
-        } satisfies WorkspaceCheckoutStatusSummary;
+      const timing = yield* getDotyposReservationTiming({
+        reservationId: reservation.id,
+        reservation: dotyposReservation.reservation,
+      }).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning(
+            "Checkout status summary reservation timing invalid",
+            { cause }
+          )
+        ),
+        Effect.orElseSucceed(() => undefined)
+      );
 
-        yield* Effect.annotateLogsScoped({ summary });
-        yield* Effect.logDebug("Checkout status summary reconstructed");
-
-        return {
-          summary,
+      if (!timing) {
+        const reconstruction: CheckoutStatusReconstruction = {
           ...(tableMap ? { tableMap } : {}),
           supportContactPrefill: getSupportContactPrefill(
-            dotyposReservationValue.customer
+            dotyposReservation.customer
           ),
-        } satisfies CheckoutStatusReconstruction;
-      },
-      (effect, reservation) =>
-        effect.pipe(
-          Effect.scoped,
-          Effect.annotateLogs({ reservationId: reservation.id })
-        )
-    );
+        };
 
-    const getStatus = Effect.fn("checkoutStatus.getStatus")(
-      function* (input: {
-        readonly orderId: string;
-        readonly returnOutcome: CheckoutStatusReturnOutcome;
-      }) {
-        yield* Effect.annotateLogsScoped({ input });
-        yield* Effect.logInfo("Checkout status lookup started");
+        return reconstruction;
+      }
 
-        const reservation = yield* reservations.findById(input.orderId);
-        yield* Effect.annotateLogsScoped({ reservation });
-        yield* Effect.logDebug("Checkout status reservation lookup completed");
+      const summary: CheckoutStatusSummary = {
+        ...reservation.reservationDetails,
+        ...timing,
+        price: attempt.amount,
+      };
 
-        if (!reservation) {
-          const result = {
-            orderId: input.orderId,
-            returnOutcome: input.returnOutcome,
-            status: "not_found",
-          } satisfies CheckoutStatusViewModel;
+      yield* Effect.logDebug("Checkout status summary reconstructed");
 
-          yield* Effect.annotateLogsScoped({ result });
-          yield* Effect.logInfo("Checkout status lookup completed");
+      const reconstruction: CheckoutStatusReconstruction = {
+        summary,
+        ...(tableMap ? { tableMap } : {}),
+        supportContactPrefill: getSupportContactPrefill(
+          dotyposReservation.customer
+        ),
+      };
 
-          return result;
-        }
+      return reconstruction;
+    },
+    (effect, reservation) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.annotateLogs({
+          reservationId: reservation.id,
+          dotyposReservationId: reservation.dotyposReservationId,
+          reservationKind: reservation.reservationDetails.kind,
+        })
+      )
+  );
 
-        const reconstruction: CheckoutStatusReconstruction =
-          yield* reconstructSummary(reservation).pipe(
-            Effect.timeoutOrElse({
-              duration: "8 seconds",
-              orElse: () =>
-                Effect.logWarning(
-                  "Checkout status summary reconstruction timed out",
-                  {
-                    reservationId: reservation.id,
-                    status: toCheckoutStatusKind(
-                      reservation.paymentState,
-                      reservation.fulfillmentState
-                    ),
-                  }
-                ).pipe(Effect.as({} satisfies CheckoutStatusReconstruction)),
-            })
-          );
-        const statusKind = toCheckoutStatusKind(
-          reservation.paymentState,
-          reservation.fulfillmentState
-        );
+  const getStatus = Effect.fn("CheckoutStatusService.getStatus")(
+    function* (input: {
+      readonly orderId: string;
+      readonly returnOutcome: CheckoutStatusReturnOutcome;
+    }) {
+      yield* Effect.logInfo("Checkout status lookup started");
 
-        const result = {
-          orderId: reservation.id,
+      const reservation = yield* reservations.findById(input.orderId);
+      yield* Effect.logDebug("Checkout status reservation lookup completed");
+
+      if (!reservation) {
+        const result: CheckoutStatusViewModel = {
+          kind: undefined,
+          orderId: input.orderId,
           returnOutcome: input.returnOutcome,
-          status: statusKind,
-          paymentStatus: reservation.paymentState,
-          fulfillmentStatus: reservation.fulfillmentState,
-          ...(reconstruction.summary
-            ? { summary: reconstruction.summary }
-            : {}),
-          ...(reconstruction.tableMap
-            ? { tableMap: reconstruction.tableMap }
-            : {}),
-          ...(statusKind === "fulfillment_failed" &&
-          reconstruction.supportContactPrefill
-            ? { supportContactPrefill: reconstruction.supportContactPrefill }
-            : {}),
-        } satisfies CheckoutStatusViewModel;
+          status: "not_found",
+        };
 
-        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.annotateLogsScoped({ status: result.status });
         yield* Effect.logInfo("Checkout status lookup completed");
 
         return result;
+      }
+
+      const statusKind = toCheckoutStatusKind(
+        reservation.paymentState,
+        reservation.fulfillmentState
+      );
+      const reconstruction: CheckoutStatusReconstruction =
+        yield* reconstructSummary(reservation).pipe(
+          Effect.timeoutOrElse({
+            duration: "8 seconds",
+            orElse: () =>
+              Effect.logWarning(
+                "Checkout status summary reconstruction timed out",
+                {
+                  reservationId: reservation.id,
+                  status: statusKind,
+                }
+              ).pipe(Effect.as(emptyCheckoutStatusReconstruction)),
+          })
+        );
+
+      const resultBase: CheckoutReservationStatusViewModelBase = {
+        orderId: reservation.id,
+        returnOutcome: input.returnOutcome,
+        status: statusKind,
+        paymentStatus: reservation.paymentState,
+        fulfillmentStatus: reservation.fulfillmentState,
+        ...(reconstruction.tableMap
+          ? { tableMap: reconstruction.tableMap }
+          : {}),
+        ...(statusKind === "fulfillment_failed" &&
+        reconstruction.supportContactPrefill
+          ? { supportContactPrefill: reconstruction.supportContactPrefill }
+          : {}),
+      };
+      const result: CheckoutStatusViewModel = Match.value(
+        reservation.reservationDetails
+      ).pipe(
+        Match.when(
+          { kind: "cowork" },
+          (): CheckoutCoworkStatusViewModel =>
+            Match.value(reconstruction.summary).pipe(
+              Match.when(
+                { kind: "cowork" },
+                (summary): CheckoutCoworkStatusViewModel => ({
+                  kind: "cowork",
+                  ...resultBase,
+                  summary,
+                })
+              ),
+              Match.orElse(
+                (): CheckoutCoworkStatusViewModel => ({
+                  kind: "cowork",
+                  ...resultBase,
+                })
+              )
+            )
+        ),
+        Match.when(
+          { kind: "meeting-room" },
+          (): CheckoutMeetingRoomStatusViewModel =>
+            Match.value(reconstruction.summary).pipe(
+              Match.when(
+                { kind: "meeting-room" },
+                (summary): CheckoutMeetingRoomStatusViewModel => ({
+                  kind: "meeting-room",
+                  ...resultBase,
+                  summary,
+                })
+              ),
+              Match.orElse(
+                (): CheckoutMeetingRoomStatusViewModel => ({
+                  kind: "meeting-room",
+                  ...resultBase,
+                })
+              )
+            )
+        ),
+        Match.exhaustive
+      );
+
+      yield* Effect.annotateLogsScoped({
+        status: result.status,
+        reservationKind: result.kind,
+      });
+      yield* Effect.logInfo("Checkout status lookup completed");
+
+      return result;
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.scoped,
+        Effect.tapError((cause) =>
+          Effect.logError("Checkout status lookup failed", { cause })
+        ),
+        Effect.annotateLogs({ ...input })
+      )
+  );
+
+  return {
+    getStatus,
+    refreshStatus: Effect.fn("CheckoutStatusService.refreshStatus")(
+      function* (input) {
+        yield* Effect.logInfo("Checkout status refresh started");
+
+        const reservation = yield* reservations.findById(input.orderId);
+        yield* Effect.logDebug(
+          "Checkout status refresh reservation lookup completed"
+        );
+
+        if (!reservation?.activePaymentAttemptId) {
+          yield* Effect.logInfo(
+            "Checkout status refresh skipped: no active payment attempt"
+          );
+          return yield* getStatus(input);
+        }
+
+        const result = yield* finalization.finalizePendingProviderPayment({
+          orderId: reservation.id,
+          paymentAttemptId: reservation.activePaymentAttemptId,
+        });
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Checkout status refresh finalization completed");
+
+        if (result !== "terminal") {
+          if (
+            result === "not_verifiable" ||
+            result === "verification_mismatch"
+          ) {
+            yield* Effect.logWarning(
+              "Checkout status refresh finalization returned non-terminal",
+              { result }
+            );
+          } else {
+            yield* Effect.logInfo(
+              "Checkout status refresh finalization returned non-terminal",
+              { result }
+            );
+          }
+        }
+
+        const status = yield* getStatus(input);
+        yield* Effect.annotateLogsScoped({
+          status: status.status,
+          reservationKind: status.kind,
+        });
+        yield* Effect.logInfo("Checkout status refresh completed");
+
+        return status;
       },
       (effect, input) =>
         effect.pipe(
           Effect.scoped,
           Effect.tapError((cause) =>
-            Effect.logError("Checkout status lookup failed", { cause })
+            Effect.logError("Checkout status refresh failed", { cause })
           ),
           Effect.annotateLogs({ ...input })
         )
-    );
+    ),
+  };
+});
 
-    return CheckoutStatusService.of({
-      getStatus,
-      refreshStatus: Effect.fn("checkoutStatus.refreshStatus")(
-        function* (input) {
-          yield* Effect.annotateLogsScoped({ input });
-          yield* Effect.logInfo("Checkout status refresh started");
+export class CheckoutStatusService extends Context.Service<
+  CheckoutStatusService,
+  ICheckoutStatusService
+>()("@deskohub-workspace/checkout/CheckoutStatusService") {
+  static Live = Layer.effect(this, implementation);
 
-          const reservation = yield* reservations.findById(input.orderId);
-          yield* Effect.annotateLogsScoped({ reservation });
-          yield* Effect.logDebug(
-            "Checkout status refresh reservation lookup completed"
-          );
-
-          if (!reservation?.activePaymentAttemptId) {
-            yield* Effect.logInfo(
-              "Checkout status refresh skipped: no active payment attempt"
-            );
-            return yield* getStatus(input);
-          }
-
-          const result = yield* finalization.finalizePendingProviderPayment({
-            orderId: reservation.id,
-            paymentAttemptId: reservation.activePaymentAttemptId,
-          });
-          yield* Effect.annotateLogsScoped({ result });
-          yield* Effect.logInfo(
-            "Checkout status refresh finalization completed"
-          );
-
-          if (result !== "terminal") {
-            if (
-              result === "not_verifiable" ||
-              result === "verification_mismatch"
-            ) {
-              yield* Effect.logWarning(
-                "Checkout status refresh finalization returned non-terminal",
-                { result }
-              );
-            } else {
-              yield* Effect.logInfo(
-                "Checkout status refresh finalization returned non-terminal",
-                { result }
-              );
-            }
-          }
-
-          const status = yield* getStatus(input);
-          yield* Effect.annotateLogsScoped({ status });
-          yield* Effect.logInfo("Checkout status refresh completed");
-
-          return status;
-        },
-        (effect, input) =>
-          effect.pipe(
-            Effect.scoped,
-            Effect.tapError((cause) =>
-              Effect.logError("Checkout status refresh failed", { cause })
-            ),
-            Effect.annotateLogs({ ...input })
-          )
-      ),
-    });
-  })
-);
-
-export const CheckoutStatusServiceLiveWithDependencies =
-  CheckoutStatusServiceLive.pipe(
+  static LiveWithDependencies = this.Live.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
@@ -516,3 +538,4 @@ export const CheckoutStatusServiceLiveWithDependencies =
       )
     )
   );
+}

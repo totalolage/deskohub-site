@@ -89,6 +89,7 @@ test("uses an ordinary Next Link for the failed-fulfillment support handoff", as
       locale="en-US"
       status={{
         fulfillmentStatus: "failed",
+        kind: "cowork",
         orderId: "next-navigation-order",
         paymentStatus: "paid",
         returnOutcome: "success",

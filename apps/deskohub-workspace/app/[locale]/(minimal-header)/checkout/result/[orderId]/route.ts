@@ -3,7 +3,6 @@ import { NextResponse } from "next/server";
 import {
   appendVercelPreviewProtectionBypass,
   CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
   getCheckoutStatusPath,
 } from "@/features/checkout/backend/checkout";
@@ -148,7 +147,7 @@ export const GET = defineWorkspaceRoute(
   },
   (request, context: LocalizedCheckoutResultRouteContext) =>
     handleCheckoutResult(request, context).pipe(
-      Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+      Effect.provide(CheckoutStatusService.LiveWithDependencies),
       Effect.mapError(
         mapWorkspaceInternalRouteFailure(
           "Checkout status could not be refreshed"

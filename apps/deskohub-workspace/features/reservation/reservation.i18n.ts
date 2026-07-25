@@ -2,7 +2,7 @@ import { Match } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import { formatReservationInputDate } from "@/features/reservation/reservation-date";
 
 export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;
@@ -22,7 +22,7 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
       cowork: ({ entryTier }) =>
         m.reservationAvailabilityUnavailable(
           {
-            date: formatReservationDisplayDate(
+            date: formatReservationInputDate(
               input.date,
               input.locale,
               input.dateFallback

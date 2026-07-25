@@ -306,10 +306,7 @@ const createReservationDetailRows = (
   const rows: EmailDetailRow[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDisplayDate(
-        temporalInstantToDate(reservation.reservedFrom),
-        locale
-      ),
+      formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),

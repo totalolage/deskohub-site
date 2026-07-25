@@ -20,8 +20,15 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",
+  customerAccessCode: "customer-access-code",
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
   productTier: "profi",
-  productCoffee: false,
+  productCoffee: true,
   productMonitorOption: "2x27-qhd",
   locale: "en-US",
   reservationState: "held",
@@ -75,7 +82,7 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
           startDate: "2026-06-20T00:00:00.000+02:00",
           endDate: "2026-06-21T00:00:00.000+02:00",
           seats: "1",
-          status: "OPEN",
+          status: "CONFIRMED",
         },
         customer: { id: "customer-id" },
       })
@@ -86,9 +93,7 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
 
 describe("CheckoutStatusService", () => {
   test("refreshes successful payment status before reading status", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -137,7 +142,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusServiceLive.pipe(
+        CheckoutStatusService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
@@ -164,9 +169,7 @@ describe("CheckoutStatusService", () => {
   });
 
   test("does not clean up the hold after refresh finds terminal payment", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -208,7 +211,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusServiceLive.pipe(
+        CheckoutStatusService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
@@ -230,9 +233,7 @@ describe("CheckoutStatusService", () => {
   });
 
   test("reconstructs an internal zero-total fulfilled reservation without PII", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -278,36 +279,39 @@ describe("CheckoutStatusService", () => {
       cancelOrderHold: mock(() => Effect.die("not used")),
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
+    let failTableLookup = false;
     const getTables = mock(() =>
-      Effect.succeed([
-        {
-          _cloudId: "cloud-id",
-          display: true,
-          enabled: true,
-          id: "assigned-table",
-          name: "Desk 1",
-          locationName: "Main room",
-          tags: ["tier:profi"],
-        },
-        {
-          _cloudId: "cloud-id",
-          display: true,
-          enabled: true,
-          id: "neighbor-table",
-          name: "Desk 2",
-          locationName: "Main room",
-          tags: ["tier:profi"],
-        },
-        {
-          _cloudId: "cloud-id",
-          display: true,
-          enabled: true,
-          id: "other-room-table",
-          name: "Desk 3",
-          locationName: "Quiet room",
-          tags: ["tier:profi"],
-        },
-      ])
+      failTableLookup
+        ? Effect.fail(new Error("Dotypos table lookup failed"))
+        : Effect.succeed([
+            {
+              _cloudId: "cloud-id",
+              display: true,
+              enabled: true,
+              id: "assigned-table",
+              name: "Desk 1",
+              locationName: "Main room",
+              tags: ["tier:profi"],
+            },
+            {
+              _cloudId: "cloud-id",
+              display: true,
+              enabled: true,
+              id: "neighbor-table",
+              name: "Desk 2",
+              locationName: "Main room",
+              tags: ["tier:profi"],
+            },
+            {
+              _cloudId: "cloud-id",
+              display: true,
+              enabled: true,
+              id: "other-room-table",
+              name: "Desk 3",
+              locationName: "Quiet room",
+              tags: ["tier:profi"],
+            },
+          ])
     );
     const dotypos = makeDotypos({
       getReservation: mock(() =>
@@ -319,7 +323,7 @@ describe("CheckoutStatusService", () => {
             startDate: "2026-06-19T22:00:00.000Z",
             endDate: "2026-06-20T22:00:00.000Z",
             seats: "1",
-            status: "OPEN",
+            status: "CONFIRMED",
           },
           customer: { id: "customer-id" },
         })
@@ -336,7 +340,7 @@ describe("CheckoutStatusService", () => {
         });
       }).pipe(
         Effect.provide(
-          CheckoutStatusServiceLive.pipe(
+          CheckoutStatusService.Live.pipe(
             Layer.provide(
               Layer.mergeAll(
                 Layer.succeed(ProviderPaymentFinalizationService, finalization),
@@ -357,11 +361,12 @@ describe("CheckoutStatusService", () => {
     const status = await loadStatus(true);
 
     expect(status).toMatchObject({
+      kind: "cowork",
       status: "fulfilled",
       summary: {
-        tier: "profi",
-        date: "2026-06-20",
-        coffee: false,
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
         monitorOption: "2x27-qhd",
         price: { value: 0, exponent: 2, currency: "CZK" },
       },
@@ -370,6 +375,12 @@ describe("CheckoutStatusService", () => {
         roomName: "Main room",
       },
     });
+    expect(status.summary?.reservedFrom.toString()).toBe(
+      "2026-06-19T22:00:00Z"
+    );
+    expect(status.summary?.reservedUntil.toString()).toBe(
+      "2026-06-20T22:00:00Z"
+    );
     expect(status.tableMap?.tables.map((table) => table.id)).toEqual([
       "assigned-table",
       "neighbor-table",
@@ -388,12 +399,135 @@ describe("CheckoutStatusService", () => {
     expect(statusWithoutSeatingMap.summary).toEqual(status.summary);
     expect(statusWithoutSeatingMap.tableMap).toBeUndefined();
     expect(getTables).toHaveBeenCalledTimes(1);
+
+    failTableLookup = true;
+    const statusWithoutTables = await loadStatus(true);
+
+    expect(statusWithoutTables.summary).toEqual(status.summary);
+    expect(statusWithoutTables.tableMap).toBeUndefined();
+    expect(getTables).toHaveBeenCalledTimes(2);
+  });
+
+  test("reconstructs meeting-room timing from Dotypos", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "../holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            reservationDetails: { kind: "meeting-room" },
+            productTier: null,
+            productCoffee: false,
+            productMonitorOption: null,
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "meeting-room-table",
+            startDate: "2026-06-20T07:00:00.000Z",
+            endDate: "2026-06-20T11:00:00.000Z",
+            seats: "12",
+            status: "CONFIRMED",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+      getTables: mock(() =>
+        Effect.succeed([
+          {
+            _cloudId: "cloud-id",
+            display: true,
+            enabled: true,
+            id: "meeting-room-table",
+            name: "Meeting room",
+            locationName: "Meeting room",
+            tags: ["reservation:meeting-room"],
+          },
+        ])
+      ),
+    });
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderPaymentFinalizationService, finalization),
+              Layer.succeed(WorkspaceReservationRepository, reservations),
+              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+              Layer.succeed(DotyposService, dotypos),
+              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(true),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      kind: "meeting-room",
+      status: "fulfilled",
+      summary: {
+        kind: "meeting-room",
+        price: { value: 55_000, exponent: 2, currency: "CZK" },
+      },
+      tableMap: {
+        assignedTableId: "meeting-room-table",
+        roomName: "Meeting room",
+      },
+    });
+    expect(status.summary?.reservedFrom.toString()).toBe(
+      "2026-06-20T07:00:00Z"
+    );
+    expect(status.summary?.reservedUntil.toString()).toBe(
+      "2026-06-20T11:00:00Z"
+    );
+    expect(JSON.stringify(status)).not.toContain("customer-access-code");
   });
 
   test("includes support contact prefill only after fulfillment fails", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -440,7 +574,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusServiceLive.pipe(
+        CheckoutStatusService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
@@ -457,7 +591,7 @@ describe("CheckoutStatusService", () => {
                         startDate: "2026-06-19T22:00:00.000Z",
                         endDate: "2026-06-20T22:00:00.000Z",
                         seats: "1",
-                        status: "OPEN",
+                        status: "CONFIRMED",
                       },
                       customer: {
                         id: "customer-id",
@@ -492,9 +626,7 @@ describe("CheckoutStatusService", () => {
   });
 
   test("omits summary when only a failed payment attempt is available", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -548,7 +680,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusServiceLive.pipe(
+        CheckoutStatusService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
@@ -572,9 +704,7 @@ describe("CheckoutStatusService", () => {
   });
 
   test("keeps status renderable when Dotypos summary lookup fails", async () => {
-    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
-      "./checkout-status.service"
-    );
+    const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
     );
@@ -619,7 +749,7 @@ describe("CheckoutStatusService", () => {
       });
     }).pipe(
       Effect.provide(
-        CheckoutStatusServiceLive.pipe(
+        CheckoutStatusService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(ProviderPaymentFinalizationService, finalization),

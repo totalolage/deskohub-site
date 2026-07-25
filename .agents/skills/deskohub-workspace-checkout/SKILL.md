@@ -32,3 +32,9 @@ Keep catalog currency through advertisement, signed-summary generation, final pr
 Discount-code submission and price-change metadata are reservation-family-neutral. Keep `submittedCode` and `changedKeys` in the common signed pay-state envelope, and have every reservation family quote and affirm discounts through its own canonical product identity. Exhaustively dispatch family-owned quote, summary, persistence, and checkout-details projections; do not make cowork the implicit default.
 
 Do not add temporary downstream reservation-family rejection guards when the public issuing schema cannot produce that family. Keep reachability at the issuer boundary and let the PR that opens the issuer implement the new family exhaustively; transitional guards are easy to forget and can silently block the completed feature.
+
+Keep the local checkout lifecycle status required and structurally distinguish
+`not_found` from statuses backed by a reservation row. External reservation
+summary facts may remain unavailable after terminal hold cancellation or a
+Dotypos read failure; do not conflate that optional projection with the required
+local payment and fulfillment status.

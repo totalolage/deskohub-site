@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import {
   afterAll,
   afterEach,
@@ -14,13 +16,14 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { CheckoutStatusPage } from "./checkout-status-page";
 
-const baseStatus = {
+const baseStatus: CheckoutStatusViewModel = {
+  kind: "cowork",
   orderId: "reservation-status-page",
   returnOutcome: "success",
   status: "fulfilled",
   paymentStatus: "paid",
   fulfillmentStatus: "fulfilled",
-} satisfies CheckoutStatusViewModel;
+};
 
 describe("CheckoutStatusPage", () => {
   beforeAll(() => {
@@ -41,11 +44,14 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          kind: "cowork",
           summary: {
-            tier: "profi",
-            date: "2026-06-20",
-            coffee: false,
+            kind: "cowork",
+            entryTier: "profi",
+            coffee: true,
             monitorOption: "2x27-qhd",
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00.000Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00.000Z"),
             price: { value: 55_000, exponent: 2, currency: "CZK" },
           },
         }}
@@ -74,11 +80,40 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("renders meeting-room timing and links to its current entry point", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "meeting-room",
+          summary: {
+            kind: "meeting-room",
+            reservedFrom: Temporal.Instant.from("2026-06-20T07:00:00.000Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T11:00:00.000Z"),
+            price: { value: 60_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Meeting Room")).toBeDefined();
+    expect(view.getByText("Saturday, June 20, 2026")).toBeDefined();
+    expect(view.getByText(/9:00 AM.*1:00 PM/)).toBeDefined();
+    expect(view.getByText("CZK 600")).toBeDefined();
+    expect(
+      view
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/meeting-room");
+  });
+
   test("renders not found without reservation summary copy", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
         status={{
+          kind: undefined,
           orderId: "test-order",
           returnOutcome: "unknown",
           status: "not_found",
@@ -129,6 +164,7 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          kind: "cowork",
           status: "fulfillment_failed",
           fulfillmentStatus: "failed",
           supportContactPrefill: {
@@ -137,9 +173,11 @@ describe("CheckoutStatusPage", () => {
             phone: "+420777777777",
           },
           summary: {
-            tier: "basic",
-            date: "2026-06-20",
+            kind: "cowork",
+            entryTier: "basic",
             coffee: false,
+            reservedFrom: Temporal.Instant.from("2026-06-19T22:00:00.000Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-20T22:00:00.000Z"),
             price: { value: 35_000, exponent: 2, currency: "CZK" },
           },
         }}
