@@ -397,6 +397,128 @@ describe("ProviderPaymentFinalizationService", () => {
 
   for (const scenario of [
     {
+      name: "the provider operation ID changes",
+      attemptOverrides: {
+        lastProviderOperationId: "previous-operation-id",
+        lastProviderStatus: "DECLINED",
+        failureCode: "nexi_payment_failed",
+      },
+    },
+    {
+      name: "the provider status changes",
+      attemptOverrides: {
+        lastProviderOperationId: "operation-id",
+        lastProviderStatus: "PREVIOUSLY_DECLINED",
+        failureCode: "nexi_payment_failed",
+      },
+    },
+    {
+      name: "a provider-start failure receives provider-terminal evidence",
+      attemptOverrides: {
+        lastProviderOperationId: null,
+        lastProviderStatus: null,
+        failureCode: "nexi_payment_session_failed",
+      },
+    },
+  ] as const) {
+    test(`fences a replaced failed attempt when ${scenario.name}`, async () => {
+      const {
+        ProviderPaymentFinalizationService,
+        ProviderPaymentFinalizationServiceLive,
+      } = await import("./provider-payment-finalization.service");
+      const { PaymentAttemptRepository } = await import(
+        "../repositories/payment-attempt.repository"
+      );
+      const { WorkspacePaidFulfillmentService } = await import(
+        "../fulfillment/paid-fulfillment.service"
+      );
+      const { WorkspaceReservationRepository } = await import(
+        "@/features/reservation/backend/workspace-reservation.repository"
+      );
+      const { PostHogEventService } = await import(
+        "@/shared/backend/analytics/posthog-event.service"
+      );
+      const { NexiService } = await import("@deskohub/nexi");
+
+      const recordEvidenceConflict = mock(() => Effect.void);
+      const claimProviderReconciliation = mock(() =>
+        Effect.die("historical attempts must not claim settlement ownership")
+      );
+      const markPaid = mock(() =>
+        Effect.die("historical attempts must not settle")
+      );
+      const markTerminal = mock(() =>
+        Effect.die("historical attempts must not settle")
+      );
+
+      const result = await Effect.gen(function* () {
+        const service = yield* ProviderPaymentFinalizationService;
+        return yield* service.finalizePendingProviderPayment({
+          orderId: "reservation-id",
+          paymentAttemptId: "attempt-id",
+        });
+      }).pipe(
+        Effect.provide(
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(WorkspaceReservationRepository, {
+                  findById: mock(() =>
+                    Effect.succeed({
+                      ...pendingReservation,
+                      activePaymentAttemptId: "replacement-attempt-id",
+                    })
+                  ),
+                } as unknown as WorkspaceReservationRepositoryType),
+                Layer.succeed(WorkspacePaidFulfillmentService, {
+                  fulfillPaidOrder: mock(() =>
+                    Effect.die("historical attempts must not fulfill")
+                  ),
+                }),
+                Layer.succeed(PaymentAttemptRepository, {
+                  findById: mock(() =>
+                    Effect.succeed({
+                      ...pendingAttempt,
+                      ...scenario.attemptOverrides,
+                      state: "failed" as const,
+                    })
+                  ),
+                } as unknown as PaymentAttemptRepositoryType),
+                paymentLifecycleLayer({
+                  claimProviderReconciliation,
+                  recordEvidenceConflict,
+                  markPaid,
+                  markTerminal,
+                }),
+                Layer.succeed(PostHogEventService, {
+                  capture: () => Effect.void,
+                }),
+                Layer.succeed(NexiService, {
+                  verifyPaymentOutcome: mock(() =>
+                    Effect.succeed(buildVerification("failure"))
+                  ),
+                } as unknown as NexiServiceType)
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(result).toBe("manual_review");
+      expect(recordEvidenceConflict).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        conflictCodes: ["provider_terminal_state"],
+      });
+      expect(claimProviderReconciliation).not.toHaveBeenCalled();
+      expect(markPaid).not.toHaveBeenCalled();
+      expect(markTerminal).not.toHaveBeenCalled();
+    });
+  }
+
+  for (const scenario of [
+    {
       verificationStatus: "success" as const,
       expected: "paid" as const,
       changed: true,

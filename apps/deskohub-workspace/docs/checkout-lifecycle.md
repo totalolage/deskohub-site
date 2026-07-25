@@ -699,10 +699,7 @@ join payment_attempts attempt
 join workspace_reservations reservation
   on reservation.id = attempt.workspace_reservation_id
 where not attempt.provider_evidence_conflicted
-   or (
-     reservation.active_payment_attempt_id = attempt.id
-     and not reservation.active_payment_evidence_conflicted
-   );
+   or not reservation.active_payment_evidence_conflicted;
 ```
 
 Idempotent reconciliation:

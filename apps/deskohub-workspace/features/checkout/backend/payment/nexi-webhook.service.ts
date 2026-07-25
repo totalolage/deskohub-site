@@ -546,8 +546,16 @@ export const NexiWebhookServiceLive = Layer.effect(
               if (
                 hasConflictingHistoricalTerminalEvidence({
                   attemptState: attempt.state,
+                  lastProviderOperationId: attempt.lastProviderOperationId,
+                  lastProviderStatus: attempt.lastProviderStatus,
+                  failureCode: attempt.failureCode,
                   verificationStatus: verification.status,
+                  providerOperationId,
                   providerStatus,
+                  verifiedFailureCode:
+                    verification.status === "failure"
+                      ? "nexi_payment_failed"
+                      : null,
                 })
               ) {
                 yield* paymentLifecycle.recordEvidenceConflict({

@@ -419,6 +419,123 @@ describe("NexiWebhookService", () => {
     );
   });
 
+  for (const scenario of [
+    {
+      name: "the provider operation ID changes",
+      attemptOverrides: {
+        lastProviderOperationId: "previous-operation-id",
+        lastProviderStatus: "DECLINED",
+        failureCode: "nexi_payment_failed",
+      },
+    },
+    {
+      name: "the provider status changes",
+      attemptOverrides: {
+        lastProviderOperationId: "operation-id",
+        lastProviderStatus: "PREVIOUSLY_DECLINED",
+        failureCode: "nexi_payment_failed",
+      },
+    },
+    {
+      name: "a provider-start failure receives provider-terminal evidence",
+      attemptOverrides: {
+        lastProviderOperationId: null,
+        lastProviderStatus: null,
+        failureCode: "nexi_payment_session_failed",
+      },
+    },
+  ] as const) {
+    test(`fences a replaced failed attempt webhook when ${scenario.name}`, async () => {
+      const markProcessed = mock(() => Effect.void);
+      const recordEvidenceConflict = mock(() => Effect.void);
+      const claimProviderReconciliation = mock(() =>
+        Effect.die("historical attempts must not claim settlement ownership")
+      );
+      const markPaid = mock(() =>
+        Effect.die("historical attempts must not settle")
+      );
+      const markTerminal = mock(() =>
+        Effect.die("historical attempts must not settle")
+      );
+      const providerVerification: PaymentVerificationResult = {
+        status: "failure",
+        provider: {
+          ...verification.provider,
+          orderStatus: "DECLINED",
+          captureExecuted: false,
+        },
+        mismatches: [],
+      };
+
+      const result = await Effect.runPromise(
+        await buildWebhookEffect(
+          {
+            webhookEvents: {
+              insertReceived: mock(() =>
+                Effect.succeed({ status: "inserted", event: receivedEvent })
+              ),
+              linkPaymentAttempt: mock(() => Effect.void),
+              markProcessed,
+              markFailed: mock(() => Effect.die("must not fail")),
+              claimRetry: mock(() => Effect.die("unused")),
+            } as unknown as WebhookEventRepositoryType,
+            paymentAttempts: {
+              findByProviderOrderId: mock(() =>
+                Effect.succeed({
+                  ...attempt,
+                  ...scenario.attemptOverrides,
+                  state: "failed" as const,
+                })
+              ),
+            } as unknown as PaymentAttemptRepositoryType,
+            paymentLifecycle: {
+              claimProviderReconciliation,
+              recordEvidenceConflict,
+              markPaid,
+              markTerminal,
+            },
+            reservations: {
+              findById: mock(() =>
+                Effect.succeed({
+                  ...reservation,
+                  activePaymentAttemptId: "replacement-attempt-id",
+                } as never)
+              ),
+            } as unknown as WorkspaceReservationRepositoryType,
+            nexi: {
+              verifyPaymentOutcome: mock(() =>
+                Effect.succeed(providerVerification)
+              ),
+            } as unknown as NexiServiceType,
+            fulfillment: {
+              fulfillPaidOrder: mock(() =>
+                Effect.die("historical attempts must not fulfill")
+              ),
+            },
+          },
+          failurePayload
+        )
+      );
+
+      expect(result).toEqual({
+        status: "accepted",
+        eventId: "event-id",
+        orderId: "provider-order-id",
+      });
+      expect(recordEvidenceConflict).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        conflictCodes: ["provider_terminal_state"],
+      });
+      expect(claimProviderReconciliation).not.toHaveBeenCalled();
+      expect(markPaid).not.toHaveBeenCalled();
+      expect(markTerminal).not.toHaveBeenCalled();
+      expect(markProcessed).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "eventId", eventId: "event-id" })
+      );
+    });
+  }
+
   for (const providerStatus of ["success", "failure"] as const) {
     test(`does not let a forged webhook token fence later clean ${providerStatus} reconciliation`, async () => {
       const markProcessed = mock(() => Effect.void);

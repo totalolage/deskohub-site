@@ -32,18 +32,29 @@ export const getProviderEvidenceConflictCodes = (
 
 export const hasConflictingHistoricalTerminalEvidence = (input: {
   readonly attemptState: PaymentAttemptState;
+  readonly lastProviderOperationId: string | null;
+  readonly lastProviderStatus: string | null;
+  readonly failureCode: string | null;
   readonly verificationStatus: PaymentVerificationResult["status"];
+  readonly providerOperationId: string | undefined;
   readonly providerStatus: string | undefined;
+  readonly verifiedFailureCode: string | null;
 }) => {
-  if (input.verificationStatus === "success") {
-    return input.attemptState !== "paid";
+  if (
+    input.verificationStatus !== "success" &&
+    input.verificationStatus !== "failure"
+  ) {
+    return false;
   }
-  if (input.verificationStatus !== "failure") return false;
 
-  const verifiedState = classifyNexiFailureStatus(input.providerStatus);
+  const verifiedState =
+    input.verificationStatus === "success"
+      ? "paid"
+      : classifyNexiFailureStatus(input.providerStatus);
   return (
-    input.attemptState === "paid" ||
-    (["failed", "cancelled", "expired"].includes(input.attemptState) &&
-      input.attemptState !== verifiedState)
+    input.attemptState !== verifiedState ||
+    input.lastProviderOperationId !== (input.providerOperationId ?? null) ||
+    input.lastProviderStatus !== (input.providerStatus ?? null) ||
+    input.failureCode !== input.verifiedFailureCode
   );
 };
