@@ -50,5 +50,11 @@ describe("payment paid event migration contract", () => {
     expect(migration).toContain(
       "NEW.\"reservation_state\" IN (\n      'hold_expired',\n      'cancelling',\n      'cancelled'"
     );
+    expect(migration).toContain(
+      "provider evidence conflict rejects active attempt replacement"
+    );
+    expect(migration).toContain(
+      'WHERE conflict."payment_attempt_id" = OLD."active_payment_attempt_id"'
+    );
   });
 });

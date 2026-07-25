@@ -472,7 +472,7 @@ sequenceDiagram
   participant Dotypos
   participant Fulfillment
 
-  Nexi->>Webhook: Official notification envelope
+  Nexi->>Webhook: Unsigned notification trigger
   Webhook->>Webhook: Decode envelope; derive event identity
   Webhook->>DB: Insert webhook_events(received) or load duplicate state
   alt duplicate processed
@@ -480,9 +480,9 @@ sequenceDiagram
   else duplicate failed/received or fresh event
   Webhook->>DB: Claim retry only if webhook_events is not processed
   Webhook->>DB: Load payment attempt by provider_order_id
-  Webhook->>Webhook: Compare notification securityToken if present
+  Webhook->>Webhook: Apply token and operation checks to this delivery only
   Webhook->>Nexi: GET /orders/{provider_order_id}
-  Nexi-->>Webhook: Verified payment result
+  Nexi-->>Webhook: Authenticated authoritative payment result
   Webhook->>DB: Atomically mark (created|pending) attempt/reservation paid, redeem claim, and enqueue payment_paid_events
   Webhook->>DB: Claim fulfillment_state=processing and reservation_state=confirming
   Fulfillment->>Dotypos: Confirm/finalize reservation using dotyposReservationId
@@ -522,17 +522,29 @@ sequenceDiagram
 sequenceDiagram
   participant Job as Cleanup Job
   participant DB as Local DB
+  participant Nexi
   participant Dotypos
 
   Job->>DB: Select held unpaid rows past reservation_hold_expires_at
-  Job->>DB: Mark reservation_state=hold_expired then cancelling
-  Job->>Dotypos: Cancel Dotypos reservation hold
-  alt cancellation succeeds or already cancelled
-    Dotypos-->>Job: OK
-    Job->>DB: reservation_state=cancelled, reservation_cancelled_at
-  else cancellation fails
-    Dotypos-->>Job: Provider/client error
-    Job->>DB: reservation_state=cancellation_failed
+  Job->>DB: Load exact active payment attempt
+  alt active attempt is created or pending
+    Job->>Nexi: Authoritative GET by stable provider order ID
+    alt authoritative unsuccessful terminal result
+      Job->>DB: Atomically settle attempt/reservation terminal and release claim
+    else paid, pending, unavailable, mismatched, or manual review
+      Job->>DB: Leave hold and payment unchanged; record skipped cleanup
+    end
+  end
+  alt no active payment or payment was authoritatively unsuccessful
+    Job->>DB: Mark reservation_state=hold_expired then cancelling
+    Job->>Dotypos: Cancel Dotypos reservation hold
+    alt cancellation succeeds or already cancelled
+      Dotypos-->>Job: OK
+      Job->>DB: reservation_state=cancelled, reservation_cancelled_at
+    else cancellation fails
+      Dotypos-->>Job: Provider/client error
+      Job->>DB: reservation_state=cancellation_failed
+    end
   end
   Job->>DB: Later retry selects cancellation_failed rows
 ```
@@ -545,7 +557,8 @@ sequenceDiagram
 | Pending payment | `payment_state = 'pending'` plus active attempt | Wait for webhook, verify with Nexi, or show pending status. |
 | Paid but not fulfilled | `payment_state = 'paid' and fulfillment_state in ('not_started', 'failed')` | Run fulfillment worker. |
 | Fulfillment stuck | `payment_state = 'paid' and fulfillment_state = 'processing'` | Inspect staleness; retry only through guarded repair path. |
-| Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
+| Expired unpaid hold without an active attempt | `reservation_state = 'held' and payment_state = 'not_started' and reservation_hold_expires_at <= now()` | Cancel the Dotypos hold through the guarded cleanup transition. |
+| Expired hold with active payment | Expired held row plus exact active `created` or `pending` attempt | Perform authoritative read-only provider finalization first. Cancel only after authoritative unsuccessful terminal evidence settles the payment; paid, pending, unavailable, mismatched, and manual-review outcomes remain held and skipped. |
 | Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |

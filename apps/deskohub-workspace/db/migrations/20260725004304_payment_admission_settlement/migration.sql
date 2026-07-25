@@ -155,6 +155,21 @@ AS $$
 BEGIN
   IF NEW."active_payment_attempt_id" IS DISTINCT FROM OLD."active_payment_attempt_id"
   THEN
+    IF OLD."active_payment_attempt_id" IS NOT NULL
+      AND (
+        OLD."active_payment_evidence_conflicted"
+        OR EXISTS (
+          SELECT 1
+          FROM "payment_evidence_conflicts" AS conflict
+          WHERE conflict."payment_attempt_id" = OLD."active_payment_attempt_id"
+        )
+      )
+    THEN
+      RAISE EXCEPTION
+        'provider evidence conflict rejects active attempt replacement'
+        USING ERRCODE = '23514';
+    END IF;
+
     SELECT COALESCE(attempt."provider_evidence_conflicted", false)
     INTO NEW."active_payment_evidence_conflicted"
     FROM (SELECT 1) AS singleton

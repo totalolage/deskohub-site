@@ -220,6 +220,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 paymentState: workspaceReservations.paymentState,
                 activePaymentAttemptId:
                   workspaceReservations.activePaymentAttemptId,
+                activePaymentEvidenceConflicted:
+                  workspaceReservations.activePaymentEvidenceConflicted,
                 reservationHoldExpiresAt:
                   workspaceReservations.reservationHoldExpiresAt,
               })
@@ -268,6 +270,15 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (
                 !existing ||
                 existing.attempt.workspaceReservationId !== reservation.id
+              ) {
+                return {
+                  outcome: "unavailable" as const,
+                  reason: "active_attempt" as const,
+                };
+              }
+              if (
+                reservation.activePaymentEvidenceConflicted ||
+                existing.hasEvidenceConflict
               ) {
                 return {
                   outcome: "unavailable" as const,
@@ -407,6 +418,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     input.checkoutSessionKey
                   ),
                   eq(workspaceReservations.reservationState, "held"),
+                  eq(
+                    workspaceReservations.activePaymentEvidenceConflicted,
+                    false
+                  ),
                   inArray(workspaceReservations.paymentState, [
                     "not_started",
                     "failed",
@@ -564,6 +579,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     input.providerStartLeaseId
                   ),
                   eq(paymentAttempts.state, "created"),
+                  eq(paymentAttempts.providerEvidenceConflicted, false),
                   sql`${paymentAttempts.providerStartLeaseExpiresAt} > clock_timestamp()`,
                   payableReservationExists(input)
                 )
@@ -589,6 +605,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                   ),
                   eq(paymentAttempts.providerOrderId, input.providerOrderId),
                   eq(paymentAttempts.state, "pending"),
+                  eq(paymentAttempts.providerEvidenceConflicted, false),
                   eq(paymentAttempts.securityToken, input.securityToken),
                   eq(
                     paymentAttempts.providerRedirectUrl,
@@ -636,6 +653,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                       and payable.failure_code not like 'hold_creation_orphan_verifying:%'
                     )
                   )
+                  and payable.active_payment_evidence_conflicted = false
                   and payable.reservation_hold_expires_at > clock_timestamp()
               )`;
 
@@ -1389,6 +1407,12 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
       .for("update");
     if (!attempt) return null;
 
+    const [evidenceConflict] = yield* input.tx
+      .select({ id: paymentEvidenceConflicts.id })
+      .from(paymentEvidenceConflicts)
+      .where(eq(paymentEvidenceConflicts.paymentAttemptId, attempt.id))
+      .limit(1);
+
     const applicationRows = yield* input.tx
       .select()
       .from(discountApplications)
@@ -1455,6 +1479,8 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
 
     return {
       attempt,
+      hasEvidenceConflict:
+        attempt.providerEvidenceConflicted || evidenceConflict !== undefined,
       pricingMatches:
         isSafeAttachedLegacyReuse ||
         isSafeCreatedLegacyReconciliation ||

@@ -942,6 +942,85 @@ describe("PaymentLifecycleRepository database behavior", () => {
     );
   });
 
+  test("preserves a conflicted terminal active attempt and rejects replacement admission", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("conflicted-terminal-retry");
+        const admission = yield* admit(repository, "conflicted-terminal-retry");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        yield* repository.markTerminal({
+          id: admission.attempt.id,
+          workspaceReservationId: "conflicted-terminal-retry",
+          state: "failed",
+          failureCode: "authoritative_provider_failure",
+          providerOperationId: "terminal-operation",
+          providerStatus: "DECLINED",
+        });
+        yield* repository.recordEvidenceConflict({
+          id: admission.attempt.id,
+          workspaceReservationId: "conflicted-terminal-retry",
+          conflictCodes: ["provider_operation_evidence"],
+        });
+
+        const retry = yield* admit(repository, "conflicted-terminal-retry", {
+          allowNewAdmission: true,
+        });
+        expect(retry).toEqual({
+          outcome: "unavailable",
+          reason: "active_attempt",
+        });
+
+        const attempts = yield* db
+          .select({
+            id: paymentAttempts.id,
+            state: paymentAttempts.state,
+            evidenceConflicted: paymentAttempts.providerEvidenceConflicted,
+          })
+          .from(paymentAttempts)
+          .where(
+            eq(
+              paymentAttempts.workspaceReservationId,
+              "conflicted-terminal-retry"
+            )
+          );
+        expect(attempts).toEqual([
+          {
+            id: admission.attempt.id,
+            state: "failed",
+            evidenceConflicted: true,
+          },
+        ]);
+
+        const [reservationRow] = yield* db
+          .select({
+            activeAttemptId: workspaceReservations.activePaymentAttemptId,
+            paymentState: workspaceReservations.paymentState,
+            evidenceConflicted:
+              workspaceReservations.activePaymentEvidenceConflicted,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, "conflicted-terminal-retry"));
+        expect(reservationRow).toEqual({
+          activeAttemptId: admission.attempt.id,
+          paymentState: "failed",
+          evidenceConflicted: true,
+        });
+
+        expect(
+          (yield* db
+            .update(workspaceReservations)
+            .set({ activePaymentAttemptId: null })
+            .where(eq(workspaceReservations.id, "conflicted-terminal-retry"))
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+      })
+    );
+  });
+
   test("fences paid and terminal settlement after durable provider evidence conflict", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {

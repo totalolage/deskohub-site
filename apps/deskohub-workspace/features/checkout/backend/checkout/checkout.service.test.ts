@@ -542,6 +542,27 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 };
 
 describe("CheckoutService", () => {
+  test("never starts a provider order when admission fences the active attempt", async () => {
+    const createAttempt = mock(() =>
+      Effect.succeed({
+        outcome: "unavailable" as const,
+        reason: "active_attempt" as const,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-conflicted-active-attempt",
+      createAttempt,
+    });
+
+    expect(await Effect.runPromise(harness.effect)).toEqual({
+      status: "in_progress",
+    });
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.finalizePendingProviderPayment).not.toHaveBeenCalled();
+  });
+
   test("prepares fallible local provider inputs before committing an attempt", async () => {
     const source = await Bun.file(
       new URL("./checkout.service.ts", import.meta.url)
