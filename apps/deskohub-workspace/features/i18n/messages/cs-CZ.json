@@ -343,7 +343,7 @@
   "checkoutSummarySectionOrder": "Objednávka",
   "checkoutSummarySectionTotal": "Celkem",
   "checkoutSummaryDiscountDetailsTrigger": "Zobrazit slevy použité na {product}",
-  "checkoutSummaryDiscountEnds": "Končí {remaining}",
+  "checkoutSummaryDiscountEnds": "Končí za {remaining}",
   "checkoutDiscountCodeLabel": "Slevový kód",
   "checkoutDiscountCodePlaceholder": "Zadej kód",
   "checkoutDiscountCodeApply": "Použít kód",

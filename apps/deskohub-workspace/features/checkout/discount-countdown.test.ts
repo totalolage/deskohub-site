@@ -48,15 +48,15 @@ describe("getDiscountCountdown", () => {
     });
   });
 
-  test("counts minutes and schedules the next displayed value", () => {
+  test("counts seconds throughout the final hour", () => {
     expect(
       getDiscountCountdownState(
         timedDiscount,
         Temporal.Instant.from("2026-08-02T09:00:00.000Z")
       )
     ).toEqual({
-      countdown: { value: 60, unit: "minute" },
-      refreshAfterMilliseconds: 60_000,
+      countdown: { value: 3600, unit: "second" },
+      refreshAfterMilliseconds: 1000,
     });
     expect(
       getDiscountCountdownState(
@@ -64,17 +64,17 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-02T09:00:00.001Z")
       )
     ).toEqual({
-      countdown: { value: 60, unit: "minute" },
-      refreshAfterMilliseconds: 59_999,
+      countdown: { value: 3600, unit: "second" },
+      refreshAfterMilliseconds: 999,
     });
     expect(
       getDiscountCountdownState(
         timedDiscount,
-        Temporal.Instant.from("2026-08-02T09:59:59.999Z")
+        Temporal.Instant.from("2026-08-02T09:50:00.000Z")
       )
     ).toEqual({
-      countdown: { value: 1, unit: "minute" },
-      refreshAfterMilliseconds: 1,
+      countdown: { value: 600, unit: "second" },
+      refreshAfterMilliseconds: 1000,
     });
   });
 

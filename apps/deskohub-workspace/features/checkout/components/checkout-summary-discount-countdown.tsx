@@ -70,9 +70,25 @@ function ActiveDiscountCountdown({
     return null;
   }
 
-  const remaining = new Intl.RelativeTimeFormat(locale, {
-    numeric: "always",
-  }).format(countdown.value, countdown.unit);
+  const remainingUnits =
+    countdown.unit === "second"
+      ? [
+          { value: Math.floor(countdown.value / 60), unit: "minute" as const },
+          { value: countdown.value % 60, unit: "second" as const },
+        ].filter(({ value }) => value > 0)
+      : [countdown];
+  const remaining = new Intl.ListFormat(locale, {
+    style: "long",
+    type: "conjunction",
+  }).format(
+    remainingUnits.map(({ value, unit }) =>
+      new Intl.NumberFormat(locale, {
+        style: "unit",
+        unit,
+        unitDisplay: "long",
+      }).format(value)
+    )
+  );
 
   return (
     <span className="mt-1 flex items-center gap-1 text-xs font-medium text-burned-orange">

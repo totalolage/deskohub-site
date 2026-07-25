@@ -40,10 +40,10 @@ The discount-code input is an independent form on the order-summary page. Invali
 
 Checkout presents expiry as a source-neutral localized countdown in the
 discount details only during the declared half-open interval
-`countdownStartsAt <= now < expiresAt`. It counts remaining partial hours up
-until the final hour and remaining partial minutes thereafter. Calendar sales
-declare a 24-hour countdown window; bounded codes declare a one-hour window.
-The UI does not infer either source.
+`countdownStartsAt <= now < expiresAt`. It counts remaining partial hours until
+the final hour, then updates the remaining minutes and seconds every second.
+Calendar sales declare a 24-hour countdown window; bounded codes declare a
+one-hour window. The UI does not infer either source.
 
 ## Create a percentage code
 

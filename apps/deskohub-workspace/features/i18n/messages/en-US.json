@@ -342,7 +342,7 @@
   "checkoutSummarySectionOrder": "Order",
   "checkoutSummarySectionTotal": "Total",
   "checkoutSummaryDiscountDetailsTrigger": "Show discounts applied to {product}",
-  "checkoutSummaryDiscountEnds": "Ends {remaining}",
+  "checkoutSummaryDiscountEnds": "Ends in {remaining}",
   "checkoutDiscountCodeLabel": "Discount code",
   "checkoutDiscountCodePlaceholder": "Enter code",
   "checkoutDiscountCodeApply": "Apply code",

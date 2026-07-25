@@ -290,11 +290,11 @@ describe("CheckoutSummary", () => {
       />
     );
 
-    expect(view.getByText("Ends in 1 minute")).toBeDefined();
+    expect(view.getByText("Ends in 15 seconds")).toBeDefined();
 
     act(() => jest.advanceTimersByTime(15_000));
 
-    expect(view.queryByText("Ends in 1 minute")).toBeNull();
+    expect(view.queryByText("Ends in 15 seconds")).toBeNull();
   });
 
   test("updates the countdown at its start and unit boundaries", () => {
@@ -321,5 +321,29 @@ describe("CheckoutSummary", () => {
 
     act(() => jest.advanceTimersByTime(3_600_000));
     expect(view.getByText("Ends in 23 hours")).toBeDefined();
+  });
+
+  test("updates every second throughout the final hour", () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-02T09:00:00.000Z"),
+    });
+    const view = render(
+      <CheckoutSummaryDiscountCountdown
+        discount={{
+          id: Schema.decodeUnknownSync(discountIdSchema)("urgent-sale"),
+          label: "Summer sale",
+          adjustment: { kind: "percentage", basisPoints: 5000 },
+          countdownStartsAt: "2026-08-02T09:00:00.000Z",
+          expiresAt: "2026-08-02T10:00:00.000Z",
+        }}
+        locale="en-US"
+      />
+    );
+
+    expect(view.getByText("Ends in 60 minutes")).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(1000));
+
+    expect(view.getByText("Ends in 59 minutes and 59 seconds")).toBeDefined();
   });
 });

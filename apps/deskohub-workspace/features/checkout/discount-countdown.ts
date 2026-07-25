@@ -1,11 +1,12 @@
 import type { Discount } from "@/features/discounts/contracts";
 
+const millisecondsPerSecond = 1000;
 const millisecondsPerMinute = 60_000;
 const millisecondsPerHour = 60 * millisecondsPerMinute;
 
 export type DiscountCountdown = {
   readonly value: number;
-  readonly unit: "hour" | "minute";
+  readonly unit: "hour" | "second";
 };
 
 export type DiscountCountdownState = {
@@ -37,9 +38,11 @@ export const getDiscountCountdownState = (
 
   const remainingMilliseconds =
     expiresAt.epochMilliseconds - now.epochMilliseconds;
-  const unit = remainingMilliseconds > millisecondsPerHour ? "hour" : "minute";
-  const unitMilliseconds =
-    unit === "hour" ? millisecondsPerHour : millisecondsPerMinute;
+  const unit = remainingMilliseconds <= millisecondsPerHour ? "second" : "hour";
+  const unitMilliseconds = {
+    hour: millisecondsPerHour,
+    second: millisecondsPerSecond,
+  }[unit];
   const value = Math.max(
     1,
     Math.ceil(remainingMilliseconds / unitMilliseconds)
