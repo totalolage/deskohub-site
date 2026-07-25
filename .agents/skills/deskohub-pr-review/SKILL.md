@@ -9,6 +9,8 @@ When fixing a bug raised by review, first add a regression test against the curr
 
 When a planned PR stopping point is ready for user review, publish the PR as ready for review instead of leaving it in draft.
 
+For every PR that introduces or changes UI, attach screenshots of every newly introduced visible UI state to the PR. Capture the exact committed and pushed code, preferably from its immutable preview. Cover states that differ materially in copy, layout, interaction result, or responsive presentation; document non-visible boundary states with tests rather than empty screenshots.
+
 After an addressed fix is pushed and validated, reply to each addressed review thread with a concise summary and mark the thread resolved.
 
 Update this skill when developer feedback changes the repository's review workflow.

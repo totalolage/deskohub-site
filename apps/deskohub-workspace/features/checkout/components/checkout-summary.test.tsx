@@ -4,6 +4,8 @@ import {
   beforeAll,
   describe,
   expect,
+  jest,
+  setSystemTime,
   test,
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
@@ -15,6 +17,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { CheckoutSummary } from "./checkout-summary";
+import { CheckoutSummaryDiscountCountdown } from "./checkout-summary-discount-countdown";
 import { CheckoutSummaryDiscountDetailsContent } from "./checkout-summary-discount-details";
 
 describe("CheckoutSummary", () => {
@@ -24,6 +27,8 @@ describe("CheckoutSummary", () => {
 
   afterEach(() => {
     cleanup();
+    jest.useRealTimers();
+    setSystemTime();
   });
 
   afterAll(() => {
@@ -243,5 +248,78 @@ describe("CheckoutSummary", () => {
     expect(rows[1]?.textContent?.replaceAll("\u00a0", " ")).toContain(
       "-CZK 175"
     );
+  });
+
+  test("localizes an active discount countdown", async () => {
+    setSystemTime(new Date("2026-08-01T12:30:00.000Z"));
+    const discount = {
+      id: Schema.decodeUnknownSync(discountIdSchema)("timed-sale"),
+      label: "Summer sale",
+      adjustment: { kind: "percentage" as const, basisPoints: 5000 },
+      countdownStartsAt: "2026-08-01T10:00:00.000Z",
+      expiresAt: "2026-08-02T10:00:00.000Z",
+    };
+    const english = render(
+      <CheckoutSummaryDiscountCountdown discount={discount} locale="en-US" />
+    );
+
+    expect(await english.findByText("Ends in 22 hours")).toBeDefined();
+
+    cleanup();
+    const czech = render(
+      <CheckoutSummaryDiscountCountdown discount={discount} locale="cs-CZ" />
+    );
+
+    expect(await czech.findByText("Končí za 22 hodin")).toBeDefined();
+  });
+
+  test("removes the discount countdown at its expiry boundary", () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-02T09:59:45.000Z"),
+    });
+    const view = render(
+      <CheckoutSummaryDiscountCountdown
+        discount={{
+          id: Schema.decodeUnknownSync(discountIdSchema)("expiring-sale"),
+          label: "Summer sale",
+          adjustment: { kind: "percentage", basisPoints: 5000 },
+          countdownStartsAt: "2026-08-02T09:00:00.000Z",
+          expiresAt: "2026-08-02T10:00:00.000Z",
+        }}
+        locale="en-US"
+      />
+    );
+
+    expect(view.getByText("Ends in 1 minute")).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(15_000));
+
+    expect(view.queryByText("Ends in 1 minute")).toBeNull();
+  });
+
+  test("updates the countdown at its start and unit boundaries", () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-01T09:59:59.999Z"),
+    });
+    const view = render(
+      <CheckoutSummaryDiscountCountdown
+        discount={{
+          id: Schema.decodeUnknownSync(discountIdSchema)("scheduled-sale"),
+          label: "Summer sale",
+          adjustment: { kind: "percentage", basisPoints: 5000 },
+          countdownStartsAt: "2026-08-01T10:00:00.000Z",
+          expiresAt: "2026-08-02T10:00:00.000Z",
+        }}
+        locale="en-US"
+      />
+    );
+
+    expect(view.queryByText(/Ends in/)).toBeNull();
+
+    act(() => jest.advanceTimersByTime(1));
+    expect(view.getByText("Ends in 24 hours")).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(3_600_000));
+    expect(view.getByText("Ends in 23 hours")).toBeDefined();
   });
 });

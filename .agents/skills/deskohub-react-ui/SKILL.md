@@ -10,5 +10,6 @@ description: Apply Deskohub React and TSX conventions when creating, editing, or
 - Inline a JSX `className` string when it is used only once. Do not hoist it into a local variable.
 - Inline simple one-use literals or lookup objects where they are consumed. Do not hoist them to module scope.
 - Use the matching shadcn primitive for standard interactions. In particular, use Tooltip for hover and focus hints instead of building controlled Popover timers or pointer-state machinery. If the primitive is missing, add it through the app's existing `components.json` configuration and adapt only its shared styling and React conventions.
+- Treat screenshots as part of delivering UI work: every pull request that introduces a visible UI state must attach a screenshot of each newly introduced state from the exact committed implementation. Use tests, not empty screenshots, for hidden preconditions or terminal states that deliberately render nothing.
 
 Update this skill when developer feedback changes a durable React convention.

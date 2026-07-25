@@ -15,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
+import { CheckoutSummaryDiscountCountdown } from "./checkout-summary-discount-countdown";
 
 export function CheckoutSummaryDiscountDetails({
   discounts,
@@ -77,6 +78,10 @@ export function CheckoutSummaryDiscountDetailsContent({
             <span className="block text-xs text-navy-blue/55">
               {formatDiscountAdjustment(discount.adjustment, locale)}
             </span>
+            <CheckoutSummaryDiscountCountdown
+              discount={discount}
+              locale={locale}
+            />
           </span>
           <span className="font-semibold tabular-nums">
             {formatWorkspaceMoney(
