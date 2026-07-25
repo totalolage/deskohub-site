@@ -12,6 +12,7 @@ export type DiscountCountdown = {
 export type DiscountCountdownState = {
   readonly countdown?: DiscountCountdown;
   readonly refreshAfterMilliseconds?: number;
+  readonly refreshEveryMilliseconds?: number;
 };
 
 export const getDiscountCountdownState = (
@@ -38,7 +39,7 @@ export const getDiscountCountdownState = (
 
   const remainingMilliseconds =
     expiresAt.epochMilliseconds - now.epochMilliseconds;
-  const unit = remainingMilliseconds <= millisecondsPerHour ? "second" : "hour";
+  const unit = remainingMilliseconds < millisecondsPerHour ? "second" : "hour";
   const unitMilliseconds = {
     hour: millisecondsPerHour,
     second: millisecondsPerSecond,
@@ -50,7 +51,13 @@ export const getDiscountCountdownState = (
 
   return {
     countdown: { value, unit },
-    refreshAfterMilliseconds:
-      remainingMilliseconds - (value - 1) * unitMilliseconds,
+    ...(unit === "second"
+      ? { refreshEveryMilliseconds: millisecondsPerSecond }
+      : {
+          refreshAfterMilliseconds:
+            remainingMilliseconds === millisecondsPerHour
+              ? 1
+              : remainingMilliseconds - (value - 1) * unitMilliseconds,
+        }),
   };
 };

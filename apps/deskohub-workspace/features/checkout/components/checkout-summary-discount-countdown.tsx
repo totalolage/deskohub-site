@@ -46,24 +46,42 @@ function ActiveDiscountCountdown({
 
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | undefined;
+    let interval: ReturnType<typeof setInterval> | undefined;
     const updateCountdown = () => {
       const state = getDiscountCountdownState(
         { countdownStartsAt, expiresAt },
         Temporal.Now.instant()
       );
       setCountdown(state.countdown);
+      return state;
+    };
 
+    const scheduleCountdown = () => {
+      const state = updateCountdown();
+      if (state.refreshEveryMilliseconds !== undefined) {
+        interval = setInterval(() => {
+          const nextState = updateCountdown();
+          if (nextState.refreshEveryMilliseconds === undefined) {
+            clearInterval(interval);
+            interval = undefined;
+          }
+        }, state.refreshEveryMilliseconds);
+        return;
+      }
       if (state.refreshAfterMilliseconds !== undefined) {
         timeout = setTimeout(
-          updateCountdown,
+          scheduleCountdown,
           Math.min(state.refreshAfterMilliseconds, maximumTimeoutMilliseconds)
         );
       }
     };
 
-    updateCountdown();
+    scheduleCountdown();
 
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      clearInterval(interval);
+    };
   }, [countdownStartsAt, expiresAt]);
 
   if (!countdown) {

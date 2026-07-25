@@ -323,7 +323,7 @@ describe("CheckoutSummary", () => {
     expect(view.getByText("Ends in 23 hours")).toBeDefined();
   });
 
-  test("updates every second throughout the final hour", () => {
+  test("switches to a one-second interval below one hour", () => {
     jest.useFakeTimers({
       now: new Date("2026-08-02T09:00:00.000Z"),
     });
@@ -340,10 +340,15 @@ describe("CheckoutSummary", () => {
       />
     );
 
+    expect(view.getByText("Ends in 1 hour")).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(1));
     expect(view.getByText("Ends in 60 minutes")).toBeDefined();
 
     act(() => jest.advanceTimersByTime(1000));
-
     expect(view.getByText("Ends in 59 minutes and 59 seconds")).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(1000));
+    expect(view.getByText("Ends in 59 minutes and 58 seconds")).toBeDefined();
   });
 });
