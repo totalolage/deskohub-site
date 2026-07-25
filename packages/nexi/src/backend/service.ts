@@ -12,6 +12,7 @@ import type {
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
 } from "../types";
+import { normalizeNexiProviderOperationId } from "../types";
 import { NexiGeneratedClient } from "./api";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
@@ -333,7 +334,9 @@ const resolvePaymentOutcomeEvidence = (
     status,
     mismatches,
     providerOrderId,
-    providerOperationId: operation?.operationId,
+    providerOperationId: normalizeNexiProviderOperationId(
+      operation?.operationId
+    ),
     providerOperationType: operation?.operationType,
     providerAmount,
     providerStatus,

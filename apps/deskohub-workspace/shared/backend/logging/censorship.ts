@@ -45,6 +45,11 @@ const sensitiveLogKeyFragments = [
   "session url",
   "name",
   "message",
+  "cause",
+  "error",
+  "failure",
+  "defect",
+  "exception",
   "error description",
   "email",
   "phone",
@@ -71,6 +76,7 @@ const sensitiveLogExactKeys = new Set([
   "submittedcode",
   "x-vercel-sc-headers",
 ]);
+const trustedTelemetryClassificationKeys = new Set(["e2e.failure.kind"]);
 
 const sensitiveLogUrlSearchParams = new Set([
   "checkouttoken",
@@ -95,6 +101,13 @@ const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 const sensitiveLogKeyFragmentWords = sensitiveLogKeyFragments.map(
   splitSensitiveLogKeyFragment
 );
+const opaqueFailureKeyWords = new Set([
+  "cause",
+  "error",
+  "failure",
+  "defect",
+  "exception",
+]);
 
 const logKeyWordPattern = /[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+/g;
 const logKeySegmentPattern = /[a-z0-9]+/gi;
@@ -151,10 +164,17 @@ const endsWithSensitiveLogKeyFragment = (key: string): boolean => {
   });
 };
 
-export const isSensitiveLogKey = (key: string): boolean =>
-  sensitiveLogExactKeys.has(key.toLowerCase()) ||
-  containsSensitiveLogKeyFragmentSegment(key) ||
-  endsWithSensitiveLogKeyFragment(key);
+export const isSensitiveLogKey = (key: string): boolean => {
+  const normalizedKey = key.toLowerCase();
+  if (trustedTelemetryClassificationKeys.has(normalizedKey)) return false;
+
+  return (
+    sensitiveLogExactKeys.has(normalizedKey) ||
+    tokenizeLogKey(key).some((word) => opaqueFailureKeyWords.has(word)) ||
+    containsSensitiveLogKeyFragmentSegment(key) ||
+    endsWithSensitiveLogKeyFragment(key)
+  );
+};
 
 const isMap = (value: unknown): value is Map<unknown, unknown> =>
   value instanceof Map;
@@ -262,12 +282,15 @@ const censorLogRecordValue = (
 ): unknown => {
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
-  return censorLogValueInternal(value, seen);
+  return censorLogValueInternal(value, seen, "record");
 };
+
+type CensorValueContext = "direct" | "record";
 
 const censorLogValueInternal = (
   value: unknown,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  context: CensorValueContext
 ): unknown => {
   if (Cause.isCause(value)) {
     const existing = seen.get(value);
@@ -300,7 +323,7 @@ const censorLogValueInternal = (
 
     for (let index = 0; index < value.length; index += 1) {
       if (index in value) {
-        result[index] = censorLogValueInternal(value[index], seen);
+        result[index] = censorLogValueInternal(value[index], seen, "direct");
       }
     }
 
@@ -319,7 +342,7 @@ const censorLogValueInternal = (
         key,
         typeof key === "string"
           ? censorLogRecordValue(key, nestedValue, seen)
-          : censorLogValueInternal(nestedValue, seen)
+          : censorLogValueInternal(nestedValue, seen, "direct")
       );
     }
 
@@ -338,7 +361,7 @@ const censorLogValueInternal = (
         key,
         isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
+          : String(censorLogValueInternal(nestedValue, seen, "record"))
       );
     });
 
@@ -357,14 +380,25 @@ const censorLogValueInternal = (
         key,
         isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
+          : String(censorLogValueInternal(nestedValue, seen, "record"))
       );
     });
 
     return result;
   }
 
-  if (typeof value === "string") return censorUrlString(value);
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "symbol"
+  ) {
+    if (context === "direct") return CENSORED_LOG_VALUE;
+    return typeof value === "string" ? censorUrlString(value) : value;
+  }
 
   if (isEffectDrizzleQueryError(value)) {
     const existing = seen.get(value);
@@ -372,7 +406,7 @@ const censorLogValueInternal = (
 
     const result: Record<string, unknown> = {
       _tag: value._tag,
-      query: value.query,
+      query: CENSORED_LOG_VALUE,
     };
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
@@ -386,7 +420,7 @@ const censorLogValueInternal = (
     };
   }
 
-  if (!isPlainObject(value)) return value;
+  if (!isPlainObject(value)) return CENSORED_LOG_VALUE;
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -416,7 +450,7 @@ const normalizeErrorName = (name: string): string =>
   safeErrorNames.has(name) ? name : CENSORED_LOG_VALUE;
 
 export const censorTelemetryValue = (value: unknown): unknown =>
-  censorLogValueInternal(value, new WeakMap());
+  censorLogValueInternal(value, new WeakMap(), "direct");
 
 export const censorLogValue = censorTelemetryValue;
 

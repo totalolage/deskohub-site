@@ -21,9 +21,22 @@ const featureFlagListeners = new Set<() => void>();
 let featureFlagOverrides: Readonly<Record<string, boolean | string>> = {};
 
 let beforeSend: BeforeSendFn | undefined;
+let initOptions:
+  | {
+      readonly before_send?: BeforeSendFn;
+      readonly disable_session_recording?: boolean;
+    }
+  | undefined;
 const sentEvents: unknown[] = [];
 const init = mock(
-  (_projectToken: string, options: { readonly before_send?: BeforeSendFn }) => {
+  (
+    _projectToken: string,
+    options: {
+      readonly before_send?: BeforeSendFn;
+      readonly disable_session_recording?: boolean;
+    }
+  ) => {
+    initOptions = options;
     beforeSend = options.before_send;
   }
 );
@@ -141,6 +154,8 @@ describe("PostHogAnalytics feature flag overrides", () => {
     });
 
     expect(init).toHaveBeenCalledTimes(1);
+    expect(initOptions?.disable_session_recording).toBe(true);
+    expect(startSessionRecording).not.toHaveBeenCalled();
     expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
       flags: { discount_codes: true },
     });
@@ -199,6 +214,17 @@ describe("PostHogAnalytics feature flag overrides", () => {
     } as NonNullable<Parameters<BeforeSendFn>[0]>);
     expect(autocapture).toBeNull();
     expect(JSON.stringify(sentEvents)).not.toContain(autocaptureMarker);
+
+    const replayMarker = randomUUID();
+    const replay = beforeSend?.({
+      event: "$snapshot",
+      properties: {
+        $current_url: `https://deskohub.test/checkout?payState=${replayMarker}`,
+        $snapshot_data: { href: replayMarker },
+      },
+    } as NonNullable<Parameters<BeforeSendFn>[0]>);
+    expect(replay).toBeNull();
+    expect(JSON.stringify(sentEvents)).not.toContain(replayMarker);
 
     await act(async () => {
       view.rerender(

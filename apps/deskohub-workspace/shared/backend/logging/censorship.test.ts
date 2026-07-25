@@ -247,18 +247,12 @@ describe("censorLogValue", () => {
     const censored = censorLogValue({ cause: error });
     const serialized = JSON.stringify(censored);
 
-    expect(censored).toEqual({
-      cause: {
-        _tag: "EffectDrizzleQueryError",
-        query: "select * from customers where email = $1",
-        params: [CENSORED_LOG_VALUE, CENSORED_LOG_VALUE],
-      },
-    });
+    expect(censored).toEqual({ cause: CENSORED_LOG_VALUE });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("preserves non-plain objects while projecting errors", () => {
+  test("fails closed for non-plain values while projecting errors", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -269,20 +263,33 @@ describe("censorLogValue", () => {
     const censored = censorLogValue(input) as typeof input;
 
     expect(censored).toEqual({
-      ...input,
       thrown: {
         name: "Error",
         message: CENSORED_LOG_VALUE,
       },
+      date: CENSORED_LOG_VALUE,
+      set: CENSORED_LOG_VALUE,
+      custom: CENSORED_LOG_VALUE,
+      promise: CENSORED_LOG_VALUE,
     });
-    expect(censored.date).toBe(date);
-    expect(censored.set).toBe(set);
-    expect(censored.custom).toBe(custom);
-    expect(censored.promise).toBe(promise);
     expect(censorLogValue(error)).toEqual({
       name: "Error",
       message: CENSORED_LOG_VALUE,
     });
+  });
+
+  test("fails closed for direct primitive and custom failure values", () => {
+    const marker = randomUUID();
+
+    for (const value of [
+      marker,
+      42,
+      true,
+      new CustomValue(marker),
+      new URL(`https://example.test/?value=${marker}`),
+    ]) {
+      expect(censorLogValue(value)).toBe(CENSORED_LOG_VALUE);
+    }
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -308,7 +315,7 @@ describe("censorLogValue", () => {
     expect(censored.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("sessionDuration")).toBe(123);
     expect(censored.get("nested")).toEqual({ apiKey: CENSORED_LOG_VALUE });
-    expect(censored.get(objectKey)).toBe("visible");
+    expect(censored.get(objectKey)).toBe(CENSORED_LOG_VALUE);
     expect(input.get("password")).toBe("secret-password");
     expect(input.get("headers:authorization")).toBe("Bearer secret");
     expect(input.get("payState")).toBe("pay-state-secret");
@@ -317,40 +324,32 @@ describe("censorLogValue", () => {
     expect(input.get("nested")).toEqual({ apiKey: "secret-api-key" });
   });
 
-  test("redacts sensitive relative URL query params", () => {
+  test("fails closed for direct relative URLs", () => {
     expect(
       censorLogValue(
         "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&discountCode=SUMMER50&submittedCode=SUMMER50&visible=safe#summary"
       )
-    ).toBe(
-      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts sensitive bare relative URL query params", () => {
+  test("fails closed for direct bare relative URLs", () => {
     expect(
       censorLogValue(
         "checkout/pay?payState=secret&checkoutToken=token&visible=safe#summary"
       )
-    ).toBe(
-      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts bare relative URL query params case-insensitively", () => {
+  test("fails closed for direct bare relative URLs case-insensitively", () => {
     expect(
       censorLogValue("checkout/pay?PayState=secret&CHECKOUTTOKEN=token")
-    ).toBe(
-      `checkout/pay?PayState=${encodeURIComponent(CENSORED_LOG_VALUE)}&CHECKOUTTOKEN=${encodeURIComponent(CENSORED_LOG_VALUE)}`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts production-observed name and message URL query params", () => {
+  test("fails closed for direct production-observed form URLs", () => {
     expect(
       censorLogValue("contact?name=Ada&message=Private&visible=safe")
-    ).toBe(
-      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
   test("redacts Headers and URLSearchParams by key without mutating input", () => {
@@ -612,7 +611,7 @@ describe("createCensoredOtelLogger", () => {
 
     const record = exporter.getFinishedLogRecords()[0];
 
-    expect(record?.body).toBe("safe message");
+    expect(record?.body).toBe(CENSORED_LOG_VALUE);
     expect(record?.severityNumber).toBe(9);
     expect(record?.severityText).toBe("info");
     expect(record?.attributes).toMatchObject({

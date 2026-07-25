@@ -22,9 +22,22 @@ export const assertValidMigrationCount = (
   );
 };
 
-const validateMigrationCount = async (baseSha: string) => {
+/**
+ * Compare the two integration trees, not the feature branch to their merge
+ * base. A three-dot diff incorrectly reports migrations which only arrived on
+ * the current base branch as candidate-owned additions.
+ */
+export const candidateMigrationDiffRange = (
+  baseSha: string,
+  candidateSha = "HEAD"
+) => `${baseSha}..${candidateSha}`;
+
+export const validateMigrationCount = async (
+  baseSha: string,
+  candidateSha = "HEAD"
+) => {
   const git =
-    await $`git diff --find-renames --diff-filter=A --name-only ${`${baseSha}...HEAD`} -- ${workspaceLegacyMigrationPathspec} ${workspaceMigrationPathspec}`
+    await $`git diff --find-renames --diff-filter=A --name-only ${candidateMigrationDiffRange(baseSha, candidateSha)} -- ${workspaceLegacyMigrationPathspec} ${workspaceMigrationPathspec}`
       .cwd(fileURLToPath(new URL("../../..", import.meta.url)))
       .quiet()
       .nothrow();

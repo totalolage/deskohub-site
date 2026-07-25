@@ -469,6 +469,52 @@ describe("NexiService verifyPaymentOutcome", () => {
     );
   });
 
+  test("digests oversized operation IDs before returning provider evidence", async () => {
+    const oversizedOperationId = "operation".repeat(40);
+    const verification = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.verifyPaymentOutcome({
+          orderId: "order-id",
+          correlationId: "correlation-id",
+          amount: "5000",
+          currency: "CZK",
+        });
+      }),
+      mockNexiFetch(
+        Response.json({
+          orderStatus: {
+            lastOperationType: "CAPTURE",
+            authorizedAmount: "5000",
+            capturedAmount: "5000",
+            order: {
+              orderId: "order-id",
+              amount: "5000",
+              currency: "CZK",
+            },
+          },
+          operations: [
+            {
+              orderId: "order-id",
+              operationId: oversizedOperationId,
+              operationType: "CAPTURE",
+              operationResult: "EXECUTED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
+            },
+          ],
+        } satisfies OrderResponse)
+      )
+    );
+
+    expect(verification.provider.operationId).toMatch(
+      /^nexi-operation:[a-f0-9]{64}$/
+    );
+    expect(verification.provider.operationId).not.toContain(
+      oversizedOperationId
+    );
+  });
+
   test("does not fabricate an operation ID from the provider order ID", () => {
     expect(
       getNexiPaymentMetadata({

@@ -115,6 +115,11 @@ describe("PostHogEventService", () => {
     const failureMarker = randomUUID();
     const defectMarker = randomUUID();
     const exceptionTypeMarker = randomUUID();
+    const primitiveFailureMarker = randomUUID();
+    const customFailureMarker = randomUUID();
+    class CustomFailure {
+      constructor(readonly value: string) {}
+    }
     const service = makePostHogEventService({
       client: {
         captureImmediate: (message) => {
@@ -134,7 +139,11 @@ describe("PostHogEventService", () => {
         .capture({
           distinctId: "reservation-id",
           event: "reservation started",
-          properties: { "exception.type": exceptionTypeMarker },
+          properties: {
+            "exception.type": exceptionTypeMarker,
+            failureValue: primitiveFailureMarker,
+            customFailure: new CustomFailure(customFailureMarker),
+          },
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
           uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
         })
@@ -156,5 +165,7 @@ describe("PostHogEventService", () => {
     expect(serialized).not.toContain(failureMarker);
     expect(serialized).not.toContain(defectMarker);
     expect(serialized).not.toContain(exceptionTypeMarker);
+    expect(serialized).not.toContain(primitiveFailureMarker);
+    expect(serialized).not.toContain(customFailureMarker);
   });
 });

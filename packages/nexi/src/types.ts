@@ -90,6 +90,19 @@ const cleanOptionalString = (value: string | null | undefined) => {
   return trimmed ? trimmed : undefined;
 };
 
+const digestNexiProviderIdentifier = (kind: "event" | "operation", value: string) =>
+  `nexi-${kind}:${createHash("sha256").update(value).digest("hex")}`;
+
+export const normalizeNexiProviderOperationId = (
+  value: string | null | undefined
+): string | undefined => {
+  const cleaned = cleanOptionalString(value);
+  if (!cleaned) return undefined;
+  return isBoundedNexiProviderIdentifier(cleaned)
+    ? cleaned
+    : digestNexiProviderIdentifier("operation", cleaned);
+};
+
 export const normalizeNexiWebhookNotification = (
   notification: NexiWebhookNotification
 ): NexiWebhookNotification => ({
@@ -98,7 +111,9 @@ export const normalizeNexiWebhookNotification = (
   securityToken: cleanOptionalString(notification.securityToken),
   operation: {
     orderId: notification.operation.orderId,
-    operationId: cleanOptionalString(notification.operation.operationId),
+    operationId: normalizeNexiProviderOperationId(
+      notification.operation.operationId
+    ),
     operationType: cleanOptionalString(notification.operation.operationType),
     operationResult: cleanOptionalString(
       notification.operation.operationResult
@@ -131,7 +146,12 @@ export const deriveNexiWebhookEventIdentity = (
     return { eventId: explicitEventId, source: "provider" };
   }
   const identity = explicitEventId
-    ? ["provider", explicitEventId]
+    ? [
+        "provider",
+        explicitEventId,
+        operation.orderId,
+        operation.operationId ?? "",
+      ]
     : [
         "derived",
         operation.orderId,
@@ -189,7 +209,9 @@ export const classifyNexiFailureStatus = (
 export const getNexiPaymentMetadata = (
   verification: PaymentVerificationResult
 ): NexiPaymentMetadata => ({
-  providerOperationId: verification.provider.operationId,
+  providerOperationId: normalizeNexiProviderOperationId(
+    verification.provider.operationId
+  ),
   providerStatus:
     verification.provider.orderStatus ??
     (verification.provider.captureExecuted ? "capture_executed" : undefined),

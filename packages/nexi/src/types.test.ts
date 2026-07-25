@@ -5,6 +5,7 @@ import {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   NexiAmountSchema,
+  normalizeNexiProviderOperationId,
   normalizeNexiWebhookNotification,
 } from "./types";
 
@@ -107,5 +108,33 @@ describe("Nexi webhook types", () => {
         operationCurrency: undefined,
       },
     });
+  });
+
+  test("bounds provider operation identities and scopes malformed event identities to an order", () => {
+    const oversizedOperationId = "operation".repeat(40);
+    const normalized = normalizeNexiProviderOperationId(oversizedOperationId);
+
+    expect(normalized).toMatch(/^nexi-operation:[a-f0-9]{64}$/);
+    expect(normalized?.length).toBeLessThanOrEqual(128);
+    expect(normalized).not.toContain(oversizedOperationId);
+
+    const first = deriveNexiWebhookEventIdentity({
+      eventId: "invalid event identity",
+      operation: {
+        orderId: "first-order",
+        operationId: oversizedOperationId,
+      },
+    });
+    const second = deriveNexiWebhookEventIdentity({
+      eventId: "invalid event identity",
+      operation: {
+        orderId: "second-order",
+        operationId: oversizedOperationId,
+      },
+    });
+
+    expect(first.eventId).toMatch(/^nexi:[a-f0-9]{64}$/);
+    expect(second.eventId).toMatch(/^nexi:[a-f0-9]{64}$/);
+    expect(first.eventId).not.toBe(second.eventId);
   });
 });

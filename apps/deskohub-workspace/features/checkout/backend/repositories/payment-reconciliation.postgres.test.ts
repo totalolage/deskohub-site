@@ -1,129 +1,183 @@
+import "@/shared/polyfills/temporal";
+import "@/shared/testing/workspace-test-env";
+
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { Client } from "pg";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
+import { EffectLogger, makeWithDefaults } from "drizzle-orm/effect-postgres";
+import { Effect, Layer } from "effect";
+import { Client, Pool } from "pg";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { relations } from "@/db/relations";
+import { workspaceReservations } from "@/db/schema";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
+import { PaymentLifecycleRepository } from "./payment-lifecycle.repository";
+import { paymentLifecycleTestSchemaStatements } from "./payment-lifecycle.repository.test-schema";
 
 const realPostgresUrl = process.env.WORKSPACE_REAL_POSTGRES_TEST_URL;
 const realPostgresTest = realPostgresUrl ? test : test.skip;
 
+const pricing = {
+  fingerprint: "pricing-fingerprint",
+  total: { value: 1000, exponent: 2, currency: "CZK" },
+  discounts: [],
+} as const;
+
+const commitment = makeDiscountCommitment({
+  product: { kind: "cowork", tier: "basic" },
+  applications: [],
+});
+
+const makeDatabaseLayer = (pool: Pool) => {
+  const PgClientLive = PgClient.layerFrom(
+    PgClient.fromPool({ acquire: Effect.succeed(pool) })
+  );
+  return Layer.effect(
+    WorkspaceDatabase,
+    makeWithDefaults({ relations }).pipe(
+      Effect.provide(Layer.merge(EffectCache.Default, EffectLogger.layer)),
+      Effect.map((db) => WorkspaceDatabase.of({ db }))
+    )
+  ).pipe(Layer.provide(PgClientLive));
+};
+
+const makeRepositoryLayer = (pool: Pool) => {
+  const database = makeDatabaseLayer(pool);
+  return Layer.merge(
+    database,
+    PaymentLifecycleRepository.Live.pipe(Layer.provide(database))
+  );
+};
+
+const runRepository = <A, E>(
+  pool: Pool,
+  effect: Effect.Effect<A, E, PaymentLifecycleRepository | WorkspaceDatabase>
+) =>
+  Effect.runPromise(
+    Effect.scoped(effect.pipe(Effect.provide(makeRepositoryLayer(pool))))
+  );
+
+const admit = (
+  repository: typeof PaymentLifecycleRepository.Service,
+  providerOrderId: string
+) =>
+  repository.admitPaymentStart({
+    workspaceReservationId: "reservation-a",
+    checkoutSessionKey: "session-a",
+    providerOrderId,
+    acceptedPricing: pricing,
+    affirmedPricing: pricing,
+    commitment,
+    locale: "en-US",
+    allowNewAdmission: true,
+  });
+
 describe("payment reconciliation real PostgreSQL locking", () => {
   realPostgresTest(
-    "fences replacement admission and cleanup while provider lookup owns the reservation",
+    "fences production admission while an exact claim owns provider lookup",
     async () => {
       if (!realPostgresUrl) return;
 
       const schema = `payment_reconciliation_${randomUUID().replaceAll("-", "")}`;
-      const owner = new Client({ connectionString: realPostgresUrl });
-      const contender = new Client({ connectionString: realPostgresUrl });
-      await Promise.all([owner.connect(), contender.connect()]);
+      const admin = new Client({ connectionString: realPostgresUrl });
+      await admin.connect();
+      await admin.query(`create schema "${schema}"`);
+
+      const poolOptions = {
+        connectionString: realPostgresUrl,
+        max: 1,
+        options: `-c search_path=${schema}`,
+      };
+      const ownerPool = new Pool(poolOptions);
+      const contenderPool = new Pool(poolOptions);
 
       try {
-        await owner.query(`create schema "${schema}"`);
-        for (const client of [owner, contender]) {
-          await client.query(`set search_path to "${schema}"`);
-        }
-        await owner.query(`
-          create table payment_attempts (
-            id text primary key,
-            workspace_reservation_id text not null,
-            admission_version integer not null,
-            state text not null,
-            provider_order_id text not null unique,
-            provider_evidence_conflicted boolean not null default false
-          );
-          create table payment_evidence_conflicts (
-            payment_attempt_id text not null
-          );
-          create table workspace_reservations (
-            id text primary key,
-            reservation_state text not null,
-            payment_state text not null,
-            active_payment_attempt_id text,
-            active_payment_evidence_conflicted boolean not null default false,
-            payment_reconciliation_attempt_id text,
-            payment_reconciliation_claim_id text,
-            payment_reconciliation_claim_expires_at timestamptz
-          );
-        `);
-
-        const migration = await Bun.file(
-          new URL(
-            "../../../../db/migrations/20260725004304_payment_admission_settlement/migration.sql",
-            import.meta.url
-          )
-        ).text();
-        const functionStart = migration.indexOf(
-          'CREATE FUNCTION "guard_unverified_v2_reservation_terminal"'
+        await runRepository(
+          ownerPool,
+          Effect.gen(function* () {
+            const { db } = yield* WorkspaceDatabase;
+            for (const statement of paymentLifecycleTestSchemaStatements) {
+              yield* db.execute(statement);
+            }
+            yield* db.insert(workspaceReservations).values({
+              id: "reservation-a",
+              checkoutSessionKey: "session-a",
+              checkoutAttemptKey: "attempt-a",
+              correlationId: "correlation-a",
+              dotyposCustomerId: "customer-a",
+              dotyposReservationId: "provider-reservation-a",
+              reservationState: "held",
+              paymentState: "not_started",
+              fulfillmentState: "not_started",
+              reservationHoldExpiresAt: new Date(Date.now() + 300_000),
+            });
+          })
         );
-        const nextFunction = migration.indexOf(
-          'CREATE FUNCTION "reject_provider_evidence_conflicted_reservation_settlement"',
-          functionStart
+
+        const admitted = await runRepository(
+          ownerPool,
+          Effect.gen(function* () {
+            const repository = yield* PaymentLifecycleRepository;
+            return yield* admit(repository, "provider-order-a");
+          })
         );
-        if (functionStart < 0 || nextFunction < 0) {
-          throw new Error("The reconciliation reservation guard is missing.");
-        }
-        for (const statement of migration
-          .slice(functionStart, nextFunction)
-          .split("--> statement-breakpoint")
-          .map((value) => value.trim())
-          .filter(Boolean)) {
-          await owner.query(statement);
-        }
+        expect(admitted.outcome).toBe("created");
+        if (admitted.outcome !== "created") return;
 
-        await owner.query(`
-          insert into payment_attempts (
-            id, workspace_reservation_id, admission_version, state,
-            provider_order_id
-          ) values ('attempt-a', 'reservation-a', 2, 'created', 'order-a');
-          insert into workspace_reservations (
-            id, reservation_state, payment_state, active_payment_attempt_id,
-            payment_reconciliation_attempt_id,
-            payment_reconciliation_claim_id,
-            payment_reconciliation_claim_expires_at
-          ) values (
-            'reservation-a', 'held', 'pending', 'attempt-a',
-            'attempt-a', 'claim-a', clock_timestamp() + interval '2 minutes'
-          );
-        `);
-
+        let lookupStarted!: () => void;
+        const lookupStartedBarrier = new Promise<void>((resolve) => {
+          lookupStarted = resolve;
+        });
         let releaseLookup!: () => void;
-        const lookupBarrier = new Promise<void>((resolve) => {
+        const lookupReleaseBarrier = new Promise<void>((resolve) => {
           releaseLookup = resolve;
         });
-        const simulatedProviderLookup = lookupBarrier.then(() => "complete");
+        let providerOrderCount = 1;
 
-        await contender.query("begin");
-        await contender.query(`
-          insert into payment_attempts (
-            id, workspace_reservation_id, admission_version, state,
-            provider_order_id
-          ) values ('attempt-b', 'reservation-a', 2, 'created', 'order-b')
-        `);
-        await expect(
-          contender.query(`
-            update workspace_reservations
-            set active_payment_attempt_id = 'attempt-b'
-            where id = 'reservation-a'
-          `)
-        ).rejects.toThrow();
-        await contender.query("rollback");
+        const reconciliation = runRepository(
+          ownerPool,
+          Effect.gen(function* () {
+            const repository = yield* PaymentLifecycleRepository;
+            const claim = yield* repository.claimProviderReconciliation({
+              id: admitted.attempt.id,
+              workspaceReservationId: "reservation-a",
+            });
+            expect(claim.outcome).toBe("claimed");
+            lookupStarted();
+            yield* Effect.promise(() => lookupReleaseBarrier);
+            return claim;
+          })
+        );
+
+        await lookupStartedBarrier;
+        const competingAdmission = await runRepository(
+          contenderPool,
+          Effect.gen(function* () {
+            const repository = yield* PaymentLifecycleRepository;
+            const result = yield* admit(repository, "provider-order-b");
+            if (result.outcome === "created") providerOrderCount += 1;
+            return result;
+          })
+        );
+        expect(competingAdmission).toEqual({
+          outcome: "unavailable",
+          reason: "active_attempt",
+        });
 
         releaseLookup();
-        await simulatedProviderLookup;
+        await reconciliation;
 
-        const attempts = await owner.query<{ count: string }>(
-          "select count(*) from payment_attempts where workspace_reservation_id = 'reservation-a'"
+        const attempts = await admin.query<{ count: string }>(
+          `select count(*) from "${schema}".payment_attempts
+           where workspace_reservation_id = 'reservation-a'`
         );
         expect(attempts.rows[0]?.count).toBe("1");
-        await expect(
-          contender.query(`
-            update workspace_reservations
-            set reservation_state = 'cancelling'
-            where id = 'reservation-a'
-          `)
-        ).rejects.toThrow();
+        expect(providerOrderCount).toBe(1);
       } finally {
-        await owner.query(`drop schema if exists "${schema}" cascade`);
-        await Promise.all([owner.end(), contender.end()]);
+        await Promise.all([ownerPool.end(), contenderPool.end()]);
+        await admin.query(`drop schema if exists "${schema}" cascade`);
+        await admin.end();
       }
     },
     30_000

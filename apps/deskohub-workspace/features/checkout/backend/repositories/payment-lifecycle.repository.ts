@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
@@ -1014,6 +1014,9 @@ export class PaymentLifecycleRepository extends Context.Service<
           readonly paidAt: Temporal.Instant;
           readonly reconciliationClaimId?: string;
         }) {
+          const providerOperationId = normalizeProviderOperationId(
+            input.providerOperationId
+          );
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
               if (input.reconciliationClaimId) {
@@ -1060,7 +1063,12 @@ export class PaymentLifecycleRepository extends Context.Service<
               }
 
               if (currentAttempt.state === "paid") {
-                if (!providerSettlementMetadataMatches(currentAttempt, input)) {
+                if (
+                  !providerSettlementMetadataMatches(currentAttempt, {
+                    ...input,
+                    providerOperationId,
+                  })
+                ) {
                   return yield* lifecycleStateError(
                     "markPaid",
                     input.id,
@@ -1127,7 +1135,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .set({
                   state: "paid",
                   lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
+                  lastProviderOperationId: providerOperationId,
                   lastProviderStatus: input.providerStatus,
                   failureCode: null,
                   providerStartLeaseId: null,
@@ -1236,6 +1244,9 @@ export class PaymentLifecycleRepository extends Context.Service<
           readonly reconciliationClaimId?: string;
         }) {
           const terminalAt = Temporal.Now.instant();
+          const providerOperationId = normalizeProviderOperationId(
+            input.providerOperationId
+          );
 
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
@@ -1298,7 +1309,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 if (
                   currentAttempt.state !== input.state ||
                   currentAttempt.failureCode !== input.failureCode ||
-                  !providerSettlementMetadataMatches(currentAttempt, input)
+                  !providerSettlementMetadataMatches(currentAttempt, {
+                    ...input,
+                    providerOperationId,
+                  })
                 ) {
                   return yield* lifecycleStateError(
                     "markTerminal",
@@ -1354,7 +1368,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                   state: input.state,
                   failureCode: input.failureCode,
                   lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
+                  lastProviderOperationId: providerOperationId,
                   lastProviderStatus: input.providerStatus,
                   providerStartLeaseId: null,
                   providerStartLeaseExpiresAt: null,
@@ -1701,6 +1715,17 @@ const providerSettlementMetadataMatches = (
 ) =>
   current.lastProviderOperationId === (replay.providerOperationId ?? null) &&
   current.lastProviderStatus === (replay.providerStatus ?? null);
+
+const normalizeProviderOperationId = (
+  value: string | undefined
+): string | undefined => {
+  const cleaned = value?.trim();
+  if (!cleaned) return undefined;
+  if (/^[A-Za-z0-9][A-Za-z0-9:_-]{0,127}$/.test(cleaned)) return cleaned;
+  return `provider-operation:${createHash("sha256")
+    .update(cleaned)
+    .digest("hex")}`;
+};
 
 const stringArraysEqual = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&

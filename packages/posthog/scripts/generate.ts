@@ -1,15 +1,17 @@
+import { createHash } from "node:crypto";
+import { gunzipSync } from "node:zlib";
 import * as OpenApiGenerator from "@effect/openapi-generator/OpenApiGenerator";
 import * as OpenApiPatch from "@effect/openapi-generator/OpenApiPatch";
-import { Config, Data, Effect } from "effect";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientResponse,
-} from "effect/unstable/http";
+import { Data, Effect } from "effect";
 import type { OpenAPISpec } from "effect/unstable/httpapi/OpenApi";
 
 const generatedClientPath = Bun.fileURLToPath(
   new URL("../src/generated/effect.gen.ts", import.meta.url)
+);
+const schemaPath = new URL("../posthog-openapi.json.gz", import.meta.url);
+const schemaDigestPath = new URL(
+  "../posthog-openapi.json.gz.sha256",
+  import.meta.url
 );
 
 const postHogOpenApiCompatibilityPatch: OpenApiPatch.JsonPatchDocument = [
@@ -77,35 +79,28 @@ const writeGeneratedClient = (generatedClient: string) =>
       }),
   }).pipe(Effect.asVoid);
 
-const downloadSchema = (schemaUrl: URL) =>
-  HttpClient.get(schemaUrl).pipe(
-    Effect.flatMap(HttpClientResponse.filterStatusOk),
-    Effect.flatMap((response) => response.json),
-    Effect.mapError(
-      (cause) =>
-        new PostHogOpenApiGenerationError({
-          message: "Could not download PostHog's OpenAPI schema.",
-          cause,
-        })
-    ),
-    Effect.timeoutOrElse({
-      duration: "30 seconds",
-      orElse: () =>
-        Effect.fail(
-          new PostHogOpenApiGenerationError({
-            message: "PostHog's OpenAPI schema download timed out.",
-          })
-        ),
-    })
-  );
+const readPinnedSchema = Effect.tryPromise({
+  try: async () => {
+    const [compressed, expectedDigest] = await Promise.all([
+      Bun.file(schemaPath).arrayBuffer(),
+      Bun.file(schemaDigestPath).text(),
+    ]);
+    const bytes = new Uint8Array(compressed);
+    const actualDigest = createHash("sha256").update(bytes).digest("hex");
+    if (actualDigest !== expectedDigest.trim()) {
+      throw new Error("PostHog OpenAPI schema digest mismatch.");
+    }
+    return JSON.parse(gunzipSync(bytes).toString("utf8")) as unknown;
+  },
+  catch: (cause) =>
+    new PostHogOpenApiGenerationError({
+      message: "Could not read the pinned PostHog OpenAPI schema.",
+      cause,
+    }),
+});
 
 const generatePostHogClient = Effect.gen(function* () {
-  const schemaUrl = yield* Config.url("POSTHOG_OPENAPI_SCHEMA_URL").pipe(
-    Config.withDefault(
-      new URL("https://eu.posthog.com/api/schema/?format=json")
-    )
-  );
-  const schema = yield* downloadSchema(schemaUrl);
+  const schema = yield* readPinnedSchema;
   const compatibleSchema = yield* OpenApiPatch.applyPatches(
     [
       {
@@ -113,7 +108,7 @@ const generatePostHogClient = Effect.gen(function* () {
         patch: postHogOpenApiCompatibilityPatch,
       },
     ],
-    schema
+    schema as never
   ).pipe(
     Effect.mapError(
       (cause) =>
@@ -138,10 +133,7 @@ const generatePostHogClient = Effect.gen(function* () {
 if (import.meta.main) {
   Effect.runPromise(
     generatePostHogClient.pipe(
-      Effect.provide([
-        OpenApiGenerator.layerTransformerSchema,
-        FetchHttpClient.layer,
-      ])
+      Effect.provide(OpenApiGenerator.layerTransformerSchema)
     )
   );
 }
