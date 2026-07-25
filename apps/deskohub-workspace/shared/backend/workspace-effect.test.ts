@@ -21,6 +21,35 @@ describe("Workspace Effect execution", () => {
     }
   });
 
+  test("projects arbitrary nested causes before console output", async () => {
+    const log = spyOn(console, "error").mockImplementation(() => undefined);
+    const sentinel = "SENSITIVE-CATEGORY-SENTINEL";
+
+    try {
+      await Effect.logError("code-owned log message", {
+        cause: new AggregateError(
+          [
+            sentinel,
+            42,
+            {
+              _tag: "SyntheticTaggedCause",
+              customerId: sentinel,
+              cause: new Error(sentinel),
+            },
+          ],
+          sentinel
+        ),
+        providerOrderId: sentinel,
+      }).pipe(runWorkspaceEffect("test.cause-projection"));
+
+      const output = log.mock.calls.flat().join(" ");
+      expect(output).toContain("aggregate_error");
+      expect(output).not.toContain(sentinel);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("tasks preserve success and failure results", async () => {
     const succeeds = defineWorkspaceTask("test.task", () =>
       Effect.succeed("done")

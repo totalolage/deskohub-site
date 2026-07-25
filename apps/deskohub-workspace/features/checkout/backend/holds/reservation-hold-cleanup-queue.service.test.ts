@@ -163,7 +163,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(error.message).toBe(
       "Reservation hold cleanup could not be enqueued."
     );
-    expect(error.cause).toEqual({ name: "Error" });
+    expect(error.cause).toEqual({ kind: "error", category: "native" });
     expect(error.cause).not.toBe(source);
   });
 

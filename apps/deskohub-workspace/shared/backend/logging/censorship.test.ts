@@ -62,6 +62,15 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("checkoutSessionId")).toBe(true);
+    expect(isSensitiveLogKey("customerId")).toBe(true);
+    expect(isSensitiveLogKey("providerOrderId")).toBe(true);
+    expect(isSensitiveLogKey("checkoutSessionKey")).toBe(true);
+    expect(isSensitiveLogKey("idempotencyKey")).toBe(true);
+    expect(isSensitiveLogKey("payloadDigest")).toBe(true);
+    expect(isSensitiveLogKey("subjectHash")).toBe(true);
+    expect(isSensitiveLogKey("quoteFingerprint")).toBe(true);
+    expect(isSensitiveLogKey("returnState")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -87,8 +96,10 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("authentication")).toBe(false);
     expect(isSensitiveLogKey("passwordless")).toBe(false);
     expect(isSensitiveLogKey("tokenizedLabel")).toBe(false);
+    expect(isSensitiveLogKey("keyboardLayout")).toBe(false);
+    expect(isSensitiveLogKey("hashingAlgorithm")).toBe(false);
     expect(isSensitiveLogKey("session")).toBe(false);
-    expect(isSensitiveLogKey("sessionId")).toBe(false);
+    expect(isSensitiveLogKey("sessionId")).toBe(true);
     expect(isSensitiveLogKey("sessionDuration")).toBe(false);
     expect(isSensitiveLogKey("userSessionCount")).toBe(false);
     expect(isSensitiveLogKey("params")).toBe(false);
@@ -117,7 +128,7 @@ describe("censorLogValue", () => {
         submittedCode: "SUMMER50",
         params: '["SUMMER50"]',
         query: "select * from discount_codes where code = $1",
-        discountCodeId: "safe-discount-code-id",
+        discountCodeId: "synthetic-discount-code-id",
         name: "Ada Lovelace",
         message: "private form message",
         errorDescription: "provider echoed private payload",
@@ -150,7 +161,7 @@ describe("censorLogValue", () => {
         submittedCode: CENSORED_LOG_VALUE,
         params: '["SUMMER50"]',
         query: "select * from discount_codes where code = $1",
-        discountCodeId: "safe-discount-code-id",
+        discountCodeId: CENSORED_LOG_VALUE,
         name: CENSORED_LOG_VALUE,
         message: CENSORED_LOG_VALUE,
         errorDescription: CENSORED_LOG_VALUE,
@@ -222,12 +233,12 @@ describe("censorLogValue", () => {
 
     expect(censored).toEqual({
       cause: {
-        _tag: "EffectDrizzleQueryError",
-        query: "select * from customers where email = $1",
-        params: [
-          "visible",
-          { email: CENSORED_LOG_VALUE, sessionDuration: 123 },
-        ],
+        kind: "error",
+        category: "custom",
+        cause: {
+          kind: "error",
+          category: "native",
+        },
       },
     });
     expect(serialized).not.toContain("private@example.com");
@@ -246,14 +257,17 @@ describe("censorLogValue", () => {
 
     expect(censored).toEqual({
       ...input,
-      thrown: { name: "Error" },
+      thrown: { kind: "error", category: "native" },
     });
-    expect(censored.thrown).toEqual({ name: "Error" });
+    expect(censored.thrown).toEqual({ kind: "error", category: "native" });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
-    expect(censorLogValue(error)).toEqual({ name: "Error" });
+    expect(censorLogValue(error)).toEqual({
+      kind: "error",
+      category: "native",
+    });
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -409,7 +423,7 @@ describe("censorLoggerOptions", () => {
     expect(annotations.sessionToken).toBe("session-secret");
   });
 
-  test("preserves observable session annotation keys", () => {
+  test("redacts identifier annotation keys", () => {
     const annotations = {
       session: "public-session",
       sessionId: "ph-session",
@@ -432,7 +446,7 @@ describe("censorLoggerOptions", () => {
     );
 
     expect(censoredAnnotations.session).toBe("public-session");
-    expect(censoredAnnotations.sessionId).toBe("ph-session");
+    expect(censoredAnnotations.sessionId).toBe(CENSORED_LOG_VALUE);
   });
 
   test("recursively censors params emitted by Drizzle EffectLogger", async () => {
@@ -490,7 +504,7 @@ describe("createCensoredOtelLogger", () => {
     expect(record?.severityNumber).toBe(9);
     expect(record?.severityText).toBe("info");
     expect(record?.attributes).toMatchObject({
-      sessionId: "posthog-session-id",
+      sessionId: CENSORED_LOG_VALUE,
       token: CENSORED_LOG_VALUE,
     });
     await provider.shutdown();
@@ -515,7 +529,7 @@ describe("createCensoredOtelLogger", () => {
     await provider.forceFlush();
 
     const serialized = JSON.stringify(exporter.getFinishedLogRecords()[0]);
-    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).toContain("category");
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
     await provider.shutdown();

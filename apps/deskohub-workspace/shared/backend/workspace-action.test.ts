@@ -108,6 +108,45 @@ describe("Workspace actions", () => {
     }
   });
 
+  test("keeps arbitrary nested causes out of framework responses and console errors", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const sentinel = "SYNTHETIC-SENSITIVE-SENTINEL";
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.nested-cause-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new AggregateError(
+            [
+              sentinel,
+              {
+                _tag: "SyntheticCause",
+                customerId: sentinel,
+                cause: new Error(sentinel),
+              },
+            ],
+            sentinel
+          )
+        )
+    );
+
+    try {
+      const result = await action("synthetic-input");
+      const emitted = JSON.stringify({ result, logs: errorLog.mock.calls });
+
+      expect(result).toHaveProperty("serverError");
+      expect(emitted).not.toContain(sentinel);
+      expect(emitted).not.toContain("customerId");
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   test("supports stateful form actions explicitly", async () => {
     const { defineWorkspaceStateAction } = await import("./workspace-action");
     const action = defineWorkspaceStateAction(

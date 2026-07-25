@@ -15,12 +15,22 @@ type CheckoutKeyDerivationOptions = {
   readonly now?: () => Date;
 };
 
+export type CheckoutKeySet = {
+  readonly current: string;
+  readonly identity: string;
+  readonly candidates: readonly [string, ...string[]];
+};
+
 const deriveCheckoutKey = (secret: string, payload: object) =>
   createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex");
 
-const getCheckoutKeySecrets = (
+const getCheckoutKeySecretSet = (
   options: CheckoutKeyDerivationOptions
-): readonly [string, ...string[]] => {
+): {
+  readonly current: string;
+  readonly identity: string;
+  readonly candidates: readonly [string, ...string[]];
+} => {
   const rawPayStateKeys =
     options.rawPayStateKeys ?? env.CHECKOUT_PAY_STATE_KEYS;
   const cutoverAt =
@@ -28,7 +38,11 @@ const getCheckoutKeySecrets = (
   const legacyReadUntil =
     options.legacyReadUntil ?? env.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL;
   if (cutoverAt === undefined || legacyReadUntil === undefined) {
-    return [rawPayStateKeys];
+    return {
+      current: rawPayStateKeys,
+      identity: rawPayStateKeys,
+      candidates: [rawPayStateKeys],
+    };
   }
 
   const dedicatedSecret =
@@ -40,38 +54,65 @@ const getCheckoutKeySecrets = (
   }
 
   const now = (options.now?.() ?? new Date()).getTime();
-  if (now < Date.parse(cutoverAt)) return [rawPayStateKeys];
-  if (now >= Date.parse(legacyReadUntil)) return [dedicatedSecret];
-  return [dedicatedSecret, rawPayStateKeys];
+  if (now < Date.parse(cutoverAt)) {
+    return {
+      current: rawPayStateKeys,
+      identity: rawPayStateKeys,
+      candidates: [rawPayStateKeys],
+    };
+  }
+  if (now >= Date.parse(legacyReadUntil)) {
+    return {
+      current: dedicatedSecret,
+      identity: dedicatedSecret,
+      candidates: [dedicatedSecret],
+    };
+  }
+  return {
+    current: dedicatedSecret,
+    identity: rawPayStateKeys,
+    candidates: [dedicatedSecret, rawPayStateKeys],
+  };
 };
 
-const deriveCheckoutKeyCandidates = (
+const deriveCheckoutKeySet = (
   payload: object,
   options: CheckoutKeyDerivationOptions
-) =>
-  [
+) => {
+  const secrets = getCheckoutKeySecretSet(options);
+  const candidates = [
     ...new Set(
-      getCheckoutKeySecrets(options).map((secret) =>
-        deriveCheckoutKey(secret, payload)
-      )
+      secrets.candidates.map((secret) => deriveCheckoutKey(secret, payload))
     ),
   ] as [string, ...string[]];
 
-export const deriveCheckoutSessionKeyCandidates = (
+  return {
+    current: deriveCheckoutKey(secrets.current, payload),
+    identity: deriveCheckoutKey(secrets.identity, payload),
+    candidates,
+  } satisfies CheckoutKeySet;
+};
+
+export const deriveCheckoutSessionKeys = (
   checkoutSessionId: string,
   options: CheckoutKeyDerivationOptions = {}
 ) =>
-  deriveCheckoutKeyCandidates(
+  deriveCheckoutKeySet(
     {
       checkoutSessionId,
     },
     options
   );
 
+export const deriveCheckoutSessionKeyCandidates = (
+  checkoutSessionId: string,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutSessionKeys(checkoutSessionId, options).candidates;
+
 export const deriveCheckoutSessionKey = (
   checkoutSessionId: string,
   options: CheckoutKeyDerivationOptions = {}
-) => deriveCheckoutSessionKeyCandidates(checkoutSessionId, options)[0];
+) => deriveCheckoutSessionKeys(checkoutSessionId, options).current;
 
 type CheckoutAttemptKeyInput = {
   readonly checkoutSessionId: string;
@@ -99,12 +140,17 @@ const getCheckoutAttemptKeyPayload = (input: CheckoutAttemptKeyInput) => {
   };
 };
 
+export const deriveCheckoutAttemptKeys = (
+  input: CheckoutAttemptKeyInput,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutKeySet(getCheckoutAttemptKeyPayload(input), options);
+
 export const deriveCheckoutAttemptKeyCandidates = (
   input: CheckoutAttemptKeyInput,
   options: CheckoutKeyDerivationOptions = {}
-) => deriveCheckoutKeyCandidates(getCheckoutAttemptKeyPayload(input), options);
+) => deriveCheckoutAttemptKeys(input, options).candidates;
 
 export const deriveCheckoutAttemptKey = (
   input: CheckoutAttemptKeyInput,
   options: CheckoutKeyDerivationOptions = {}
-) => deriveCheckoutAttemptKeyCandidates(input, options)[0];
+) => deriveCheckoutAttemptKeys(input, options).current;

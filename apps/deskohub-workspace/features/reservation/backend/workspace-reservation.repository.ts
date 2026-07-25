@@ -42,6 +42,8 @@ export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
 export interface CreateWorkspaceReservationInput {
   readonly checkoutSessionKey: string;
   readonly checkoutAttemptKey: string;
+  readonly checkoutSessionIdentityKey: string;
+  readonly checkoutAttemptIdentityKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
@@ -54,7 +56,9 @@ export interface WorkspaceReservationRepository {
     input: CreateWorkspaceReservationInput
   ) => Effect.Effect<
     WorkspaceReservation,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly findById: (
     id: string
@@ -252,6 +256,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             id: postgresUuidV7,
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
             customerAccessCode: input.customerAccessCode,
@@ -271,49 +277,76 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
 
           if (inserted) return yield* decodeWorkspaceReservation(inserted);
 
-          const [existingAttempt] = yield* db
+          const matchingAttempts = yield* db
             .select()
             .from(workspaceReservations)
             .where(
-              eq(
-                workspaceReservations.checkoutAttemptKey,
-                input.checkoutAttemptKey
+              or(
+                inArray(workspaceReservations.checkoutAttemptKey, [
+                  input.checkoutAttemptKey,
+                  input.checkoutAttemptIdentityKey,
+                ]),
+                inArray(workspaceReservations.checkoutAttemptIdentityKey, [
+                  input.checkoutAttemptKey,
+                  input.checkoutAttemptIdentityKey,
+                ])
               )
-            )
-            .limit(1);
+            );
 
-          if (existingAttempt) {
-            return yield* decodeWorkspaceReservation(existingAttempt);
+          if (matchingAttempts.length > 1) {
+            return yield* new WorkspaceReservationStateError({
+              operation: "workspaceReservations.createDraft",
+              reservationId: "conflicting-checkout-attempt",
+              message:
+                "Checkout attempt digests resolve to different reservations.",
+            });
+          }
+          if (matchingAttempts[0]) {
+            return yield* decodeWorkspaceReservation(matchingAttempts[0]);
           }
 
-          const [currentAttempt] = yield* db
+          const currentAttempts = yield* db
             .select()
             .from(workspaceReservations)
             .where(
               and(
-                eq(
-                  workspaceReservations.checkoutSessionKey,
-                  input.checkoutSessionKey
+                or(
+                  inArray(workspaceReservations.checkoutSessionKey, [
+                    input.checkoutSessionKey,
+                    input.checkoutSessionIdentityKey,
+                  ]),
+                  inArray(workspaceReservations.checkoutSessionIdentityKey, [
+                    input.checkoutSessionKey,
+                    input.checkoutSessionIdentityKey,
+                  ])
                 ),
                 sql`${workspaceReservations.reservationState} <> 'cancelled'`
               )
             )
-            .orderBy(desc(workspaceReservations.createdAt))
-            .limit(1);
+            .orderBy(desc(workspaceReservations.createdAt));
 
-          if (!currentAttempt) {
+          if (currentAttempts.length > 1) {
+            return yield* new WorkspaceReservationStateError({
+              operation: "workspaceReservations.createDraft",
+              reservationId: "conflicting-checkout-session",
+              message:
+                "Checkout session digests resolve to different reservations.",
+            });
+          }
+          if (!currentAttempts[0]) {
             return yield* Effect.die(
               "Workspace reservation insert returned no row."
             );
           }
-          return yield* decodeWorkspaceReservation(currentAttempt);
+          return yield* decodeWorkspaceReservation(currentAttempts[0]);
         },
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
               checkoutSessionKey: input.checkoutSessionKey,
               checkoutAttemptKey: input.checkoutAttemptKey,
-              dotyposCustomerId: input.dotyposCustomerId,
+              checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+              checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             })
           )
       ),
@@ -324,7 +357,16 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .select()
             .from(workspaceReservations)
             .where(
-              eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey)
+              or(
+                eq(
+                  workspaceReservations.checkoutAttemptKey,
+                  checkoutAttemptKey
+                ),
+                eq(
+                  workspaceReservations.checkoutAttemptIdentityKey,
+                  checkoutAttemptKey
+                )
+              )
             )
             .limit(1);
           return yield* decodeOptionalWorkspaceReservation(reservation);
@@ -341,9 +383,15 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .from(workspaceReservations)
             .where(
               and(
-                eq(
-                  workspaceReservations.checkoutSessionKey,
-                  checkoutSessionKey
+                or(
+                  eq(
+                    workspaceReservations.checkoutSessionKey,
+                    checkoutSessionKey
+                  ),
+                  eq(
+                    workspaceReservations.checkoutSessionIdentityKey,
+                    checkoutSessionKey
+                  )
                 ),
                 sql`${workspaceReservations.reservationState} <> 'cancelled'`
               )
@@ -592,6 +640,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 id: postgresUuidV7,
                 checkoutSessionKey: input.replacement.checkoutSessionKey,
                 checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+                checkoutSessionIdentityKey:
+                  input.replacement.checkoutSessionIdentityKey,
+                checkoutAttemptIdentityKey:
+                  input.replacement.checkoutAttemptIdentityKey,
                 correlationId: postgresUuidV7,
                 dotyposCustomerId: input.replacement.dotyposCustomerId,
                 customerAccessCode: input.replacement.customerAccessCode,

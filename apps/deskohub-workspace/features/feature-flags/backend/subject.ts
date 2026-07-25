@@ -31,9 +31,9 @@ export const getCurrentPostHogFeatureFlagSubject = Effect.fn(
       getPostHogFeatureFlagSubject(requestContext.context)
     ),
     Effect.catch((error) =>
-      Effect.logWarning(error.message, { cause: error.cause }).pipe(
-        Effect.as(globalReleaseSubject)
-      )
+      Effect.logWarning("Feature flag subject resolution failed", {
+        cause: error.cause,
+      }).pipe(Effect.as(globalReleaseSubject))
     )
   )
 );

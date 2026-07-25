@@ -17,4 +17,46 @@ describe("serializeErrorForLog", () => {
       sentinel
     );
   });
+
+  test("projects primitive, custom, aggregate, and nested causes to closed metadata", () => {
+    const sentinel = "SENSITIVE-CATEGORY-SENTINEL";
+    const projected = serializeErrorForLog(
+      new AggregateError(
+        [
+          sentinel,
+          42,
+          false,
+          {
+            _tag: "SyntheticTaggedCause",
+            customerId: sentinel,
+            cause: new Error(sentinel, {
+              cause: { providerOrderId: sentinel },
+            }),
+          },
+        ],
+        sentinel
+      )
+    );
+    const serialized = JSON.stringify(projected);
+
+    expect(projected).toEqual({
+      kind: "aggregate_error",
+      errors: [
+        { kind: "string" },
+        { kind: "number" },
+        { kind: "boolean" },
+        {
+          kind: "tagged_object",
+          cause: {
+            kind: "error",
+            category: "native",
+            cause: { kind: "object" },
+          },
+        },
+      ],
+    });
+    expect(serialized).not.toContain(sentinel);
+    expect(serialized).not.toContain("customerId");
+    expect(serialized).not.toContain("providerOrderId");
+  });
 });

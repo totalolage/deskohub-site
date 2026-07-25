@@ -11,9 +11,9 @@ const meetingRoomPageFeatureFlag = Effect.gen(function* () {
   return yield* featureFlags.isEnabled("meeting_room_page");
 }).pipe(
   Effect.catch((error) =>
-    Effect.logWarning(error.message, { cause: error.cause }).pipe(
-      Effect.as(false)
-    )
+    Effect.logWarning("Meeting room feature flag evaluation failed", {
+      cause: error.cause,
+    }).pipe(Effect.as(false))
   ),
   Effect.provide(WorkspaceFeatureFlagServiceLive)
 );

@@ -48,6 +48,41 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     }
   });
 
+  test("checkout identity migration bridges old writers without persisting return state", async () => {
+    const migration = await readAppFile(
+      "db/migrations/20260725232210_majestic_blackheart/migration.sql"
+    );
+    const lowerMigration = migration.toLowerCase();
+
+    expect(lowerMigration).toContain(
+      '"checkout_session_identity_key" = "checkout_session_key"'
+    );
+    expect(lowerMigration).toContain(
+      '"checkout_attempt_identity_key" = "checkout_attempt_key"'
+    );
+    expect(lowerMigration).toContain(
+      "workspace_reservation_checkout_identity_defaults"
+    );
+    expect(lowerMigration).toContain(
+      "workspace_reservations_attempt_identity_key_unique_idx"
+    );
+    expect(lowerMigration).toContain(
+      "workspace_reservations_active_session_identity_unique_idx"
+    );
+    expect(lowerMigration).not.toContain("checkout_return_state_tokens");
+    for (const fragment of piiColumnFragments) {
+      expect(lowerMigration).not.toContain(`"${fragment}"`);
+    }
+  });
+
+  test("the return-state signing secret remains in the operational schema", async () => {
+    const environmentSchema = await readAppFile("env.schema.ts");
+    const environmentRuntime = await readAppFile("env.ts");
+
+    expect(environmentSchema).toContain("CHECKOUT_RETURN_STATE_TOKEN_SECRET");
+    expect(environmentRuntime).toContain("CHECKOUT_RETURN_STATE_TOKEN_SECRET");
+  });
+
   test("checkout keys use JSON.stringify payload and do not use tuple delimiters", async () => {
     const source = await readAppFile(
       "features/checkout/backend/checkout/checkout-session-key.server.ts"

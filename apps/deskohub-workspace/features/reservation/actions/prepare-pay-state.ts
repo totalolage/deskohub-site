@@ -25,8 +25,8 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
-  deriveCheckoutAttemptKeyCandidates,
-  deriveCheckoutSessionKeyCandidates,
+  deriveCheckoutAttemptKeys,
+  deriveCheckoutSessionKeys,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
@@ -397,7 +397,7 @@ const ensureReservationAvailable = (input: {
     })
   );
 
-const getCheckoutKeyCandidates = (input: {
+const getCheckoutKeys = (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: PreparePayStateInput["reservation"];
@@ -406,11 +406,8 @@ const getCheckoutKeyCandidates = (input: {
   const options = { now: () => derivationTime };
 
   return {
-    checkoutSessionKeys: deriveCheckoutSessionKeyCandidates(
-      input.checkoutSessionId,
-      options
-    ),
-    checkoutAttemptKeys: deriveCheckoutAttemptKeyCandidates(input, options),
+    session: deriveCheckoutSessionKeys(input.checkoutSessionId, options),
+    attempt: deriveCheckoutAttemptKeys(input, options),
   };
 };
 
@@ -422,7 +419,10 @@ const prepareReservationDraft = Effect.fn(
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
-    "checkoutSessionKey" | "checkoutAttemptKey"
+    | "checkoutSessionKey"
+    | "checkoutAttemptKey"
+    | "checkoutSessionIdentityKey"
+    | "checkoutAttemptIdentityKey"
   >;
 }) {
   const reservations = yield* WorkspaceReservationRepository;
@@ -431,15 +431,14 @@ const prepareReservationDraft = Effect.fn(
   let checkoutSessionId = input.checkoutSessionId;
 
   while (true) {
-    const { checkoutSessionKeys, checkoutAttemptKeys } =
-      getCheckoutKeyCandidates({
-        checkoutSessionId,
-        checkoutAttemptId: input.checkoutAttemptId,
-        reservation: input.reservation,
-      });
+    const checkoutKeys = getCheckoutKeys({
+      checkoutSessionId,
+      checkoutAttemptId: input.checkoutAttemptId,
+      reservation: input.reservation,
+    });
 
     const existingAttempts = getDistinctReservations(
-      yield* Effect.forEach(checkoutAttemptKeys, (candidate) =>
+      yield* Effect.forEach(checkoutKeys.attempt.candidates, (candidate) =>
         reservations.findByAttemptKey(candidate)
       )
     );
@@ -496,7 +495,7 @@ const prepareReservationDraft = Effect.fn(
     }
 
     const currentReservations = getDistinctReservations(
-      yield* Effect.forEach(checkoutSessionKeys, (candidate) =>
+      yield* Effect.forEach(checkoutKeys.session.candidates, (candidate) =>
         reservations.findCurrentByCheckoutSessionKey(candidate)
       )
     );
@@ -620,14 +619,6 @@ const prepareReservationDraft = Effect.fn(
       }
 
       const cancelledAt = Temporal.Now.instant();
-      const {
-        checkoutSessionKeys: [writeCheckoutSessionKey],
-        checkoutAttemptKeys: [writeCheckoutAttemptKey],
-      } = getCheckoutKeyCandidates({
-        checkoutSessionId,
-        checkoutAttemptId: input.checkoutAttemptId,
-        reservation: input.reservation,
-      });
       return yield* ensureReservationAvailable({
         availability,
         reservation: input.reservation,
@@ -638,8 +629,10 @@ const prepareReservationDraft = Effect.fn(
             cancelledAt,
             replacement: {
               ...input.draft,
-              checkoutSessionKey: writeCheckoutSessionKey,
-              checkoutAttemptKey: writeCheckoutAttemptKey,
+              checkoutSessionKey: checkoutKeys.session.current,
+              checkoutAttemptKey: checkoutKeys.attempt.current,
+              checkoutSessionIdentityKey: checkoutKeys.session.identity,
+              checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
             },
           })
         ),
@@ -659,20 +652,17 @@ const prepareReservationDraft = Effect.fn(
       availability,
       reservation: input.reservation,
     });
-    const {
-      checkoutSessionKeys: [writeCheckoutSessionKey],
-      checkoutAttemptKeys: [writeCheckoutAttemptKey],
-    } = getCheckoutKeyCandidates({
-      checkoutSessionId,
-      checkoutAttemptId: input.checkoutAttemptId,
-      reservation: input.reservation,
-    });
     const reservationDraft = yield* reservations.createDraft({
       ...input.draft,
-      checkoutSessionKey: writeCheckoutSessionKey,
-      checkoutAttemptKey: writeCheckoutAttemptKey,
+      checkoutSessionKey: checkoutKeys.session.current,
+      checkoutAttemptKey: checkoutKeys.attempt.current,
+      checkoutSessionIdentityKey: checkoutKeys.session.identity,
+      checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
     });
-    if (reservationDraft.checkoutAttemptKey !== writeCheckoutAttemptKey) {
+    if (
+      reservationDraft.checkoutAttemptIdentityKey !==
+      checkoutKeys.attempt.identity
+    ) {
       continue;
     }
 

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import { Schema } from "effect";
 import {
+  checkoutReservationHmacMinimumLegacyReadMilliseconds,
   workspaceClientEnvSchema,
   workspaceServerEnvSchema,
 } from "./env.schema";
@@ -118,11 +119,49 @@ describe("workspace environment schemas", () => {
         CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:00:00.000Z",
       })
     ).toThrow();
+    for (const impossibleOrNonCanonicalInstant of [
+      "2026-02-30T10:00:00.000Z",
+      "2026-06-01T10:00:00Z",
+      "2026-06-01T10:00:00.000+00:00",
+    ]) {
+      expect(() =>
+        decodeEnvironment({
+          ...base,
+          CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: impossibleOrNonCanonicalInstant,
+          CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL:
+            "2026-06-01T11:00:00.000Z",
+        })
+      ).toThrow();
+    }
+    for (const unsafeWindowMilliseconds of [
+      1,
+      checkoutReservationHmacMinimumLegacyReadMilliseconds - 1,
+    ]) {
+      expect(() =>
+        decodeEnvironment({
+          ...base,
+          CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+          CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: new Date(
+            Date.parse("2026-06-01T10:00:00.000Z") + unsafeWindowMilliseconds
+          ).toISOString(),
+        })
+      ).toThrow();
+    }
     expect(
       decodeEnvironment({
         ...base,
         CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
         CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:30:00.000Z",
+      }).CHECKOUT_RESERVATION_HMAC_SECRET
+    ).toBe(syntheticMaterial);
+    expect(
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: new Date(
+          Date.parse("2026-06-01T10:00:00.000Z") +
+            checkoutReservationHmacMinimumLegacyReadMilliseconds
+        ).toISOString(),
       }).CHECKOUT_RESERVATION_HMAC_SECRET
     ).toBe(syntheticMaterial);
 

@@ -5,9 +5,14 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type {
+  ReadableSpan,
+  SpanExporter,
+  SpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
+import { projectErrorMetadata } from "@/shared/utils/error-metadata";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -38,10 +43,19 @@ const sensitiveLogKeyFragments = [
   "phone",
   "first name",
   "last name",
+  "id",
+  "identifier",
+  "key",
+  "digest",
+  "hash",
+  "fingerprint",
+  "url",
+  "state",
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
   "discountcode",
+  "db.statement",
   "exception.stacktrace",
   "submittedcode",
   "x-vercel-sc-headers",
@@ -211,18 +225,6 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
-const getSafeErrorProperty = (
-  error: Error,
-  property: string
-): string | number | boolean | undefined => {
-  const value = Object.getOwnPropertyDescriptor(error, property)?.value;
-  return typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean"
-    ? value
-    : undefined;
-};
-
 const censorQueryParameter = (
   value: unknown,
   seen: WeakMap<object, unknown>
@@ -267,6 +269,14 @@ const censorLogRecordValue = (
   seen: WeakMap<object, unknown>
 ): unknown => {
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
+  if (
+    key.toLowerCase() === "cause" ||
+    key.toLowerCase() === "error" ||
+    key.toLowerCase() === "errors" ||
+    key.toLowerCase() === "thrown"
+  ) {
+    return projectErrorMetadata(value);
+  }
   if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
   return censorLogValueInternal(value, seen);
 };
@@ -364,21 +374,7 @@ const censorLogValueInternal = (
   }
 
   if (value instanceof Error) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: Record<string, unknown> = { name: value.name };
-    seen.set(value, result);
-
-    for (const property of ["_tag", "code", "status", "statusCode"]) {
-      const propertyValue = getSafeErrorProperty(value, property);
-      if (propertyValue !== undefined) result[property] = propertyValue;
-    }
-    if (value.cause !== undefined) {
-      result.cause = censorLogValueInternal(value.cause, seen);
-    }
-
-    return result;
+    return projectErrorMetadata(value);
   }
 
   if (!isPlainObject(value)) return value;
@@ -515,6 +511,99 @@ export const createCensoredOtelSpanExporter = (
   shutdown: () => spanExporter.shutdown(),
 });
 
+const safeSpanNamePattern = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
+const censorSpanName = (name: string) =>
+  safeSpanNamePattern.test(name) ? name : "operation";
+
+const replaceRecord = (
+  target: Record<string, unknown>,
+  replacement: Record<string, unknown>
+) => {
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, replacement);
+};
+
+const censorMutableSpan = (
+  span: Parameters<SpanProcessor["onStart"]>[0]
+): void => {
+  replaceRecord(
+    span.attributes,
+    censorTelemetryValue(span.attributes) as Record<string, unknown>
+  );
+  replaceRecord(
+    span.resource.attributes,
+    censorOtelResourceAttributes(span.resource.attributes)
+  );
+  span.updateName(censorSpanName(span.name));
+  if (span.status.message) {
+    span.setStatus({ ...span.status, message: CENSORED_LOG_VALUE });
+  }
+
+  for (const event of span.events) {
+    event.name = censorSpanName(event.name);
+    if (event.attributes) {
+      replaceRecord(
+        event.attributes,
+        censorTelemetryValue(event.attributes) as Record<string, unknown>
+      );
+    }
+  }
+  for (const link of span.links) {
+    if (link.attributes) {
+      replaceRecord(
+        link.attributes,
+        censorTelemetryValue(link.attributes) as Record<string, unknown>
+      );
+    }
+  }
+};
+
+const censorReadableSpanInPlace = (span: ReadableSpan): void => {
+  replaceRecord(
+    span.attributes,
+    censorTelemetryValue(span.attributes) as Record<string, unknown>
+  );
+  replaceRecord(
+    span.resource.attributes,
+    censorOtelResourceAttributes(span.resource.attributes)
+  );
+
+  const mutableSpan = span as ReadableSpan & {
+    name: string;
+    status: ReadableSpan["status"];
+  };
+  mutableSpan.name = censorSpanName(span.name);
+  if (span.status.message) {
+    mutableSpan.status = { ...span.status, message: CENSORED_LOG_VALUE };
+  }
+
+  for (const event of span.events) {
+    event.name = censorSpanName(event.name);
+    if (event.attributes) {
+      replaceRecord(
+        event.attributes,
+        censorTelemetryValue(event.attributes) as Record<string, unknown>
+      );
+    }
+  }
+  for (const link of span.links) {
+    if (link.attributes) {
+      replaceRecord(
+        link.attributes,
+        censorTelemetryValue(link.attributes) as Record<string, unknown>
+      );
+    }
+  }
+};
+
+export const CensoringSpanProcessor: SpanProcessor = {
+  forceFlush: () => Promise.resolve(),
+  onStart: () => undefined,
+  onEnding: censorMutableSpan,
+  onEnd: censorReadableSpanInPlace,
+  shutdown: () => Promise.resolve(),
+};
+
 const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
   attributes: censorTelemetryValue(
     span.attributes
@@ -536,7 +625,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     return {
       ...event,
       attributes,
-      name: isException ? "exception" : event.name,
+      name: isException ? "exception" : censorSpanName(event.name),
     };
   }),
   instrumentationScope: span.instrumentationScope,
@@ -545,7 +634,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     ...link,
     attributes: censorTelemetryValue(link.attributes) as typeof link.attributes,
   })),
-  name: span.name,
+  name: censorSpanName(span.name),
   parentSpanContext: span.parentSpanContext,
   resource: resourceFromAttributes(
     censorOtelResourceAttributes(span.resource.attributes),

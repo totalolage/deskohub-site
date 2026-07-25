@@ -3,6 +3,7 @@ import "./shared/polyfills/temporal";
 import { logs } from "@opentelemetry/api-logs";
 import { registerOTel } from "@vercel/otel";
 import { env } from "./env";
+import { CensoringSpanProcessor } from "./shared/backend/logging/censorship";
 import {
   createPostHogLoggerProvider,
   registerPostHogLoggerProvider,
@@ -19,6 +20,7 @@ export async function register() {
 
   registerOTel({
     serviceName: WORKSPACE_SERVICE_NAME,
+    spanProcessors: [CensoringSpanProcessor, "auto"],
     attributes: {
       "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
     },

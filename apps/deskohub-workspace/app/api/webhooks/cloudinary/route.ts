@@ -99,22 +99,20 @@ export const POST = defineWorkspaceRoute(
         }),
       }),
       Effect.catchTags({
-        CloudinaryWebhookAuthError: (error) =>
+        CloudinaryWebhookAuthError: () =>
           Effect.succeed(
             NextResponse.json(
               {
                 error: "Unauthorized",
-                message: error.message,
               },
               { status: 401 }
             )
           ),
-        CloudinaryWebhookValidationError: (error) =>
+        CloudinaryWebhookValidationError: () =>
           Effect.succeed(
             NextResponse.json(
               {
                 error: "Invalid payload",
-                message: error.message,
               },
               {
                 status: 400,

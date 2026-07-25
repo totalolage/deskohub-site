@@ -18,18 +18,28 @@ const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
 const optionalCheckoutHmacSecretSchema = toEnvSchema(
   Schema.optional(Schema.String.check(Schema.isMinLength(32)))
 );
+const canonicalUtcInstantPattern =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const optionalUtcInstantSchema = toEnvSchema(
   Schema.optional(
     Schema.String.check(
-      Schema.makeFilter(
-        (value) =>
-          (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value) &&
-            Number.isFinite(Date.parse(value))) ||
-          "Expected a UTC RFC 3339 instant."
-      )
+      Schema.makeFilter((value) => {
+        if (!canonicalUtcInstantPattern.test(value)) {
+          return "Expected a canonical UTC RFC 3339 instant.";
+        }
+        const parsed = new Date(value);
+        return (
+          (Number.isFinite(parsed.getTime()) &&
+            parsed.toISOString() === value) ||
+          "Expected a canonical UTC RFC 3339 instant."
+        );
+      })
     )
   )
 );
+
+export const checkoutReservationHmacMinimumLegacyReadMilliseconds =
+  20 * 60 * 1000;
 
 export const checkoutReservationHmacEnvironmentCheck = Schema.makeFilter<{
   readonly CHECKOUT_RESERVATION_HMAC_SECRET?: string | undefined;
@@ -58,6 +68,16 @@ export const checkoutReservationHmacEnvironmentCheck = Schema.makeFilter<{
     return {
       path: ["CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL"],
       issue: "Checkout reservation HMAC legacy reads must end after cutover.",
+    };
+  }
+  if (
+    Date.parse(legacyReadUntil) - Date.parse(cutoverAt) <
+    checkoutReservationHmacMinimumLegacyReadMilliseconds
+  ) {
+    return {
+      path: ["CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL"],
+      issue:
+        "Checkout reservation HMAC legacy reads do not cover the minimum safe window.",
     };
   }
 

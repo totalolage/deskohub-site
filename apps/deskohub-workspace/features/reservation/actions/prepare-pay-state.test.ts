@@ -203,6 +203,8 @@ const makeReusableReservation = (
     id: "existing-reservation-id",
     checkoutSessionKey: "session-key",
     checkoutAttemptKey: "attempt-key",
+    checkoutSessionIdentityKey: "session-key",
+    checkoutAttemptIdentityKey: "attempt-key",
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
@@ -444,6 +446,8 @@ const runMeetingRoomNewHoldScenario = async () => {
       id: "meeting-room-reservation-id",
       checkoutSessionKey: input.checkoutSessionKey,
       checkoutAttemptKey: input.checkoutAttemptKey,
+      checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+      checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
       reservationState: "draft",
       reservationDetails: input.reservationDetails,
     } as never)
@@ -707,6 +711,8 @@ describe("prepareWorkspacePayState", () => {
         id: "reservation-id",
         checkoutSessionKey: input.checkoutSessionKey,
         checkoutAttemptKey: input.checkoutAttemptKey,
+        checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+        checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
         correlationId: "correlation-id",
         reservationState: "draft",
         paymentState: "not_started",
@@ -949,6 +955,8 @@ describe("prepareWorkspacePayState", () => {
           ...claimConflictReservation,
           checkoutSessionKey: input.checkoutSessionKey,
           checkoutAttemptKey: input.checkoutAttemptKey,
+          checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+          checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
         })
       ),
     });
@@ -1021,6 +1029,10 @@ describe("prepareWorkspacePayState", () => {
             id: "replacement-reservation-id",
             checkoutSessionKey: input.replacement.checkoutSessionKey,
             checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+            checkoutSessionIdentityKey:
+              input.replacement.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey:
+              input.replacement.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           });
@@ -1077,6 +1089,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1139,6 +1153,10 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-session-replacement-id",
             checkoutSessionKey: input.replacement.checkoutSessionKey,
             checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+            checkoutSessionIdentityKey:
+              input.replacement.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey:
+              input.replacement.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1185,6 +1203,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1225,6 +1245,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })

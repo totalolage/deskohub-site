@@ -1,5 +1,8 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import type { LoggerProvider } from "@opentelemetry/api-logs";
+import { Effect, Logger } from "effect";
+import { createCensoredOtelLogger } from "./censorship";
 import {
   createPostHogLoggerProvider,
   getPostHogLogsEndpoint,
@@ -32,6 +35,60 @@ describe("PostHog OTel logs", () => {
 
     expect(typeof provider?.forceFlush).toBe("function");
     await provider?.shutdown();
+  });
+
+  test("censors nested causes through the production OTLP log sink", async () => {
+    const requests: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        requests.push(await request.text());
+        return new Response(null, { status: 200 });
+      },
+    });
+    const provider = createPostHogLoggerProvider({
+      posthogHost: server.url.toString(),
+      posthogProjectToken: randomBytes(24).toString("base64url"),
+      vercelEnv: "development",
+    });
+    if (!provider) throw new Error("Expected a synthetic logger provider.");
+
+    try {
+      const sentinel = "SENSITIVE-CATEGORY-SENTINEL";
+      const nestedCause = new AggregateError(
+        [
+          sentinel,
+          42,
+          false,
+          {
+            _tag: "SyntheticTaggedCause",
+            cause: new Error(sentinel, {
+              cause: { providerOrderId: sentinel },
+            }),
+            customerId: sentinel,
+          },
+        ],
+        sentinel
+      );
+
+      await Effect.runPromise(
+        Effect.logError("code-owned log message", {
+          cause: nestedCause,
+          checkoutSessionId: sentinel,
+        }).pipe(
+          Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+        )
+      );
+      await provider.forceFlush();
+
+      const exported = requests.join("");
+      expect(exported).toContain("[REDACTED]");
+      expect(exported).toContain("aggregate_error");
+      expect(exported).not.toContain(sentinel);
+    } finally {
+      await provider.shutdown();
+      server.stop(true);
+    }
   });
 
   test("bounds a scheduled flush when the logger provider does not settle", async () => {

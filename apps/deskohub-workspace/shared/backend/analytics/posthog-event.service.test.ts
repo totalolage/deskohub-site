@@ -66,14 +66,14 @@ describe("PostHogEventService", () => {
       "effect.span_name": "reservation.attachHold",
       "service.name": "workspace-test",
       "service.namespace": "deskohub-test",
-      correlationId: "correlation-id",
-      reservation_id: "reservation-id",
-      sessionId: "session-id",
+      correlationId: CENSORED_LOG_VALUE,
+      reservation_id: CENSORED_LOG_VALUE,
+      sessionId: CENSORED_LOG_VALUE,
       token: CENSORED_LOG_VALUE,
     });
     expect(messages[0].properties?.effect).toMatchObject({
       spanAttributes: {
-        paymentAttemptId: "payment-attempt-id",
+        paymentAttemptId: CENSORED_LOG_VALUE,
         secret: CENSORED_LOG_VALUE,
       },
     });

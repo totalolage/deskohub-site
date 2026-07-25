@@ -129,8 +129,11 @@ describe("checkout attempt key", () => {
   });
 
   test("switches writes at cutover and removes raw reads at the exact deadline", async () => {
-    const { deriveCheckoutSessionKey, deriveCheckoutSessionKeyCandidates } =
-      await import("./checkout-session-key.server");
+    const {
+      deriveCheckoutSessionKey,
+      deriveCheckoutSessionKeyCandidates,
+      deriveCheckoutSessionKeys,
+    } = await import("./checkout-session-key.server");
     const [rawPayStateKeys, dedicatedSecret] = generateSyntheticSecretValues();
     const checkoutSessionId = "scheduled-cutover-session";
     const cutoverAt = "2026-06-01T10:00:00.000Z";
@@ -155,6 +158,13 @@ describe("checkout attempt key", () => {
     expect(cutoverCandidates[0]).not.toBe(legacyKey);
     expect(cutoverCandidates[1]).toBe(legacyKey);
     expect(
+      deriveCheckoutSessionKeys(checkoutSessionId, getOptions(cutoverAt))
+    ).toEqual({
+      current: cutoverCandidates[0],
+      identity: legacyKey,
+      candidates: cutoverCandidates,
+    });
+    expect(
       deriveCheckoutSessionKeyCandidates(
         checkoutSessionId,
         getOptions("2026-06-01T10:29:59.999Z")
@@ -166,6 +176,13 @@ describe("checkout attempt key", () => {
         getOptions(legacyReadUntil)
       )
     ).toEqual([cutoverCandidates[0]]);
+    expect(
+      deriveCheckoutSessionKeys(checkoutSessionId, getOptions(legacyReadUntil))
+    ).toEqual({
+      current: cutoverCandidates[0],
+      identity: cutoverCandidates[0],
+      candidates: [cutoverCandidates[0]],
+    });
   });
 
   test("deduplicates matching current and legacy material", async () => {
