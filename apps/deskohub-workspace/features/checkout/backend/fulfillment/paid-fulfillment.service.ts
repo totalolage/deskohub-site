@@ -16,6 +16,7 @@ import {
 } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import {
@@ -46,7 +47,7 @@ export interface WorkspacePaidFulfillmentService {
   readonly fulfillPaidOrder: (input: {
     readonly orderId: string;
   }) => Effect.Effect<
-    void,
+    "busy" | "delivery_dispatched" | "fulfilled" | "ignored",
     WorkspacePaidFulfillmentError | WorkspaceReservationStateError
   >;
 }
@@ -71,7 +72,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
         readonly failureCode: WorkspacePaidFulfillmentFailureCode;
         readonly cause?: unknown;
       }) {
-        yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Paid fulfillment failure handling started");
 
         yield* Effect.logInfo("Paid fulfillment failure marker started");
@@ -82,11 +82,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             failedAt: Temporal.Now.instant(),
           })
           .pipe(
-            Effect.tapError((cause) =>
+            Effect.tapError(() =>
               Effect.logError("Paid fulfillment failure marker failed", {
                 orderId: input.orderId,
                 failureCode: input.failureCode,
-                cause,
               })
             ),
             Effect.ignore
@@ -95,8 +94,13 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
         yield* Effect.logFatal("Paid fulfillment failure handling completed");
 
         return yield* new WorkspacePaidFulfillmentError({
-          ...input,
+          orderId: input.orderId,
+          failureCode: input.failureCode,
           message: "Paid reservation fulfillment failed.",
+          cause:
+            input.cause === undefined
+              ? undefined
+              : serializeErrorForLog(input.cause),
         });
       }
     );
@@ -104,7 +108,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     return WorkspacePaidFulfillmentService.of({
       fulfillPaidOrder: Effect.fn("workspacePaidFulfillment.fulfillPaidOrder")(
         function* (input) {
-          yield* Effect.annotateLogsScoped({ input });
           yield* Effect.logInfo("Paid fulfillment started");
 
           yield* Effect.logDebug("Paid fulfillment reservation lookup started");
@@ -116,11 +119,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                   failureCode: "fulfillment_order_load_failed",
                   message:
                     "Paid reservation could not be loaded for fulfillment.",
-                  cause,
+                  cause: serializeErrorForLog(cause),
                 })
             )
           );
-          yield* Effect.annotateLogsScoped({ reservation });
           yield* Effect.logDebug("Paid fulfillment reservation loaded");
 
           if (!reservation) {
@@ -130,7 +132,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 reason: "reservation_missing",
               }
             );
-            return;
+            return "ignored" as const;
           }
 
           if (reservation.paymentState !== "paid") {
@@ -140,7 +142,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 reason: "reservation_not_paid",
               }
             );
-            return;
+            return "ignored" as const;
           }
 
           if (reservation.fulfillmentState === "fulfilled") {
@@ -150,7 +152,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 reason: "already_fulfilled",
               }
             );
-            return;
+            return "fulfilled" as const;
           }
 
           const staleProcessingBefore = Temporal.Now.instant().subtract({
@@ -170,7 +172,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                   reason: "already_processing",
                 }
               );
-              return;
+              return "busy" as const;
             }
 
             yield* Effect.logWarning(
@@ -195,11 +197,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                     failureCode: "fulfillment_claim_failed",
                     message:
                       "Paid reservation could not be claimed for fulfillment.",
-                    cause,
+                    cause: serializeErrorForLog(cause),
                   })
               )
             );
-          yield* Effect.annotateLogsScoped({ claimed });
           yield* Effect.logDebug("Paid fulfillment claim completed");
 
           if (!claimed) {
@@ -207,7 +208,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
               "Paid fulfillment skipped: claim returned no reservation",
               { reason: "claim_returned_no_reservation" }
             );
-            return;
+            return "busy" as const;
           }
           yield* Effect.logInfo("Paid fulfillment claim succeeded");
 
@@ -223,31 +224,54 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             });
           }
 
-          if (claimed.reservationState !== "confirmed") {
-            if (claimed.reservationState !== "held") {
-              yield* Effect.logWarning(
-                "Paid fulfillment failed: reservation no longer confirmable",
-                { reason: "reservation_no_longer_confirmable" }
-              );
+          if (
+            claimed.reservationState !== "held" &&
+            claimed.reservationState !== "confirmed"
+          ) {
+            yield* Effect.logWarning(
+              "Paid fulfillment failed: reservation no longer confirmable",
+              { reason: "reservation_no_longer_confirmable" }
+            );
 
-              return yield* failFulfillment({
-                orderId: input.orderId,
-                failureCode: "dotypos_reservation_unfulfillable",
-              });
-            }
+            return yield* failFulfillment({
+              orderId: input.orderId,
+              failureCode: "dotypos_reservation_unfulfillable",
+            });
+          }
 
+          yield* Effect.logInfo(
+            "Dotypos paid reservation reconciliation started"
+          );
+          const liveStatus = yield* dotypos
+            .getReservationStatus(claimed.dotyposReservationId)
+            .pipe(
+              Effect.catch((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "dotypos_reservation_failed",
+                  cause,
+                })
+              )
+            );
+
+          if (liveStatus === "CANCELLED") {
+            yield* Effect.logWarning(
+              "Paid fulfillment retained for manual recovery",
+              { reason: "dotypos_reservation_cancelled" }
+            );
+            return yield* failFulfillment({
+              orderId: input.orderId,
+              failureCode: "dotypos_reservation_unfulfillable",
+            });
+          }
+
+          if (liveStatus === "NEW") {
             yield* Effect.logInfo(
               "Dotypos paid reservation confirmation started"
             );
-            yield* dotypos
+            const confirmed = yield* dotypos
               .confirmReservation(claimed.dotyposReservationId)
               .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logError(
-                    "Dotypos paid reservation confirmation failed",
-                    { claimed, cause }
-                  )
-                ),
                 Effect.catch((cause) =>
                   failFulfillment({
                     orderId: input.orderId,
@@ -256,10 +280,21 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                   })
                 )
               );
+            if (confirmed.status !== "CONFIRMED") {
+              return yield* failFulfillment({
+                orderId: input.orderId,
+                failureCode: "dotypos_reservation_unfulfillable",
+              });
+            }
             yield* Effect.logInfo(
               "Dotypos paid reservation confirmation succeeded"
             );
+          }
+          yield* Effect.logInfo(
+            "Dotypos paid reservation reconciliation completed"
+          );
 
+          if (claimed.reservationState === "held") {
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker started"
             );
@@ -270,10 +305,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 confirmedAt,
               })
               .pipe(
-                Effect.tapError((cause) =>
+                Effect.tapError(() =>
                   Effect.logError(
                     "Paid fulfillment reservation confirmed marker failed",
-                    { claimed, cause }
+                    { orderId: claimed.id }
                   )
                 )
               );
@@ -291,11 +326,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             Effect.flatMap((reservation) =>
               reservationEmails.sendPaidReservationEmails({ reservation })
             ),
-            Effect.tapError((cause) =>
+            Effect.tapError(() =>
               Effect.logError("Workspace paid reservation email flow failed", {
                 workspaceReservationId: claimed.id,
                 dotyposCustomerId: claimed.dotyposCustomerId,
-                cause,
               })
             ),
             Effect.catch((cause) =>
@@ -310,6 +344,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           yield* Effect.logInfo(
             "Paid fulfillment is awaiting Resend delivery webhook"
           );
+          return "delivery_dispatched" as const;
         },
         (effect, input) =>
           effect.pipe(
@@ -322,7 +357,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                     orderId: input.orderId,
                     failureCode: "fulfillment_completion_failed",
                     message: "Paid reservation fulfillment failed.",
-                    cause,
+                    cause: serializeErrorForLog(cause),
                   })
             ),
             Effect.annotateLogs({ ...input })

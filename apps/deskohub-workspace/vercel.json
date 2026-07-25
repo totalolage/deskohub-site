@@ -8,11 +8,25 @@
   },
   "crons": [
     {
+      "path": "/api/cron/workspace/paid-fulfillment",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/workspace/reservation-holds",
       "schedule": "0 0 * * *"
     }
   ],
   "functions": {
+    "app/api/queues/workspace/paid-fulfillment/route.ts": {
+      "experimentalTriggers": [
+        {
+          "type": "queue/v2beta",
+          "topic": "workspace-paid-fulfillment",
+          "retryAfterSeconds": 60,
+          "initialDelaySeconds": 0
+        }
+      ]
+    },
     "app/api/queues/workspace/reservation-hold-cleanup/route.ts": {
       "experimentalTriggers": [
         {

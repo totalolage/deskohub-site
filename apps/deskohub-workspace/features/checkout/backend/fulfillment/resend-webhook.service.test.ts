@@ -753,6 +753,7 @@ describe("ResendWebhookService", () => {
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
       ),
+      getReservationStatus: mock(() => Effect.succeed("CONFIRMED" as const)),
     } as unknown as typeof DotyposService.Service;
     const reservationEmails = {
       sendPaidReservationEmails,

@@ -16,7 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "test:e2e": "bun scripts/workspace-e2e.ts",
     "lint": "bun run --parallel lint:biome lint:eslint",
-    "lint:biome": "biome check app db features scripts shared *.ts --config-path ../../biome.json --vcs-root ../../",
+    "lint:biome": "cd ../.. && biome check apps/deskohub-workspace/app apps/deskohub-workspace/db apps/deskohub-workspace/features apps/deskohub-workspace/scripts apps/deskohub-workspace/shared apps/deskohub-workspace/*.ts --config-path biome.json --vcs-root .",
     "lint:eslint": "eslint --ext .ts,.tsx app db features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
     "typecheck": "tsc --noEmit",
@@ -100,6 +100,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
+    "@effect/sql-pglite": "4.0.0-beta.85",
+    "@electric-sql/pglite": "0.4.5",
     "@happy-dom/global-registrator": "^20.10.1",
     "@opentelemetry/context-async-hooks": "2.8.0",
     "@testing-library/react": "^16.3.2",
