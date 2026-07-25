@@ -737,6 +737,82 @@ describe("ProviderPaymentFinalizationService", () => {
     });
   });
 
+  test("does not settle or fulfill incomplete authoritative terminal evidence", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "../fulfillment/paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    for (const providerStatus of ["EXECUTED", "DECLINED"] as const) {
+      const markPaid = mock(() => Effect.die("must not mark paid"));
+      const markTerminal = mock(() => Effect.die("must not mark terminal"));
+      const fulfillPaidOrder = mock(() => Effect.die("must not fulfill"));
+      const verifyPaymentOutcome = mock(() =>
+        Effect.succeed({
+          status: "pending" as const,
+          provider: {
+            orderId: "provider-order-id",
+            orderStatus: providerStatus,
+            captureExecuted: false,
+          },
+          mismatches: [],
+        })
+      );
+
+      const result = await Effect.gen(function* () {
+        const service = yield* ProviderPaymentFinalizationService;
+        return yield* service.finalizePendingProviderPayment({
+          orderId: "reservation-id",
+          paymentAttemptId: "attempt-id",
+        });
+      }).pipe(
+        Effect.provide(
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(WorkspaceReservationRepository, {
+                  findById: mock(() => Effect.succeed(pendingReservation)),
+                } as unknown as WorkspaceReservationRepositoryType),
+                Layer.succeed(WorkspacePaidFulfillmentService, {
+                  fulfillPaidOrder,
+                }),
+                Layer.succeed(PaymentAttemptRepository, {
+                  findById: mock(() => Effect.succeed(pendingAttempt)),
+                } as unknown as PaymentAttemptRepositoryType),
+                paymentLifecycleLayer({ markPaid, markTerminal }),
+                Layer.succeed(PostHogEventService, {
+                  capture: () => Effect.void,
+                }),
+                Layer.succeed(NexiService, {
+                  verifyPaymentOutcome,
+                } as unknown as NexiServiceType)
+              )
+            )
+          )
+        ),
+        Effect.runPromise
+      );
+
+      expect(result).toBe("pending");
+      expect(markPaid).not.toHaveBeenCalled();
+      expect(markTerminal).not.toHaveBeenCalled();
+      expect(fulfillPaidOrder).not.toHaveBeenCalled();
+    }
+  });
+
   test("propagates lifecycle persistence failures instead of returning not_pending", async () => {
     const {
       ProviderPaymentFinalizationService,

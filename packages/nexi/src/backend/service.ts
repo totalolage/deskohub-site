@@ -287,13 +287,18 @@ const resolvePaymentOutcomeEvidence = (
   const operationType = operation?.operationType?.toUpperCase();
   const operationResult = operation?.operationResult?.toUpperCase();
   const lastOperationType = order.orderStatus?.lastOperationType?.toUpperCase();
+  const operationAmountEvidence = getOperationAmountEvidence(
+    operation ?? undefined
+  );
   const operationIsIncomplete =
-    paymentOperations.length > 0 &&
-    paymentOperations.some(
-      (item) =>
-        !isPaymentOperationType(item.operationType) ||
-        item.operationResult === undefined
-    );
+    paymentOperations.length !== 1 ||
+    !hasText(operation?.orderId) ||
+    !normalizeNexiProviderOperationId(operation?.operationId) ||
+    !hasText(operation?.operationType) ||
+    !hasText(operation?.operationResult) ||
+    !operationAmountEvidence.complete;
+  const operationTypeIsContradictory =
+    operationType !== undefined && !isPaymentOperationType(operationType);
   const operationTypeDiverges =
     operationType !== undefined &&
     lastOperationType !== undefined &&
@@ -311,16 +316,18 @@ const resolvePaymentOutcomeEvidence = (
       providerOrder.currency === undefined);
   if (
     paymentOperations.length > 1 ||
-    operationIsIncomplete ||
+    operationTypeIsContradictory ||
     operationTypeDiverges ||
-    laterTerminalEvidence ||
-    authorizationExecutionIsIncomplete
+    laterTerminalEvidence
   ) {
     mismatches.push("operationEvidence");
   }
 
   const status: PaymentOutcomeStatus = (() => {
     if (mismatches.length > 0) return "manual_review";
+    if (operationIsIncomplete || authorizationExecutionIsIncomplete) {
+      return "pending";
+    }
     if (operationResult === EXECUTED_OPERATION_RESULT) {
       return "success";
     }
@@ -385,3 +392,37 @@ const getRepresentativeOperationAmount = (
     currency: operation.operationCurrency,
   };
 };
+
+const getOperationAmountEvidence = (
+  operation:
+    | {
+        readonly amount?: {
+          readonly amount?: string;
+          readonly currency?: string;
+        };
+        readonly operationAmount?: string;
+        readonly operationCurrency?: string;
+      }
+    | undefined
+) => {
+  if (!operation) return { complete: false };
+
+  const nestedPresent = operation.amount !== undefined;
+  const nestedComplete =
+    hasText(operation.amount?.amount) && hasText(operation.amount?.currency);
+  const flatPresent =
+    operation.operationAmount !== undefined ||
+    operation.operationCurrency !== undefined;
+  const flatComplete =
+    hasText(operation.operationAmount) && hasText(operation.operationCurrency);
+
+  return {
+    complete:
+      (nestedComplete || flatComplete) &&
+      (!nestedPresent || nestedComplete) &&
+      (!flatPresent || flatComplete),
+  };
+};
+
+const hasText = (value: string | undefined): boolean =>
+  value !== undefined && value.trim().length > 0;

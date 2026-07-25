@@ -438,6 +438,7 @@ describe("NexiService verifyPaymentOutcome", () => {
         },
         operations: [
           {
+            orderId: "order-id",
             operationId: "operation-id",
             operationType: "CAPTURE",
             operationResult: "EXECUTED",
@@ -571,7 +572,7 @@ describe("NexiService verifyPaymentOutcome", () => {
             },
           ],
         },
-        "manual_review",
+        "pending",
       ],
       [
         "missing-captured",
@@ -592,7 +593,7 @@ describe("NexiService verifyPaymentOutcome", () => {
             },
           ],
         },
-        "manual_review",
+        "pending",
       ],
     ] as const) {
       const result = await runWithService(
@@ -609,9 +610,63 @@ describe("NexiService verifyPaymentOutcome", () => {
       );
 
       expect(result.status).toBe(expected);
-      expect(result.mismatches).toEqual(
-        expected === "success" ? [] : ["operationEvidence"]
-      );
+      expect(result.mismatches).toEqual([]);
+    }
+  });
+
+  test("keeps terminal outcomes unresolved when an operation fact is absent", async () => {
+    const terminalResults = ["EXECUTED", "DECLINED"] as const;
+    const omittedFacts = [
+      "operationId",
+      "orderId",
+      "operationType",
+      "operationResult",
+      "operationAmount",
+      "operationCurrency",
+    ] as const;
+
+    for (const operationResult of terminalResults) {
+      for (const omittedFact of omittedFacts) {
+        const operation: Record<string, string> = {
+          orderId: "order-id",
+          operationId: "operation-id",
+          operationType: "CAPTURE",
+          operationResult,
+          operationAmount: "5000",
+          operationCurrency: "CZK",
+        };
+        delete operation[omittedFact];
+
+        const result = await runWithService(
+          Effect.gen(function* () {
+            const nexi = yield* NexiService;
+            return yield* nexi.verifyPaymentOutcome({
+              orderId: "order-id",
+              correlationId: "incomplete-operation",
+              amount: "5000",
+              currency: "CZK",
+            });
+          }),
+          mockNexiFetch(
+            Response.json({
+              orderStatus: {
+                lastOperationType: "CAPTURE",
+                authorizedAmount: "5000",
+                capturedAmount: "5000",
+                order: {
+                  orderId: "order-id",
+                  amount: "5000",
+                  currency: "CZK",
+                },
+              },
+              operations: [operation],
+            })
+          )
+        );
+
+        expect(result.status).toBe("pending");
+        expect(result.mismatches).toEqual([]);
+      }
     }
   });
 
@@ -654,9 +709,12 @@ describe("NexiService verifyPaymentOutcome", () => {
           },
           operations: [
             {
+              orderId: "order-id",
               operationId: "declined-id",
               operationType: "AUTHORIZATION",
               operationResult: "DECLINED",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
             },
           ],
         },
@@ -676,6 +734,8 @@ describe("NexiService verifyPaymentOutcome", () => {
               operationId: "authorization-id",
               operationType: "AUTHORIZATION",
               operationResult: "PENDING",
+              operationAmount: "5000",
+              operationCurrency: "CZK",
             },
           ],
         },
@@ -690,6 +750,7 @@ describe("NexiService verifyPaymentOutcome", () => {
           },
           operations: [
             {
+              orderId: "order-id",
               operationId: "capture-id",
               operationType: "CAPTURE",
               operationResult: "EXECUTED",
@@ -943,6 +1004,7 @@ describe("NexiService verifyPaymentOutcome", () => {
           },
           operations: [
             {
+              orderId: "order-id",
               operationId: "capture-id",
               operationType: "CAPTURE",
               operationResult: "EXECUTED",

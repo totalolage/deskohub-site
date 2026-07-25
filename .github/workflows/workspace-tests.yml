@@ -39,7 +39,7 @@ jobs:
       WORKSPACE_REAL_POSTGRES_TEST_URL: postgresql://postgres@localhost:5432/postgres
     services:
       postgres:
-        image: postgres:17
+        image: ghcr.io/fboulnois/pg_uuidv7:1.6.0
         env:
           POSTGRES_HOST_AUTH_METHOD: trust
         ports:

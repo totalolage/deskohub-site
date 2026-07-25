@@ -57,7 +57,8 @@
         "@deskohub/dotypos#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
-      ]
+      ],
+      "env": ["WORKSPACE_REAL_POSTGRES_TEST_URL"]
     },
     "typecheck": {
       "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]
