@@ -206,7 +206,11 @@ export interface VerifyPaymentOutcomeInput {
   readonly securityToken?: string;
 }
 
-export type PaymentOutcomeStatus = "success" | "failure" | "pending";
+export type PaymentOutcomeStatus =
+  | "success"
+  | "failure"
+  | "pending"
+  | "manual_review";
 
 export interface ProviderPaymentFacts {
   readonly orderId: string;
@@ -221,6 +225,6 @@ export interface PaymentVerificationResult {
   readonly status: PaymentOutcomeStatus;
   readonly provider: ProviderPaymentFacts;
   readonly mismatches: ReadonlyArray<
-    "orderId" | "amount" | "currency" | "securityToken"
+    "orderId" | "amount" | "currency" | "securityToken" | "operationEvidence"
   >;
 }

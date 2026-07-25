@@ -21,5 +21,14 @@ describe("payment paid event migration contract", () => {
     expect(migration).toContain(
       'ON CONFLICT ("payment_attempt_id") DO NOTHING'
     );
+    expect(migration).toContain(
+      'CREATE TRIGGER "payment_attempts_guard_unverified_v2_terminal"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"'
+    );
+    expect(migration).toContain("deskohub.verified_v2_terminal_settlement");
+    expect(migration).toContain('OLD."admission_version" = 2');
+    expect(migration).toContain("attempt.\"state\" = 'created'");
   });
 });

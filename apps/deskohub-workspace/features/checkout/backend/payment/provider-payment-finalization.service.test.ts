@@ -225,6 +225,12 @@ describe("ProviderPaymentFinalizationService", () => {
       conflict: false,
     },
     {
+      verificationStatus: "success" as const,
+      expected: "not_pending" as const,
+      changed: false,
+      conflict: true,
+    },
+    {
       verificationStatus: "failure" as const,
       expected: "terminal" as const,
       changed: true,
@@ -241,6 +247,12 @@ describe("ProviderPaymentFinalizationService", () => {
       expected: "not_pending" as const,
       changed: false,
       conflict: true,
+    },
+    {
+      verificationStatus: "manual_review" as const,
+      expected: "verification_mismatch" as const,
+      changed: false,
+      conflict: false,
     },
   ]) {
     test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
@@ -263,11 +275,20 @@ describe("ProviderPaymentFinalizationService", () => {
       const { NexiService } = await import("@deskohub/nexi");
 
       const markPaidForReservation = mock(() =>
-        Effect.succeed({
-          attempt: { ...pendingAttempt, state: "paid" as const },
-          changed: scenario.changed,
-          timestamp: Temporal.Now.instant(),
-        })
+        scenario.conflict && scenario.verificationStatus === "success"
+          ? Effect.fail(
+              new PaymentLifecycleStateError({
+                operation: "markPaid",
+                paymentAttemptId: pendingAttempt.id,
+                message:
+                  "The paid replay conflicts with recorded provider evidence.",
+              })
+            )
+          : Effect.succeed({
+              attempt: { ...pendingAttempt, state: "paid" as const },
+              changed: scenario.changed,
+              timestamp: Temporal.Now.instant(),
+            })
       );
       const markTerminalForReservation = mock(() =>
         scenario.conflict
@@ -354,11 +375,15 @@ describe("ProviderPaymentFinalizationService", () => {
             webhookEventId: "event-id",
           })
         );
-        expect(fulfillPaidOrder).toHaveBeenCalledWith({
-          orderId: "reservation-id",
-        });
+        if (scenario.conflict) {
+          expect(fulfillPaidOrder).not.toHaveBeenCalled();
+        } else {
+          expect(fulfillPaidOrder).toHaveBeenCalledWith({
+            orderId: "reservation-id",
+          });
+        }
         expect(markTerminalForReservation).not.toHaveBeenCalled();
-      } else {
+      } else if (scenario.verificationStatus === "failure") {
         expect(markTerminalForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",
@@ -369,6 +394,10 @@ describe("ProviderPaymentFinalizationService", () => {
           })
         );
         expect(markPaidForReservation).not.toHaveBeenCalled();
+        expect(fulfillPaidOrder).not.toHaveBeenCalled();
+      } else {
+        expect(markPaidForReservation).not.toHaveBeenCalled();
+        expect(markTerminalForReservation).not.toHaveBeenCalled();
         expect(fulfillPaidOrder).not.toHaveBeenCalled();
       }
     });

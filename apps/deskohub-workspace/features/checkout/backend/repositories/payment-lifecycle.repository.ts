@@ -641,6 +641,8 @@ export class PaymentLifecycleRepository extends Context.Service<
       }) {
         return yield* db.transaction((tx) =>
           Effect.gen(function* () {
+            yield* authorizeVerifiedV2TerminalSettlement(tx);
+
             const [attempt] = yield* tx
               .update(paymentAttempts)
               .set({
@@ -771,6 +773,14 @@ export class PaymentLifecycleRepository extends Context.Service<
               }
 
               if (currentAttempt.state === "paid") {
+                if (!providerSettlementMetadataMatches(currentAttempt, input)) {
+                  return yield* lifecycleStateError(
+                    "markPaid",
+                    input.id,
+                    "The paid replay conflicts with recorded provider evidence and requires manual review."
+                  );
+                }
+
                 const [consistent] = yield* tx
                   .select({ paidAt: workspaceReservations.paidAt })
                   .from(workspaceReservations)
@@ -972,7 +982,8 @@ export class PaymentLifecycleRepository extends Context.Service<
               ) {
                 if (
                   currentAttempt.state !== input.state ||
-                  currentAttempt.failureCode !== input.failureCode
+                  currentAttempt.failureCode !== input.failureCode ||
+                  !providerSettlementMetadataMatches(currentAttempt, input)
                 ) {
                   return yield* lifecycleStateError(
                     "markTerminal",
@@ -1015,6 +1026,13 @@ export class PaymentLifecycleRepository extends Context.Service<
                   changed: false,
                   timestamp: consistent.updatedAt,
                 };
+              }
+
+              if (
+                currentAttempt.admissionVersion === 2 &&
+                currentAttempt.state === "created"
+              ) {
+                yield* authorizeVerifiedV2TerminalSettlement(tx);
               }
 
               const [attempt] = yield* tx
@@ -1262,33 +1280,67 @@ const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
       id: discount.id,
       label: discount.label,
     }));
+    const amountMatches = workspaceMoneyEquals(
+      {
+        value: attempt.amountValue,
+        exponent: attempt.amountExponent,
+        currency: attempt.currency,
+      },
+      input.pricing.total
+    );
+    const isSafeAttachedLegacyReuse =
+      attempt.admissionVersion === 1 &&
+      attempt.state === "pending" &&
+      Boolean(attempt.securityToken) &&
+      Boolean(attempt.providerRedirectUrl) &&
+      amountMatches &&
+      expectedDiscounts.length === 0 &&
+      applications.length === 0;
 
     return {
       attempt,
       pricingMatches:
-        attempt.admissionVersion === 2 &&
-        attempt.pricingFingerprint === input.pricing.fingerprint &&
-        workspaceMoneyEquals(
-          {
-            value: attempt.amountValue,
-            exponent: attempt.amountExponent,
-            currency: attempt.currency,
-          },
-          input.pricing.total
-        ) &&
-        stringArraysEqual(
-          attempt.displayedDiscountIds ?? [],
-          expectedDiscounts.map(({ id }) => id)
-        ) &&
-        applications.length === expectedDiscounts.length &&
-        applications.every(
-          (application, index) =>
-            application.id === expectedDiscounts[index]?.id &&
-            application.label === expectedDiscounts[index]?.label
-        ),
+        isSafeAttachedLegacyReuse ||
+        (attempt.admissionVersion === 2 &&
+          attempt.pricingFingerprint === input.pricing.fingerprint &&
+          amountMatches &&
+          stringArraysEqual(
+            attempt.displayedDiscountIds ?? [],
+            expectedDiscounts.map(({ id }) => id)
+          ) &&
+          applications.length === expectedDiscounts.length &&
+          applications.every(
+            (application, index) =>
+              application.id === expectedDiscounts[index]?.id &&
+              application.label === expectedDiscounts[index]?.label
+          )),
     };
   }
 );
+
+const authorizeVerifiedV2TerminalSettlement = (
+  tx: TransactionClient
+): Effect.Effect<unknown, EffectDrizzleQueryError | SqlError> =>
+  tx.execute(
+    sql`select set_config(
+      'deskohub.verified_v2_terminal_settlement',
+      'on',
+      true
+    )`
+  );
+
+const providerSettlementMetadataMatches = (
+  current: {
+    readonly lastProviderOperationId: string | null;
+    readonly lastProviderStatus: string | null;
+  },
+  replay: {
+    readonly providerOperationId?: string;
+    readonly providerStatus?: string;
+  }
+) =>
+  current.lastProviderOperationId === (replay.providerOperationId ?? null) &&
+  current.lastProviderStatus === (replay.providerStatus ?? null);
 
 const stringArraysEqual = (left: readonly string[], right: readonly string[]) =>
   left.length === right.length &&

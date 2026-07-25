@@ -171,9 +171,21 @@ const paidEventMigration = await Bun.file(
 const paidEventBridgeStart = paidEventMigration.indexOf(
   'CREATE FUNCTION "enqueue_paid_event_from_reservation"'
 );
+const rollbackFenceStart = paidEventMigration.indexOf(
+  'CREATE FUNCTION "guard_unverified_v2_terminal_settlement"'
+);
 if (paidEventBridgeStart < 0) {
   throw new Error("Paid event bridge is missing from the migration.");
 }
+if (rollbackFenceStart < 0) {
+  throw new Error("Rollback fence is missing from the migration.");
+}
+const rollbackFenceStatements = paidEventMigration
+  .slice(rollbackFenceStart, paidEventBridgeStart)
+  .split("--> statement-breakpoint")
+  .map((statement) => statement.trim())
+  .filter(Boolean)
+  .map(sql.raw);
 const paidEventBridgeStatements = paidEventMigration
   .slice(paidEventBridgeStart)
   .split("--> statement-breakpoint")
@@ -216,6 +228,9 @@ const runRepositoryTest = <A, E>(
       Effect.gen(function* () {
         const { db } = yield* WorkspaceDatabase;
         for (const statement of createSchemaStatements) {
+          yield* db.execute(statement);
+        }
+        for (const statement of rollbackFenceStatements) {
           yield* db.execute(statement);
         }
         for (const statement of paidEventBridgeStatements) {
@@ -535,7 +550,7 @@ describe("PaymentLifecycleRepository database behavior", () => {
         expect(active.outcome).toBe("created");
         yield* db
           .update(workspaceReservations)
-          .set({ paymentState: "failed" })
+          .set({ paymentState: "paid" })
           .where(eq(workspaceReservations.id, "inconsistent"));
         expect((yield* admit(repository, "inconsistent")).outcome).toBe(
           "unavailable"
@@ -569,6 +584,96 @@ describe("PaymentLifecycleRepository database behavior", () => {
             .from(paymentAttempts)
             .where(eq(paymentAttempts.workspaceReservationId, "legacy"))
         ).toHaveLength(2);
+
+        yield* seedReservation("legacy-attached");
+        yield* db.insert(paymentAttempts).values({
+          id: "legacy-attached-attempt",
+          workspaceReservationId: "legacy-attached",
+          provider: "nexi",
+          providerOrderId: "legacy-attached-provider-order",
+          admissionVersion: 1,
+          securityToken: "opaque-test-session-handle",
+          providerRedirectUrl: "https://provider.invalid/hpp",
+          state: "pending",
+          amountValue: 1000,
+          amountExponent: 2,
+          currency: "CZK",
+        });
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            activePaymentAttemptId: "legacy-attached-attempt",
+            paymentState: "pending",
+          })
+          .where(eq(workspaceReservations.id, "legacy-attached"));
+
+        const legacyReuse = yield* admit(repository, "legacy-attached", {
+          allowNewAdmission: false,
+        });
+        expect(legacyReuse.outcome).toBe("reuse");
+        if (legacyReuse.outcome === "reuse") {
+          expect(legacyReuse.attempt.id).toBe("legacy-attached-attempt");
+        }
+      })
+    );
+  });
+
+  test("database fence blocks legacy rollback cleanup of unresolved v2 starts", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("rollback-fence");
+        const admission = yield* admit(repository, "rollback-fence");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        const legacyAttemptCleanup = yield* db
+          .update(paymentAttempts)
+          .set({
+            state: "expired",
+            failureCode: "legacy_cleanup",
+          })
+          .where(eq(paymentAttempts.id, admission.attempt.id))
+          .pipe(Effect.result);
+        expect(legacyAttemptCleanup._tag).toBe("Failure");
+
+        const legacyReservationCleanup = yield* db
+          .update(workspaceReservations)
+          .set({
+            paymentState: "expired",
+            failureCode: "legacy_cleanup",
+          })
+          .where(eq(workspaceReservations.id, "rollback-fence"))
+          .pipe(Effect.result);
+        expect(legacyReservationCleanup._tag).toBe("Failure");
+
+        expect(
+          yield* repository.markTerminal({
+            id: admission.attempt.id,
+            workspaceReservationId: "rollback-fence",
+            state: "expired",
+            failureCode: "verified_cleanup",
+            providerStatus: "verified_absent",
+          })
+        ).toMatchObject({ changed: true });
+
+        yield* seedReservation("provider-start-failure-fence");
+        const failedStart = yield* admit(
+          repository,
+          "provider-start-failure-fence"
+        );
+        expect(failedStart.outcome).toBe("created");
+        if (failedStart.outcome !== "created") return;
+        expect(
+          yield* repository.markProviderStartFailed({
+            id: failedStart.attempt.id,
+            workspaceReservationId: "provider-start-failure-fence",
+            providerStartLeaseId: failedStart.providerStartLeaseId,
+            failureCode: "definitive_provider_rejection",
+            providerStatus: "definitive_rejection",
+          })
+        ).toMatchObject({ outcome: "settled" });
       })
     );
   });
@@ -695,6 +800,8 @@ describe("PaymentLifecycleRepository database behavior", () => {
           (yield* repository.markPaid({
             id: paidAdmission.attempt.id,
             workspaceReservationId: "paid",
+            providerOperationId: "operation-paid",
+            providerStatus: "EXECUTED",
             paidAt,
           })).changed
         ).toBeTrue();
@@ -702,9 +809,45 @@ describe("PaymentLifecycleRepository database behavior", () => {
           (yield* repository.markPaid({
             id: paidAdmission.attempt.id,
             workspaceReservationId: "paid",
+            providerOperationId: "operation-paid",
+            providerStatus: "EXECUTED",
             paidAt: paidAt.add({ seconds: 1 }),
           })).changed
         ).toBeFalse();
+        expect(
+          (yield* repository
+            .markPaid({
+              id: paidAdmission.attempt.id,
+              workspaceReservationId: "paid",
+              providerOperationId: "different-operation",
+              providerStatus: "EXECUTED",
+              paidAt: paidAt.add({ seconds: 2 }),
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* db
+            .select({
+              operationId: paymentAttempts.lastProviderOperationId,
+              status: paymentAttempts.lastProviderStatus,
+            })
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, paidAdmission.attempt.id)))[0]
+        ).toEqual({
+          operationId: "operation-paid",
+          status: "EXECUTED",
+        });
+        expect(
+          (yield* repository
+            .markPaid({
+              id: paidAdmission.attempt.id,
+              workspaceReservationId: "paid",
+              providerOperationId: "operation-paid",
+              providerStatus: "CAPTURED",
+              paidAt: paidAt.add({ seconds: 3 }),
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
         expect(
           (yield* db.select().from(discountCodeRedemptions))[0]
         ).toMatchObject({ state: "redeemed" });
@@ -730,6 +873,8 @@ describe("PaymentLifecycleRepository database behavior", () => {
             workspaceReservationId: "terminal",
             state: "expired",
             failureCode: "test_expired",
+            providerOperationId: "operation-terminal",
+            providerStatus: "DECLINED",
           })).changed
         ).toBeTrue();
         expect(
@@ -738,6 +883,8 @@ describe("PaymentLifecycleRepository database behavior", () => {
             workspaceReservationId: "terminal",
             state: "expired",
             failureCode: "test_expired",
+            providerOperationId: "operation-terminal",
+            providerStatus: "DECLINED",
           })).changed
         ).toBeFalse();
         expect(
@@ -745,8 +892,46 @@ describe("PaymentLifecycleRepository database behavior", () => {
             .markTerminal({
               id: terminalAdmission.attempt.id,
               workspaceReservationId: "terminal",
+              state: "expired",
+              failureCode: "test_expired",
+              providerOperationId: "different-operation",
+              providerStatus: "DECLINED",
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* db
+            .select({
+              operationId: paymentAttempts.lastProviderOperationId,
+              status: paymentAttempts.lastProviderStatus,
+            })
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, terminalAdmission.attempt.id)))[0]
+        ).toEqual({
+          operationId: "operation-terminal",
+          status: "DECLINED",
+        });
+        expect(
+          (yield* repository
+            .markTerminal({
+              id: terminalAdmission.attempt.id,
+              workspaceReservationId: "terminal",
+              state: "expired",
+              failureCode: "test_expired",
+              providerOperationId: "operation-terminal",
+              providerStatus: "VOIDED",
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* repository
+            .markTerminal({
+              id: terminalAdmission.attempt.id,
+              workspaceReservationId: "terminal",
               state: "failed",
               failureCode: "test_expired",
+              providerOperationId: "operation-terminal",
+              providerStatus: "DECLINED",
             })
             .pipe(Effect.result))._tag
         ).toBe("Failure");
@@ -757,6 +942,8 @@ describe("PaymentLifecycleRepository database behavior", () => {
               workspaceReservationId: "terminal",
               state: "expired",
               failureCode: "different_failure",
+              providerOperationId: "operation-terminal",
+              providerStatus: "DECLINED",
             })
             .pipe(Effect.result))._tag
         ).toBe("Failure");

@@ -1,7 +1,10 @@
 import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { ExternalAPIError, NetworkError } from "../errors";
-import type { CreateHostedPaymentPageRequest } from "../generated/effect.gen";
+import type {
+  CreateHostedPaymentPageRequest,
+  OrderResponse,
+} from "../generated/effect.gen";
 import type {
   CreateHostedPaymentPageInput,
   Locale,
@@ -136,68 +139,25 @@ const makeNexiService = Effect.gen(function* () {
           )
         );
 
-      const providerOrder = order.orderStatus?.order;
-      const operations = order.operations ?? [];
-      const executedPaymentOperation = operations.find(
-        (operation) =>
-          isPaymentOperationType(operation.operationType) &&
-          operation.operationResult === EXECUTED_OPERATION_RESULT
-      );
-      const failedOperation = operations.find((operation) =>
-        isFailureStatus(operation.operationResult)
-      );
-      const providerAmount =
-        getOperationAmount(executedPaymentOperation) ?? providerOrder;
-      const providerSecurityToken =
-        executedPaymentOperation?.securityToken ?? order.securityToken;
-      const providerOrderId = providerOrder?.orderId ?? order.orderId;
-      const providerOperationId =
-        executedPaymentOperation?.operationId ?? failedOperation?.operationId;
-
-      const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
-        [];
-      if (providerOrderId !== input.orderId) mismatches.push("orderId");
-      if (providerAmount?.amount !== input.amount) mismatches.push("amount");
-      if (providerAmount?.currency !== input.currency)
-        mismatches.push("currency");
-      if (
-        input.securityToken &&
-        providerSecurityToken &&
-        providerSecurityToken !== input.securityToken
-      )
-        mismatches.push("securityToken");
-
-      const providerStatus =
-        executedPaymentOperation?.operationResult ??
-        failedOperation?.operationResult ??
-        order.orderStatus?.lastOperationType;
-
-      const status: PaymentOutcomeStatus = (() => {
-        if (mismatches.length > 0) return "failure";
-        if (executedPaymentOperation) return "success";
-        if (failedOperation || isFailureStatus(providerStatus)) {
-          return "failure";
-        }
-        return "pending";
-      })();
+      const evidence = resolvePaymentOutcomeEvidence(input, order);
 
       yield* Effect.logDebug("Nexi payment outcome status resolved", {
-        mismatches,
-        providerStatus,
-        status,
+        mismatches: evidence.mismatches,
+        providerStatus: evidence.providerStatus,
+        status: evidence.status,
       });
 
       const result = {
-        status,
+        status: evidence.status,
         provider: {
-          orderId: providerOrderId ?? input.orderId,
-          operationId: providerOperationId,
-          amount: providerAmount?.amount,
-          currency: providerAmount?.currency,
-          orderStatus: providerStatus,
-          captureExecuted: Boolean(executedPaymentOperation),
+          orderId: evidence.providerOrderId,
+          operationId: evidence.providerOperationId,
+          amount: evidence.providerAmount?.amount,
+          currency: evidence.providerAmount?.currency,
+          orderStatus: evidence.providerStatus,
+          captureExecuted: evidence.captureExecuted,
         },
-        mismatches,
+        mismatches: evidence.mismatches,
       };
 
       yield* Effect.annotateLogsScoped({
@@ -224,6 +184,14 @@ const makeNexiService = Effect.gen(function* () {
   };
 });
 
+const NexiFetchHttpClientLive = FetchHttpClient.layer.pipe(
+  Layer.provide(
+    Layer.succeed(FetchHttpClient.RequestInit, {
+      redirect: "error",
+    })
+  )
+);
+
 export class NexiService extends Context.Service<
   NexiService,
   Effect.Success<typeof makeNexiService>
@@ -231,7 +199,7 @@ export class NexiService extends Context.Service<
   static DefaultWithoutDependencies = Layer.effect(this, makeNexiService);
   static Default = this.DefaultWithoutDependencies.pipe(
     Layer.provide(NexiGeneratedClient.Live),
-    Layer.provide(FetchHttpClient.layer)
+    Layer.provide(NexiFetchHttpClientLive)
   );
 }
 
@@ -241,6 +209,124 @@ const isFailureStatus = (status: string | undefined) =>
 const isPaymentOperationType = (operationType: string | undefined) =>
   operationType === AUTHORIZATION_OPERATION_TYPE ||
   operationType === CAPTURE_OPERATION_TYPE;
+
+const resolvePaymentOutcomeEvidence = (
+  input: VerifyPaymentOutcomeInput,
+  order: OrderResponse
+) => {
+  const providerOrder = order.orderStatus?.order;
+  const paymentOperations = (order.operations ?? []).filter((operation) =>
+    isPaymentOperationType(operation.operationType)
+  );
+  const operation =
+    paymentOperations.length === 1 ? paymentOperations[0] : null;
+  const providerAmount =
+    getOperationAmount(operation ?? undefined) ?? providerOrder ?? order.amount;
+  const providerOrderId =
+    providerOrder?.orderId ?? order.orderId ?? input.orderId;
+  const providerStatus =
+    operation?.operationResult ?? order.orderStatus?.lastOperationType;
+  const mismatches: Array<PaymentVerificationResult["mismatches"][number]> = [];
+
+  addEvidenceMismatch(
+    mismatches,
+    "orderId",
+    [providerOrder?.orderId, order.orderId],
+    input.orderId
+  );
+  addEvidenceMismatch(
+    mismatches,
+    "amount",
+    [
+      providerOrder?.amount,
+      order.amount?.amount,
+      ...paymentOperations.map((item) => getOperationAmount(item)?.amount),
+    ],
+    input.amount
+  );
+  addEvidenceMismatch(
+    mismatches,
+    "currency",
+    [
+      providerOrder?.currency,
+      order.amount?.currency,
+      ...paymentOperations.map((item) => getOperationAmount(item)?.currency),
+    ],
+    input.currency
+  );
+
+  const securityTokens = [
+    order.securityToken,
+    ...paymentOperations.map((item) => item.securityToken),
+  ].filter((value): value is string => value !== undefined);
+  if (
+    new Set(securityTokens).size > 1 ||
+    (input.securityToken !== undefined &&
+      securityTokens.some((value) => value !== input.securityToken))
+  ) {
+    mismatches.push("securityToken");
+  }
+
+  const operationResults = paymentOperations
+    .map((item) => item.operationResult?.toUpperCase())
+    .filter((value): value is string => value !== undefined);
+  const orderStatus = order.orderStatus?.lastOperationType?.toUpperCase();
+  const hasSuccessEvidence =
+    operationResults.includes(EXECUTED_OPERATION_RESULT) ||
+    orderStatus === EXECUTED_OPERATION_RESULT;
+  const hasFailureEvidence =
+    operationResults.some(isFailureStatus) || isFailureStatus(orderStatus);
+  if (
+    paymentOperations.length > 1 ||
+    (hasSuccessEvidence && hasFailureEvidence)
+  ) {
+    mismatches.push("operationEvidence");
+  }
+
+  const status: PaymentOutcomeStatus = (() => {
+    if (mismatches.length > 0) return "manual_review";
+    if (operation?.operationResult === EXECUTED_OPERATION_RESULT) {
+      return "success";
+    }
+    if (
+      isFailureStatus(operation?.operationResult) ||
+      (operation === null && isFailureStatus(orderStatus))
+    ) {
+      return "failure";
+    }
+    return "pending";
+  })();
+
+  return {
+    status,
+    mismatches,
+    providerOrderId,
+    providerOperationId: operation?.operationId,
+    providerAmount,
+    providerStatus,
+    captureExecuted:
+      status === "success" &&
+      operation?.operationType === CAPTURE_OPERATION_TYPE,
+  };
+};
+
+const addEvidenceMismatch = (
+  mismatches: Array<PaymentVerificationResult["mismatches"][number]>,
+  mismatch: PaymentVerificationResult["mismatches"][number],
+  evidence: ReadonlyArray<string | undefined>,
+  expected: string | undefined
+) => {
+  const present = evidence.filter(
+    (value): value is string => value !== undefined
+  );
+  if (
+    present.length === 0 ||
+    expected === undefined ||
+    present.some((value) => value !== expected)
+  ) {
+    mismatches.push(mismatch);
+  }
+};
 
 const getOperationAmount = (
   operation:

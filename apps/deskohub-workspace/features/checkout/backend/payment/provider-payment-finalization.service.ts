@@ -212,7 +212,10 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             );
             return "provider_verification_failed";
           }
-          if (verification.mismatches.length > 0) {
+          if (
+            verification.status === "manual_review" ||
+            verification.mismatches.length > 0
+          ) {
             yield* Effect.logWarning(
               "Payment finalization returned verification_mismatch"
             );

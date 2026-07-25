@@ -106,7 +106,12 @@ const failOnVerificationMismatch = Effect.fn(
     readonly verification: PaymentVerificationResult;
     readonly webhookEvents: WebhookEventRepository;
   }) {
-    if (input.verification.mismatches.length === 0) return;
+    if (
+      input.verification.status !== "manual_review" &&
+      input.verification.mismatches.length === 0
+    ) {
+      return;
+    }
     yield* Effect.logWarning("Nexi webhook verification mismatch detected");
 
     return yield* failAfterMarkingEvent(
@@ -416,14 +421,34 @@ export const NexiWebhookServiceLive = Layer.effect(
           if (verification.status === "success") {
             yield* Effect.logInfo("Nexi webhook paid transition started");
 
-            const transition = yield* paymentLifecycle.markPaid({
-              id: attempt.id,
-              workspaceReservationId: reservation.id,
-              webhookEventId: eventId,
-              providerOperationId,
-              providerStatus,
-              paidAt: Temporal.Now.instant(),
-            });
+            const transition = yield* paymentLifecycle
+              .markPaid({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                webhookEventId: eventId,
+                providerOperationId,
+                providerStatus,
+                paidAt: Temporal.Now.instant(),
+              })
+              .pipe(
+                Effect.mapError(
+                  () =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_transition_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi paid transition conflicted with the recorded provider evidence.",
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
+                  )
+                )
+              );
             if (transition.changed) {
               yield* capturePaymentCompleted({
                 attempt: transition.attempt,

@@ -5,7 +5,11 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type {
+  ReadableSpan,
+  SpanExporter,
+  SpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
 
@@ -28,6 +32,9 @@ const sensitiveLogKeyFragments = [
   "auth",
   "cookie",
   "set cookie",
+  "parameter",
+  "parameters",
+  "bind",
   "session cookie",
   "session secret",
   "session token",
@@ -52,6 +59,13 @@ const sensitiveLogExactKeys = new Set([
   "redirecturl",
   "hostedpage",
   "hppurl",
+  "url",
+  "url.full",
+  "http.url",
+  "http.target",
+  "db.statement",
+  "db.query.text",
+  "db.query.summary",
   "submittedcode",
   "x-vercel-sc-headers",
 ]);
@@ -158,9 +172,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 
 const redactUrlSearchParams = (url: URL): void => {
   for (const key of Array.from(url.searchParams.keys())) {
-    if (isSensitiveLogRecordKey(key)) {
-      url.searchParams.set(key, CENSORED_LOG_VALUE);
-    }
+    url.searchParams.set(key, CENSORED_LOG_VALUE);
   }
 };
 
@@ -484,6 +496,43 @@ export const createCensoredOtelSpanExporter = (
   shutdown: () => spanExporter.shutdown(),
 });
 
+/**
+ * Must precede every production exporter processor. OpenTelemetry invokes
+ * processors synchronously in configured order, so this replaces the mutable
+ * ended-span projection before any following processor can enqueue or export it.
+ */
+export const createCensoringOtelSpanProcessor = (): SpanProcessor => ({
+  forceFlush: () => Promise.resolve(),
+  onEnd: (span) => {
+    const censored = censorReadableSpan(span);
+    replaceRecordContents(span.attributes, censored.attributes);
+    replaceArrayContents(span.events, censored.events);
+    replaceArrayContents(span.links, censored.links);
+    replaceRecordContents(span.status, censored.status);
+    (span as { name: string }).name = censored.name;
+    replaceRecordContents(
+      span.resource.attributes,
+      censored.resource.attributes
+    );
+  },
+  onStart: () => undefined,
+  shutdown: () => Promise.resolve(),
+});
+
+const replaceRecordContents = (target: object, source: Readonly<object>) => {
+  for (const key of Object.keys(target)) {
+    delete (target as Record<string, unknown>)[key];
+  }
+  Object.assign(target, source);
+};
+
+const replaceArrayContents = <A>(
+  target: readonly A[],
+  source: readonly A[]
+) => {
+  (target as A[]).splice(0, target.length, ...source);
+};
+
 const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
   attributes: censorTelemetryValue(
     span.attributes
@@ -505,7 +554,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     return {
       ...event,
       attributes,
-      name: isException ? "exception" : event.name,
+      name: isException ? "exception" : censorSpanLabel(event.name),
     };
   }),
   instrumentationScope: span.instrumentationScope,
@@ -514,7 +563,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     ...link,
     attributes: censorTelemetryValue(link.attributes) as typeof link.attributes,
   })),
-  name: span.name,
+  name: censorSpanLabel(span.name),
   parentSpanContext: span.parentSpanContext,
   resource: resourceFromAttributes(
     censorOtelResourceAttributes(span.resource.attributes),
@@ -526,6 +575,13 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     ? { ...span.status, message: CENSORED_LOG_VALUE }
     : span.status,
 });
+
+const censorSpanLabel = (label: string): string =>
+  /https?:\/\//i.test(label) ||
+  label.includes("?") ||
+  /^\s*(delete|insert|select|update|with)\b/i.test(label)
+    ? CENSORED_LOG_VALUE
+    : label;
 
 const trustedOtelResourceIdentityKeys = [
   "service.name",

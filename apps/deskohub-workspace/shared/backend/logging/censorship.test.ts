@@ -322,7 +322,7 @@ describe("censorLogValue", () => {
         "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&discountCode=SUMMER50&submittedCode=SUMMER50&visible=safe#summary"
       )
     ).toBe(
-      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
+      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}#summary`
     );
   });
 
@@ -332,7 +332,7 @@ describe("censorLogValue", () => {
         "checkout/pay?payState=secret&checkoutToken=token&visible=safe#summary"
       )
     ).toBe(
-      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
+      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}#summary`
     );
   });
 
@@ -348,7 +348,7 @@ describe("censorLogValue", () => {
     expect(
       censorLogValue("contact?name=Ada&message=Private&visible=safe")
     ).toBe(
-      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe`
+      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=${encodeURIComponent(CENSORED_LOG_VALUE)}`
     );
   });
 

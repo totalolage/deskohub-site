@@ -557,9 +557,11 @@ Deploy settlement support before enabling admission version 2:
    reconcile a stable provider order. An unexpired original owner may attach;
    an expired lease enters read-only reconciliation and never issues another
    provider POST.
-3. Verify the non-internal trigger inventory contains exactly
-   `payment_attempts_enqueue_paid_event` on `payment_attempts` and
-   `workspace_reservations_enqueue_paid_event` on `workspace_reservations`.
+3. Verify the non-internal trigger inventory contains exactly the two paid
+   event triggers plus `payment_attempts_guard_unverified_v2_terminal` and
+   `workspace_reservations_guard_unverified_v2_terminal`. The guard pair is
+   the rollback fence: code that predates v2 admission cannot terminalize an
+   unresolved v2 provider start.
 4. Drain every old writer and verify the deployment/version inventory contains
    no process running code from before this migration contract.
 5. Rerun the migration's final idempotent
@@ -577,6 +579,34 @@ invocations/deployments from an earlier SHA. If that inventory cannot be
 proved, keep admission version 2 disabled and do not treat reconciliation as
 final.
 
+Rollback is a separate exact version gate and must never be performed merely
+by unsetting admission. First unset `WORKSPACE_PAYMENT_ADMISSION_VERSION` and
+deploy the settlement-capable version everywhere; this stops only new v2
+attempts and keeps attached-session reuse and stable-order reconciliation
+running. Keep the additive migration and all four triggers installed. Drain
+and reconcile until this count is zero:
+
+```sql
+select count(*)
+from payment_attempts attempt
+join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+  and reservation.active_payment_attempt_id = attempt.id
+where attempt.admission_version = 2
+  and attempt.state = 'created'
+  and reservation.payment_state = 'pending';
+```
+
+Then repeat the deployment inventory, missing-paid-event, and invalid-event
+checks. A rollback to a pre-v2 binary is prohibited unless all four checks are
+recorded at zero/current-only and no old queue or cron invocation remains.
+The database rollback fence remains installed after binary rollback: an
+accidentally delayed legacy cleanup transaction receives a constraint error
+before it can terminalize the attempt or cancel the hold. Removing the fence
+or rolling back this migration requires a later, separately reviewed
+retirement migration after the same zero-count/version proof; it is not part
+of application rollback.
+
 Trigger inventory verification:
 
 ```sql
@@ -586,7 +616,9 @@ join pg_class relation on relation.oid = trigger.tgrelid
 where not trigger.tgisinternal
   and trigger.tgname in (
     'payment_attempts_enqueue_paid_event',
-    'workspace_reservations_enqueue_paid_event'
+    'workspace_reservations_enqueue_paid_event',
+    'payment_attempts_guard_unverified_v2_terminal',
+    'workspace_reservations_guard_unverified_v2_terminal'
   )
 order by trigger.tgname;
 ```

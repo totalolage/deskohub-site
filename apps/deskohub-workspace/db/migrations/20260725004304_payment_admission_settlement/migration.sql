@@ -35,6 +35,65 @@ ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_provider_start_l
         and "provider_start_lease_expires_at" is not null
       ));
 --> statement-breakpoint
+CREATE FUNCTION "guard_unverified_v2_terminal_settlement"() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."admission_version" = 2
+    AND OLD."state" = 'created'
+    AND NEW."state" IN ('failed', 'cancelled', 'expired')
+    AND current_setting(
+      'deskohub.verified_v2_terminal_settlement',
+      true
+    ) IS DISTINCT FROM 'on'
+  THEN
+    RAISE EXCEPTION
+      'unverified v2 provider start cannot be terminalized'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "payment_attempts_guard_unverified_v2_terminal"
+BEFORE UPDATE OF "state"
+ON "payment_attempts"
+FOR EACH ROW
+EXECUTE FUNCTION "guard_unverified_v2_terminal_settlement"();
+--> statement-breakpoint
+CREATE FUNCTION "guard_unverified_v2_reservation_terminal"() RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF OLD."payment_state" = 'pending'
+    AND NEW."payment_state" IN ('failed', 'cancelled', 'expired')
+    AND current_setting(
+      'deskohub.verified_v2_terminal_settlement',
+      true
+    ) IS DISTINCT FROM 'on'
+    AND EXISTS (
+      SELECT 1
+      FROM "payment_attempts" AS attempt
+      WHERE attempt."id" = OLD."active_payment_attempt_id"
+        AND attempt."workspace_reservation_id" = OLD."id"
+        AND attempt."admission_version" = 2
+        AND attempt."state" = 'created'
+    )
+  THEN
+    RAISE EXCEPTION
+      'reservation with unverified v2 provider start cannot be terminalized'
+      USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"
+BEFORE UPDATE OF "payment_state"
+ON "workspace_reservations"
+FOR EACH ROW
+EXECUTE FUNCTION "guard_unverified_v2_reservation_terminal"();
+--> statement-breakpoint
 CREATE FUNCTION "enqueue_paid_event_from_reservation"() RETURNS trigger
 LANGUAGE plpgsql
 AS $$
