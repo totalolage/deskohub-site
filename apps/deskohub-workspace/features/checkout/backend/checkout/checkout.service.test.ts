@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
@@ -27,9 +27,15 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
+import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
+import {
+  checkoutStatePrivacySentinels,
+  makeAuthenticatedMalformedPayStateToken,
+} from "./checkout-state-observability.test-utils";
 import {
   buildSignedPayState,
   openPayState,
@@ -613,6 +619,63 @@ describe("CheckoutService", () => {
         message:
           "Pay state is invalid or expired. Please review checkout again.",
       });
+    }
+  });
+
+  test("rejects authenticated malformed state before checkout side effects", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "authenticated-malformed-state",
+      payStateToken: makeAuthenticatedMalformedPayStateToken(),
+    });
+    const failure = await Effect.runPromise(harness.effect.pipe(Effect.flip));
+    const serialized = JSON.stringify(serializeErrorForLog(failure));
+
+    expect(failure).toMatchObject({
+      _tag: "CheckoutError",
+      message: "Pay state is invalid or expired. Please review checkout again.",
+    });
+    expect(harness.requireCurrent).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
+    for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
+      expect(serialized).not.toContain(sentinel);
+    }
+  });
+
+  test("logs only provider-session metadata on the real checkout runtime", async () => {
+    const info = spyOn(console, "info").mockImplementation(() => undefined);
+    const error = spyOn(console, "error").mockImplementation(() => undefined);
+    const providerUrl = checkoutStatePrivacySentinels.providerUrl;
+    const harness = await createCheckoutHarness({
+      orderId: "provider-log-projection",
+      checkoutSessionId: checkoutStatePrivacySentinels.checkoutSessionId,
+      createHostedPaymentPage: mock(() =>
+        Effect.succeed({
+          securityToken: checkoutStatePrivacySentinels.providerToken,
+          hostedPage: providerUrl,
+        })
+      ),
+    });
+
+    try {
+      await expect(
+        harness.effect.pipe(
+          runWorkspaceEffect("checkout.provider-log-projection")
+        )
+      ).resolves.toMatchObject({
+        status: "redirect",
+        redirectUrl: providerUrl,
+      });
+      const output = JSON.stringify([info.mock.calls, error.mock.calls]);
+
+      expect(output).toContain("hasProviderRedirectUrl");
+      for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
+        expect(output).not.toContain(sentinel);
+      }
+    } finally {
+      info.mockRestore();
+      error.mockRestore();
     }
   });
 

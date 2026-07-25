@@ -1,5 +1,6 @@
 export * from "./advertised-price-state";
 export * from "./checkout.service";
+export * from "./checkout-pay-state-loader";
 export * from "./checkout-pay-url";
 export * from "./checkout-pricing.service";
 export * from "./checkout-status.service";

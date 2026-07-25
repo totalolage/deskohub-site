@@ -311,6 +311,52 @@ const checkoutAttemptKey = hmac({
 });
 ```
 
+### Reservation HMAC rollout contract
+
+Reservation/session HMAC material moves away from the raw Pay-state key-ring
+string through a two-phase bridge. The bridge deliberately uses the exact,
+unparsed `CHECKOUT_PAY_STATE_KEYS` value used by pre-bridge writers; decoding,
+selecting an active encryption key, or reserializing the ring would produce a
+different digest.
+
+The deployment contract is:
+
+1. Deploy bridge-aware code everywhere with
+   `CHECKOUT_RESERVATION_HMAC_CUTOVER_AT` and
+   `CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL` unset. The optional
+   `CHECKOUT_RESERVATION_HMAC_SECRET` may be provisioned, but all writers still
+   derive reservation/session keys from the unchanged raw
+   `CHECKOUT_PAY_STATE_KEYS` string. Old and bridge writers therefore collide
+   on the same database uniqueness boundaries instead of creating separate
+   rows and Dotypos holds.
+2. Freeze the exact Pay-state key-ring bytes and entry order. Drain every
+   pre-bridge deployment, alias, rollback target, and in-flight reservation
+   write. Schedule one shared future UTC cutover only after that drain. The
+   cutover must be farther in the future than fleet propagation, the 45-second
+   Server Action ceiling, and the allowed clock-skew margin.
+3. Configure all bridge-aware instances with the same
+   `CHECKOUT_RESERVATION_HMAC_SECRET`, cutover instant, and finite legacy-read
+   deadline. Before the cutover they continue raw writes. At the cutover they
+   atomically change candidate ordering to dedicated writes plus raw legacy
+   reads. A bridge request re-evaluates the shared schedule immediately before
+   its database write, so a request that began before the cutover cannot persist
+   a raw-only key afterward. Rollback after this point is allowed only to a
+   bridge-aware artifact carrying the identical material and schedule; never
+   roll back to a raw-only writer.
+4. Keep the raw read candidate through at least the ten-minute signed
+   Pay-state/hold lifetime, plus maximum request duration, deployment drain,
+   and clock-skew margins. At the exact
+   `CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL` boundary the raw candidate is
+   removed automatically. Keep the completed schedule configured afterward;
+   unsetting it would intentionally return the bridge to raw-write phase.
+
+The cutover and legacy deadline must be valid UTC RFC 3339 instants, must be
+configured together, require dedicated HMAC material, and the legacy deadline
+must be later than cutover. Readers query every active candidate and fail
+closed if the candidates resolve to different reservation rows. This conflict
+guard is recovery detection, not permission to run mixed writers across the
+cutover.
+
 The normalized reservation is included so a replayed opaque attempt ID with changed values cannot reuse a hold created for different facts; its PII exists only in the transient HMAC payload. An exact attempt-key match makes an immediate retry idempotent. A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original cleanup deadline and scheduled cleanup job.
 
 ## Sequence Diagrams

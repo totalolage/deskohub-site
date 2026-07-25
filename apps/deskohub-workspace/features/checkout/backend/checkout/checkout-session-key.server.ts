@@ -8,8 +8,11 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 type CheckoutKeyDerivationOptions = {
-  readonly secret?: string;
-  readonly legacySecret?: string;
+  readonly rawPayStateKeys?: string;
+  readonly dedicatedSecret?: string;
+  readonly cutoverAt?: string;
+  readonly legacyReadUntil?: string;
+  readonly now?: () => Date;
 };
 
 const deriveCheckoutKey = (secret: string, payload: object) =>
@@ -18,10 +21,28 @@ const deriveCheckoutKey = (secret: string, payload: object) =>
 const getCheckoutKeySecrets = (
   options: CheckoutKeyDerivationOptions
 ): readonly [string, ...string[]] => {
-  const current = options.secret ?? env.CHECKOUT_RESERVATION_HMAC_SECRET;
-  const legacy =
-    options.legacySecret ?? env.CHECKOUT_RESERVATION_HMAC_LEGACY_SECRET;
-  return legacy === undefined ? [current] : [current, legacy];
+  const rawPayStateKeys =
+    options.rawPayStateKeys ?? env.CHECKOUT_PAY_STATE_KEYS;
+  const cutoverAt =
+    options.cutoverAt ?? env.CHECKOUT_RESERVATION_HMAC_CUTOVER_AT;
+  const legacyReadUntil =
+    options.legacyReadUntil ?? env.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL;
+  if (cutoverAt === undefined || legacyReadUntil === undefined) {
+    return [rawPayStateKeys];
+  }
+
+  const dedicatedSecret =
+    options.dedicatedSecret ?? env.CHECKOUT_RESERVATION_HMAC_SECRET;
+  if (dedicatedSecret === undefined) {
+    throw new Error(
+      "Checkout reservation HMAC cutover is missing dedicated material."
+    );
+  }
+
+  const now = (options.now?.() ?? new Date()).getTime();
+  if (now < Date.parse(cutoverAt)) return [rawPayStateKeys];
+  if (now >= Date.parse(legacyReadUntil)) return [dedicatedSecret];
+  return [dedicatedSecret, rawPayStateKeys];
 };
 
 const deriveCheckoutKeyCandidates = (

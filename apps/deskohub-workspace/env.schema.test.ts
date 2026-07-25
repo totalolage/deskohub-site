@@ -27,6 +27,26 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateReservationHmacEnvironment = (syntheticMaterial: string) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      CHECKOUT_RESERVATION_HMAC_SECRET: syntheticMaterial,
+      CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:30:00.000Z",
+      CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:00:00.000Z",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -57,20 +77,63 @@ describe("workspace environment schemas", () => {
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
   });
 
-  test("requires separate reservation HMAC material with bounded migration input", () => {
+  test("requires a valid paired reservation HMAC cutover window", () => {
     const decodeSecret = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.CHECKOUT_RESERVATION_HMAC_SECRET
     );
-    const decodeLegacySecret = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.CHECKOUT_RESERVATION_HMAC_LEGACY_SECRET
-    );
     const syntheticMaterial = randomBytes(32).toString("base64url");
 
+    expect(decodeSecret(undefined)).toBeUndefined();
     expect(decodeSecret(syntheticMaterial)).toBe(syntheticMaterial);
-    expect(decodeLegacySecret(undefined)).toBeUndefined();
-    expect(decodeLegacySecret(syntheticMaterial)).toBe(syntheticMaterial);
     expect(() => decodeSecret("too-short")).toThrow();
-    expect(() => decodeLegacySecret("too-short")).toThrow();
+
+    const decodeEnvironment = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema
+    );
+    const base = {
+      ...process.env,
+      CHECKOUT_RESERVATION_HMAC_SECRET: syntheticMaterial,
+      POSTHOG_FEATURE_FLAG_OVERRIDES: undefined,
+      VERCEL_ENV: "preview",
+    };
+
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: undefined,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "not-an-instant",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "also-not-an-instant",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:30:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:00:00.000Z",
+      })
+    ).toThrow();
+    expect(
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:30:00.000Z",
+      }).CHECKOUT_RESERVATION_HMAC_SECRET
+    ).toBe(syntheticMaterial);
+
+    const invalidEnvironment =
+      validateReservationHmacEnvironment(syntheticMaterial);
+    const invalidEnvironmentError = invalidEnvironment.stderr.toString();
+    expect(invalidEnvironment.exitCode).toBe(1);
+    expect(invalidEnvironmentError).toContain(
+      "Invalid checkout reservation HMAC rollout configuration."
+    );
+    expect(invalidEnvironmentError).not.toContain(syntheticMaterial);
   });
 
   test("exposes fields through Standard Schema for T3 Env", async () => {

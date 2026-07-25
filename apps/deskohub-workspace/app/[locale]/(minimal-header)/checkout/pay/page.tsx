@@ -1,22 +1,20 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
-  buildCheckoutPayContinuationPath,
   discountCodeErrorQueryParam,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCodeApplication,
-  openPayState,
+  loadCheckoutPayState,
   PayableReservationService,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutDiscountCodeForm } from "@/features/checkout/components/checkout-discount-code-form";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
-import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -113,29 +111,8 @@ async function CheckoutPayContent({
     ));
   }
 
-  const opened = await Effect.gen(function* () {
-    const payableReservations = yield* PayableReservationService;
-    const state = yield* openPayState(payStateToken);
-    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled;
-    const freshPayUrl = yield* buildCheckoutPayContinuationPath(state).pipe(
-      Effect.when(Effect.succeed(state.changedKeys !== undefined)),
-      Effect.map(Option.getOrUndefined)
-    );
-
-    yield* payableReservations.requireCurrent({
-      orderId: state.orderId,
-      checkoutSessionId: state.checkoutSessionId,
-    });
-
-    return { state, freshPayUrl, discountCodeEntryEnabled };
-  }).pipe(
+  const opened = await loadCheckoutPayState(payStateToken).pipe(
     Effect.provide(PayableReservationService.LiveWithDependencies),
-    Effect.catch((cause) =>
-      Effect.logWarning("Checkout pay state could not be loaded", {
-        cause,
-        reason: "payStateUnavailable",
-      }).pipe(Effect.as(undefined))
-    ),
     runWorkspaceEffect("checkout.pay.load")
   );
 

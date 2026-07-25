@@ -25,9 +25,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
-  deriveCheckoutAttemptKey,
   deriveCheckoutAttemptKeyCandidates,
-  deriveCheckoutSessionKey,
   deriveCheckoutSessionKeyCandidates,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
@@ -399,6 +397,23 @@ const ensureReservationAvailable = (input: {
     })
   );
 
+const getCheckoutKeyCandidates = (input: {
+  readonly checkoutSessionId: string;
+  readonly checkoutAttemptId: string;
+  readonly reservation: PreparePayStateInput["reservation"];
+}) => {
+  const derivationTime = new Date();
+  const options = { now: () => derivationTime };
+
+  return {
+    checkoutSessionKeys: deriveCheckoutSessionKeyCandidates(
+      input.checkoutSessionId,
+      options
+    ),
+    checkoutAttemptKeys: deriveCheckoutAttemptKeyCandidates(input, options),
+  };
+};
+
 const prepareReservationDraft = Effect.fn(
   "preparePayState.prepareReservationDraft"
 )(function* (input: {
@@ -416,15 +431,12 @@ const prepareReservationDraft = Effect.fn(
   let checkoutSessionId = input.checkoutSessionId;
 
   while (true) {
-    const checkoutSessionKeys =
-      deriveCheckoutSessionKeyCandidates(checkoutSessionId);
-    const [checkoutSessionKey] = checkoutSessionKeys;
-    const checkoutAttemptKeys = deriveCheckoutAttemptKeyCandidates({
-      checkoutSessionId,
-      checkoutAttemptId: input.checkoutAttemptId,
-      reservation: input.reservation,
-    });
-    const [checkoutAttemptKey] = checkoutAttemptKeys;
+    const { checkoutSessionKeys, checkoutAttemptKeys } =
+      getCheckoutKeyCandidates({
+        checkoutSessionId,
+        checkoutAttemptId: input.checkoutAttemptId,
+        reservation: input.reservation,
+      });
 
     const existingAttempts = getDistinctReservations(
       yield* Effect.forEach(checkoutAttemptKeys, (candidate) =>
@@ -608,6 +620,14 @@ const prepareReservationDraft = Effect.fn(
       }
 
       const cancelledAt = Temporal.Now.instant();
+      const {
+        checkoutSessionKeys: [writeCheckoutSessionKey],
+        checkoutAttemptKeys: [writeCheckoutAttemptKey],
+      } = getCheckoutKeyCandidates({
+        checkoutSessionId,
+        checkoutAttemptId: input.checkoutAttemptId,
+        reservation: input.reservation,
+      });
       return yield* ensureReservationAvailable({
         availability,
         reservation: input.reservation,
@@ -618,8 +638,8 @@ const prepareReservationDraft = Effect.fn(
             cancelledAt,
             replacement: {
               ...input.draft,
-              checkoutSessionKey,
-              checkoutAttemptKey,
+              checkoutSessionKey: writeCheckoutSessionKey,
+              checkoutAttemptKey: writeCheckoutAttemptKey,
             },
           })
         ),
@@ -639,12 +659,20 @@ const prepareReservationDraft = Effect.fn(
       availability,
       reservation: input.reservation,
     });
+    const {
+      checkoutSessionKeys: [writeCheckoutSessionKey],
+      checkoutAttemptKeys: [writeCheckoutAttemptKey],
+    } = getCheckoutKeyCandidates({
+      checkoutSessionId,
+      checkoutAttemptId: input.checkoutAttemptId,
+      reservation: input.reservation,
+    });
     const reservationDraft = yield* reservations.createDraft({
       ...input.draft,
-      checkoutSessionKey,
-      checkoutAttemptKey,
+      checkoutSessionKey: writeCheckoutSessionKey,
+      checkoutAttemptKey: writeCheckoutAttemptKey,
     });
-    if (reservationDraft.checkoutAttemptKey !== checkoutAttemptKey) {
+    if (reservationDraft.checkoutAttemptKey !== writeCheckoutAttemptKey) {
       continue;
     }
 
@@ -662,19 +690,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const advertisement = yield* prepareAdvertisement(input);
 
-    const checkoutSessionKey = deriveCheckoutSessionKey(
-      input.checkoutSessionId
-    );
-    const checkoutAttemptKey = deriveCheckoutAttemptKey({
-      checkoutSessionId: input.checkoutSessionId,
-      checkoutAttemptId: input.checkoutAttemptId,
-      reservation: input.reservation,
-    });
     yield* Effect.annotateLogsScoped({
       locale: input.locale,
       reservationKind: input.reservation.kind,
-      checkoutSessionKey,
-      checkoutAttemptKey,
     });
     yield* Effect.logInfo("Workspace reservation submit started");
 
@@ -684,7 +702,12 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       accepted: input.legalConsent === true,
       acceptedAt,
     });
-    yield* Effect.annotateLogsScoped({ privacyEvidence });
+    yield* Effect.annotateLogsScoped({
+      privacyEvidence: {
+        documentCount: Object.keys(privacyEvidence).length,
+        accepted: input.legalConsent === true,
+      },
+    });
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
@@ -734,7 +757,12 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       dotyposCustomerId,
       locale: input.locale,
     });
-    yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+    yield* Effect.annotateLogsScoped({
+      quote: {
+        fingerprint: prepared.quote.fingerprint,
+        reservationKind: input.reservation.kind,
+      },
+    });
     yield* Effect.logDebug("Workspace reservation quote built");
 
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
@@ -756,7 +784,14 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       },
     });
     const { checkoutSessionId, reservationDraft } = preparedDraft;
-    yield* Effect.annotateLogsScoped({ reservationDraft });
+    yield* Effect.annotateLogsScoped({
+      reservationDraft: {
+        orderId: reservationDraft.id,
+        reservationState: reservationDraft.reservationState,
+        paymentState: reservationDraft.paymentState,
+        fulfillmentState: reservationDraft.fulfillmentState,
+      },
+    });
     yield* Effect.logInfo("Workspace reservation draft ready");
 
     if (isReusableSubmissionReservation(reservationDraft)) {
@@ -794,7 +829,15 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservations,
           reservationId: reservationDraft.id,
         });
-      yield* Effect.annotateLogsScoped({ claimConflictReservation });
+      yield* Effect.annotateLogsScoped({
+        claimConflictReservation: claimConflictReservation
+          ? {
+              orderId: claimConflictReservation.id,
+              reservationState: claimConflictReservation.reservationState,
+              paymentState: claimConflictReservation.paymentState,
+            }
+          : null,
+      });
 
       if (
         claimConflictReservation &&
@@ -852,7 +895,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       prepared,
       legalEvidence: privacyEvidence,
     });
-    yield* Effect.annotateLogsScoped({ checkoutDetails });
+    yield* Effect.annotateLogsScoped({
+      checkoutDetails: {
+        locale: checkoutDetails.locale,
+        reservationKind: checkoutDetails.reservation.kind,
+        legalDocumentCount: Object.keys(checkoutDetails.legal).length,
+      },
+    });
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
       paymentOrderId: reservationDraft.id,
       dotyposCustomerId,
@@ -880,7 +929,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         })
       )
     );
-    yield* Effect.annotateLogsScoped({ dotyposReservation });
+    yield* Effect.annotateLogsScoped({
+      dotyposReservation: {
+        responseReceived: dotyposReservation !== null,
+      },
+    });
 
     const dotyposReservationId = yield* decodeDotyposEntityId({
       value: dotyposReservation,

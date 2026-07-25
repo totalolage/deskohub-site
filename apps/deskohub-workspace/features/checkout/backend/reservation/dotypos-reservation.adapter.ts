@@ -45,7 +45,6 @@ export const createWorkspaceDotyposReservation: (
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {
-    yield* Effect.annotateLogsScoped({ input });
     yield* Effect.logInfo(
       "Workspace Dotypos reservation creation input received"
     );
@@ -76,12 +75,19 @@ export const createWorkspaceDotyposReservation: (
       status: input.status,
       note: formatWorkspaceReservationNote(input),
     };
-    yield* Effect.annotateLogsScoped({ reservationInput });
+    yield* Effect.annotateLogsScoped({
+      reservationInput: {
+        hasCustomerId: reservationInput.customerId.length > 0,
+        hasTableId: reservationInput.tableId.length > 0,
+        seats: reservationInput.seats,
+        status: reservationInput.status,
+      },
+    });
     yield* Effect.logInfo("Workspace Dotypos reservation input built");
 
     yield* Effect.logInfo("Workspace Dotypos reservation creation started");
     const reservation = yield* dotypos.createReservation(reservationInput);
-    yield* Effect.annotateLogsScoped({ reservation });
+    yield* Effect.annotateLogsScoped({ providerResponseReceived: true });
     yield* Effect.logInfo("Workspace Dotypos reservation creation completed");
 
     return reservation;

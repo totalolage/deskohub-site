@@ -234,7 +234,7 @@ describe("censorLogValue", () => {
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("preserves non-plain objects", () => {
+  test("projects errors while preserving other non-plain objects", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -244,13 +244,16 @@ describe("censorLogValue", () => {
     const input = { thrown: error, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
-    expect(censored).toEqual(input);
-    expect(censored.thrown).toBe(error);
+    expect(censored).toEqual({
+      ...input,
+      thrown: { name: "Error" },
+    });
+    expect(censored.thrown).toEqual({ name: "Error" });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
-    expect((censorLogValue(error) as Error).message).toBe("boom");
+    expect(censorLogValue(error)).toEqual({ name: "Error" });
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {

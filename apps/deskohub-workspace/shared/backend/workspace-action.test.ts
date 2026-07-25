@@ -1,5 +1,9 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Schema } from "effect";
+import {
+  checkoutStatePrivacySentinels,
+  makeAuthenticatedMalformedPayStateToken,
+} from "@/features/checkout/backend/checkout/checkout-state-observability.test-utils";
 
 let actionHeaderReads = 0;
 
@@ -69,6 +73,39 @@ describe("Workspace actions", () => {
     await expect(action("input")).resolves.toEqual({
       serverError: "Public failure",
     });
+  });
+
+  test("keeps authenticated malformed checkout state out of action console errors", async () => {
+    const { openPayState } = await import(
+      "@/features/checkout/backend/checkout/pay-state"
+    );
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const payStateToken = makeAuthenticatedMalformedPayStateToken();
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.checkout-state-failure",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({ payStateToken: Schema.NonEmptyString })
+        ),
+      },
+      (input) => openPayState(input.payStateToken)
+    );
+
+    try {
+      const result = await action({ payStateToken });
+      const output = JSON.stringify(errorLog.mock.calls);
+
+      expect(result).toHaveProperty("serverError");
+      expect(output).not.toContain(payStateToken);
+      for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
+        expect(output).not.toContain(sentinel);
+      }
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   test("supports stateful form actions explicitly", async () => {

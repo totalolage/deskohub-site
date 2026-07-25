@@ -469,9 +469,9 @@ export const CheckoutServiceLive = Layer.effect(
           providerSessionInput: {
             workspaceReservationId: input.workspaceReservationId,
             correlationId: input.correlationId,
-            checkoutSessionId: input.checkoutSessionId,
             locale: input.locale,
-            total: input.total,
+            amountValue: input.total.value,
+            amountCurrency: input.total.currency,
           },
         });
         yield* Effect.logInfo("Checkout provider session start requested");
@@ -515,7 +515,15 @@ export const CheckoutServiceLive = Layer.effect(
             message: "Nexi payment attempt configuration is invalid.",
           });
         }
-        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.annotateLogsScoped({
+          paymentAttempt: {
+            paymentAttemptId: attempt.id,
+            provider: attempt.provider,
+            state: attempt.state,
+            hasSecurityToken: attempt.securityToken !== null,
+            hasProviderRedirectUrl: attempt.providerRedirectUrl !== null,
+          },
+        });
         yield* Effect.logInfo("Checkout payment attempt created");
 
         yield* Effect.logInfo("Nexi hosted payment page creation started");
@@ -539,7 +547,12 @@ export const CheckoutServiceLive = Layer.effect(
               })
             )
           );
-        yield* Effect.annotateLogsScoped({ hostedPaymentPage });
+        yield* Effect.annotateLogsScoped({
+          hostedPaymentPage: {
+            hasSecurityToken: hostedPaymentPage.securityToken.length > 0,
+            hasRedirectUrl: hostedPaymentPage.hostedPage.length > 0,
+          },
+        });
         yield* Effect.logInfo("Nexi hosted payment page creation completed");
 
         yield* Effect.logInfo("Checkout hosted payment page attach started");
@@ -552,8 +565,11 @@ export const CheckoutServiceLive = Layer.effect(
           .pipe(
             Effect.tapError((cause) =>
               Effect.logError("Checkout hosted payment page attach failed", {
-                attempt,
-                hostedPaymentPage,
+                paymentAttemptId: attempt.id,
+                paymentAttemptState: attempt.state,
+                hasProviderSecurityToken:
+                  hostedPaymentPage.securityToken.length > 0,
+                hasProviderRedirectUrl: hostedPaymentPage.hostedPage.length > 0,
                 cause,
               })
             )
@@ -692,7 +708,19 @@ export const CheckoutServiceLive = Layer.effect(
                   ).pipe(Effect.as(null))
               )
             );
-          yield* Effect.annotateLogsScoped({ reservation });
+          yield* Effect.annotateLogsScoped({
+            reservation: reservation
+              ? {
+                  orderId: reservation.id,
+                  reservationState: reservation.reservationState,
+                  paymentState: reservation.paymentState,
+                  fulfillmentState: reservation.fulfillmentState,
+                  hasActivePaymentAttempt:
+                    reservation.activePaymentAttemptId !== null,
+                  hasLiveHold: reservation.reservationHoldExpiresAt !== null,
+                }
+              : null,
+          });
 
           if (!reservation) {
             const completedReservation = yield* reservations.findById(
@@ -759,7 +787,18 @@ export const CheckoutServiceLive = Layer.effect(
             const attempt = yield* paymentAttempts.findById(
               reservation.activePaymentAttemptId
             );
-            yield* Effect.annotateLogsScoped({ activePaymentAttempt: attempt });
+            yield* Effect.annotateLogsScoped({
+              activePaymentAttempt: attempt
+                ? {
+                    paymentAttemptId: attempt.id,
+                    provider: attempt.provider,
+                    state: attempt.state,
+                    hasSecurityToken: attempt.securityToken !== null,
+                    hasProviderRedirectUrl:
+                      attempt.providerRedirectUrl !== null,
+                  }
+                : null,
+            });
             yield* Effect.logDebug(
               "Hosted payment checkout active payment attempt lookup completed"
             );
@@ -770,7 +809,15 @@ export const CheckoutServiceLive = Layer.effect(
               attempt.providerRedirectUrl &&
               workspaceMoneyEquals(attempt.amount, state.acceptedTotal)
             ) {
-              yield* Effect.annotateLogsScoped({ attempt });
+              yield* Effect.annotateLogsScoped({
+                reusedPaymentAttempt: {
+                  paymentAttemptId: attempt.id,
+                  provider: attempt.provider,
+                  state: attempt.state,
+                  hasSecurityToken: true,
+                  hasProviderRedirectUrl: true,
+                },
+              });
               yield* Effect.logInfo(
                 "Hosted payment checkout reused active provider session"
               );
@@ -831,7 +878,12 @@ export const CheckoutServiceLive = Layer.effect(
                 getMeetingRoomCheckoutSummary(quote),
             })
           );
-          yield* Effect.annotateLogsScoped({ quote: prepared.quote });
+          yield* Effect.annotateLogsScoped({
+            quote: {
+              fingerprint: prepared.quote.fingerprint,
+              reservationKind: state.reservation.kind,
+            },
+          });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(
             "Hosted payment checkout quote comparison started"
@@ -847,8 +899,9 @@ export const CheckoutServiceLive = Layer.effect(
             );
             yield* Effect.annotateLogsScoped({
               changedKeys,
-              acceptedQuote: state.quote,
-              acceptedTotal: state.acceptedTotal,
+              acceptedQuoteFingerprint: state.quote.fingerprint,
+              acceptedTotalValue: state.acceptedTotal.value,
+              acceptedTotalCurrency: state.acceptedTotal.currency,
             });
             yield* Effect.logInfo(
               "Hosted payment checkout returned pricing_changed"
@@ -895,7 +948,12 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalEvidence
           );
-          yield* Effect.annotateLogsScoped({ legalEvidence, checkoutDetails });
+          yield* Effect.annotateLogsScoped({
+            checkoutLegal: {
+              documentCount: Object.keys(legalEvidence).length,
+              reservationKind: checkoutDetails.reservation.kind,
+            },
+          });
           yield* Effect.logInfo(
             "Hosted payment checkout legal evidence recording started"
           );

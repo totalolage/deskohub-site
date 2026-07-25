@@ -5,11 +5,13 @@ import { generateSyntheticSecretValues } from "@/shared/testing/synthetic-secret
 
 mock.module("server-only", () => ({}));
 
-const [key, hmacSecret, legacyHmacSecret] = generateSyntheticSecretValues();
+const [key, hmacSecret] = generateSyntheticSecretValues();
 
 process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${key}`;
 process.env.CHECKOUT_RESERVATION_HMAC_SECRET ??= hmacSecret;
-process.env.CHECKOUT_RESERVATION_HMAC_LEGACY_SECRET ??= legacyHmacSecret;
+process.env.CHECKOUT_RESERVATION_HMAC_CUTOVER_AT ??= "2020-01-01T00:00:00.000Z";
+process.env.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL ??=
+  "2099-01-01T00:00:00.000Z";
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";

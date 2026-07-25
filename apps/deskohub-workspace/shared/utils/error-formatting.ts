@@ -47,8 +47,6 @@ export const serializeErrorForLog = (error: unknown, depth = 0): unknown => {
   if (error instanceof AggregateError) {
     return {
       name: error.name,
-      message: error.message,
-      stack: error.stack,
       errors: error.errors.map((cause) =>
         serializeErrorForLog(cause, depth + 1)
       ),
@@ -58,8 +56,6 @@ export const serializeErrorForLog = (error: unknown, depth = 0): unknown => {
   if (error instanceof Error) {
     return {
       name: error.name,
-      message: error.message,
-      stack: error.stack,
       ...(error.cause !== undefined && {
         cause: serializeErrorForLog(error.cause, depth + 1),
       }),
@@ -78,7 +74,7 @@ export const serializeErrorForLog = (error: unknown, depth = 0): unknown => {
   if (typeof error === "object") {
     const details = {
       name: getScalarProperty(error, "name"),
-      message: getScalarProperty(error, "message"),
+      _tag: getScalarProperty(error, "_tag"),
       code: getScalarProperty(error, "code"),
       status: getScalarProperty(error, "status"),
       statusCode: getScalarProperty(error, "statusCode"),

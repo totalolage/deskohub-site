@@ -254,7 +254,7 @@ const parseJson = Effect.fn("checkoutStateToken.parseJson")(
   (value: Buffer, message: string) =>
     Effect.try({
       try: () => JSON.parse(textDecoder.decode(value)) as unknown,
-      catch: (cause) => invalidToken(message, cause),
+      catch: () => invalidToken(message),
     })
 );
 
@@ -334,8 +334,8 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
       "Invalid checkout state token header."
     );
     const header = yield* decodeProtectedHeader(headerJson).pipe(
-      Effect.mapError((cause) =>
-        invalidToken("Invalid checkout state token header.", cause)
+      Effect.mapError(() =>
+        invalidToken("Invalid checkout state token header.")
       )
     );
     const key = yield* getCheckoutStateKeyByKid(header.kid, options);
@@ -374,8 +374,8 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
     const state = yield* Schema.decodeUnknownEffect(schema, {
       onExcessProperty: "error",
     })(stateJson).pipe(
-      Effect.mapError((cause) =>
-        invalidToken("Invalid checkout state token payload.", cause)
+      Effect.mapError(() =>
+        invalidToken("Invalid checkout state token payload.")
       )
     );
 

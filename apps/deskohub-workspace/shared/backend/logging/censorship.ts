@@ -211,6 +211,18 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
+const getSafeErrorProperty = (
+  error: Error,
+  property: string
+): string | number | boolean | undefined => {
+  const value = Object.getOwnPropertyDescriptor(error, property)?.value;
+  return typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+    ? value
+    : undefined;
+};
+
 const censorQueryParameter = (
   value: unknown,
   seen: WeakMap<object, unknown>
@@ -348,6 +360,24 @@ const censorLogValueInternal = (
     };
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
+    return result;
+  }
+
+  if (value instanceof Error) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+
+    const result: Record<string, unknown> = { name: value.name };
+    seen.set(value, result);
+
+    for (const property of ["_tag", "code", "status", "statusCode"]) {
+      const propertyValue = getSafeErrorProperty(value, property);
+      if (propertyValue !== undefined) result[property] = propertyValue;
+    }
+    if (value.cause !== undefined) {
+      result.cause = censorLogValueInternal(value.cause, seen);
+    }
+
     return result;
   }
 

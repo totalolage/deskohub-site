@@ -86,7 +86,7 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        input: args.parsedInput,
+        inputMetadata: getActionInputMetadata(args.parsedInput),
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
@@ -119,6 +119,16 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
 
   return Effect.andThen(scheduleWorkspaceTelemetryFlush(), invocation);
 };
+
+const getActionInputMetadata = (input: unknown) =>
+  typeof input === "object" && input !== null
+    ? {
+        shape: Array.isArray(input) ? "array" : "object",
+        fieldCount: Object.keys(input).length,
+      }
+    : {
+        shape: input === null ? "null" : typeof input,
+      };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   args: WorkspaceActionArgs<S>
