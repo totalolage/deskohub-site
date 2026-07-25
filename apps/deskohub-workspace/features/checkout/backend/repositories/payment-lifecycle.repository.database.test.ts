@@ -918,6 +918,88 @@ describe("PaymentLifecycleRepository database behavior", () => {
     );
   });
 
+  test("fences paid and terminal settlement after durable provider evidence conflict", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        const fixture = claimFixture("conflict-fence");
+        yield* seedReservation("conflict-fence", undefined, fixture.customerId);
+        yield* seedClaimConfiguration(fixture);
+        const admission = yield* admit(repository, "conflict-fence", fixture);
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        yield* repository.recordEvidenceConflict({
+          id: admission.attempt.id,
+          workspaceReservationId: "conflict-fence",
+          conflictCodes: ["provider_amount"],
+        });
+
+        const paidResult = yield* repository
+          .markPaid({
+            id: admission.attempt.id,
+            workspaceReservationId: "conflict-fence",
+            providerOperationId: "later-success",
+            providerStatus: "EXECUTED",
+            paidAt: Temporal.Instant.from("2026-07-25T00:00:00Z"),
+          })
+          .pipe(Effect.result);
+        const terminalResult = yield* repository
+          .markTerminal({
+            id: admission.attempt.id,
+            workspaceReservationId: "conflict-fence",
+            state: "failed",
+            failureCode: "nexi_payment_failed",
+            providerOperationId: "later-failure",
+            providerStatus: "DECLINED",
+          })
+          .pipe(Effect.result);
+
+        expect(paidResult).toMatchObject({
+          _tag: "Failure",
+          failure: { reason: "provider_evidence_conflict" },
+        });
+        expect(terminalResult).toMatchObject({
+          _tag: "Failure",
+          failure: { reason: "provider_evidence_conflict" },
+        });
+        expect(
+          (yield* db
+            .select({
+              state: paymentAttempts.state,
+              operationId: paymentAttempts.lastProviderOperationId,
+              providerStatus: paymentAttempts.lastProviderStatus,
+            })
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.id, admission.attempt.id)))[0]
+        ).toEqual({
+          state: "created",
+          operationId: null,
+          providerStatus: null,
+        });
+        expect(
+          (yield* db
+            .select({
+              paymentState: workspaceReservations.paymentState,
+              paidAt: workspaceReservations.paidAt,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, "conflict-fence")))[0]
+        ).toEqual({ paymentState: "pending", paidAt: null });
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(0);
+        expect(
+          (yield* db
+            .select({ state: discountCodeRedemptions.state })
+            .from(discountCodeRedemptions)
+            .where(
+              eq(discountCodeRedemptions.paymentAttemptId, admission.attempt.id)
+            ))[0]
+        ).toEqual({ state: "reserved" });
+      })
+    );
+  });
+
   test("rolls back the attempt, link, and applications when materialization persistence fails", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {

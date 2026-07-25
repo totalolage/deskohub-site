@@ -827,6 +827,20 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              const [existingConflict] = yield* tx
+                .select({ id: paymentEvidenceConflicts.id })
+                .from(paymentEvidenceConflicts)
+                .where(eq(paymentEvidenceConflicts.paymentAttemptId, input.id))
+                .limit(1);
+              if (existingConflict) {
+                return yield* lifecycleStateError(
+                  "markPaid",
+                  input.id,
+                  "Recorded provider evidence conflicts require manual review before paid settlement.",
+                  "provider_evidence_conflict"
+                );
+              }
+
               if (currentAttempt.state === "paid") {
                 if (!providerSettlementMetadataMatches(currentAttempt, input)) {
                   return yield* lifecycleStateError(
@@ -1021,6 +1035,20 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "markTerminal",
                   input.id,
                   "The payment attempt does not belong to the reservation."
+                );
+              }
+
+              const [existingConflict] = yield* tx
+                .select({ id: paymentEvidenceConflicts.id })
+                .from(paymentEvidenceConflicts)
+                .where(eq(paymentEvidenceConflicts.paymentAttemptId, input.id))
+                .limit(1);
+              if (existingConflict) {
+                return yield* lifecycleStateError(
+                  "markTerminal",
+                  input.id,
+                  "Recorded provider evidence conflicts require manual review before terminal settlement.",
+                  "provider_evidence_conflict"
                 );
               }
 

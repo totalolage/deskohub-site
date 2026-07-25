@@ -103,38 +103,6 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             yield* Effect.logInfo("Payment finalization returned not_found");
             return "not_found";
           }
-          if (reservation.paymentState !== "pending") {
-            if (
-              reservation.paymentState === "paid" &&
-              (reservation.fulfillmentState === "not_started" ||
-                reservation.fulfillmentState === "processing")
-            ) {
-              yield* Effect.logWarning(
-                "Payment finalization invoking fulfillment for already-paid reservation"
-              );
-              yield* fulfillment
-                .fulfillPaidOrder({ orderId: reservation.id })
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logFatal(
-                      "Paid order fulfillment failed during finalization",
-                      {
-                        orderId: reservation.id,
-                        cause,
-                      }
-                    )
-                  ),
-                  Effect.ignore
-                );
-              yield* Effect.logInfo(
-                "Payment finalization fulfillment completed for already-paid reservation"
-              );
-              return "paid";
-            }
-
-            yield* Effect.logInfo("Payment finalization returned not_pending");
-            return "not_pending";
-          }
 
           const attempt = yield* paymentAttempts
             .findById(paymentAttemptId)
@@ -156,6 +124,15 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               "Payment finalization returned provider_verification_failed"
             );
             return "provider_verification_failed";
+          }
+          if (
+            attempt.workspaceReservationId !== reservation.id ||
+            reservation.activePaymentAttemptId !== attempt.id
+          ) {
+            yield* Effect.logWarning(
+              "Payment finalization returned not_pending for a non-active attempt"
+            );
+            return "not_pending";
           }
 
           const currency = yield* Schema.decodeUnknownEffect(
@@ -291,23 +268,32 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             }
             yield* Effect.logDebug("Payment finalization mark paid completed");
 
-            yield* Effect.logInfo("Payment finalization fulfillment invoked");
-            yield* fulfillment
-              .fulfillPaidOrder({ orderId: reservation.id })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logFatal(
-                    "Paid order fulfillment failed during finalization",
-                    {
-                      orderId: reservation.id,
-                      paymentAttemptId: attempt.id,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
+            if (
+              reservation.paymentState === "pending" ||
+              (reservation.paymentState === "paid" &&
+                (reservation.fulfillmentState === "not_started" ||
+                  reservation.fulfillmentState === "processing"))
+            ) {
+              yield* Effect.logInfo("Payment finalization fulfillment invoked");
+              yield* fulfillment
+                .fulfillPaidOrder({ orderId: reservation.id })
+                .pipe(
+                  Effect.tapError((cause) =>
+                    Effect.logFatal(
+                      "Paid order fulfillment failed during finalization",
+                      {
+                        orderId: reservation.id,
+                        paymentAttemptId: attempt.id,
+                        cause,
+                      }
+                    )
+                  ),
+                  Effect.ignore
+                );
+              yield* Effect.logInfo(
+                "Payment finalization fulfillment completed"
               );
-            yield* Effect.logInfo("Payment finalization fulfillment completed");
+            }
             return "paid";
           }
 

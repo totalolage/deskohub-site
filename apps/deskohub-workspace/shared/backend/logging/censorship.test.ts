@@ -475,10 +475,27 @@ describe("censorLoggerOptions", () => {
   test("projects nested Effect failures and defects before console and OTLP sinks", async () => {
     const failureMarker = randomUUID();
     const defectMarker = randomUUID();
+    const primitiveFailureMarker = randomUUID();
+    const urlDefectMarker = randomUUID();
+    const customDefectMarker = randomUUID();
+    const errorNameMarker = randomUUID();
     const hostedPage = `https://provider.example/hosted?opaque=${failureMarker}`;
+    const dynamicError = new Error(defectMarker);
+    dynamicError.name = errorNameMarker;
     const cause = Cause.combine(
-      Cause.fail({ hostedPage, providerResponse: { token: failureMarker } }),
-      Cause.die(new Error(defectMarker))
+      Cause.combine(
+        Cause.fail({ hostedPage, providerResponse: { token: failureMarker } }),
+        Cause.fail(primitiveFailureMarker)
+      ),
+      Cause.combine(
+        Cause.die(dynamicError),
+        Cause.combine(
+          Cause.die(
+            `https://provider.example/defect?opaque=${urlDefectMarker}`
+          ),
+          Cause.die(new CustomValue(customDefectMarker))
+        )
+      )
     );
     const consoleOutput: unknown[] = [];
     const captureConsole = {
@@ -537,6 +554,10 @@ describe("censorLoggerOptions", () => {
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain(failureMarker);
     expect(serialized).not.toContain(defectMarker);
+    expect(serialized).not.toContain(primitiveFailureMarker);
+    expect(serialized).not.toContain(urlDefectMarker);
+    expect(serialized).not.toContain(customDefectMarker);
+    expect(serialized).not.toContain(errorNameMarker);
     expect(serialized).not.toContain(hostedPage);
   });
 

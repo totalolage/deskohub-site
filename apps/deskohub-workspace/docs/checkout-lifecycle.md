@@ -303,7 +303,10 @@ Allowed payment transitions:
   Only an authoritative verified terminal provider result permits terminal
   settlement and subsequent hold cancellation.
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
-- Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
+- Attempt terminal updates only apply from non-terminal attempt states. An
+  authoritative provider result may set `paid`, `failed`, `cancelled`, or
+  `expired` from either `created` or `pending`; `created` settlement covers an
+  HPP start that succeeded remotely before local attachment became durable.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
 - Paid settlement inserts `payment_paid_events` in that same transaction. Replayed paid settlement verifies the same paid aggregate, re-applies idempotent claim redemption, and performs an idempotent enqueue.
 - Discount application persistence and code-claim admission belong to the payment-attempt creation transaction. Claim redemption belongs to the paid transaction, and claim release belongs to every failed, cancelled, or expired transaction. Any application, claim, redemption, or release error is fatal and rolls back the owning payment transition; it must never be converted to an empty discount result or `not_pending` state.

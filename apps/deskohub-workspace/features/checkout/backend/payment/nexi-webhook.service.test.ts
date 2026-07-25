@@ -532,6 +532,95 @@ describe("NexiWebhookService", () => {
     });
   });
 
+  for (const providerStatus of ["success", "failure"] as const) {
+    test(`keeps later clean ${providerStatus} evidence unprocessed after a durable conflict`, async () => {
+      const markProcessed = mock(() => Effect.void);
+      const markFailed = mock(() => Effect.void);
+      const recordEvidenceConflict = mock(() => Effect.void);
+      const fulfillPaidOrder = mock(() => Effect.void);
+      const lifecycleConflict = new PaymentLifecycleStateError({
+        operation: providerStatus === "success" ? "markPaid" : "markTerminal",
+        paymentAttemptId: attempt.id,
+        message: "Durable provider evidence conflict requires manual review.",
+        reason: "provider_evidence_conflict",
+      });
+      const markPaid = mock(() => Effect.fail(lifecycleConflict));
+      const markTerminal = mock(() => Effect.fail(lifecycleConflict));
+      const providerVerification =
+        providerStatus === "success"
+          ? verification
+          : {
+              ...verification,
+              status: "failure" as const,
+              provider: {
+                ...verification.provider,
+                orderStatus: "DECLINED",
+                captureExecuted: false,
+              },
+            };
+
+      const result = await Effect.runPromise(
+        Effect.result(
+          await buildWebhookEffect(
+            {
+              webhookEvents: {
+                insertReceived: mock(() =>
+                  Effect.succeed({ status: "inserted", event: receivedEvent })
+                ),
+                linkPaymentAttempt: mock(() => Effect.void),
+                markProcessed,
+                markFailed,
+                claimRetry: mock(() => Effect.die("unused")),
+              } as unknown as WebhookEventRepositoryType,
+              paymentAttempts: {
+                findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+              } as unknown as PaymentAttemptRepositoryType,
+              paymentLifecycle: {
+                admitPaymentStart: mock(() => Effect.die("unused")),
+                attachProviderSession: mock(() => Effect.die("unused")),
+                markProviderStartFailed: mock(() => Effect.die("unused")),
+                recordEvidenceConflict,
+                markPaid,
+                markTerminal,
+              },
+              reservations: {
+                findById: mock(() => Effect.succeed(reservation as never)),
+              } as unknown as WorkspaceReservationRepositoryType,
+              nexi: {
+                verifyPaymentOutcome: mock(() =>
+                  Effect.succeed(providerVerification)
+                ),
+              } as unknown as NexiServiceType,
+              fulfillment: { fulfillPaidOrder },
+            },
+            providerStatus === "success" ? payload : failurePayload
+          )
+        )
+      );
+
+      expect(result._tag).toBe("Failure");
+      expect(markFailed).toHaveBeenCalledWith({
+        type: "eventId",
+        eventId: "event-id",
+        errorCode: "nexi_webhook_transition_failed",
+      });
+      expect(markProcessed).not.toHaveBeenCalled();
+      expect(fulfillPaidOrder).not.toHaveBeenCalled();
+      expect(recordEvidenceConflict).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        conflictCodes: ["provider_terminal_state"],
+      });
+      if (providerStatus === "success") {
+        expect(markPaid).toHaveBeenCalledTimes(1);
+        expect(markTerminal).not.toHaveBeenCalled();
+      } else {
+        expect(markTerminal).toHaveBeenCalledTimes(1);
+        expect(markPaid).not.toHaveBeenCalled();
+      }
+    });
+  }
+
   test("keeps manual-review provider evidence failed and unprocessed", async () => {
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);

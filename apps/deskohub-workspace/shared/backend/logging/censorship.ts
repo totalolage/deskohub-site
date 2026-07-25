@@ -274,10 +274,10 @@ const censorLogValueInternal = (
 
     const reasons = value.reasons.map((reason) => {
       if (Cause.isFailReason(reason)) {
-        return Cause.fail(censorLogValueInternal(reason.error, seen));
+        return Cause.fail(CENSORED_LOG_VALUE);
       }
       if (Cause.isDieReason(reason)) {
-        return Cause.die(censorLogValueInternal(reason.defect, seen));
+        return Cause.die(CENSORED_LOG_VALUE);
       }
       return Cause.interrupt(reason.fiberId);
     });
@@ -379,7 +379,7 @@ const censorLogValueInternal = (
 
   if (value instanceof Error) {
     return {
-      name: value.name,
+      name: normalizeErrorName(value.name),
       message: CENSORED_LOG_VALUE,
     };
   }
@@ -398,6 +398,20 @@ const censorLogValueInternal = (
 
   return result;
 };
+
+const safeErrorNames = new Set([
+  "AggregateError",
+  "Error",
+  "EvalError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+]);
+
+const normalizeErrorName = (name: string): string =>
+  safeErrorNames.has(name) ? name : CENSORED_LOG_VALUE;
 
 export const censorTelemetryValue = (value: unknown): unknown =>
   censorLogValueInternal(value, new WeakMap());
@@ -599,7 +613,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     : span.status,
 });
 
-const censorSpanLabel = (label: string): string =>
+export const censorSpanLabel = (label: string): string =>
   /https?:\/\//i.test(label) ||
   label.includes("?") ||
   /^\s*(delete|insert|select|update|with)\b/i.test(label)

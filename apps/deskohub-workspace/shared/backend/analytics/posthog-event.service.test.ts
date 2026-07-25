@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { randomUUID } from "node:crypto";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import type { EventMessage } from "posthog-node";
 import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
 
@@ -106,5 +106,52 @@ describe("PostHogEventService", () => {
         uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
       })
     );
+  });
+
+  test("censors direct span names and Effect Cause payloads before capture", async () => {
+    const { makePostHogEventService } = await import("./posthog-event.service");
+    const messages: EventMessage[] = [];
+    const spanMarker = randomUUID();
+    const failureMarker = randomUUID();
+    const defectMarker = randomUUID();
+    const service = makePostHogEventService({
+      client: {
+        captureImmediate: (message) => {
+          messages.push(message);
+          return Promise.resolve();
+        },
+      },
+      config,
+    });
+    const cause = Cause.combine(
+      Cause.fail(failureMarker),
+      Cause.die({ opaque: defectMarker })
+    );
+
+    await Effect.runPromise(
+      service
+        .capture({
+          distinctId: "reservation-id",
+          event: "reservation started",
+          timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
+          uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+        })
+        .pipe(
+          Effect.annotateLogs({ providerCause: cause }),
+          Effect.withSpan(
+            `https://provider.example/hosted?opaque=${spanMarker}`
+          )
+        )
+    );
+
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.properties?.["effect.span_name"]).toBe(
+      CENSORED_LOG_VALUE
+    );
+    const serialized = JSON.stringify(messages);
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(spanMarker);
+    expect(serialized).not.toContain(failureMarker);
+    expect(serialized).not.toContain(defectMarker);
   });
 });
