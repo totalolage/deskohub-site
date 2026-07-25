@@ -9,6 +9,7 @@ import type {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { m } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
@@ -46,8 +47,8 @@ const verifyWebhook = mock(
 
 const locationMapImage = Buffer.from("workspace-location-map");
 const tableMapImage = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-const generateStaticMapImage = mock(async () => locationMapImage);
-const generateSvgPngBuffer = mock(async () => tableMapImage);
+const generateStaticMapImage = mock(() => Effect.succeed(locationMapImage));
+const generateSvgPngBuffer = mock(() => Effect.succeed(tableMapImage));
 
 mock.module("osm", () => ({
   generateStaticMapImage,
@@ -461,7 +462,8 @@ describe("ResendWebhookService", () => {
             Layer.mergeAll(
               Layer.succeed(EmailServiceTag, emailService),
               Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+              WorkspaceCheckoutNetworkDetailsService.Live,
+              FetchHttpClient.layer
             )
           )
         )

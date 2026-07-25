@@ -1,6 +1,7 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
@@ -338,8 +339,11 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
       Layer.provideMerge(
         WorkspaceReservationEmailServiceLive,
         Layer.provideMerge(
-          Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
-          WorkspaceCheckoutNetworkDetailsService.Live
+          Layer.provideMerge(
+            Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
+            WorkspaceCheckoutNetworkDetailsService.Live
+          ),
+          FetchHttpClient.layer
         )
       )
     ),

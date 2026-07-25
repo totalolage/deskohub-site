@@ -12,7 +12,8 @@ import type {
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import { generateSvgPngBuffer, type SvgPngTextOverlay } from "osm";
 import { env } from "@/env";
 import {
@@ -135,21 +136,24 @@ const createInternalReservationSubject = (
 
 const createWorkspaceLocationMapAttachment = (): Effect.Effect<
   EmailAttachment,
-  EmailServiceError
+  EmailServiceError,
+  HttpClient.HttpClient
 > =>
-  Effect.tryPromise({
-    try: async () => ({
-      content: await generateWorkspaceLocationMapImage(),
+  generateWorkspaceLocationMapImage().pipe(
+    Effect.map((content) => ({
+      content,
       contentId: workspaceLocationMapContentId,
       contentType: "image/jpeg",
       filename: workspaceLocationMapImagePath.slice(1),
-    }),
-    catch: (cause) =>
-      new EmailServiceError(
-        "Workspace reservation location map could not be generated.",
-        cause
-      ),
-  });
+    })),
+    Effect.mapError(
+      (cause) =>
+        new EmailServiceError(
+          "Workspace reservation location map could not be generated.",
+          cause
+        )
+    )
+  );
 
 const createWorkspaceNetworkQrAttachment = (
   networkDetails: WorkspaceCheckoutNetworkDetails
@@ -279,19 +283,21 @@ const createWorkspaceTableMapAttachment = (
   tableMap: WorkspaceTableMap,
   locale: Locale
 ): Effect.Effect<EmailAttachment, EmailServiceError> =>
-  Effect.tryPromise({
-    try: async () => ({
-      content: await createWorkspaceTableMapPng(tableMap, locale),
+  createWorkspaceTableMapPng(tableMap, locale).pipe(
+    Effect.map((content) => ({
+      content,
       contentId: workspaceTableMapContentId,
       contentType: "image/png",
       filename: "workspace-table-map.png",
-    }),
-    catch: (cause) =>
-      new EmailServiceError(
-        "Workspace reservation table map could not be generated.",
-        cause
-      ),
-  });
+    })),
+    Effect.mapError(
+      (cause) =>
+        new EmailServiceError(
+          "Workspace reservation table map could not be generated.",
+          cause
+        )
+    )
+  );
 
 const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
@@ -767,42 +773,79 @@ const createEmailText = (input: {
     ...(input.followUp ? ["", input.followUp] : []),
   ].join("\n");
 
-export const createWorkspaceReservationCustomerEmailPreviewHtml =
-  async (input: { readonly reservation: WorkspaceReservationDetails }) => {
-    const locale = getReservationLocale(input.reservation.locale);
-    const rows = createReservationRows(input.reservation, locale);
-    const networkQrPng = await generateQrCodePngBuffer(
-      createWorkspaceCheckoutWifiQrPayload(
-        workspaceCheckoutPlaceholderNetworkDetails
-      ),
-      {
-        errorCorrectionLevel: "M",
-        margin: 2,
-        width: 280,
-      }
-    );
-    const tableMapPng = input.reservation.tableMap
-      ? await createWorkspaceTableMapPng(input.reservation.tableMap, locale)
-      : undefined;
+export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
+  "workspaceReservationEmail.createCustomerPreview"
+)((input: { readonly reservation: WorkspaceReservationDetails }) => {
+  const locale = getReservationLocale(input.reservation.locale);
+  const rows = createReservationRows(input.reservation, locale);
 
-    return createEmailHtml({
-      heading: createCustomerAccessHeading(input.reservation, locale),
-      locale,
-      accessCode: input.reservation.customerAccessCode,
-      networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
-      networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-      tableName: input.reservation.tableName,
-      tableMapImageSrc: tableMapPng
-        ? `data:image/png;base64,${tableMapPng.toString("base64")}`
-        : undefined,
-      locationMapContentId: workspaceLocationMapContentId,
-      rows,
-      followUp: m.reservationEmailCustomerFollowUp(
-        { email: workspaceSiteConstants.contact.infoEmail },
-        { locale }
+  return Effect.succeed({ input, locale, rows }).pipe(
+    Effect.bind("networkQrPng", () => createPreviewNetworkQrPng()),
+    Effect.bind("tableMapPng", createPreviewTableMapPng),
+    Effect.map(({ networkQrPng, tableMapPng }) =>
+      createEmailHtml({
+        heading: createCustomerAccessHeading(input.reservation, locale),
+        locale,
+        accessCode: input.reservation.customerAccessCode,
+        networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+        networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
+        tableName: input.reservation.tableName,
+        tableMapImageSrc: tableMapPng
+          ? `data:image/png;base64,${tableMapPng.toString("base64")}`
+          : undefined,
+        locationMapContentId: workspaceLocationMapContentId,
+        rows,
+        followUp: m.reservationEmailCustomerFollowUp(
+          { email: workspaceSiteConstants.contact.infoEmail },
+          { locale }
+        ),
+      })
+    )
+  );
+});
+
+const createPreviewNetworkQrPng = () =>
+  Effect.tryPromise({
+    try: () =>
+      generateQrCodePngBuffer(
+        createWorkspaceCheckoutWifiQrPayload(
+          workspaceCheckoutPlaceholderNetworkDetails
+        ),
+        {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          width: 280,
+        }
       ),
-    });
-  };
+    catch: (cause) =>
+      new EmailServiceError(
+        "Workspace reservation preview Wi-Fi QR code could not be generated.",
+        cause
+      ),
+  });
+
+const createPreviewTableMapPng = ({
+  input,
+  locale,
+}: {
+  readonly input: { readonly reservation: WorkspaceReservationDetails };
+  readonly locale: Locale;
+}) =>
+  Option.fromNullishOr(input.reservation.tableMap).pipe(
+    Option.match({
+      onNone: () => Effect.succeed(undefined),
+      onSome: (tableMap) =>
+        createWorkspaceTableMapPng(tableMap, locale).pipe(
+          Effect.mapError(
+            (cause) =>
+              new EmailServiceError(
+                "Workspace reservation preview table map could not be generated.",
+                cause
+              )
+          )
+        ),
+    })
+  );
 
 export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
   readonly reservation: WorkspaceReservationDetails;
@@ -830,6 +873,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
     const emailConfig = yield* EmailConfigTag;
+    const httpClient = yield* HttpClient.HttpClient;
     const networkDetailsService = yield* WorkspaceCheckoutNetworkDetailsService;
 
     return WorkspaceReservationEmailService.of({
@@ -864,6 +908,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         if (customerEmail) {
           const locationMapAttachment =
             yield* createWorkspaceLocationMapAttachment().pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.catch((cause) =>
                 Effect.logWarning(
                   "Workspace reservation location map attachment skipped",
