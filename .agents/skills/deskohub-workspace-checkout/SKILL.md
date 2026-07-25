@@ -23,15 +23,18 @@ Any change to price facts accepted at the immediately preceding boundary returns
 
 Treat a created payment attempt's provider-start lease as ownership, not merely as a timeout. A definitive provider-start failure may terminalize only the exact, still-unexpired lease by database clock; an expired owner must not change or replace that lease or an attached provider session. Nexi HPP creation has no documented idempotency contract, so execute its state-creating POST exactly once for each durable attempt and never retry or repeat it after an ambiguous exit. Configure the native provider Fetch transport with redirects rejected: a 307/308 can otherwise replay the POST and forward its credential, and redirect rejection is an ambiguous exit. A durable `created` attempt means that POST may already have reached Nexi. After its lease expires, reconcile the stable provider order with a read-only lookup; reconcile all order, amount, currency, token, status, and relevant-operation evidence collectively. Multiple operations, conflicting facts, or success followed by terminal evidence require manual review and must never settle automatically. A remotely unambiguous terminal result may settle the unattached attempt, while pending, unavailable, mismatched, or otherwise unverified state remains unresolved and must not be expired by hold cleanup. Only the local attach operation may be retried, and it must accept only an exact idempotent match. Admission rollout gates block only new attempts and must not block reuse or stable-order reconciliation for an already-admitted attempt.
 
-Before any authoritative provider-order lookup, durably claim the exact active
-attempt on its reservation. Admission, active-attempt replacement, cleanup
-cancellation, and competing settlement must fail closed while the claim exists;
-settle under the exact claim or release it after a non-terminal result. Late
+Before any authoritative provider-order lookup, durably claim the exact attempt
+on its reservation, including a historical or replaced attempt. Admission,
+active-attempt replacement, cleanup cancellation, competing settlement, and
+fulfillment must fail closed while the claim exists; settle an active attempt
+under the exact claim or release ownership after the evidence is handled. Late
 contradictory evidence for an older attempt must materialize a reservation-wide
 manual-review fence even if another attempt became active. Reconciliation
 ownership expiry or loss is only a local concurrency conflict; never materialize
 it as contradictory provider evidence unless an independent authenticated
-provider lookup proved a conflicting terminal fact.
+provider lookup proved a conflicting terminal fact. After expiry, any attempt
+on that reservation may replace the stale claim so a crashed historical
+reconciliation cannot strand active-attempt recovery.
 
 Treat the unauthenticated webhook only as a trigger for an authoritative read-only
 provider lookup. Every webhook operation field is delivery-local evidence and
@@ -52,6 +55,15 @@ Never annotate or log raw HPP requests, provider responses, hosted-page URLs, se
 Paid-event durability must cover mixed-version writers at the database boundary. Keep idempotent paid-transition triggers and the consistent-pair backfill/reconciliation contract until every old writer is drained and the missing/invalid verification counts are zero. Keep database rollback fences that reject legacy terminal cleanup of active v2 `created` and `pending` attempts until new admission is disabled, all such attempts are reconciled, and the exact writer-version drain is proved. Contradictory terminal state, failure code, provider operation, or provider status replays are lifecycle conflicts, not idempotent success. Persist only normalized provider-evidence conflict codes for manual review; never persist raw provider evidence in that audit path.
 
 Treat any durable provider-evidence conflict row as a permanent automatic-settlement fence for that payment attempt. Conflict recording, paid settlement, unsuccessful-terminal settlement, provider-start failure, attachment, admission reuse, and attempt replacement must serialize on the exact attempt lock or its database-materialized reservation fence. Preserve the conflicted attempt as active; no automatic path may relink the reservation or create a second provider order. Paid or terminal replay must fail for manual review before changing the attempt, reservation, claim, paid-event handoff, or fulfillment. Direct reconciliation must load the exact active attempt and verify provider evidence before taking any already-paid or already-terminal shortcut, so opposing terminal evidence cannot be hidden by aggregate state.
+
+A materialized provider-evidence conflict on any reservation attempt must also
+fence automatic hold expiration and cancellation, including the
+`hold_expired`, `cancelling`, and `cancelled` reservation transitions and the
+external Dotypos cancellation call. Preserve `cancellation_failed` and explicit
+manual-review recovery paths; cleanup and checkout supersession must never turn
+a conflicted hold into an automatic cancellation. Availability and table
+assignment must continue treating its live Dotypos reservation as occupied,
+rather than filtering it as an ordinarily expired local hold.
 
 Reservation-page advertisement evaluates only anonymously discoverable automatic discounts, currently Calendar sales. Customer-specific pricing is outside that boundary by contract; do not add an inert snapshot field merely to restate that it was not evaluated. After advertised discounts are affirmed on reservation submission, the customer discount may first appear in the signed summary following Dotypos identity resolution without `pricing_changed`. This is the only automatic-discount exception at that boundary. Once shown, the customer discount follows the normal affirmation and `pricing_changed` rules.
 

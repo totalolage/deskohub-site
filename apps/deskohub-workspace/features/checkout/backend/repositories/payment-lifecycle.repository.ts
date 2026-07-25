@@ -106,6 +106,7 @@ export type ProviderReconciliationClaim =
       readonly outcome: "claimed";
       readonly claimId: string;
       readonly attempt: PaymentAttempt;
+      readonly isActiveAttempt: boolean;
     }
   | { readonly outcome: "not_found" | "unavailable" | "manual_review" };
 
@@ -924,6 +925,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     )
                   )
                   and payable.active_payment_evidence_conflicted = false
+                  and payable.payment_reconciliation_attempt_id is null
                   and payable.reservation_hold_expires_at > clock_timestamp()
               )`;
 
@@ -1081,6 +1083,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   workspaceReservations.activePaymentAttemptId,
                 activePaymentEvidenceConflicted:
                   workspaceReservations.activePaymentEvidenceConflicted,
+                reservationState: workspaceReservations.reservationState,
+                fulfillmentState: workspaceReservations.fulfillmentState,
                 paymentReconciliationAttemptId:
                   workspaceReservations.paymentReconciliationAttemptId,
                 paymentReconciliationClaimActive: sql<boolean>`
@@ -1103,7 +1107,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                   : ("unavailable" as const),
               };
             }
-            if (reservation.activePaymentAttemptId !== input.id) {
+            if (
+              reservation.reservationState === "cancelling" ||
+              reservation.fulfillmentState === "processing"
+            ) {
               return { outcome: "unavailable" as const };
             }
 
@@ -1144,7 +1151,6 @@ export class PaymentLifecycleRepository extends Context.Service<
               .where(
                 and(
                   eq(workspaceReservations.id, input.workspaceReservationId),
-                  eq(workspaceReservations.activePaymentAttemptId, input.id),
                   sql`(
                     ${workspaceReservations.paymentReconciliationAttemptId} is null
                     or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
@@ -1162,6 +1168,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               outcome: "claimed" as const,
               claimId,
               attempt: toPaymentAttempt(attempt),
+              isActiveAttempt: reservation.activePaymentAttemptId === input.id,
             };
           })
         );

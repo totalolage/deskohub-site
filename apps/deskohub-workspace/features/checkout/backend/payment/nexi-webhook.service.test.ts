@@ -124,6 +124,7 @@ const buildWebhookEffect = async (
                   outcome: "claimed" as const,
                   claimId: "claim-id",
                   attempt,
+                  isActiveAttempt: true,
                 }
               : { outcome: "not_found" as const }
           )
@@ -345,9 +346,21 @@ describe("NexiWebhookService", () => {
   test("provider-verifies a replaced attempt webhook and fences contradictory late evidence", async () => {
     const markProcessed = mock(() => Effect.void);
     const recordEvidenceConflict = mock(() => Effect.void);
+    const historicalAttempt = {
+      ...attempt,
+      state: "failed" as const,
+      failureCode: "nexi_payment_failed",
+      lastProviderStatus: "DECLINED",
+    };
     const claimProviderReconciliation = mock(() =>
-      Effect.die("historical attempts must not claim settlement ownership")
+      Effect.succeed({
+        outcome: "claimed" as const,
+        claimId: "historical-claim-id",
+        attempt: historicalAttempt,
+        isActiveAttempt: false,
+      })
     );
+    const releaseProviderReconciliation = mock(() => Effect.void);
     const markPaid = mock(() =>
       Effect.die("historical attempts must not settle")
     );
@@ -368,17 +381,11 @@ describe("NexiWebhookService", () => {
           claimRetry: mock(() => Effect.die("unused")),
         } as unknown as WebhookEventRepositoryType,
         paymentAttempts: {
-          findByProviderOrderId: mock(() =>
-            Effect.succeed({
-              ...attempt,
-              state: "failed" as const,
-              failureCode: "nexi_payment_failed",
-              lastProviderStatus: "DECLINED",
-            })
-          ),
+          findByProviderOrderId: mock(() => Effect.succeed(historicalAttempt)),
         } as unknown as PaymentAttemptRepositoryType,
         paymentLifecycle: {
           claimProviderReconciliation,
+          releaseProviderReconciliation,
           recordEvidenceConflict,
           markPaid,
           markTerminal,
@@ -406,7 +413,15 @@ describe("NexiWebhookService", () => {
       orderId: "provider-order-id",
     });
     expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
-    expect(claimProviderReconciliation).not.toHaveBeenCalled();
+    expect(claimProviderReconciliation).toHaveBeenCalledWith({
+      id: "attempt-id",
+      workspaceReservationId: "reservation-id",
+    });
+    expect(releaseProviderReconciliation).toHaveBeenCalledWith({
+      id: "attempt-id",
+      workspaceReservationId: "reservation-id",
+      claimId: "historical-claim-id",
+    });
     expect(recordEvidenceConflict).toHaveBeenCalledWith({
       id: "attempt-id",
       workspaceReservationId: "reservation-id",
@@ -448,9 +463,20 @@ describe("NexiWebhookService", () => {
     test(`fences a replaced failed attempt webhook when ${scenario.name}`, async () => {
       const markProcessed = mock(() => Effect.void);
       const recordEvidenceConflict = mock(() => Effect.void);
+      const historicalAttempt = {
+        ...attempt,
+        ...scenario.attemptOverrides,
+        state: "failed" as const,
+      };
       const claimProviderReconciliation = mock(() =>
-        Effect.die("historical attempts must not claim settlement ownership")
+        Effect.succeed({
+          outcome: "claimed" as const,
+          claimId: "historical-claim-id",
+          attempt: historicalAttempt,
+          isActiveAttempt: false,
+        })
       );
+      const releaseProviderReconciliation = mock(() => Effect.void);
       const markPaid = mock(() =>
         Effect.die("historical attempts must not settle")
       );
@@ -481,15 +507,12 @@ describe("NexiWebhookService", () => {
             } as unknown as WebhookEventRepositoryType,
             paymentAttempts: {
               findByProviderOrderId: mock(() =>
-                Effect.succeed({
-                  ...attempt,
-                  ...scenario.attemptOverrides,
-                  state: "failed" as const,
-                })
+                Effect.succeed(historicalAttempt)
               ),
             } as unknown as PaymentAttemptRepositoryType,
             paymentLifecycle: {
               claimProviderReconciliation,
+              releaseProviderReconciliation,
               recordEvidenceConflict,
               markPaid,
               markTerminal,
@@ -527,7 +550,15 @@ describe("NexiWebhookService", () => {
         workspaceReservationId: "reservation-id",
         conflictCodes: ["provider_terminal_state"],
       });
-      expect(claimProviderReconciliation).not.toHaveBeenCalled();
+      expect(claimProviderReconciliation).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+      });
+      expect(releaseProviderReconciliation).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        claimId: "historical-claim-id",
+      });
       expect(markPaid).not.toHaveBeenCalled();
       expect(markTerminal).not.toHaveBeenCalled();
       expect(markProcessed).toHaveBeenCalledWith(

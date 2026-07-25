@@ -495,7 +495,15 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   "cancellation_failed",
                 ]),
                 sql`${workspaceReservations.paymentState} <> 'paid'`,
-                sql`${workspaceReservations.reservationState} <> 'confirmed'`
+                sql`${workspaceReservations.reservationState} <> 'confirmed'`,
+                eq(
+                  workspaceReservations.activePaymentEvidenceConflicted,
+                  false
+                ),
+                sql`(
+                  ${workspaceReservations.paymentReconciliationClaimId} is null
+                  or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+                )`
               )
             )
             .returning();
@@ -520,7 +528,12 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "failed",
                 "cancelled",
                 "expired",
-              ])
+              ]),
+              eq(workspaceReservations.activePaymentEvidenceConflicted, false),
+              sql`(
+                  ${workspaceReservations.paymentReconciliationClaimId} is null
+                  or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+                )`
             )
           )
           .returning();
@@ -541,7 +554,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 eq(workspaceReservations.id, input.id),
                 eq(workspaceReservations.reservationState, "cancelling"),
                 sql`${workspaceReservations.paymentState} <> 'paid'`,
-                sql`${workspaceReservations.reservationConfirmedAt} is null`
+                sql`${workspaceReservations.reservationConfirmedAt} is null`,
+                eq(workspaceReservations.activePaymentEvidenceConflicted, false)
               )
             )
             .returning({ id: workspaceReservations.id });
@@ -571,7 +585,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   eq(workspaceReservations.reservationState, "cancelling"),
                   sql`${workspaceReservations.paymentState} <> 'pending'`,
                   sql`${workspaceReservations.paymentState} <> 'paid'`,
-                  sql`${workspaceReservations.reservationConfirmedAt} is null`
+                  sql`${workspaceReservations.reservationConfirmedAt} is null`,
+                  eq(
+                    workspaceReservations.activePaymentEvidenceConflicted,
+                    false
+                  )
                 )
               )
               .returning({ id: workspaceReservations.id });
@@ -686,6 +704,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             and(
               eq(workspaceReservations.id, input.id),
               eq(workspaceReservations.paymentState, "paid"),
+              eq(workspaceReservations.activePaymentEvidenceConflicted, false),
+              sql`(
+                ${workspaceReservations.paymentReconciliationClaimId} is null
+                or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+              )`,
               or(
                 inArray(workspaceReservations.fulfillmentState, [
                   "not_started",
@@ -820,6 +843,14 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               and(
                 eq(workspaceReservations.reservationState, "held"),
                 sql`${workspaceReservations.paymentState} <> 'paid'`,
+                eq(
+                  workspaceReservations.activePaymentEvidenceConflicted,
+                  false
+                ),
+                sql`(
+                  ${workspaceReservations.paymentReconciliationClaimId} is null
+                  or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+                )`,
                 lte(workspaceReservations.reservationHoldExpiresAt, input.now)
               )
             )
@@ -854,6 +885,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "cancelled",
                 "expired",
               ]),
+              eq(workspaceReservations.activePaymentEvidenceConflicted, false),
+              sql`(
+                ${workspaceReservations.paymentReconciliationClaimId} is null
+                or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+              )`,
               sql`${workspaceReservations.dotyposReservationId} is not null`,
               lte(workspaceReservations.reservationHoldExpiresAt, input.now)
             )

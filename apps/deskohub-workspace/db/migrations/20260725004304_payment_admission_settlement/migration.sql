@@ -165,6 +165,7 @@ BEGIN
     AND (
       OLD."payment_state" IS DISTINCT FROM NEW."payment_state"
       OR OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+      OR OLD."fulfillment_state" IS DISTINCT FROM NEW."fulfillment_state"
       OR OLD."active_payment_attempt_id" IS DISTINCT FROM NEW."active_payment_attempt_id"
     )
     AND current_setting(
@@ -239,6 +240,35 @@ BEGIN
       'cancelling',
       'cancelled'
     )
+    AND (
+      OLD."active_payment_evidence_conflicted"
+      OR NEW."active_payment_evidence_conflicted"
+      OR EXISTS (
+        SELECT 1
+        FROM "payment_attempts" AS attempt
+        WHERE attempt."workspace_reservation_id" = NEW."id"
+          AND (
+            attempt."provider_evidence_conflicted"
+            OR EXISTS (
+              SELECT 1
+              FROM "payment_evidence_conflicts" AS conflict
+              WHERE conflict."payment_attempt_id" = attempt."id"
+            )
+          )
+      )
+    )
+  THEN
+    RAISE EXCEPTION
+      'provider evidence conflict rejects automatic reservation hold cancellation'
+      USING ERRCODE = '23514';
+  END IF;
+
+  IF OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+    AND NEW."reservation_state" IN (
+      'hold_expired',
+      'cancelling',
+      'cancelled'
+    )
     AND EXISTS (
       SELECT 1
       FROM "payment_attempts" AS attempt
@@ -258,7 +288,7 @@ END;
 $$;
 --> statement-breakpoint
 CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"
-BEFORE UPDATE OF "payment_state", "reservation_state", "active_payment_attempt_id", "active_payment_evidence_conflicted", "payment_reconciliation_attempt_id", "payment_reconciliation_claim_id", "payment_reconciliation_claim_expires_at"
+BEFORE UPDATE OF "payment_state", "reservation_state", "fulfillment_state", "active_payment_attempt_id", "active_payment_evidence_conflicted", "payment_reconciliation_attempt_id", "payment_reconciliation_claim_id", "payment_reconciliation_claim_expires_at"
 ON "workspace_reservations"
 FOR EACH ROW
 EXECUTE FUNCTION "guard_unverified_v2_reservation_terminal"();

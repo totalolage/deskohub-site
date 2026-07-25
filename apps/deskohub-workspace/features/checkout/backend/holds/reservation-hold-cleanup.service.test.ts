@@ -157,6 +157,79 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
+  test("does not cancel a hold after terminal payment evidence becomes conflicted", async () => {
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { PaymentLifecycleRepository } = await import(
+      "../repositories/payment-lifecycle.repository"
+    );
+    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
+      await import("./reservation-hold-cleanup.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+
+    const orderId = "reservation-cleanup-evidence-conflict";
+    const claimCancellation = mock(() =>
+      Effect.die("conflicted cleanup must not claim cancellation")
+    );
+    const cancelReservation = mock(() =>
+      Effect.die("conflicted cleanup must not cancel the Dotypos hold")
+    );
+
+    const outcome = await Effect.gen(function* () {
+      const cleanup = yield* ReservationHoldCleanupService;
+      return yield* cleanup.cancelOrderHold({
+        orderId,
+        holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
+      });
+    }).pipe(
+      Effect.provide(
+        ReservationHoldCleanupServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderPaymentFinalizationService, {
+                finalizePendingProviderPayment: mock(() =>
+                  Effect.die("terminal attempts need no provider finalization")
+                ),
+              } satisfies ProviderPaymentFinalizationServiceType),
+              Layer.succeed(PaymentLifecycleRepository, {
+                markTerminal: mock(() => Effect.die("not used")),
+              } as unknown as IPaymentLifecycleRepository),
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() =>
+                  Effect.succeed({
+                    id: orderId,
+                    reservationState: "held",
+                    paymentState: "failed",
+                    activePaymentAttemptId: "terminal-attempt-id",
+                    activePaymentEvidenceConflicted: true,
+                  })
+                ),
+                claimCancellation,
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(DotyposService, {
+                cancelReservation,
+              } as unknown as typeof DotyposService.Service)
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(outcome).toBe("skipped");
+    expect(claimCancellation).not.toHaveBeenCalled();
+    expect(cancelReservation).not.toHaveBeenCalled();
+  });
+
   test("counts unconfirmed pending payment cleanup as skipped without cancelling", async () => {
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"

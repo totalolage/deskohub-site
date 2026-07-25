@@ -82,5 +82,11 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain(
       "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
     );
+    expect(section).toContain(
+      "workspaceReservations.activePaymentEvidenceConflicted"
+    );
+    expect(section).toContain(
+      "workspaceReservations.paymentReconciliationClaimExpiresAt"
+    );
   });
 });

@@ -262,6 +262,7 @@ const isReusableSubmissionReservation = (reservation: WorkspaceReservation) =>
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
   reservation.paymentState === "pending" ||
   reservation.paymentState === "paid" ||
+  reservation.activePaymentEvidenceConflicted ||
   reservation.reservationState !== "held";
 
 const enqueueReservationHoldCleanup = Effect.fn(

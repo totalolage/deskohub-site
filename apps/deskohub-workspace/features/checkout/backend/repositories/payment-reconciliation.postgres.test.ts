@@ -165,11 +165,21 @@ describe("payment reconciliation real PostgreSQL locking", () => {
         const lookupReleaseBarrier = new Promise<void>((resolve) => {
           releaseLookup = resolve;
         });
+        let historicalLookupStarted!: () => void;
+        const historicalLookupStartedBarrier = new Promise<void>((resolve) => {
+          historicalLookupStarted = resolve;
+        });
+        let releaseHistoricalLookup!: () => void;
+        const historicalLookupReleaseBarrier = new Promise<void>((resolve) => {
+          releaseHistoricalLookup = resolve;
+        });
         let providerLookupCount = 0;
         const verifyPaymentOutcome = mock(() =>
           Effect.gen(function* () {
             providerLookupCount += 1;
             if (providerLookupCount > 1) {
+              historicalLookupStarted();
+              yield* Effect.promise(() => historicalLookupReleaseBarrier);
               return {
                 status: "success",
                 provider: {
@@ -313,7 +323,7 @@ describe("payment reconciliation real PostgreSQL locking", () => {
         expect(replacement.outcome).toBe("created");
         if (replacement.outcome !== "created") return;
 
-        const lateEvidenceResult = await Effect.gen(function* () {
+        const lateEvidence = Effect.gen(function* () {
           const finalization = yield* ProviderPaymentFinalizationService;
           return yield* finalization.finalizePendingProviderPayment({
             orderId: "reservation-a",
@@ -325,6 +335,43 @@ describe("payment reconciliation real PostgreSQL locking", () => {
           Effect.runPromise
         );
 
+        await historicalLookupStartedBarrier;
+        try {
+          const competingHistoricalAdmission = await runRepository(
+            contenderPool,
+            Effect.gen(function* () {
+              const repository = yield* PaymentLifecycleRepository;
+              return yield* admit(repository, "provider-order-c");
+            })
+          );
+          expect(competingHistoricalAdmission).toEqual({
+            outcome: "unavailable",
+            reason: "active_attempt",
+          });
+
+          for (const query of [
+            `update workspace_reservations
+             set payment_state = 'paid'
+             where id = 'reservation-a'`,
+            `update workspace_reservations
+             set fulfillment_state = 'processing'
+             where id = 'reservation-a'`,
+            `update workspace_reservations
+             set active_payment_attempt_id = null
+             where id = 'reservation-a'`,
+            `update workspace_reservations
+             set reservation_state = 'cancelling'
+             where id = 'reservation-a'`,
+          ]) {
+            await expect(contenderPool.query(query)).rejects.toThrow(
+              "reservation is owned by authoritative provider reconciliation"
+            );
+          }
+        } finally {
+          releaseHistoricalLookup();
+        }
+
+        const lateEvidenceResult = await lateEvidence;
         expect(lateEvidenceResult).toBe("manual_review");
         expect(providerLookupCount).toBe(2);
         expect(verifyPaymentOutcome).toHaveBeenCalledTimes(2);

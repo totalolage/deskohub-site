@@ -135,49 +135,54 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             );
             return "not_pending";
           }
-          const isActiveAttempt =
-            reservation.activePaymentAttemptId === attempt.id;
           if (!isNexiPaymentAttempt(attempt) || !attempt.providerOrderId) {
             yield* Effect.logWarning(
               "Payment finalization returned not_verifiable"
             );
             return "not_verifiable";
           }
-          const admittedProviderOrderId = attempt.providerOrderId;
-
-          const reconciliation = isActiveAttempt
-            ? yield* paymentLifecycle.claimProviderReconciliation({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-              })
-            : undefined;
-          if (reconciliation && reconciliation.outcome !== "claimed") {
+          const reconciliation =
+            yield* paymentLifecycle.claimProviderReconciliation({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+            });
+          if (reconciliation.outcome !== "claimed") {
             return reconciliation.outcome === "manual_review"
               ? "manual_review"
               : reconciliation.outcome === "not_found"
                 ? "not_found"
                 : "not_pending";
           }
-          const reconciliationClaimId =
-            reconciliation?.outcome === "claimed"
-              ? reconciliation.claimId
-              : undefined;
-          const releaseReconciliation = reconciliationClaimId
-            ? paymentLifecycle.releaseProviderReconciliation({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-                claimId: reconciliationClaimId,
-              })
-            : Effect.void;
+          const reconciliationClaimId = reconciliation.claimId;
+          const isActiveAttempt = reconciliation.isActiveAttempt;
+          const ownedAttempt = reconciliation.attempt;
+          if (
+            !isNexiPaymentAttempt(ownedAttempt) ||
+            !ownedAttempt.providerOrderId
+          ) {
+            yield* paymentLifecycle.releaseProviderReconciliation({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+              claimId: reconciliationClaimId,
+            });
+            return "not_verifiable";
+          }
+          const admittedProviderOrderId = ownedAttempt.providerOrderId;
+          const releaseReconciliation =
+            paymentLifecycle.releaseProviderReconciliation({
+              id: ownedAttempt.id,
+              workspaceReservationId: reservation.id,
+              claimId: reconciliationClaimId,
+            });
 
           return yield* Effect.gen(function* () {
             const currency = yield* Schema.decodeUnknownEffect(
               NexiCurrencySchema
-            )(attempt.amount.currency).pipe(
+            )(ownedAttempt.amount.currency).pipe(
               Effect.tapError((cause) =>
                 Effect.logError("Payment finalization currency decode failed", {
                   orderId: input.orderId,
-                  paymentAttemptId: attempt.id,
+                  paymentAttemptId: ownedAttempt.id,
                   cause,
                 })
               ),
@@ -199,17 +204,17 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               .verifyPaymentOutcome({
                 orderId: admittedProviderOrderId,
                 correlationId: reservation.correlationId,
-                amount: String(attempt.amount.value),
+                amount: String(ownedAttempt.amount.value),
                 currency: getNexiCurrencyOverride() ?? currency,
-                ...(attempt.securityToken
-                  ? { securityToken: attempt.securityToken }
+                ...(ownedAttempt.securityToken
+                  ? { securityToken: ownedAttempt.securityToken }
                   : {}),
               })
               .pipe(
                 Effect.tapError((cause) =>
                   Effect.logError("Nexi payment outcome verification failed", {
                     orderId: reservation.id,
-                    paymentAttemptId: attempt.id,
+                    paymentAttemptId: ownedAttempt.id,
                     providerOrderId: admittedProviderOrderId,
                     cause,
                   })
@@ -232,7 +237,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               verification.mismatches.length > 0
             ) {
               yield* paymentLifecycle.recordEvidenceConflict({
-                id: attempt.id,
+                id: ownedAttempt.id,
                 workspaceReservationId: reservation.id,
                 conflictCodes: getProviderEvidenceConflictCodes(verification),
               });
@@ -254,10 +259,10 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             if (!isActiveAttempt) {
               if (
                 hasConflictingHistoricalTerminalEvidence({
-                  attemptState: attempt.state,
-                  lastProviderOperationId: attempt.lastProviderOperationId,
-                  lastProviderStatus: attempt.lastProviderStatus,
-                  failureCode: attempt.failureCode,
+                  attemptState: ownedAttempt.state,
+                  lastProviderOperationId: ownedAttempt.lastProviderOperationId,
+                  lastProviderStatus: ownedAttempt.lastProviderStatus,
+                  failureCode: ownedAttempt.failureCode,
                   verificationStatus: verification.status,
                   providerOperationId,
                   providerStatus,
@@ -268,7 +273,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 })
               ) {
                 yield* paymentLifecycle.recordEvidenceConflict({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   conflictCodes: ["provider_terminal_state"],
                 });
@@ -288,7 +293,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               yield* Effect.logInfo("Payment finalization mark paid started");
               const paidSettlement = yield* paymentLifecycle
                 .markPaid({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   webhookEventId: input.webhookEventId,
                   providerOperationId,
@@ -305,7 +310,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                     Effect.gen(function* () {
                       if (cause.reason === "provider_evidence_conflict") {
                         yield* paymentLifecycle.recordEvidenceConflict({
-                          id: attempt.id,
+                          id: ownedAttempt.id,
                           workspaceReservationId: reservation.id,
                           conflictCodes: ["provider_terminal_state"],
                         });
@@ -358,7 +363,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                         "Paid order fulfillment failed during finalization",
                         {
                           orderId: reservation.id,
-                          paymentAttemptId: attempt.id,
+                          paymentAttemptId: ownedAttempt.id,
                           cause,
                         }
                       )
@@ -382,7 +387,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               );
               const terminalSettlement = yield* paymentLifecycle
                 .markTerminal({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   state: terminalState,
                   failureCode: "nexi_payment_failed",
@@ -400,7 +405,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                     Effect.gen(function* () {
                       if (cause.reason === "provider_evidence_conflict") {
                         yield* paymentLifecycle.recordEvidenceConflict({
-                          id: attempt.id,
+                          id: ownedAttempt.id,
                           workspaceReservationId: reservation.id,
                           conflictCodes: ["provider_terminal_state"],
                         });

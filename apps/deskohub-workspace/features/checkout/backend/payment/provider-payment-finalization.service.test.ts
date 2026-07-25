@@ -31,6 +31,7 @@ const paymentLifecycleLayer = (
         outcome: "claimed" as const,
         claimId: "claim-id",
         attempt: pendingAttempt,
+        isActiveAttempt: true,
       }),
     releaseProviderReconciliation: () => Effect.void,
     recordEvidenceConflict: () => Effect.void,
@@ -441,9 +442,20 @@ describe("ProviderPaymentFinalizationService", () => {
       const { NexiService } = await import("@deskohub/nexi");
 
       const recordEvidenceConflict = mock(() => Effect.void);
+      const historicalAttempt = {
+        ...pendingAttempt,
+        ...scenario.attemptOverrides,
+        state: "failed" as const,
+      };
       const claimProviderReconciliation = mock(() =>
-        Effect.die("historical attempts must not claim settlement ownership")
+        Effect.succeed({
+          outcome: "claimed" as const,
+          claimId: "historical-claim-id",
+          attempt: historicalAttempt,
+          isActiveAttempt: false,
+        })
       );
+      const releaseProviderReconciliation = mock(() => Effect.void);
       const markPaid = mock(() =>
         Effect.die("historical attempts must not settle")
       );
@@ -476,16 +488,11 @@ describe("ProviderPaymentFinalizationService", () => {
                   ),
                 }),
                 Layer.succeed(PaymentAttemptRepository, {
-                  findById: mock(() =>
-                    Effect.succeed({
-                      ...pendingAttempt,
-                      ...scenario.attemptOverrides,
-                      state: "failed" as const,
-                    })
-                  ),
+                  findById: mock(() => Effect.succeed(historicalAttempt)),
                 } as unknown as PaymentAttemptRepositoryType),
                 paymentLifecycleLayer({
                   claimProviderReconciliation,
+                  releaseProviderReconciliation,
                   recordEvidenceConflict,
                   markPaid,
                   markTerminal,
@@ -511,7 +518,15 @@ describe("ProviderPaymentFinalizationService", () => {
         workspaceReservationId: "reservation-id",
         conflictCodes: ["provider_terminal_state"],
       });
-      expect(claimProviderReconciliation).not.toHaveBeenCalled();
+      expect(claimProviderReconciliation).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+      });
+      expect(releaseProviderReconciliation).toHaveBeenCalledWith({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        claimId: "historical-claim-id",
+      });
       expect(markPaid).not.toHaveBeenCalled();
       expect(markTerminal).not.toHaveBeenCalled();
     });
@@ -852,7 +867,15 @@ describe("ProviderPaymentFinalizationService", () => {
                   Effect.succeed({ ...pendingAttempt, securityToken: null })
                 ),
               } as unknown as PaymentAttemptRepositoryType),
-              paymentLifecycleLayer(),
+              paymentLifecycleLayer({
+                claimProviderReconciliation: () =>
+                  Effect.succeed({
+                    outcome: "claimed" as const,
+                    claimId: "claim-id",
+                    attempt: { ...pendingAttempt, securityToken: null },
+                    isActiveAttempt: true,
+                  }),
+              }),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               }),

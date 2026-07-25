@@ -86,6 +86,13 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           "Reservation hold cancellation active reservation loaded"
         );
 
+        if (active?.activePaymentEvidenceConflicted) {
+          yield* Effect.logWarning(
+            "Reservation hold cancellation skipped: payment evidence requires manual review"
+          );
+          return "skipped";
+        }
+
         if (
           active?.reservationState === "held" &&
           active.paymentState === "pending" &&
@@ -174,6 +181,12 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         if (!claimed || claimed.reservationState !== "cancelling") {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: claim not cancellable"
+          );
+          return "skipped";
+        }
+        if (claimed.activePaymentEvidenceConflicted) {
+          yield* Effect.logWarning(
+            "Reservation hold cancellation skipped: payment evidence requires manual review"
           );
           return "skipped";
         }

@@ -1069,6 +1069,47 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
+  test("rotates the checkout session instead of cancelling a conflicted hold", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const conflictedReservation = makeReusableReservation({
+      activePaymentEvidenceConflicted: true,
+    });
+    let currentLookupCount = 0;
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findCurrentByCheckoutSessionKey: mock(() =>
+        Effect.succeed(
+          currentLookupCount++ === 0 ? conflictedReservation : null
+        )
+      ),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "rotated-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          })
+        )
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.cancelReservation).not.toHaveBeenCalled();
+    expect(result.claimSupersessionCancellation).not.toHaveBeenCalled();
+    if (result.result.status !== "ready") throw new Error("Expected ready");
+    const token = new URL(
+      result.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
+      "attempt-id"
+    );
+  });
+
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"

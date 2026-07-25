@@ -23,6 +23,10 @@ import {
   discountCodeIdSchema,
   storedDiscountIdSchema,
 } from "@/features/discounts/persistence-contracts";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import {
   PaymentLifecycleRepository,
@@ -85,13 +89,20 @@ const DatabaseLive = Layer.effect(
   )
 ).pipe(Layer.provide(PgliteClient.layer()));
 
-const TestLive = Layer.merge(
+const TestLive = Layer.mergeAll(
   DatabaseLive,
-  PaymentLifecycleRepository.Live.pipe(Layer.provide(DatabaseLive))
+  PaymentLifecycleRepository.Live.pipe(Layer.provide(DatabaseLive)),
+  WorkspaceReservationRepositoryLive.pipe(Layer.provide(DatabaseLive))
 );
 
 const runRepositoryTest = <A, E>(
-  effect: Effect.Effect<A, E, PaymentLifecycleRepository | WorkspaceDatabase>
+  effect: Effect.Effect<
+    A,
+    E,
+    | PaymentLifecycleRepository
+    | WorkspaceDatabase
+    | WorkspaceReservationRepository
+  >
 ) =>
   Effect.runPromise(
     Effect.scoped(
@@ -285,6 +296,112 @@ describe("PaymentLifecycleRepository database behavior", () => {
           id: admitted.attempt.id,
           workspaceReservationId: "reconciliation-claim",
           claimId: takeover.claimId,
+        });
+      })
+    );
+  });
+
+  test("a historical reconciliation claim owns the reservation during evidence handling", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("historical-reconciliation-claim");
+
+        const historical = yield* admit(
+          repository,
+          "historical-reconciliation-claim",
+          { providerOrderId: "historical-provider-order" }
+        );
+        expect(historical.outcome).toBe("created");
+        if (historical.outcome !== "created") return;
+        yield* repository.markTerminal({
+          id: historical.attempt.id,
+          workspaceReservationId: "historical-reconciliation-claim",
+          state: "failed",
+          failureCode: "nexi_payment_failed",
+          providerOperationId: "historical-operation",
+          providerStatus: "DECLINED",
+        });
+
+        const active = yield* admit(
+          repository,
+          "historical-reconciliation-claim",
+          { providerOrderId: "active-provider-order" }
+        );
+        expect(active.outcome).toBe("created");
+        if (active.outcome !== "created") return;
+
+        const claim = yield* repository.claimProviderReconciliation({
+          id: historical.attempt.id,
+          workspaceReservationId: "historical-reconciliation-claim",
+        });
+        expect(claim.outcome).toBe("claimed");
+        if (claim.outcome !== "claimed") return;
+        expect(claim.attempt.id).toBe(historical.attempt.id);
+
+        expect(
+          (yield* repository
+            .markTerminal({
+              id: active.attempt.id,
+              workspaceReservationId: "historical-reconciliation-claim",
+              state: "failed",
+              failureCode: "competing_settlement",
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* db
+            .update(workspaceReservations)
+            .set({ fulfillmentState: "processing" })
+            .where(
+              eq(workspaceReservations.id, "historical-reconciliation-claim")
+            )
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* db
+            .update(workspaceReservations)
+            .set({ reservationState: "cancelling" })
+            .where(
+              eq(workspaceReservations.id, "historical-reconciliation-claim")
+            )
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          yield* admit(repository, "historical-reconciliation-claim", {
+            providerOrderId: "competing-provider-order",
+          })
+        ).toEqual({
+          outcome: "unavailable",
+          reason: "active_attempt",
+        });
+
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            paymentReconciliationClaimExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+          })
+          .where(
+            eq(workspaceReservations.id, "historical-reconciliation-claim")
+          );
+        const activeTakeover = yield* repository.claimProviderReconciliation({
+          id: active.attempt.id,
+          workspaceReservationId: "historical-reconciliation-claim",
+        });
+        expect(activeTakeover.outcome).toBe("claimed");
+        if (activeTakeover.outcome !== "claimed") return;
+        expect(activeTakeover.isActiveAttempt).toBeTrue();
+
+        yield* repository.releaseProviderReconciliation({
+          id: historical.attempt.id,
+          workspaceReservationId: "historical-reconciliation-claim",
+          claimId: claim.claimId,
+        });
+        yield* repository.releaseProviderReconciliation({
+          id: active.attempt.id,
+          workspaceReservationId: "historical-reconciliation-claim",
+          claimId: activeTakeover.claimId,
         });
       })
     );
@@ -1218,6 +1335,75 @@ describe("PaymentLifecycleRepository database behavior", () => {
             .where(eq(workspaceReservations.id, "conflicted-terminal-replay"))
             .pipe(Effect.result))._tag
         ).toBe("Failure");
+      })
+    );
+  });
+
+  test("database conflict fence rejects automatic hold cancellation transitions after terminal settlement", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        const reservations = yield* WorkspaceReservationRepository;
+
+        for (const reservationState of [
+          "hold_expired",
+          "cancelling",
+          "cancelled",
+        ] as const) {
+          const reservationId = `conflicted-${reservationState}`;
+          yield* seedReservation(reservationId);
+          const admission = yield* admit(repository, reservationId);
+          expect(admission.outcome).toBe("created");
+          if (admission.outcome !== "created") continue;
+
+          yield* repository.markTerminal({
+            id: admission.attempt.id,
+            workspaceReservationId: reservationId,
+            state: "failed",
+            failureCode: "authoritative_provider_failure",
+            providerOperationId: "terminal-operation",
+            providerStatus: "DECLINED",
+          });
+          yield* repository.recordEvidenceConflict({
+            id: admission.attempt.id,
+            workspaceReservationId: reservationId,
+            conflictCodes: ["provider_terminal_state"],
+          });
+          yield* db
+            .update(workspaceReservations)
+            .set({
+              reservationHoldExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+            })
+            .where(eq(workspaceReservations.id, reservationId));
+
+          expect(
+            yield* reservations.selectExpiredHoldDotyposReservationIds({
+              now: Temporal.Now.instant(),
+            })
+          ).not.toContain(`provider-${reservationId}`);
+
+          expect(
+            (yield* db
+              .update(workspaceReservations)
+              .set({ reservationState })
+              .where(eq(workspaceReservations.id, reservationId))
+              .pipe(Effect.result))._tag
+          ).toBe("Failure");
+          expect(
+            (yield* db
+              .select({
+                reservationState: workspaceReservations.reservationState,
+                evidenceConflicted:
+                  workspaceReservations.activePaymentEvidenceConflicted,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, reservationId)))[0]
+          ).toEqual({
+            reservationState: "held",
+            evidenceConflicted: true,
+          });
+        }
       })
     );
   });

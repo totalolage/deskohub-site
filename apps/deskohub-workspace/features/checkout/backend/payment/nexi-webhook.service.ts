@@ -249,7 +249,6 @@ export const NexiWebhookServiceLive = Layer.effect(
                 "Nexi webhook referenced an unverifiable provider payment attempt.",
             });
           }
-          const admittedProviderOrderId = attempt.providerOrderId;
           yield* Effect.logInfo("Nexi webhook payment attempt resolved");
           yield* Effect.annotateLogsScoped({
             eventId,
@@ -362,62 +361,13 @@ export const NexiWebhookServiceLive = Layer.effect(
             );
           }
           yield* Effect.logInfo("Nexi webhook workspace reservation resolved");
-          const isActiveAttempt =
-            reservation.activePaymentAttemptId === attempt.id;
 
-          const tokenCheck = checkNexiWebhookSecurityToken({
-            notificationSecurityToken: envelope.securityToken,
-            expectedSecurityToken: attempt.securityToken,
-          });
-          yield* Effect.logDebug("Nexi webhook security token checked");
-          if (tokenCheck.status === "mismatch") {
-            yield* Effect.logWarning(
-              "Nexi webhook security token mismatch detected"
-            );
-
-            return yield* failAfterMarkingEvent(
-              webhookEvents,
-              { type: "eventId", eventId },
-              new NexiWebhookProcessingError({
-                errorCode: "nexi_webhook_verification_mismatch",
-                eventId,
-                orderId: providerOrderId,
-                message: "Nexi webhook security token did not match.",
-              })
-            );
-          }
-
-          const currency = yield* Schema.decodeUnknownEffect(
-            NexiCurrencySchema
-          )(attempt.amount.currency).pipe(
-            Effect.mapError(
-              (cause) =>
-                new NexiWebhookProcessingError({
-                  errorCode: "nexi_webhook_invalid_currency",
-                  eventId,
-                  orderId: providerOrderId,
-                  message: "Payment attempt has an invalid Nexi currency.",
-                  cause,
-                })
-            ),
-            Effect.catch((error) =>
-              failAfterMarkingEvent(
-                webhookEvents,
-                { type: "eventId", eventId },
-                error
-              )
-            )
-          );
-          yield* Effect.annotateLogsScoped({ currency });
-          yield* Effect.logDebug("Nexi webhook currency decoded");
-
-          const reconciliation = isActiveAttempt
-            ? yield* paymentLifecycle.claimProviderReconciliation({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-              })
-            : undefined;
-          if (reconciliation && reconciliation.outcome !== "claimed") {
+          const reconciliation =
+            yield* paymentLifecycle.claimProviderReconciliation({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+            });
+          if (reconciliation.outcome !== "claimed") {
             return yield* failAfterMarkingEvent(
               webhookEvents,
               { type: "eventId", eventId },
@@ -430,26 +380,92 @@ export const NexiWebhookServiceLive = Layer.effect(
               })
             );
           }
-          const reconciliationClaimId =
-            reconciliation?.outcome === "claimed"
-              ? reconciliation.claimId
-              : undefined;
-          const releaseReconciliation = reconciliationClaimId
-            ? paymentLifecycle.releaseProviderReconciliation({
-                id: attempt.id,
-                workspaceReservationId: reservation.id,
-                claimId: reconciliationClaimId,
+          const reconciliationClaimId = reconciliation.claimId;
+          const isActiveAttempt = reconciliation.isActiveAttempt;
+          const ownedAttempt = reconciliation.attempt;
+          if (
+            !isNexiPaymentAttempt(ownedAttempt) ||
+            !ownedAttempt.providerOrderId
+          ) {
+            yield* paymentLifecycle.releaseProviderReconciliation({
+              id: attempt.id,
+              workspaceReservationId: reservation.id,
+              claimId: reconciliationClaimId,
+            });
+            return yield* failAfterMarkingEvent(
+              webhookEvents,
+              { type: "eventId", eventId },
+              new NexiWebhookProcessingError({
+                errorCode: "nexi_webhook_transition_failed",
+                eventId,
+                orderId: providerOrderId,
+                message:
+                  "Nexi webhook reconciliation ownership returned a non-Nexi attempt.",
               })
-            : Effect.void;
+            );
+          }
+          const admittedProviderOrderId = ownedAttempt.providerOrderId;
+          const releaseReconciliation =
+            paymentLifecycle.releaseProviderReconciliation({
+              id: ownedAttempt.id,
+              workspaceReservationId: reservation.id,
+              claimId: reconciliationClaimId,
+            });
 
           return yield* Effect.gen(function* () {
+            const tokenCheck = checkNexiWebhookSecurityToken({
+              notificationSecurityToken: envelope.securityToken,
+              expectedSecurityToken: ownedAttempt.securityToken,
+            });
+            yield* Effect.logDebug("Nexi webhook security token checked");
+            if (tokenCheck.status === "mismatch") {
+              yield* Effect.logWarning(
+                "Nexi webhook security token mismatch detected"
+              );
+
+              return yield* failAfterMarkingEvent(
+                webhookEvents,
+                { type: "eventId", eventId },
+                new NexiWebhookProcessingError({
+                  errorCode: "nexi_webhook_verification_mismatch",
+                  eventId,
+                  orderId: providerOrderId,
+                  message: "Nexi webhook security token did not match.",
+                })
+              );
+            }
+
+            const currency = yield* Schema.decodeUnknownEffect(
+              NexiCurrencySchema
+            )(ownedAttempt.amount.currency).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_invalid_currency",
+                    eventId,
+                    orderId: providerOrderId,
+                    message: "Payment attempt has an invalid Nexi currency.",
+                    cause,
+                  })
+              ),
+              Effect.catch((error) =>
+                failAfterMarkingEvent(
+                  webhookEvents,
+                  { type: "eventId", eventId },
+                  error
+                )
+              )
+            );
+            yield* Effect.annotateLogsScoped({ currency });
+            yield* Effect.logDebug("Nexi webhook currency decoded");
+
             const verificationInput = {
               orderId: admittedProviderOrderId,
               correlationId: reservation.correlationId,
-              amount: String(attempt.amount.value),
+              amount: String(ownedAttempt.amount.value),
               currency: getNexiCurrencyOverride() ?? currency,
-              ...(attempt.securityToken
-                ? { securityToken: attempt.securityToken }
+              ...(ownedAttempt.securityToken
+                ? { securityToken: ownedAttempt.securityToken }
                 : {}),
             };
             yield* Effect.logInfo("Nexi webhook payment verification started");
@@ -482,7 +498,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             const webhookEvidenceMatches = isNexiWebhookEvidenceConsistent({
               notification: envelope,
               expectedOrderId: admittedProviderOrderId,
-              expectedAmount: String(attempt.amount.value),
+              expectedAmount: String(ownedAttempt.amount.value),
               expectedCurrency: verificationInput.currency,
               verification,
             });
@@ -505,7 +521,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             ) {
               yield* paymentLifecycle
                 .recordEvidenceConflict({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   conflictCodes: getProviderEvidenceConflictCodes(verification),
                 })
@@ -545,10 +561,10 @@ export const NexiWebhookServiceLive = Layer.effect(
             if (!isActiveAttempt) {
               if (
                 hasConflictingHistoricalTerminalEvidence({
-                  attemptState: attempt.state,
-                  lastProviderOperationId: attempt.lastProviderOperationId,
-                  lastProviderStatus: attempt.lastProviderStatus,
-                  failureCode: attempt.failureCode,
+                  attemptState: ownedAttempt.state,
+                  lastProviderOperationId: ownedAttempt.lastProviderOperationId,
+                  lastProviderStatus: ownedAttempt.lastProviderStatus,
+                  failureCode: ownedAttempt.failureCode,
                   verificationStatus: verification.status,
                   providerOperationId,
                   providerStatus,
@@ -559,7 +575,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                 })
               ) {
                 yield* paymentLifecycle.recordEvidenceConflict({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   conflictCodes: ["provider_terminal_state"],
                 });
@@ -583,7 +599,7 @@ export const NexiWebhookServiceLive = Layer.effect(
 
               const transition = yield* paymentLifecycle
                 .markPaid({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   webhookEventId: eventId,
                   providerOperationId,
@@ -595,7 +611,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                   Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                     paymentLifecycle
                       .recordEvidenceConflict({
-                        id: attempt.id,
+                        id: ownedAttempt.id,
                         workspaceReservationId: reservation.id,
                         conflictCodes:
                           cause.reason === "provider_evidence_conflict"
@@ -664,7 +680,7 @@ export const NexiWebhookServiceLive = Layer.effect(
 
               const transition = yield* paymentLifecycle
                 .markTerminal({
-                  id: attempt.id,
+                  id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
                   state: terminalState,
                   failureCode: "nexi_payment_failed",
@@ -677,7 +693,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                   Effect.catchTag("PaymentLifecycleStateError", (cause) =>
                     paymentLifecycle
                       .recordEvidenceConflict({
-                        id: attempt.id,
+                        id: ownedAttempt.id,
                         workspaceReservationId: reservation.id,
                         conflictCodes:
                           cause.reason === "provider_evidence_conflict"
