@@ -390,10 +390,9 @@ describe("ResendWebhookService", () => {
       WorkspaceCheckoutNetworkDetailsService,
       workspaceCheckoutPlaceholderNetworkDetails,
     } = await import("./network-details.service");
-    const {
-      WorkspaceReservationEmailService,
-      WorkspaceReservationEmailServiceLive,
-    } = await import("./workspace-reservation-email.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
     const sentMessages: EmailMessage[] = [];
     const send = mock((message: EmailMessage) => {
       sentMessages.push(message);
@@ -421,18 +420,25 @@ describe("ResendWebhookService", () => {
         reservation: {
           id: "reservation-id",
           locale: "en-US",
-          productTier: "test-tier",
-          productCoffee: false,
-          productMonitorOption: null,
+          reservationDetails: {
+            kind: "cowork",
+            entryTier: "basic",
+            coffee: false,
+          },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
           customerAccessCode: "ACCESS-123",
           customer: {
+            _cloudId: "customer-id",
             email: "customer@example.com",
             firstName: "Ada",
             lastName: "Lovelace",
             companyName: null,
             phone: "123456789",
+            points: null,
+            flags: "0",
+            display: true,
+            deleted: false,
           },
           reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
           reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),
@@ -452,11 +458,11 @@ describe("ResendWebhookService", () => {
               },
             ],
           },
-        } as never,
+        },
       });
     }).pipe(
       Effect.provide(
-        WorkspaceReservationEmailServiceLive.pipe(
+        WorkspaceReservationEmailService.Live.pipe(
           Layer.provide(
             Layer.mergeAll(
               Layer.succeed(EmailServiceTag, emailService),
@@ -728,6 +734,11 @@ describe("ResendWebhookService", () => {
     const sendPaidReservationEmails = mock(() => Effect.void);
     const emailReservation = {
       ...claimedReservation,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
       customer: { email: "customer@example.com" },
       reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
       reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),

@@ -12,7 +12,7 @@ import type {
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
-import { Context, Effect, Layer, Option } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import { generateSvgPngBuffer, type SvgPngTextOverlay } from "osm";
 import { env } from "@/env";
 import {
@@ -22,17 +22,18 @@ import {
   workspaceTableMapLabelWidth,
 } from "@/features/checkout/components/workspace-table-map-view";
 import {
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
-} from "@/features/checkout/product-catalog";
-import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -54,16 +55,11 @@ import {
   workspaceCheckoutPlaceholderNetworkDetails,
 } from "./network-details.service";
 
-export interface WorkspaceReservationEmailService {
+export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
-
-export const WorkspaceReservationEmailService =
-  Context.Service<WorkspaceReservationEmailService>(
-    "WorkspaceReservationEmailService"
-  );
 
 const workspaceRecipient: EmailRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
@@ -297,40 +293,73 @@ const createWorkspaceTableMapAttachment = (
     )
   );
 
+const createCoworkReservationDetailRows = (
+  reservation: WorkspaceReservationDetails,
+  details: StoredCoworkReservationDetails,
+  locale: Locale
+): EmailDetailRow[] => [
+  [
+    m.reservationEmailTierLabel({}, { locale }),
+    getWorkspaceProductTierTitle(details.entryTier, locale),
+  ],
+  [
+    m.reservationEmailDateLabel({}, { locale }),
+    formatReservationDisplayDate(reservation.reservedFrom, locale),
+  ],
+  [
+    m.reservationEmailCoffeeLabel({}, { locale }),
+    details.coffee
+      ? m.checkoutStatusYes({}, { locale })
+      : m.checkoutStatusNo({}, { locale }),
+  ],
+  ...Match.value(details).pipe(
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: () => [],
+      plus: () => [],
+      profi: ({ monitorOption }) => [
+        [
+          m.reservationEmailMonitorsLabel({}, { locale }),
+          getWorkspaceProductMonitorTitle(monitorOption, locale),
+        ] satisfies EmailDetailRow,
+      ],
+    })
+  ),
+];
+
+const createMeetingRoomReservationDetailRows = (
+  reservation: WorkspaceReservationDetails,
+  locale: Locale
+): EmailDetailRow[] => [
+  [
+    m.reservationEmailReservationLabel({}, { locale }),
+    getWorkspaceMeetingRoomProductTitle(locale),
+  ],
+  [
+    m.reservationEmailDateLabel({}, { locale }),
+    formatReservationDisplayDate(reservation.reservedFrom, locale),
+  ],
+  [
+    m.reservationEmailTimeLabel({}, { locale }),
+    formatReservationDisplayTimeRange(
+      reservation.reservedFrom,
+      reservation.reservedUntil,
+      locale
+    ),
+  ],
+];
+
 const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
   locale: Locale
-): EmailDetailRow[] => {
-  const productTier = reservation.productTier ?? undefined;
-  const monitorOption = reservation.productMonitorOption ?? undefined;
-  const rows: EmailDetailRow[] = [
-    [
-      m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDisplayDate(reservation.reservedFrom, locale),
-    ],
-    [
-      m.reservationEmailTierLabel({}, { locale }),
-      isWorkspaceProductTier(productTier)
-        ? getWorkspaceProductTierTitle(productTier, locale)
-        : (productTier ?? ""),
-    ],
-    [
-      m.reservationEmailCoffeeLabel({}, { locale }),
-      reservation.productCoffee
-        ? m.checkoutStatusYes({}, { locale })
-        : m.checkoutStatusNo({}, { locale }),
-    ],
-  ];
-
-  if (isWorkspaceProductMonitorOption(monitorOption)) {
-    rows.splice(2, 0, [
-      m.reservationEmailMonitorsLabel({}, { locale }),
-      getWorkspaceProductMonitorTitle(monitorOption, locale),
-    ]);
-  }
-
-  return rows;
-};
+): EmailDetailRow[] =>
+  Match.value(reservation.reservationDetails).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (details) =>
+        createCoworkReservationDetailRows(reservation, details, locale),
+      "meeting-room": () =>
+        createMeetingRoomReservationDetailRows(reservation, locale),
+    })
+  );
 
 const appendReservationReferenceRows = (
   rows: EmailDetailRow[],
@@ -863,192 +892,199 @@ export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
   });
 };
 
-export const WorkspaceReservationEmailServiceLive = Layer.effect(
+export class WorkspaceReservationEmailService extends Context.Service<
   WorkspaceReservationEmailService,
-  Effect.gen(function* () {
-    const emailService = yield* EmailServiceTag;
-    const emailConfig = yield* EmailConfigTag;
-    const networkDetailsService = yield* WorkspaceCheckoutNetworkDetailsService;
+  IWorkspaceReservationEmailService
+>()(
+  "@deskohub-workspace/checkout/fulfillment/WorkspaceReservationEmailService"
+) {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const emailService = yield* EmailServiceTag;
+      const emailConfig = yield* EmailConfigTag;
+      const networkDetailsService =
+        yield* WorkspaceCheckoutNetworkDetailsService;
 
-    return WorkspaceReservationEmailService.of({
-      sendPaidReservationEmails: Effect.fn(
-        "workspaceReservationEmail.sendPaidReservationEmails"
-      )(function* ({ reservation }) {
-        const locale = getReservationLocale(reservation.locale);
-        const customer = reservation.customer;
-        const tableName = reservation.tableName;
-        const customerName = getCustomerName(customer);
-        const customerEmail = customer.email?.trim();
-        const networkDetails =
-          yield* networkDetailsService.resolveCustomerNetworkDetails({
+      return {
+        sendPaidReservationEmails: Effect.fn(
+          "WorkspaceReservationEmailService.sendPaidReservationEmails"
+        )(function* ({ reservation }) {
+          const locale = getReservationLocale(reservation.locale);
+          const customer = reservation.customer;
+          const tableName = reservation.tableName;
+          const customerName = getCustomerName(customer);
+          const customerEmail = customer.email?.trim();
+          const networkDetails =
+            yield* networkDetailsService.resolveCustomerNetworkDetails({
+              reservation,
+            });
+          const customerRows = createReservationRows(reservation, locale);
+          const internalRows = createInternalReservationRows(
             reservation,
-          });
-        const customerRows = createReservationRows(reservation, locale);
-        const internalRows = createInternalReservationRows(
-          reservation,
-          customer,
-          internalNotificationLocale
-        );
-        const metadata = {
-          deploymentEnvironment: env.VERCEL_ENV,
-          source: "workspace-paid-fulfillment",
-          workspaceReservationId: reservation.id,
-          dotyposReservationId: reservation.dotyposReservationId,
-          dotyposCustomerId: reservation.dotyposCustomerId,
-          dotyposReservationStartDate: reservation.reservedFrom.toString(),
-          dotyposReservationEndDate: reservation.reservedUntil.toString(),
-        };
-
-        if (customerEmail) {
-          const locationMapAttachment =
-            yield* createWorkspaceLocationMapAttachment().pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning(
-                  "Workspace reservation location map attachment skipped",
-                  {
-                    cause,
-                    workspaceReservationId: reservation.id,
-                  }
-                ).pipe(Effect.as(undefined))
-              )
-            );
-          const networkQrAttachment = yield* createWorkspaceNetworkQrAttachment(
-            networkDetails
-          ).pipe(
-            Effect.catch((cause) =>
-              Effect.logWarning(
-                "Workspace reservation Wi-Fi QR attachment skipped",
-                {
-                  cause,
-                  workspaceReservationId: reservation.id,
-                }
-              ).pipe(Effect.as(undefined))
-            )
+            customer,
+            internalNotificationLocale
           );
-          const tableMapAttachment = reservation.tableMap
-            ? yield* createWorkspaceTableMapAttachment(
-                reservation.tableMap,
-                locale
-              ).pipe(
+          const metadata = {
+            deploymentEnvironment: env.VERCEL_ENV,
+            source: "workspace-paid-fulfillment",
+            workspaceReservationId: reservation.id,
+            dotyposReservationId: reservation.dotyposReservationId,
+            dotyposCustomerId: reservation.dotyposCustomerId,
+            dotyposReservationStartDate: reservation.reservedFrom.toString(),
+            dotyposReservationEndDate: reservation.reservedUntil.toString(),
+          };
+
+          if (customerEmail) {
+            const locationMapAttachment =
+              yield* createWorkspaceLocationMapAttachment().pipe(
                 Effect.catch((cause) =>
                   Effect.logWarning(
-                    "Workspace reservation table map attachment skipped",
+                    "Workspace reservation location map attachment skipped",
                     {
                       cause,
                       workspaceReservationId: reservation.id,
                     }
                   ).pipe(Effect.as(undefined))
                 )
+              );
+            const networkQrAttachment =
+              yield* createWorkspaceNetworkQrAttachment(networkDetails).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning(
+                    "Workspace reservation Wi-Fi QR attachment skipped",
+                    {
+                      cause,
+                      workspaceReservationId: reservation.id,
+                    }
+                  ).pipe(Effect.as(undefined))
+                )
+              );
+            const tableMapAttachment = reservation.tableMap
+              ? yield* createWorkspaceTableMapAttachment(
+                  reservation.tableMap,
+                  locale
+                ).pipe(
+                  Effect.catch((cause) =>
+                    Effect.logWarning(
+                      "Workspace reservation table map attachment skipped",
+                      {
+                        cause,
+                        workspaceReservationId: reservation.id,
+                      }
+                    ).pipe(Effect.as(undefined))
+                  )
+                )
+              : undefined;
+            const heading = createCustomerAccessHeading(reservation, locale);
+            const followUp = m.reservationEmailCustomerFollowUp(
+              { email: workspaceSiteConstants.contact.infoEmail },
+              { locale }
+            );
+            const customerMessage: EmailMessage = {
+              from: emailConfig.defaultFrom,
+              to: { email: customerEmail },
+              replyTo: workspaceRecipient,
+              subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
+              html: createEmailHtml({
+                heading,
+                locale,
+                accessCode: reservation.customerAccessCode,
+                networkDetails,
+                networkQrImageSrc: networkQrAttachment
+                  ? `cid:${networkQrAttachment.contentId}`
+                  : undefined,
+                tableName,
+                tableMapImageSrc: tableMapAttachment
+                  ? `cid:${tableMapAttachment.contentId}`
+                  : undefined,
+                locationMapContentId: locationMapAttachment?.contentId,
+                rows: customerRows,
+                followUp,
+              }),
+              text: createEmailText({
+                heading,
+                locale,
+                accessCode: reservation.customerAccessCode,
+                networkDetails,
+                tableName,
+                rows: customerRows,
+                followUp,
+              }),
+              attachments: [
+                locationMapAttachment,
+                tableMapAttachment,
+                networkQrAttachment,
+              ].filter((attachment): attachment is EmailAttachment =>
+                Boolean(attachment)
+              ),
+              tags: ["workspace-paid-reservation-access"],
+              metadata,
+            };
+
+            yield* emailService.send(customerMessage).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Workspace reservation customer email failed", {
+                  cause,
+                  workspaceReservationId: reservation.id,
+                })
+              ),
+              Effect.asVoid
+            );
+          } else {
+            yield* Effect.logWarning(
+              "Workspace reservation customer email skipped: missing customer email",
+              { workspaceReservationId: reservation.id }
+            );
+            return yield* Effect.fail(
+              new EmailServiceError(
+                "Workspace reservation customer email is missing."
               )
-            : undefined;
-          const heading = createCustomerAccessHeading(reservation, locale);
-          const followUp = m.reservationEmailCustomerFollowUp(
-            { email: workspaceSiteConstants.contact.infoEmail },
-            { locale }
+            );
+          }
+
+          const internalHeading = m.checkoutEmailInternalPaidReservationHeading(
+            {},
+            { locale: internalNotificationLocale }
           );
-          const customerMessage: EmailMessage = {
+          const internalBody = m.checkoutEmailInternalPaidReservationBody(
+            {},
+            { locale: internalNotificationLocale }
+          );
+          const internalMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
-            to: { email: customerEmail },
-            replyTo: workspaceRecipient,
-            subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
+            to: workspaceRecipient,
+            replyTo: customerEmail
+              ? { email: customerEmail, name: customerName }
+              : undefined,
+            subject: createInternalReservationSubject(reservation),
             html: createEmailHtml({
-              heading,
-              locale,
-              accessCode: reservation.customerAccessCode,
-              networkDetails,
-              networkQrImageSrc: networkQrAttachment
-                ? `cid:${networkQrAttachment.contentId}`
-                : undefined,
-              tableName,
-              tableMapImageSrc: tableMapAttachment
-                ? `cid:${tableMapAttachment.contentId}`
-                : undefined,
-              locationMapContentId: locationMapAttachment?.contentId,
-              rows: customerRows,
-              followUp,
+              heading: internalHeading,
+              body: internalBody,
+              locale: internalNotificationLocale,
+              rows: internalRows,
             }),
             text: createEmailText({
-              heading,
-              locale,
-              accessCode: reservation.customerAccessCode,
-              networkDetails,
-              tableName,
-              rows: customerRows,
-              followUp,
+              heading: internalHeading,
+              body: internalBody,
+              locale: internalNotificationLocale,
+              rows: internalRows,
             }),
-            attachments: [
-              locationMapAttachment,
-              tableMapAttachment,
-              networkQrAttachment,
-            ].filter((attachment): attachment is EmailAttachment =>
-              Boolean(attachment)
-            ),
-            tags: ["workspace-paid-reservation-access"],
+            tags: ["workspace-paid-reservation-internal"],
             metadata,
           };
 
-          yield* emailService.send(customerMessage).pipe(
+          yield* emailService.send(internalMessage).pipe(
             Effect.tapError((cause) =>
-              Effect.logError("Workspace reservation customer email failed", {
+              Effect.logWarning("Workspace reservation internal email failed", {
                 cause,
                 workspaceReservationId: reservation.id,
               })
             ),
-            Effect.asVoid
+            Effect.ignore
           );
-        } else {
-          yield* Effect.logWarning(
-            "Workspace reservation customer email skipped: missing customer email",
-            { workspaceReservationId: reservation.id }
-          );
-          return yield* Effect.fail(
-            new EmailServiceError(
-              "Workspace reservation customer email is missing."
-            )
-          );
-        }
-
-        const internalHeading = m.checkoutEmailInternalPaidReservationHeading(
-          {},
-          { locale: internalNotificationLocale }
-        );
-        const internalBody = m.checkoutEmailInternalPaidReservationBody(
-          {},
-          { locale: internalNotificationLocale }
-        );
-        const internalMessage: EmailMessage = {
-          from: emailConfig.defaultFrom,
-          to: workspaceRecipient,
-          replyTo: customerEmail
-            ? { email: customerEmail, name: customerName }
-            : undefined,
-          subject: createInternalReservationSubject(reservation),
-          html: createEmailHtml({
-            heading: internalHeading,
-            body: internalBody,
-            locale: internalNotificationLocale,
-            rows: internalRows,
-          }),
-          text: createEmailText({
-            heading: internalHeading,
-            body: internalBody,
-            locale: internalNotificationLocale,
-            rows: internalRows,
-          }),
-          tags: ["workspace-paid-reservation-internal"],
-          metadata,
-        };
-
-        yield* emailService.send(internalMessage).pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning("Workspace reservation internal email failed", {
-              cause,
-              workspaceReservationId: reservation.id,
-            })
-          ),
-          Effect.ignore
-        );
-      }),
-    });
-  })
-);
+        }),
+      };
+    })
+  );
+}

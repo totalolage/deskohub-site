@@ -18,10 +18,7 @@ import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
-import {
-  WorkspaceReservationEmailService,
-  WorkspaceReservationEmailServiceLive,
-} from "./workspace-reservation-email.service";
+import { WorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"
@@ -336,7 +333,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
   WorkspacePaidFulfillmentServiceLive.pipe(
     Layer.provide(
       Layer.provideMerge(
-        WorkspaceReservationEmailServiceLive,
+        WorkspaceReservationEmailService.Live,
         Layer.provideMerge(
           Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
           WorkspaceCheckoutNetworkDetailsService.Live
