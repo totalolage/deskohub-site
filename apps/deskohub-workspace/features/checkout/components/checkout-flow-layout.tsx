@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -65,9 +64,9 @@ export function CheckoutSteps({
         return (
           <li key={step.key} aria-current={isCurrentStep ? "step" : undefined}>
             {href ? (
-              <Link className={className} href={href}>
+              <a className={className} href={href}>
                 {content}
-              </Link>
+              </a>
             ) : (
               <div className={className}>{content}</div>
             )}
