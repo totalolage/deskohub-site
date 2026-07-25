@@ -236,6 +236,37 @@ describe("CheckoutPayPage discount urgency", () => {
       view.getAllByText("Hurry — Summer sale ends in 42 minutes")
     ).toHaveLength(1);
   });
+
+  test("explains when a displayed discount expires", async () => {
+    jest.useFakeTimers({
+      now: new Date("2026-08-02T09:59:59.000Z"),
+    });
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildDiscountedQuote({
+      countdownStartsAt: "2026-08-02T09:00:00.000Z",
+      expiresAt: "2026-08-02T10:00:00.000Z",
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    expect(
+      view.getByText("Hurry — Summer sale ends in 1 second")
+    ).toBeDefined();
+
+    act(() => jest.advanceTimersByTime(1000));
+
+    expect(
+      view.getByText(
+        "Summer sale has ended. We’ll recheck your total before starting payment."
+      )
+    ).toBeDefined();
+  });
 });
 
 function buildDiscountedQuote({

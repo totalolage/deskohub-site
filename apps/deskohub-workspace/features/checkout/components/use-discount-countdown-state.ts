@@ -3,17 +3,17 @@
 import { useEffect, useState } from "react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
 import {
-  type DiscountCountdown,
+  type DiscountCountdownState,
   getDiscountCountdownState,
 } from "@/features/checkout/discount-countdown";
 
 const maximumTimeoutMilliseconds = 2_147_000_000;
 
-export function useDiscountCountdown(
+export function useDiscountCountdownState(
   discount: CheckoutSummaryDiscount["discount"]
 ) {
   const { countdownStartsAt, expiresAt } = discount;
-  const [countdown, setCountdown] = useState<DiscountCountdown>();
+  const [state, setState] = useState<DiscountCountdownState>();
 
   useEffect(() => {
     if (!(countdownStartsAt && expiresAt)) {
@@ -27,23 +27,32 @@ export function useDiscountCountdown(
         { countdownStartsAt, expiresAt },
         Temporal.Now.instant()
       );
-      setCountdown(state.countdown);
+      setState(state);
       return state;
     };
 
     const scheduleCountdown = () => {
       const state = updateCountdown();
-      if (state.refreshEveryMilliseconds !== undefined) {
+      if (
+        state.status === "active" &&
+        state.refreshEveryMilliseconds !== undefined
+      ) {
         interval = setInterval(() => {
           const nextState = updateCountdown();
-          if (nextState.refreshEveryMilliseconds === undefined) {
+          if (
+            nextState.status !== "active" ||
+            nextState.refreshEveryMilliseconds === undefined
+          ) {
             clearInterval(interval);
             interval = undefined;
           }
         }, state.refreshEveryMilliseconds);
         return;
       }
-      if (state.refreshAfterMilliseconds !== undefined) {
+      if (
+        (state.status === "scheduled" || state.status === "active") &&
+        state.refreshAfterMilliseconds !== undefined
+      ) {
         timeout = setTimeout(
           scheduleCountdown,
           Math.min(state.refreshAfterMilliseconds, maximumTimeoutMilliseconds)
@@ -59,5 +68,5 @@ export function useDiscountCountdown(
     };
   }, [countdownStartsAt, expiresAt]);
 
-  return countdownStartsAt && expiresAt ? countdown : undefined;
+  return countdownStartsAt && expiresAt ? state : undefined;
 }

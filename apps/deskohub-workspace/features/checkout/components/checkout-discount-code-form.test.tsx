@@ -96,9 +96,11 @@ describe("CheckoutDiscountCodeForm", () => {
       />
     );
 
-    expect(
-      view.getByText(m.checkoutDiscountCodeUnavailable({}, { locale: "en-US" }))
-    ).toBeDefined();
+    const error = view.getByRole("alert");
+    expect(error.textContent).toBe(
+      m.checkoutDiscountCodeUnavailable({}, { locale: "en-US" })
+    );
+    expect(error.className).toContain("bg-burned-orange/8");
     expect(view.getByRole("textbox").getAttribute("aria-invalid")).toBe("true");
   });
 
