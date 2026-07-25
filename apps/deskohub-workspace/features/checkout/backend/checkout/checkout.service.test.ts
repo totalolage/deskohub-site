@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type {
@@ -305,6 +306,7 @@ type CheckoutHarnessOptions = {
   readonly createAttempt?: ReturnType<typeof mock>;
   readonly attachProviderSession?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
+  readonly finalizePendingProviderPayment?: ReturnType<typeof mock>;
 };
 
 const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
@@ -323,6 +325,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   );
   const { PaymentLifecycleRepository } = await import(
     "../repositories/payment-lifecycle.repository"
+  );
+  const { ProviderPaymentFinalizationService } = await import(
+    "../payment/provider-payment-finalization.service"
   );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
@@ -446,6 +451,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
         hostedPage: "https://payments.example/hosted",
       })
     );
+  const finalizePendingProviderPayment =
+    options.finalizePendingProviderPayment ??
+    mock(() => Effect.succeed("pending" as const));
   const nexi = {
     createHostedPaymentPage,
     verifyPaymentOutcome: mock(() => Effect.die("not used")),
@@ -501,6 +509,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             }),
             Layer.succeed(PaymentAttemptRepository, paymentAttempts),
             Layer.succeed(PaymentLifecycleRepository, paymentLifecycle),
+            Layer.succeed(ProviderPaymentFinalizationService, {
+              finalizePendingProviderPayment,
+            }),
             Layer.succeed(PostHogEventService, {
               capture: mock(() => Effect.void),
             }),
@@ -523,6 +534,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
+    finalizePendingProviderPayment,
   };
 };
 
@@ -1063,6 +1075,38 @@ describe("CheckoutService", () => {
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
   });
 
+  test("reconciles an expired ambiguous start without issuing another HPP POST", async () => {
+    const orderId = "reservation-hpp-reconciliation";
+    const attempt = makeAttempt({
+      id: "ambiguous-attempt",
+      orderId,
+      state: "created",
+    });
+    const createAttempt = mock(() =>
+      Effect.succeed({
+        outcome: "reconciling" as const,
+        attempt,
+      })
+    );
+    const finalizePendingProviderPayment = mock(() =>
+      Effect.succeed("pending" as const)
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      createAttempt,
+      finalizePendingProviderPayment,
+    });
+
+    expect(await Effect.runPromise(harness.effect)).toEqual({
+      status: "in_progress",
+    });
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(finalizePendingProviderPayment).toHaveBeenCalledWith({
+      orderId,
+      paymentAttemptId: attempt.id,
+    });
+  });
+
   test("does not start a second provider request while an ambiguous start lease is active", async () => {
     const activeAttempt = makeAttempt({
       id: "ambiguous-attempt",
@@ -1138,6 +1182,47 @@ describe("CheckoutService", () => {
     expect(result).toEqual({ status: "in_progress" });
     expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
     expect(attachProviderSession).toHaveBeenCalledTimes(1);
+  });
+
+  test("retries only the idempotent local attach after an ambiguous database exit", async () => {
+    const orderId = "reservation-provider-attach-retry";
+    let calls = 0;
+    const attachProviderSession = mock(() =>
+      Effect.suspend(() => {
+        calls += 1;
+        if (calls === 1) {
+          return Effect.fail(
+            new EffectDrizzleQueryError({
+              query: "update payment attempt",
+              params: [],
+              cause: new Error("database result unavailable"),
+            })
+          );
+        }
+        return Effect.succeed({
+          outcome: "attached" as const,
+          attempt: makeAttempt({
+            id: `attempt-${orderId}`,
+            orderId,
+            state: "pending",
+            securityToken: "opaque-value",
+            providerRedirectUrl: "https://payments.example/hosted",
+          }),
+        });
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      attachProviderSession,
+    });
+
+    expect(await Effect.runPromise(harness.effect)).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(attachProviderSession).toHaveBeenCalledTimes(1);
+    expect(calls).toBe(2);
   });
 
   test("requires legal acceptance before admission or provider start", async () => {

@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import type { EventMessage } from "posthog-node";
 import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
@@ -17,6 +18,9 @@ describe("PostHogEventService", () => {
   test("captures lifecycle events with censored Effect context", async () => {
     const { makePostHogEventService } = await import("./posthog-event.service");
     const messages: EventMessage[] = [];
+    const hostedPageMarker = randomUUID();
+    const credentialMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const service = makePostHogEventService({
       client: {
         captureImmediate: (message) => {
@@ -35,6 +39,9 @@ describe("PostHogEventService", () => {
           properties: {
             reservation_id: "reservation-id",
             token: "explicit-secret",
+            hostedPage,
+            providerRedirectUrl: hostedPage,
+            securityToken: credentialMarker,
           },
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
           uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
@@ -49,6 +56,7 @@ describe("PostHogEventService", () => {
             attributes: {
               paymentAttemptId: "payment-attempt-id",
               secret: "span-secret",
+              hppUrl: hostedPage,
             },
           })
         )
@@ -70,13 +78,20 @@ describe("PostHogEventService", () => {
       reservation_id: "reservation-id",
       sessionId: "session-id",
       token: CENSORED_LOG_VALUE,
+      hostedPage: CENSORED_LOG_VALUE,
+      providerRedirectUrl: CENSORED_LOG_VALUE,
+      securityToken: CENSORED_LOG_VALUE,
     });
     expect(messages[0].properties?.effect).toMatchObject({
       spanAttributes: {
         paymentAttemptId: "payment-attempt-id",
         secret: CENSORED_LOG_VALUE,
+        hppUrl: CENSORED_LOG_VALUE,
       },
     });
+    const serialized = JSON.stringify(messages);
+    expect(serialized).not.toContain(hostedPageMarker);
+    expect(serialized).not.toContain(credentialMarker);
   });
 
   test("does nothing without a configured client", async () => {

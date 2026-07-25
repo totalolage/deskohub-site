@@ -374,7 +374,7 @@ describe("ProviderPaymentFinalizationService", () => {
     });
   }
 
-  test("returns not_verifiable for pending attempts missing local verification data", async () => {
+  test("verifies an unattached created attempt by stable provider order identity", async () => {
     const {
       ProviderPaymentFinalizationService,
       ProviderPaymentFinalizationServiceLive,
@@ -393,7 +393,9 @@ describe("ProviderPaymentFinalizationService", () => {
     );
     const { NexiService } = await import("@deskohub/nexi");
 
-    const verifyPaymentOutcome = mock(() => Effect.die("not used"));
+    const verifyPaymentOutcome = mock(() =>
+      Effect.succeed(buildVerification("pending"))
+    );
     const result = await Effect.gen(function* () {
       const service = yield* ProviderPaymentFinalizationService;
       return yield* service.finalizePendingProviderPayment({
@@ -430,8 +432,13 @@ describe("ProviderPaymentFinalizationService", () => {
       Effect.runPromise
     );
 
-    expect(result).toBe("not_verifiable");
-    expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+    expect(result).toBe("pending");
+    expect(verifyPaymentOutcome).toHaveBeenCalledWith({
+      orderId: "provider-order-id",
+      correlationId: "correlation-id",
+      amount: "35000",
+      currency: "EUR",
+    });
   });
 
   test("propagates lifecycle persistence failures instead of returning not_pending", async () => {

@@ -343,23 +343,6 @@ export const NexiWebhookServiceLive = Layer.effect(
             );
           }
 
-          if (!attempt.securityToken) {
-            yield* Effect.logWarning(
-              "Nexi webhook payment attempt is missing security token"
-            );
-
-            return yield* failAfterMarkingEvent(
-              webhookEvents,
-              { type: "eventId", eventId },
-              new NexiWebhookProcessingError({
-                errorCode: "nexi_webhook_missing_security_token",
-                eventId,
-                orderId: providerOrderId,
-                message: "Payment attempt has no stored Nexi security token.",
-              })
-            );
-          }
-
           const currency = yield* Schema.decodeUnknownEffect(
             NexiCurrencySchema
           )(attempt.amount.currency).pipe(
@@ -389,7 +372,9 @@ export const NexiWebhookServiceLive = Layer.effect(
             correlationId: reservation.correlationId,
             amount: String(attempt.amount.value),
             currency: getNexiCurrencyOverride() ?? currency,
-            securityToken: attempt.securityToken,
+            ...(attempt.securityToken
+              ? { securityToken: attempt.securityToken }
+              : {}),
           };
           yield* Effect.logInfo("Nexi webhook payment verification started");
 

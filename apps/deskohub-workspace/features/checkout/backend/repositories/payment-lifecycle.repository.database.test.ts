@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import * as PgliteClient from "@effect/sql-pglite/PgliteClient";
 import { eq, sql } from "drizzle-orm";
 import { makeWithDefaults } from "drizzle-orm/effect-pglite";
@@ -356,20 +357,20 @@ describe("PaymentLifecycleRepository database behavior", () => {
         const recovered = yield* admit(repository, "gated-new", {
           allowNewAdmission: false,
         });
-        expect(recovered.outcome).toBe("created");
-        if (recovered.outcome !== "created") return;
+        expect(recovered.outcome).toBe("reconciling");
+        if (recovered.outcome !== "reconciling") return;
         expect(recovered.attempt.id).toBe(first.attempt.id);
         expect(recovered.attempt.providerOrderId).toBe(
           first.attempt.providerOrderId
         );
-        expect(recovered.providerStartLeaseId).not.toBe(
+        expect(recovered.attempt.providerStartLeaseId).toBe(
           first.providerStartLeaseId
         );
       })
     );
   });
 
-  test("a delayed old provider-start failure cannot terminalize a takeover or attachment", async () => {
+  test("an expired start reconciles without takeover and a delayed owner cannot overwrite settlement", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {
         const { db } = yield* WorkspaceDatabase;
@@ -386,25 +387,17 @@ describe("PaymentLifecycleRepository database behavior", () => {
           where id = ${oldOwner.attempt.id}
         `);
 
-        const newOwner = yield* admit(repository, "lease-takeover", {
+        const reconciliation = yield* admit(repository, "lease-takeover", {
           allowNewAdmission: false,
         });
-        expect(newOwner.outcome).toBe("created");
-        if (newOwner.outcome !== "created") return;
-        expect(newOwner.providerStartLeaseId).not.toBe(
-          oldOwner.providerStartLeaseId
-        );
+        expect(reconciliation.outcome).toBe("reconciling");
+        if (reconciliation.outcome !== "reconciling") return;
 
-        const attachment = yield* repository.attachProviderSession({
-          id: newOwner.attempt.id,
+        yield* repository.markPaid({
+          id: reconciliation.attempt.id,
           workspaceReservationId: "lease-takeover",
-          checkoutSessionKey: "session-lease-takeover",
-          providerOrderId: newOwner.attempt.providerOrderId,
-          providerStartLeaseId: newOwner.providerStartLeaseId,
-          securityToken: "opaque-session-value",
-          providerRedirectUrl: "https://provider.example/hosted",
+          paidAt: Temporal.Instant.from("2026-07-25T03:00:00Z"),
         });
-        expect(attachment.outcome).toBe("attached");
 
         expect(
           yield* repository.markProviderStartFailed({
@@ -417,21 +410,15 @@ describe("PaymentLifecycleRepository database behavior", () => {
         ).toEqual({ outcome: "lost" });
 
         const [attempt] = yield* db
-          .select({
-            state: paymentAttempts.state,
-            providerRedirectUrl: paymentAttempts.providerRedirectUrl,
-          })
+          .select({ state: paymentAttempts.state })
           .from(paymentAttempts)
           .where(eq(paymentAttempts.id, oldOwner.attempt.id));
         const [reservation] = yield* db
           .select({ paymentState: workspaceReservations.paymentState })
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "lease-takeover"));
-        expect(attempt).toMatchObject({
-          state: "pending",
-          providerRedirectUrl: "https://provider.example/hosted",
-        });
-        expect(reservation).toMatchObject({ paymentState: "pending" });
+        expect(attempt).toMatchObject({ state: "paid" });
+        expect(reservation).toMatchObject({ paymentState: "paid" });
       })
     );
   });
@@ -502,6 +489,35 @@ describe("PaymentLifecycleRepository database behavior", () => {
             providerStartLeaseId: unresolvedAdmission.providerStartLeaseId,
             securityToken: "non-secret-test-token",
             providerRedirectUrl: "https://provider.example/hosted",
+          })).outcome
+        ).toBe("lost");
+
+        yield* seedReservation("materialized");
+        const materializedAdmission = yield* admit(repository, "materialized");
+        expect(materializedAdmission.outcome).toBe("created");
+        if (materializedAdmission.outcome !== "created") return;
+
+        const credential = randomUUID();
+        const redirectUrl = `https://provider.example/hosted/${randomUUID()}?opaque=${randomUUID()}`;
+        const attachmentInput = {
+          id: materializedAdmission.attempt.id,
+          workspaceReservationId: "materialized",
+          checkoutSessionKey: "session-materialized",
+          providerOrderId: materializedAdmission.attempt.providerOrderId,
+          providerStartLeaseId: materializedAdmission.providerStartLeaseId,
+          securityToken: credential,
+          providerRedirectUrl: redirectUrl,
+        };
+        expect(
+          (yield* repository.attachProviderSession(attachmentInput)).outcome
+        ).toBe("attached");
+        expect(
+          (yield* repository.attachProviderSession(attachmentInput)).outcome
+        ).toBe("attached");
+        expect(
+          (yield* repository.attachProviderSession({
+            ...attachmentInput,
+            securityToken: randomUUID(),
           })).outcome
         ).toBe("lost");
       })

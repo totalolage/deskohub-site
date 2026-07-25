@@ -131,7 +131,9 @@ Indexes and constraints:
 
 ### `payment_attempts`
 
-One row per Nexi HPP/session creation attempt. Retries create new attempts instead of overwriting prior attempt history.
+One row per Nexi HPP/session creation attempt. A version 2 attempt performs the
+state-creating provider POST at most once; an ambiguous result remains on that
+same durable attempt for stable-order reconciliation.
 
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
@@ -288,6 +290,18 @@ Allowed payment transitions:
 - Reservation aggregate: `not_started -> pending -> failed|cancelled|expired`.
 - Attempt: `created -> pending -> paid|failed|cancelled|expired`.
 - A verified provider result may settle `created` directly when HPP creation succeeded remotely but its response or local attachment was ambiguous.
+- A durable version 2 `created` attempt means the state-creating Nexi POST may
+  already have reached the provider. The POST is never retried and an expired
+  provider-start lease is never renewed or replaced. Recovery performs only
+  `GET /orders/{provider_order_id}` using the durable stable identity.
+- Local provider attachment is the only retryable step. Repeated attachment is
+  an idempotent success only when reservation, active attempt, provider order,
+  credential, redirect URL, checkout session, hold deadline, and pending
+  aggregate still match.
+- Cleanup must not terminalize or cancel a `created` or `pending` attempt when
+  provider state is pending, unavailable, mismatched, or otherwise unverified.
+  Only an authoritative verified terminal provider result permits terminal
+  settlement and subsequent hold cancellation.
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
 - Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
@@ -420,18 +434,26 @@ sequenceDiagram
     App-->>Customer: pricing_changed + refreshed signed summary; no payment session
   else signed price affirmed
     App->>DB: In one transaction create/link attempt, persist discount applications, and reserve code claim
-    App->>Nexi: POST /orders/hpp with the exact signed-summary amount
-    Nexi-->>App: hostedPage and securityToken
-    App->>DB: Store securityToken, redirect URL, attempt pending
-    App-->>Customer: Redirect to hostedPage
+    App->>Nexi: POST /orders/hpp once with the exact signed-summary amount
+    alt response received and guarded local attach wins
+      Nexi-->>App: hostedPage and securityToken
+      App->>DB: Store securityToken, redirect URL, attempt pending
+      App-->>Customer: Redirect to hostedPage
+    else response/attach ambiguous or lease lost
+      App-->>Customer: Payment remains in progress; never expose an unattached HPP
+      App->>Nexi: Later GET /orders/{stable provider order ID}
+    end
   end
 ```
 
 A definitive Nexi HPP rejection atomically marks the attempt failed and releases
-its reserved code claim. A network, retryable provider, conflict, rate-limit, or
-otherwise ambiguous creation/attachment failure retains the created attempt and
-reserved claim. That active attempt blocks a second charge while webhook,
-return/status reconciliation, and hold cleanup determine the terminal outcome.
+its reserved code claim. The adapter never retries the state-creating POST. A
+network, retryable provider, conflict, rate-limit, or otherwise ambiguous
+creation/attachment failure retains the created attempt and reserved claim.
+That active attempt blocks a second charge while webhook, return/status
+reconciliation, and hold cleanup use the stable provider order ID to determine
+the terminal outcome. Cleanup records a skipped attempt instead of expiring it
+when the provider result is not authoritative.
 
 ### Webhook Success And Dotypos Confirmation
 
@@ -531,8 +553,10 @@ Deploy settlement support before enabling admission version 2:
    transaction.
 2. Deploy settlement-capable code with
    `WORKSPACE_PAYMENT_ADMISSION_VERSION` unset. This blocks only new v2
-   attempts; existing v2 attempts can still renew an expired provider-start
-   lease, reconcile a stable provider order, and attach.
+   attempts; existing v2 attempts can still reuse an attached session or
+   reconcile a stable provider order. An unexpired original owner may attach;
+   an expired lease enters read-only reconciliation and never issues another
+   provider POST.
 3. Verify the non-internal trigger inventory contains exactly
    `payment_attempts_enqueue_paid_event` on `payment_attempts` and
    `workspace_reservations_enqueue_paid_event` on `workspace_reservations`.

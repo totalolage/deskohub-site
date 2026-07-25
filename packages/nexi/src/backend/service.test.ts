@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { randomUUID } from "node:crypto";
+import { Effect, Layer, Logger, Predicate, References } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { NexiRuntimeConfig } from "../config";
 import type { OrderResponse } from "../generated/effect.gen";
@@ -131,6 +132,113 @@ describe("NexiService hosted payment pages", () => {
         actionType: "PAY",
       },
     });
+  });
+
+  test("never retries the state-creating POST after ambiguous or conflicting exits", async () => {
+    const responses = [
+      () => Promise.reject(new TypeError("transport unavailable")),
+      () => Promise.resolve(new Response(undefined, { status: 503 })),
+      () => Promise.resolve(new Response(undefined, { status: 409 })),
+    ] as const;
+
+    for (const respond of responses) {
+      const fetchMock = mock(respond) as unknown as typeof globalThis.fetch &
+        ReturnType<typeof mock>;
+      const result = await runWithService(
+        Effect.gen(function* () {
+          const nexi = yield* NexiService;
+          return yield* nexi
+            .createHostedPaymentPage({
+              orderId: "order-id",
+              correlationId: "correlation-id",
+              amount: "5000",
+              currency: "CZK",
+              locale: "en-US",
+              resultUrl: "https://example.test/result",
+              cancelUrl: "https://example.test/cancel",
+              notificationUrl: "https://example.test/webhook",
+            })
+            .pipe(Effect.result);
+        }),
+        fetchMock
+      );
+
+      expect(result._tag).toBe("Failure");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  test("logs only a safe projection of HPP inputs and results", async () => {
+    const responseMarker = randomUUID();
+    const tokenMarker = randomUUID();
+    const callbackMarker = randomUUID();
+    const providerErrorMarker = randomUUID();
+    const captured: unknown[] = [];
+    const captureLogger = Logger.make((options) => {
+      captured.push({
+        message: options.message,
+        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+      });
+    });
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        hostedPage: `https://provider.example/hosted?opaque=${responseMarker}`,
+        securityToken: tokenMarker,
+      })
+    );
+
+    await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        yield* nexi.createHostedPaymentPage({
+          orderId: "order-id",
+          correlationId: "correlation-id",
+          amount: "5000",
+          currency: "CZK",
+          locale: "en-US",
+          resultUrl: `https://example.test/result?opaque=${callbackMarker}`,
+          cancelUrl: "https://example.test/cancel",
+          notificationUrl: "https://example.test/webhook",
+        });
+      }).pipe(Effect.provide(Logger.layer([captureLogger]))),
+      fetchMock
+    );
+
+    const serialized = JSON.stringify(captured);
+    expect(serialized).not.toContain(responseMarker);
+    expect(serialized).not.toContain(tokenMarker);
+    expect(serialized).not.toContain(callbackMarker);
+
+    const failureFetch = mockNexiFetch(
+      Response.json(
+        {
+          message: providerErrorMarker,
+          errors: [
+            {
+              description: `https://provider.example/hosted?opaque=${responseMarker}`,
+            },
+          ],
+        },
+        { status: 422 }
+      )
+    );
+    await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        yield* nexi
+          .verifyPaymentOutcome({
+            orderId: "order-id",
+            correlationId: "correlation-id",
+            amount: "5000",
+            currency: "CZK",
+          })
+          .pipe(Effect.result);
+      }).pipe(Effect.provide(Logger.layer([captureLogger]))),
+      failureFetch
+    );
+    const failureSerialized = JSON.stringify(captured);
+    expect(failureSerialized).not.toContain(providerErrorMarker);
+    expect(failureSerialized).not.toContain(responseMarker);
   });
 });
 

@@ -55,6 +55,10 @@ import {
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
 import {
+  ProviderPaymentFinalizationService,
+  ProviderPaymentFinalizationServiceLiveWithDependencies,
+} from "../payment/provider-payment-finalization.service";
+import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
 } from "../repositories/legal-evidence-event.repository";
@@ -387,6 +391,7 @@ export const CheckoutServiceLive = Layer.effect(
     const posthogEvents = yield* PostHogEventService;
     const pricing = yield* CheckoutPricingService;
     const payableReservations = yield* PayableReservationService;
+    const providerFinalization = yield* ProviderPaymentFinalizationService;
 
     const handleHostedPaymentPageCreationFailure = Effect.fn(
       "checkout.handleHostedPaymentPageCreationFailure"
@@ -535,6 +540,16 @@ export const CheckoutServiceLive = Layer.effect(
             redirectUrl: admission.attempt.providerRedirectUrl,
           };
         }
+        if (admission.outcome === "reconciling") {
+          yield* Effect.logInfo(
+            "Checkout reconciling an ambiguous provider start"
+          );
+          yield* providerFinalization.finalizePendingProviderPayment({
+            orderId: input.workspaceReservationId,
+            paymentAttemptId: admission.attempt.id,
+          });
+          return { status: "in_progress" as const };
+        }
         if (
           admission.outcome === "starting" ||
           admission.outcome === "unavailable"
@@ -594,6 +609,7 @@ export const CheckoutServiceLive = Layer.effect(
             providerRedirectUrl: hostedPaymentPage.hostedPage,
           })
           .pipe(
+            Effect.retry({ times: 2 }),
             Effect.tapError(() =>
               Effect.logError("Checkout hosted payment page attach failed", {
                 paymentAttemptId: attempt.id,
@@ -961,6 +977,7 @@ const refreshCheckoutAfterAdmissionChange = Effect.fn(
 });
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
   Layer.provide(PayableReservationService.Live),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),

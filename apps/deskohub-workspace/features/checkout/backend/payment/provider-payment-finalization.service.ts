@@ -149,11 +149,11 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           yield* Effect.logDebug(
             "Payment finalization attempt lookup completed"
           );
-          if (!attempt?.securityToken) {
+          if (!attempt) {
             yield* Effect.logWarning(
-              "Payment finalization returned not_verifiable"
+              "Payment finalization returned provider_verification_failed"
             );
-            return "not_verifiable";
+            return "provider_verification_failed";
           }
 
           const currency = yield* Schema.decodeUnknownEffect(
@@ -172,9 +172,9 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           yield* Effect.logDebug("Payment finalization currency decoded");
           if (!currency) {
             yield* Effect.logWarning(
-              "Payment finalization returned not_verifiable"
+              "Payment finalization returned provider_verification_failed"
             );
-            return "not_verifiable";
+            return "provider_verification_failed";
           }
 
           yield* Effect.logInfo(
@@ -186,7 +186,9 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               correlationId: reservation.correlationId,
               amount: String(attempt.amount.value),
               currency: getNexiCurrencyOverride() ?? currency,
-              securityToken: attempt.securityToken,
+              ...(attempt.securityToken
+                ? { securityToken: attempt.securityToken }
+                : {}),
             })
             .pipe(
               Effect.tapError((cause) =>

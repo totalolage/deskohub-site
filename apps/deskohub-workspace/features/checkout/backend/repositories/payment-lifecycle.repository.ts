@@ -67,6 +67,7 @@ export interface PaymentPricingIdentity {
 export type PaymentStartAdmission =
   | { readonly outcome: "reuse"; readonly attempt: PaymentAttempt }
   | { readonly outcome: "starting"; readonly attempt: PaymentAttempt }
+  | { readonly outcome: "reconciling"; readonly attempt: PaymentAttempt }
   | {
       readonly outcome: "created";
       readonly attempt: PaymentAttempt;
@@ -121,7 +122,10 @@ export interface IPaymentLifecycleRepository {
     readonly providerStartLeaseId: string;
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
-  }) => Effect.Effect<ProviderSessionAttach, EffectDrizzleQueryError>;
+  }) => Effect.Effect<
+    ProviderSessionAttach,
+    EffectDrizzleQueryError | SqlError
+  >;
   readonly markProviderStartFailed: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
@@ -309,34 +313,9 @@ export class PaymentLifecycleRepository extends Context.Service<
                   };
                 }
 
-                const providerStartLeaseId = randomUUID();
-                const [renewed] = yield* tx
-                  .update(paymentAttempts)
-                  .set({
-                    providerStartLeaseId,
-                    providerStartLeaseExpiresAt: sql`clock_timestamp() + interval '30 seconds'`,
-                    updatedAt: sql`clock_timestamp()`,
-                  })
-                  .where(
-                    and(
-                      eq(paymentAttempts.id, existing.attempt.id),
-                      eq(paymentAttempts.state, "created"),
-                      sql`coalesce(${paymentAttempts.providerStartLeaseExpiresAt}, '-infinity'::timestamptz) <= clock_timestamp()`
-                    )
-                  )
-                  .returning();
-
-                if (!renewed) {
-                  return {
-                    outcome: "starting" as const,
-                    attempt: toPaymentAttempt(existing.attempt),
-                  };
-                }
-
                 return {
-                  outcome: "created" as const,
-                  attempt: toPaymentAttempt(renewed),
-                  providerStartLeaseId,
+                  outcome: "reconciling" as const,
+                  attempt: toPaymentAttempt(existing.attempt),
                 };
               }
 
@@ -551,31 +530,85 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly securityToken: string;
         readonly providerRedirectUrl: string;
       }) {
-        const [attempt] = yield* db
-          .update(paymentAttempts)
-          .set({
-            state: "pending",
-            securityToken: input.securityToken,
-            providerRedirectUrl: input.providerRedirectUrl,
-            providerStartLeaseId: null,
-            providerStartLeaseExpiresAt: null,
-            updatedAt: sql`clock_timestamp()`,
+        return yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const [attempt] = yield* tx
+              .update(paymentAttempts)
+              .set({
+                state: "pending",
+                securityToken: input.securityToken,
+                providerRedirectUrl: input.providerRedirectUrl,
+                providerStartLeaseId: null,
+                providerStartLeaseExpiresAt: null,
+                updatedAt: sql`clock_timestamp()`,
+              })
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  ),
+                  eq(paymentAttempts.providerOrderId, input.providerOrderId),
+                  eq(
+                    paymentAttempts.providerStartLeaseId,
+                    input.providerStartLeaseId
+                  ),
+                  eq(paymentAttempts.state, "created"),
+                  sql`${paymentAttempts.providerStartLeaseExpiresAt} > clock_timestamp()`,
+                  payableReservationExists(input)
+                )
+              )
+              .returning();
+
+            if (attempt) {
+              return {
+                outcome: "attached" as const,
+                attempt: toPaymentAttempt(attempt),
+              };
+            }
+
+            const [alreadyAttached] = yield* tx
+              .select()
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  ),
+                  eq(paymentAttempts.providerOrderId, input.providerOrderId),
+                  eq(paymentAttempts.state, "pending"),
+                  eq(paymentAttempts.securityToken, input.securityToken),
+                  eq(
+                    paymentAttempts.providerRedirectUrl,
+                    input.providerRedirectUrl
+                  ),
+                  payableReservationExists(input)
+                )
+              )
+              .limit(1)
+              .for("update");
+
+            if (!alreadyAttached) {
+              return { outcome: "lost" as const };
+            }
+
+            return {
+              outcome: "attached" as const,
+              attempt: toPaymentAttempt(alreadyAttached),
+            };
           })
-          .where(
-            and(
-              eq(paymentAttempts.id, input.id),
-              eq(
-                paymentAttempts.workspaceReservationId,
-                input.workspaceReservationId
-              ),
-              eq(paymentAttempts.providerOrderId, input.providerOrderId),
-              eq(
-                paymentAttempts.providerStartLeaseId,
-                input.providerStartLeaseId
-              ),
-              eq(paymentAttempts.state, "created"),
-              sql`${paymentAttempts.providerStartLeaseExpiresAt} > clock_timestamp()`,
-              sql`exists (
+        );
+      });
+
+      const payableReservationExists = (input: {
+        readonly id: string;
+        readonly workspaceReservationId: string;
+        readonly checkoutSessionKey: string;
+      }) =>
+        sql`exists (
                 select 1
                 from workspace_reservations as payable
                 where payable.id = ${input.workspaceReservationId}
@@ -595,20 +628,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                     )
                   )
                   and payable.reservation_hold_expires_at > clock_timestamp()
-              )`
-            )
-          )
-          .returning();
-
-        if (!attempt) {
-          return { outcome: "lost" as const };
-        }
-
-        return {
-          outcome: "attached" as const,
-          attempt: toPaymentAttempt(attempt),
-        };
-      });
+              )`;
 
       const markProviderStartFailed = Effect.fn(
         "PaymentLifecycleRepository.markProviderStartFailed"

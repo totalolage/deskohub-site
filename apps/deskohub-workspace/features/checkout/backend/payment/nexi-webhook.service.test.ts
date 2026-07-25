@@ -161,7 +161,7 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
 };
 
 describe("NexiWebhookService", () => {
-  test("links, idempotently marks paid, fulfills, and marks processed", async () => {
+  test("settles an unattached remote order by stable identity and marks processed", async () => {
     const linkPaymentAttempt = mock(() => Effect.void);
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
@@ -187,7 +187,14 @@ describe("NexiWebhookService", () => {
           claimRetry: mock(() => Effect.die("unused")),
         } as unknown as WebhookEventRepositoryType,
         paymentAttempts: {
-          findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+          findByProviderOrderId: mock(() =>
+            Effect.succeed({
+              ...attempt,
+              state: "created" as const,
+              securityToken: null,
+              providerRedirectUrl: null,
+            })
+          ),
         } as unknown as PaymentAttemptRepositoryType,
         paymentLifecycle: {
           admitPaymentStart: mock(() => Effect.die("unused")),
@@ -223,7 +230,6 @@ describe("NexiWebhookService", () => {
       correlationId: "correlation-id",
       amount: "35000",
       currency: "EUR",
-      securityToken: "security-token",
     });
     expect(markPaidForReservation).toHaveBeenCalledWith(
       expect.objectContaining({

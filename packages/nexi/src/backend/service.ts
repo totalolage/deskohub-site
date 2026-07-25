@@ -72,8 +72,6 @@ const makeNexiService = Effect.gen(function* () {
 
   const createHostedPaymentPage = Effect.fn("createHostedPaymentPage")(
     function* (input: CreateHostedPaymentPageInput) {
-      yield* Effect.annotateLogsScoped({ input });
-
       const request: CreateHostedPaymentPageRequest = {
         order: {
           orderId: input.orderId,
@@ -92,7 +90,6 @@ const makeNexiService = Effect.gen(function* () {
         },
       };
 
-      yield* Effect.annotateLogsScoped({ requestBody: request });
       yield* Effect.logInfo("Nexi hosted payment page request started");
 
       const response = yield* nexiClient
@@ -101,15 +98,12 @@ const makeNexiService = Effect.gen(function* () {
           payload: request,
         })
         .pipe(
-          Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
+          Effect.tapError(() =>
             Effect.logError("Nexi hosted payment page request failed", {
-              error,
+              outcome: "unavailable_or_ambiguous",
             })
           )
         );
-
-      yield* Effect.annotateLogsScoped({ providerResponse: response });
 
       const result = {
         orderId: response.orderId ?? input.orderId,
@@ -117,13 +111,11 @@ const makeNexiService = Effect.gen(function* () {
         securityToken: response.securityToken,
       };
 
-      yield* Effect.annotateLogsScoped({ result });
       yield* Effect.logInfo("Nexi hosted payment page request completed");
 
       return result;
     },
-    (effect, input) =>
-      effect.pipe(Effect.annotateLogs({ ...input }), Effect.scoped)
+    (effect) => effect.pipe(Effect.scoped)
   );
 
   const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
@@ -137,12 +129,12 @@ const makeNexiService = Effect.gen(function* () {
         })
         .pipe(
           Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
-            Effect.logError("Nexi order lookup failed", { error })
+          Effect.tapError(() =>
+            Effect.logError("Nexi order lookup failed", {
+              outcome: "unavailable",
+            })
           )
         );
-
-      yield* Effect.logDebug("Nexi order lookup result", { order });
 
       const providerOrder = order.orderStatus?.order;
       const operations = order.operations ?? [];
@@ -162,11 +154,6 @@ const makeNexiService = Effect.gen(function* () {
       const providerOperationId =
         executedPaymentOperation?.operationId ?? failedOperation?.operationId;
 
-      yield* Effect.logDebug("Nexi selected payment operations", {
-        executedPaymentOperation,
-        failedOperation,
-      });
-
       const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
         [];
       if (providerOrderId !== input.orderId) mismatches.push("orderId");
@@ -174,6 +161,7 @@ const makeNexiService = Effect.gen(function* () {
       if (providerAmount?.currency !== input.currency)
         mismatches.push("currency");
       if (
+        input.securityToken &&
         providerSecurityToken &&
         providerSecurityToken !== input.securityToken
       )
@@ -212,7 +200,13 @@ const makeNexiService = Effect.gen(function* () {
         mismatches,
       };
 
-      yield* Effect.annotateLogsScoped({ result });
+      yield* Effect.annotateLogsScoped({
+        verificationResult: {
+          status: result.status,
+          mismatches: result.mismatches,
+          hasProviderOperation: Boolean(result.provider.operationId),
+        },
+      });
       yield* Effect.logInfo("Nexi payment outcome verification completed");
 
       return result;

@@ -208,6 +208,31 @@ describe("censorLogValue", () => {
     });
   });
 
+  test("censors production-shaped HPP URL aliases", () => {
+    const markers = Array.from({ length: 5 }, () => randomUUID());
+    const censored = censorLogValue({
+      providerResponse: {
+        hostedPage: `https://provider.example/hosted?opaque=${markers[0]}`,
+      },
+      hosted_page: `https://provider.example/hosted?opaque=${markers[1]}`,
+      hppUrl: `https://provider.example/hosted?opaque=${markers[2]}`,
+      paymentSessionUrl: `https://provider.example/hosted?opaque=${markers[3]}`,
+      providerRedirectUrl: `https://provider.example/hosted?opaque=${markers[4]}`,
+    });
+    const serialized = JSON.stringify(censored);
+
+    expect(censored).toEqual({
+      providerResponse: { hostedPage: CENSORED_LOG_VALUE },
+      hosted_page: CENSORED_LOG_VALUE,
+      hppUrl: CENSORED_LOG_VALUE,
+      paymentSessionUrl: CENSORED_LOG_VALUE,
+      providerRedirectUrl: CENSORED_LOG_VALUE,
+    });
+    for (const marker of markers) {
+      expect(serialized).not.toContain(marker);
+    }
+  });
+
   test("projects Drizzle query errors without exposing their dynamic message", () => {
     const error = new EffectDrizzleQueryError({
       query: "select * from customers where email = $1",
@@ -380,12 +405,15 @@ describe("censorLogValue", () => {
 
 describe("censorLoggerOptions", () => {
   test("redacts message values and annotation values or sensitive annotation keys", () => {
+    const hostedPageMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const annotations = {
       request: { headers: { authorization: "Bearer secret" } },
       sessionToken: "session-secret",
+      providerResponse: { hostedPage },
     };
     const options = {
-      message: { password: "secret", safe: "visible" },
+      message: { password: "secret", safe: "visible", hostedPage },
       logLevel: "Info",
       cause: Cause.empty,
       date: new Date(0),
@@ -404,11 +432,16 @@ describe("censorLoggerOptions", () => {
     expect(censored.message).toEqual({
       password: CENSORED_LOG_VALUE,
       safe: "visible",
+      hostedPage: CENSORED_LOG_VALUE,
     });
     expect(censoredAnnotations.request).toEqual({
       headers: { authorization: CENSORED_LOG_VALUE },
     });
     expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
+    expect(censoredAnnotations.providerResponse).toEqual({
+      hostedPage: CENSORED_LOG_VALUE,
+    });
+    expect(JSON.stringify(censored)).not.toContain(hostedPageMarker);
     expect(annotations.sessionToken).toBe("session-secret");
   });
 
@@ -532,6 +565,7 @@ describe("createCensoredOtelLogger", () => {
     const credentialValue = randomUUID();
     const queryValue = randomUUID();
     const rawCauseValue = randomUUID();
+    const hostedPageValue = randomUUID();
     const redirectUrl = `https://provider.example/hosted?opaque=${queryValue}`;
 
     await Effect.runPromise(
@@ -543,6 +577,7 @@ describe("createCensoredOtelLogger", () => {
         ]);
         yield* Effect.logError("Checkout hosted payment page attach failed", {
           providerRedirectUrl: redirectUrl,
+          hostedPage: `https://provider.example/hosted?opaque=${hostedPageValue}`,
           cause: new Error(rawCauseValue),
         });
       }).pipe(
@@ -561,6 +596,7 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).not.toContain(credentialValue);
     expect(serialized).not.toContain(queryValue);
     expect(serialized).not.toContain(rawCauseValue);
+    expect(serialized).not.toContain(hostedPageValue);
     expect(serialized).not.toContain(redirectUrl);
     await provider.shutdown();
   });
@@ -570,9 +606,12 @@ describe("createCensoredOtelSpanExporter", () => {
   test("applies the shared telemetry censorship policy to span data", async () => {
     const exporter = new InMemorySpanExporter();
     const privateValue = "private@example.com";
+    const hostedPageMarker = randomUUID();
+    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const provider = new BasicTracerProvider({
       resource: resourceFromAttributes({
         email: privateValue,
+        paymentSessionUrl: hostedPage,
         "service.name": "censorship-test",
         sessionDuration: 456,
       }),
@@ -586,6 +625,7 @@ describe("createCensoredOtelSpanExporter", () => {
         Effect.withSpan("safe.operation", {
           attributes: {
             email: privateValue,
+            hostedPage,
             sessionDuration: 123,
           },
         }),
@@ -602,11 +642,13 @@ describe("createCensoredOtelSpanExporter", () => {
     const [span] = exporter.getFinishedSpans();
     expect(span?.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
+      hostedPage: CENSORED_LOG_VALUE,
       sessionDuration: 123,
     });
     expect(span?.events[0]?.name).toBe("exception");
     expect(span?.resource.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
+      paymentSessionUrl: CENSORED_LOG_VALUE,
       "service.name": "censorship-test",
       sessionDuration: 456,
     });
@@ -618,6 +660,7 @@ describe("createCensoredOtelSpanExporter", () => {
     });
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain(privateValue);
+    expect(serialized).not.toContain(hostedPageMarker);
     await provider.shutdown();
   });
 });

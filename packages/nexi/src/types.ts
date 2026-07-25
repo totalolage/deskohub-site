@@ -84,7 +84,7 @@ export interface NexiPaymentMetadata {
   readonly providerStatus?: string;
 }
 
-const cleanOptionalString = (value: string | undefined) => {
+const cleanOptionalString = (value: string | null | undefined) => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
 };
@@ -147,11 +147,16 @@ export const checkNexiWebhookSecurityToken = (input: {
   const notificationSecurityToken = cleanOptionalString(
     input.notificationSecurityToken
   );
-  if (!notificationSecurityToken) return { status: "absent" };
+  const expectedSecurityToken = cleanOptionalString(
+    input.expectedSecurityToken
+  );
+  if (!notificationSecurityToken || !expectedSecurityToken) {
+    return { status: "absent" };
+  }
 
   return {
     status:
-      notificationSecurityToken === input.expectedSecurityToken
+      notificationSecurityToken === expectedSecurityToken
         ? "match"
         : "mismatch",
   };
@@ -198,7 +203,7 @@ export interface VerifyPaymentOutcomeInput {
   /** Integer minor-unit/scaled amount string, matching the submitted order amount. */
   readonly amount: string;
   readonly currency?: NexiCurrency;
-  readonly securityToken: string;
+  readonly securityToken?: string;
 }
 
 export type PaymentOutcomeStatus = "success" | "failure" | "pending";
