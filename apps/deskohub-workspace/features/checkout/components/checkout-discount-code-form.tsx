@@ -66,7 +66,7 @@ export function CheckoutDiscountCodeForm({
       </div>
       {fieldError && (
         <p
-          className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
+          className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
           id="checkout-discount-code-error"
           role="alert"
         >

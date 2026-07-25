@@ -346,7 +346,7 @@ export function CheckoutStatusPage({
             </dl>
 
             {summaryRows.length === 0 && (
-              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
                 {m.checkoutStatusMissingSummary({}, { locale })}
               </p>
             )}

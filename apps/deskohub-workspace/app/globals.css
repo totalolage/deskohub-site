@@ -13,6 +13,7 @@
   --color-sunset-yellow: var(--brand-sunset-yellow);
   --color-chilean-fire: var(--brand-chilean-fire);
   --color-burned-orange: var(--brand-burned-orange);
+  --color-burned-orange-ink: var(--brand-burned-orange-ink);
   --color-aquamarine-green: var(--brand-aquamarine-green);
   --color-aquamarine-ink: var(--brand-aquamarine-ink);
   --radius-sm: calc(var(--radius) - 4px);
@@ -47,6 +48,7 @@
   --brand-sunset-yellow: #eca423;
   --brand-chilean-fire: #f57c00;
   --brand-burned-orange: #dd480a;
+  --brand-burned-orange-ink: #7a2e0a;
   --brand-aquamarine-green: #00df99;
   --brand-aquamarine-ink: #004c3b;
   --site-header-height: 6rem;

@@ -1011,7 +1011,7 @@ export function ReservationForm({
                   aria-live="polite"
                   className={cn(
                     "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
-                    "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
+                    "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
                   )}
                 >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
@@ -1021,7 +1021,7 @@ export function ReservationForm({
               {isSelectedReservationUnavailable && !submissionMessage && (
                 <p
                   aria-live="polite"
-                  className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
+                  className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
                 >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
                   <span>{selectedReservationUnavailableMessage}</span>
@@ -1048,7 +1048,7 @@ export function ReservationForm({
               {advertisedPriceQueryResult.isError && !submissionMessage && (
                 <div
                   role="alert"
-                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
                 >
                   <span className="flex items-start gap-2">
                     <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />

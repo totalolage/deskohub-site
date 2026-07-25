@@ -261,11 +261,13 @@ describe("CheckoutPayPage discount urgency", () => {
 
     act(() => jest.advanceTimersByTime(1000));
 
-    expect(
-      view.getByText(
-        "Summer sale has ended. We’ll recheck your total before starting payment."
-      )
-    ).toBeDefined();
+    const expiredBanner = view.getByText(
+      "Summer sale has ended. We’ll recheck your total before starting payment."
+    );
+    expect(expiredBanner).toBeDefined();
+    expect(expiredBanner.closest("output")?.className).toContain(
+      "text-burned-orange-ink"
+    );
   });
 });
 

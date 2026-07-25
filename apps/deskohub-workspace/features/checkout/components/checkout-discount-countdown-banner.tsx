@@ -59,7 +59,7 @@ function ActiveDiscountCountdownBanner({
 
   if (countdownState?.status === "expired") {
     return (
-      <output className="flex items-start gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue">
+      <output className="flex items-start gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
         <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-burned-orange/12 text-burned-orange">
           <AlertTriangle aria-hidden="true" className="size-4" />
         </span>
