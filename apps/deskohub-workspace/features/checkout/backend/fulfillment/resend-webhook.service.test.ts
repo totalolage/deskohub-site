@@ -46,8 +46,8 @@ const verifyWebhook = mock(
 
 const locationMapImage = Buffer.from("workspace-location-map");
 const tableMapImage = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
-const generateStaticMapImage = mock(async () => locationMapImage);
-const generateSvgPngBuffer = mock(async () => tableMapImage);
+const generateStaticMapImage = mock(() => Effect.succeed(locationMapImage));
+const generateSvgPngBuffer = mock(() => Effect.succeed(tableMapImage));
 
 mock.module("osm", () => ({
   generateStaticMapImage,

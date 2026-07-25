@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
   workspaceFormattedAddress,
@@ -27,7 +28,9 @@ export default async function WorkspaceMapPreviewPage({
 
 async function WorkspaceMapPreviewContent({ locale }: { locale: Locale }) {
   await connection();
-  const image = await generateWorkspaceLocationMapImage();
+  const image = await generateWorkspaceLocationMapImage().pipe(
+    runStandaloneWorkspaceEffect("workspaceLocationMap.preview")
+  );
   const imageSrc = `data:image/jpeg;base64,${image.toString("base64")}`;
 
   return (

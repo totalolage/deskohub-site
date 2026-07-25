@@ -1,5 +1,6 @@
 import { Context, Effect, type Layer, Schema } from "effect";
 import { defineWorkspaceAction } from "./workspace-action";
+import { generateWorkspaceLocationMapImage } from "./workspace-location-map";
 import {
   defineWorkspaceRoute,
   mapWorkspaceInternalRouteFailure,
@@ -15,6 +16,10 @@ declare const TestServiceLive: Layer.Layer<TestService>;
 const typecheck = false as boolean;
 
 if (typecheck) {
+  const locationMapImage: Effect.Effect<Buffer, unknown> =
+    generateWorkspaceLocationMapImage();
+  void locationMapImage;
+
   defineWorkspaceAction(
     // @ts-expect-error Actions must declare their input schema.
     { operation: "type.action" },

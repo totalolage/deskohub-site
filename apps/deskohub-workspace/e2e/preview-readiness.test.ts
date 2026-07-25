@@ -2,7 +2,10 @@ import { expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
-import { assertPreviewEndpointReady } from "./preview-readiness";
+import {
+  assertPreviewEndpointReady,
+  assertPreviewJpegReady,
+} from "./preview-readiness";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 test("checks webhook readiness on the exact protected preview origin", async () => {
@@ -42,6 +45,50 @@ test("checks webhook readiness on the exact protected preview origin", async () 
     "test-protection-bypass"
   );
 });
+
+test("checks that the generated map endpoint returns a JPEG payload", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), {
+        status: 200,
+        headers: { "content-type": "image/jpeg" },
+      })
+  );
+
+  await Effect.runPromise(
+    assertPreviewJpegReady(
+      makeConfig("test-protection-bypass"),
+      "/workspace-location-map.jpeg"
+    ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+  );
+
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("rejects an HTML error document returned by the generated map endpoint", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response("<html>map generation failed</html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      assertPreviewJpegReady(makeConfig(), "/workspace-location-map.jpeg").pipe(
+        Effect.provide(makeFetchHttpClientLayer(fetchMock))
+      )
+    )
+  ).rejects.toThrow("instead of image/jpeg");
+});
+
+const makeFetchHttpClientLayer = (
+  fetchImplementation: typeof globalThis.fetch
+) =>
+  FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchImplementation))
+  );
 
 const makeConfig = (bypassSecret?: string): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",

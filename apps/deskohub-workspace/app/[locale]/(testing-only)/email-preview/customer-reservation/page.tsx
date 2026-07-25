@@ -5,6 +5,7 @@ import { Suspense } from "react";
 import { createWorkspaceReservationCustomerEmailPreviewHtml } from "@/features/checkout/backend/fulfillment";
 import { isLocale, type Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { EmailPreviewFrame } from "../_components/email-preview-frame";
 import { createWorkspaceReservationEmailPreviewReservation } from "../_lib/mock-reservation-email-preview";
 
@@ -43,7 +44,9 @@ async function WorkspaceReservationEmailPreviewContent({
   const html = await runWithRequestLocale(locale, () =>
     createWorkspaceReservationCustomerEmailPreviewHtml({
       reservation: createWorkspaceReservationEmailPreviewReservation(locale),
-    })
+    }).pipe(
+      runStandaloneWorkspaceEffect("workspaceReservationEmail.previewCustomer")
+    )
   );
 
   return (

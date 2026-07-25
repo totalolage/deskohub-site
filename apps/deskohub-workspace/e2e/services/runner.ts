@@ -60,7 +60,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               yield* configService.assertNexiSandbox(
                 datasourceConfig.nexiApiOrigin
               );
-              yield* previewReadiness.assertWebhookEndpoints(config);
+              yield* previewReadiness.assertEndpoints(config);
 
               const e2eCases = yield* cases.makeCases({
                 config,

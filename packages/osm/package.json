@@ -7,9 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
+    "effect": "4.0.0-beta.85",
     "sharp": "^0.34.5"
   },
   "devDependencies": {
