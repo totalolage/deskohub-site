@@ -161,6 +161,40 @@ const createSchemaStatements = `
   .filter(Boolean)
   .map(sql.raw);
 
+const paidEventMigration = await Bun.file(
+  new URL(
+    "../../../../db/migrations/20260725004304_payment_admission_settlement/migration.sql",
+    import.meta.url
+  )
+).text();
+const paidEventBridgeStart = paidEventMigration.indexOf(
+  'CREATE FUNCTION "enqueue_paid_event_from_reservation"'
+);
+if (paidEventBridgeStart < 0) {
+  throw new Error("Paid event bridge is missing from the migration.");
+}
+const paidEventBridgeStatements = paidEventMigration
+  .slice(paidEventBridgeStart)
+  .split("--> statement-breakpoint")
+  .map((statement) => statement.trim())
+  .filter(Boolean)
+  .map(sql.raw);
+
+const reconcilePaidEvents = sql.raw(`
+  insert into payment_paid_events (
+    payment_attempt_id, workspace_reservation_id, paid_at
+  )
+  select attempt.id, reservation.id, reservation.paid_at
+  from payment_attempts as attempt
+  join workspace_reservations as reservation
+    on reservation.id = attempt.workspace_reservation_id
+    and reservation.active_payment_attempt_id = attempt.id
+  where attempt.state = 'paid'
+    and reservation.payment_state = 'paid'
+    and reservation.paid_at is not null
+  on conflict (payment_attempt_id) do nothing
+`);
+
 const DatabaseLive = Layer.effect(
   WorkspaceDatabase,
   makeWithDefaults({ relations }).pipe(
@@ -181,6 +215,9 @@ const runRepositoryTest = <A, E>(
       Effect.gen(function* () {
         const { db } = yield* WorkspaceDatabase;
         for (const statement of createSchemaStatements) {
+          yield* db.execute(statement);
+        }
+        for (const statement of paidEventBridgeStatements) {
           yield* db.execute(statement);
         }
         return yield* effect;
@@ -248,6 +285,7 @@ const admit = (
     readonly commitment?: typeof emptyCommitment;
     readonly acceptedPricing?: typeof noDiscountPricing;
     readonly affirmedPricing?: typeof noDiscountPricing;
+    readonly allowNewAdmission?: boolean;
   } = {}
 ) =>
   repository.admitPaymentStart({
@@ -258,6 +296,7 @@ const admit = (
     affirmedPricing: input.affirmedPricing ?? noDiscountPricing,
     commitment: input.commitment ?? emptyCommitment,
     locale: "en-US",
+    allowNewAdmission: input.allowNewAdmission ?? true,
   });
 
 describe("PaymentLifecycleRepository database behavior", () => {
@@ -283,6 +322,116 @@ describe("PaymentLifecycleRepository database behavior", () => {
             .from(paymentAttempts)
             .where(eq(paymentAttempts.workspaceReservationId, "concurrent"))
         ).toHaveLength(1);
+      })
+    );
+  });
+
+  test("keeps admitted recovery available while blocking new admission", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("gated-new");
+
+        expect(
+          yield* admit(repository, "gated-new", {
+            allowNewAdmission: false,
+          })
+        ).toEqual({
+          outcome: "unavailable",
+          reason: "admission_disabled",
+        });
+        expect(yield* db.select().from(paymentAttempts)).toHaveLength(0);
+
+        const first = yield* admit(repository, "gated-new");
+        expect(first.outcome).toBe("created");
+        if (first.outcome !== "created") return;
+        yield* db.execute(sql`
+          update payment_attempts
+          set provider_start_lease_expires_at =
+            clock_timestamp() - interval '1 microsecond'
+          where id = ${first.attempt.id}
+        `);
+
+        const recovered = yield* admit(repository, "gated-new", {
+          allowNewAdmission: false,
+        });
+        expect(recovered.outcome).toBe("created");
+        if (recovered.outcome !== "created") return;
+        expect(recovered.attempt.id).toBe(first.attempt.id);
+        expect(recovered.attempt.providerOrderId).toBe(
+          first.attempt.providerOrderId
+        );
+        expect(recovered.providerStartLeaseId).not.toBe(
+          first.providerStartLeaseId
+        );
+      })
+    );
+  });
+
+  test("a delayed old provider-start failure cannot terminalize a takeover or attachment", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("lease-takeover");
+
+        const oldOwner = yield* admit(repository, "lease-takeover");
+        expect(oldOwner.outcome).toBe("created");
+        if (oldOwner.outcome !== "created") return;
+        yield* db.execute(sql`
+          update payment_attempts
+          set provider_start_lease_expires_at =
+            clock_timestamp() - interval '1 microsecond'
+          where id = ${oldOwner.attempt.id}
+        `);
+
+        const newOwner = yield* admit(repository, "lease-takeover", {
+          allowNewAdmission: false,
+        });
+        expect(newOwner.outcome).toBe("created");
+        if (newOwner.outcome !== "created") return;
+        expect(newOwner.providerStartLeaseId).not.toBe(
+          oldOwner.providerStartLeaseId
+        );
+
+        const attachment = yield* repository.attachProviderSession({
+          id: newOwner.attempt.id,
+          workspaceReservationId: "lease-takeover",
+          checkoutSessionKey: "session-lease-takeover",
+          providerOrderId: newOwner.attempt.providerOrderId,
+          providerStartLeaseId: newOwner.providerStartLeaseId,
+          securityToken: "opaque-session-value",
+          providerRedirectUrl: "https://provider.example/hosted",
+        });
+        expect(attachment.outcome).toBe("attached");
+
+        expect(
+          yield* repository.markProviderStartFailed({
+            id: oldOwner.attempt.id,
+            workspaceReservationId: "lease-takeover",
+            providerStartLeaseId: oldOwner.providerStartLeaseId,
+            failureCode: "delayed_provider_failure",
+            providerStatus: "provider_start_failed",
+          })
+        ).toEqual({ outcome: "lost" });
+
+        const [attempt] = yield* db
+          .select({
+            state: paymentAttempts.state,
+            providerRedirectUrl: paymentAttempts.providerRedirectUrl,
+          })
+          .from(paymentAttempts)
+          .where(eq(paymentAttempts.id, oldOwner.attempt.id));
+        const [reservation] = yield* db
+          .select({ paymentState: workspaceReservations.paymentState })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, "lease-takeover"));
+        expect(attempt).toMatchObject({
+          state: "pending",
+          providerRedirectUrl: "https://provider.example/hosted",
+        });
+        expect(reservation).toMatchObject({ paymentState: "pending" });
       })
     );
   });
@@ -576,6 +725,26 @@ describe("PaymentLifecycleRepository database behavior", () => {
           })).changed
         ).toBeFalse();
         expect(
+          (yield* repository
+            .markTerminal({
+              id: terminalAdmission.attempt.id,
+              workspaceReservationId: "terminal",
+              state: "failed",
+              failureCode: "test_expired",
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
+          (yield* repository
+            .markTerminal({
+              id: terminalAdmission.attempt.id,
+              workspaceReservationId: "terminal",
+              state: "expired",
+              failureCode: "different_failure",
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(
           (yield* db
             .select()
             .from(discountCodeRedemptions)
@@ -596,6 +765,70 @@ describe("PaymentLifecycleRepository database behavior", () => {
             })
             .pipe(Effect.flip)
         ).toBeInstanceOf(PaymentLifecycleStateError);
+      })
+    );
+  });
+
+  test("database bridge covers legacy paid writers, rollback, backfill, and replay repair", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("legacy-paid");
+        const admission = yield* admit(repository, "legacy-paid");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        const rolledBack = yield* db
+          .transaction((tx) =>
+            Effect.gen(function* () {
+              yield* tx
+                .update(paymentAttempts)
+                .set({ state: "paid" })
+                .where(eq(paymentAttempts.id, admission.attempt.id));
+              yield* tx
+                .update(workspaceReservations)
+                .set({
+                  paymentState: "paid",
+                  paidAt: Temporal.Instant.from("2026-07-25T01:00:00Z"),
+                })
+                .where(eq(workspaceReservations.id, "legacy-paid"));
+              return yield* Effect.fail("intentional_rollback");
+            })
+          )
+          .pipe(Effect.result);
+        expect(rolledBack._tag).toBe("Failure");
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(0);
+
+        const paidAt = Temporal.Instant.from("2026-07-25T02:00:00Z");
+        yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            yield* tx
+              .update(paymentAttempts)
+              .set({ state: "paid" })
+              .where(eq(paymentAttempts.id, admission.attempt.id));
+            yield* tx
+              .update(workspaceReservations)
+              .set({ paymentState: "paid", paidAt })
+              .where(eq(workspaceReservations.id, "legacy-paid"));
+          })
+        );
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(1);
+
+        yield* db.delete(paymentPaidEvents);
+        yield* db.execute(reconcilePaidEvents);
+        yield* db.execute(reconcilePaidEvents);
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(1);
+
+        yield* db.delete(paymentPaidEvents);
+        expect(
+          (yield* repository.markPaid({
+            id: admission.attempt.id,
+            workspaceReservationId: "legacy-paid",
+            paidAt: paidAt.add({ seconds: 1 }),
+          })).changed
+        ).toBeFalse();
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(1);
       })
     );
   });

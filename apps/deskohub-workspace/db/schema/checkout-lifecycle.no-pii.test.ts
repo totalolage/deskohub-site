@@ -116,7 +116,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
 
     expect(source).toContain("paymentLifecycle.markPaid");
-    expect(source).toContain("paymentLifecycle.markTerminal");
+    expect(source).toMatch(/paymentLifecycle\s*\.markTerminal/);
     expect(repository).toContain(".transaction(");
     expect(repository).toContain("yield* redeemCodeClaim");
     expect(repository).toContain("yield* releaseCodeClaim");

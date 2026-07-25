@@ -13,6 +13,7 @@ import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from ".
 import {
   type IPaymentLifecycleRepository,
   PaymentLifecycleRepository,
+  PaymentLifecycleStateError,
 } from "../repositories/payment-lifecycle.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
@@ -23,6 +24,7 @@ const paymentLifecycleLayer = (
   Layer.succeed(PaymentLifecycleRepository, {
     admitPaymentStart: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
+    markProviderStartFailed: () => Effect.die("not used"),
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),
     ...overrides,
@@ -214,21 +216,31 @@ describe("ProviderPaymentFinalizationService", () => {
       verificationStatus: "success" as const,
       expected: "paid" as const,
       changed: true,
+      conflict: false,
     },
     {
       verificationStatus: "success" as const,
       expected: "paid" as const,
       changed: false,
+      conflict: false,
     },
     {
       verificationStatus: "failure" as const,
       expected: "terminal" as const,
       changed: true,
+      conflict: false,
     },
     {
       verificationStatus: "failure" as const,
       expected: "terminal" as const,
       changed: false,
+      conflict: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "not_pending" as const,
+      changed: false,
+      conflict: true,
     },
   ]) {
     test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
@@ -258,16 +270,25 @@ describe("ProviderPaymentFinalizationService", () => {
         })
       );
       const markTerminalForReservation = mock(() =>
-        Effect.succeed({
-          attempt: {
-            ...pendingAttempt,
-            state: "failed" as const,
-            failureCode: "nexi_payment_failed",
-            lastProviderStatus: "DECLINED",
-          },
-          changed: scenario.changed,
-          timestamp: Temporal.Now.instant(),
-        })
+        scenario.conflict
+          ? Effect.fail(
+              new PaymentLifecycleStateError({
+                operation: "markTerminal",
+                paymentAttemptId: pendingAttempt.id,
+                message:
+                  "The terminal replay conflicts with the recorded lifecycle outcome.",
+              })
+            )
+          : Effect.succeed({
+              attempt: {
+                ...pendingAttempt,
+                state: "failed" as const,
+                failureCode: "nexi_payment_failed",
+                lastProviderStatus: "DECLINED",
+              },
+              changed: scenario.changed,
+              timestamp: Temporal.Now.instant(),
+            })
       );
       const fulfillPaidOrder = mock(() => Effect.void);
       const paymentAttempts = {
@@ -325,7 +346,7 @@ describe("ProviderPaymentFinalizationService", () => {
         securityToken: "security-token",
       });
 
-      if (scenario.expected === "paid") {
+      if (scenario.verificationStatus === "success") {
         expect(markPaidForReservation).toHaveBeenCalledWith(
           expect.objectContaining({
             id: "attempt-id",

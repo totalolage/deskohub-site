@@ -3,7 +3,7 @@
 ## Use the logging pipeline
 
 - Use `Effect.log*` inside the censored Workspace logging pipeline. Do not use `console.*` for Workspace diagnostics.
-- Preserve useful log annotations. Workspace and Dotypos application logging is globally censored and redacted, so do not strip annotations locally for privacy unless a new uncensored sink is introduced.
+- Preserve useful safe log annotations, but never attach provider credentials, provider redirect URLs, raw database causes, or provider payloads. Global censorship is defense in depth, not authorization to send sensitive values to a sink; SQL bind parameters must remain opaque.
 - Keep access-code-like keys globally censored. Workspace customer access codes have appeared in PostHog annotations before; never quote an observed value back to the user.
 
 ## Bound sensitive or oversized inspection

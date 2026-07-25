@@ -43,6 +43,8 @@ const sensitiveLogKeyFragments = [
 const sensitiveLogExactKeys = new Set([
   "discountcode",
   "exception.stacktrace",
+  "providerredirecturl",
+  "redirecturl",
   "submittedcode",
   "x-vercel-sc-headers",
 ]);
@@ -211,28 +213,11 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
-const censorQueryParameter = (
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (typeof value !== "string") {
-    return censorLogValueInternal(value, seen);
-  }
-
-  try {
-    return JSON.stringify(
-      censorLogValueInternal(JSON.parse(value) as unknown, seen)
-    );
-  } catch {
-    return censorLogValueInternal(value, seen);
-  }
-};
-
 const censorQueryParams = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
+  if (!Array.isArray(value)) return CENSORED_LOG_VALUE;
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -242,7 +227,7 @@ const censorQueryParams = (
 
   for (let index = 0; index < value.length; index += 1) {
     if (index in value) {
-      result[index] = censorQueryParameter(value[index], seen);
+      result[index] = CENSORED_LOG_VALUE;
     }
   }
 
@@ -349,6 +334,13 @@ const censorLogValueInternal = (
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
     return result;
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: CENSORED_LOG_VALUE,
+    };
   }
 
   if (!isPlainObject(value)) return value;

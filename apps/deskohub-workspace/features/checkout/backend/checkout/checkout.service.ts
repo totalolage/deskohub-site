@@ -395,18 +395,27 @@ export const CheckoutServiceLive = Layer.effect(
         readonly cause: NexiExternalAPIError | NexiNetworkError;
         readonly attempt: PaymentAttempt;
         readonly workspaceReservationId: string;
+        readonly providerStartLeaseId: string;
       }) =>
         Match.value(input.cause).pipe(
           Match.when(isDefinitiveHostedPaymentPageFailure, () =>
             Effect.gen(function* () {
-              const transition = yield* paymentLifecycle.markTerminal({
-                id: input.attempt.id,
-                workspaceReservationId: input.workspaceReservationId,
-                state: "failed",
-                failureCode: "nexi_hpp_create_failed",
-                providerStatus: "hpp_create_failed",
-              });
+              const settlement =
+                yield* paymentLifecycle.markProviderStartFailed({
+                  id: input.attempt.id,
+                  workspaceReservationId: input.workspaceReservationId,
+                  providerStartLeaseId: input.providerStartLeaseId,
+                  failureCode: "nexi_hpp_create_failed",
+                  providerStatus: "hpp_create_failed",
+                });
 
+              if (settlement.outcome === "lost") {
+                yield* Effect.logWarning(
+                  "Definitive hosted payment page failure lost its provider-start lease"
+                );
+                return;
+              }
+              const { transition } = settlement;
               if (transition.changed) {
                 yield* capturePaymentFailed({
                   attempt: transition.attempt,
@@ -511,6 +520,7 @@ export const CheckoutServiceLive = Layer.effect(
           affirmedPricing: input.affirmedPricing,
           commitment: input.commitment,
           locale: input.locale,
+          allowNewAdmission: env.WORKSPACE_PAYMENT_ADMISSION_VERSION === "2",
         });
         yield* Effect.annotateLogsScoped({
           paymentAdmissionOutcome: admission.outcome,
@@ -558,6 +568,7 @@ export const CheckoutServiceLive = Layer.effect(
                 cause,
                 attempt,
                 workspaceReservationId: input.workspaceReservationId,
+                providerStartLeaseId: admission.providerStartLeaseId,
               })
             )
           );
@@ -583,11 +594,10 @@ export const CheckoutServiceLive = Layer.effect(
             providerRedirectUrl: hostedPaymentPage.hostedPage,
           })
           .pipe(
-            Effect.tapError((cause) =>
+            Effect.tapError(() =>
               Effect.logError("Checkout hosted payment page attach failed", {
                 paymentAttemptId: attempt.id,
                 workspaceReservationId: input.workspaceReservationId,
-                cause,
               })
             )
           );
@@ -631,13 +641,6 @@ export const CheckoutServiceLive = Layer.effect(
               message: "Legal consent is required before checkout.",
             });
           }
-          if (env.WORKSPACE_PAYMENT_ADMISSION_VERSION !== "2") {
-            yield* Effect.logWarning(
-              "Hosted payment checkout admission is version-gated"
-            );
-            return { status: "in_progress" as const };
-          }
-
           const state = yield* openFinalPayState(input.payStateToken, locale);
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
 

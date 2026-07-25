@@ -477,15 +477,35 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
             yield* Effect.logInfo("Nexi webhook terminal transition started");
 
-            const transition = yield* paymentLifecycle.markTerminal({
-              id: attempt.id,
-              workspaceReservationId: reservation.id,
-              state: terminalState,
-              failureCode: "nexi_payment_failed",
-              webhookEventId: eventId,
-              providerOperationId,
-              providerStatus,
-            });
+            const transition = yield* paymentLifecycle
+              .markTerminal({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                state: terminalState,
+                failureCode: "nexi_payment_failed",
+                webhookEventId: eventId,
+                providerOperationId,
+                providerStatus,
+              })
+              .pipe(
+                Effect.mapError(
+                  () =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_transition_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message:
+                        "Nexi terminal transition conflicted with the recorded lifecycle outcome.",
+                    })
+                ),
+                Effect.catch((error) =>
+                  failAfterMarkingEvent(
+                    webhookEvents,
+                    { type: "eventId", eventId },
+                    error
+                  )
+                )
+              );
             if (transition.changed) {
               if (terminalState === "failed") {
                 yield* capturePaymentFailed({

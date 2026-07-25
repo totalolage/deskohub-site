@@ -384,16 +384,19 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
         attempt: attachedAttempt,
       })
     );
-  const markTerminalForReservation = mock(() =>
+  const markProviderStartFailed = mock(() =>
     Effect.succeed({
-      attempt: {
-        ...createdAttempt,
-        state: "failed" as const,
-        failureCode: "nexi_hpp_create_failed",
-        lastProviderStatus: "hpp_create_failed",
+      outcome: "settled" as const,
+      transition: {
+        attempt: {
+          ...createdAttempt,
+          state: "failed" as const,
+          failureCode: "nexi_hpp_create_failed",
+          lastProviderStatus: "hpp_create_failed",
+        },
+        changed: true,
+        timestamp: testInstant(),
       },
-      changed: true,
-      timestamp: testInstant(),
     })
   );
   const paymentAttempts = {
@@ -404,6 +407,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const paymentLifecycle = {
     admitPaymentStart: createAttempt,
     attachProviderSession: attachHostedPaymentPage,
+    markProviderStartFailed,
     markPaid: mock(() =>
       Effect.succeed({
         attempt: createdAttempt,
@@ -411,7 +415,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
         timestamp: testInstant(),
       })
     ),
-    markTerminal: markTerminalForReservation,
+    markTerminal: mock(() => Effect.die("not used")),
   } satisfies IPaymentLifecycleRepository;
 
   const updateReservationDetails = mock((input) =>
@@ -515,7 +519,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     createAttempt,
     findAttempt,
     attachHostedPaymentPage,
-    markTerminalForReservation,
+    markProviderStartFailed,
     updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
@@ -1025,11 +1029,11 @@ describe("CheckoutService", () => {
 
     await Effect.runPromise(Effect.flip(harness.effect));
 
-    expect(harness.markTerminalForReservation).toHaveBeenCalledTimes(1);
-    expect(harness.markTerminalForReservation).toHaveBeenCalledWith({
+    expect(harness.markProviderStartFailed).toHaveBeenCalledTimes(1);
+    expect(harness.markProviderStartFailed).toHaveBeenCalledWith({
       id: "attempt-reservation-hpp-create-fails",
       workspaceReservationId: "reservation-hpp-create-fails",
-      state: "failed",
+      providerStartLeaseId: "provider-start-lease",
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",
     });
@@ -1054,7 +1058,7 @@ describe("CheckoutService", () => {
 
     await Effect.runPromise(Effect.flip(harness.effect));
 
-    expect(harness.markTerminalForReservation).not.toHaveBeenCalled();
+    expect(harness.markProviderStartFailed).not.toHaveBeenCalled();
     expect(harness.createAttempt).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
   });

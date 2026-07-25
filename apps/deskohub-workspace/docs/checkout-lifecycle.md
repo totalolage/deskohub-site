@@ -521,6 +521,108 @@ sequenceDiagram
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
 
+## Payment Admission Rollout Gate
+
+Deploy settlement support before enabling admission version 2:
+
+1. Apply `20260725004304_payment_admission_settlement`. The migration creates
+   `payment_paid_events`, installs both paid-transition triggers, and backfills
+   every internally consistent paid attempt/reservation pair in one migration
+   transaction.
+2. Deploy settlement-capable code with
+   `WORKSPACE_PAYMENT_ADMISSION_VERSION` unset. This blocks only new v2
+   attempts; existing v2 attempts can still renew an expired provider-start
+   lease, reconcile a stable provider order, and attach.
+3. Verify the non-internal trigger inventory contains exactly
+   `payment_attempts_enqueue_paid_event` on `payment_attempts` and
+   `workspace_reservations_enqueue_paid_event` on `workspace_reservations`.
+4. Drain every old writer and verify the deployment/version inventory contains
+   no process running code from before this migration contract.
+5. Rerun the migration's final idempotent
+   `INSERT ... SELECT ... ON CONFLICT DO NOTHING` reconciliation.
+6. Require both verification counts below to be zero, record counts only, and
+   then enable `WORKSPACE_PAYMENT_ADMISSION_VERSION=2`.
+7. Repeat both zero-count checks before an S5-07 consumer starts processing
+   paid events.
+
+The old-writer drain is an exact version gate: record the immutable
+`VERCEL_GIT_COMMIT_SHA` of the settlement-capable deployment, require the
+production alias plus every checkout, webhook, provider-finalization, queue,
+and cron invocation source to resolve to that SHA, and require zero active
+invocations/deployments from an earlier SHA. If that inventory cannot be
+proved, keep admission version 2 disabled and do not treat reconciliation as
+final.
+
+Trigger inventory verification:
+
+```sql
+select trigger.tgname, relation.relname
+from pg_trigger trigger
+join pg_class relation on relation.oid = trigger.tgrelid
+where not trigger.tgisinternal
+  and trigger.tgname in (
+    'payment_attempts_enqueue_paid_event',
+    'workspace_reservations_enqueue_paid_event'
+  )
+order by trigger.tgname;
+```
+
+Idempotent reconciliation:
+
+```sql
+insert into payment_paid_events (
+  payment_attempt_id,
+  workspace_reservation_id,
+  paid_at
+)
+select attempt.id, reservation.id, reservation.paid_at
+from payment_attempts attempt
+join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+  and reservation.active_payment_attempt_id = attempt.id
+where attempt.state = 'paid'
+  and reservation.payment_state = 'paid'
+  and reservation.paid_at is not null
+on conflict (payment_attempt_id) do nothing;
+```
+
+Missing-event verification:
+
+```sql
+select count(*)
+from payment_attempts attempt
+join workspace_reservations reservation
+  on reservation.id = attempt.workspace_reservation_id
+  and reservation.active_payment_attempt_id = attempt.id
+left join payment_paid_events event
+  on event.payment_attempt_id = attempt.id
+where attempt.state = 'paid'
+  and reservation.payment_state = 'paid'
+  and reservation.paid_at is not null
+  and event.id is null;
+```
+
+Invalid-event verification:
+
+```sql
+select count(*)
+from payment_paid_events event
+left join payment_attempts attempt on attempt.id = event.payment_attempt_id
+left join workspace_reservations reservation
+  on reservation.id = event.workspace_reservation_id
+where attempt.id is null
+  or reservation.id is null
+  or attempt.workspace_reservation_id is distinct from event.workspace_reservation_id
+  or attempt.state is distinct from 'paid'
+  or reservation.payment_state is distinct from 'paid'
+  or reservation.active_payment_attempt_id is distinct from event.payment_attempt_id
+  or reservation.paid_at is distinct from event.paid_at;
+```
+
+The trigger functions and backfill are custom migration SQL and are not
+represented by the Drizzle snapshot. Preserve them when later migration
+snapshots are regenerated, composed, or squashed.
+
 ## Live Test Safety Checklist
 
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.

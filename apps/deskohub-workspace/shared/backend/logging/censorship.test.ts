@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -148,7 +149,7 @@ describe("censorLogValue", () => {
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,
         submittedCode: CENSORED_LOG_VALUE,
-        params: '["SUMMER50"]',
+        params: CENSORED_LOG_VALUE,
         query: "select * from discount_codes where code = $1",
         discountCodeId: "safe-discount-code-id",
         name: CENSORED_LOG_VALUE,
@@ -194,7 +195,7 @@ describe("censorLogValue", () => {
     expect(censored.self).toBe(censored);
   });
 
-  test("redacts sensitive fields inside query params without hiding safe values", () => {
+  test("keeps all database query parameters opaque", () => {
     const input = {
       params: [
         "visible",
@@ -203,7 +204,7 @@ describe("censorLogValue", () => {
     };
 
     expect(censorLogValue(input)).toEqual({
-      params: ["visible", { email: CENSORED_LOG_VALUE, sessionDuration: 123 }],
+      params: [CENSORED_LOG_VALUE, CENSORED_LOG_VALUE],
     });
   });
 
@@ -224,17 +225,14 @@ describe("censorLogValue", () => {
       cause: {
         _tag: "EffectDrizzleQueryError",
         query: "select * from customers where email = $1",
-        params: [
-          "visible",
-          { email: CENSORED_LOG_VALUE, sessionDuration: 123 },
-        ],
+        params: [CENSORED_LOG_VALUE, CENSORED_LOG_VALUE],
       },
     });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("preserves non-plain objects", () => {
+  test("preserves non-plain objects while projecting errors", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -244,13 +242,21 @@ describe("censorLogValue", () => {
     const input = { thrown: error, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
-    expect(censored).toEqual(input);
-    expect(censored.thrown).toBe(error);
+    expect(censored).toEqual({
+      ...input,
+      thrown: {
+        name: "Error",
+        message: CENSORED_LOG_VALUE,
+      },
+    });
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
     expect(censored.promise).toBe(promise);
-    expect((censorLogValue(error) as Error).message).toBe("boom");
+    expect(censorLogValue(error)).toEqual({
+      name: "Error",
+      message: CENSORED_LOG_VALUE,
+    });
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
@@ -456,9 +462,9 @@ describe("censorLoggerOptions", () => {
     );
 
     expect(capturedParams).toEqual([
-      '"visible"',
-      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
-      "42",
+      CENSORED_LOG_VALUE,
+      CENSORED_LOG_VALUE,
+      CENSORED_LOG_VALUE,
     ]);
   });
 });
@@ -515,6 +521,47 @@ describe("createCensoredOtelLogger", () => {
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
+    await provider.shutdown();
+  });
+
+  test("censors attach values and raw failures through Drizzle and OTel logging", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    const credentialValue = randomUUID();
+    const queryValue = randomUUID();
+    const rawCauseValue = randomUUID();
+    const redirectUrl = `https://provider.example/hosted?opaque=${queryValue}`;
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const logger = yield* EffectLogger;
+        yield* logger.logQuery("update payment_attempts set fields = $1", [
+          credentialValue,
+          redirectUrl,
+        ]);
+        yield* Effect.logError("Checkout hosted payment page attach failed", {
+          providerRedirectUrl: redirectUrl,
+          cause: new Error(rawCauseValue),
+        });
+      }).pipe(
+        Effect.provide(
+          Layer.merge(
+            EffectLogger.layer,
+            Logger.layer([createCensoredOtelLogger(provider)])
+          )
+        )
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords());
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain(credentialValue);
+    expect(serialized).not.toContain(queryValue);
+    expect(serialized).not.toContain(rawCauseValue);
+    expect(serialized).not.toContain(redirectUrl);
     await provider.shutdown();
   });
 });

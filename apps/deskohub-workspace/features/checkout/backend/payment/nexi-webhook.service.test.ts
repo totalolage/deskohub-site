@@ -13,7 +13,10 @@ import {
 } from "../fulfillment/paid-fulfillment.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
-import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
+import {
+  type IPaymentLifecycleRepository,
+  PaymentLifecycleStateError,
+} from "../repositories/payment-lifecycle.repository";
 import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
 
 type NexiServiceType = typeof NexiServiceTag.Service;
@@ -189,6 +192,7 @@ describe("NexiWebhookService", () => {
         paymentLifecycle: {
           admitPaymentStart: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
+          markProviderStartFailed: mock(() => Effect.die("unused")),
           markPaid: markPaidForReservation,
           markTerminal: mock(() => Effect.die("unused")),
         },
@@ -268,6 +272,7 @@ describe("NexiWebhookService", () => {
         paymentLifecycle: {
           admitPaymentStart: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
+          markProviderStartFailed: mock(() => Effect.die("unused")),
           markPaid: mock(() => Effect.die("unused")),
           markTerminal,
         },
@@ -306,6 +311,73 @@ describe("NexiWebhookService", () => {
     expect(markProcessed).toHaveBeenCalledTimes(1);
   });
 
+  test("marks a contradictory terminal replay failed and never processed", async () => {
+    const markProcessed = mock(() => Effect.void);
+    const markFailed = mock(() => Effect.void);
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        await buildWebhookEffect({
+          webhookEvents: {
+            insertReceived: mock(() =>
+              Effect.succeed({ status: "inserted", event: receivedEvent })
+            ),
+            linkPaymentAttempt: mock(() => Effect.void),
+            markProcessed,
+            markFailed,
+            claimRetry: mock(() => Effect.die("unused")),
+          } as unknown as WebhookEventRepositoryType,
+          paymentAttempts: {
+            findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+          } as unknown as PaymentAttemptRepositoryType,
+          paymentLifecycle: {
+            admitPaymentStart: mock(() => Effect.die("unused")),
+            attachProviderSession: mock(() => Effect.die("unused")),
+            markProviderStartFailed: mock(() => Effect.die("unused")),
+            markPaid: mock(() => Effect.die("unused")),
+            markTerminal: mock(() =>
+              Effect.fail(
+                new PaymentLifecycleStateError({
+                  operation: "markTerminal",
+                  paymentAttemptId: attempt.id,
+                  message:
+                    "The terminal replay conflicts with the recorded lifecycle outcome.",
+                })
+              )
+            ),
+          },
+          reservations: {
+            findById: mock(() => Effect.succeed(reservation as never)),
+          } as unknown as WorkspaceReservationRepositoryType,
+          nexi: {
+            verifyPaymentOutcome: mock(() =>
+              Effect.succeed({
+                ...verification,
+                status: "failure",
+                provider: {
+                  ...verification.provider,
+                  orderStatus: "DECLINED",
+                  captureExecuted: false,
+                },
+              })
+            ),
+          } as unknown as NexiServiceType,
+          fulfillment: {
+            fulfillPaidOrder: mock(() => Effect.die("unused")),
+          },
+        })
+      )
+    );
+
+    expect(result._tag).toBe("Failure");
+    expect(markFailed).toHaveBeenCalledWith({
+      type: "eventId",
+      eventId: "event-id",
+      errorCode: "nexi_webhook_transition_failed",
+    });
+    expect(markProcessed).not.toHaveBeenCalled();
+  });
+
   test("marks the webhook failed and not processed when paid fulfillment fails", async () => {
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
@@ -328,6 +400,7 @@ describe("NexiWebhookService", () => {
           paymentLifecycle: {
             admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
+            markProviderStartFailed: mock(() => Effect.die("unused")),
             markPaid: mock(() =>
               Effect.succeed({
                 attempt: { ...attempt, state: "paid" as const },

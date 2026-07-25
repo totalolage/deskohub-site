@@ -74,7 +74,11 @@ export type PaymentStartAdmission =
     }
   | {
       readonly outcome: "unavailable";
-      readonly reason: "reservation" | "active_attempt" | "payment_state";
+      readonly reason:
+        | "reservation"
+        | "active_attempt"
+        | "payment_state"
+        | "admission_disabled";
     }
   | {
       readonly outcome: "pricing_changed";
@@ -83,6 +87,13 @@ export type PaymentStartAdmission =
 
 export type ProviderSessionAttach =
   | { readonly outcome: "attached"; readonly attempt: PaymentAttempt }
+  | { readonly outcome: "lost" };
+
+export type ProviderStartFailureSettlement =
+  | {
+      readonly outcome: "settled";
+      readonly transition: PaymentLifecycleTransition;
+    }
   | { readonly outcome: "lost" };
 
 export type PaymentLifecycleRepositoryError =
@@ -100,6 +111,7 @@ export interface IPaymentLifecycleRepository {
     readonly affirmedPricing: PaymentPricingIdentity;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
+    readonly allowNewAdmission: boolean;
   }) => Effect.Effect<PaymentStartAdmission, PaymentLifecycleRepositoryError>;
   readonly attachProviderSession: (input: {
     readonly id: string;
@@ -110,6 +122,16 @@ export interface IPaymentLifecycleRepository {
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
   }) => Effect.Effect<ProviderSessionAttach, EffectDrizzleQueryError>;
+  readonly markProviderStartFailed: (input: {
+    readonly id: string;
+    readonly workspaceReservationId: string;
+    readonly providerStartLeaseId: string;
+    readonly failureCode: string;
+    readonly providerStatus: string;
+  }) => Effect.Effect<
+    ProviderStartFailureSettlement,
+    PaymentLifecycleRepositoryError
+  >;
   readonly markPaid: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
@@ -154,6 +176,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly affirmedPricing: PaymentPricingIdentity;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
+        readonly allowNewAdmission: boolean;
       }) {
         const transaction = db.transaction((tx) =>
           Effect.gen(function* () {
@@ -345,6 +368,13 @@ export class PaymentLifecycleRepository extends Context.Service<
               return {
                 outcome: "unavailable" as const,
                 reason: "payment_state" as const,
+              };
+            }
+
+            if (!input.allowNewAdmission) {
+              return {
+                outcome: "unavailable" as const,
+                reason: "admission_disabled" as const,
               };
             }
 
@@ -578,6 +608,112 @@ export class PaymentLifecycleRepository extends Context.Service<
           outcome: "attached" as const,
           attempt: toPaymentAttempt(attempt),
         };
+      });
+
+      const markProviderStartFailed = Effect.fn(
+        "PaymentLifecycleRepository.markProviderStartFailed"
+      )(function* (input: {
+        readonly id: string;
+        readonly workspaceReservationId: string;
+        readonly providerStartLeaseId: string;
+        readonly failureCode: string;
+        readonly providerStatus: string;
+      }) {
+        return yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const [attempt] = yield* tx
+              .update(paymentAttempts)
+              .set({
+                state: "failed",
+                failureCode: input.failureCode,
+                lastProviderStatus: input.providerStatus,
+                providerStartLeaseId: null,
+                providerStartLeaseExpiresAt: null,
+                updatedAt: sql`clock_timestamp()`,
+              })
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  ),
+                  eq(paymentAttempts.state, "created"),
+                  eq(
+                    paymentAttempts.providerStartLeaseId,
+                    input.providerStartLeaseId
+                  ),
+                  sql`${paymentAttempts.providerStartLeaseExpiresAt} > clock_timestamp()`,
+                  sql`exists (
+                    select 1
+                    from workspace_reservations as payable
+                    where payable.id = ${input.workspaceReservationId}
+                      and payable.reservation_state = 'held'
+                      and payable.payment_state = 'pending'
+                      and payable.active_payment_attempt_id = ${input.id}
+                      and (
+                        payable.failure_code is null
+                        or (
+                          payable.failure_code not like 'hold_creation_candidate:%'
+                          and payable.failure_code not like 'hold_creation_candidate_compensating:%'
+                          and payable.failure_code not like 'hold_creation_orphan_recovery:%'
+                          and payable.failure_code not like 'hold_creation_orphan_processing:%'
+                          and payable.failure_code not like 'hold_creation_orphan_awaiting_visibility:%'
+                          and payable.failure_code not like 'hold_creation_orphan_verifying:%'
+                        )
+                      )
+                      and payable.reservation_hold_expires_at > clock_timestamp()
+                  )`
+                )
+              )
+              .returning();
+
+            if (!attempt) {
+              return { outcome: "lost" as const };
+            }
+
+            const [reservation] = yield* tx
+              .update(workspaceReservations)
+              .set({
+                paymentState: "failed",
+                failureCode: input.failureCode,
+                updatedAt: sql`clock_timestamp()`,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(workspaceReservations.reservationState, "held"),
+                  eq(workspaceReservations.paymentState, "pending"),
+                  eq(workspaceReservations.activePaymentAttemptId, input.id)
+                )
+              )
+              .returning({ updatedAt: workspaceReservations.updatedAt });
+
+            if (!reservation) {
+              return yield* lifecycleStateError(
+                "markProviderStartFailed",
+                input.id,
+                "The provider-start lease lost its payable reservation."
+              );
+            }
+
+            yield* releaseCodeClaim(
+              tx,
+              input.id,
+              reservation.updatedAt,
+              input.failureCode
+            );
+
+            return {
+              outcome: "settled" as const,
+              transition: {
+                attempt: toPaymentAttempt(attempt),
+                changed: true,
+                timestamp: reservation.updatedAt,
+              },
+            };
+          })
+        );
       });
 
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
@@ -814,6 +950,16 @@ export class PaymentLifecycleRepository extends Context.Service<
                 currentAttempt.state === "cancelled" ||
                 currentAttempt.state === "expired"
               ) {
+                if (
+                  currentAttempt.state !== input.state ||
+                  currentAttempt.failureCode !== input.failureCode
+                ) {
+                  return yield* lifecycleStateError(
+                    "markTerminal",
+                    input.id,
+                    "The terminal replay conflicts with the recorded lifecycle outcome and requires manual review."
+                  );
+                }
                 const [consistent] = yield* tx
                   .select({ updatedAt: workspaceReservations.updatedAt })
                   .from(workspaceReservations)
@@ -953,6 +1099,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       return {
         admitPaymentStart,
         attachProviderSession,
+        markProviderStartFailed,
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
