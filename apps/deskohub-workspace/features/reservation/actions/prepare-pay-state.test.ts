@@ -910,6 +910,34 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
+  test("reuses an immediate retry stored with the legacy attempt digest", async () => {
+    const { deriveCheckoutAttemptKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const [, legacyAttemptKey] = deriveCheckoutAttemptKeyCandidates({
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      reservation,
+    });
+    if (!legacyAttemptKey) {
+      throw new Error("Expected a synthetic legacy checkout attempt key.");
+    }
+    const existingReservation = makeReusableReservation({
+      checkoutAttemptKey: legacyAttemptKey,
+    });
+    const findByAttemptKey = mock((candidate: string) =>
+      Effect.succeed(
+        candidate === legacyAttemptKey ? existingReservation : null
+      )
+    );
+    const result = await runReusableReservationScenario({ findByAttemptKey });
+
+    expect(result.result.status).toBe("ready");
+    expect(findByAttemptKey).toHaveBeenCalledTimes(2);
+    expect(result.createDraft).not.toHaveBeenCalled();
+    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+  });
+
   test("reuses a held reservation returned by a conflicting draft insert", async () => {
     const claimConflictReservation = makeReusableReservation({
       id: "claim-conflict-reservation-id",
@@ -1073,23 +1101,33 @@ describe("prepareWorkspacePayState", () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
+    const { deriveCheckoutSessionKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const [initialSessionKey] =
+      deriveCheckoutSessionKeyCandidates("session-id");
+    const [rotatedSessionKey] =
+      deriveCheckoutSessionKeyCandidates("attempt-id");
     const pendingReservation = makeReusableReservation({
       id: "pending-reservation-id",
+      checkoutSessionKey: initialSessionKey,
       paymentState: "pending",
       activePaymentAttemptId: "payment-attempt-id",
     });
     const rotatedSessionReservation = makeReusableReservation({
       id: "rotated-session-reservation-id",
+      checkoutSessionKey: rotatedSessionKey,
       dotyposReservationId: "rotated-session-dotypos-reservation-id",
     });
-    let currentLookupCount = 0;
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(null)),
-      findCurrentByCheckoutSessionKey: mock(() =>
+      findCurrentByCheckoutSessionKey: mock((candidate: string) =>
         Effect.succeed(
-          currentLookupCount++ === 0
+          candidate === initialSessionKey
             ? pendingReservation
-            : rotatedSessionReservation
+            : candidate === rotatedSessionKey
+              ? rotatedSessionReservation
+              : null
         )
       ),
       claimSupersessionCancellation: mock(() =>
@@ -1331,6 +1369,7 @@ describe("prepareWorkspacePayState", () => {
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.changedKeys?.itemKeys).toContain("product:cowork:basic");
     expect(state.quote.payment.discounts).toEqual([]);
+    expect(state.checkoutSessionId).toBe("session-id");
   });
 
   test("allows the customer discount to first appear on a ready summary", async () => {

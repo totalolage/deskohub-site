@@ -1,5 +1,6 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
@@ -13,12 +14,13 @@ const {
   advertisedPriceStateSchema,
   buildAdvertisedPriceState,
   openAdvertisedPriceState,
+  openSubmittedAdvertisedPriceState,
   sealAdvertisedPriceState,
 } = await import("./advertised-price-state");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
 const fixedKey = Effect.runSync(
-  parseCheckoutStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
+  parseCheckoutStateKey("test-kid", randomBytes(32).toString("base64url"))
 );
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const reservation = {
@@ -95,6 +97,44 @@ describe("advertised price state", () => {
         })
       )
     ).toThrow("expired");
+  });
+
+  test("keeps submitted token failures on one stable public error", () => {
+    const configuredState = Effect.runSync(
+      buildAdvertisedPriceState({
+        kind: "cowork",
+        locale: "en-US",
+        reservation,
+        quote,
+      })
+    );
+    const configuredToken = Effect.runSync(
+      sealAdvertisedPriceState(configuredState)
+    );
+    const expiredState = Effect.runSync(
+      buildAdvertisedPriceState({
+        kind: "cowork",
+        locale: "en-US",
+        reservation,
+        quote,
+        ttlMilliseconds: -1,
+      })
+    );
+    const expiredToken = Effect.runSync(sealAdvertisedPriceState(expiredState));
+
+    for (const token of [
+      "malformed",
+      tamperToken(configuredToken),
+      expiredToken,
+    ]) {
+      expect(
+        Effect.runSync(Effect.flip(openSubmittedAdvertisedPriceState(token)))
+      ).toMatchObject({
+        _tag: "AdvertisedPriceMismatchError",
+        reason: "invalid_token",
+        message: "Advertised price snapshot is invalid or expired.",
+      });
+    }
   });
 
   test("strictly rejects extra snapshot fields", () => {

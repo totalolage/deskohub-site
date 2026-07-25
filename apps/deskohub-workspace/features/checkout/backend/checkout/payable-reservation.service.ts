@@ -14,7 +14,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import { deriveCheckoutSessionKeyCandidates } from "./checkout-session-key.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
@@ -62,7 +62,7 @@ export class PayableReservationService extends Context.Service<
               return yield* unavailable(input, "missing_checkout_session");
             }
 
-            const checkoutSessionKey = deriveCheckoutSessionKey(
+            const checkoutSessionKeys = deriveCheckoutSessionKeyCandidates(
               input.checkoutSessionId
             );
             const reservation = yield* reservations.findById(input.orderId);
@@ -70,13 +70,20 @@ export class PayableReservationService extends Context.Service<
               return yield* unavailable(input, "missing_reservation");
             }
 
-            const current =
-              yield* reservations.findCurrentByCheckoutSessionKey(
-                checkoutSessionKey
-              );
+            const currentReservations = yield* Effect.forEach(
+              checkoutSessionKeys,
+              (checkoutSessionKey) =>
+                reservations.findCurrentByCheckoutSessionKey(checkoutSessionKey)
+            );
+            const currentReservationIds = new Set(
+              currentReservations.flatMap((current) =>
+                current === null ? [] : [current.id]
+              )
+            );
             if (
-              reservation.checkoutSessionKey !== checkoutSessionKey ||
-              current?.id !== reservation.id
+              !checkoutSessionKeys.includes(reservation.checkoutSessionKey) ||
+              currentReservationIds.size !== 1 ||
+              !currentReservationIds.has(reservation.id)
             ) {
               return yield* unavailable(input, "not_current");
             }

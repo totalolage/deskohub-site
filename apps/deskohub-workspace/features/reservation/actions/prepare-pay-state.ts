@@ -26,7 +26,9 @@ import {
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
   deriveCheckoutAttemptKey,
+  deriveCheckoutAttemptKeyCandidates,
   deriveCheckoutSessionKey,
+  deriveCheckoutSessionKeyCandidates,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
@@ -368,6 +370,16 @@ class CheckoutAttemptUnavailableError extends Data.TaggedError(
   readonly reservation: WorkspaceReservation;
 }> {}
 
+const getDistinctReservations = (
+  candidates: readonly (WorkspaceReservation | null)[]
+) => [
+  ...new Map(
+    candidates.flatMap((candidate) =>
+      candidate === null ? [] : [[candidate.id, candidate] as const]
+    )
+  ).values(),
+];
+
 const ensureReservationAvailable = (input: {
   readonly availability: typeof WorkspaceAvailabilityService.Service;
   readonly reservation: PreparePayStateInput["reservation"];
@@ -404,15 +416,27 @@ const prepareReservationDraft = Effect.fn(
   let checkoutSessionId = input.checkoutSessionId;
 
   while (true) {
-    const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
-    const checkoutAttemptKey = deriveCheckoutAttemptKey({
+    const checkoutSessionKeys =
+      deriveCheckoutSessionKeyCandidates(checkoutSessionId);
+    const [checkoutSessionKey] = checkoutSessionKeys;
+    const checkoutAttemptKeys = deriveCheckoutAttemptKeyCandidates({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
     });
+    const [checkoutAttemptKey] = checkoutAttemptKeys;
 
-    let existingAttempt =
-      yield* reservations.findByAttemptKey(checkoutAttemptKey);
+    const existingAttempts = getDistinctReservations(
+      yield* Effect.forEach(checkoutAttemptKeys, (candidate) =>
+        reservations.findByAttemptKey(candidate)
+      )
+    );
+    if (existingAttempts.length > 1) {
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: existingAttempts[0] as WorkspaceReservation,
+      });
+    }
+    let existingAttempt = existingAttempts[0] ?? null;
     if (
       existingAttempt?.reservationState === "creating_hold" ||
       existingAttempt?.reservationState === "cancelling"
@@ -459,8 +483,17 @@ const prepareReservationDraft = Effect.fn(
       });
     }
 
-    const currentReservation =
-      yield* reservations.findCurrentByCheckoutSessionKey(checkoutSessionKey);
+    const currentReservations = getDistinctReservations(
+      yield* Effect.forEach(checkoutSessionKeys, (candidate) =>
+        reservations.findCurrentByCheckoutSessionKey(candidate)
+      )
+    );
+    if (currentReservations.length > 1) {
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: currentReservations[0] as WorkspaceReservation,
+      });
+    }
+    const currentReservation = currentReservations[0] ?? null;
     if (
       currentReservation?.reservationState === "creating_hold" ||
       currentReservation?.reservationState === "cancelling" ||

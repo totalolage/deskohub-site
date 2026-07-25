@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { Schema } from "effect";
 import {
   workspaceClientEnvSchema,
@@ -54,6 +55,22 @@ describe("workspace environment schemas", () => {
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
     expect(decodePostHogHost(undefined)).toBeUndefined();
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
+  });
+
+  test("requires separate reservation HMAC material with bounded migration input", () => {
+    const decodeSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.CHECKOUT_RESERVATION_HMAC_SECRET
+    );
+    const decodeLegacySecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.CHECKOUT_RESERVATION_HMAC_LEGACY_SECRET
+    );
+    const syntheticMaterial = randomBytes(32).toString("base64url");
+
+    expect(decodeSecret(syntheticMaterial)).toBe(syntheticMaterial);
+    expect(decodeLegacySecret(undefined)).toBeUndefined();
+    expect(decodeLegacySecret(syntheticMaterial)).toBe(syntheticMaterial);
+    expect(() => decodeSecret("too-short")).toThrow();
+    expect(() => decodeLegacySecret("too-short")).toThrow();
   });
 
   test("exposes fields through Standard Schema for T3 Env", async () => {

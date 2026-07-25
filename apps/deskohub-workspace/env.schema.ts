@@ -40,6 +40,12 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
+  CHECKOUT_RESERVATION_HMAC_SECRET: toEnvSchema(
+    Schema.String.check(Schema.isMinLength(32))
+  ),
+  CHECKOUT_RESERVATION_HMAC_LEGACY_SECRET: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isMinLength(32)))
+  ),
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),

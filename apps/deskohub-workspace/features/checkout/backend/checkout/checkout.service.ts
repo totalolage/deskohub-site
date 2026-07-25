@@ -651,7 +651,11 @@ export const CheckoutServiceLive = Layer.effect(
         "checkout.createHostedPaymentCheckout"
       )(
         function* (input, locale) {
-          yield* Effect.annotateLogsScoped({ input, locale });
+          yield* Effect.annotateLogsScoped({
+            locale,
+            hasPayStateToken: input.payStateToken.length > 0,
+            hasLegalConsent: input.legalConsent === true,
+          });
           yield* Effect.logInfo("Hosted payment checkout creation started");
 
           if (input.legalConsent !== true) {
@@ -665,7 +669,11 @@ export const CheckoutServiceLive = Layer.effect(
           }
 
           const state = yield* openFinalPayState(input.payStateToken, locale);
-          yield* Effect.annotateLogsScoped({ payState: state });
+          yield* Effect.annotateLogsScoped({
+            orderId: state.orderId,
+            reservationKind: state.reservation.kind,
+            hasChangedKeys: state.changedKeys !== undefined,
+          });
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
           const data = state.reservation;

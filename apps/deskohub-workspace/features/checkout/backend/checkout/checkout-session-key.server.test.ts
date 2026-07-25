@@ -4,6 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { generateSyntheticSecretValues } from "@/shared/testing/synthetic-secrets";
 
 mock.module("server-only", () => ({}));
 
@@ -58,5 +59,72 @@ describe("checkout attempt key", () => {
     for (const key of keys) {
       expect(key).toMatch(/^[a-f0-9]{64}$/);
     }
+  });
+
+  test("writes with stable material and retains a distinct legacy read candidate", async () => {
+    const {
+      deriveCheckoutAttemptKey,
+      deriveCheckoutAttemptKeyCandidates,
+      deriveCheckoutSessionKey,
+      deriveCheckoutSessionKeyCandidates,
+    } = await import("./checkout-session-key.server");
+    const [secret, legacySecret, replacementLegacySecret] =
+      generateSyntheticSecretValues();
+    const reservation = decodeReservation({
+      kind: "cowork",
+      ...contact,
+      date: "2099-06-10",
+      entryTier: "basic",
+      coffee: false,
+    });
+    const attemptInput = {
+      checkoutSessionId: "migration-session-id",
+      checkoutAttemptId: "migration-attempt-id",
+      reservation,
+    };
+    const options = { secret, legacySecret };
+    const sessionCandidates = deriveCheckoutSessionKeyCandidates(
+      attemptInput.checkoutSessionId,
+      options
+    );
+    const attemptCandidates = deriveCheckoutAttemptKeyCandidates(
+      attemptInput,
+      options
+    );
+
+    expect(sessionCandidates).toHaveLength(2);
+    expect(attemptCandidates).toHaveLength(2);
+    expect(sessionCandidates[0]).toBe(
+      deriveCheckoutSessionKey(attemptInput.checkoutSessionId, options)
+    );
+    expect(attemptCandidates[0]).toBe(
+      deriveCheckoutAttemptKey(attemptInput, options)
+    );
+    expect(
+      deriveCheckoutSessionKeyCandidates(attemptInput.checkoutSessionId, {
+        secret,
+        legacySecret: replacementLegacySecret,
+      })[0]
+    ).toBe(sessionCandidates[0]);
+    expect(
+      deriveCheckoutAttemptKeyCandidates(attemptInput, {
+        secret,
+        legacySecret: replacementLegacySecret,
+      })[0]
+    ).toBe(attemptCandidates[0]);
+  });
+
+  test("deduplicates matching current and legacy material", async () => {
+    const { deriveCheckoutSessionKeyCandidates } = await import(
+      "./checkout-session-key.server"
+    );
+    const [secret] = generateSyntheticSecretValues();
+
+    expect(
+      deriveCheckoutSessionKeyCandidates("deduplicated-session-id", {
+        secret,
+        legacySecret: secret,
+      })
+    ).toHaveLength(1);
   });
 });

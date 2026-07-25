@@ -9,6 +9,7 @@ import {
 } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { generateSyntheticSecretValues } from "@/shared/testing/synthetic-secrets";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -29,14 +30,16 @@ const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
+const [fixedKeyValue, wrongKeyValue, rotatedKeyValue] =
+  generateSyntheticSecretValues();
 const fixedKey: PayStateKey = runSync(
-  parsePayStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
+  parsePayStateKey("test-kid", fixedKeyValue)
 );
 const wrongKey: PayStateKey = runSync(
-  parsePayStateKey("test-kid", Buffer.alloc(32, 2).toString("base64url"))
+  parsePayStateKey("test-kid", wrongKeyValue)
 );
 const rotatedKey: PayStateKey = runSync(
-  parsePayStateKey("rotated-kid", Buffer.alloc(32, 3).toString("base64url"))
+  parsePayStateKey("rotated-kid", rotatedKeyValue)
 );
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
@@ -529,6 +532,7 @@ describe("Pay URL state", () => {
     expect(continued.changedKeys).toBeUndefined();
     expect(continued.quote).toEqual(reviewState.quote);
     expect(continued.orderId).toBe(reviewState.orderId);
+    expect(continued.checkoutSessionId).toBe(reviewState.checkoutSessionId);
     expect(continued.submittedCode).toBeUndefined();
     expect(continued.submittedCodeDiscountId).toBeUndefined();
   });

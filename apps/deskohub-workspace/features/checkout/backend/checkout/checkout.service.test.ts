@@ -545,6 +545,77 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 };
 
 describe("CheckoutService", () => {
+  test("keeps opaque URL state and decrypted payloads out of checkout logs", async () => {
+    const source = await Bun.file(
+      new URL("./checkout.service.ts", import.meta.url)
+    ).text();
+    const start = source.indexOf(
+      'createHostedPaymentCheckout: Effect.fn(\n        "checkout.createHostedPaymentCheckout"'
+    );
+    const end = source.indexOf(
+      'yield* Effect.logInfo("Hosted payment checkout pay state opened")',
+      start
+    );
+    const stateOpening = source.slice(start, end);
+
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(stateOpening).not.toContain("annotateLogsScoped({ input");
+    expect(stateOpening).not.toContain("annotateLogsScoped({ payState");
+    expect(stateOpening).toContain("hasPayStateToken");
+    expect(stateOpening).toContain("hasChangedKeys");
+  });
+
+  test("keeps checkout token failures on one stable public error", async () => {
+    const validToken = buildPayStateToken({
+      orderId: "public-error-token",
+    });
+    const [encodedHeader, ...tokenRest] = validToken.split(".");
+    if (!encodedHeader) throw new Error("Expected encoded Pay state header.");
+    const header = JSON.parse(
+      Buffer.from(encodedHeader, "base64url").toString("utf8")
+    ) as Record<string, unknown>;
+    const unknownKeyToken = [
+      Buffer.from(JSON.stringify({ ...header, kid: "unknown-key" })).toString(
+        "base64url"
+      ),
+      ...tokenRest,
+    ].join(".");
+    const nonCanonicalToken = validToken
+      .split(".")
+      .map((part, index) => (index === 1 ? `${part}=` : part))
+      .join(".");
+    const expiredState = Effect.runSync(
+      buildSignedPayState({
+        locale: "en-US",
+        reservation: reservationData,
+        quote: buildCoworkReservationQuote(reservationData),
+        orderId: "expired-public-error-token",
+        checkoutSessionId: "checkout-session-id",
+        ttlMilliseconds: -1,
+      })
+    );
+    const expiredToken = Effect.runSync(sealPayState(expiredState));
+
+    for (const payStateToken of [
+      "malformed",
+      nonCanonicalToken,
+      unknownKeyToken,
+      expiredToken,
+    ]) {
+      const harness = await createCheckoutHarness({
+        orderId: "public-error-token",
+        payStateToken,
+      });
+
+      await expect(Effect.runPromise(harness.effect)).rejects.toMatchObject({
+        _tag: "CheckoutError",
+        message:
+          "Pay state is invalid or expired. Please review checkout again.",
+      });
+    }
+  });
+
   test("prepares fallible local provider inputs before committing an attempt", async () => {
     const source = await Bun.file(
       new URL("./checkout.service.ts", import.meta.url)
@@ -671,6 +742,10 @@ describe("CheckoutService", () => {
     });
 
     const result = await Effect.runPromise(harness.effect);
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshPayUrl = result.freshPayUrl;
 
     expect(result).toMatchObject({
       status: "pricing_changed",
@@ -681,6 +756,15 @@ describe("CheckoutService", () => {
       freshSummary: expect.any(Object),
       freshPayUrl: expect.stringContaining("/en-US/checkout/pay?payState="),
     });
+    const freshToken = new URL(
+      freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    if (!freshToken) throw new Error("Expected refreshed Pay state token.");
+    expect(freshToken.split(".")).toHaveLength(4);
+    expect(
+      Effect.runSync(openPayState(freshToken ?? "")).checkoutSessionId
+    ).toBe("checkout-session-id");
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
@@ -1124,9 +1208,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(
-      Effect.runSync(openPayState(freshToken ?? "")).submittedCode
-    ).toBeUndefined();
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.submittedCode).toBeUndefined();
+    expect(freshState.checkoutSessionId).toBe("checkout-session-id");
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
         quote: expect.objectContaining({
@@ -1301,6 +1385,16 @@ describe("CheckoutService", () => {
         total: money(55_000),
       },
     });
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(
+      Effect.runSync(openPayState(freshToken ?? "")).checkoutSessionId
+    ).toBe("checkout-session-id");
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
@@ -1347,6 +1441,16 @@ describe("CheckoutService", () => {
         total: money(55_000),
       },
     });
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(
+      Effect.runSync(openPayState(freshToken ?? "")).checkoutSessionId
+    ).toBe("checkout-session-id");
     expect(affirm).toHaveBeenCalledTimes(2);
     expect(completeInternalPayment).toHaveBeenCalledTimes(1);
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();

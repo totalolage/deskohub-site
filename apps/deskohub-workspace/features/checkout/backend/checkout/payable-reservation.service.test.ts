@@ -9,7 +9,10 @@ import {
   WorkspaceReservationRepository,
   type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import {
+  deriveCheckoutSessionKey,
+  deriveCheckoutSessionKeyCandidates,
+} from "./checkout-session-key.server";
 import {
   PayableReservationService,
   PayableReservationUnavailableError,
@@ -36,6 +39,9 @@ const runRequireCurrent = (input: {
   readonly current?: WorkspaceReservation | null;
   readonly dotyposStatus?: "NEW" | "CANCELLED" | "CONFIRMED";
   readonly checkoutSessionId?: string;
+  readonly currentByKey?: (
+    checkoutSessionKey: string
+  ) => WorkspaceReservation | null;
 }) => {
   const candidate =
     input.candidate === undefined ? reservation() : input.candidate;
@@ -45,7 +51,9 @@ const runRequireCurrent = (input: {
   );
   const repository = {
     findById: mock(() => Effect.succeed(candidate)),
-    findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(current)),
+    findCurrentByCheckoutSessionKey: mock((key: string) =>
+      Effect.succeed(input.currentByKey ? input.currentByKey(key) : current)
+    ),
   } as unknown as WorkspaceReservationRepositoryType;
   const layer = PayableReservationService.Live.pipe(
     Layer.provide(
@@ -76,6 +84,57 @@ describe("PayableReservationService", () => {
 
     await expect(result).resolves.toMatchObject({ id: "reservation-id" });
     expect(getReservationStatus).toHaveBeenCalledWith("dotypos-reservation-id");
+  });
+
+  test("accepts a legacy session digest during the migration read window", async () => {
+    const [, legacyCheckoutSessionKey] =
+      deriveCheckoutSessionKeyCandidates(checkoutSessionId);
+    if (!legacyCheckoutSessionKey) {
+      throw new Error("Expected a synthetic legacy checkout key.");
+    }
+    const legacyReservation = reservation({
+      checkoutSessionKey: legacyCheckoutSessionKey,
+    });
+    const { result } = runRequireCurrent({
+      candidate: legacyReservation,
+      currentByKey: (key) =>
+        key === legacyCheckoutSessionKey ? legacyReservation : null,
+    });
+
+    await expect(result).resolves.toMatchObject({
+      id: legacyReservation.id,
+      checkoutSessionKey: legacyCheckoutSessionKey,
+    });
+  });
+
+  test("fails closed when current and legacy digests resolve different rows", async () => {
+    const [currentCheckoutSessionKey, legacyCheckoutSessionKey] =
+      deriveCheckoutSessionKeyCandidates(checkoutSessionId);
+    if (!legacyCheckoutSessionKey) {
+      throw new Error("Expected a synthetic legacy checkout key.");
+    }
+    const currentReservation = reservation({
+      checkoutSessionKey: currentCheckoutSessionKey,
+    });
+    const legacyReservation = reservation({
+      id: "legacy-reservation-id",
+      checkoutSessionKey: legacyCheckoutSessionKey,
+    });
+    const { getReservationStatus, result } = runRequireCurrent({
+      candidate: currentReservation,
+      currentByKey: (key) =>
+        key === currentCheckoutSessionKey
+          ? currentReservation
+          : legacyReservation,
+    });
+
+    await expect(result).rejects.toEqual(
+      new PayableReservationUnavailableError({
+        orderId: "reservation-id",
+        reason: "not_current",
+      })
+    );
+    expect(getReservationStatus).not.toHaveBeenCalled();
   });
 
   test.each([
