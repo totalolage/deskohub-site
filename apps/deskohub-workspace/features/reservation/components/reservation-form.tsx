@@ -62,7 +62,7 @@ import {
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import {
-  formatReservationDisplayDate,
+  formatReservationInputDate,
   parseReservationInputDate,
 } from "@/features/reservation/reservation-date";
 import {
@@ -216,7 +216,7 @@ const loadWorkspaceAvailability = async ({
 };
 
 const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationDisplayDate(
+  formatReservationInputDate(
     date,
     locale,
     m.reservationDatePlaceholder({}, { locale })

@@ -6,7 +6,6 @@ import { Suspense } from "react";
 import {
   appendVercelPreviewProtectionBypass,
   CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
@@ -144,7 +143,7 @@ async function CheckoutStatusContent({
         cause,
       })
     ),
-    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+    Effect.provide(CheckoutStatusService.LiveWithDependencies),
     runWorkspaceEffect("checkout.status.load")
   );
   const retryOutcome = getRetryOutcome(status.status);

@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import type { CheckoutStatusService as CheckoutStatusServiceType } from "./checkout-status.service";
+import type { ICheckoutStatusService } from "./checkout-status.service";
 
 mock.module("server-only", () => ({}));
 
@@ -12,14 +12,14 @@ const { makeCheckoutPaymentReturnGet } = await import(
 );
 
 const makeStatusServiceLayer = (
-  refreshStatus: CheckoutStatusServiceType["refreshStatus"]
+  refreshStatus: ICheckoutStatusService["refreshStatus"]
 ) =>
   Layer.succeed(CheckoutStatusService, {
     getStatus: () => Effect.die("unused"),
     refreshStatus,
   });
 
-const invoke = (refreshStatus: CheckoutStatusServiceType["refreshStatus"]) => {
+const invoke = (refreshStatus: ICheckoutStatusService["refreshStatus"]) => {
   const GET = makeCheckoutPaymentReturnGet(
     makeStatusServiceLayer(refreshStatus)
   );

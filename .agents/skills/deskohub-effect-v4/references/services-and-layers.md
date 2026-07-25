@@ -49,6 +49,10 @@ Name public service operations with `Effect.fn("Service.operation")`. Do not wra
 
 In a named Effect operation, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 
+Prefer explicit type annotations for constructed service-boundary and public
+projection values. Reserve `satisfies` for configuration and other literals
+whose narrow inferred type is intentionally retained.
+
 Collection combinators such as `Effect.all` and `Effect.forEach` are sequential by default. When all collection items are independent and all results are required, prefer `Effect.all(items.map(operation), { concurrency: "inherit" })`. Use `Effect.forEach` when the workflow is intrinsically iterative. Do not manually fork and join fibers to obtain concurrency. Use a numeric limit only when the operation has a real local concurrency constraint.
 
 Expose each feature's public service API through explicit named exports in its `index.ts` barrel; do not use wildcard exports. Keep providers, repositories, intermediate candidates, and other implementation modules private. In tests, import the declaration module under test directly rather than through the feature barrel.

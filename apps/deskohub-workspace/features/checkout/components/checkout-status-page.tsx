@@ -1,4 +1,5 @@
 import { cva } from "class-variance-authority";
+import { Match } from "effect";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,16 +10,22 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type {
+  CheckoutCoworkStatusSummary,
+  CheckoutMeetingRoomStatusSummary,
   CheckoutStatusKind,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
 import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -128,63 +135,116 @@ const getStatusCopy = (
   }
 };
 
-const getSummaryRows = (
-  status: CheckoutStatusViewModel,
+const getCoworkSummaryRows = (
+  summary: CheckoutCoworkStatusSummary,
   locale: Locale
 ): SummaryRow[] => {
-  const { summary } = status;
-  if (!summary) {
-    return [];
-  }
-
-  const rows: Array<SummaryRow | undefined> = [
+  return [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
-      value: getWorkspaceProductTierTitle(summary.tier, locale),
+      value: getWorkspaceProductTierTitle(summary.entryTier, locale),
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
-      value: formatReservationDisplayDate(summary.date, locale),
+      value: formatReservationDisplayDate(summary.reservedFrom, locale),
     },
-    summary.coffee
-      ? {
-          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-          value: summary.coffee
-            ? m.checkoutStatusYes({}, { locale })
-            : m.checkoutStatusNo({}, { locale }),
-        }
-      : undefined,
-    summary.monitorOption
-      ? {
-          label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
-          value: getWorkspaceProductMonitorTitle(summary.monitorOption, locale),
-        }
-      : undefined,
+    ...(summary.coffee
+      ? [
+          {
+            label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+            value: m.checkoutStatusYes({}, { locale }),
+          },
+        ]
+      : []),
+    ...Match.value(summary).pipe(
+      Match.discriminatorsExhaustive("entryTier")({
+        basic: () => [],
+        plus: () => [],
+        profi: ({ monitorOption }) => [
+          {
+            label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
+            value: getWorkspaceProductMonitorTitle(monitorOption, locale),
+          },
+        ],
+      })
+    ),
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
       value: formatWorkspaceMoney(summary.price, locale),
     },
   ];
-
-  return rows.filter(Boolean);
 };
+
+const getMeetingRoomSummaryRows = (
+  summary: CheckoutMeetingRoomStatusSummary,
+  locale: Locale
+): SummaryRow[] => [
+  {
+    label: String(m.checkoutStatusSummaryReservationLabel({}, { locale })),
+    value: getWorkspaceMeetingRoomProductTitle(locale),
+  },
+  {
+    label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
+    value: formatReservationDisplayDate(summary.reservedFrom, locale),
+  },
+  {
+    label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
+    value: formatReservationDisplayTimeRange(
+      summary.reservedFrom,
+      summary.reservedUntil,
+      locale
+    ),
+  },
+  {
+    label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
+    value: formatWorkspaceMoney(summary.price, locale),
+  },
+];
+
+const getSummaryRows = (
+  status: CheckoutStatusViewModel,
+  locale: Locale
+): SummaryRow[] =>
+  status.summary
+    ? Match.value(status.summary).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          cowork: (summary) => getCoworkSummaryRows(summary, locale),
+          "meeting-room": (summary) =>
+            getMeetingRoomSummaryRows(summary, locale),
+        })
+      )
+    : [];
 
 const getFulfillmentFailedContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale
 ) => {
-  const tier = status.summary
-    ? getWorkspaceProductTierTitle(status.summary.tier, locale)
+  const reservation = status.summary
+    ? Match.value(status.summary).pipe(
+        Match.discriminatorsExhaustive("kind")({
+          cowork: ({ entryTier }) =>
+            getWorkspaceProductTierTitle(entryTier, locale),
+          "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
+        })
+      )
     : m.checkoutStatusMissingSummary({}, { locale });
   const date = status.summary
-    ? formatReservationDisplayDate(status.summary.date, locale)
+    ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
 
   return m.checkoutStatusFulfillmentFailedContactMessage(
-    { orderId: status.orderId, tier, date },
+    { orderId: status.orderId, reservation, date },
     { locale }
   );
 };
+
+const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
+  Match.value(status).pipe(
+    Match.when({ kind: undefined }, () => `/${locale}/checkout/order`),
+    Match.when({ kind: "cowork" }, () => `/${locale}/checkout/order`),
+    Match.when({ kind: "meeting-room" }, () => `/${locale}/meeting-room`),
+    Match.exhaustive
+  );
 
 const getFulfillmentFailedContactHref = (
   status: CheckoutStatusViewModel,
@@ -322,7 +382,7 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={getReserveAgainPath(status, locale)}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>
