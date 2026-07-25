@@ -38,6 +38,13 @@ Discovery is best-effort, while an advertised or accepted price is explicit. A d
 
 The discount-code input is an independent form on the order-summary page. Invalid or unavailable codes produce a field-level error while the existing summary remains payable. A successful submission issues a new signed summary; it does not reserve usage. Applying application snapshots, admitting or releasing a code claim, and redeeming it are payment-lifecycle mutations. They run in the owning payment transaction, roll back that transition on failure, and never use best-effort resolution recovery. A failed final claim admission returns a refreshed `pricing_changed` summary before any Nexi session is created.
 
+Checkout presents expiry as a source-neutral localized countdown in the
+discount details only during the declared half-open interval
+`countdownStartsAt <= now < expiresAt`. It counts remaining partial hours until
+fewer than 60 minutes remain, then updates the remaining minutes and seconds
+every second. Calendar sales declare a 24-hour countdown window; bounded codes
+declare a one-hour window. The UI does not infer either source.
+
 ## Create a percentage code
 
 This `psql` example creates an initially disabled 50% Basic-tier code, adds its required target, and only then enables it. Use explicit timezone offsets for scheduled instants.

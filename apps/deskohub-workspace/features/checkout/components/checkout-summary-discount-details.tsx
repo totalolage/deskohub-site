@@ -15,6 +15,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/shared/components/ui/tooltip";
+import { CheckoutSummaryDiscountCountdown } from "./checkout-summary-discount-countdown";
 
 export function CheckoutSummaryDiscountDetails({
   discounts,
@@ -45,7 +46,7 @@ export function CheckoutSummaryDiscountDetails({
         <TooltipContent
           align="end"
           collisionPadding={16}
-          className="w-[min(20rem,calc(100vw-2rem))] p-4"
+          className="w-[min(22rem,calc(100vw-2rem))] p-4"
           side="top"
         >
           <CheckoutSummaryDiscountDetailsContent
@@ -77,6 +78,10 @@ export function CheckoutSummaryDiscountDetailsContent({
             <span className="block text-xs text-navy-blue/55">
               {formatDiscountAdjustment(discount.adjustment, locale)}
             </span>
+            <CheckoutSummaryDiscountCountdown
+              discount={discount}
+              locale={locale}
+            />
           </span>
           <span className="font-semibold tabular-nums">
             {formatWorkspaceMoney(

@@ -342,6 +342,8 @@
   "checkoutSummarySectionOrder": "Order",
   "checkoutSummarySectionTotal": "Total",
   "checkoutSummaryDiscountDetailsTrigger": "Show discounts applied to {product}",
+  "checkoutSummaryDiscountEnds": "Ends in {remaining}",
+  "checkoutDiscountCountdownBanner": "Hurry — {discount} ends in {remaining}",
   "checkoutDiscountCodeLabel": "Discount code",
   "checkoutDiscountCodePlaceholder": "Enter code",
   "checkoutDiscountCodeApply": "Apply code",
