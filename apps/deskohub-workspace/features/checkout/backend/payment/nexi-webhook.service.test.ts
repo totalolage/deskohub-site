@@ -425,6 +425,7 @@ describe("NexiWebhookService", () => {
     expect(recordEvidenceConflict).toHaveBeenCalledWith({
       id: "attempt-id",
       workspaceReservationId: "reservation-id",
+      reconciliationClaimId: "historical-claim-id",
       conflictCodes: ["provider_terminal_state"],
     });
     expect(markPaid).not.toHaveBeenCalled();
@@ -548,6 +549,7 @@ describe("NexiWebhookService", () => {
       expect(recordEvidenceConflict).toHaveBeenCalledWith({
         id: "attempt-id",
         workspaceReservationId: "reservation-id",
+        reconciliationClaimId: "historical-claim-id",
         conflictCodes: ["provider_terminal_state"],
       });
       expect(claimProviderReconciliation).toHaveBeenCalledWith({
@@ -1039,6 +1041,7 @@ describe("NexiWebhookService", () => {
       expect(recordEvidenceConflict).toHaveBeenCalledWith({
         id: "attempt-id",
         workspaceReservationId: "reservation-id",
+        reconciliationClaimId: "claim-id",
         conflictCodes: ["provider_terminal_state"],
       });
       if (providerStatus === "success") {
@@ -1112,6 +1115,7 @@ describe("NexiWebhookService", () => {
     expect(recordEvidenceConflict).toHaveBeenCalledWith({
       id: attempt.id,
       workspaceReservationId: attempt.workspaceReservationId,
+      reconciliationClaimId: "claim-id",
       conflictCodes: ["provider_operation_evidence"],
     });
   });

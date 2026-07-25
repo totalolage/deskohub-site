@@ -997,6 +997,131 @@ describe("PaymentLifecycleRepository database behavior", () => {
     );
   });
 
+  test("rejects stale reconciliation conflict materialization after every cancellation takeover state", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        for (const reservationState of [
+          "hold_expired",
+          "cancelling",
+          "cancelled",
+        ] as const) {
+          const reservationId = `expired-conflict-claim-${reservationState}`;
+          yield* seedReservation(reservationId);
+          const admission = yield* admit(repository, reservationId);
+          expect(admission.outcome).toBe("created");
+          if (admission.outcome !== "created") continue;
+
+          yield* repository.markTerminal({
+            id: admission.attempt.id,
+            workspaceReservationId: reservationId,
+            state: "failed",
+            failureCode: "nexi_payment_failed",
+            providerOperationId: "original-operation",
+            providerStatus: "DECLINED",
+          });
+          const claim = yield* repository.claimProviderReconciliation({
+            id: admission.attempt.id,
+            workspaceReservationId: reservationId,
+          });
+          expect(claim.outcome).toBe("claimed");
+          if (claim.outcome !== "claimed") continue;
+
+          yield* db
+            .update(workspaceReservations)
+            .set({
+              paymentReconciliationClaimExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+            })
+            .where(eq(workspaceReservations.id, reservationId));
+          yield* db
+            .update(workspaceReservations)
+            .set({ reservationState })
+            .where(eq(workspaceReservations.id, reservationId));
+
+          expect(
+            (yield* repository
+              .recordEvidenceConflict({
+                id: admission.attempt.id,
+                workspaceReservationId: reservationId,
+                reconciliationClaimId: claim.claimId,
+                conflictCodes: ["provider_terminal_state"],
+              })
+              .pipe(Effect.result))._tag
+          ).toBe("Failure");
+          expect(
+            yield* db
+              .select()
+              .from(paymentEvidenceConflicts)
+              .where(
+                eq(
+                  paymentEvidenceConflicts.paymentAttemptId,
+                  admission.attempt.id
+                )
+              )
+          ).toHaveLength(0);
+        }
+      })
+    );
+  });
+
+  test("atomically reacquires an expired reconciliation claim before materializing the fence", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("reacquired-conflict-claim");
+        const admission = yield* admit(repository, "reacquired-conflict-claim");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        const claim = yield* repository.claimProviderReconciliation({
+          id: admission.attempt.id,
+          workspaceReservationId: "reacquired-conflict-claim",
+        });
+        expect(claim.outcome).toBe("claimed");
+        if (claim.outcome !== "claimed") return;
+
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            paymentReconciliationClaimExpiresAt: sql`clock_timestamp() - interval '1 second'`,
+          })
+          .where(eq(workspaceReservations.id, "reacquired-conflict-claim"));
+
+        yield* repository.recordEvidenceConflict({
+          id: admission.attempt.id,
+          workspaceReservationId: "reacquired-conflict-claim",
+          reconciliationClaimId: claim.claimId,
+          conflictCodes: ["provider_terminal_state"],
+        });
+
+        expect(
+          yield* db
+            .select({
+              evidenceConflicted:
+                workspaceReservations.activePaymentEvidenceConflicted,
+              reconciliationAttemptId:
+                workspaceReservations.paymentReconciliationAttemptId,
+              reconciliationClaimId:
+                workspaceReservations.paymentReconciliationClaimId,
+              reconciliationClaimExpiresAt:
+                workspaceReservations.paymentReconciliationClaimExpiresAt,
+            })
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.id, "reacquired-conflict-claim"))
+        ).toEqual([
+          {
+            evidenceConflicted: true,
+            reconciliationAttemptId: null,
+            reconciliationClaimId: null,
+            reconciliationClaimExpiresAt: null,
+          },
+        ]);
+      })
+    );
+  });
+
   test("preserves a conflicted terminal active attempt and rejects replacement admission", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {

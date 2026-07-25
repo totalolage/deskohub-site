@@ -239,6 +239,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               yield* paymentLifecycle.recordEvidenceConflict({
                 id: ownedAttempt.id,
                 workspaceReservationId: reservation.id,
+                reconciliationClaimId,
                 conflictCodes: getProviderEvidenceConflictCodes(verification),
               });
               yield* Effect.logWarning(
@@ -275,6 +276,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 yield* paymentLifecycle.recordEvidenceConflict({
                   id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
+                  reconciliationClaimId,
                   conflictCodes: ["provider_terminal_state"],
                 });
                 yield* Effect.logWarning(
@@ -312,6 +314,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                         yield* paymentLifecycle.recordEvidenceConflict({
                           id: ownedAttempt.id,
                           workspaceReservationId: reservation.id,
+                          reconciliationClaimId,
                           conflictCodes: ["provider_terminal_state"],
                         });
                       }
@@ -407,6 +410,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                         yield* paymentLifecycle.recordEvidenceConflict({
                           id: ownedAttempt.id,
                           workspaceReservationId: reservation.id,
+                          reconciliationClaimId,
                           conflictCodes: ["provider_terminal_state"],
                         });
                       }

@@ -174,6 +174,7 @@ export interface IPaymentLifecycleRepository {
   readonly recordEvidenceConflict: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
+    readonly reconciliationClaimId?: string;
     readonly conflictCodes: readonly PaymentEvidenceConflictCode[];
   }) => Effect.Effect<void, PaymentLifecycleRepositoryError>;
   readonly markPaid: (input: {
@@ -1209,12 +1210,40 @@ export class PaymentLifecycleRepository extends Context.Service<
       )(function* (input: {
         readonly id: string;
         readonly workspaceReservationId: string;
+        readonly reconciliationClaimId?: string;
         readonly conflictCodes: readonly PaymentEvidenceConflictCode[];
       }) {
         if (input.conflictCodes.length === 0) return;
 
         yield* db.transaction((tx) =>
           Effect.gen(function* () {
+            const [reservation] = yield* tx
+              .select({
+                activePaymentEvidenceConflicted:
+                  workspaceReservations.activePaymentEvidenceConflicted,
+                reservationState: workspaceReservations.reservationState,
+                fulfillmentState: workspaceReservations.fulfillmentState,
+                paymentReconciliationAttemptId:
+                  workspaceReservations.paymentReconciliationAttemptId,
+                paymentReconciliationClaimId:
+                  workspaceReservations.paymentReconciliationClaimId,
+                paymentReconciliationClaimActive: sql<boolean>`
+                  ${workspaceReservations.paymentReconciliationClaimId} is not null
+                  and ${workspaceReservations.paymentReconciliationClaimExpiresAt} > clock_timestamp()
+                `,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, input.workspaceReservationId))
+              .limit(1)
+              .for("update");
+            if (!reservation) {
+              return yield* lifecycleStateError(
+                "recordEvidenceConflict",
+                input.id,
+                "Provider evidence cannot be recorded for a missing reservation."
+              );
+            }
+
             const [attempt] = yield* tx
               .select({ id: paymentAttempts.id })
               .from(paymentAttempts)
@@ -1237,15 +1266,112 @@ export class PaymentLifecycleRepository extends Context.Service<
               );
             }
 
+            const requestedConflictCodes = [...new Set(input.conflictCodes)];
+            const existingConflictCodes = new Set(
+              (yield* tx
+                .select({
+                  conflictCode: paymentEvidenceConflicts.conflictCode,
+                })
+                .from(paymentEvidenceConflicts)
+                .where(
+                  eq(paymentEvidenceConflicts.paymentAttemptId, input.id)
+                )).map(({ conflictCode }) => conflictCode)
+            );
+            const newConflictCodes = requestedConflictCodes.filter(
+              (conflictCode) => !existingConflictCodes.has(conflictCode)
+            );
+            if (newConflictCodes.length === 0) return;
+
+            const ownsCurrentClaim =
+              input.reconciliationClaimId !== undefined &&
+              reservation.paymentReconciliationAttemptId === input.id &&
+              reservation.paymentReconciliationClaimId ===
+                input.reconciliationClaimId &&
+              reservation.paymentReconciliationClaimActive;
+            let reacquiredClaimId: string | undefined;
+            if (!ownsCurrentClaim) {
+              if (
+                reservation.activePaymentEvidenceConflicted ||
+                reservation.paymentReconciliationClaimActive ||
+                reservation.reservationState === "hold_expired" ||
+                reservation.reservationState === "cancelling" ||
+                reservation.reservationState === "cancelled" ||
+                reservation.fulfillmentState === "processing"
+              ) {
+                return yield* lifecycleStateError(
+                  "recordEvidenceConflict",
+                  input.id,
+                  "Provider evidence conflict materialization could not acquire reservation ownership."
+                );
+              }
+
+              reacquiredClaimId = randomUUID();
+              const [reacquired] = yield* tx
+                .update(workspaceReservations)
+                .set({
+                  paymentReconciliationAttemptId: input.id,
+                  paymentReconciliationClaimId: reacquiredClaimId,
+                  paymentReconciliationClaimExpiresAt: sql`clock_timestamp() + interval '2 minutes'`,
+                  updatedAt: sql`clock_timestamp()`,
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.workspaceReservationId),
+                    eq(
+                      workspaceReservations.activePaymentEvidenceConflicted,
+                      false
+                    ),
+                    sql`(
+                      ${workspaceReservations.paymentReconciliationClaimId} is null
+                      or ${workspaceReservations.paymentReconciliationClaimExpiresAt} <= clock_timestamp()
+                    )`,
+                    sql`${workspaceReservations.reservationState} not in ('hold_expired', 'cancelling', 'cancelled')`,
+                    sql`${workspaceReservations.fulfillmentState} <> 'processing'`
+                  )
+                )
+                .returning({ id: workspaceReservations.id });
+              if (!reacquired) {
+                return yield* lifecycleStateError(
+                  "recordEvidenceConflict",
+                  input.id,
+                  "Provider evidence conflict materialization lost reservation ownership."
+                );
+              }
+            }
+
             yield* tx
               .insert(paymentEvidenceConflicts)
               .values(
-                [...new Set(input.conflictCodes)].map((conflictCode) => ({
+                newConflictCodes.map((conflictCode) => ({
                   paymentAttemptId: input.id,
                   conflictCode,
                 }))
               )
               .onConflictDoNothing();
+
+            if (reacquiredClaimId) {
+              yield* tx
+                .update(workspaceReservations)
+                .set({
+                  paymentReconciliationAttemptId: null,
+                  paymentReconciliationClaimId: null,
+                  paymentReconciliationClaimExpiresAt: null,
+                  updatedAt: sql`clock_timestamp()`,
+                })
+                .where(
+                  and(
+                    eq(workspaceReservations.id, input.workspaceReservationId),
+                    eq(
+                      workspaceReservations.paymentReconciliationAttemptId,
+                      input.id
+                    ),
+                    eq(
+                      workspaceReservations.paymentReconciliationClaimId,
+                      reacquiredClaimId
+                    )
+                  )
+                );
+            }
           })
         );
       });

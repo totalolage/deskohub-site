@@ -382,6 +382,7 @@ describe("ProviderPaymentFinalizationService", () => {
         expect(recordEvidenceConflict).toHaveBeenCalledWith({
           id: "attempt-id",
           workspaceReservationId: "reservation-id",
+          reconciliationClaimId: "claim-id",
           conflictCodes: ["provider_terminal_state"],
         });
         expect(fulfillPaidOrder).not.toHaveBeenCalled();
@@ -516,6 +517,7 @@ describe("ProviderPaymentFinalizationService", () => {
       expect(recordEvidenceConflict).toHaveBeenCalledWith({
         id: "attempt-id",
         workspaceReservationId: "reservation-id",
+        reconciliationClaimId: "historical-claim-id",
         conflictCodes: ["provider_terminal_state"],
       });
       expect(claimProviderReconciliation).toHaveBeenCalledWith({
@@ -764,6 +766,7 @@ describe("ProviderPaymentFinalizationService", () => {
             expect(recordEvidenceConflict).toHaveBeenCalledWith({
               id: "attempt-id",
               workspaceReservationId: "reservation-id",
+              reconciliationClaimId: "claim-id",
               conflictCodes: ["provider_terminal_state"],
             });
           } else {
@@ -795,6 +798,7 @@ describe("ProviderPaymentFinalizationService", () => {
           expect(recordEvidenceConflict).toHaveBeenCalledWith({
             id: "attempt-id",
             workspaceReservationId: "reservation-id",
+            reconciliationClaimId: "claim-id",
             conflictCodes: ["provider_terminal_state"],
           });
         } else if (scenario.conflict) {
@@ -807,6 +811,7 @@ describe("ProviderPaymentFinalizationService", () => {
         expect(recordEvidenceConflict).toHaveBeenCalledWith({
           id: "attempt-id",
           workspaceReservationId: "reservation-id",
+          reconciliationClaimId: "claim-id",
           conflictCodes:
             "mismatches" in scenario &&
             scenario.mismatches.some(

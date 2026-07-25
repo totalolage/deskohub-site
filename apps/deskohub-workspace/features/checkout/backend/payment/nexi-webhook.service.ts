@@ -523,6 +523,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                 .recordEvidenceConflict({
                   id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
+                  reconciliationClaimId,
                   conflictCodes: getProviderEvidenceConflictCodes(verification),
                 })
                 .pipe(
@@ -577,6 +578,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                 yield* paymentLifecycle.recordEvidenceConflict({
                   id: ownedAttempt.id,
                   workspaceReservationId: reservation.id,
+                  reconciliationClaimId,
                   conflictCodes: ["provider_terminal_state"],
                 });
                 yield* Effect.logWarning(
@@ -613,6 +615,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                       .recordEvidenceConflict({
                         id: ownedAttempt.id,
                         workspaceReservationId: reservation.id,
+                        reconciliationClaimId,
                         conflictCodes:
                           cause.reason === "provider_evidence_conflict"
                             ? ["provider_terminal_state"]
@@ -695,6 +698,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                       .recordEvidenceConflict({
                         id: ownedAttempt.id,
                         workspaceReservationId: reservation.id,
+                        reconciliationClaimId,
                         conflictCodes:
                           cause.reason === "provider_evidence_conflict"
                             ? ["provider_terminal_state"]
