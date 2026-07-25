@@ -26,14 +26,14 @@ const invoke = (refreshStatus: ICheckoutStatusService["refreshStatus"]) => {
 
   return GET(
     new Request(
-      "https://deskohub.test/en-US/checkout/payment/order-id?outcome=success"
+      "https://deskohub.test/en-US/checkout/pay/return/order-id?outcome=success"
     ),
     { params: Promise.resolve({ locale: "en-US", orderId: "order-id" }) }
   );
 };
 
-describe("checkout payment return route", () => {
-  test("refreshes the provider state and redirects to status", async () => {
+describe("checkout pay return route", () => {
+  test("refreshes the provider state and redirects to reservation status", async () => {
     const refreshStatus = mock(() =>
       Effect.succeed({
         orderId: "order-id",
@@ -46,7 +46,7 @@ describe("checkout payment return route", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/en-US/checkout/status/order-id?outcome=success"
+      "/en-US/reservation/status/order-id?outcome=success"
     );
     expect(refreshStatus).toHaveBeenCalledWith({
       orderId: "order-id",
@@ -59,7 +59,7 @@ describe("checkout payment return route", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/en-US/checkout/status/order-id?outcome=success"
+      "/en-US/reservation/status/order-id?outcome=success"
     );
   });
 

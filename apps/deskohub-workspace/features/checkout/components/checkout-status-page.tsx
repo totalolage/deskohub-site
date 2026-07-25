@@ -26,6 +26,10 @@ import {
   formatReservationDisplayDate,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
+import {
+  getCoworkReservationPath,
+  getReservationStartPath,
+} from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -240,9 +244,13 @@ const getFulfillmentFailedContactMessage = (
 
 const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
   Match.value(status).pipe(
-    Match.when({ kind: undefined }, () => `/${locale}/checkout/order`),
-    Match.when({ kind: "cowork" }, () => `/${locale}/checkout/order`),
-    Match.when({ kind: "meeting-room" }, () => `/${locale}/meeting-room`),
+    Match.when({ kind: undefined }, () => getCoworkReservationPath(locale)),
+    Match.when({ kind: "cowork" }, ({ kind }) =>
+      getReservationStartPath(locale, kind)
+    ),
+    Match.when({ kind: "meeting-room" }, ({ kind }) =>
+      getReservationStartPath(locale, kind)
+    ),
     Match.exhaustive
   );
 

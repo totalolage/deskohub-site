@@ -7,7 +7,7 @@ import {
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import { CheckoutStatusService } from "./checkout-status.service";
-import { getCheckoutStatusPath } from "./checkout-status-url";
+import { getReservationStatusPath } from "./reservation-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
@@ -60,7 +60,7 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
 
     return NextResponse.redirect(
       new URL(
-        getCheckoutStatusPath({
+        getReservationStatusPath({
           locale,
           orderId,
           outcome,

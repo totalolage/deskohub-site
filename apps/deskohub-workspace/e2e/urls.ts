@@ -27,7 +27,7 @@ export const isExpectedCheckoutStatusUrl = (
   try {
     const url = new URL(value);
     return (
-      url.host === expectedHost && url.pathname.includes("/checkout/status/")
+      url.host === expectedHost && url.pathname.includes("/reservation/status/")
     );
   } catch {
     return false;

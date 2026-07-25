@@ -29,7 +29,7 @@ describe("CheckoutSteps", () => {
 
   test("links only configured steps and keeps the active step current", () => {
     const reservationHref =
-      "/en-US/checkout/order?payState=encrypted-pay-state";
+      "/en-US/reservation/cowork?payState=encrypted-pay-state";
     const view = render(
       <CheckoutSteps
         activeStepKey="pay"

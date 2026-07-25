@@ -12,7 +12,7 @@ import {
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
-  "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/checkout/order";
+  "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
 
 test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
@@ -53,7 +53,7 @@ test("retries a transient reservation preparation failure with the same checkout
         return success("https://xpay.nexigroup.com/hpp/nexi/test");
       if (reservationSubmitAttempts > 1)
         return success(
-          `${checkoutUrl.replace("/order", "/pay")}?orderId=${orderId}`
+          `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
         );
       return success(checkoutUrl);
     }
@@ -181,7 +181,7 @@ test("retries a hosted payment field when its first fill does not stick", async 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
       return success(
         phase === "status"
-          ? "https://workspace.example/en-US/checkout/status/order-id"
+          ? "https://workspace.example/en-US/reservation/status/order-id"
           : "https://xpay.nexigroup.com/hpp/nexi/test"
       );
     }

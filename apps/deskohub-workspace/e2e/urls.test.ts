@@ -6,13 +6,13 @@ test("requires checkout status returns to use the expected preview host", () => 
 
   expect(
     isExpectedCheckoutStatusUrl(
-      `https://${expectedHost}/en-US/checkout/status/order-1`,
+      `https://${expectedHost}/en-US/reservation/status/order-1`,
       expectedHost
     )
   ).toBe(true);
   expect(
     isExpectedCheckoutStatusUrl(
-      "https://deskohub-workspace-git-feature-deskohub-bar.vercel.app/en-US/checkout/status/order-1",
+      "https://deskohub-workspace-git-feature-deskohub-bar.vercel.app/en-US/reservation/status/order-1",
       expectedHost
     )
   ).toBe(false);

@@ -407,7 +407,7 @@ const formatReservationStartDiagnostics = (
 };
 
 const isCheckoutStatusUrl = (url: string | undefined) =>
-  parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
+  parseUrl(url ?? "")?.pathname.includes("/reservation/status/") ?? false;
 
 const submitPaymentAndWaitForHostedPage = ({
   run,

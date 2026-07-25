@@ -12,7 +12,7 @@ initializeWorkspaceBotId(env.NEXT_PUBLIC_VERCEL_ENV, () =>
         method: "POST",
       },
       {
-        path: "/*/checkout/order",
+        path: "/*/reservation/cowork",
         method: "POST",
       },
       {

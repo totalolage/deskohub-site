@@ -76,7 +76,6 @@ import {
   CheckoutPricingService,
   type PaymentPriceAffirmation,
 } from "./checkout-pricing.service";
-import { getCheckoutStatusPath } from "./checkout-status-url";
 import {
   type BuildSignedPayStateInput,
   getSignedPayStateCheckoutSummary,
@@ -88,6 +87,7 @@ import {
   PayableReservationService,
   type PayableReservationUnavailableError,
 } from "./payable-reservation.service";
+import { getReservationStatusPath } from "./reservation-status-url";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
@@ -136,39 +136,12 @@ const generateNexiOrderId = () =>
 const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
   Effect.fail(new CheckoutError({ message: cause.message, cause }));
 
-const getCheckoutOrderReturnUrl: (
-  locale: Locale,
-  workspaceReservationId: string
-) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutOrderReturnUrl"
-)((locale, workspaceReservationId) =>
-  Effect.gen(function* () {
-    const origin = yield* getWorkspaceRuntimeCallbackOrigin;
-
-    return yield* Effect.try({
-      try: () => {
-        const url = new URL(
-          `/${locale}/checkout/result/${workspaceReservationId}`,
-          origin
-        );
-        appendVercelPreviewProtectionBypass(url);
-        return url.toString();
-      },
-      catch: (cause) =>
-        new CheckoutError({
-          message: "Payment checkout return URL could not be created.",
-          cause,
-        }),
-    });
-  }).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError))
-);
-
-const getCheckoutPaymentRetryUrl: (
+const getCheckoutPayReturnUrl: (
   locale: Locale,
   workspaceReservationId: string,
-  outcome: "cancelled"
+  outcome?: "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutPaymentRetryUrl"
+  "getCheckoutPayReturnUrl"
 )((locale, workspaceReservationId, outcome) =>
   Effect.gen(function* () {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
@@ -176,16 +149,16 @@ const getCheckoutPaymentRetryUrl: (
     return yield* Effect.try({
       try: () => {
         const url = new URL(
-          `/${locale}/checkout/payment/${workspaceReservationId}`,
+          `/${locale}/checkout/pay/return/${workspaceReservationId}`,
           origin
         );
-        url.searchParams.set("outcome", outcome);
+        if (outcome) url.searchParams.set("outcome", outcome);
         appendVercelPreviewProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
         new CheckoutError({
-          message: "Payment checkout retry URL could not be created.",
+          message: "Payment checkout return URL could not be created.",
           cause,
         }),
     });
@@ -491,11 +464,11 @@ export const CheckoutServiceLive = Layer.effect(
           )
         );
         const notificationUrl = yield* getNotificationUrl;
-        const resultUrl = yield* getCheckoutOrderReturnUrl(
+        const resultUrl = yield* getCheckoutPayReturnUrl(
           input.locale,
           input.workspaceReservationId
         );
-        const cancelUrl = yield* getCheckoutPaymentRetryUrl(
+        const cancelUrl = yield* getCheckoutPayReturnUrl(
           input.locale,
           input.workspaceReservationId,
           "cancelled"
@@ -614,7 +587,7 @@ export const CheckoutServiceLive = Layer.effect(
 
       return {
         status: "redirect" as const,
-        redirectUrl: getCheckoutStatusPath({
+        redirectUrl: getReservationStatusPath({
           locale: input.locale,
           orderId: input.workspaceReservationId,
           outcome: "success",
@@ -637,7 +610,7 @@ export const CheckoutServiceLive = Layer.effect(
 
       return {
         status: "redirect" as const,
-        redirectUrl: getCheckoutStatusPath({
+        redirectUrl: getReservationStatusPath({
           locale: input.locale,
           orderId: input.orderId,
           outcome: "success",

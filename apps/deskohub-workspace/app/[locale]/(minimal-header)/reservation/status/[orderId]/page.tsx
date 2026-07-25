@@ -1,23 +1,16 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import {
-  appendVercelPreviewProtectionBypass,
-  CheckoutStatusService,
-  type CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout";
+import { CheckoutStatusService } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
-import {
-  appendExistingCheckoutReturnStateToken,
-  getCheckoutReturnStateTokenFromSearchParams,
-} from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import {
@@ -44,29 +37,6 @@ const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
   })
 );
 
-const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
-  if (status === "cancelled") return "cancelled";
-  if (status === "payment_failed" || status === "expired") return "failed";
-  return undefined;
-};
-
-const getCheckoutPaymentRetryRedirectPath = (input: {
-  readonly locale: string;
-  readonly orderId: string;
-  readonly outcome: "cancelled" | "failed";
-  readonly searchParams: SearchParamsRecord;
-}) => {
-  const url = new URL(
-    `/${input.locale}/checkout/payment/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  url.searchParams.set("outcome", input.outcome);
-  appendExistingCheckoutReturnStateToken(url, input.searchParams);
-  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  return `${url.pathname}${url.search}`;
-};
-
 export async function generateMetadata({
   params,
 }: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
@@ -78,7 +48,7 @@ export async function generateMetadata({
     const description = m.checkoutStatusMetadataDescription({}, { locale });
     const url = getWorkspaceLocalizedCanonicalUrl(
       locale,
-      `/checkout/status/${orderId}`
+      `${reservationStatusPath}/${orderId}`
     );
 
     return {
@@ -91,7 +61,7 @@ export async function generateMetadata({
             itemLocale,
             getWorkspaceLocalizedCanonicalUrl(
               itemLocale,
-              `/checkout/status/${orderId}`
+              `${reservationStatusPath}/${orderId}`
             ),
           ])
         ),
@@ -146,22 +116,6 @@ async function CheckoutStatusContent({
     Effect.provide(CheckoutStatusService.LiveWithDependencies),
     runWorkspaceEffect("checkout.status.load")
   );
-  const retryOutcome = getRetryOutcome(status.status);
-
-  if (
-    retryOutcome &&
-    getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
-  ) {
-    redirect(
-      getCheckoutPaymentRetryRedirectPath({
-        locale,
-        orderId,
-        outcome: retryOutcome,
-        searchParams: rawSearchParams,
-      })
-    );
-  }
-
   return runWithRequestLocale(locale, () => (
     <>
       <CheckoutStatusAutoRefresh

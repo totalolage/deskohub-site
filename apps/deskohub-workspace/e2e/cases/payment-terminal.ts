@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import {
-  clickBrowserElement,
+  activateHydratedBrowserElement,
   openBrowserPage,
   switchToMainFrame,
-  waitForBrowserReactHydration,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
@@ -146,7 +145,7 @@ const restartReservation = (
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
+        (parseUrl(url)?.pathname ?? "") === "/en-US/reservation/cowork",
       run,
       session,
       timeoutMs: timeouts.uiTransition,
@@ -169,7 +168,7 @@ const assertTerminalStatusPage = ({
   Effect.gen(function* () {
     const url = yield* makeUrl(
       "build payment terminal checkout status URL",
-      `${config.baseUrl}/en-US/checkout/status/${orderId}`
+      `${config.baseUrl}/en-US/reservation/status/${orderId}`
     );
     yield* setSearchParams(url, { e2eAt: String(Date.now()) });
 
@@ -195,11 +194,9 @@ export const activateStatusReserveAgain = (
   session: string,
   timeouts: WorkspaceE2ETimeouts
 ) => {
-  const selector = 'a[href="/en-US/checkout/order"]';
-  const timeoutMs = timeouts.uiTransition;
+  const selector = 'a[href="/en-US/reservation/cowork"]';
 
-  return Effect.gen(function* () {
-    yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
-    yield* clickBrowserElement(run, session, selector, { timeoutMs });
+  return activateHydratedBrowserElement(run, session, selector, {
+    timeoutMs: timeouts.uiTransition,
   });
 };

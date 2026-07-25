@@ -60,7 +60,8 @@ afterAll(() => {
 
 test("uses a Next Link without prefetch to reopen signed reservation state", async () => {
   const { CheckoutSteps } = await import("./checkout-flow-layout");
-  const reservationHref = "/en-US/checkout/order?payState=encrypted-pay-state";
+  const reservationHref =
+    "/en-US/reservation/cowork?payState=encrypted-pay-state";
 
   render(
     <CheckoutSteps
@@ -113,7 +114,7 @@ test("keeps status-page actions as Next Links without background prefetch", asyn
     prefetch: false,
   });
   expect(capturedLinks).toContainEqual({
-    href: "/en-US/checkout/order",
+    href: "/en-US/reservation/cowork",
     prefetch: false,
   });
   expect(capturedLinks).toContainEqual({

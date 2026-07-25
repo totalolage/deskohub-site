@@ -19,6 +19,10 @@ import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-pag
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import {
+  getCoworkReservationPath,
+  getReservationStartPath,
+} from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -148,6 +152,16 @@ async function CheckoutPayContent({
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
   const submittedCodeApplication =
     getSignedPayStateSubmittedCodeApplication(state);
+  const reservationStartPath = getReservationStartPath(
+    locale,
+    state.reservation.kind
+  );
+  const orderPath =
+    state.reservation.kind === "cowork"
+      ? `${reservationStartPath}?${new URLSearchParams({
+          [payStateTokenQueryParam]: payStateToken,
+        })}`
+      : reservationStartPath;
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -155,9 +169,7 @@ async function CheckoutPayContent({
       locale={locale}
       stepLinks={{
         order: {
-          href: `/${locale}/checkout/order?${new URLSearchParams({
-            [payStateTokenQueryParam]: payStateToken,
-          })}`,
+          href: orderPath,
           prefetch: false,
         },
       }}
@@ -202,7 +214,7 @@ function InvalidPayState({ locale }: { readonly locale: Locale }) {
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={getCoworkReservationPath(locale)}>
               {m.checkoutPayRestartButton({}, { locale })}
             </Link>
           </Button>
