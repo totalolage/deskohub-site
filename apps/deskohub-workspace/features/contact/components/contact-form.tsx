@@ -179,7 +179,7 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
                 className={cn(
                   "rounded-2xl border px-4 py-3 text-sm leading-6",
                   state.status === "success"
-                    ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-navy-blue"
+                    ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-aquamarine-ink"
                     : "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
                 )}
               >

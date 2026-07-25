@@ -156,9 +156,10 @@ describe("CheckoutPayPage discount urgency", () => {
       />
     );
 
-    expect(
-      view.getByText("Hurry — Summer sale ends in 42 minutes")
-    ).toBeDefined();
+    const banner = view.getByText(
+      "Hurry — Summer sale ends in 42 minutes"
+    ).parentElement;
+    expect(banner?.className).toContain("text-aquamarine-ink");
 
     act(() => jest.advanceTimersByTime(1000));
 

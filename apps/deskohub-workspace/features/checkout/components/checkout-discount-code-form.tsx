@@ -23,7 +23,7 @@ export function CheckoutDiscountCodeForm({
 }: CheckoutDiscountCodeFormProps) {
   if (appliedAdjustment) {
     return (
-      <output className="block rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm font-semibold text-navy-blue ring-1 ring-aquamarine-green/10">
+      <output className="block rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm font-semibold text-aquamarine-ink ring-1 ring-aquamarine-green/10">
         {m.checkoutDiscountCodeApplied(
           {
             discount: formatDiscountAdjustment(appliedAdjustment, locale),

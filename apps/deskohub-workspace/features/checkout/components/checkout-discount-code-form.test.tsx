@@ -121,9 +121,9 @@ describe("CheckoutDiscountCodeForm", () => {
         m.checkoutDiscountCodeApplied({ discount: "20%" }, { locale: "en-US" })
       )
     ).toBeDefined();
-    expect(view.getByRole("status").className).toContain(
-      "bg-aquamarine-green/12"
-    );
+    const status = view.getByRole("status");
+    expect(status.className).toContain("bg-aquamarine-green/12");
+    expect(status.className).toContain("text-aquamarine-ink");
     expect(view.queryByRole("textbox")).toBeNull();
   });
 

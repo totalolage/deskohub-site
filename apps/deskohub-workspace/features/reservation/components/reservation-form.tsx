@@ -884,10 +884,10 @@ export function ReservationForm({
                 render={({ field }) => (
                   <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
                     <FormLabel
-                      className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                      className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink"
                       required
                     >
-                      <Monitor className="h-4 w-4 text-aquamarine-green" />
+                      <Monitor className="h-4 w-4 text-aquamarine-ink" />
                       {m.reservationMonitorLabel({}, { locale })}
                     </FormLabel>
                     <FormControl>

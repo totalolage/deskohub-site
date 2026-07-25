@@ -64,8 +64,8 @@ function ActiveDiscountCountdownBanner({
   const remaining = formatDiscountCountdown(countdown, locale);
 
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm leading-6 text-navy-blue ring-1 ring-aquamarine-green/10">
-      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-aquamarine-green/18 text-aquamarine-green">
+    <div className="flex items-start gap-3 rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm leading-6 text-aquamarine-ink ring-1 ring-aquamarine-green/10">
+      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-aquamarine-green/18 text-aquamarine-ink">
         <Timer aria-hidden="true" className="size-4" />
       </span>
       <span className="self-center font-semibold">

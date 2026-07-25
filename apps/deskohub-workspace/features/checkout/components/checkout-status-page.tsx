@@ -47,7 +47,7 @@ const statusIconWrapperVariants = cva(
     variants: {
       tone: {
         success:
-          "bg-aquamarine-green/14 text-aquamarine-green ring-aquamarine-green/8",
+          "bg-aquamarine-green/14 text-aquamarine-ink ring-aquamarine-green/8",
         pending: "bg-burned-orange/12 text-burned-orange ring-burned-orange/8",
         warning: "bg-burned-orange/12 text-burned-orange ring-burned-orange/8",
         failed: "bg-red-500/10 text-red-600 ring-red-500/8",
