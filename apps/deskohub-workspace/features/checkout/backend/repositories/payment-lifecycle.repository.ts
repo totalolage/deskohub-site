@@ -1,6 +1,7 @@
-import { and, count, eq, inArray } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Predicate } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
@@ -14,6 +15,7 @@ import {
   discountProductTargets,
   discounts,
   paymentAttempts,
+  paymentPaidEvents,
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
@@ -25,7 +27,7 @@ import {
 } from "@/features/checkout/workspace-money";
 import {
   type DiscountCommitment,
-  getDiscountCommitmentPayload,
+  materializeDiscountCommitment,
 } from "@/features/discounts/commitment";
 import type {
   AppliedDiscount,
@@ -56,6 +58,33 @@ export interface PaymentLifecycleTransition {
   readonly timestamp: Temporal.Instant;
 }
 
+export interface PaymentPricingIdentity {
+  readonly fingerprint: string;
+  readonly total: WorkspaceMoney;
+  readonly discounts: readonly AppliedDiscount[];
+}
+
+export type PaymentStartAdmission =
+  | { readonly outcome: "reuse"; readonly attempt: PaymentAttempt }
+  | { readonly outcome: "starting"; readonly attempt: PaymentAttempt }
+  | {
+      readonly outcome: "created";
+      readonly attempt: PaymentAttempt;
+      readonly providerStartLeaseId: string;
+    }
+  | {
+      readonly outcome: "unavailable";
+      readonly reason: "reservation" | "active_attempt" | "payment_state";
+    }
+  | {
+      readonly outcome: "pricing_changed";
+      readonly reason: string;
+    };
+
+export type ProviderSessionAttach =
+  | { readonly outcome: "attached"; readonly attempt: PaymentAttempt }
+  | { readonly outcome: "lost" };
+
 export type PaymentLifecycleRepositoryError =
   | DiscountClaimError
   | EffectDrizzleQueryError
@@ -63,21 +92,24 @@ export type PaymentLifecycleRepositoryError =
   | SqlError;
 
 export interface IPaymentLifecycleRepository {
-  readonly createAttempt: (input: {
+  readonly admitPaymentStart: (input: {
     readonly workspaceReservationId: string;
+    readonly checkoutSessionKey: string;
     readonly providerOrderId: string;
-    readonly amount: WorkspaceMoney;
+    readonly acceptedPricing: PaymentPricingIdentity;
+    readonly affirmedPricing: PaymentPricingIdentity;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
-  }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
+  }) => Effect.Effect<PaymentStartAdmission, PaymentLifecycleRepositoryError>;
   readonly attachProviderSession: (input: {
     readonly id: string;
+    readonly workspaceReservationId: string;
+    readonly checkoutSessionKey: string;
+    readonly providerOrderId: string;
+    readonly providerStartLeaseId: string;
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
-  }) => Effect.Effect<
-    PaymentAttempt,
-    EffectDrizzleQueryError | PaymentLifecycleStateError
-  >;
+  }) => Effect.Effect<ProviderSessionAttach, EffectDrizzleQueryError>;
   readonly markPaid: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
@@ -112,210 +144,380 @@ export class PaymentLifecycleRepository extends Context.Service<
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
 
-      const createAttempt = Effect.fn(
-        "PaymentLifecycleRepository.createAttempt"
+      const admitPaymentStart = Effect.fn(
+        "PaymentLifecycleRepository.admitPaymentStart"
       )(function* (input: {
         readonly workspaceReservationId: string;
+        readonly checkoutSessionKey: string;
         readonly providerOrderId: string;
-        readonly amount: WorkspaceMoney;
+        readonly acceptedPricing: PaymentPricingIdentity;
+        readonly affirmedPricing: PaymentPricingIdentity;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
       }) {
-        const commitment = getDiscountCommitmentPayload(input.commitment);
-        const claimedApplication =
-          yield* validateDiscountCommitment(commitment);
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            if (!pricingIdentitiesEqual(input)) {
+              return {
+                outcome: "pricing_changed" as const,
+                reason: "displayed_pricing_mismatch",
+              };
+            }
 
-        return yield* db
-          .transaction((tx) =>
-            Effect.gen(function* () {
-              const [reservation] = yield* tx
-                .select({
-                  id: workspaceReservations.id,
-                  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
-                  reservationHoldExpiresAt:
-                    workspaceReservations.reservationHoldExpiresAt,
-                })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
-                  )
+            const commitment = materializeDiscountCommitment(
+              input.commitment,
+              input.acceptedPricing.discounts
+            );
+            if (commitment.status === "pricing_changed") {
+              return {
+                outcome: "pricing_changed" as const,
+                reason: "discount_commitment_mismatch",
+              };
+            }
+            const claimedApplication =
+              yield* validateDiscountCommitment(commitment);
+
+            const [reservation] = yield* tx
+              .select({
+                id: workspaceReservations.id,
+                dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                paymentState: workspaceReservations.paymentState,
+                activePaymentAttemptId:
+                  workspaceReservations.activePaymentAttemptId,
+                reservationHoldExpiresAt:
+                  workspaceReservations.reservationHoldExpiresAt,
+              })
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(
+                    workspaceReservations.checkoutSessionKey,
+                    input.checkoutSessionKey
+                  ),
+                  eq(workspaceReservations.reservationState, "held"),
+                  hasNoUnresolvedProviderAttachmentRecovery(),
+                  sql`${workspaceReservations.reservationHoldExpiresAt} > clock_timestamp()`
                 )
-                .limit(1)
-                .for("update");
+              )
+              .limit(1)
+              .for("update");
 
-              const now = Temporal.Now.instant();
+            if (!reservation?.reservationHoldExpiresAt) {
+              return {
+                outcome: "unavailable" as const,
+                reason: "reservation" as const,
+              };
+            }
+
+            const [databaseClock] = yield* tx
+              .select({
+                now: sql<Temporal.Instant>`clock_timestamp()`,
+              })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.id, reservation.id))
+              .limit(1);
+            if (!databaseClock) {
+              return yield* Effect.die("Database clock returned no row.");
+            }
+            const databaseNow = normalizeDatabaseInstant(databaseClock.now);
+
+            if (reservation.activePaymentAttemptId) {
+              const existing = yield* loadAttemptAdmission({
+                tx,
+                paymentAttemptId: reservation.activePaymentAttemptId,
+                pricing: input.acceptedPricing,
+              });
+
               if (
-                !reservation?.reservationHoldExpiresAt ||
-                Temporal.Instant.compare(
-                  reservation.reservationHoldExpiresAt,
-                  now
-                ) <= 0
+                !existing ||
+                existing.attempt.workspaceReservationId !== reservation.id
               ) {
-                return yield* new PaymentLifecycleStateError({
-                  operation: "PaymentLifecycleRepository.createAttempt",
-                  paymentAttemptId: input.providerOrderId,
-                  message:
-                    "Payment attempts can only be created for a current held reservation.",
-                });
+                return {
+                  outcome: "unavailable" as const,
+                  reason: "active_attempt" as const,
+                };
+              }
+              if (
+                existing.attempt.state === "created" ||
+                existing.attempt.state === "pending"
+              ) {
+                if (reservation.paymentState !== "pending") {
+                  return {
+                    outcome: "unavailable" as const,
+                    reason: "payment_state" as const,
+                  };
+                }
+                if (!existing.pricingMatches) {
+                  return {
+                    outcome: "pricing_changed" as const,
+                    reason: "active_attempt_pricing_mismatch",
+                  };
+                }
               }
 
-              const [attemptRow] = yield* tx
-                .insert(paymentAttempts)
-                .values({
-                  id: postgresUuidV7,
-                  workspaceReservationId: input.workspaceReservationId,
-                  provider: "nexi",
-                  providerOrderId: input.providerOrderId,
-                  state: "created",
-                  amountValue: input.amount.value,
-                  amountExponent: input.amount.exponent,
-                  currency: input.amount.currency,
-                })
-                .returning();
+              if (existing.attempt.state === "pending") {
+                if (
+                  existing.attempt.securityToken &&
+                  existing.attempt.providerRedirectUrl
+                ) {
+                  return {
+                    outcome: "reuse" as const,
+                    attempt: toPaymentAttempt(existing.attempt),
+                  };
+                }
+                return {
+                  outcome: "unavailable" as const,
+                  reason: "active_attempt" as const,
+                };
+              }
 
-              if (!attemptRow) {
-                return yield* Effect.die(
-                  "Payment attempt insert returned no row."
+              if (existing.attempt.state === "created") {
+                if (
+                  existing.attempt.providerStartLeaseExpiresAt &&
+                  Temporal.Instant.compare(
+                    existing.attempt.providerStartLeaseExpiresAt,
+                    databaseNow
+                  ) > 0
+                ) {
+                  return {
+                    outcome: "starting" as const,
+                    attempt: toPaymentAttempt(existing.attempt),
+                  };
+                }
+
+                const providerStartLeaseId = randomUUID();
+                const [renewed] = yield* tx
+                  .update(paymentAttempts)
+                  .set({
+                    providerStartLeaseId,
+                    providerStartLeaseExpiresAt: sql`clock_timestamp() + interval '30 seconds'`,
+                    updatedAt: sql`clock_timestamp()`,
+                  })
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, existing.attempt.id),
+                      eq(paymentAttempts.state, "created"),
+                      sql`coalesce(${paymentAttempts.providerStartLeaseExpiresAt}, '-infinity'::timestamptz) <= clock_timestamp()`
+                    )
+                  )
+                  .returning();
+
+                if (!renewed) {
+                  return {
+                    outcome: "starting" as const,
+                    attempt: toPaymentAttempt(existing.attempt),
+                  };
+                }
+
+                return {
+                  outcome: "created" as const,
+                  attempt: toPaymentAttempt(renewed),
+                  providerStartLeaseId,
+                };
+              }
+
+              if (existing.attempt.state === "paid") {
+                return {
+                  outcome: "unavailable" as const,
+                  reason: "payment_state" as const,
+                };
+              }
+              if (reservation.paymentState !== existing.attempt.state) {
+                return {
+                  outcome: "unavailable" as const,
+                  reason: "payment_state" as const,
+                };
+              }
+            } else if (reservation.paymentState === "pending") {
+              return {
+                outcome: "unavailable" as const,
+                reason: "active_attempt" as const,
+              };
+            }
+
+            if (
+              reservation.paymentState !== "not_started" &&
+              reservation.paymentState !== "failed" &&
+              reservation.paymentState !== "cancelled" &&
+              reservation.paymentState !== "expired"
+            ) {
+              return {
+                outcome: "unavailable" as const,
+                reason: "payment_state" as const,
+              };
+            }
+
+            const providerStartLeaseId = randomUUID();
+            const [attemptRow] = yield* tx
+              .insert(paymentAttempts)
+              .values({
+                id: postgresUuidV7,
+                workspaceReservationId: input.workspaceReservationId,
+                provider: "nexi",
+                providerOrderId: input.providerOrderId,
+                admissionVersion: 2,
+                pricingFingerprint: input.acceptedPricing.fingerprint,
+                displayedDiscountIds: commitment.displayedDiscountIds,
+                providerStartLeaseId,
+                providerStartLeaseExpiresAt: sql`clock_timestamp() + interval '30 seconds'`,
+                state: "created",
+                amountValue: input.acceptedPricing.total.value,
+                amountExponent: input.acceptedPricing.total.exponent,
+                currency: input.acceptedPricing.total.currency,
+              })
+              .returning();
+
+            if (!attemptRow) {
+              return yield* Effect.die(
+                "Payment attempt insert returned no row."
+              );
+            }
+
+            const [linked] = yield* tx
+              .update(workspaceReservations)
+              .set({
+                activePaymentAttemptId: attemptRow.id,
+                paymentState: "pending",
+                updatedAt: sql`clock_timestamp()`,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.workspaceReservationId),
+                  eq(
+                    workspaceReservations.checkoutSessionKey,
+                    input.checkoutSessionKey
+                  ),
+                  eq(workspaceReservations.reservationState, "held"),
+                  inArray(workspaceReservations.paymentState, [
+                    "not_started",
+                    "failed",
+                    "cancelled",
+                    "expired",
+                  ]),
+                  hasNoUnresolvedProviderAttachmentRecovery(),
+                  sql`${workspaceReservations.reservationHoldExpiresAt} > clock_timestamp()`
+                )
+              )
+              .returning({ id: workspaceReservations.id });
+
+            if (!linked) {
+              return yield* lifecycleStateError(
+                "admitPaymentStart",
+                attemptRow.id,
+                "The payable reservation changed during payment admission."
+              );
+            }
+
+            const applicationRows =
+              commitment.applications.length === 0
+                ? []
+                : yield* tx
+                    .insert(discountApplications)
+                    .values(
+                      commitment.applications.map(
+                        ({ application, provenance }, sequence) => ({
+                          paymentAttemptId: attemptRow.id,
+                          workspaceReservationId: input.workspaceReservationId,
+                          sequence,
+                          publicDiscountId: application.discount.id,
+                          label: application.discount.label,
+                          adjustment: application.discount.adjustment,
+                          productIdentity: commitment.product,
+                          subtotalBeforeValue: application.subtotalBefore.value,
+                          subtotalBeforeExponent:
+                            application.subtotalBefore.exponent,
+                          subtotalBeforeCurrency:
+                            application.subtotalBefore.currency,
+                          appliedAmountValue: application.amount.value,
+                          appliedAmountExponent: application.amount.exponent,
+                          appliedAmountCurrency: application.amount.currency,
+                          subtotalAfterValue: application.subtotalAfter.value,
+                          subtotalAfterExponent:
+                            application.subtotalAfter.exponent,
+                          subtotalAfterCurrency:
+                            application.subtotalAfter.currency,
+                          expiresAt: application.discount.expiresAt
+                            ? Temporal.Instant.from(
+                                application.discount.expiresAt
+                              )
+                            : null,
+                          countdownStartsAt: application.discount
+                            .countdownStartsAt
+                            ? Temporal.Instant.from(
+                                application.discount.countdownStartsAt
+                              )
+                            : null,
+                          provenance,
+                        })
+                      )
+                    )
+                    .returning({
+                      id: discountApplications.id,
+                      sequence: discountApplications.sequence,
+                    });
+
+            if (claimedApplication) {
+              const applicationId = applicationRows.find(
+                ({ sequence }) => sequence === claimedApplication.index
+              )?.id;
+              if (!applicationId) {
+                return yield* claimError(
+                  "reserve",
+                  "claim_conflict",
+                  "The claimed discount application was not persisted.",
+                  claimedApplication.claim
                 );
               }
 
-              const [linked] = yield* tx
-                .update(workspaceReservations)
-                .set({
-                  activePaymentAttemptId: attemptRow.id,
-                  paymentState: "pending",
-                  updatedAt: now,
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    inArray(workspaceReservations.paymentState, [
-                      "not_started",
-                      "failed",
-                      "cancelled",
-                      "expired",
-                    ])
-                  )
-                )
-                .returning({ id: workspaceReservations.id });
+              yield* reserveCodeClaim({
+                tx,
+                claim: claimedApplication.claim,
+                application: claimedApplication.application,
+                applicationId,
+                paymentAttemptId: attemptRow.id,
+                locale: input.locale,
+                reservationCustomerId: reservation.dotyposCustomerId,
+                reservationExpiresAt: reservation.reservationHoldExpiresAt,
+                databaseNow,
+              });
+            }
 
-              if (!linked) {
-                return yield* new PaymentLifecycleStateError({
-                  operation: "PaymentLifecycleRepository.createAttempt",
-                  paymentAttemptId: attemptRow.id,
-                  message:
-                    "Payment attempts can only be linked to held unpaid reservations.",
-                });
-              }
+            return {
+              outcome: "created" as const,
+              attempt: toPaymentAttempt(attemptRow),
+              providerStartLeaseId,
+            };
+          })
+        );
 
-              const applicationRows =
-                commitment.applications.length === 0
-                  ? []
-                  : yield* tx
-                      .insert(discountApplications)
-                      .values(
-                        commitment.applications.map(
-                          ({ application, provenance }, sequence) => ({
-                            paymentAttemptId: attemptRow.id,
-                            workspaceReservationId:
-                              input.workspaceReservationId,
-                            sequence,
-                            publicDiscountId: application.discount.id,
-                            label: application.discount.label,
-                            adjustment: application.discount.adjustment,
-                            productIdentity: commitment.product,
-                            subtotalBeforeValue:
-                              application.subtotalBefore.value,
-                            subtotalBeforeExponent:
-                              application.subtotalBefore.exponent,
-                            subtotalBeforeCurrency:
-                              application.subtotalBefore.currency,
-                            appliedAmountValue: application.amount.value,
-                            appliedAmountExponent: application.amount.exponent,
-                            appliedAmountCurrency: application.amount.currency,
-                            subtotalAfterValue: application.subtotalAfter.value,
-                            subtotalAfterExponent:
-                              application.subtotalAfter.exponent,
-                            subtotalAfterCurrency:
-                              application.subtotalAfter.currency,
-                            expiresAt: application.discount.expiresAt
-                              ? Temporal.Instant.from(
-                                  application.discount.expiresAt
-                                )
-                              : null,
-                            countdownStartsAt: application.discount
-                              .countdownStartsAt
-                              ? Temporal.Instant.from(
-                                  application.discount.countdownStartsAt
-                                )
-                              : null,
-                            provenance,
-                          })
-                        )
-                      )
-                      .returning({
-                        id: discountApplications.id,
-                        sequence: discountApplications.sequence,
-                      });
-
-              if (claimedApplication) {
-                const applicationId = applicationRows.find(
-                  (application) =>
-                    application.sequence === claimedApplication.index
-                )?.id;
-
-                if (!applicationId) {
-                  return yield* claimError(
-                    "reserve",
-                    "claim_conflict",
-                    "The claimed discount application was not persisted.",
-                    claimedApplication.claim
-                  );
-                }
-
-                yield* reserveCodeClaim({
-                  tx,
-                  claim: claimedApplication.claim,
-                  application: claimedApplication.application,
-                  applicationId,
-                  paymentAttemptId: attemptRow.id,
-                  locale: input.locale,
-                  reservationCustomerId: reservation.dotyposCustomerId,
-                  reservationExpiresAt: reservation.reservationHoldExpiresAt,
-                });
-              }
-
-              return toPaymentAttempt(attemptRow);
-            })
-          )
-          .pipe(
-            Effect.catchIf(isActiveClaimUniqueViolation, (cause) =>
-              Effect.fail(
-                new DiscountClaimError({
-                  operation: "reserve",
-                  reason: "claim_conflict",
-                  message:
-                    "The discount code was claimed by another payment attempt.",
-                  cause,
-                })
-              )
-            )
-          );
+        return yield* transaction.pipe(
+          Effect.catch((cause) => {
+            if (Predicate.isTagged(cause, "DiscountClaimError")) {
+              return Effect.succeed({
+                outcome: "pricing_changed" as const,
+                reason: cause.reason,
+              });
+            }
+            if (isActiveClaimUniqueViolation(cause)) {
+              return Effect.succeed({
+                outcome: "pricing_changed" as const,
+                reason: getUniqueConstraint(cause) ?? "discount_claim_conflict",
+              });
+            }
+            return Effect.fail(cause);
+          })
+        );
       });
 
       const attachProviderSession = Effect.fn(
         "PaymentLifecycleRepository.attachProviderSession"
       )(function* (input: {
         readonly id: string;
+        readonly workspaceReservationId: string;
+        readonly checkoutSessionKey: string;
+        readonly providerOrderId: string;
+        readonly providerStartLeaseId: string;
         readonly securityToken: string;
         readonly providerRedirectUrl: string;
       }) {
@@ -325,26 +527,57 @@ export class PaymentLifecycleRepository extends Context.Service<
             state: "pending",
             securityToken: input.securityToken,
             providerRedirectUrl: input.providerRedirectUrl,
-            updatedAt: Temporal.Now.instant(),
+            providerStartLeaseId: null,
+            providerStartLeaseExpiresAt: null,
+            updatedAt: sql`clock_timestamp()`,
           })
           .where(
             and(
               eq(paymentAttempts.id, input.id),
-              eq(paymentAttempts.state, "created")
+              eq(
+                paymentAttempts.workspaceReservationId,
+                input.workspaceReservationId
+              ),
+              eq(paymentAttempts.providerOrderId, input.providerOrderId),
+              eq(
+                paymentAttempts.providerStartLeaseId,
+                input.providerStartLeaseId
+              ),
+              eq(paymentAttempts.state, "created"),
+              sql`${paymentAttempts.providerStartLeaseExpiresAt} > clock_timestamp()`,
+              sql`exists (
+                select 1
+                from workspace_reservations as payable
+                where payable.id = ${input.workspaceReservationId}
+                  and payable.checkout_session_key = ${input.checkoutSessionKey}
+                  and payable.reservation_state = 'held'
+                  and payable.payment_state = 'pending'
+                  and payable.active_payment_attempt_id = ${input.id}
+                  and (
+                    payable.failure_code is null
+                    or (
+                      payable.failure_code not like 'hold_creation_candidate:%'
+                      and payable.failure_code not like 'hold_creation_candidate_compensating:%'
+                      and payable.failure_code not like 'hold_creation_orphan_recovery:%'
+                      and payable.failure_code not like 'hold_creation_orphan_processing:%'
+                      and payable.failure_code not like 'hold_creation_orphan_awaiting_visibility:%'
+                      and payable.failure_code not like 'hold_creation_orphan_verifying:%'
+                    )
+                  )
+                  and payable.reservation_hold_expires_at > clock_timestamp()
+              )`
             )
           )
           .returning();
 
         if (!attempt) {
-          return yield* new PaymentLifecycleStateError({
-            operation: "PaymentLifecycleRepository.attachProviderSession",
-            paymentAttemptId: input.id,
-            message:
-              "Only created payment attempts can attach a provider session.",
-          });
+          return { outcome: "lost" as const };
         }
 
-        return toPaymentAttempt(attempt);
+        return {
+          outcome: "attached" as const,
+          attempt: toPaymentAttempt(attempt),
+        };
       });
 
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
@@ -358,6 +591,78 @@ export class PaymentLifecycleRepository extends Context.Service<
         }) {
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
+              const [currentAttempt] = yield* tx
+                .select()
+                .from(paymentAttempts)
+                .where(
+                  and(
+                    eq(paymentAttempts.id, input.id),
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      input.workspaceReservationId
+                    )
+                  )
+                )
+                .limit(1)
+                .for("update");
+
+              if (!currentAttempt) {
+                return yield* lifecycleStateError(
+                  "markPaid",
+                  input.id,
+                  "The payment attempt does not belong to the reservation."
+                );
+              }
+
+              if (currentAttempt.state === "paid") {
+                const [consistent] = yield* tx
+                  .select({ paidAt: workspaceReservations.paidAt })
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.paymentState, "paid"),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .limit(1);
+                if (!consistent) {
+                  return yield* lifecycleStateError(
+                    "markPaid",
+                    input.id,
+                    "The already-paid attempt is not the reservation's paid attempt."
+                  );
+                }
+
+                const paidAt = consistent.paidAt ?? input.paidAt;
+                yield* redeemCodeClaim(tx, input.id, paidAt);
+                yield* enqueuePaidEvent(
+                  tx,
+                  input.id,
+                  input.workspaceReservationId,
+                  paidAt
+                );
+                return {
+                  attempt: toPaymentAttempt(currentAttempt),
+                  changed: false,
+                  timestamp: paidAt,
+                };
+              }
+
+              if (
+                currentAttempt.state !== "created" &&
+                currentAttempt.state !== "pending"
+              ) {
+                return yield* lifecycleStateError(
+                  "markPaid",
+                  input.id,
+                  "A terminal unsuccessful attempt cannot be marked paid."
+                );
+              }
+
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -366,6 +671,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   lastProviderOperationId: input.providerOperationId,
                   lastProviderStatus: input.providerStatus,
                   failureCode: null,
+                  providerStartLeaseId: null,
+                  providerStartLeaseExpiresAt: null,
                   updatedAt: input.paidAt,
                 })
                 .where(
@@ -375,11 +682,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                       paymentAttempts.workspaceReservationId,
                       input.workspaceReservationId
                     ),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      "paid",
-                    ])
+                    inArray(paymentAttempts.state, ["created", "pending"])
                   )
                 )
                 .returning();
@@ -412,6 +715,12 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               if (reservation) {
                 yield* redeemCodeClaim(tx, input.id, input.paidAt);
+                yield* enqueuePaidEvent(
+                  tx,
+                  input.id,
+                  input.workspaceReservationId,
+                  reservation.paidAt ?? input.paidAt
+                );
                 return {
                   attempt: toPaymentAttempt(attempt),
                   changed: true,
@@ -440,6 +749,12 @@ export class PaymentLifecycleRepository extends Context.Service<
               }
 
               yield* redeemCodeClaim(tx, input.id, input.paidAt);
+              yield* enqueuePaidEvent(
+                tx,
+                input.id,
+                input.workspaceReservationId,
+                consistent.paidAt ?? input.paidAt
+              );
               return {
                 attempt: toPaymentAttempt(attempt),
                 changed: false,
@@ -464,6 +779,78 @@ export class PaymentLifecycleRepository extends Context.Service<
 
           return yield* db.transaction((tx) =>
             Effect.gen(function* () {
+              const [currentAttempt] = yield* tx
+                .select()
+                .from(paymentAttempts)
+                .where(
+                  and(
+                    eq(paymentAttempts.id, input.id),
+                    eq(
+                      paymentAttempts.workspaceReservationId,
+                      input.workspaceReservationId
+                    )
+                  )
+                )
+                .limit(1)
+                .for("update");
+              if (!currentAttempt) {
+                return yield* lifecycleStateError(
+                  "markTerminal",
+                  input.id,
+                  "The payment attempt does not belong to the reservation."
+                );
+              }
+
+              if (currentAttempt.state === "paid") {
+                return yield* lifecycleStateError(
+                  "markTerminal",
+                  input.id,
+                  "A paid attempt cannot be overwritten by stale terminal settlement."
+                );
+              }
+
+              if (
+                currentAttempt.state === "failed" ||
+                currentAttempt.state === "cancelled" ||
+                currentAttempt.state === "expired"
+              ) {
+                const [consistent] = yield* tx
+                  .select({ updatedAt: workspaceReservations.updatedAt })
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(
+                        workspaceReservations.paymentState,
+                        currentAttempt.state
+                      ),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .limit(1);
+                if (!consistent) {
+                  return yield* lifecycleStateError(
+                    "markTerminal",
+                    input.id,
+                    "The terminal attempt does not match the reservation aggregate."
+                  );
+                }
+                yield* releaseCodeClaim(
+                  tx,
+                  input.id,
+                  consistent.updatedAt,
+                  currentAttempt.failureCode ?? input.failureCode
+                );
+                return {
+                  attempt: toPaymentAttempt(currentAttempt),
+                  changed: false,
+                  timestamp: consistent.updatedAt,
+                };
+              }
+
               const [attempt] = yield* tx
                 .update(paymentAttempts)
                 .set({
@@ -472,6 +859,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   lastWebhookEventId: input.webhookEventId,
                   lastProviderOperationId: input.providerOperationId,
                   lastProviderStatus: input.providerStatus,
+                  providerStartLeaseId: null,
+                  providerStartLeaseExpiresAt: null,
                   updatedAt: terminalAt,
                 })
                 .where(
@@ -481,11 +870,7 @@ export class PaymentLifecycleRepository extends Context.Service<
                       paymentAttempts.workspaceReservationId,
                       input.workspaceReservationId
                     ),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      input.state,
-                    ])
+                    inArray(paymentAttempts.state, ["created", "pending"])
                   )
                 )
                 .returning();
@@ -566,7 +951,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       );
 
       return {
-        createAttempt,
+        admitPaymentStart,
         attachProviderSession,
         markPaid,
         markTerminal,
@@ -575,7 +960,10 @@ export class PaymentLifecycleRepository extends Context.Service<
   );
 }
 
-type CommitmentPayload = ReturnType<typeof getDiscountCommitmentPayload>;
+type CommitmentPayload = Extract<
+  ReturnType<typeof materializeDiscountCommitment>,
+  { readonly status: "ready" }
+>;
 
 export const validateDiscountCommitment = Effect.fn(
   "PaymentLifecycle.validateDiscountCommitment"
@@ -646,6 +1034,119 @@ export const validateDiscountCommitment = Effect.fn(
   };
 });
 
+const pricingIdentitiesEqual = (input: {
+  readonly acceptedPricing: PaymentPricingIdentity;
+  readonly affirmedPricing: PaymentPricingIdentity;
+}) =>
+  input.acceptedPricing.fingerprint === input.affirmedPricing.fingerprint &&
+  workspaceMoneyEquals(
+    input.acceptedPricing.total,
+    input.affirmedPricing.total
+  ) &&
+  input.acceptedPricing.discounts.length ===
+    input.affirmedPricing.discounts.length &&
+  input.acceptedPricing.discounts.every((application, index) =>
+    discountApplicationsEqual(
+      application,
+      input.affirmedPricing.discounts[index]
+    )
+  );
+
+const discountApplicationsEqual = (
+  left: AppliedDiscount,
+  right: AppliedDiscount | undefined
+) =>
+  right !== undefined &&
+  left.discount.id === right.discount.id &&
+  left.discount.label === right.discount.label &&
+  left.discount.expiresAt === right.discount.expiresAt &&
+  left.discount.countdownStartsAt === right.discount.countdownStartsAt &&
+  discountAdjustmentsEqual(
+    left.discount.adjustment,
+    right.discount.adjustment
+  ) &&
+  workspaceMoneyEquals(left.subtotalBefore, right.subtotalBefore) &&
+  workspaceMoneyEquals(left.amount, right.amount) &&
+  workspaceMoneyEquals(left.subtotalAfter, right.subtotalAfter);
+
+const loadAttemptAdmission = Effect.fn("PaymentLifecycle.loadAttemptAdmission")(
+  function* (input: {
+    readonly tx: TransactionClient;
+    readonly paymentAttemptId: string;
+    readonly pricing: PaymentPricingIdentity;
+  }) {
+    const [attempt] = yield* input.tx
+      .select()
+      .from(paymentAttempts)
+      .where(eq(paymentAttempts.id, input.paymentAttemptId))
+      .limit(1)
+      .for("update");
+    if (!attempt) return null;
+
+    const applications = yield* input.tx
+      .select({
+        id: discountApplications.publicDiscountId,
+        label: discountApplications.label,
+      })
+      .from(discountApplications)
+      .where(eq(discountApplications.paymentAttemptId, attempt.id))
+      .orderBy(asc(discountApplications.sequence));
+    const expectedDiscounts = input.pricing.discounts.map(({ discount }) => ({
+      id: discount.id,
+      label: discount.label,
+    }));
+
+    return {
+      attempt,
+      pricingMatches:
+        attempt.admissionVersion === 2 &&
+        attempt.pricingFingerprint === input.pricing.fingerprint &&
+        workspaceMoneyEquals(
+          {
+            value: attempt.amountValue,
+            exponent: attempt.amountExponent,
+            currency: attempt.currency,
+          },
+          input.pricing.total
+        ) &&
+        stringArraysEqual(
+          attempt.displayedDiscountIds ?? [],
+          expectedDiscounts.map(({ id }) => id)
+        ) &&
+        applications.length === expectedDiscounts.length &&
+        applications.every(
+          (application, index) =>
+            application.id === expectedDiscounts[index]?.id &&
+            application.label === expectedDiscounts[index]?.label
+        ),
+    };
+  }
+);
+
+const stringArraysEqual = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length &&
+  left.every((value, index) => value === right[index]);
+
+const normalizeDatabaseInstant = (
+  value: Temporal.Instant | Date | string
+): Temporal.Instant =>
+  value instanceof Date
+    ? Temporal.Instant.from(value.toISOString())
+    : Temporal.Instant.from(value);
+
+const hasNoUnresolvedProviderAttachmentRecovery = () =>
+  sql`(
+    ${workspaceReservations.failureCode} is null
+    or (
+      ${workspaceReservations.failureCode} not like 'hold_creation_candidate:%'
+      and ${workspaceReservations.failureCode} not like 'hold_creation_candidate_compensating:%'
+      and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_recovery:%'
+      and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_processing:%'
+      and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_awaiting_visibility:%'
+      and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_verifying:%'
+    )
+  )`;
+
 const lifecycleStateError = (
   operation: string,
   paymentAttemptId: string,
@@ -698,6 +1199,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly locale: Locale;
     readonly reservationCustomerId: string;
     readonly reservationExpiresAt: Temporal.Instant;
+    readonly databaseNow: Temporal.Instant;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
       return yield* claimError(
@@ -768,10 +1270,10 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       );
     }
 
-    const claimedAt = Temporal.Now.instant();
+    const claimedAt = input.databaseNow;
     if (Temporal.Instant.compare(input.reservationExpiresAt, claimedAt) <= 0) {
       return yield* lifecycleStateError(
-        "createAttempt",
+        "admitPaymentStart",
         input.paymentAttemptId,
         "Discount claims can only be reserved for a current held reservation."
       );
@@ -976,6 +1478,26 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
         )
       );
   }
+);
+
+const enqueuePaidEvent = Effect.fn("PaymentLifecycle.enqueuePaidEvent")(
+  (
+    tx: TransactionClient,
+    paymentAttemptId: string,
+    workspaceReservationId: string,
+    paidAt: Temporal.Instant
+  ) =>
+    tx
+      .insert(paymentPaidEvents)
+      .values({
+        paymentAttemptId,
+        workspaceReservationId,
+        paidAt,
+      })
+      .onConflictDoNothing({
+        target: paymentPaidEvents.paymentAttemptId,
+      })
+      .pipe(Effect.asVoid)
 );
 
 const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(

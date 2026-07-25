@@ -21,7 +21,7 @@ const paymentLifecycleLayer = (
   overrides: Partial<IPaymentLifecycleRepository> = {}
 ) =>
   Layer.succeed(PaymentLifecycleRepository, {
-    createAttempt: () => Effect.die("not used"),
+    admitPaymentStart: () => Effect.die("not used"),
     attachProviderSession: () => Effect.die("not used"),
     markPaid: () => Effect.die("not used"),
     markTerminal: () => Effect.die("not used"),
@@ -210,10 +210,28 @@ describe("ProviderPaymentFinalizationService", () => {
   });
 
   for (const scenario of [
-    { verificationStatus: "success" as const, expected: "paid" as const },
-    { verificationStatus: "failure" as const, expected: "terminal" as const },
+    {
+      verificationStatus: "success" as const,
+      expected: "paid" as const,
+      changed: true,
+    },
+    {
+      verificationStatus: "success" as const,
+      expected: "paid" as const,
+      changed: false,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "terminal" as const,
+      changed: true,
+    },
+    {
+      verificationStatus: "failure" as const,
+      expected: "terminal" as const,
+      changed: false,
+    },
   ]) {
-    test(`finalizes pending ${scenario.verificationStatus} provider payments`, async () => {
+    test(`finalizes pending ${scenario.verificationStatus} provider payments when settlement changed=${scenario.changed}`, async () => {
       const {
         ProviderPaymentFinalizationService,
         ProviderPaymentFinalizationServiceLive,
@@ -235,7 +253,7 @@ describe("ProviderPaymentFinalizationService", () => {
       const markPaidForReservation = mock(() =>
         Effect.succeed({
           attempt: { ...pendingAttempt, state: "paid" as const },
-          changed: true,
+          changed: scenario.changed,
           timestamp: Temporal.Now.instant(),
         })
       );
@@ -247,7 +265,7 @@ describe("ProviderPaymentFinalizationService", () => {
             failureCode: "nexi_payment_failed",
             lastProviderStatus: "DECLINED",
           },
-          changed: true,
+          changed: scenario.changed,
           timestamp: Temporal.Now.instant(),
         })
       );

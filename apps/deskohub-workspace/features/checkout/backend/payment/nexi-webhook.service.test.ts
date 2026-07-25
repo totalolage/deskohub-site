@@ -158,14 +158,14 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
 };
 
 describe("NexiWebhookService", () => {
-  test("links the attempt, verifies, marks paid, fulfills, and marks processed", async () => {
+  test("links, idempotently marks paid, fulfills, and marks processed", async () => {
     const linkPaymentAttempt = mock(() => Effect.void);
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
     const markPaidForReservation = mock(() =>
       Effect.succeed({
         attempt: { ...attempt, state: "paid" as const },
-        changed: true,
+        changed: false,
         timestamp: Temporal.Now.instant(),
       })
     );
@@ -187,7 +187,7 @@ describe("NexiWebhookService", () => {
           findByProviderOrderId: mock(() => Effect.succeed(attempt)),
         } as unknown as PaymentAttemptRepositoryType,
         paymentLifecycle: {
-          createAttempt: mock(() => Effect.die("unused")),
+          admitPaymentStart: mock(() => Effect.die("unused")),
           attachProviderSession: mock(() => Effect.die("unused")),
           markPaid: markPaidForReservation,
           markTerminal: mock(() => Effect.die("unused")),
@@ -237,6 +237,75 @@ describe("NexiWebhookService", () => {
     expect(markFailed).not.toHaveBeenCalled();
   });
 
+  test("settles a provider failure idempotently and marks the event processed", async () => {
+    const markProcessed = mock(() => Effect.void);
+    const markTerminal = mock(() =>
+      Effect.succeed({
+        attempt: {
+          ...attempt,
+          state: "failed" as const,
+          failureCode: "nexi_payment_failed",
+        },
+        changed: false,
+        timestamp: Temporal.Now.instant(),
+      })
+    );
+
+    const result = await Effect.runPromise(
+      await buildWebhookEffect({
+        webhookEvents: {
+          insertReceived: mock(() =>
+            Effect.succeed({ status: "inserted", event: receivedEvent })
+          ),
+          linkPaymentAttempt: mock(() => Effect.void),
+          markProcessed,
+          markFailed: mock(() => Effect.void),
+          claimRetry: mock(() => Effect.die("unused")),
+        } as unknown as WebhookEventRepositoryType,
+        paymentAttempts: {
+          findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+        } as unknown as PaymentAttemptRepositoryType,
+        paymentLifecycle: {
+          admitPaymentStart: mock(() => Effect.die("unused")),
+          attachProviderSession: mock(() => Effect.die("unused")),
+          markPaid: mock(() => Effect.die("unused")),
+          markTerminal,
+        },
+        reservations: {
+          findById: mock(() => Effect.succeed(reservation as never)),
+        } as unknown as WorkspaceReservationRepositoryType,
+        nexi: {
+          verifyPaymentOutcome: mock(() =>
+            Effect.succeed({
+              ...verification,
+              status: "failure",
+              provider: {
+                ...verification.provider,
+                orderStatus: "DECLINED",
+                captureExecuted: false,
+              },
+            })
+          ),
+        } as unknown as NexiServiceType,
+        fulfillment: {
+          fulfillPaidOrder: mock(() => Effect.die("unused")),
+        },
+      })
+    );
+
+    expect(result.status).toBe("accepted");
+    expect(markTerminal).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        state: "failed",
+        failureCode: "nexi_payment_failed",
+        webhookEventId: "event-id",
+      })
+    );
+    expect(markProcessed).toHaveBeenCalledTimes(1);
+  });
+
   test("marks the webhook failed and not processed when paid fulfillment fails", async () => {
     const markProcessed = mock(() => Effect.void);
     const markFailed = mock(() => Effect.void);
@@ -257,7 +326,7 @@ describe("NexiWebhookService", () => {
             findByProviderOrderId: mock(() => Effect.succeed(attempt)),
           } as unknown as PaymentAttemptRepositoryType,
           paymentLifecycle: {
-            createAttempt: mock(() => Effect.die("unused")),
+            admitPaymentStart: mock(() => Effect.die("unused")),
             attachProviderSession: mock(() => Effect.die("unused")),
             markPaid: mock(() =>
               Effect.succeed({

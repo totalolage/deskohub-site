@@ -92,7 +92,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           );
           const paymentAttemptId =
             input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
-          yield* Effect.annotateLogsScoped({ reservation, paymentAttemptId });
+          yield* Effect.annotateLogsScoped({ paymentAttemptId });
           yield* Effect.logDebug(
             "Payment finalization reservation lookup completed"
           );
@@ -146,7 +146,6 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               ),
               Effect.orElseSucceed(() => null)
             );
-          yield* Effect.annotateLogsScoped({ attempt });
           yield* Effect.logDebug(
             "Payment finalization attempt lookup completed"
           );
@@ -162,9 +161,8 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           )(attempt.amount.currency).pipe(
             Effect.tapError((cause) =>
               Effect.logError("Payment finalization currency decode failed", {
-                input,
-                reservation,
-                attempt,
+                orderId: input.orderId,
+                paymentAttemptId: attempt.id,
                 cause,
               })
             ),
@@ -202,7 +200,6 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               Effect.orElseSucceed(() => undefined)
             );
 
-          yield* Effect.annotateLogsScoped({ verification });
           yield* Effect.logInfo(
             "Payment finalization provider verification completed"
           );

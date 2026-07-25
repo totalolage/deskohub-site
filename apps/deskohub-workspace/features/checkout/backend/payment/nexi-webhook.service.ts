@@ -107,9 +107,7 @@ const failOnVerificationMismatch = Effect.fn(
     readonly webhookEvents: WebhookEventRepository;
   }) {
     if (input.verification.mismatches.length === 0) return;
-    yield* Effect.logWarning("Nexi webhook verification mismatch detected", {
-      verification: input.verification,
-    });
+    yield* Effect.logWarning("Nexi webhook verification mismatch detected");
 
     return yield* failAfterMarkingEvent(
       input.webhookEvents,
@@ -122,7 +120,13 @@ const failOnVerificationMismatch = Effect.fn(
       })
     );
   },
-  (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        eventId: input.eventId,
+        orderId: input.orderId,
+      })
+    )
 );
 
 export const NexiWebhookServiceLive = Layer.effect(
@@ -139,7 +143,6 @@ export const NexiWebhookServiceLive = Layer.effect(
     return NexiWebhookService.of({
       processNotification: Effect.fn("nexiWebhook.processNotification")(
         function* (payload) {
-          yield* Effect.annotateLogsScoped({ payload });
           yield* Effect.logInfo("Nexi webhook processing started");
 
           const envelope = yield* decodeNexiWebhookNotification(payload).pipe(
@@ -154,11 +157,7 @@ export const NexiWebhookServiceLive = Layer.effect(
           );
           const providerOrderId = envelope.operation.orderId;
           const { eventId } = deriveNexiWebhookEventIdentity(envelope);
-          yield* Effect.annotateLogsScoped({
-            envelope,
-            eventId,
-            providerOrderId,
-          });
+          yield* Effect.annotateLogsScoped({ eventId, providerOrderId });
           yield* Effect.logInfo("Nexi webhook notification decoded");
 
           const received = yield* webhookEvents
@@ -243,7 +242,6 @@ export const NexiWebhookServiceLive = Layer.effect(
                   })
               )
             );
-          yield* Effect.annotateLogsScoped({ attempt });
           yield* Effect.logDebug(
             "Nexi webhook payment attempt lookup completed"
           );
@@ -300,7 +298,6 @@ export const NexiWebhookServiceLive = Layer.effect(
                   })
               )
             );
-          yield* Effect.annotateLogsScoped({ reservation });
           yield* Effect.logDebug(
             "Nexi webhook workspace reservation lookup completed"
           );
@@ -328,7 +325,6 @@ export const NexiWebhookServiceLive = Layer.effect(
             notificationSecurityToken: envelope.securityToken,
             expectedSecurityToken: attempt.securityToken,
           });
-          yield* Effect.annotateLogsScoped({ tokenCheck });
           yield* Effect.logDebug("Nexi webhook security token checked");
           if (tokenCheck.status === "mismatch") {
             yield* Effect.logWarning(
@@ -395,7 +391,6 @@ export const NexiWebhookServiceLive = Layer.effect(
             currency: getNexiCurrencyOverride() ?? currency,
             securityToken: attempt.securityToken,
           };
-          yield* Effect.annotateLogsScoped({ verificationInput });
           yield* Effect.logInfo("Nexi webhook payment verification started");
 
           const verification = yield* nexi
@@ -419,7 +414,6 @@ export const NexiWebhookServiceLive = Layer.effect(
                 )
               )
             );
-          yield* Effect.annotateLogsScoped({ verification });
           yield* Effect.logInfo("Nexi webhook payment verification completed");
 
           yield* failOnVerificationMismatch({

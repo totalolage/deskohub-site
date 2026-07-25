@@ -152,6 +152,7 @@ const privateCommitment = makeDiscountCommitment({
 
 const buildPayStateToken = (input: {
   readonly orderId: string;
+  readonly legalConsent?: boolean;
   readonly locale?: Locale;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
@@ -229,6 +230,11 @@ const makeAttempt = (input: {
   workspaceReservationId: input.orderId,
   provider: "nexi" as const,
   providerOrderId: input.id,
+  admissionVersion: 2,
+  pricingFingerprint: "test-fingerprint",
+  displayedDiscountIds: [],
+  providerStartLeaseId: "provider-start-lease",
+  providerStartLeaseExpiresAt: testInstant("2099-06-20T09:00:00Z"),
   state: input.state ?? ("created" as const),
   amount: money(55_000),
   securityToken: input.securityToken ?? null,
@@ -297,6 +303,7 @@ type CheckoutHarnessOptions = {
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
   readonly createAttempt?: ReturnType<typeof mock>;
+  readonly attachProviderSession?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
 };
 
@@ -335,9 +342,48 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     providerRedirectUrl: "https://payments.example/hosted",
   };
   const createAttempt =
-    options.createAttempt ?? mock(() => Effect.succeed(createdAttempt));
+    options.createAttempt ??
+    mock(
+      (input: {
+        readonly acceptedPricing: {
+          readonly total: ReturnType<typeof money>;
+        };
+      }) =>
+        Effect.succeed(
+          options.activeAttempt
+            ? options.activeAttempt.amount.value ===
+                input.acceptedPricing.total.value &&
+              options.activeAttempt.amount.exponent ===
+                input.acceptedPricing.total.exponent &&
+              options.activeAttempt.amount.currency ===
+                input.acceptedPricing.total.currency
+              ? {
+                  outcome:
+                    options.activeAttempt.state === "created"
+                      ? ("starting" as const)
+                      : ("reuse" as const),
+                  attempt: options.activeAttempt,
+                }
+              : {
+                  outcome: "pricing_changed" as const,
+                  reason: "active_attempt_pricing_mismatch",
+                }
+            : {
+                outcome: "created" as const,
+                attempt: createdAttempt,
+                providerStartLeaseId: "provider-start-lease",
+              }
+        )
+    );
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
-  const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
+  const attachHostedPaymentPage =
+    options.attachProviderSession ??
+    mock(() =>
+      Effect.succeed({
+        outcome: "attached" as const,
+        attempt: attachedAttempt,
+      })
+    );
   const markTerminalForReservation = mock(() =>
     Effect.succeed({
       attempt: {
@@ -356,7 +402,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     findDisplayableForReservation: mock(() => Effect.succeed(null)),
   } satisfies PaymentAttemptRepositoryType;
   const paymentLifecycle = {
-    createAttempt,
+    admitPaymentStart: createAttempt,
     attachProviderSession: attachHostedPaymentPage,
     markPaid: mock(() =>
       Effect.succeed({
@@ -389,8 +435,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   } as unknown as typeof DotyposService.Service;
   const createHostedPaymentPage =
     options.createHostedPaymentPage ??
-    mock(() =>
+    mock((input: { readonly orderId: string }) =>
       Effect.succeed({
+        orderId: input.orderId,
         securityToken: "provider-security-token",
         hostedPage: "https://payments.example/hosted",
       })
@@ -430,7 +477,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             submittedCode: options.submittedCode,
             changedKeys: options.changedKeys,
           }),
-        legalConsent: true,
+        legalConsent: options.legalConsent ?? true,
       },
       locale
     );
@@ -488,7 +535,7 @@ describe("CheckoutService", () => {
     expect(end).toBeGreaterThan(start);
     const startProviderSession = source.slice(start, end);
     const createAttemptAt = startProviderSession.indexOf(
-      "paymentLifecycle.createAttempt"
+      "paymentLifecycle.admitPaymentStart"
     );
 
     expect(createAttemptAt).toBeGreaterThanOrEqual(0);
@@ -506,7 +553,7 @@ describe("CheckoutService", () => {
     ).toBeLessThan(createAttemptAt);
   });
 
-  test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {
+  test("redirects a reusable active attempt only after fresh pricing affirmation and legal persistence", async () => {
     const orderId = "reservation-reuses-provider-attempt";
     const activeAttempt = makeAttempt({
       id: "active-attempt",
@@ -518,10 +565,6 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId,
       activeAttempt,
-      changedKeys: {
-        sectionKeys: ["order", "total"],
-        itemKeys: ["product:cowork:profi"],
-      },
       reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
     });
 
@@ -531,10 +574,10 @@ describe("CheckoutService", () => {
       status: "redirect",
       redirectUrl: "https://payments.example/existing",
     });
-    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
-    expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.updateReservation).not.toHaveBeenCalled();
-    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.findAttempt).not.toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalledTimes(1);
+    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+    expect(harness.createAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -558,9 +601,9 @@ describe("CheckoutService", () => {
 
     const result = await Effect.runPromise(harness.effect);
 
-    expect(result).toEqual({ status: "in_progress" });
-    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
-    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(result.status).toBe("pricing_changed");
+    expect(harness.findAttempt).not.toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalledTimes(1);
     expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
@@ -585,10 +628,10 @@ describe("CheckoutService", () => {
 
     const result = await Effect.runPromise(harness.effect);
 
-    expect(result).toEqual({ status: "in_progress" });
-    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
-    expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(result.status).toBe("pricing_changed");
+    expect(harness.findAttempt).not.toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalledTimes(2);
+    expect(harness.createAttempt).toHaveBeenCalledTimes(1);
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -659,7 +702,12 @@ describe("CheckoutService", () => {
     );
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
-        amount: money(55_000),
+        acceptedPricing: expect.objectContaining({
+          total: money(55_000),
+        }),
+        affirmedPricing: expect.objectContaining({
+          total: money(55_000),
+        }),
         commitment: emptyCommitment,
       })
     );
@@ -685,7 +733,9 @@ describe("CheckoutService", () => {
 
       expect(harness.createAttempt).toHaveBeenCalledWith(
         expect.objectContaining({
-          amount: expect.objectContaining({ currency: "CZK" }),
+          acceptedPricing: expect.objectContaining({
+            total: expect.objectContaining({ currency: "CZK" }),
+          }),
         })
       );
       expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -901,13 +951,16 @@ describe("CheckoutService", () => {
         commitment: privateCommitment,
       })
     );
-    const createHostedPaymentPage = mock(() => {
-      events.push("provider-created");
-      return Effect.succeed({
-        securityToken: "provider-security-token",
-        hostedPage: "https://payments.example/hosted",
-      });
-    });
+    const createHostedPaymentPage = mock(
+      (input: { readonly orderId: string }) => {
+        events.push("provider-created");
+        return Effect.succeed({
+          orderId: input.orderId,
+          securityToken: "provider-security-token",
+          hostedPage: "https://payments.example/hosted",
+        });
+      }
+    );
     const harness = await createCheckoutHarness({
       orderId: "reservation-refreshes-note",
       acceptedQuote,
@@ -1004,6 +1057,95 @@ describe("CheckoutService", () => {
     expect(harness.markTerminalForReservation).not.toHaveBeenCalled();
     expect(harness.createAttempt).toHaveBeenCalledTimes(1);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not start a second provider request while an ambiguous start lease is active", async () => {
+    const activeAttempt = makeAttempt({
+      id: "ambiguous-attempt",
+      orderId: "reservation-hpp-starting",
+      state: "created",
+    });
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-hpp-starting",
+      activeAttempt,
+      reservationOverrides: {
+        activePaymentAttemptId: activeAttempt.id,
+        paymentState: "pending",
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(harness.createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("does not call the provider when atomic admission persistence fails", async () => {
+    const createAttempt = mock(() =>
+      Effect.fail(
+        new CheckoutTestFailure({ message: "admission persistence failed" })
+      )
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-admission-persistence-fails",
+      createAttempt,
+    });
+
+    await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("never attaches or returns an HPP whose provider order differs", async () => {
+    const createHostedPaymentPage = mock(() =>
+      Effect.succeed({
+        orderId: "different-provider-order",
+        securityToken: "provider-security-token",
+        hostedPage: "https://payments.example/mismatched",
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-provider-order-mismatch",
+      createHostedPaymentPage,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("never returns an HPP after guarded attach loses its lease", async () => {
+    const attachProviderSession = mock(() =>
+      Effect.succeed({ outcome: "lost" as const })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-provider-attach-lost",
+      attachProviderSession,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(attachProviderSession).toHaveBeenCalledTimes(1);
+  });
+
+  test("requires legal acceptance before admission or provider start", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-legal-rejected",
+      legalConsent: false,
+    });
+
+    await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   test("returns refreshed pricing when code claim admission loses a race", async () => {

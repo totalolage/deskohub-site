@@ -29,4 +29,5 @@ process.env.RESEND_WEBHOOK_SECRET ??= "whsec_test";
 process.env.VERCEL_ENV ??= "development";
 process.env.VERCEL_PROJECT_PRODUCTION_URL ??= "workspace.deskohub.test";
 process.env.VERCEL_URL ??= "deskohub.test";
+process.env.WORKSPACE_PAYMENT_ADMISSION_VERSION ??= "2";
 process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ??= "cloud";

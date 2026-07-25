@@ -67,6 +67,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
+  WORKSPACE_PAYMENT_ADMISSION_VERSION: toEnvSchema(
+    Schema.optional(Schema.Literal("2"))
+  ),
 }).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceClientEnvSchema = Schema.Struct({

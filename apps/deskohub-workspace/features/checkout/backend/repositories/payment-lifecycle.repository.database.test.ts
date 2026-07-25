@@ -1,0 +1,742 @@
+import "@/shared/polyfills/temporal";
+import "@/shared/testing/workspace-test-env";
+
+import { describe, expect, mock, test } from "bun:test";
+import * as PgliteClient from "@effect/sql-pglite/PgliteClient";
+import { eq, sql } from "drizzle-orm";
+import { makeWithDefaults } from "drizzle-orm/effect-pglite";
+import { Effect, Layer, Schema } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import { relations } from "@/db/relations";
+import {
+  discountApplications,
+  discountCodeRedemptions,
+  paymentAttempts,
+  paymentPaidEvents,
+  workspaceReservations,
+} from "@/db/schema";
+import { makeDiscountCommitment } from "@/features/discounts/commitment";
+import { discountIdSchema } from "@/features/discounts/contracts";
+import {
+  discountCodeIdSchema,
+  storedDiscountIdSchema,
+} from "@/features/discounts/persistence-contracts";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import {
+  PaymentLifecycleRepository,
+  PaymentLifecycleStateError,
+} from "./payment-lifecycle.repository";
+
+mock.module("server-only", () => ({}));
+
+const createSchemaStatements = `
+  create function uuid_generate_v7() returns uuid language sql volatile
+    as 'select gen_random_uuid()';
+  create table workspace_reservations (
+    id text primary key,
+    checkout_session_key text not null,
+    checkout_attempt_key text not null unique,
+    correlation_id text not null unique,
+    dotypos_customer_id text not null,
+    dotypos_reservation_id text,
+    reservation_state text not null,
+    payment_state text not null,
+    fulfillment_state text not null,
+    active_payment_attempt_id text,
+    reservation_hold_expires_at timestamptz,
+    paid_at timestamptz,
+    failure_code text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+  create table payment_attempts (
+    id text primary key,
+    workspace_reservation_id text not null references workspace_reservations(id),
+    provider text not null,
+    provider_order_id text not null unique,
+    admission_version integer not null default 1,
+    pricing_fingerprint text,
+    displayed_discount_ids jsonb,
+    provider_start_lease_id text,
+    provider_start_lease_expires_at timestamptz,
+    security_token text,
+    state text not null,
+    amount_value integer not null,
+    amount_exponent integer not null,
+    currency text not null,
+    provider_redirect_url text,
+    last_webhook_event_id text,
+    last_provider_operation_id text,
+    last_provider_status text,
+    failure_code text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+  create table discounts (
+    id text primary key,
+    labels jsonb not null,
+    percentage_basis_points integer,
+    fixed_amount_value integer,
+    fixed_amount_exponent integer,
+    fixed_amount_currency text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+  create table discount_product_targets (
+    discount_id text not null references discounts(id),
+    product_identity jsonb not null,
+    primary key (discount_id, product_identity)
+  );
+  create table discount_codes (
+    id text primary key,
+    discount_id text not null references discounts(id),
+    code text not null unique,
+    enabled boolean not null,
+    valid_from timestamptz,
+    valid_until timestamptz,
+    max_uses integer,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+  );
+  create table discount_code_customers (
+    code_id text not null references discount_codes(id),
+    dotypos_customer_id text not null,
+    primary key (code_id, dotypos_customer_id)
+  );
+  create table discount_applications (
+    id text primary key default gen_random_uuid()::text,
+    payment_attempt_id text not null references payment_attempts(id),
+    workspace_reservation_id text not null references workspace_reservations(id),
+    sequence integer not null,
+    public_discount_id text not null,
+    label text not null,
+    adjustment jsonb not null,
+    product_identity jsonb not null,
+    subtotal_before_value integer not null,
+    subtotal_before_exponent integer not null,
+    subtotal_before_currency text not null,
+    applied_amount_value integer not null,
+    applied_amount_exponent integer not null,
+    applied_amount_currency text not null,
+    subtotal_after_value integer not null,
+    subtotal_after_exponent integer not null,
+    subtotal_after_currency text not null,
+    expires_at timestamptz,
+    countdown_starts_at timestamptz,
+    provenance jsonb not null,
+    created_at timestamptz not null default now(),
+    unique (payment_attempt_id, sequence)
+  );
+  create table discount_code_redemptions (
+    id text primary key default gen_random_uuid()::text,
+    code_id text not null references discount_codes(id),
+    application_id text not null references discount_applications(id),
+    payment_attempt_id text not null references payment_attempts(id),
+    dotypos_customer_id text not null,
+    state text not null,
+    reservation_expires_at timestamptz not null,
+    reserved_at timestamptz not null default now(),
+    redeemed_at timestamptz,
+    released_at timestamptz,
+    release_reason text,
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now(),
+    unique (application_id),
+    unique (payment_attempt_id)
+  );
+  create unique index discount_code_redemptions_active_customer_unique_idx
+    on discount_code_redemptions(code_id, dotypos_customer_id)
+    where state in ('reserved', 'redeemed');
+  create table payment_paid_events (
+    id text primary key default gen_random_uuid()::text,
+    payment_attempt_id text not null references payment_attempts(id),
+    workspace_reservation_id text not null references workspace_reservations(id),
+    paid_at timestamptz not null,
+    created_at timestamptz not null default now(),
+    unique (payment_attempt_id)
+  )
+`
+  .split(";")
+  .map((statement) => statement.trim())
+  .filter(Boolean)
+  .map(sql.raw);
+
+const DatabaseLive = Layer.effect(
+  WorkspaceDatabase,
+  makeWithDefaults({ relations }).pipe(
+    Effect.map((db) => WorkspaceDatabase.of({ db: db as never }))
+  )
+).pipe(Layer.provide(PgliteClient.layer()));
+
+const TestLive = Layer.merge(
+  DatabaseLive,
+  PaymentLifecycleRepository.Live.pipe(Layer.provide(DatabaseLive))
+);
+
+const runRepositoryTest = <A, E>(
+  effect: Effect.Effect<A, E, PaymentLifecycleRepository | WorkspaceDatabase>
+) =>
+  Effect.runPromise(
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        for (const statement of createSchemaStatements) {
+          yield* db.execute(statement);
+        }
+        return yield* effect;
+      }).pipe(Effect.provide(TestLive))
+    )
+  );
+
+const money = (value: number) => ({
+  value,
+  exponent: 2,
+  currency: "CZK",
+});
+
+const noDiscountPricing = {
+  fingerprint: "pricing-fingerprint",
+  total: money(1000),
+  discounts: [],
+} as const;
+
+const emptyCommitment = makeDiscountCommitment({
+  product: { kind: "cowork", tier: "basic" },
+  applications: [],
+});
+
+const seedReservation = (
+  id: string,
+  deadline: ReturnType<typeof sql.raw> = sql.raw(
+    "clock_timestamp() + interval '5 minutes'"
+  ),
+  customerId = `customer-${id}`
+) =>
+  Effect.gen(function* () {
+    const { db } = yield* WorkspaceDatabase;
+    yield* db.execute(
+      sql`insert into workspace_reservations (
+        id,
+        checkout_session_key,
+        checkout_attempt_key,
+        correlation_id,
+        dotypos_customer_id,
+        dotypos_reservation_id,
+        reservation_state,
+        payment_state,
+        fulfillment_state,
+        reservation_hold_expires_at
+      ) values (
+        ${id},
+        ${`session-${id}`},
+        ${`attempt-${id}`},
+        ${`correlation-${id}`},
+        ${customerId},
+        ${`provider-${id}`},
+        'held',
+        'not_started',
+        'not_started',
+        ${deadline}
+      )`
+    );
+  });
+
+const admit = (
+  repository: typeof PaymentLifecycleRepository.Service,
+  reservationId: string,
+  input: {
+    readonly commitment?: typeof emptyCommitment;
+    readonly acceptedPricing?: typeof noDiscountPricing;
+    readonly affirmedPricing?: typeof noDiscountPricing;
+  } = {}
+) =>
+  repository.admitPaymentStart({
+    workspaceReservationId: reservationId,
+    checkoutSessionKey: `session-${reservationId}`,
+    providerOrderId: `provider-order-${reservationId}`,
+    acceptedPricing: input.acceptedPricing ?? noDiscountPricing,
+    affirmedPricing: input.affirmedPricing ?? noDiscountPricing,
+    commitment: input.commitment ?? emptyCommitment,
+    locale: "en-US",
+  });
+
+describe("PaymentLifecycleRepository database behavior", () => {
+  test("concurrent admission converges on one durable attempt and one start lease", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("concurrent");
+
+        const results = yield* Effect.all(
+          [admit(repository, "concurrent"), admit(repository, "concurrent")],
+          { concurrency: "unbounded" }
+        );
+
+        expect(results.map(({ outcome }) => outcome).sort()).toEqual([
+          "created",
+          "starting",
+        ]);
+        expect(
+          yield* db
+            .select()
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.workspaceReservationId, "concurrent"))
+        ).toHaveLength(1);
+      })
+    );
+  });
+
+  test("uses database time for admission and attach deadline guards", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation(
+          "expired",
+          sql.raw("clock_timestamp() - interval '1 microsecond'")
+        );
+        expect((yield* admit(repository, "expired")).outcome).toBe(
+          "unavailable"
+        );
+
+        yield* seedReservation("unresolved");
+        yield* db
+          .update(workspaceReservations)
+          .set({ failureCode: "hold_creation_orphan_recovery:test" })
+          .where(eq(workspaceReservations.id, "unresolved"));
+        expect((yield* admit(repository, "unresolved")).outcome).toBe(
+          "unavailable"
+        );
+
+        yield* seedReservation("attach");
+        const admission = yield* admit(repository, "attach");
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationHoldExpiresAt: Temporal.Instant.from(
+              "2000-01-01T00:00:00Z"
+            ),
+          })
+          .where(eq(workspaceReservations.id, "attach"));
+        expect(
+          (yield* repository.attachProviderSession({
+            id: admission.attempt.id,
+            workspaceReservationId: "attach",
+            checkoutSessionKey: "session-attach",
+            providerOrderId: admission.attempt.providerOrderId,
+            providerStartLeaseId: admission.providerStartLeaseId,
+            securityToken: "non-secret-test-token",
+            providerRedirectUrl: "https://provider.example/hosted",
+          })).outcome
+        ).toBe("lost");
+
+        yield* seedReservation("attach-unresolved");
+        const unresolvedAdmission = yield* admit(
+          repository,
+          "attach-unresolved"
+        );
+        expect(unresolvedAdmission.outcome).toBe("created");
+        if (unresolvedAdmission.outcome !== "created") return;
+        yield* db
+          .update(workspaceReservations)
+          .set({ failureCode: "hold_creation_candidate:test" })
+          .where(eq(workspaceReservations.id, "attach-unresolved"));
+        expect(
+          (yield* repository.attachProviderSession({
+            id: unresolvedAdmission.attempt.id,
+            workspaceReservationId: "attach-unresolved",
+            checkoutSessionKey: "session-attach-unresolved",
+            providerOrderId: unresolvedAdmission.attempt.providerOrderId,
+            providerStartLeaseId: unresolvedAdmission.providerStartLeaseId,
+            securityToken: "non-secret-test-token",
+            providerRedirectUrl: "https://provider.example/hosted",
+          })).outcome
+        ).toBe("lost");
+      })
+    );
+  });
+
+  test("requires active attempt and aggregate compatibility while allowing legacy terminal retry", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+
+        yield* seedReservation("inconsistent");
+        const active = yield* admit(repository, "inconsistent");
+        expect(active.outcome).toBe("created");
+        yield* db
+          .update(workspaceReservations)
+          .set({ paymentState: "failed" })
+          .where(eq(workspaceReservations.id, "inconsistent"));
+        expect((yield* admit(repository, "inconsistent")).outcome).toBe(
+          "unavailable"
+        );
+
+        yield* seedReservation("legacy");
+        yield* db.insert(paymentAttempts).values({
+          id: "legacy-attempt",
+          workspaceReservationId: "legacy",
+          provider: "nexi",
+          providerOrderId: "legacy-provider-order",
+          admissionVersion: 1,
+          state: "failed",
+          amountValue: 1000,
+          amountExponent: 2,
+          currency: "CZK",
+          failureCode: "legacy_failure",
+        });
+        yield* db
+          .update(workspaceReservations)
+          .set({
+            activePaymentAttemptId: "legacy-attempt",
+            paymentState: "failed",
+          })
+          .where(eq(workspaceReservations.id, "legacy"));
+
+        expect((yield* admit(repository, "legacy")).outcome).toBe("created");
+        expect(
+          yield* db
+            .select()
+            .from(paymentAttempts)
+            .where(eq(paymentAttempts.workspaceReservationId, "legacy"))
+        ).toHaveLength(2);
+      })
+    );
+  });
+
+  test("rolls back the attempt, link, and applications when materialization persistence fails", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("rollback");
+        yield* db.execute(
+          sql.raw(`
+          create function reject_application() returns trigger
+          language plpgsql as 'begin
+            raise exception ''synthetic application persistence failure'';
+          end'
+        `)
+        );
+        yield* db.execute(
+          sql.raw(`
+          create trigger reject_application
+          before insert on discount_applications
+          for each row execute function reject_application()
+        `)
+        );
+        const { commitment, pricing } = discountFixture();
+
+        expect(
+          (yield* admit(repository, "rollback", {
+            commitment,
+            acceptedPricing: pricing,
+            affirmedPricing: pricing,
+          }).pipe(Effect.result))._tag
+        ).toBe("Failure");
+        expect(yield* db.select().from(paymentAttempts)).toHaveLength(0);
+        expect(yield* db.select().from(discountApplications)).toHaveLength(0);
+        const [reservation] = yield* db
+          .select({
+            paymentState: workspaceReservations.paymentState,
+            activePaymentAttemptId:
+              workspaceReservations.activePaymentAttemptId,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, "rollback"));
+        expect(reservation).toMatchObject({
+          paymentState: "not_started",
+          activePaymentAttemptId: null,
+        });
+      })
+    );
+  });
+
+  test("persists exact displayed pricing and guards the provider order on attach", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        yield* seedReservation("materialized");
+        const { commitment, pricing, publicDiscountId } = discountFixture();
+        const admission = yield* admit(repository, "materialized", {
+          commitment,
+          acceptedPricing: pricing,
+          affirmedPricing: pricing,
+        });
+        expect(admission.outcome).toBe("created");
+        if (admission.outcome !== "created") return;
+
+        const [attempt] = yield* db.select().from(paymentAttempts);
+        const [application] = yield* db.select().from(discountApplications);
+        expect(attempt).toMatchObject({
+          pricingFingerprint: pricing.fingerprint,
+          displayedDiscountIds: [publicDiscountId],
+          amountValue: pricing.total.value,
+          currency: pricing.total.currency,
+        });
+        expect(application).toMatchObject({
+          publicDiscountId,
+          label: "Displayed discount",
+          appliedAmountCurrency: "CZK",
+        });
+        const changedPricing = {
+          ...pricing,
+          fingerprint: "changed-pricing-fingerprint",
+        };
+        expect(
+          (yield* admit(repository, "materialized", {
+            commitment,
+            acceptedPricing: changedPricing,
+            affirmedPricing: changedPricing,
+          })).outcome
+        ).toBe("pricing_changed");
+        expect(
+          (yield* repository.attachProviderSession({
+            id: admission.attempt.id,
+            workspaceReservationId: "materialized",
+            checkoutSessionKey: "session-materialized",
+            providerOrderId: "wrong-provider-order",
+            providerStartLeaseId: admission.providerStartLeaseId,
+            securityToken: "non-secret-test-token",
+            providerRedirectUrl: "https://provider.example/hosted",
+          })).outcome
+        ).toBe("lost");
+      })
+    );
+  });
+
+  test("reserves, redeems, and releases claims idempotently with paid enqueue", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* PaymentLifecycleRepository;
+        const paidFixture = claimFixture("paid");
+        yield* seedReservation("paid", undefined, paidFixture.customerId);
+        yield* seedClaimConfiguration(paidFixture);
+        const paidAdmission = yield* admit(repository, "paid", paidFixture);
+        expect(paidAdmission.outcome).toBe("created");
+        if (paidAdmission.outcome !== "created") return;
+        expect(
+          (yield* db.select().from(discountCodeRedemptions))[0]
+        ).toMatchObject({ state: "reserved" });
+
+        const paidAt = Temporal.Instant.from("2026-07-25T00:00:00Z");
+        expect(
+          (yield* repository.markPaid({
+            id: paidAdmission.attempt.id,
+            workspaceReservationId: "paid",
+            paidAt,
+          })).changed
+        ).toBeTrue();
+        expect(
+          (yield* repository.markPaid({
+            id: paidAdmission.attempt.id,
+            workspaceReservationId: "paid",
+            paidAt: paidAt.add({ seconds: 1 }),
+          })).changed
+        ).toBeFalse();
+        expect(
+          (yield* db.select().from(discountCodeRedemptions))[0]
+        ).toMatchObject({ state: "redeemed" });
+        expect(yield* db.select().from(paymentPaidEvents)).toHaveLength(1);
+
+        const terminalFixture = claimFixture("terminal");
+        yield* seedReservation(
+          "terminal",
+          undefined,
+          terminalFixture.customerId
+        );
+        yield* seedClaimConfiguration(terminalFixture);
+        const terminalAdmission = yield* admit(
+          repository,
+          "terminal",
+          terminalFixture
+        );
+        expect(terminalAdmission.outcome).toBe("created");
+        if (terminalAdmission.outcome !== "created") return;
+        expect(
+          (yield* repository.markTerminal({
+            id: terminalAdmission.attempt.id,
+            workspaceReservationId: "terminal",
+            state: "expired",
+            failureCode: "test_expired",
+          })).changed
+        ).toBeTrue();
+        expect(
+          (yield* repository.markTerminal({
+            id: terminalAdmission.attempt.id,
+            workspaceReservationId: "terminal",
+            state: "expired",
+            failureCode: "test_expired",
+          })).changed
+        ).toBeFalse();
+        expect(
+          (yield* db
+            .select()
+            .from(discountCodeRedemptions)
+            .where(
+              eq(
+                discountCodeRedemptions.paymentAttemptId,
+                terminalAdmission.attempt.id
+              )
+            ))[0]
+        ).toMatchObject({ state: "released" });
+        expect(
+          yield* repository
+            .markTerminal({
+              id: paidAdmission.attempt.id,
+              workspaceReservationId: "paid",
+              state: "expired",
+              failureCode: "stale_cleanup",
+            })
+            .pipe(Effect.flip)
+        ).toBeInstanceOf(PaymentLifecycleStateError);
+      })
+    );
+  });
+});
+
+const discountFixture = () => {
+  const publicDiscountId =
+    Schema.decodeUnknownSync(discountIdSchema)("displayed-discount");
+  const application = {
+    discount: {
+      id: publicDiscountId,
+      label: "Displayed discount",
+      adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+    },
+    subtotalBefore: money(1000),
+    amount: money(100),
+    subtotalAfter: money(900),
+  };
+  return {
+    publicDiscountId,
+    pricing: {
+      fingerprint: "discounted-fingerprint",
+      total: money(900),
+      discounts: [application],
+    },
+    commitment: makeDiscountCommitment({
+      product: { kind: "cowork", tier: "basic" },
+      applications: [
+        {
+          application,
+          candidate: {
+            discount: application.discount,
+            provenance: {
+              providerNamespace: "test",
+              providerReference: "discount-reference",
+            },
+          },
+        },
+      ],
+    }),
+  };
+};
+
+const claimFixture = (suffix: string) => {
+  const storedDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
+    suffix === "paid"
+      ? "019d2635-7d88-7000-8000-000000000001"
+      : "019d2635-7d88-7000-8000-000000000002"
+  );
+  const codeId = Schema.decodeUnknownSync(discountCodeIdSchema)(
+    `code-${suffix}`
+  );
+  const customerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
+    `customer-${suffix}`
+  );
+  const publicDiscountId = Schema.decodeUnknownSync(discountIdSchema)(
+    `displayed-${suffix}`
+  );
+  const application = {
+    discount: {
+      id: publicDiscountId,
+      label: "Claimed discount",
+      adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+    },
+    subtotalBefore: money(1000),
+    amount: money(100),
+    subtotalAfter: money(900),
+  };
+  const pricing = {
+    fingerprint: `claim-${suffix}-fingerprint`,
+    total: money(900),
+    discounts: [application],
+  };
+  return {
+    storedDiscountId,
+    codeId,
+    customerId,
+    acceptedPricing: pricing,
+    affirmedPricing: pricing,
+    commitment: makeDiscountCommitment({
+      product: { kind: "cowork", tier: "basic" },
+      applications: [
+        {
+          application,
+          candidate: {
+            discount: application.discount,
+            provenance: {
+              providerNamespace: "discount_code",
+              providerReference: `reference-${suffix}`,
+            },
+            claim: {
+              kind: "discount_code",
+              codeId,
+              storedDiscountId,
+              dotyposCustomerId: customerId,
+              product: { kind: "cowork", tier: "basic" },
+            },
+          },
+        },
+      ],
+    }),
+  };
+};
+
+const seedClaimConfiguration = (fixture: ReturnType<typeof claimFixture>) =>
+  Effect.gen(function* () {
+    const { db } = yield* WorkspaceDatabase;
+    yield* db.execute(sql`
+      insert into discounts (
+        id,
+        labels,
+        percentage_basis_points
+      ) values (
+        ${fixture.storedDiscountId},
+        ${JSON.stringify({
+          "en-US": "Claimed discount",
+          "cs-CZ": "Claimed discount",
+        })}::jsonb,
+        1000
+      )
+    `);
+    yield* db.execute(sql`
+      insert into discount_product_targets (
+        discount_id,
+        product_identity
+      ) values (
+        ${fixture.storedDiscountId},
+        ${JSON.stringify({ kind: "cowork", tier: "basic" })}::jsonb
+      )
+    `);
+    yield* db.execute(sql`
+      insert into discount_codes (
+        id,
+        discount_id,
+        code,
+        enabled
+      ) values (
+        ${fixture.codeId},
+        ${fixture.storedDiscountId},
+        ${`CODE-${fixture.codeId.toUpperCase()}`},
+        true
+      )
+    `);
+  });

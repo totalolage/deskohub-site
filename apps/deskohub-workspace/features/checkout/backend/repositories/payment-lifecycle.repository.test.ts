@@ -3,8 +3,8 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
-  getDiscountCommitmentPayload,
   makeDiscountCommitment,
+  materializeDiscountCommitment,
 } from "@/features/discounts/commitment";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { validateDiscountCommitment } from "./payment-lifecycle.repository";
@@ -27,7 +27,7 @@ describe("PaymentLifecycleRepository", () => {
     const source = await readRepository();
     const createAttempt = sliceFrom(
       source,
-      "const createAttempt = Effect.fn(",
+      "const admitPaymentStart = Effect.fn(",
       "      const attachProviderSession"
     );
 
@@ -37,8 +37,8 @@ describe("PaymentLifecycleRepository", () => {
     expect(createAttempt).toContain(".update(workspaceReservations)");
     expect(createAttempt).toContain(".insert(discountApplications)");
     expect(createAttempt).toContain("yield* reserveCodeClaim");
-    expect(createAttempt.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
-      createAttempt.indexOf('.for("update")')
+    expect(createAttempt).toContain(
+      "reservationHoldExpiresAt} > clock_timestamp()"
     );
     expect(createAttempt.indexOf(".insert(paymentAttempts)")).toBeLessThan(
       createAttempt.indexOf(".insert(discountApplications)")
@@ -62,9 +62,7 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim).not.toContain(
       'releaseReason: "reservation_expired_before_reuse"'
     );
-    expect(reserveClaim.indexOf("Temporal.Now.instant()")).toBeGreaterThan(
-      reserveClaim.lastIndexOf('.for("update")')
-    );
+    expect(reserveClaim).toContain("const claimedAt = input.databaseNow");
     expect(reserveClaim).toContain(
       "Temporal.Instant.compare(input.reservationExpiresAt, claimedAt)"
     );
@@ -88,7 +86,7 @@ describe("PaymentLifecycleRepository", () => {
     const terminal = sliceFrom(
       source,
       'const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")',
-      "      return {\n        createAttempt,"
+      "      return {\n        admitPaymentStart,"
     );
 
     expect(paid).toContain("db.transaction");
@@ -136,7 +134,12 @@ describe("PaymentLifecycleRepository", () => {
 
     const result = await Effect.runPromise(
       Effect.result(
-        validateDiscountCommitment(getDiscountCommitmentPayload(commitment))
+        validateDiscountCommitment(
+          materializeDiscountCommitment(commitment, [application]) as Extract<
+            ReturnType<typeof materializeDiscountCommitment>,
+            { readonly status: "ready" }
+          >
+        )
       )
     );
 

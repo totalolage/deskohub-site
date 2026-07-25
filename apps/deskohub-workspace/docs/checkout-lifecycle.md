@@ -10,6 +10,7 @@ The core checkout lifecycle uses these tables:
 
 - `workspace_reservations`
 - `payment_attempts`
+- `payment_paid_events`
 - `webhook_events`
 - `legal_evidence_events`
 
@@ -138,6 +139,11 @@ One row per Nexi HPP/session creation attempt. Retries create new attempts inste
 | `workspace_reservation_id` | text | yes | Parent workflow row. |
 | `provider` | text enum | yes | Initial value: `nexi`. |
 | `provider_order_id` | text | yes | Nexi order ID, normally the value sent to `order.orderId`. Unique for Nexi. |
+| `admission_version` | integer | yes | Admission contract version. Existing attempts use `1`; atomic admission writes `2`. |
+| `pricing_fingerprint` | text | version 2 | Exact signed-summary fingerprint admitted for this attempt. |
+| `displayed_discount_ids` | jsonb array | version 2 | Ordered public discount IDs displayed in the admitted summary. |
+| `provider_start_lease_id` | text | created version 2 attempts | Opaque short lease fencing one HPP start/attach owner. |
+| `provider_start_lease_expires_at` | timestamptz | created version 2 attempts | Database-clock lease deadline. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
@@ -162,6 +168,20 @@ Indexes and constraints:
 - `amount_exponent` must be between `0` and `20`.
 - `currency` must be uppercase three-letter text.
 - `failure_code` must be non-null for failed/cancelled/expired terminal states.
+- Version 2 attempts require a non-empty pricing fingerprint and a JSON discount-ID array.
+- Version 2 attempts in `created` require both provider-start lease fields. Lease fields are cleared on attach or settlement.
+
+### `payment_paid_events`
+
+One durable enqueue event per paid attempt. This is the narrow database contract for a later fulfillment worker; payment settlement inserts it atomically and this phase does not consume it.
+
+| Column | Type | Required | Purpose |
+| --- | --- | --- | --- |
+| `id` | text | yes | Durable event ID. |
+| `payment_attempt_id` | text | yes | Paid attempt. Unique, making enqueue idempotent. |
+| `workspace_reservation_id` | text | yes | Paid reservation for the later consumer. |
+| `paid_at` | timestamptz | yes | Settlement timestamp shared with the aggregate. |
+| `created_at` | timestamptz | yes | DB-managed enqueue timestamp. |
 
 ### `webhook_events`
 
@@ -255,7 +275,7 @@ Aggregate `workspace_reservations.payment_state` values:
 
 Attempt-level `payment_attempts.state` values:
 
-- `created`: local attempt exists before HPP session details are attached.
+- `created`: admission, applications, and any code claim are durable; one short database-clock lease owns HPP start/attach.
 - `pending`: customer can be redirected to Nexi or Nexi is processing.
 - `paid`: verified terminal successful attempt.
 - `failed`: verified terminal failed attempt.
@@ -267,12 +287,26 @@ Allowed payment transitions:
 - Reservation aggregate: `not_started -> pending -> paid`.
 - Reservation aggregate: `not_started -> pending -> failed|cancelled|expired`.
 - Attempt: `created -> pending -> paid|failed|cancelled|expired`.
+- A verified provider result may settle `created` directly when HPP creation succeeded remotely but its response or local attachment was ambiguous.
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
 - Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
+- Paid settlement inserts `payment_paid_events` in that same transaction. Replayed paid settlement verifies the same paid aggregate, re-applies idempotent claim redemption, and performs an idempotent enqueue.
 - Discount application persistence and code-claim admission belong to the payment-attempt creation transaction. Claim redemption belongs to the paid transaction, and claim release belongs to every failed, cancelled, or expired transaction. Any application, claim, redemption, or release error is fatal and rolls back the owning payment transition; it must never be converted to an empty discount result or `not_pending` state.
 - Failed/cancelled/expired workflows may create a new `payment_attempts` row only when the reservation is still `held` and hold deadline is valid.
+- Admission and provider attach exclude every unresolved provider-hold attachment recovery marker; those rows remain owned by attachment reconciliation or manual review.
 - `paid` is terminal for payment state.
+
+## Atomic payment-admission rollout
+
+Admission version 2 is intentionally disabled unless `WORKSPACE_PAYMENT_ADMISSION_VERSION=2`. Use this exact order:
+
+1. Apply `20260725004304_payment_admission_settlement` while the old application version is still serving. Do not enable the environment gate.
+2. Deploy the settlement-capable application version everywhere with the gate unset. At this point webhook, provider-finalization, and cleanup callers can settle both legacy and version 2 attempts, and the paid-event table already exists, but no version 2 admission can start.
+3. Drain every older web instance, background process, scheduled cleanup invocation, and queued job that can write payment state. Verify the active deployment/version inventory contains only the settlement-capable version.
+4. Set `WORKSPACE_PAYMENT_ADMISSION_VERSION=2` and redeploy all checkout-serving instances. Treat the environment value plus the deployment-version inventory as one gate: do not enable while an old writer can still run.
+5. Monitor admission outcomes and paid-event enqueue failures. To stop new admission, unset the gate and redeploy; leave the additive schema in place.
+6. A later S5-07 deployment may consume `payment_paid_events` only after this migration is present. It must preserve the unique attempt contract and implement its own guarded/idempotent consumption state; this phase deliberately provides no fulfillment worker.
 
 ### Fulfillment State
 
