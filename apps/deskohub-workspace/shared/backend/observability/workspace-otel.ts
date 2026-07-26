@@ -1,5 +1,5 @@
 import type { Configuration } from "@vercel/otel";
-import { createCensoringOtelSpanProcessor } from "../logging/censorship";
+import { CensoringSpanProcessor } from "../logging/censorship";
 import {
   WORKSPACE_SERVICE_NAME,
   WORKSPACE_SERVICE_NAMESPACE,
@@ -10,5 +10,5 @@ export const createWorkspaceOtelConfiguration = (): Configuration => ({
   attributes: {
     "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
   },
-  spanProcessors: [createCensoringOtelSpanProcessor(), "auto"],
+  spanProcessors: [CensoringSpanProcessor, "auto"],
 });

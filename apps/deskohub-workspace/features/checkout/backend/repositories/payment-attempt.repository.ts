@@ -26,7 +26,19 @@ const withPaymentAttemptAmount = (attempt: PaymentAttemptRow) => {
   };
 };
 
+export const toPaymentAttempt = withPaymentAttemptAmount;
+
 export type PaymentAttempt = ReturnType<typeof withPaymentAttemptAmount>;
+
+export type NexiPaymentAttempt = PaymentAttempt & {
+  readonly provider: "nexi";
+  readonly providerOrderId: string;
+};
+
+export const isNexiPaymentAttempt = (
+  attempt: PaymentAttempt
+): attempt is NexiPaymentAttempt =>
+  attempt.provider === "nexi" && attempt.providerOrderId !== null;
 
 export class PaymentAttemptStateError extends Data.TaggedError(
   "PaymentAttemptStateError"
