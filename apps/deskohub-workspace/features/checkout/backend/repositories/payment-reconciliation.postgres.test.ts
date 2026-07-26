@@ -218,7 +218,7 @@ describe("payment reconciliation real PostgreSQL locking", () => {
             ProviderPaymentFinalizationService,
             ProviderPaymentFinalizationServiceLive,
           },
-          { PaymentAttemptRepository },
+          { PaymentAttemptRepositoryLive },
           { WorkspacePaidFulfillmentService },
           { WorkspaceReservationRepositoryLive },
           { PostHogEventService },
@@ -237,7 +237,7 @@ describe("payment reconciliation real PostgreSQL locking", () => {
         const ownerDependencies = Layer.mergeAll(
           ownerDatabase,
           PaymentLifecycleRepository.Live.pipe(Layer.provide(ownerDatabase)),
-          PaymentAttemptRepository.Live.pipe(Layer.provide(ownerDatabase)),
+          PaymentAttemptRepositoryLive.pipe(Layer.provide(ownerDatabase)),
           WorkspaceReservationRepositoryLive.pipe(Layer.provide(ownerDatabase)),
           Layer.succeed(NexiService, {
             createHostedPaymentPage: () => Effect.die("must not create HPP"),
