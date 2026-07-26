@@ -400,7 +400,16 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         return "cancelled";
       },
-      (effect, input) => effect.pipe(Effect.scoped, Effect.annotateLogs(input))
+      (effect, input) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.annotateLogs(input),
+          Effect.mapError(
+            ReservationHoldCleanupError.fromError(
+              "Reservation hold cancellation could not complete."
+            )
+          )
+        )
     );
 
     return ReservationHoldCleanupService.of({

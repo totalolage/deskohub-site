@@ -216,11 +216,7 @@ const loadWorkspaceAvailability = async ({
 };
 
 const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationDisplayDate(
-    date,
-    locale,
-    m.reservationDatePlaceholder({}, { locale })
-  );
+  formatReservationDisplayDate(date, locale);
 
 const getSanitizedUtmParams = (
   searchParams: URLSearchParams
@@ -401,7 +397,7 @@ export function ReservationForm({
       date: selectedDate,
       dateFallback: m.reservationDatePlaceholder({}, { locale }),
       locale,
-      tier: selectedTier,
+      reservation: { kind: "cowork", entryTier: selectedTier },
     });
 
   const {
