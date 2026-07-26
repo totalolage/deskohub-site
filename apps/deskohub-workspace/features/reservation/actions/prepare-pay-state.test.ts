@@ -252,6 +252,7 @@ const runReusableReservationScenario = async (input: {
   readonly advertisedPriceToken?: string;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
+  readonly keyDerivationClock?: () => Date;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -370,15 +371,18 @@ const runReusableReservationScenario = async (input: {
     } as unknown as typeof DotyposService.Service)
   );
 
-  const result = await prepareWorkspacePayState({
-    locale: "en-US",
-    checkoutSessionId: "session-id",
-    checkoutAttemptId: "attempt-id",
-    advertisedPriceToken:
-      input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
-    reservation,
-    legalConsent: true,
-  }).pipe(Effect.provide(testLayer), Effect.runPromise);
+  const result = await prepareWorkspacePayState(
+    {
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken:
+        input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
+      reservation,
+      legalConsent: true,
+    },
+    { keyDerivationClock: input.keyDerivationClock }
+  ).pipe(Effect.provide(testLayer), Effect.runPromise);
 
   return {
     result,
@@ -1109,6 +1113,58 @@ describe("prepareWorkspacePayState", () => {
     expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
       "attempt-id"
     );
+  });
+
+  test("freezes the HMAC schedule once across session rotation and deadline crossing", async () => {
+    const { deriveCheckoutAttemptKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const beforeDeadline = new Date("2098-12-31T23:59:59.999Z");
+    const atDeadline = new Date("2099-01-01T00:00:00.000Z");
+    const times = [beforeDeadline, atDeadline];
+    let clockReads = 0;
+    let currentLookupCount = 0;
+    const pendingReservation = makeReusableReservation({
+      paymentState: "pending",
+      activePaymentAttemptId: "payment-attempt-id",
+    });
+    const findByAttemptKey = mock(() => Effect.succeed(null));
+    const result = await runReusableReservationScenario({
+      keyDerivationClock: () =>
+        times[Math.min(clockReads++, times.length - 1)] as Date,
+      findByAttemptKey,
+      findCurrentByCheckoutSessionKey: mock(() =>
+        Effect.succeed(currentLookupCount++ === 0 ? pendingReservation : null)
+      ),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "rotated-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          })
+        )
+      ),
+    });
+    const rotatedCandidates = deriveCheckoutAttemptKeyCandidates(
+      {
+        checkoutSessionId: "attempt-id",
+        checkoutAttemptId: "attempt-id",
+        reservation,
+      },
+      { now: () => beforeDeadline }
+    );
+
+    expect(result.result.status).toBe("ready");
+    expect(clockReads).toBe(1);
+    expect(rotatedCandidates).toHaveLength(2);
+    for (const candidate of rotatedCandidates) {
+      expect(findByAttemptKey).toHaveBeenCalledWith(candidate);
+    }
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {

@@ -22,6 +22,7 @@ import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
 } from "./workspace-effect";
+import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -90,7 +91,8 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
-      Effect.provide(BotProtectionService.Live)
+      Effect.provide(BotProtectionService.Live),
+      normalizeWorkspaceFrameworkDefects("action")
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;

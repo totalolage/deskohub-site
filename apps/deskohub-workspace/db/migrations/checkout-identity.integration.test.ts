@@ -10,14 +10,16 @@ import {
   mock,
   test,
 } from "bun:test";
+import { createHmac } from "node:crypto";
 import { mkdtemp, readdir, readFile, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
-import { Effect, Layer } from "effect";
+import { Data, Effect, Layer } from "effect";
 import EmbeddedPostgres from "embedded-postgres";
 import type { Client } from "pg";
+import type { CreateWorkspaceReservationInput } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 mock.module("@/features/legal/acceptance-snapshot", () => ({
@@ -60,6 +62,20 @@ const checkoutSessionId = "synthetic-mixed-version-session";
 const checkoutAttemptId = "synthetic-mixed-version-attempt";
 const cutoverAt = "2020-01-01T00:00:00.000Z";
 const legacyReadUntil = "2099-01-01T00:00:00.000Z";
+const boundaryScenarios = [
+  { name: "before cutover", currentTime: "2019-12-31T23:59:59.999Z" },
+  { name: "at cutover", currentTime: cutoverAt },
+  { name: "after cutover", currentTime: "2020-01-01T00:00:00.001Z" },
+  {
+    name: "before the legacy deadline",
+    currentTime: "2098-12-31T23:59:59.999Z",
+  },
+  { name: "at the legacy deadline", currentTime: legacyReadUntil },
+  {
+    name: "after the legacy deadline",
+    currentTime: "2099-01-01T00:00:00.001Z",
+  },
+] as const;
 
 let postgres: EmbeddedPostgres;
 let assertionClient: Client;
@@ -108,33 +124,11 @@ afterAll(async () => {
 }, 30_000);
 
 describe("production checkout identity mixed-version concurrency", () => {
-  for (const scenario of [
-    {
-      name: "the cutover crossing",
-      legacyTime: "2019-12-31T23:59:59.999Z",
-      currentTime: cutoverAt,
-    },
-    {
-      name: "the exact cutover instant",
-      legacyTime: cutoverAt,
-      currentTime: cutoverAt,
-    },
-    {
-      name: "the legacy-read deadline crossing",
-      legacyTime: "2098-12-31T23:59:59.999Z",
-      currentTime: legacyReadUntil,
-    },
-    {
-      name: "the exact legacy-read deadline instant",
-      legacyTime: legacyReadUntil,
-      currentTime: legacyReadUntil,
-    },
-  ] as const) {
+  for (const scenario of boundaryScenarios) {
     for (const winner of ["legacy", "current"] as const) {
-      test(`${winner} wins across ${scenario.name}`, async () => {
+      test(`${winner} insert wins ${scenario.name}`, async () => {
         await assertMixedVersionOverlap({
           winner,
-          legacyTime: scenario.legacyTime,
           currentTime: scenario.currentTime,
         });
       }, 30_000);
@@ -142,9 +136,116 @@ describe("production checkout identity mixed-version concurrency", () => {
   }
 });
 
+describe("production repository identity conflict safety", () => {
+  test("fails closed on divergent candidates before provider start", async () => {
+    const layer = await makeRepositoryLayer();
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const rawAttempt = "a".repeat(64);
+    const dedicatedAttempt = "b".repeat(64);
+    let providerStarts = 0;
+    const error = await Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      yield* repository.createDraft(
+        makeDraftInput("divergent-a", {
+          checkoutAttemptKey: rawAttempt,
+          checkoutAttemptIdentityKey: "c".repeat(64),
+        })
+      );
+      yield* repository.createDraft(
+        makeDraftInput("divergent-b", {
+          checkoutAttemptKey: "d".repeat(64),
+          checkoutAttemptIdentityKey: dedicatedAttempt,
+        })
+      );
+      return yield* repository
+        .createDraft(
+          makeDraftInput("divergent-probe", {
+            checkoutAttemptKey: rawAttempt,
+            checkoutAttemptIdentityKey: dedicatedAttempt,
+          })
+        )
+        .pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              providerStarts += 1;
+            })
+          )
+        );
+    }).pipe(Effect.provide(layer), Effect.flip, Effect.runPromise);
+
+    expect(error).toMatchObject({
+      _tag: "WorkspaceReservationStateError",
+      operation: "workspaceReservations.createDraft",
+      reservationId: "conflicting-checkout-attempt",
+    });
+    expect(providerStarts).toBe(0);
+    const rows = await assertionClient.query(
+      'SELECT "id" FROM "workspace_reservations"'
+    );
+    expect(rows.rows).toHaveLength(2);
+  });
+
+  test("rolls back replacement identity conflicts and preserves the prior row", async () => {
+    const layer = await makeRepositoryLayer();
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const result = await Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      const prior = yield* repository.createDraft(
+        makeDraftInput("rollback-prior")
+      );
+      const claimed = yield* repository.claimHoldCreation(prior.id);
+      expect(claimed).toBe(true);
+      const createdAt = Temporal.Instant.from("2099-06-10T10:00:00.000Z");
+      yield* repository.attachHold({
+        id: prior.id,
+        dotyposReservationId: "rollback-prior-provider",
+        reservationCreatedAt: createdAt,
+        reservationHoldExpiresAt: createdAt.add({ minutes: 10 }),
+      });
+      const cancelling = yield* repository.claimSupersessionCancellation(
+        prior.id
+      );
+      expect(cancelling?.reservationState).toBe("cancelling");
+      const conflict = yield* repository.createDraft(
+        makeDraftInput("rollback-conflict")
+      );
+      const replacement = makeDraftInput("rollback-replacement", {
+        checkoutAttemptIdentityKey: conflict.checkoutAttemptIdentityKey,
+      });
+      const failure = yield* repository
+        .completeSupersessionAndCreateDraft({
+          cancelledReservationId: prior.id,
+          cancelledAt: createdAt.add({ seconds: 1 }),
+          replacement,
+        })
+        .pipe(Effect.flip);
+      const preserved = yield* repository.findById(prior.id);
+      return { failure, preserved };
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+
+    expect(result.failure).toBeDefined();
+    expect(result.preserved?.reservationState).toBe("cancelling");
+    expect(result.preserved?.reservationCancelledAt).toBeNull();
+    const rows = await assertionClient.query<{
+      reservation_state: string;
+    }>(
+      'SELECT "reservation_state" FROM "workspace_reservations" ORDER BY "id"'
+    );
+    expect(rows.rows).toHaveLength(2);
+    expect(
+      rows.rows.filter(
+        ({ reservation_state }) => reservation_state === "cancelled"
+      )
+    ).toHaveLength(0);
+  });
+});
+
 const assertMixedVersionOverlap = async (input: {
   readonly winner: WriterGeneration;
-  readonly legacyTime: string;
   readonly currentTime: string;
 }) => {
   const gate = makeConcurrencyGate(input.winner);
@@ -153,10 +254,7 @@ const assertMixedVersionOverlap = async (input: {
   const claimResults: { generation: WriterGeneration; claimed: boolean }[] = [];
   const advertisedPriceToken = await buildAdvertisedPriceToken();
 
-  const run = async (
-    generation: WriterGeneration,
-    keyDerivationTime: string
-  ) => {
+  const run = async (generation: WriterGeneration) => {
     const layer = await makeRequestLayer({
       generation,
       gate,
@@ -164,34 +262,29 @@ const assertMixedVersionOverlap = async (input: {
       providerId,
       claimResults,
     });
+    if (generation === "legacy") {
+      return await (await makeImmutableLegacyWriter()).pipe(
+        Effect.provide(layer),
+        Effect.runPromise
+      );
+    }
     const { prepareWorkspacePayState } = await import(
       "@/features/reservation/actions/prepare-pay-state"
     );
-
-    try {
-      return await prepareWorkspacePayState(
-        {
-          locale: "en-US",
-          checkoutSessionId,
-          checkoutAttemptId,
-          advertisedPriceToken,
-          reservation,
-          legalConsent: true,
-        },
-        {
-          writerGeneration: generation,
-          keyDerivationTime: new Date(keyDerivationTime),
-        }
-      ).pipe(Effect.provide(layer), Effect.runPromise);
-    } finally {
-      if (generation !== input.winner) gate.closeCompetitor();
-    }
+    return await prepareWorkspacePayState(
+      {
+        locale: "en-US",
+        checkoutSessionId,
+        checkoutAttemptId,
+        advertisedPriceToken,
+        reservation,
+        legalConsent: true,
+      },
+      { keyDerivationTime: new Date(input.currentTime) }
+    ).pipe(Effect.provide(layer), Effect.runPromise);
   };
 
-  const results = await Promise.allSettled([
-    run("legacy", input.legacyTime),
-    run("current", input.currentTime),
-  ]);
+  const results = await Promise.allSettled([run("legacy"), run("current")]);
 
   const rows = await assertionClient.query<{
     id: string;
@@ -209,11 +302,17 @@ const assertMixedVersionOverlap = async (input: {
     `
   );
 
-  expect(rows.rows).toHaveLength(1);
-  expect(claimResults.filter(({ claimed }) => claimed)).toHaveLength(1);
-  expect(claimResults.find(({ claimed }) => claimed)?.generation).toBe(
-    input.winner
+  const barrierFailures = results.flatMap((result) =>
+    result.status === "rejected" &&
+    result.reason instanceof Error &&
+    result.reason.message.startsWith("Mixed-version ")
+      ? [result.reason.message]
+      : []
   );
+  expect(barrierFailures).toEqual([]);
+  expect(rows.rows).toHaveLength(1);
+  expect(claimResults).toHaveLength(2);
+  expect(claimResults.filter(({ claimed }) => claimed)).toHaveLength(1);
   expect(providerCalls).toEqual([providerId]);
   expect(rows.rows[0]).toMatchObject({
     dotypos_reservation_id: providerId,
@@ -221,50 +320,142 @@ const assertMixedVersionOverlap = async (input: {
   });
   expect(rows.rows[0]?.checkout_attempt_identity_key).toMatch(/^[a-f0-9]{64}$/);
 
-  const winnerIndex = input.winner === "legacy" ? 0 : 1;
-  expect(results[winnerIndex]).toMatchObject({
-    status: "fulfilled",
-    value: { status: "ready" },
-  });
-  const loserIndex = winnerIndex === 0 ? 1 : 0;
-  const loser = results[loserIndex];
-  if (loser?.status === "fulfilled") {
-    expect(loser.value).toMatchObject({ status: "ready" });
-    expect(await getOrderId(loser.value.redirectUrl)).toBe(rows.rows[0]?.id);
-  } else {
-    expect(loser?.reason).toBeDefined();
-  }
+  const ready = results.filter(
+    (result) =>
+      result.status === "fulfilled" &&
+      typeof result.value === "object" &&
+      result.value !== null &&
+      "status" in result.value &&
+      result.value.status === "ready"
+  );
+  expect(ready).toHaveLength(1);
+  const failedClosed = results.filter(
+    (result) =>
+      result.status === "rejected" ||
+      (result.status === "fulfilled" &&
+        typeof result.value === "object" &&
+        result.value !== null &&
+        "status" in result.value &&
+        result.value.status === "error")
+  );
+  expect(failedClosed).toHaveLength(1);
 };
 
 type WriterGeneration = "current" | "legacy";
 
+class LegacyWriterConflictFailure extends Data.TaggedError(
+  "LegacyWriterConflictFailure"
+)<{
+  readonly kind: "claim_conflict";
+}> {}
+
+const makeImmutableLegacyWriter = async () => {
+  const [{ DotyposService }, { WorkspaceReservationRepository }] =
+    await Promise.all([
+      import("@deskohub/dotypos"),
+      import("@/features/reservation/backend/workspace-reservation.repository"),
+    ]);
+
+  return Effect.gen(function* () {
+    const rawPayStateKeys = process.env.CHECKOUT_PAY_STATE_KEYS;
+    if (!rawPayStateKeys) {
+      return yield* Effect.die(
+        "Synthetic test Pay-state material was not configured."
+      );
+    }
+    const derive = (payload: object) =>
+      createHmac("sha256", rawPayStateKeys)
+        .update(JSON.stringify(payload))
+        .digest("hex");
+    const checkoutSessionKey = derive({ checkoutSessionId });
+    const checkoutAttemptKey = derive({
+      checkoutSessionId,
+      checkoutAttemptId,
+      reservation: {
+        name: reservation.name,
+        email: reservation.email,
+        phone: reservation.phone,
+        kind: reservation.kind,
+        date: reservation.date,
+        entryTier: reservation.entryTier,
+        coffee: reservation.coffee,
+        monitorOption: null,
+      },
+    });
+    const reservations = yield* WorkspaceReservationRepository;
+    const dotypos = yield* DotyposService;
+    const draft = yield* reservations.createDraft({
+      checkoutSessionKey,
+      checkoutAttemptKey,
+      checkoutSessionIdentityKey: checkoutSessionKey,
+      checkoutAttemptIdentityKey: checkoutAttemptKey,
+      dotyposCustomerId: "synthetic-customer",
+      customerAccessCode: "SYNTHETIC-ACCESS",
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: reservation.entryTier,
+        coffee: reservation.coffee,
+      },
+      locale: "en-US",
+      reservationHoldExpiresAt: Temporal.Instant.from(
+        "2099-06-10T12:00:00.000Z"
+      ),
+    });
+    const claimed = yield* reservations.claimHoldCreation(draft.id);
+    if (!claimed) {
+      return yield* new LegacyWriterConflictFailure({
+        kind: "claim_conflict",
+      });
+    }
+    const created = yield* dotypos.createReservation({} as never);
+    if (
+      !created ||
+      typeof created !== "object" ||
+      !("id" in created) ||
+      typeof created.id !== "string"
+    ) {
+      return yield* Effect.die("Synthetic provider did not return an ID.");
+    }
+    const createdAt = Temporal.Instant.from("2099-06-10T10:00:00.000Z");
+    yield* reservations.attachHold({
+      id: draft.id,
+      dotyposReservationId: created.id,
+      reservationCreatedAt: createdAt,
+      reservationHoldExpiresAt: createdAt.add({ minutes: 10 }),
+    });
+    return { status: "ready" as const, reservationId: draft.id };
+  });
+};
+
 const makeConcurrencyGate = (winner: WriterGeneration) => {
   const bothAtInsert = promiseWithResolvers<void>();
   const winnerCommitted = promiseWithResolvers<void>();
-  const bothInsertsSettled = promiseWithResolvers<void>();
-  const winnerClaimed = promiseWithResolvers<void>();
-  const competitorClosed = promiseWithResolvers<void>();
+  const bothAtClaim = promiseWithResolvers<void>();
   let insertEntrants = 0;
-  let settledInserts = 0;
+  let claimEntrants = 0;
 
   return {
     winner,
-    enterInsert: async () => {
+    enterInsert: async (generation: WriterGeneration) => {
       insertEntrants += 1;
       if (insertEntrants === 2) bothAtInsert.resolve();
-      await bothAtInsert.promise;
+      await waitForBarrier(bothAtInsert.promise, "insert", insertEntrants);
+      if (generation !== winner) {
+        await waitForBarrier(
+          winnerCommitted.promise,
+          "winner_commit",
+          insertEntrants
+        );
+      }
     },
-    waitForWinnerCommit: () => winnerCommitted.promise,
-    markWinnerCommitted: () => winnerCommitted.resolve(),
-    settleInsert: () => {
-      settledInserts += 1;
-      if (settledInserts === 2) bothInsertsSettled.resolve();
+    markInsertCommitted: (generation: WriterGeneration) => {
+      if (generation === winner) winnerCommitted.resolve();
     },
-    waitForBothInserts: () => bothInsertsSettled.promise,
-    waitForWinnerClaim: () => winnerClaimed.promise,
-    markWinnerClaimed: () => winnerClaimed.resolve(),
-    closeCompetitor: () => competitorClosed.resolve(),
-    waitForCompetitor: () => competitorClosed.promise,
+    enterClaim: async () => {
+      claimEntrants += 1;
+      if (claimEntrants === 2) bothAtClaim.resolve();
+      await waitForBarrier(bothAtClaim.promise, "claim", claimEntrants);
+    },
   };
 };
 
@@ -327,38 +518,21 @@ const makeRequestLayer = async (input: {
         ...repository,
         createDraft: (draft) =>
           Effect.gen(function* () {
-            yield* Effect.promise(input.gate.enterInsert);
-            if (input.generation !== input.gate.winner) {
-              yield* Effect.promise(input.gate.waitForWinnerCommit);
-            }
-            const created = yield* repository
-              .createDraft(draft)
-              .pipe(
-                Effect.onExit(() =>
-                  Effect.sync(() => input.gate.settleInsert())
-                )
-              );
-            if (input.generation === input.gate.winner) {
-              input.gate.markWinnerCommitted();
-            }
-            yield* Effect.promise(input.gate.waitForBothInserts);
+            yield* Effect.promise(() =>
+              input.gate.enterInsert(input.generation)
+            );
+            const created = yield* repository.createDraft(draft);
+            input.gate.markInsertCommitted(input.generation);
             return created;
           }),
         claimHoldCreation: (id) =>
           Effect.gen(function* () {
-            if (input.generation !== input.gate.winner) {
-              yield* Effect.promise(input.gate.waitForWinnerClaim);
-            }
+            yield* Effect.promise(input.gate.enterClaim);
             const claimed = yield* repository.claimHoldCreation(id);
             input.claimResults.push({
               generation: input.generation,
               claimed,
             });
-            if (input.generation === input.gate.winner) {
-              input.gate.markWinnerClaimed();
-            } else {
-              input.gate.closeCompetitor();
-            }
             return claimed;
           }),
       };
@@ -427,9 +601,8 @@ const makeRequestLayer = async (input: {
       findOrCreateCustomer: () =>
         Effect.succeed({ id: "synthetic-customer" } as never),
       createReservation: () =>
-        Effect.promise(async () => {
+        Effect.sync(() => {
           input.providerCalls.push(input.providerId);
-          await input.gate.waitForCompetitor();
           return { id: input.providerId } as never;
         }),
     } as never)
@@ -464,15 +637,36 @@ const buildAdvertisedPriceToken = async () => {
   }).pipe(Effect.runPromise);
 };
 
-const getOrderId = async (redirectUrl: string) => {
-  const { openPayState, payStateTokenQueryParam } = await import(
-    "@/features/checkout/backend/checkout"
+const makeRepositoryLayer = async () => {
+  const [{ WorkspaceDatabaseLive }, { WorkspaceReservationRepositoryLive }] =
+    await Promise.all([
+      import("@/db/database.service"),
+      import("@/features/reservation/backend/workspace-reservation.repository"),
+    ]);
+  return WorkspaceReservationRepositoryLive.pipe(
+    Layer.provide(WorkspaceDatabaseLive)
   );
-  const token = new URL(redirectUrl, "https://deskohub.test").searchParams.get(
-    payStateTokenQueryParam
-  );
-  return token ? Effect.runSync(openPayState(token)).orderId : undefined;
 };
+
+const makeDraftInput = (
+  suffix: string,
+  overrides: Partial<CreateWorkspaceReservationInput> = {}
+): CreateWorkspaceReservationInput => ({
+  checkoutSessionKey: `session-${suffix}`,
+  checkoutAttemptKey: `attempt-${suffix}`,
+  checkoutSessionIdentityKey: `session-identity-${suffix}`,
+  checkoutAttemptIdentityKey: `attempt-identity-${suffix}`,
+  dotyposCustomerId: "synthetic-customer",
+  customerAccessCode: "SYNTHETIC-ACCESS",
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "basic",
+    coffee: false,
+  },
+  locale: "en-US",
+  reservationHoldExpiresAt: Temporal.Instant.from("2099-06-10T12:00:00.000Z"),
+  ...overrides,
+});
 
 const applyProductionMigrations = async (client: Client) => {
   await client.query(`
@@ -514,6 +708,32 @@ const promiseWithResolvers = <T>() => {
     reject = rejectPromise;
   });
   return { promise, reject, resolve };
+};
+
+const waitForBarrier = async (
+  barrier: Promise<void>,
+  stage: "claim" | "insert" | "winner_commit",
+  entrants: number
+) => {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      barrier,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () =>
+            reject(
+              new Error(
+                `Mixed-version ${stage} barrier stopped at ${entrants} entrant(s).`
+              )
+            ),
+          5_000
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 };
 
 const getAvailablePort = async () =>

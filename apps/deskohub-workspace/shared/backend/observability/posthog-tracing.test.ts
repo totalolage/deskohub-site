@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
+import { context, createTraceState, trace } from "@opentelemetry/api";
 import {
   createPostHogTracerProvider,
   getPostHogTracesEndpoint,
@@ -53,25 +54,39 @@ describe("PostHog OTel traces", () => {
     if (!provider) throw new Error("Expected a synthetic tracer provider.");
 
     try {
+      const traceState = createTraceState("synthetic=SyntheticValidTraceState");
       const span = provider
-        .getTracer("SyntheticValidScopeName")
-        .startSpan("SyntheticValidSpanName", {
-          attributes: {
-            category: "SyntheticValidCategory",
-            detail: "SyntheticValidDetail",
-            response: "SyntheticValidResponse",
-          },
-          links: [
-            {
-              context: {
-                traceId: "1".repeat(32),
-                spanId: "2".repeat(16),
-                traceFlags: 1,
-              },
-              attributes: { visible: "SyntheticValidLink" },
+        .getTracer("SyntheticValidScopeName", "SyntheticValidScopeVersion", {
+          schemaUrl: "https://SyntheticValidScopeSchema.test",
+        })
+        .startSpan(
+          "SyntheticValidSpanName",
+          {
+            attributes: {
+              SyntheticValidDynamicKey: "SyntheticValidDynamicValue",
+              category: "SyntheticValidCategory",
+              detail: "SyntheticValidDetail",
+              response: "SyntheticValidResponse",
             },
-          ],
-        });
+            links: [
+              {
+                context: {
+                  traceId: "1".repeat(32),
+                  spanId: "2".repeat(16),
+                  traceFlags: 1,
+                  traceState,
+                },
+                attributes: { visible: "SyntheticValidLink" },
+              },
+            ],
+          },
+          trace.setSpanContext(context.active(), {
+            traceId: "3".repeat(32),
+            spanId: "4".repeat(16),
+            traceFlags: 1,
+            traceState,
+          })
+        );
       span.addEvent("SyntheticValidEvent", {
         payload: "SyntheticValidPayload",
       });

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { context, createTraceState, trace } from "@opentelemetry/api";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -133,6 +134,27 @@ describe("censorLogValue", () => {
     expect(JSON.stringify(projected)).not.toContain(sentinel);
   });
 
+  test("drops dynamic keys as well as values from every supported container", () => {
+    const dynamicKey = "SyntheticValidDynamicTelemetryKey";
+    const value = "SyntheticValidDynamicTelemetryValue";
+    const projected = [
+      censorLogValue({ [dynamicKey]: value }),
+      censorLogValue(new Map([[dynamicKey, value]])),
+      censorLogValue(new Headers([[dynamicKey, value]])),
+      censorLogValue(new URLSearchParams([[dynamicKey, value]])),
+    ];
+    const serialized = JSON.stringify(projected);
+
+    expect(serialized).not.toContain(dynamicKey);
+    expect(serialized).not.toContain(value);
+    expect(projected).toEqual([
+      {},
+      { shape: "object", fieldCount: 1 },
+      { shape: "object", fieldCount: 1 },
+      { shape: "object", fieldCount: 1 },
+    ]);
+  });
+
   test("redacts nested sensitive object keys without mutating input", () => {
     const input = {
       user: "deskohub",
@@ -169,36 +191,7 @@ describe("censorLogValue", () => {
 
     const censored = censorLogValue(input);
 
-    expect(censored).toEqual({
-      user: CENSORED_LOG_VALUE,
-      nested: {
-        apiKey: CENSORED_LOG_VALUE,
-        "x-vercel-sc-headers": CENSORED_LOG_VALUE,
-        stripeApiKey: CENSORED_LOG_VALUE,
-        githubAccessToken: CENSORED_LOG_VALUE,
-        userRefreshToken: CENSORED_LOG_VALUE,
-        customerAccessCode: CENSORED_LOG_VALUE,
-        accessCode: CENSORED_LOG_VALUE,
-        oauthClientSecret: CENSORED_LOG_VALUE,
-        requestAuthorization: CENSORED_LOG_VALUE,
-        discountCode: CENSORED_LOG_VALUE,
-        submittedCode: CENSORED_LOG_VALUE,
-        params: CENSORED_LOG_VALUE,
-        query: CENSORED_LOG_VALUE,
-        discountCodeId: CENSORED_LOG_VALUE,
-        name: CENSORED_LOG_VALUE,
-        message: CENSORED_LOG_VALUE,
-        errorDescription: CENSORED_LOG_VALUE,
-        visible: CENSORED_LOG_VALUE,
-        email: CENSORED_LOG_VALUE,
-        phone: CENSORED_LOG_VALUE,
-        firstName: CENSORED_LOG_VALUE,
-        lastName: CENSORED_LOG_VALUE,
-        sessionDuration: CENSORED_LOG_VALUE,
-        userSessionCount: CENSORED_LOG_VALUE,
-      },
-      credentials: [{ password: CENSORED_LOG_VALUE, name: CENSORED_LOG_VALUE }],
-    });
+    expect(censored).toEqual({});
     expect(input.nested.apiKey).toBe("secret-api-key");
     expect(input.credentials[0]?.password).toBe("secret-password");
   });
@@ -209,10 +202,7 @@ describe("censorLogValue", () => {
         "service.name": "private customer value",
         "telemetry.sdk.name": "private provider value",
       })
-    ).toEqual({
-      "service.name": CENSORED_LOG_VALUE,
-      "telemetry.sdk.name": CENSORED_LOG_VALUE,
-    });
+    ).toEqual({});
   });
 
   test("handles cycles while preserving the censored cycle shape", () => {
@@ -222,11 +212,10 @@ describe("censorLogValue", () => {
     };
     input.self = input;
 
-    const censored = censorLogValue(input) as typeof input;
+    const censored = censorLogValue(input);
 
     expect(censored).not.toBe(input);
-    expect(censored.token).toBe(CENSORED_LOG_VALUE);
-    expect(censored.self).toBe(censored);
+    expect(censored).toEqual({});
   });
 
   test("projects every query parameter closed", () => {
@@ -237,14 +226,10 @@ describe("censorLogValue", () => {
       ],
     };
 
-    expect(censorLogValue(input)).toEqual({
-      params: [
-        CENSORED_LOG_VALUE,
-        {
-          email: CENSORED_LOG_VALUE,
-          sessionDuration: CENSORED_LOG_VALUE,
-        },
-      ],
+    expect(censorLogValue(input)).toEqual({});
+    expect(censorLogValue(input.params)).toEqual({
+      shape: "array",
+      fieldCount: 2,
     });
   });
 
@@ -287,10 +272,6 @@ describe("censorLogValue", () => {
 
     expect(censored).toEqual({
       thrown: { kind: "error", category: "native" },
-      date: { kind: "object" },
-      set: { kind: "object" },
-      custom: { kind: "object" },
-      promise: { kind: "object" },
     });
     expect(censored.thrown).toEqual({ kind: "error", category: "native" });
     expect(censorLogValue(error)).toEqual({
@@ -312,17 +293,9 @@ describe("censorLogValue", () => {
       [objectKey, "visible"],
     ]);
 
-    const censored = censorLogValue(input) as Map<unknown, unknown>;
+    const censored = censorLogValue(input);
 
-    expect(censored).not.toBe(input);
-    expect(censored.get("password")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("headers:authorization")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("payState")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("payStateRef")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("sessionDuration")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("nested")).toEqual({ apiKey: CENSORED_LOG_VALUE });
-    expect(censored.get(objectKey)).toBe(CENSORED_LOG_VALUE);
+    expect(censored).toEqual({ shape: "object", fieldCount: 8 });
     expect(input.get("password")).toBe("secret-password");
     expect(input.get("headers:authorization")).toBe("Bearer secret");
     expect(input.get("payState")).toBe("pay-state-secret");
@@ -376,39 +349,23 @@ describe("censorLogValue", () => {
       ["checkoutToken", "checkout-secret"],
       ["sessionDuration", "123"],
     ]);
-    const input = {
-      headers,
-      searchParams,
-      plain: { payStateRef: "opaque-secret", nested: { checkoutToken: "x" } },
-    };
-
-    const censored = censorLogValue(input) as {
-      headers: Headers;
-      searchParams: URLSearchParams;
-      plain: { payStateRef: string; nested: { checkoutToken: string } };
-    };
-
-    expect(censored.headers).not.toBe(headers);
-    expect(censored.headers.get("authorization")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.headers.get("x-vercel-proxy-signature")).toBe(
-      CENSORED_LOG_VALUE
-    );
-    expect(censored.headers.get("x-vercel-sc-headers")).toBe(
-      CENSORED_LOG_VALUE
-    );
-    expect(censored.headers.get("x-visible")).toBe(CENSORED_LOG_VALUE);
+    expect(censorLogValue(headers)).toEqual({
+      shape: "object",
+      fieldCount: 4,
+    });
     expect(headers.get("authorization")).toBe("Bearer secret");
-    expect(censored.searchParams).not.toBe(searchParams);
-    expect(censored.searchParams.get("client_secret")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.searchParams.get("payState")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.searchParams.get("PayStateRef")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.searchParams.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.searchParams.get("sessionDuration")).toBe(
-      CENSORED_LOG_VALUE
-    );
+    expect(censorLogValue(searchParams)).toEqual({
+      shape: "object",
+      fieldCount: 5,
+    });
     expect(searchParams.get("client_secret")).toBe("secret-client");
-    expect(censored.plain.payStateRef).toBe(CENSORED_LOG_VALUE);
-    expect(censored.plain.nested.checkoutToken).toBe(CENSORED_LOG_VALUE);
+    expect(
+      censorLogValue({
+        headers,
+        searchParams,
+        plain: { payStateRef: "opaque-secret" },
+      })
+    ).toEqual({});
   });
 });
 
@@ -435,14 +392,8 @@ describe("censorLoggerOptions", () => {
       References.CurrentLogAnnotations
     );
 
-    expect(censored.message).toEqual({
-      password: CENSORED_LOG_VALUE,
-      safe: CENSORED_LOG_VALUE,
-    });
-    expect(censoredAnnotations.request).toEqual({
-      headers: { authorization: CENSORED_LOG_VALUE },
-    });
-    expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
+    expect(censored.message).toEqual({});
+    expect(censoredAnnotations).toEqual({});
     expect(annotations.sessionToken).toBe("session-secret");
   });
 
@@ -468,16 +419,15 @@ describe("censorLoggerOptions", () => {
       References.CurrentLogAnnotations
     );
 
-    expect(censoredAnnotations.session).toBe(CENSORED_LOG_VALUE);
-    expect(censoredAnnotations.sessionId).toBe(CENSORED_LOG_VALUE);
+    expect(censoredAnnotations).toEqual({});
   });
 
   test("recursively censors params emitted by Drizzle EffectLogger", async () => {
-    let capturedParams: unknown;
+    let capturedAnnotations: unknown;
     const captureLogger = Logger.make((options) => {
-      capturedParams = censorLoggerOptions(options).fiber.getRef(
+      capturedAnnotations = censorLoggerOptions(options).fiber.getRef(
         References.CurrentLogAnnotations
-      ).params;
+      );
     });
 
     await Effect.runPromise(
@@ -495,11 +445,7 @@ describe("censorLoggerOptions", () => {
       )
     );
 
-    expect(capturedParams).toEqual([
-      `"${CENSORED_LOG_VALUE}"`,
-      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":"${CENSORED_LOG_VALUE}"}`,
-      `"${CENSORED_LOG_VALUE}"`,
-    ]);
+    expect(capturedAnnotations).toEqual({});
   });
 });
 
@@ -523,13 +469,10 @@ describe("createCensoredOtelLogger", () => {
 
     const record = exporter.getFinishedLogRecords()[0];
 
-    expect(record?.body).toBe(CENSORED_LOG_VALUE);
+    expect(record?.body).toEqual({ shape: "array", fieldCount: 1 });
     expect(record?.severityNumber).toBe(9);
     expect(record?.severityText).toBe("info");
-    expect(record?.attributes).toMatchObject({
-      sessionId: CENSORED_LOG_VALUE,
-      token: CENSORED_LOG_VALUE,
-    });
+    expect(record?.attributes).toEqual({});
     await provider.shutdown();
   });
 
@@ -552,7 +495,7 @@ describe("createCensoredOtelLogger", () => {
     await provider.forceFlush();
 
     const serialized = JSON.stringify(exporter.getFinishedLogRecords()[0]);
-    expect(serialized).toContain("category");
+    expect(serialized).toContain("fieldCount");
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("Failed query");
     await provider.shutdown();
@@ -563,29 +506,46 @@ describe("createCensoredOtelSpanExporter", () => {
   test("rejects valid-format dynamic names and benign attributes everywhere", async () => {
     const exporter = new InMemorySpanExporter();
     const provider = new BasicTracerProvider({
-      resource: resourceFromAttributes({
-        "service.name": "SyntheticValidServiceName",
-        "telemetry.sdk.name": "SyntheticValidSdkName",
-        detail: "SyntheticValidResourceValue",
-      }),
+      resource: resourceFromAttributes(
+        {
+          "service.name": "SyntheticValidServiceName",
+          "telemetry.sdk.name": "SyntheticValidSdkName",
+          detail: "SyntheticValidResourceValue",
+        },
+        { schemaUrl: "https://SyntheticValidResourceSchema.test" }
+      ),
       spanProcessors: [
         new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
       ],
     });
     const tracer = provider.getTracer("closed-projection-test");
-    const span = tracer.startSpan("SyntheticValidSpanName", {
-      attributes: { detail: "SyntheticValidSpanValue" },
-      links: [
-        {
-          context: {
-            traceId: "1".repeat(32),
-            spanId: "2".repeat(16),
-            traceFlags: 1,
+    const traceState = createTraceState(
+      "syntheticvalidtracestate=dynamicvalue"
+    );
+    const parentContext = {
+      traceId: "3".repeat(32),
+      spanId: "4".repeat(16),
+      traceFlags: 1,
+      traceState,
+    };
+    const span = tracer.startSpan(
+      "SyntheticValidSpanName",
+      {
+        attributes: { detail: "SyntheticValidSpanValue" },
+        links: [
+          {
+            context: {
+              traceId: "1".repeat(32),
+              spanId: "2".repeat(16),
+              traceFlags: 1,
+              traceState,
+            },
+            attributes: { visible: "SyntheticValidLinkValue" },
           },
-          attributes: { visible: "SyntheticValidLinkValue" },
-        },
-      ],
-    });
+        ],
+      },
+      trace.setSpanContext(context.active(), parentContext)
+    );
     span.addEvent("SyntheticValidEventName", {
       response: "SyntheticValidEventValue",
     });
@@ -598,10 +558,15 @@ describe("createCensoredOtelSpanExporter", () => {
       events: exported?.events,
       links: exported?.links,
       resource: exported?.resource.attributes,
+      resourceSchemaUrl: exported?.resource.schemaUrl,
     });
 
     expect(serialized).not.toContain("SyntheticValid");
     expect(exported?.name).toBe("operation");
+    expect(exported?.parentSpanContext?.traceState).toBeUndefined();
+    expect(exported?.links[0]?.context.traceState).toBeUndefined();
+    expect(exported?.spanContext().traceState).toBeUndefined();
+    expect(exported?.resource.schemaUrl).toBeUndefined();
     await provider.shutdown();
   });
 
@@ -638,23 +603,15 @@ describe("createCensoredOtelSpanExporter", () => {
     );
 
     const [span] = exporter.getFinishedSpans();
-    expect(span?.attributes).toMatchObject({
-      email: CENSORED_LOG_VALUE,
-      sessionDuration: CENSORED_LOG_VALUE,
-    });
+    expect(span?.attributes).toEqual({});
     expect(span?.events[0]?.name).toBe("exception");
-    expect(span?.resource.attributes).toMatchObject({
-      email: CENSORED_LOG_VALUE,
-      "service.name": CENSORED_LOG_VALUE,
-      sessionDuration: CENSORED_LOG_VALUE,
-    });
+    expect(span?.resource.attributes).toEqual({});
     const serialized = JSON.stringify({
       attributes: span?.attributes,
       events: span?.events,
       resource: span?.resource.attributes,
       status: span?.status,
     });
-    expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain(privateValue);
     await provider.shutdown();
   });

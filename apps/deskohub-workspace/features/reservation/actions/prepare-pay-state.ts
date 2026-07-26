@@ -25,8 +25,8 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import {
-  deriveCheckoutAttemptKeys,
-  deriveCheckoutSessionKeys,
+  type CheckoutKeyDerivation,
+  freezeCheckoutKeyDerivation,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
@@ -398,22 +398,19 @@ const ensureReservationAvailable = (input: {
   );
 
 export type PreparePayStateRequestVersion = {
+  readonly keyDerivationClock?: () => Date;
   readonly keyDerivationTime?: Date;
-  readonly writerGeneration?: "current" | "legacy";
 };
 
 const getCheckoutKeys = (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: PreparePayStateInput["reservation"];
-  readonly requestVersion?: PreparePayStateRequestVersion;
+  readonly keyDerivation: CheckoutKeyDerivation;
 }) => {
-  const derivationTime = input.requestVersion?.keyDerivationTime ?? new Date();
-  const options = { now: () => derivationTime };
-
   return {
-    session: deriveCheckoutSessionKeys(input.checkoutSessionId, options),
-    attempt: deriveCheckoutAttemptKeys(input, options),
+    session: input.keyDerivation.session(input.checkoutSessionId),
+    attempt: input.keyDerivation.attempt(input),
   };
 };
 
@@ -423,7 +420,7 @@ const prepareReservationDraft = Effect.fn(
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: PreparePayStateInput["reservation"];
-  readonly requestVersion?: PreparePayStateRequestVersion;
+  readonly keyDerivation: CheckoutKeyDerivation;
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
     | "checkoutSessionKey"
@@ -442,7 +439,7 @@ const prepareReservationDraft = Effect.fn(
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
-      requestVersion: input.requestVersion,
+      keyDerivation: input.keyDerivation,
     });
 
     const existingAttempts = getDistinctReservations(
@@ -637,8 +634,8 @@ const prepareReservationDraft = Effect.fn(
             cancelledAt,
             replacement: {
               ...input.draft,
-              checkoutSessionKey: checkoutKeys.session.current,
-              checkoutAttemptKey: checkoutKeys.attempt.current,
+              checkoutSessionKey: checkoutKeys.session.legacy,
+              checkoutAttemptKey: checkoutKeys.attempt.legacy,
               checkoutSessionIdentityKey: checkoutKeys.session.identity,
               checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
             },
@@ -662,19 +659,11 @@ const prepareReservationDraft = Effect.fn(
     });
     const reservationDraft = yield* reservations.createDraft({
       ...input.draft,
-      checkoutSessionKey: checkoutKeys.session.current,
-      checkoutAttemptKey: checkoutKeys.attempt.current,
+      checkoutSessionKey: checkoutKeys.session.legacy,
+      checkoutAttemptKey: checkoutKeys.attempt.legacy,
       checkoutSessionIdentityKey: checkoutKeys.session.identity,
       checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
     });
-    if (
-      input.requestVersion?.writerGeneration !== "legacy" &&
-      reservationDraft.checkoutAttemptIdentityKey !==
-        checkoutKeys.attempt.identity
-    ) {
-      continue;
-    }
-
     return {
       checkoutSessionId,
       reservationDraft,
@@ -687,6 +676,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     input: PreparePayStateInput,
     requestVersion: PreparePayStateRequestVersion = {}
   ) {
+    const keyDerivationTime =
+      requestVersion.keyDerivationTime ??
+      requestVersion.keyDerivationClock?.() ??
+      new Date();
+    const keyDerivation = freezeCheckoutKeyDerivation({
+      now: () => keyDerivationTime,
+    });
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
@@ -775,7 +771,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
-      requestVersion,
+      keyDerivation,
       draft: {
         dotyposCustomerId,
         customerAccessCode,
@@ -827,61 +823,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
     if (!claimed) {
-      const claimConflictReservation =
-        yield* waitForPendingReservationTransition({
-          reservations,
-          reservationId: reservationDraft.id,
-        });
-      yield* Effect.annotateLogsScoped({
-        claimConflictReservation: claimConflictReservation
-          ? {
-              orderId: claimConflictReservation.id,
-              reservationState: claimConflictReservation.reservationState,
-              paymentState: claimConflictReservation.paymentState,
-            }
-          : null,
-      });
-
-      if (
-        claimConflictReservation &&
-        isReusableSubmissionReservation(claimConflictReservation)
-      ) {
-        yield* Effect.logInfo(
-          "Existing workspace reservation hold reused for an immediate retry"
-        );
-
-        const reusedPrepared = yield* quotePreparedReservation({
-          advertisement,
-          dotyposCustomerId: yield* getDotyposCustomerId(
-            claimConflictReservation.dotyposCustomerId
-          ),
-          locale: input.locale,
-        });
-
-        yield* reservations.updateReservationDetails({
-          id: claimConflictReservation.id,
-          reservationDetails: getStoredWorkspaceReservationDetails(
-            input.reservation
-          ),
-          locale: input.locale,
-        });
-        yield* legalEvents.recordMany(
-          Object.values(privacyEvidence).map((evidence) => ({
-            workspaceReservationId: claimConflictReservation.id,
-            evidence,
-          }))
-        );
-        yield* Effect.logInfo("Workspace reservation checkout prep ready");
-
-        return yield* toReadyResult({
-          locale: input.locale,
-          prepared: reusedPrepared,
-          reservationId: claimConflictReservation.id,
-          checkoutSessionId,
-          changedKeys: advertisement.changedKeys,
-        });
-      }
-
       yield* Effect.logError(
         "Workspace reservation hold creation claim failed"
       );

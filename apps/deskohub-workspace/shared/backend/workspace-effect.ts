@@ -10,6 +10,7 @@ import {
   getRegisteredPostHogLoggerProvider,
 } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
+import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
 
 type WorkspaceEffectBoundary = "action" | "route" | "run" | "task";
 
@@ -38,6 +39,7 @@ export const defineWorkspaceTask =
   ) =>
   (...args: Args): Promise<A> =>
     Effect.suspend(() => handler(...args)).pipe(
+      normalizeWorkspaceFrameworkDefects("task"),
       Effect.ensuring(flushTelemetry),
       runWorkspaceEffect(operation, { boundary: "task" })
     );

@@ -107,21 +107,38 @@ describe("Workspace routes", () => {
     });
   });
 
-  test("suspends synchronous handler construction as a defect", async () => {
-    const defect = new Error("construction defect");
+  test("normalizes synchronous and asynchronous framework defects", async () => {
+    const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
     const GET = defineWorkspaceRoute(
       {
         operation: "test.defect",
         cancellation: "continue-after-disconnect",
       },
       () => {
-        throw defect;
+        throw new Error(sentinel);
       }
     );
-
-    await expect(GET(new Request("https://deskohub.test"))).rejects.toBe(
-      defect
+    const POST = defineWorkspaceRoute(
+      {
+        operation: "test.defect",
+        cancellation: "continue-after-disconnect",
+      },
+      () => Effect.promise(() => Promise.reject(new Error(sentinel)))
     );
+
+    for (const response of [
+      await GET(new Request("https://deskohub.test")),
+      await POST(
+        new Request("https://deskohub.test", {
+          method: "POST",
+        })
+      ),
+    ]) {
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Request failed.",
+      });
+    }
   });
 
   test("uses the request signal only when interruption is declared", async () => {

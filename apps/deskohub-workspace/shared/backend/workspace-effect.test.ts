@@ -1,6 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Effect } from "effect";
-import { CENSORED_LOG_VALUE } from "./logging/censorship";
 import { defineWorkspaceTask, runWorkspaceEffect } from "./workspace-effect";
 
 describe("Workspace Effect execution", () => {
@@ -14,7 +13,7 @@ describe("Workspace Effect execution", () => {
 
       expect(log).toHaveBeenCalledTimes(1);
       const output = log.mock.calls.flat().join(" ");
-      expect(output).toContain(CENSORED_LOG_VALUE);
+      expect(output).toContain("shape");
       expect(output).not.toContain("private");
     } finally {
       log.mockRestore();
@@ -43,7 +42,7 @@ describe("Workspace Effect execution", () => {
       }).pipe(runWorkspaceEffect("test.cause-projection"));
 
       const output = log.mock.calls.flat().join(" ");
-      expect(output).toContain("aggregate_error");
+      expect(output).toContain("operation=test.cause-projection");
       expect(output).not.toContain(sentinel);
     } finally {
       log.mockRestore();
@@ -66,7 +65,7 @@ describe("Workspace Effect execution", () => {
       }).pipe(runWorkspaceEffect("test.run"));
 
       const output = log.mock.calls.flat().join(" ");
-      expect(output).toContain(CENSORED_LOG_VALUE);
+      expect(output).toContain("shape");
       expect(output).toContain("operation=test.run");
       expect(output).not.toContain(sentinel);
     } finally {
@@ -87,12 +86,24 @@ describe("Workspace Effect execution", () => {
     await expect(fails()).rejects.toBe(failure);
   });
 
-  test("tasks suspend synchronous handler construction", async () => {
-    const defect = new Error("construction failed");
+  test("tasks normalize synchronous and asynchronous framework defects", async () => {
+    const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
     const task = defineWorkspaceTask("test.task-defect", () => {
-      throw defect;
+      throw new Error(sentinel);
     });
+    const asyncTask = defineWorkspaceTask("test.task-defect", () =>
+      Effect.promise(() => Promise.reject(new Error(sentinel)))
+    );
 
-    await expect(task()).rejects.toBe(defect);
+    await expect(task()).rejects.toMatchObject({
+      _tag: "WorkspaceFrameworkFailure",
+      boundary: "task",
+      kind: "defect",
+    });
+    await expect(asyncTask()).rejects.toMatchObject({
+      _tag: "WorkspaceFrameworkFailure",
+      boundary: "task",
+      kind: "defect",
+    });
   });
 });

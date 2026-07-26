@@ -82,8 +82,7 @@ describe("PostHog OTel logs", () => {
       await provider.forceFlush();
 
       const exported = requests.join("");
-      expect(exported).toContain("[REDACTED]");
-      expect(exported).toContain("aggregate_error");
+      expect(exported).toContain("fieldCount");
       expect(exported).not.toContain(sentinel);
     } finally {
       await provider.shutdown();
@@ -108,17 +107,22 @@ describe("PostHog OTel logs", () => {
     if (!provider) throw new Error("Expected a synthetic logger provider.");
 
     try {
-      provider.getLogger("framework").emit({
-        body: "SyntheticValidDirectLogBody",
-        eventName: "SyntheticValidDirectEvent",
-        attributes: {
-          category: "SyntheticValidCategory",
-          detail: "SyntheticValidDetail",
-          response: JSON.stringify({
-            payload: "SyntheticValidNestedPayload",
-          }),
-        },
-      });
+      provider
+        .getLogger("framework", "SyntheticValidScopeVersion", {
+          schemaUrl: "https://SyntheticValidScopeSchema.test",
+        })
+        .emit({
+          body: "SyntheticValidDirectLogBody",
+          eventName: "SyntheticValidDirectEvent",
+          attributes: {
+            SyntheticValidDynamicKey: "SyntheticValidDynamicValue",
+            category: "SyntheticValidCategory",
+            detail: "SyntheticValidDetail",
+            response: JSON.stringify({
+              payload: "SyntheticValidNestedPayload",
+            }),
+          },
+        });
       await provider.forceFlush();
 
       expect(requests).toHaveLength(1);

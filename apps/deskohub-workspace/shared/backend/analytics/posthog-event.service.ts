@@ -8,6 +8,10 @@ import {
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import {
+  WORKSPACE_SERVICE_NAME,
+  WORKSPACE_SERVICE_NAMESPACE,
+} from "@/shared/backend/observability/workspace-service";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 
 export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
@@ -66,25 +70,15 @@ const collectContextProperties = Effect.gen(function* () {
   const spanAnnotations = yield* Effect.spanAnnotations;
 
   const currentSpan = yield* Effect.currentSpan.pipe(Effect.option);
-  const spanMetadata = Option.isSome(currentSpan)
-    ? {
-        "effect.span_id": currentSpan.value.spanId,
-        "effect.span_name": currentSpan.value.name,
-        "effect.trace_id": currentSpan.value.traceId,
-      }
-    : {};
-
   return {
-    properties: {
-      ...logAnnotations,
-      effect: {
-        spanAnnotations,
-        ...(Option.isSome(currentSpan)
-          ? { spanAttributes: Object.fromEntries(currentSpan.value.attributes) }
-          : {}),
-      },
-    },
-    spanMetadata,
+    ...logAnnotations,
+    ...spanAnnotations,
+    ...(Option.isSome(currentSpan)
+      ? {
+          ...Object.fromEntries(currentSpan.value.attributes),
+          operation: currentSpan.value.name,
+        }
+      : {}),
   };
 });
 
@@ -92,6 +86,27 @@ const compactProperties = (properties: Record<string, unknown>) =>
   Object.fromEntries(
     Object.entries(properties).filter(([, value]) => value !== undefined)
   ) as PostHogEventProperties;
+
+const lifecycleEventNames = new Set([
+  "payment abandoned",
+  "payment completed",
+  "payment failed",
+  "payment started",
+  "reservation abandoned",
+  "reservation completed",
+  "reservation fulfilled",
+  "reservation started",
+]);
+
+const projectLifecycleEventName = (event: string) =>
+  lifecycleEventNames.has(event) ? event : "workspace lifecycle";
+
+const projectDeploymentEnvironment = (environment: string) =>
+  environment === "development" ||
+  environment === "preview" ||
+  environment === "production"
+    ? environment
+    : undefined;
 
 export const makePostHogEventService = ({
   client,
@@ -104,25 +119,26 @@ export const makePostHogEventService = ({
       const contextProperties = yield* collectContextProperties;
       const censoredProperties = compactProperties(
         censorLogValue({
-          ...contextProperties.properties,
+          ...contextProperties,
           ...input.properties,
         }) as Record<string, unknown>
       );
       const properties = compactProperties({
         ...censoredProperties,
-        ...contextProperties.spanMetadata,
-        "deployment.environment.name": config.environment,
-        "service.name": config.serviceName,
-        "service.namespace": config.serviceNamespace,
+        "deployment.environment.name": projectDeploymentEnvironment(
+          config.environment
+        ),
+        "service.name": WORKSPACE_SERVICE_NAME,
+        "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
       });
 
       yield* Effect.tryPromise(() =>
         client.captureImmediate({
-          distinctId: input.distinctId,
-          event: input.event,
+          distinctId: "deskohub-workspace:lifecycle",
+          event: projectLifecycleEventName(input.event),
           properties,
           timestamp: temporalInstantToDate(input.timestamp),
-          uuid: input.uuid,
+          uuid: crypto.randomUUID(),
         })
       ).pipe(
         Effect.catch((cause) =>

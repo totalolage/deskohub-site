@@ -147,6 +147,45 @@ describe("Workspace actions", () => {
     }
   });
 
+  test("normalizes synchronous and asynchronous framework defects", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const syncAction = defineWorkspaceAction(
+      {
+        operation: "test.defect",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => {
+        throw new Error(sentinel);
+      }
+    );
+    const asyncAction = defineWorkspaceAction(
+      {
+        operation: "test.defect",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.promise(() => Promise.reject(new Error(sentinel)))
+    );
+
+    try {
+      const results = await Promise.all([
+        syncAction("synthetic-input"),
+        asyncAction("synthetic-input"),
+      ]);
+      const emitted = JSON.stringify({ results, logs: errorLog.mock.calls });
+
+      for (const result of results) {
+        expect(result).toHaveProperty("serverError");
+      }
+      expect(emitted).not.toContain(sentinel);
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
   test("supports stateful form actions explicitly", async () => {
     const { defineWorkspaceStateAction } = await import("./workspace-action");
     const action = defineWorkspaceStateAction(

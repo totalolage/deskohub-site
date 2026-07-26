@@ -1,3 +1,4 @@
+import type { SpanContext } from "@opentelemetry/api";
 import {
   type AnyValue,
   type AnyValueMap,
@@ -65,24 +66,6 @@ const sensitiveLogExactKeys = new Set([
   "x-vercel-sc-headers",
 ]);
 
-const sensitiveLogUrlSearchParams = new Set([
-  "checkouttoken",
-  "paystate",
-  "paystateref",
-  "x-vercel-protection-bypass",
-  "token",
-  "state",
-  "secret",
-  "name",
-  "message",
-]);
-
-const isSensitiveLogUrlSearchParam = (key: string): boolean =>
-  sensitiveLogUrlSearchParams.has(key.toLowerCase());
-
-const isSensitiveLogRecordKey = (key: string): boolean =>
-  isSensitiveLogKey(key) || isSensitiveLogUrlSearchParam(key);
-
 const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 
 const sensitiveLogKeyFragmentWords = sensitiveLogKeyFragments.map(
@@ -148,15 +131,6 @@ export const isSensitiveLogKey = (key: string): boolean =>
   sensitiveLogExactKeys.has(key.toLowerCase()) ||
   containsSensitiveLogKeyFragmentSegment(key) ||
   endsWithSensitiveLogKeyFragment(key);
-
-const isMap = (value: unknown): value is Map<unknown, unknown> =>
-  value instanceof Map;
-
-const isHeaders = (value: unknown): value is Headers =>
-  typeof Headers !== "undefined" && value instanceof Headers;
-
-const isURLSearchParams = (value: unknown): value is URLSearchParams =>
-  typeof URLSearchParams !== "undefined" && value instanceof URLSearchParams;
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   if (typeof value !== "object" || value === null) return false;
@@ -353,142 +327,84 @@ const projectTelemetryString = (key: string, value: string): string => {
   return CENSORED_LOG_VALUE;
 };
 
-const censorQueryParameter = (
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (typeof value !== "string") {
-    return censorLogValueInternal(value, seen);
-  }
+const codeOwnedTelemetryErrorKeys = new Set([
+  "cause",
+  "error",
+  "errors",
+  "thrown",
+]);
 
-  try {
-    return JSON.stringify(
-      censorLogValueInternal(JSON.parse(value) as unknown, seen)
-    );
-  } catch {
-    return censorLogValueInternal(value, seen);
-  }
-};
+const projectCollectionShape = (
+  shape: "array" | "object",
+  fieldCount: number
+) => ({
+  shape,
+  fieldCount: Math.min(1_000_000, Math.max(0, Math.trunc(fieldCount))),
+});
 
-const censorQueryParams = (
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
+const projectTelemetryRecord = (
+  value: Record<string, unknown>,
+  seen: WeakSet<object>
+): Record<string, unknown> => {
+  if (seen.has(value)) return { kind: "circular" };
+  seen.add(value);
 
-  const existing = seen.get(value);
-  if (existing) return existing;
-
-  const result: unknown[] = [];
-  seen.set(value, result);
-
-  for (let index = 0; index < value.length; index += 1) {
-    if (index in value) {
-      result[index] = censorQueryParameter(value[index], seen);
+  const result: Record<string, unknown> = {};
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (codeOwnedTelemetryErrorKeys.has(key)) {
+      result[key] = projectErrorMetadata(nestedValue);
+      continue;
+    }
+    if (key === "operation" && typeof nestedValue === "string") {
+      result.operation = projectTelemetryString(key, nestedValue);
+      continue;
+    }
+    if (
+      codeOwnedTelemetryEnumKeys.has(key) &&
+      typeof nestedValue === "string"
+    ) {
+      result[key] = projectTelemetryString(key, nestedValue);
+      continue;
+    }
+    if (
+      codeOwnedTelemetryBooleanKeys.has(key) &&
+      typeof nestedValue === "boolean"
+    ) {
+      result[key] = nestedValue;
+      continue;
+    }
+    if (
+      codeOwnedTelemetryCountKeys.has(key) &&
+      typeof nestedValue === "number"
+    ) {
+      result[key] = projectTelemetryNumber(key, nestedValue);
     }
   }
 
   return result;
 };
 
-const censorLogRecordValue = (
-  key: string,
+const projectTelemetryValueInternal = (
   value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (
-    key.toLowerCase() === "cause" ||
-    key.toLowerCase() === "error" ||
-    key.toLowerCase() === "errors" ||
-    key.toLowerCase() === "thrown"
-  ) {
-    return projectErrorMetadata(value);
-  }
-  if (typeof value === "string") return projectTelemetryString(key, value);
-  if (typeof value === "number") return projectTelemetryNumber(key, value);
-  if (typeof value === "boolean") {
-    return codeOwnedTelemetryBooleanKeys.has(key) ? value : CENSORED_LOG_VALUE;
-  }
-  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
-  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  return censorLogValueInternal(value, seen);
-};
-
-const censorLogValueInternal = (
-  value: unknown,
-  seen: WeakMap<object, unknown>
+  seen: WeakSet<object>
 ): unknown => {
   if (Array.isArray(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: unknown[] = [];
-    seen.set(value, result);
-
-    for (let index = 0; index < value.length; index += 1) {
-      if (index in value) {
-        result[index] = censorLogValueInternal(value[index], seen);
-      }
-    }
-
-    return result;
+    return projectCollectionShape("array", value.length);
   }
 
-  if (isMap(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new Map<unknown, unknown>();
-    seen.set(value, result);
-
-    for (const [key, nestedValue] of value) {
-      result.set(
-        key,
-        typeof key === "string"
-          ? censorLogRecordValue(key, nestedValue, seen)
-          : censorLogValueInternal(nestedValue, seen)
-      );
-    }
-
-    return result;
+  if (value instanceof Map || value instanceof Set) {
+    return projectCollectionShape("object", value.size);
   }
 
-  if (isHeaders(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new Headers();
-    seen.set(value, result);
-
-    value.forEach((nestedValue, key) => {
-      result.set(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
-
-    return result;
+  if (typeof Headers !== "undefined" && value instanceof Headers) {
+    return projectCollectionShape("object", Array.from(value.keys()).length);
   }
 
-  if (isURLSearchParams(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result = new URLSearchParams();
-    seen.set(value, result);
-
-    value.forEach((nestedValue, key) => {
-      result.append(
-        key,
-        isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
-      );
-    });
-
-    return result;
+  if (
+    typeof URLSearchParams !== "undefined" &&
+    value instanceof URLSearchParams
+  ) {
+    return projectCollectionShape("object", Array.from(value.keys()).length);
   }
 
   if (
@@ -504,31 +420,19 @@ const censorLogValueInternal = (
     return CENSORED_LOG_VALUE;
   }
 
-  if (isEffectDrizzleQueryError(value)) {
+  if (
+    isEffectDrizzleQueryError(value) ||
+    value instanceof Error ||
+    !isPlainObject(value)
+  ) {
     return projectErrorMetadata(value);
   }
 
-  if (value instanceof Error) {
-    return projectErrorMetadata(value);
-  }
-
-  if (!isPlainObject(value)) return projectErrorMetadata(value);
-
-  const existing = seen.get(value);
-  if (existing) return existing;
-
-  const result: Record<string, unknown> = {};
-  seen.set(value, result);
-
-  for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(key, nestedValue, seen);
-  }
-
-  return result;
+  return projectTelemetryRecord(value, seen);
 };
 
 export const censorTelemetryValue = (value: unknown): unknown =>
-  censorLogValueInternal(value, new WeakMap());
+  projectTelemetryValueInternal(value, new WeakSet());
 
 export const censorLogValue = censorTelemetryValue;
 
@@ -547,11 +451,9 @@ export const censorLoggerOptions = (
         if (ref !== References.CurrentLogAnnotations) return value;
         const annotations = value as Readonly<Record<string, unknown>>;
 
-        return Object.fromEntries(
-          Object.entries(annotations).map(([key, nestedValue]) => [
-            key,
-            censorLogRecordValue(key, nestedValue, new WeakMap()),
-          ])
+        return projectTelemetryRecord(
+          annotations,
+          new WeakSet()
         ) as typeof value;
       },
     },
@@ -607,19 +509,12 @@ export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
       const { severityNumber, severityText } = logLevelToOtelSeverity(
         options.logLevel
       );
-      const now = options.date.getTime();
-      const attributes = { fiberId: `#${options.fiber.id}` } as AnyValueMap;
+      const attributes = {} as AnyValueMap;
 
       for (const [key, value] of Object.entries(
         options.fiber.getRef(References.CurrentLogAnnotations)
       )) {
         attributes[key] = toOtelValue(value);
-      }
-
-      for (const [label, timestamp] of options.fiber.getRef(
-        References.CurrentLogSpans
-      )) {
-        attributes[`logSpan.${label}`] = `${now - timestamp}ms`;
       }
 
       otelLogger.emit({
@@ -653,6 +548,13 @@ const replaceRecord = (
   Object.assign(target, replacement);
 };
 
+const withoutTraceState = (context: SpanContext): SpanContext => ({
+  traceId: context.traceId,
+  spanId: context.spanId,
+  traceFlags: context.traceFlags,
+  ...(context.isRemote === undefined ? {} : { isRemote: context.isRemote }),
+});
+
 const censorMutableSpan = (
   span: Parameters<SpanProcessor["onStart"]>[0]
 ): void => {
@@ -679,6 +581,9 @@ const censorMutableSpan = (
     }
   }
   for (const link of span.links) {
+    (link as { context: SpanContext }).context = withoutTraceState(
+      link.context
+    );
     if (link.attributes) {
       replaceRecord(
         link.attributes,
@@ -693,23 +598,27 @@ const censorReadableSpanInPlace = (span: ReadableSpan): void => {
     span.attributes,
     censorTelemetryValue(span.attributes) as Record<string, unknown>
   );
-  replaceRecord(
-    span.resource.attributes,
-    censorOtelResourceAttributes(span.resource.attributes)
-  );
 
   const mutableSpan = span as ReadableSpan & {
     instrumentationScope: ReadableSpan["instrumentationScope"];
     name: string;
+    parentSpanContext: ReadableSpan["parentSpanContext"];
+    resource: ReadableSpan["resource"];
+    spanContext: ReadableSpan["spanContext"];
     status: ReadableSpan["status"];
   };
   mutableSpan.name = censorSpanName(span.name);
   mutableSpan.instrumentationScope = {
-    ...span.instrumentationScope,
     name: censorSpanName(span.instrumentationScope.name),
-    version: undefined,
-    schemaUrl: undefined,
   };
+  mutableSpan.resource = resourceFromAttributes(
+    censorOtelResourceAttributes(span.resource.attributes)
+  );
+  mutableSpan.parentSpanContext = span.parentSpanContext
+    ? withoutTraceState(span.parentSpanContext)
+    : undefined;
+  const spanContext = span.spanContext();
+  mutableSpan.spanContext = () => withoutTraceState(spanContext);
   if (span.status.message) {
     mutableSpan.status = { ...span.status, message: CENSORED_LOG_VALUE };
   }
@@ -724,6 +633,9 @@ const censorReadableSpanInPlace = (span: ReadableSpan): void => {
     }
   }
   for (const link of span.links) {
+    (link as { context: SpanContext }).context = withoutTraceState(
+      link.context
+    );
     if (link.attributes) {
       replaceRecord(
         link.attributes,
@@ -766,23 +678,22 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     };
   }),
   instrumentationScope: {
-    ...span.instrumentationScope,
     name: censorSpanName(span.instrumentationScope.name),
-    version: undefined,
-    schemaUrl: undefined,
   },
   kind: span.kind,
   links: span.links.map((link) => ({
     ...link,
     attributes: censorTelemetryValue(link.attributes) as typeof link.attributes,
+    context: withoutTraceState(link.context),
   })),
   name: censorSpanName(span.name),
-  parentSpanContext: span.parentSpanContext,
+  parentSpanContext: span.parentSpanContext
+    ? withoutTraceState(span.parentSpanContext)
+    : undefined,
   resource: resourceFromAttributes(
-    censorOtelResourceAttributes(span.resource.attributes),
-    span.resource.schemaUrl ? { schemaUrl: span.resource.schemaUrl } : undefined
+    censorOtelResourceAttributes(span.resource.attributes)
   ),
-  spanContext: () => span.spanContext(),
+  spanContext: () => withoutTraceState(span.spanContext()),
   startTime: span.startTime,
   status: span.status.message
     ? { ...span.status, message: CENSORED_LOG_VALUE }
@@ -797,9 +708,7 @@ const trustedOtelResourceIdentityKeys = [
 const censorOtelResourceAttributes = (
   attributes: ReadableSpan["resource"]["attributes"]
 ): ReadableSpan["resource"]["attributes"] => {
-  const censored = censorTelemetryValue(
-    attributes
-  ) as ReadableSpan["resource"]["attributes"];
+  const censored: ReadableSpan["resource"]["attributes"] = {};
 
   const trustedResourceValues = new Set([
     "deskohub",
@@ -843,17 +752,7 @@ const censorReadableLogRecord = (
     ? censorSpanName(record.eventName)
     : record.eventName,
   instrumentationScope: {
-    ...record.instrumentationScope,
     name: censorSpanName(record.instrumentationScope.name),
-    version: undefined,
-    schemaUrl: undefined,
-    attributes: record.instrumentationScope.attributes
-      ? (censorTelemetryValue(
-          record.instrumentationScope.attributes
-        ) as NonNullable<
-          ReadableLogRecord["instrumentationScope"]["attributes"]
-        >)
-      : undefined,
   },
   severityText:
     record.severityText &&
@@ -861,10 +760,7 @@ const censorReadableLogRecord = (
       ? record.severityText.toLowerCase()
       : undefined,
   resource: resourceFromAttributes(
-    censorOtelResourceAttributes(record.resource.attributes),
-    record.resource.schemaUrl
-      ? { schemaUrl: record.resource.schemaUrl }
-      : undefined
+    censorOtelResourceAttributes(record.resource.attributes)
   ),
 });
 

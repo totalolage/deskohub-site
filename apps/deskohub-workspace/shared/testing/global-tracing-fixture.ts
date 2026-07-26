@@ -1,4 +1,9 @@
-import { SpanStatusCode, trace } from "@opentelemetry/api";
+import {
+  context,
+  createTraceState,
+  SpanStatusCode,
+  trace,
+} from "@opentelemetry/api";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { BasicTracerProvider } from "@opentelemetry/sdk-trace-base";
 import { register } from "@/instrumentation";
@@ -20,31 +25,45 @@ process.env.OTEL_RESOURCE_ATTRIBUTES = [
 
 await register();
 
+const traceState = createTraceState("synthetic=SyntheticValidTraceState");
 const span = trace
-  .getTracer(validLookingSentinel)
-  .startSpan(validLookingSentinel, {
-    attributes: {
-      checkoutSessionId: sensitiveCategorySentinel,
-      customerId: sensitiveCategorySentinel,
-      providerOrderId: sensitiveCategorySentinel,
-      state: sensitiveCategorySentinel,
-      url: `https://example.test/?state=${sensitiveCategorySentinel}`,
-      category: validLookingSentinel,
-      detail: validLookingSentinel,
-      "http.route": `/checkout/${validLookingSentinel}`,
-      "url.full": `https://example.test/${validLookingSentinel}`,
-    },
-    links: [
-      {
-        context: {
-          traceId: "1".repeat(32),
-          spanId: "2".repeat(16),
-          traceFlags: 1,
-        },
-        attributes: { visible: validLookingSentinel },
+  .getTracerProvider()
+  .getTracer(validLookingSentinel, "SyntheticValidScopeVersion", {
+    schemaUrl: "https://SyntheticValidScopeSchema.test",
+  })
+  .startSpan(
+    validLookingSentinel,
+    {
+      attributes: {
+        checkoutSessionId: sensitiveCategorySentinel,
+        customerId: sensitiveCategorySentinel,
+        providerOrderId: sensitiveCategorySentinel,
+        state: sensitiveCategorySentinel,
+        url: `https://example.test/?state=${sensitiveCategorySentinel}`,
+        category: validLookingSentinel,
+        detail: validLookingSentinel,
+        "http.route": `/checkout/${validLookingSentinel}`,
+        "url.full": `https://example.test/${validLookingSentinel}`,
       },
-    ],
-  });
+      links: [
+        {
+          context: {
+            traceId: "1".repeat(32),
+            spanId: "2".repeat(16),
+            traceFlags: 1,
+            traceState,
+          },
+          attributes: { visible: validLookingSentinel },
+        },
+      ],
+    },
+    trace.setSpanContext(context.active(), {
+      traceId: "3".repeat(32),
+      spanId: "4".repeat(16),
+      traceFlags: 1,
+      traceState,
+    })
+  );
 
 span.addEvent(validLookingSentinel, {
   response: validLookingSentinel,

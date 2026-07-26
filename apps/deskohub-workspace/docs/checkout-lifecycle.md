@@ -91,10 +91,10 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local workflow ID. Stable route/support reference. |
-| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only the digest. |
-| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only the digest. |
-| `checkout_session_identity_key` | text | yes | Database-enforced cross-version identity digest for the checkout session. |
-| `checkout_attempt_identity_key` | text | yes | Database-enforced cross-version identity digest for the checkout attempt. |
+| `checkout_session_key` | text | yes | Raw-ring compatibility HMAC digest grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Retained while any old writer can exist. |
+| `checkout_attempt_key` | text | yes | Raw-ring compatibility HMAC digest for one mounted-form submission and its immediate retry. Includes the normalized reservation details and is retained while any old writer can exist. |
+| `checkout_session_identity_key` | text | yes | Stable database-enforced session identity digest derived from dedicated reservation HMAC material by current writers; the compatibility trigger copies the raw digest for old writers. |
+| `checkout_attempt_identity_key` | text | yes | Stable database-enforced attempt identity digest derived from dedicated reservation HMAC material by current writers; the compatibility trigger copies the raw digest for old writers. |
 | `correlation_id` | text | yes | Non-PII cross-system tracing ID. Unique. |
 | `dotypos_customer_id` | text | yes | Dotypos customer that owns customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation hold/final reservation ID. Null until Dotypos creates it. |
@@ -327,14 +327,15 @@ unparsed `CHECKOUT_PAY_STATE_KEYS` value used by pre-bridge writers; decoding,
 selecting an active encryption key, or reserializing the ring would produce a
 different digest.
 
-The database keeps both the scheduled current digest and a stable identity
-digest. During the legacy-read window, bridge writers store the dedicated
-digest as current and the raw digest as identity. A pre-bridge insert omits the
-new identity columns, and the migration's `BEFORE INSERT` trigger defaults them
-to its raw current digests. Unique current and identity indexes therefore make
-overlapping raw and dedicated inserts collide in PostgreSQL rather than relying
-on a candidate read or process-local lock. At the legacy deadline, requests on
-either side still share the dedicated current digest.
+The database keeps two independent uniqueness planes. Current writers always
+store the raw-ring digest in the compatibility key columns and the dedicated
+reservation-HMAC digest in the identity columns. A pre-bridge insert omits the
+identity columns, and the migration's `BEFORE INSERT` trigger defaults them to
+its raw compatibility digests. The raw-key unique indexes therefore make an old
+and current writer collide in PostgreSQL in either insert order, while the
+identity-key unique indexes keep current writers stable across AES key-ring
+rotation. This is a database invariant and does not depend on a candidate read,
+a process-local lock, or which side reaches the provider seam first.
 
 The deployment contract is:
 
@@ -348,26 +349,35 @@ The deployment contract is:
 2. Promote bridge-aware code everywhere with
    `CHECKOUT_RESERVATION_HMAC_CUTOVER_AT` and
    `CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL` unset. The optional
-   `CHECKOUT_RESERVATION_HMAC_SECRET` may be provisioned, but all writers still
-   derive reservation/session keys from the unchanged raw
-   `CHECKOUT_PAY_STATE_KEYS` string.
+   `CHECKOUT_RESERVATION_HMAC_SECRET` may be provisioned. Current writers put
+   its digest in the identity columns immediately while continuing to put the
+   unchanged raw `CHECKOUT_PAY_STATE_KEYS` digest in the compatibility columns.
 3. Freeze the exact Pay-state key-ring bytes and entry order. Configure every
    bridge-aware instance with the same
    `CHECKOUT_RESERVATION_HMAC_SECRET`, cutover instant, and finite legacy-read
    deadline, then schedule one shared future cutover. Before the cutover,
-   bridge writers use raw current and identity digests. During the legacy
-   window, they use dedicated current and raw identity digests. Each request
-   derives one immutable key set for its complete database workflow.
+   readers accept raw and dedicated digests; during the legacy window they
+   prefer dedicated and still accept raw. Each production request freezes the
+   schedule generation and all HMAC material exactly once at operation entry
+   and reuses that derivation across retries and checkout-session rotation.
+   Writes continue using raw compatibility and dedicated identity digests in
+   both phases.
 4. The configured legacy window must be at least 20 minutes: ten minutes for
    signed Pay-state/hold lifetime, one minute for the 45-second Server Action
    ceiling and response completion, five minutes for deployment drain, and
    four minutes for clock skew. At the exact
    `CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL` boundary the raw candidate is
-   removed automatically and both current and identity writes use the
-   dedicated digest. Drain every raw-only deployment, alias, rollback target,
-   and in-flight write before that deadline. Keep the completed schedule
-   configured afterward; unsetting it would intentionally return the bridge to
-   raw-write phase.
+   removed from application reads automatically. Current writes still put the
+   raw digest in the compatibility columns so a late old writer collides at the
+   database boundary, and still put the dedicated digest in the identity
+   columns. Drain every raw-only deployment, alias, rollback target, queued job,
+   and in-flight write before removing that compatibility write in a later
+   migration. Keep the exact raw AES key-ring bytes frozen until that old-writer
+   drain completes. After the drain, AES encryption keys may rotate while the
+   dedicated identity plane keeps current writers stable; remove the
+   compatibility write separately in a later migration. Keep the completed
+   schedule configured afterward; unsetting it would intentionally return
+   readers to the pre-cutover phase.
 
 The cutover and legacy deadline must be canonical UTC RFC 3339 instants with
 exact millisecond precision, must be configured together, require dedicated
@@ -377,12 +387,14 @@ active candidate and fail closed if the candidates resolve to different
 reservation rows. The database identity constraints are the race-prevention
 boundary; the conflict guard is recovery detection.
 
-Rollback must retain the identity migration and its trigger while any mixed
-writer or scheduled cutover can exist. Roll back application code only to a
-bridge-aware artifact carrying the identical material and schedule. Removing
-the identity constraints, reverting to a raw-only artifact after the legacy
-deadline, or unsetting a completed schedule can reopen duplicate creation and
-is not a supported rollback.
+Rollback must retain the identity migration, raw compatibility columns, and
+trigger while any mixed writer or scheduled cutover can exist. Roll back
+application code only to a bridge-aware artifact carrying the identical
+material and schedule. Removing either uniqueness plane, changing the frozen
+raw ring before every old artifact and in-flight operation is drained,
+reverting to a raw-only artifact after the legacy deadline, or unsetting a
+completed schedule can reopen duplicate creation and is not a supported
+rollback.
 
 The normalized reservation is included so a replayed opaque attempt ID with changed values cannot reuse a hold created for different facts; its PII exists only in the transient HMAC payload. An exact attempt-key match makes an immediate retry idempotent. A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original cleanup deadline and scheduled cleanup job.
 

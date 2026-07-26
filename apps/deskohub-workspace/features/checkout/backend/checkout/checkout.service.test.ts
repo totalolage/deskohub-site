@@ -643,7 +643,7 @@ describe("CheckoutService", () => {
     }
   });
 
-  test("logs only provider-session metadata on the real checkout runtime", async () => {
+  test("projects provider-session telemetry closed on the real checkout runtime", async () => {
     const info = spyOn(console, "info").mockImplementation(() => undefined);
     const error = spyOn(console, "error").mockImplementation(() => undefined);
     const providerUrl = checkoutStatePrivacySentinels.providerUrl;
@@ -669,7 +669,8 @@ describe("CheckoutService", () => {
       });
       const output = JSON.stringify([info.mock.calls, error.mock.calls]);
 
-      expect(output).toContain("hasProviderRedirectUrl");
+      expect(output).toContain("checkout.provider-log-projection");
+      expect(output).not.toContain("hasProviderRedirectUrl");
       for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
         expect(output).not.toContain(sentinel);
       }

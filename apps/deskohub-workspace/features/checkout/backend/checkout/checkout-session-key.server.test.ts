@@ -66,6 +66,7 @@ describe("checkout attempt key", () => {
     const {
       deriveCheckoutAttemptKey,
       deriveCheckoutAttemptKeyCandidates,
+      deriveCheckoutAttemptKeys,
       deriveCheckoutSessionKey,
       deriveCheckoutSessionKeyCandidates,
     } = await import("./checkout-session-key.server");
@@ -106,8 +107,9 @@ describe("checkout attempt key", () => {
       )
       .digest("hex");
 
-    expect(sessionCandidates).toEqual([oldSessionKey]);
-    expect(attemptCandidates).toHaveLength(1);
+    expect(sessionCandidates).toHaveLength(2);
+    expect(sessionCandidates).toContain(oldSessionKey);
+    expect(attemptCandidates).toHaveLength(2);
     expect(
       deriveCheckoutSessionKey(attemptInput.checkoutSessionId, bridgeOptions)
     ).toBe(oldSessionKey);
@@ -120,12 +122,14 @@ describe("checkout attempt key", () => {
         dedicatedSecret: replacementDedicatedSecret,
       })
     ).toBe(oldSessionKey);
-    expect(
-      deriveCheckoutAttemptKey(attemptInput, {
-        ...bridgeOptions,
-        dedicatedSecret: replacementDedicatedSecret,
-      })
-    ).toBe(attemptCandidates[0]);
+    const originalKeys = deriveCheckoutAttemptKeys(attemptInput, bridgeOptions);
+    const replacementKeys = deriveCheckoutAttemptKeys(attemptInput, {
+      ...bridgeOptions,
+      dedicatedSecret: replacementDedicatedSecret,
+    });
+    expect(replacementKeys.current).toBe(originalKeys.current);
+    expect(replacementKeys.legacy).toBe(originalKeys.legacy);
+    expect(replacementKeys.identity).not.toBe(originalKeys.identity);
   });
 
   test("switches writes at cutover and removes raw reads at the exact deadline", async () => {
@@ -161,7 +165,8 @@ describe("checkout attempt key", () => {
       deriveCheckoutSessionKeys(checkoutSessionId, getOptions(cutoverAt))
     ).toEqual({
       current: cutoverCandidates[0],
-      identity: legacyKey,
+      identity: cutoverCandidates[0],
+      legacy: legacyKey,
       candidates: cutoverCandidates,
     });
     expect(
@@ -181,6 +186,7 @@ describe("checkout attempt key", () => {
     ).toEqual({
       current: cutoverCandidates[0],
       identity: cutoverCandidates[0],
+      legacy: legacyKey,
       candidates: [cutoverCandidates[0]],
     });
   });

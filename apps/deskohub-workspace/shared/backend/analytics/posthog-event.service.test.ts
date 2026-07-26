@@ -9,8 +9,8 @@ const config = {
   environment: "development",
   host: "https://posthog.example",
   projectToken: "phc_test",
-  serviceName: "workspace-test",
-  serviceNamespace: "deskohub-test",
+  serviceName: "SyntheticValidServiceName",
+  serviceNamespace: "SyntheticValidNamespace",
 };
 
 describe("PostHogEventService", () => {
@@ -30,25 +30,26 @@ describe("PostHogEventService", () => {
     await Effect.runPromise(
       service
         .capture({
-          distinctId: "reservation-id",
+          distinctId: "SyntheticValidDistinctId",
           event: "reservation started",
           properties: {
-            reservation_id: "reservation-id",
-            token: "explicit-secret",
+            provider_order_id: "SyntheticValidProviderId",
+            session: "SyntheticValidSessionId",
+            customer: "SyntheticValidCustomerId",
           },
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
-          uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+          uuid: "SyntheticValidEventId",
         })
         .pipe(
           Effect.annotateLogs({
-            correlationId: "correlation-id",
-            sessionId: "session-id",
-            token: "annotation-secret",
+            correlationId: "SyntheticValidCorrelationId",
+            sessionId: "SyntheticValidAnnotationSessionId",
+            token: "SyntheticValidAnnotationToken",
           }),
           Effect.withSpan("reservation.attachHold", {
             attributes: {
-              paymentAttemptId: "payment-attempt-id",
-              secret: "span-secret",
+              paymentAttemptId: "SyntheticValidPaymentAttemptId",
+              secret: "SyntheticValidSpanSecret",
             },
           })
         )
@@ -56,27 +57,20 @@ describe("PostHogEventService", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      distinctId: "reservation-id",
+      distinctId: "deskohub-workspace:lifecycle",
       event: "reservation started",
       timestamp: new Date("2026-06-17T10:00:00.000Z"),
-      uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
     });
+    expect(messages[0].uuid).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
     expect(messages[0].properties).toMatchObject({
       "deployment.environment.name": "development",
-      "effect.span_name": "reservation.attachHold",
-      "service.name": "workspace-test",
-      "service.namespace": "deskohub-test",
-      correlationId: CENSORED_LOG_VALUE,
-      reservation_id: CENSORED_LOG_VALUE,
-      sessionId: CENSORED_LOG_VALUE,
-      token: CENSORED_LOG_VALUE,
+      operation: CENSORED_LOG_VALUE,
+      "service.name": "deskohub-workspace",
+      "service.namespace": "deskohub",
     });
-    expect(messages[0].properties?.effect).toMatchObject({
-      spanAttributes: {
-        paymentAttemptId: CENSORED_LOG_VALUE,
-        secret: CENSORED_LOG_VALUE,
-      },
-    });
+    expect(JSON.stringify(messages[0])).not.toContain("SyntheticValid");
   });
 
   test("does nothing without a configured client", async () => {
