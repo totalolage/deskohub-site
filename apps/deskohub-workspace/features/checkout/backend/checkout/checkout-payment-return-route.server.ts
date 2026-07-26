@@ -1,10 +1,11 @@
-import { Effect, type Layer, Option, Schema } from "effect";
+import { Cause, Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
+import { WorkspaceFrameworkFailure } from "@/shared/backend/workspace-framework-failure";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import { CheckoutStatusService } from "./checkout-status.service";
 import { getCheckoutStatusPath } from "./checkout-status-url";
@@ -26,14 +27,8 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
 const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (
     request: Request,
-    { params }: LocalizedCheckoutPaymentRouteContext
+    routeParams: { readonly locale: string; readonly orderId: string }
   ) {
-    const decodedParams = decodeCheckoutPaymentParams(
-      yield* Effect.promise(() => params)
-    );
-    const routeParams = Option.getOrUndefined(decodedParams);
-    if (!routeParams) return new NextResponse(null, { status: 404 });
-
     const { locale, orderId } = routeParams;
     const { outcome } = Option.getOrElse(
       decodeCheckoutPaymentSearchParams(
@@ -49,7 +44,12 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
         returnOutcome: outcome,
       })
       .pipe(
-        Effect.catch((cause) =>
+        Effect.catchCause((cause) =>
+          Cause.hasDies(cause)
+            ? Effect.fail(
+                new WorkspaceFrameworkFailure({ boundary: "route", kind: "defect" })
+              )
+            :
           Effect.logError("Checkout payment return refresh failed", {
             orderId,
             outcome,
@@ -81,15 +81,32 @@ export const makeCheckoutPaymentReturnGet = (
       cancellation: "continue-after-disconnect",
     },
     (request, context: LocalizedCheckoutPaymentRouteContext) =>
-      handleCheckoutPaymentReturn(request, context).pipe(
-        Effect.provide(statusServiceLayer),
+      Effect.gen(function* () {
+        const decodedParams = decodeCheckoutPaymentParams(
+          yield* Effect.promise(() => context.params)
+        );
+        const routeParams = Option.getOrUndefined(decodedParams);
+        if (!routeParams) return new NextResponse(null, { status: 404 });
+        return yield* handleCheckoutPaymentReturn(request, routeParams).pipe(
+          Effect.provide(statusServiceLayer)
+        );
+      }).pipe(
         Effect.mapError(
           (cause) =>
-            new WorkspaceRouteFailure({
-              statusCode: 500,
-              publicMessage: "Checkout status could not be refreshed",
-              cause,
-            })
+            typeof cause === "object" &&
+            cause !== null &&
+            "_tag" in cause &&
+            cause._tag === "WorkspaceFrameworkFailure"
+              ? new WorkspaceRouteFailure({
+                  statusCode: 500,
+                  publicMessage: "Request failed.",
+                  cause,
+                })
+              : new WorkspaceRouteFailure({
+                  statusCode: 500,
+                  publicMessage: "Checkout status could not be refreshed",
+                  cause,
+                })
         )
       )
   );
