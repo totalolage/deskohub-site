@@ -1,5 +1,8 @@
-import { describe, expect, mock, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { describe, expect, mock, spyOn, test } from "bun:test";
+import { ExternalAPIError } from "@deskohub/dotypos";
+import { EmailServiceError } from "@deskohub/email";
+import { Cause, Effect, Schema } from "effect";
+import { StorageError } from "./errors";
 
 let actionHeaderReads = 0;
 
@@ -18,6 +21,18 @@ mock.module("next/headers", () => ({
     return new Headers({ referer: "https://deskohub.test/en-US" });
   },
 }));
+
+class ArbitraryErrorShape extends Error {
+  readonly _tag: string;
+  readonly operation: string;
+
+  constructor(readonly syntheticIdentifier: string) {
+    super(syntheticIdentifier);
+    this.name = `${syntheticIdentifier}Error`;
+    this._tag = `${syntheticIdentifier}Error`;
+    this.operation = `lookup.${syntheticIdentifier}`;
+  }
+}
 
 describe("Workspace actions", () => {
   test("starts the lifecycle after validation and provides Bot protection", async () => {
@@ -69,6 +84,94 @@ describe("Workspace actions", () => {
     await expect(action("input")).resolves.toEqual({
       serverError: "Public failure",
     });
+  });
+
+  test("censors nested provider Causes before action failure logging", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const { PublicSafeActionError } = await import(
+      "../utils/safe-action-client"
+    );
+    const marker = "synthetic-sensitive-action-marker";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.censored-provider-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new PublicSafeActionError({
+            message: "Safe public failure",
+            cause: Cause.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "createReservation",
+                message: marker,
+                providerError: { errorDescription: marker },
+                cause: new Error(marker),
+              })
+            ),
+          })
+        )
+    );
+
+    try {
+      await expect(action("input")).resolves.toEqual({
+        serverError: "Safe public failure",
+      });
+      expect(JSON.stringify(errorOutput)).not.toContain(marker);
+      expect(JSON.stringify(errorOutput)).toContain("PublicSafeActionError");
+    } finally {
+      consoleError.mockRestore();
+    }
+  });
+
+  test("censors provider-derived custom errors through generic action console logging", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const marker = "SyntheticActionIdentifier42";
+    const errorOutput: unknown[][] = [];
+    const consoleError = spyOn(console, "error").mockImplementation(
+      (...args: unknown[]) => {
+        errorOutput.push(args);
+      }
+    );
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.censored-email-provider-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new StorageError({
+            message: "Reservation delivery failed",
+            operation: "deliverReservationEmail",
+            cause: new EmailServiceError(
+              marker,
+              new ArbitraryErrorShape(marker),
+              "resend"
+            ),
+          })
+        )
+    );
+
+    try {
+      await expect(action("input")).resolves.toEqual({
+        serverError: "Something went wrong while executing the operation.",
+      });
+      const serialized = JSON.stringify(errorOutput);
+      expect(serialized).not.toContain(marker);
+      expect(serialized).toContain("StorageError");
+      expect(serialized).toContain("EmailServiceError");
+      expect(serialized).toContain("deliverReservationEmail");
+      expect(serialized).not.toContain("resend");
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 
   test("supports stateful form actions explicitly", async () => {

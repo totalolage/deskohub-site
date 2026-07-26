@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
 
 type SendResponse =
   | { readonly data: { readonly id: string }; readonly error?: never }
@@ -67,6 +67,42 @@ const message = {
 };
 
 describe("ResendEmailProvider", () => {
+  test("does not log a dynamic subject or provider message on failure", async () => {
+    const subject = "SyntheticProviderSubject42";
+    const providerMessage = "SyntheticProviderFailure42";
+    const records: unknown[] = [];
+    send = mock<SendImplementation>(async () => ({
+      error: { statusCode: 400, message: providerMessage },
+    }));
+    const logger = Logger.make((options) => {
+      records.push({
+        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+        message: options.message,
+      });
+    });
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider
+          .send({ ...message, subject })
+          .pipe(Effect.result);
+      }).pipe(
+        Effect.provide(
+          ResendEmailProviderLive.pipe(
+            Layer.provide(Layer.succeed(EmailConfigTag, config))
+          )
+        ),
+        Effect.provide(Logger.layer([logger]))
+      )
+    );
+
+    expect(result._tag).toBe("Failure");
+    const serialized = JSON.stringify(records);
+    expect(serialized).not.toContain(subject);
+    expect(serialized).not.toContain(providerMessage);
+  });
+
   test("maps 4xx and invalid errors to EmailServiceError", async () => {
     for (const error of [
       { statusCode: 400, message: "Bad request" },

@@ -8,6 +8,7 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
+  hasUnresolvedProviderAttachmentRecovery,
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
@@ -25,6 +26,7 @@ export class PayableReservationUnavailableError extends Data.TaggedError(
     | "missing_reservation"
     | "not_current"
     | "not_held"
+    | "unresolved_attachment_recovery"
     | "expired"
     | "missing_dotypos_reservation"
     | "dotypos_not_pending";
@@ -83,6 +85,13 @@ export class PayableReservationService extends Context.Service<
 
             if (reservation.reservationState !== "held") {
               return yield* unavailable(input, "not_held");
+            }
+
+            if (hasUnresolvedProviderAttachmentRecovery(reservation)) {
+              return yield* unavailable(
+                input,
+                "unresolved_attachment_recovery"
+              );
             }
 
             if (

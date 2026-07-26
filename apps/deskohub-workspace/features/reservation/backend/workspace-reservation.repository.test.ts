@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
@@ -9,10 +10,25 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import { relations } from "@/db/relations";
 import { workspaceReservations } from "@/db/schema";
 import {
+  getDifferentProviderAttachmentRecovery,
+  getHoldCreationMarker,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
   WorkspaceReservationStateError,
 } from "./workspace-reservation.repository";
+
+const readRepository = () =>
+  Bun.file(
+    new URL("./workspace-reservation.repository.ts", import.meta.url)
+  ).text();
+
+const sliceFrom = (source: string, startNeedle: string, endNeedle: string) => {
+  const start = source.indexOf(startNeedle);
+  const end = source.indexOf(endNeedle, start);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return source.slice(start, end);
+};
 
 const createReservationsTable = sql.raw(`
   create table workspace_reservations (
@@ -66,6 +82,825 @@ const RepositoryTestLive = Layer.merge(
   WorkspaceReservationRepositoryLive.pipe(Layer.provide(DatabaseLive))
 );
 
+describe("WorkspaceReservationRepository", () => {
+  test.each([
+    ["draft", null],
+    ["draft", "hold_creation_pre_provider_retired"],
+    ["creating_hold", "hold_creation_pre_provider:synthetic-retirement-epoch"],
+  ] as const)("atomically retires a prior %s attempt before any provider-boundary claim", async (reservationState, failureCode) => {
+    const row = {
+      id: `synthetic-retirement-${reservationState}`,
+      checkoutAttemptKey: `synthetic-retirement-${reservationState}-attempt`,
+      reservationState,
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      dotyposReservationId: null,
+      failureCode,
+    };
+    const update = () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => ({
+          returning: () =>
+            Effect.sync(() => {
+              const isRetirement =
+                values.failureCode === "hold_creation_pre_provider_retired";
+              const isCreationClaim =
+                values.reservationState === "creating_hold" &&
+                typeof values.failureCode === "string" &&
+                values.failureCode.startsWith("hold_creation_pre_provider:");
+              if (
+                isRetirement &&
+                row.paymentState === "not_started" &&
+                row.activePaymentAttemptId === null &&
+                row.dotyposReservationId === null &&
+                ((row.reservationState === "draft" &&
+                  (row.failureCode === null ||
+                    row.failureCode ===
+                      "hold_creation_pre_provider_retired")) ||
+                  (row.reservationState === "creating_hold" &&
+                    row.failureCode?.startsWith("hold_creation_pre_provider:")))
+              ) {
+                Object.assign(row, values);
+                return [{ id: row.id }];
+              }
+              if (
+                isCreationClaim &&
+                row.reservationState === "draft" &&
+                row.failureCode === null
+              ) {
+                Object.assign(row, values);
+                return [{ id: row.id }];
+              }
+              return [];
+            }),
+        }),
+      }),
+    });
+    const program = Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      const retired = yield* repository.retirePreProviderDraft({
+        id: row.id,
+        checkoutAttemptKey: row.checkoutAttemptKey,
+      });
+      const laterCreationClaim = yield* repository.claimHoldCreation(row.id);
+      return { retired, laterCreationClaim };
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, {
+              db: { update } as never,
+            })
+          )
+        )
+      )
+    );
+
+    const result = await Effect.runPromise(program);
+
+    expect(result).toEqual({
+      retired: true,
+      laterCreationClaim: null,
+    });
+    expect(row).toMatchObject({
+      reservationState: "draft",
+      failureCode: "hold_creation_pre_provider_retired",
+      dotyposReservationId: null,
+    });
+  });
+
+  test("attaches an exact pre-attachment candidate without refreshing its persisted deadline", async () => {
+    const epoch = "synthetic-partial-candidate-epoch";
+    const providerId = "synthetic-partial-candidate-provider";
+    const providerCreatedAt = Temporal.Instant.from("2026-06-01T10:00:00Z");
+    const originalDeadline = Temporal.Instant.from("2026-06-01T10:10:00Z");
+    const row = {
+      id: "synthetic-partial-candidate-reservation",
+      reservationState: "creating_hold",
+      paymentState: "not_started",
+      dotyposReservationId: providerId,
+      reservationCreatedAt: providerCreatedAt,
+      reservationHoldExpiresAt: originalDeadline,
+      failureCode: `hold_creation_candidate:${epoch}:${providerId}:${providerCreatedAt.epochMilliseconds}`,
+    };
+    const update = () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => ({
+          returning: () =>
+            Effect.sync(() => {
+              if (
+                row.reservationState !== "creating_hold" ||
+                row.dotyposReservationId !== providerId ||
+                !row.reservationCreatedAt.equals(providerCreatedAt) ||
+                row.failureCode !==
+                  `hold_creation_candidate:${epoch}:${providerId}:${providerCreatedAt.epochMilliseconds}`
+              ) {
+                return [];
+              }
+              Object.assign(row, {
+                ...values,
+                failureCode:
+                  typeof values.failureCode === "string"
+                    ? values.failureCode
+                    : `hold_creation_candidate:${epoch}:${providerId}:${providerCreatedAt.epochMilliseconds}:${providerCreatedAt.add({ minutes: 2 }).epochMilliseconds}:db`,
+              });
+              return [{ id: row.id }];
+            }),
+        }),
+      }),
+    });
+    const program = Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      yield* repository.attachHold({
+        id: row.id,
+        epoch,
+        dotyposReservationId: providerId,
+        reservationCreatedAt: providerCreatedAt,
+      });
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, {
+              db: { update } as never,
+            })
+          )
+        )
+      )
+    );
+
+    await Effect.runPromise(program);
+
+    expect(row).toMatchObject({
+      reservationState: "held",
+      dotyposReservationId: providerId,
+      reservationHoldExpiresAt: originalDeadline,
+    });
+    expect(row.reservationCreatedAt.equals(providerCreatedAt)).toBe(true);
+    expect(
+      row.failureCode.startsWith(
+        `hold_creation_candidate:${epoch}:${providerId}:${providerCreatedAt.epochMilliseconds}:`
+      )
+    ).toBe(true);
+  });
+
+  test("promotes queue-only exact evidence from a plain compensation marker idempotently", async () => {
+    const epoch = "synthetic-queue-only-epoch";
+    const providerId = "synthetic-queue-only-provider";
+    const createdAt = Temporal.Instant.from("2026-06-01T10:00:00Z");
+    const row = {
+      id: "synthetic-queue-only-reservation",
+      reservationState: "creating_hold",
+      failureCode: `hold_creation_compensating:${epoch}`,
+      dotyposReservationId: null as string | null,
+      reservationCreatedAt: null as Temporal.Instant | null,
+      updatedAt: Temporal.Instant.from("2026-06-01T09:59:00Z"),
+    };
+    const update = () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => ({
+          returning: () =>
+            Effect.sync(() => {
+              if (
+                row.reservationState !== "creating_hold" ||
+                row.failureCode !== `hold_creation_compensating:${epoch}` ||
+                row.dotyposReservationId !== null ||
+                row.reservationCreatedAt !== null
+              ) {
+                return [];
+              }
+              Object.assign(row, values);
+              return [{ id: row.id }];
+            }),
+        }),
+      }),
+    });
+    const select = () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Effect.succeed([{ ...row }]),
+        }),
+      }),
+    });
+    const program = Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      const input = {
+        id: row.id,
+        epoch,
+        dotyposReservationId: providerId,
+        reservationCreatedAt: createdAt,
+        failureCode: "attach_failed_cancel_failed" as const,
+      };
+      yield* repository.markAttachFailedCancellationRequired(input);
+      yield* repository.markAttachFailedCancellationRequired(input);
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, {
+              db: { update, select } as never,
+            })
+          )
+        )
+      )
+    );
+
+    await Effect.runPromise(program);
+
+    expect(row).toMatchObject({
+      reservationState: "cancellation_failed",
+      failureCode: `attach_failed_cancel_failed:${epoch}`,
+      dotyposReservationId: providerId,
+    });
+    expect(row.reservationCreatedAt?.equals(createdAt)).toBe(true);
+  });
+
+  test("composes candidate attachment and exact different-provider recovery through live repository CAS methods", async () => {
+    const epoch = "synthetic-live-composed-epoch";
+    const winnerId = "synthetic-live-composed-winner";
+    const loserId = "synthetic-live-composed-loser";
+    const winnerCreatedAt = Temporal.Instant.from("2026-06-01T10:00:00Z");
+    const loserCreatedAt = Temporal.Instant.from("2026-06-01T10:00:01Z");
+    const ownerId = "synthetic-live-composed-owner";
+    const retryOwnerId = "synthetic-live-composed-retry-owner";
+    const row = {
+      id: "synthetic-live-composed-reservation",
+      reservationState: "creating_hold",
+      paymentState: "not_started",
+      failureCode: `hold_creation_provider_reconciliation:${epoch}`,
+      dotyposReservationId: null as string | null,
+      reservationCreatedAt: null as Temporal.Instant | null,
+    };
+    const update = () => ({
+      set: (values: Record<string, unknown>) => ({
+        where: () => ({
+          returning: () =>
+            Effect.sync(() => {
+              const persistedValues =
+                values.reservationState === "held" &&
+                typeof values.failureCode !== "string"
+                  ? {
+                      ...values,
+                      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${winnerCreatedAt.epochMilliseconds}:${winnerCreatedAt.add({ minutes: 2 }).epochMilliseconds}:db`,
+                    }
+                  : values;
+              const failureCode =
+                typeof persistedValues.failureCode === "string"
+                  ? persistedValues.failureCode
+                  : null;
+              const canRecordCandidate =
+                failureCode?.startsWith(`hold_creation_candidate:${epoch}:`) &&
+                row.reservationState === "creating_hold" &&
+                row.failureCode ===
+                  `hold_creation_provider_reconciliation:${epoch}` &&
+                row.dotyposReservationId === null;
+              const canAttach =
+                values.reservationState === "held" &&
+                failureCode?.startsWith(
+                  `hold_creation_candidate:${epoch}:${winnerId}:`
+                ) &&
+                row.reservationState === "creating_hold" &&
+                row.dotyposReservationId === winnerId;
+              const canRecordLoser =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_recovery:${epoch}:${loserId}:`
+                ) &&
+                row.reservationState === "held" &&
+                row.paymentState === "not_started" &&
+                row.dotyposReservationId === winnerId &&
+                row.failureCode?.startsWith(
+                  `hold_creation_candidate:${epoch}:${winnerId}:`
+                );
+              const canClaimLoser =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_processing:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_recovery:${epoch}:${loserId}:`
+                );
+              const canReleaseLoser =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_recovery:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_processing:${epoch}:${loserId}:`
+                );
+              const canBeginLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_processing:${epoch}:${loserId}:`
+                );
+              const canReleaseLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                );
+              const canClaimLoserVerification =
+                failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_awaiting_visibility:${epoch}:${loserId}:`
+                );
+              const canResolveLoser =
+                failureCode?.startsWith(
+                  `hold_creation_candidate:${epoch}:${winnerId}:`
+                ) &&
+                row.failureCode?.startsWith(
+                  `hold_creation_orphan_verifying:${epoch}:${loserId}:`
+                ) === true;
+              if (
+                !canRecordCandidate &&
+                !canAttach &&
+                !canRecordLoser &&
+                !canClaimLoser &&
+                !canReleaseLoser &&
+                !canBeginLoserVerification &&
+                !canReleaseLoserVerification &&
+                !canClaimLoserVerification &&
+                !canResolveLoser
+              ) {
+                return [];
+              }
+              Object.assign(row, persistedValues);
+              return [{ id: row.id }];
+            }),
+        }),
+      }),
+    });
+    const select = () => ({
+      from: () => ({
+        where: () => ({
+          limit: () => Effect.succeed([{ ...row }]),
+          pipe: (...operations: readonly ((value: unknown) => unknown)[]) =>
+            operations.reduce(
+              (value, operation) => operation(value),
+              Effect.succeed([{ ...row }]) as unknown
+            ),
+        }),
+        pipe: (...operations: readonly ((value: unknown) => unknown)[]) =>
+          operations.reduce(
+            (value, operation) => operation(value),
+            Effect.succeed([{ ...row }]) as unknown
+          ),
+      }),
+    });
+    const program = Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      yield* repository.recordProviderHoldCandidate({
+        id: row.id,
+        epoch,
+        dotyposReservationId: winnerId,
+        reservationCreatedAt: winnerCreatedAt,
+      });
+      yield* repository.attachHold({
+        id: row.id,
+        epoch,
+        dotyposReservationId: winnerId,
+        reservationCreatedAt: winnerCreatedAt,
+      });
+      const attachedCandidate = getHoldCreationMarker(row);
+      if (attachedCandidate?._tag !== "candidate") {
+        return yield* Effect.die("Expected persisted candidate fence.");
+      }
+      const originalStabilizationDeadline =
+        attachedCandidate.stabilizationDeadline;
+      const loserConflict = yield* Effect.result(
+        repository.recordProviderHoldCandidate({
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+        })
+      );
+      const claimed =
+        yield* repository.claimDifferentProviderAttachmentRecovery({
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId,
+          staleBefore: Temporal.Instant.from("2026-06-01T09:55:00Z"),
+        });
+      yield* repository.releaseDifferentProviderAttachmentRecovery({
+        id: row.id,
+        epoch,
+        dotyposReservationId: loserId,
+        reservationCreatedAt: loserCreatedAt,
+        ownerId,
+      });
+      const reclaimed =
+        yield* repository.claimDifferentProviderAttachmentRecovery({
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: retryOwnerId,
+          staleBefore: Temporal.Instant.from("2026-06-01T09:55:00Z"),
+        });
+      yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+        {
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: retryOwnerId,
+        }
+      );
+      yield* repository.releaseDifferentProviderAttachmentRecovery({
+        id: row.id,
+        epoch,
+        dotyposReservationId: loserId,
+        reservationCreatedAt: loserCreatedAt,
+        ownerId: retryOwnerId,
+      });
+      const verificationReclaimed =
+        yield* repository.claimDifferentProviderAttachmentRecovery({
+          id: row.id,
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: retryOwnerId,
+          staleBefore: Temporal.Instant.from("2026-06-01T09:55:00Z"),
+        });
+      yield* repository.completeDifferentProviderAttachmentRecovery({
+        id: row.id,
+        epoch,
+        dotyposReservationId: loserId,
+        reservationCreatedAt: loserCreatedAt,
+        ownerId: retryOwnerId,
+      });
+      return {
+        loserConflict,
+        claimed,
+        reclaimed,
+        verificationReclaimed,
+        originalStabilizationDeadline,
+      };
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, {
+              db: { update, select } as never,
+            })
+          )
+        )
+      )
+    );
+
+    const result = await Effect.runPromise(program);
+
+    expect(result.loserConflict._tag).toBe("Failure");
+    expect(result.claimed).toBe(true);
+    expect(result.reclaimed).toBe(true);
+    expect(result.verificationReclaimed).toBe(true);
+    expect(row).toMatchObject({
+      reservationState: "held",
+      dotyposReservationId: winnerId,
+    });
+    const candidate = getHoldCreationMarker(row);
+    expect(candidate).toMatchObject({
+      _tag: "candidate",
+      epoch,
+      dotyposReservationId: winnerId,
+    });
+    expect(
+      candidate?._tag === "candidate" && candidate.stabilizationDeadline
+    ).toEqual(result.originalStabilizationDeadline);
+    expect(row.reservationCreatedAt?.equals(winnerCreatedAt)).toBe(true);
+  });
+
+  test("bounds repeated insert conflicts whose session occupant disappears before relookup", async () => {
+    let insertAttempts = 0;
+    const db = {
+      insert: () => ({
+        values: () => ({
+          onConflictDoNothing: () => ({
+            returning: () =>
+              Effect.sync(() => {
+                insertAttempts += 1;
+                return [];
+              }),
+          }),
+        }),
+      }),
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: () => Effect.succeed([]),
+            orderBy: () => ({
+              limit: () => Effect.succeed([]),
+            }),
+          }),
+        }),
+      }),
+    };
+    const acquisition = await Effect.gen(function* () {
+      const repository = yield* WorkspaceReservationRepository;
+      return yield* repository.acquireDraft({
+        checkoutSessionKey: "synthetic-disappearing-session",
+        checkoutAttemptKey: "synthetic-disappearing-attempt",
+        dotyposCustomerId: "synthetic-customer",
+        customerAccessCode: "synthetic-code",
+        reservationDetails: {
+          kind: "cowork",
+          date: "2026-06-01",
+          entry: "basic",
+        },
+        locale: "en",
+      });
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(
+            Layer.succeed(WorkspaceDatabase, {
+              db: db as never,
+            })
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(acquisition._tag).toBe("conflict_unresolved");
+    expect(insertAttempts).toBe(3);
+  }, 1000);
+
+  test("keeps superseded rows immutable while replacing them atomically", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "completeSupersessionAndCreateDraft: Effect.fn(",
+      "      markCancellationFailed: Effect.fn("
+    );
+
+    expect(section).toContain("db.transaction(");
+    expect(section).toContain(".update(workspaceReservations)");
+    expect(section).toContain(".insert(workspaceReservations)");
+    expect(section.indexOf(".update(workspaceReservations)")).toBeLessThan(
+      section.indexOf(".insert(workspaceReservations)")
+    );
+    expect(
+      section.slice(
+        section.indexOf(".update(workspaceReservations)"),
+        section.indexOf(".insert(workspaceReservations)")
+      )
+    ).not.toContain("reservationDetails");
+  });
+
+  test("makes provider entry one-way and releases only after confirmed compensation", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      'claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")',
+      'attachHold: Effect.fn("workspaceReservations.attachHold")'
+    );
+
+    expect(source).toContain("preProviderHoldCreationMarker");
+    expect(source).toContain("providerHoldCreationReconciliationMarker");
+    expect(section).toContain(
+      "failureCode: preProviderHoldCreationMarker(epoch)"
+    );
+    expect(section).toContain("beginProviderHoldCreation");
+    expect(section).toContain(
+      "failureCode: providerHoldCreationReconciliationMarker(input.epoch)"
+    );
+    expect(section).toContain("reclaimPreProviderHoldCreation");
+    expect(section).toContain("reclaimStalePreProviderHoldCreation");
+    expect(section).toContain("providerHoldCreationRecoveryMarker");
+    expect(section).toContain("providerHoldCreationCompensationMarker");
+    expect(section).toContain("releaseHoldCreation");
+    expect(section).toContain('reservationState: "draft"');
+    expect(section).toContain("failureCode: null");
+    expect(section).toContain("dotyposReservationId");
+    expect(section).toContain("input.epoch");
+    expect(section).toContain("isAlreadyReleased");
+    expect(source).toContain("loadSameAttachedHold");
+    expect(source).toContain("recordProviderHoldCandidate: Effect.fn(");
+    expect(source).toContain("providerHoldCreationCandidateMarker(");
+    expect(source).toContain(
+      "providerHoldCreationCandidateCompensationMarker("
+    );
+    expect(source).toContain("reservationCreatedAt.epochMilliseconds");
+    expect(source).toContain(
+      "reservation.dotyposReservationId === dotyposReservationId"
+    );
+    expect(source).toContain('marker?._tag === "candidate"');
+    expect(source).toContain("providerHoldCreationAttachedMarker(input.epoch)");
+    expect(source).toContain(
+      "providerHoldCreationCandidateCompensationMarker("
+    );
+    const handoff = sliceFrom(
+      source,
+      "markAttachFailedCancellationRequired: Effect.fn(",
+      "recordDifferentProviderAttachmentRecovery: Effect.fn("
+    );
+    expect(handoff).toContain(
+      "providerHoldCreationCandidateCompensationMarker("
+    );
+    expect(handoff).toContain('"cancellation_failed"');
+    expect(handoff).toContain("input.reservationCreatedAt");
+    expect(handoff).toContain("existing.dotyposReservationId");
+    const attachCancellationRecovery = sliceFrom(
+      source,
+      "export const getAttachCancellationRecovery = (",
+      "export interface WorkspaceReservationRepository"
+    );
+    for (const state of [
+      "cancellation_failed",
+      "cancelling",
+      "cancellation_claimed",
+      "cancelled",
+    ]) {
+      expect(attachCancellationRecovery).toContain(`"${state}"`);
+    }
+    const conflictRecovery = sliceFrom(
+      source,
+      "recordDifferentProviderAttachmentRecovery: Effect.fn(",
+      'claimCancellation: Effect.fn("workspaceReservations.claimCancellation")'
+    );
+    expect(conflictRecovery).toContain(
+      "providerHoldCreationAttachedMarker(input.epoch)"
+    );
+    expect(conflictRecovery).toContain("getProviderHoldCandidateFence");
+    expect(conflictRecovery).toContain(
+      "providerHoldCreationOrphanRecoveryMarker"
+    );
+    expect(conflictRecovery).toContain(
+      "completeDifferentProviderAttachmentRecovery"
+    );
+    expect(conflictRecovery).toContain(
+      "claimDifferentProviderAttachmentRecovery"
+    );
+    expect(conflictRecovery).toContain(
+      "releaseDifferentProviderAttachmentRecovery"
+    );
+    expect(conflictRecovery).toContain(
+      "providerHoldCreationOrphanProcessingMarker"
+    );
+    expect(conflictRecovery).toContain(
+      "providerHoldCreationAttachedMarker(input.epoch)"
+    );
+  });
+
+  test("canonicalizes provider identities before draft and attachment persistence", async () => {
+    const source = await readRepository();
+    const acquisition = sliceFrom(
+      source,
+      'acquireDraft: Effect.fn("workspaceReservations.acquireDraft")',
+      "      findById,"
+    );
+    const attachment = sliceFrom(
+      source,
+      'attachHold: Effect.fn("workspaceReservations.attachHold")',
+      "      markAttachFailedCancellationRequired: Effect.fn("
+    );
+
+    expect(source).toContain("requireCanonicalProviderId");
+    expect(acquisition).toContain("const dotyposCustomerId = yield*");
+    expect(acquisition).toContain("dotyposCustomerId,");
+    expect(attachment).toContain("const dotyposReservationId = yield*");
+    expect(attachment).toContain("dotyposReservationId,");
+    expect(attachment).not.toContain(
+      "reservationHoldExpiresAt: input.reservationHoldExpiresAt"
+    );
+  });
+
+  test("blocks cancellation and cleanup mutations while loser recovery is unresolved", async () => {
+    const source = await readRepository();
+    const cancellation = sliceFrom(
+      source,
+      'claimCancellation: Effect.fn("workspaceReservations.claimCancellation")',
+      "      markCancelled: Effect.fn("
+    );
+    const skippedCleanup = sliceFrom(
+      source,
+      "recordHoldCleanupSkipped: Effect.fn(",
+      'markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")'
+    );
+
+    expect(cancellation).toContain("hasNoUnresolvedProviderAttachmentRecovery");
+    expect(skippedCleanup).toContain(
+      "hasNoUnresolvedProviderAttachmentRecovery"
+    );
+  });
+
+  test("keeps attachment non-payable until stale exact recovery finalizes it", async () => {
+    const source = await readRepository();
+    const attachment = sliceFrom(
+      source,
+      'attachHold: Effect.fn("workspaceReservations.attachHold")',
+      "      markAttachFailedCancellationRequired: Effect.fn("
+    );
+    const recoverySelection = sliceFrom(
+      source,
+      "selectPendingProviderAttachmentRecoveries: Effect.fn(",
+      "      selectCancellationCandidates: Effect.fn("
+    );
+
+    expect(attachment).toContain("providerHoldCandidateStabilizationSeconds");
+    expect(attachment).toContain("updatedAt: sql`clock_timestamp()`");
+    expect(attachment).toContain("completeProviderHoldCandidate");
+    expect(attachment).toContain(
+      "failureCode: providerHoldCreationAttachedMarker(input.epoch)"
+    );
+    expect(attachment).toContain(
+      'eq(workspaceReservations.paymentState, "not_started")'
+    );
+    expect(attachment).toContain(
+      "extract(epoch from clock_timestamp()) * 1000"
+    );
+    expect(recoverySelection).toContain("hold_creation_candidate:%");
+    expect(recoverySelection).toContain(
+      "hold_creation_candidate_compensating:%"
+    );
+    expect(recoverySelection).toContain("hold_creation_orphan_recovery:%");
+    expect(recoverySelection).toContain("hold_creation_orphan_processing:%");
+    expect(recoverySelection).toContain(
+      "hold_creation_orphan_awaiting_visibility:%"
+    );
+    expect(recoverySelection).toContain("hold_creation_orphan_verifying:%");
+    expect(recoverySelection).toContain(
+      "lte(workspaceReservations.updatedAt, input.staleBefore)"
+    );
+  });
+
+  test("selects expired holds in a deterministic starvation-safe limited order", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "      selectCancellationCandidates: Effect.fn(",
+      "      selectExpiredHoldDotyposReservationIds: Effect.fn("
+    );
+
+    expect(source).toContain("readonly limit: number");
+    expect(section).toContain(
+      'eq(workspaceReservations.reservationState, "held")'
+    );
+    expect(section).toContain("workspaceReservations.paymentState");
+    expect(section).toContain("<> 'paid'");
+    expect(section).toContain(".orderBy(");
+    expect(section).toContain("coalesce(");
+    expect(section).toContain("workspaceReservations.reservationHoldExpiredAt");
+    expect(section).toContain(
+      "asc(workspaceReservations.reservationHoldExpiresAt)"
+    );
+    expect(section).toContain("asc(workspaceReservations.id)");
+    expect(section.indexOf(".orderBy(")).toBeLessThan(
+      section.indexOf(".limit(input.limit)")
+    );
+  });
+
+  test("records skipped cleanup attempts without changing reservation state", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "recordHoldCleanupSkipped: Effect.fn(",
+      'markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")'
+    );
+
+    expect(section).toContain(
+      `reservationHoldExpiredAt: sql\`coalesce(\${workspaceReservations.reservationHoldExpiredAt}, clock_timestamp())\``
+    );
+    expect(section).toContain("failureCode: input.failureCode");
+    expect(section).toContain(
+      'eq(workspaceReservations.reservationState, "held")'
+    );
+    expect(section).toContain("workspaceReservations.paymentState");
+    expect(section).toContain("<> 'paid'");
+    expect(section).not.toContain("reservationState:");
+  });
+
+  test("selects expired local Dotypos holds for availability filtering", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "selectExpiredHoldDotyposReservationIds: Effect.fn(",
+      "      }),\n    });"
+    );
+
+    expect(section).toContain("dotyposReservationId");
+    expect(section).toContain(
+      'eq(workspaceReservations.reservationState, "held")'
+    );
+    expect(section).toContain("inArray(workspaceReservations.paymentState");
+    expect(section).toContain('"not_started"');
+    expect(section).toContain('"failed"');
+    expect(section).toContain('"cancelled"');
+    expect(section).toContain('"expired"');
+    expect(section).not.toContain('"pending"');
+    expect(section).toContain("dotyposReservationId} is not null");
+    expect(section).toContain(
+      "workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()"
+    );
+  });
+});
+
 const runRepositoryTest = <A, E>(
   effect: Effect.Effect<
     A,
@@ -111,7 +946,334 @@ const reservationRow = (
   ...overrides,
 });
 
+describe("WorkspaceReservationRepository different-provider ownership", () => {
+  test("enforces the exact owner and timestamp through the real verification CAS", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-real-verification-epoch";
+        const winnerId = "synthetic-real-verification-winner";
+        const loserId = "synthetic-real-verification-loser";
+        const loserCreatedAt = instant("2026-07-23T09:00:00Z");
+        const wrongCreatedAt = loserCreatedAt.add({ milliseconds: 1 });
+        const ownerId = "synthetic-real-verification-owner";
+        const processingMarker = `hold_creation_orphan_processing:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${ownerId}`;
+        yield* db.insert(workspaceReservations).values(
+          reservationRow("real-verification-cas", {
+            dotyposReservationId: winnerId,
+            reservationCreatedAt: instant("2026-07-23T08:59:00Z"),
+            failureCode: processingMarker,
+          })
+        );
+        const beginInput = {
+          id: "real-verification-cas",
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId,
+        };
+
+        expect(
+          yield* Effect.flip(
+            repository.beginDifferentProviderAttachmentCancellationVerification(
+              {
+                ...beginInput,
+                ownerId: "synthetic-wrong-owner",
+              }
+            )
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(
+          yield* Effect.flip(
+            repository.beginDifferentProviderAttachmentCancellationVerification(
+              {
+                ...beginInput,
+                reservationCreatedAt: wrongCreatedAt,
+              }
+            )
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        const [beforeExactBegin] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(beforeExactBegin?.failureCode).toBe(processingMarker);
+
+        yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+          beginInput
+        );
+        yield* repository.beginDifferentProviderAttachmentCancellationVerification(
+          beginInput
+        );
+        const verifyingMarker = `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${ownerId}`;
+        const [afterExactBegin] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(afterExactBegin?.failureCode).toBe(verifyingMarker);
+
+        expect(
+          yield* Effect.flip(
+            repository.releaseDifferentProviderAttachmentRecovery({
+              ...beginInput,
+              ownerId: "synthetic-wrong-owner",
+            })
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        expect(
+          yield* Effect.flip(
+            repository.completeDifferentProviderAttachmentRecovery({
+              ...beginInput,
+              reservationCreatedAt: wrongCreatedAt,
+            })
+          )
+        ).toBeInstanceOf(WorkspaceReservationStateError);
+        const [afterRejectedMutations] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, beginInput.id));
+        expect(afterRejectedMutations?.failureCode).toBe(verifyingMarker);
+        expect(afterRejectedMutations?.dotyposReservationId).toBe(winnerId);
+        expect(afterRejectedMutations?.paymentState).toBe("not_started");
+      })
+    );
+  });
+
+  test("takes over the real verifying CAS only at the inclusive stale boundary", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-real-takeover-epoch";
+        const winnerId = "synthetic-real-takeover-winner";
+        const loserId = "synthetic-real-takeover-loser";
+        const loserCreatedAt = instant("2026-07-23T09:00:00Z");
+        const staleBoundary = instant("2026-07-23T10:00:00Z");
+        const originalOwnerId = "synthetic-real-takeover-owner";
+        const newOwnerId = "synthetic-real-takeover-new-owner";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow("real-verification-takeover", {
+            dotyposReservationId: winnerId,
+            reservationCreatedAt: instant("2026-07-23T08:59:00Z"),
+            failureCode: `hold_creation_orphan_verifying:${epoch}:${loserId}:${loserCreatedAt.epochMilliseconds}:${originalOwnerId}`,
+            updatedAt: staleBoundary,
+          })
+        );
+        const claimInput = {
+          id: "real-verification-takeover",
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: newOwnerId,
+        };
+
+        expect(
+          yield* repository.claimDifferentProviderAttachmentRecovery({
+            ...claimInput,
+            staleBefore: staleBoundary.subtract({ milliseconds: 1 }),
+          })
+        ).toBe(false);
+        expect(
+          yield* repository.claimDifferentProviderAttachmentRecovery({
+            ...claimInput,
+            staleBefore: staleBoundary,
+          })
+        ).toBe(true);
+
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, claimInput.id));
+        expect(
+          stored && getDifferentProviderAttachmentRecovery(stored)
+        ).toMatchObject({
+          epoch,
+          dotyposReservationId: loserId,
+          reservationCreatedAt: loserCreatedAt,
+          ownerId: newOwnerId,
+          phase: "verifying",
+        });
+        expect(stored?.dotyposReservationId).toBe(winnerId);
+        expect(stored?.paymentState).toBe("not_started");
+      })
+    );
+  });
+});
+
 describe("WorkspaceReservationRepository cancellation ownership", () => {
+  test("persists an attached candidate fence derived from the database clock", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-db-derived-fence-epoch";
+        const providerId = "synthetic-db-derived-fence-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const id = "db-derived-fence-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "creating_hold",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}`,
+            updatedAt: instant("2099-01-01T00:00:00Z"),
+          })
+        );
+
+        yield* repository.attachHold({
+          id,
+          epoch,
+          dotyposReservationId: providerId,
+          reservationCreatedAt: createdAt,
+        });
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+        const marker = stored && getHoldCreationMarker(stored);
+
+        expect(stored?.failureCode).toEndWith(":db");
+        expect(marker?._tag).toBe("candidate");
+        if (marker?._tag !== "candidate" || !marker.stabilizationDeadline) {
+          return yield* Effect.die(
+            "Expected a database-derived candidate stabilization deadline."
+          );
+        }
+        const fenceDurationMilliseconds =
+          marker.stabilizationDeadline.epochMilliseconds -
+          stored.updatedAt.epochMilliseconds;
+        expect(fenceDurationMilliseconds).toBeGreaterThanOrEqual(119_000);
+        expect(fenceDurationMilliseconds).toBeLessThanOrEqual(121_000);
+        expect(
+          (yield* repository
+            .completeProviderHoldCandidate({
+              id,
+              epoch,
+              dotyposReservationId: providerId,
+              reservationCreatedAt: createdAt,
+            })
+            .pipe(Effect.result))._tag
+        ).toBe("Failure");
+      })
+    );
+  });
+
+  test("does not clear a fresh provider candidate when the process clock is ahead of the database", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-db-fence-epoch";
+        const providerId = "synthetic-db-fence-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const processDeadline = instant("2026-07-23T09:02:00Z");
+        const id = "fresh-db-fenced-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:${processDeadline.epochMilliseconds}`,
+            updatedAt: sql`now()`,
+          })
+        );
+
+        const completion = yield* repository
+          .completeProviderHoldCandidate({
+            id,
+            epoch,
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+          })
+          .pipe(Effect.result);
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(completion._tag).toBe("Failure");
+        expect(stored?.failureCode).toStartWith(
+          `hold_creation_candidate:${epoch}:`
+        );
+      })
+    );
+  });
+
+  test("does not select or claim a hold whose database deadline is future when the process clock is ahead", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "database-future-hold";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationHoldExpiresAt: sql`now() + interval '5 minutes'`,
+          })
+        );
+        const processNow = instant("2099-01-01T00:00:00Z");
+
+        const candidates = yield* repository.selectCancellationCandidates({
+          now: processNow,
+          limit: 25,
+        });
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "synthetic-ahead-process-worker",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: processNow,
+        });
+
+        expect(candidates.map((candidate) => candidate.id)).not.toContain(id);
+        expect(claimed).toBeNull();
+      })
+    );
+  });
+
+  test("allows one database-due candidate transition under concurrent clear delivery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const epoch = "synthetic-concurrent-clear-epoch";
+        const providerId = "synthetic-concurrent-clear-provider";
+        const createdAt = instant("2026-07-23T09:00:00Z");
+        const id = "concurrent-db-due-candidate";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            dotyposReservationId: providerId,
+            reservationCreatedAt: createdAt,
+            failureCode: `hold_creation_candidate:${epoch}:${providerId}:${createdAt.epochMilliseconds}:0:db`,
+            updatedAt: sql`now()`,
+          })
+        );
+        const complete = () =>
+          repository
+            .completeProviderHoldCandidate({
+              id,
+              epoch,
+              dotyposReservationId: providerId,
+              reservationCreatedAt: createdAt,
+            })
+            .pipe(Effect.result);
+
+        const completions = yield* Effect.all([complete(), complete()], {
+          concurrency: "unbounded",
+        });
+        const [stored] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(completions.map(({ _tag }) => _tag)).toEqual([
+          "Success",
+          "Success",
+        ]);
+        expect(stored?.failureCode).toBe(`hold_creation_attached:${epoch}`);
+        expect(stored?.paymentState).toBe("not_started");
+      })
+    );
+  });
+
   test("allows exactly one competing owner to win a cancellation CAS", async () => {
     await runRepositoryTest(
       Effect.gen(function* () {
@@ -140,7 +1302,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .select()
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "owned"));
-        expect(stored?.reservationState).toBe("cancelling");
+        expect(stored?.reservationState).toBe("cancellation_claimed");
         expect(["worker-a", "worker-b"]).toContain(
           stored?.cancellationClaimOwner
         );
@@ -190,7 +1352,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .select()
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "lost"));
-        expect(stored?.reservationState).toBe("cancelling");
+        expect(stored?.reservationState).toBe("cancellation_claimed");
         expect(stored?.cancellationClaimOwner).toBe("worker-b");
       })
     );
@@ -203,12 +1365,12 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
         const repository = yield* WorkspaceReservationRepository;
         yield* db.insert(workspaceReservations).values([
           reservationRow("fresh", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
           }),
           reservationRow("boundary", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
           }),
@@ -430,7 +1592,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           recoveryReason: "attachment_compensation",
         });
         expect(claimed).toMatchObject({
-          reservationState: "cancelling",
+          reservationState: "cancellation_claimed",
           cancellationClaimOwner: "compensation-worker",
         });
         expect(
@@ -441,6 +1603,336 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, "attachment"));
         expect(owned?.cancellationClaimOwner).toBe("compensation-worker");
+      })
+    );
+  });
+
+  test("legacy attachment handoff cannot revive matching manual-review recovery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "legacy-manual-review-attachment";
+        const providerId = "legacy-manual-review-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        const failureCode = "attach_failed_cancellation_required";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "manual_review",
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode,
+          })
+        );
+
+        expect(
+          yield* repository.recordAttachmentCancellationHandoff({
+            id,
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            failureCode,
+          })
+        ).toBeNull();
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            retryAt: workspaceReservations.cancellationRetryAt,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "manual_review",
+          retryAt: null,
+          failureCode,
+        });
+      })
+    );
+  });
+
+  test("stale takeover and provider retry failure preserve exact attachment epoch evidence", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "stale-exact-attachment-recovery";
+        const epoch = "synthetic-stale-attachment-epoch";
+        const exactFailureCode = `attach_failed_cancel_failed:${epoch}`;
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_claimed",
+            dotyposReservationId: "synthetic-stale-attachment-provider",
+            reservationCreatedAt: instant("2026-07-23T09:00:00Z"),
+            cancellationClaimOwner: "interrupted-attachment-worker",
+            cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: exactFailureCode,
+          })
+        );
+        yield* db.execute(
+          sql.raw(`
+          update workspace_reservations
+          set cancellation_claimed_at = now() - interval '5 minutes'
+          where id = 'stale-exact-attachment-recovery'
+        `)
+        );
+
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "daily-stale-recovery-worker",
+          recoveryReason: "stale_claim_recovery",
+        });
+        expect(claimed).toMatchObject({
+          reservationState: "cancellation_claimed",
+          cancellationClaimOwner: "daily-stale-recovery-worker",
+          cancellationRecoveryReason: "stale_claim_recovery",
+          failureCode: exactFailureCode,
+        });
+
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "daily-stale-recovery-worker",
+          disposition: "retryable",
+          recoveryReason: "stale_claim_recovery",
+          failureCode: "dotypos_cancellation_status_read_failed",
+        });
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            recoveryReason: workspaceReservations.cancellationRecoveryReason,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "retryable",
+          recoveryReason: "stale_claim_recovery",
+          failureCode: exactFailureCode,
+        });
+      })
+    );
+  });
+
+  test("does not replace a different exact epoch or revive manual-review attachment recovery", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const providerId = "synthetic-shared-attachment-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        yield* db.insert(workspaceReservations).values([
+          reservationRow("different-exact-epoch", {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "attach_failed_cancel_failed:synthetic-current-epoch",
+          }),
+          reservationRow("manual-review-attachment", {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "manual_review",
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "dotypos_reservation_status_not_cancellable",
+          }),
+        ]);
+        const attemptRecovery = (id: string) =>
+          repository
+            .markAttachFailedCancellationRequired({
+              id,
+              epoch: "synthetic-delayed-epoch",
+              dotyposReservationId: providerId,
+              reservationCreatedAt: providerCreatedAt,
+              failureCode: "attach_failed_cancel_failed",
+            })
+            .pipe(Effect.result);
+
+        const [differentEpoch, manualReview] = yield* Effect.all([
+          attemptRecovery("different-exact-epoch"),
+          attemptRecovery("manual-review-attachment"),
+        ]);
+        const stored = yield* db
+          .select({
+            id: workspaceReservations.id,
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .orderBy(workspaceReservations.id);
+
+        expect(differentEpoch._tag).toBe("Failure");
+        expect(manualReview._tag).toBe("Failure");
+        expect(stored).toEqual([
+          {
+            id: "different-exact-epoch",
+            disposition: "retryable",
+            failureCode: "attach_failed_cancel_failed:synthetic-current-epoch",
+          },
+          {
+            id: "manual-review-attachment",
+            disposition: "manual_review",
+            failureCode: "dotypos_reservation_status_not_cancellable",
+          },
+        ]);
+      })
+    );
+  });
+
+  test("restores only recognized retryable generic attachment failure and keeps its exact epoch through retry", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "legacy-generic-attachment-failure";
+        const epoch = "synthetic-restored-exact-epoch";
+        const providerId = "synthetic-restored-exact-provider";
+        const providerCreatedAt = instant("2026-07-23T09:00:00Z");
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            reservationState: "cancellation_failed",
+            dotyposReservationId: providerId,
+            reservationCreatedAt: providerCreatedAt,
+            cancellationFailureDisposition: "retryable",
+            cancellationRetryAt: instant("2026-07-23T10:00:00Z"),
+            cancellationRecoveryReason: "attachment_compensation",
+            failureCode: "dotypos_cancel_failed",
+          })
+        );
+
+        yield* repository.markAttachFailedCancellationRequired({
+          id,
+          epoch,
+          dotyposReservationId: providerId,
+          reservationCreatedAt: providerCreatedAt,
+          failureCode: "attach_failed_cancel_failed",
+        });
+        const claimed = yield* repository.claimCancellation({
+          id,
+          ownerId: "synthetic-restored-owner",
+          recoveryReason: "attachment_compensation",
+        });
+        expect(claimed?.failureCode).toBe(
+          `attach_failed_cancel_failed:${epoch}`
+        );
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "synthetic-restored-owner",
+          disposition: "retryable",
+          recoveryReason: "attachment_compensation",
+          failureCode: "dotypos_cancellation_status_read_failed",
+        });
+        const [stored] = yield* db
+          .select({
+            disposition: workspaceReservations.cancellationFailureDisposition,
+            failureCode: workspaceReservations.failureCode,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(stored).toEqual({
+          disposition: "retryable",
+          failureCode: `attach_failed_cancel_failed:${epoch}`,
+        });
+      })
+    );
+  });
+
+  test("preserves the first database expiry observation through cancellation retry", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "immutable-expiry-retry";
+        yield* db.insert(workspaceReservations).values(reservationRow(id));
+
+        const firstClaim = yield* repository.claimCancellation({
+          id,
+          ownerId: "first-expiry-owner",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+        });
+        expect(firstClaim?.reservationHoldExpiredAt).not.toBeNull();
+        yield* repository.markCancellationFailed({
+          id,
+          ownerId: "first-expiry-owner",
+          disposition: "retryable",
+          recoveryReason: "hold_expired",
+          failureCode: "dotypos_cancel_failed",
+        });
+        yield* db
+          .update(workspaceReservations)
+          .set({ cancellationRetryAt: sql`now() - interval '1 minute'` })
+          .where(eq(workspaceReservations.id, id));
+        yield* Effect.sleep("5 millis");
+
+        const retryClaim = yield* repository.claimCancellation({
+          id,
+          ownerId: "retry-expiry-owner",
+          recoveryReason: "hold_expired",
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+        });
+
+        expect(
+          retryClaim?.reservationHoldExpiredAt?.equals(
+            firstClaim?.reservationHoldExpiredAt as Temporal.Instant
+          )
+        ).toBe(true);
+      })
+    );
+  });
+
+  test("preserves the first database expiry observation across pending-payment cleanup skips", async () => {
+    await runRepositoryTest(
+      Effect.gen(function* () {
+        const { db } = yield* WorkspaceDatabase;
+        const repository = yield* WorkspaceReservationRepository;
+        const id = "immutable-expiry-skip";
+        yield* db.insert(workspaceReservations).values(
+          reservationRow(id, {
+            paymentState: "pending",
+            activePaymentAttemptId: "synthetic-pending-attempt",
+          })
+        );
+
+        yield* repository.recordHoldCleanupSkipped({
+          id,
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+          failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        });
+        const [first] = yield* db
+          .select({
+            reservationHoldExpiredAt:
+              workspaceReservations.reservationHoldExpiredAt,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+        expect(first?.reservationHoldExpiredAt).not.toBeNull();
+        yield* Effect.sleep("5 millis");
+        yield* repository.recordHoldCleanupSkipped({
+          id,
+          holdExpiredAt: instant("2099-01-01T00:00:00Z"),
+          failureCode: "payment_outcome_unconfirmed_before_cleanup",
+        });
+        const [second] = yield* db
+          .select({
+            reservationHoldExpiredAt:
+              workspaceReservations.reservationHoldExpiredAt,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id));
+
+        expect(
+          second?.reservationHoldExpiredAt?.equals(
+            first?.reservationHoldExpiredAt as Temporal.Instant
+          )
+        ).toBe(true);
       })
     );
   });
@@ -465,7 +1957,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
             cancellationRecoveryReason: "supersession_recovery",
           }),
           reservationRow("stale-audit", {
-            reservationState: "cancelling",
+            reservationState: "cancellation_claimed",
             cancellationClaimOwner: "old-owner",
             cancellationClaimedAt: instant("2026-07-23T09:00:00Z"),
             cancellationRecoveryReason: "attachment_compensation",
@@ -478,7 +1970,7 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           })
           .where(eq(workspaceReservations.id, "stale-audit"));
 
-        const holdExpiredAt = instant("2026-07-23T11:00:00Z");
+        const holdExpiredAt = instant("2099-01-01T00:00:00Z");
         expect(
           yield* repository.claimCancellation({
             id: "expired-audit",
@@ -519,17 +2011,16 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
           })
           .from(workspaceReservations)
           .orderBy(workspaceReservations.id);
-        expect(
-          rows.map((row) => ({
-            id: row.id,
-            reason: row.cancellationRecoveryReason,
-            expired: row.reservationHoldExpiredAt?.toString() ?? null,
-          }))
-        ).toEqual([
+        const summarizedRows = rows.map((row) => ({
+          id: row.id,
+          reason: row.cancellationRecoveryReason,
+          expired: row.reservationHoldExpiredAt?.toString() ?? null,
+        }));
+        expect(summarizedRows).toEqual([
           {
             id: "expired-audit",
             reason: "hold_expired",
-            expired: holdExpiredAt.toString(),
+            expired: summarizedRows[0]?.expired,
           },
           {
             id: "retry-audit",
@@ -547,6 +2038,8 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
             expired: null,
           },
         ]);
+        expect(summarizedRows[0]?.expired).not.toBeNull();
+        expect(summarizedRows[0]?.expired).not.toBe(holdExpiredAt.toString());
       })
     );
   });

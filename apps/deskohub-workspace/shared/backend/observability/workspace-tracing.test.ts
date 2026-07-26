@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { context } from "@opentelemetry/api";
+import { EmailServiceError } from "@deskohub/email";
+import { context, SpanStatusCode } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
 import {
   InMemoryLogRecordExporter,
@@ -13,6 +14,7 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import * as Effect from "effect/Effect";
 import * as Logger from "effect/Logger";
+import { StorageError } from "@/shared/backend/errors";
 import { createCensoredOtelLogger } from "../logging/censorship";
 import { createWorkspaceTracingLive } from "./workspace-tracing";
 
@@ -66,6 +68,53 @@ describe("createWorkspaceTracingLive", () => {
       context.disable();
       contextManager.disable();
       await Promise.all([tracerProvider.shutdown(), loggerProvider.shutdown()]);
+    }
+  });
+
+  test("does not export provider-derived failure details on spans", async () => {
+    const marker = "synthetic-provider-marker";
+    const nestedMarker = "synthetic-cause-marker";
+    const identifier = "synthetic-reservation-id";
+    const spanExporter = new InMemorySpanExporter();
+    const tracerProvider = new BasicTracerProvider({
+      spanProcessors: [new SimpleSpanProcessor(spanExporter)],
+    });
+    const contextManager = new AsyncLocalStorageContextManager().enable();
+    context.setGlobalContextManager(contextManager);
+    const providerError = new StorageError({
+      message: marker,
+      operation: identifier,
+      cause: new EmailServiceError(marker, new Error(nestedMarker), identifier),
+    });
+
+    try {
+      await Effect.runPromiseExit(
+        Effect.fail(providerError).pipe(
+          Effect.withSpan("email.send"),
+          Effect.provide(createWorkspaceTracingLive(tracerProvider))
+        )
+      );
+
+      const [failedSpan] = spanExporter.getFinishedSpans();
+      const exportedFailure = {
+        attributes: failedSpan?.attributes,
+        events: failedSpan?.events,
+        status: failedSpan?.status,
+      };
+      const serialized = JSON.stringify(exportedFailure);
+
+      expect(failedSpan?.status).toEqual({ code: SpanStatusCode.ERROR });
+      expect(failedSpan?.events).toHaveLength(1);
+      expect(failedSpan?.events[0]?.attributes).toEqual({
+        "exception.type": "Error",
+      });
+      expect(serialized).not.toContain(marker);
+      expect(serialized).not.toContain(nestedMarker);
+      expect(serialized).not.toContain(identifier);
+    } finally {
+      context.disable();
+      contextManager.disable();
+      await tracerProvider.shutdown();
     }
   });
 });

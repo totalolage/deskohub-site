@@ -20,16 +20,22 @@ import {
 
 interface IDotyposAccessToken {
   readonly get: Effect.Effect<string, ExternalAPIError | NetworkError>;
+  readonly prepare: (
+    minimumValidityMs: number
+  ) => Effect.Effect<AccessTokenLease, ExternalAPIError | NetworkError>;
 }
 
 interface IDotyposGeneratedClient {
   readonly client: DotyposClient;
+  readonly clientForAccessToken: (accessToken: string) => DotyposClient;
 }
 
 type AccessTokenCache = {
   readonly token: string;
   readonly expiresAt: number;
 };
+
+export type AccessTokenLease = AccessTokenCache;
 
 type GeneratedClientError = {
   readonly response: HttpClientResponse.HttpClientResponse;
@@ -67,32 +73,37 @@ export class DotyposAccessToken extends Context.Service<
       const httpClient = yield* HttpClient.HttpClient;
       const client = makeDotyposClient({ config, httpClient });
       const tokenCache = yield* Ref.make<AccessTokenCache | null>(null);
-      const get = Effect.gen(function* () {
-        const cached = yield* Ref.get(tokenCache);
-        const now = Date.now();
-        if (cached && now < cached.expiresAt) return cached.token;
+      const prepare = (minimumValidityMs: number) =>
+        Effect.gen(function* () {
+          const cached = yield* Ref.get(tokenCache);
+          const now = Date.now();
+          if (cached && now + minimumValidityMs < cached.expiresAt) {
+            return cached;
+          }
 
-        const token = yield* client
-          .getAccessToken({
-            params: { Authorization: `User ${config.refreshToken}` },
-            payload: { _cloudId: config.cloudId },
-          })
-          .pipe(
-            Effect.map((response) => response.accessToken),
-            Effect.mapError((error) =>
-              mapDotyposClientError(error, "Get access token", config.apiUrl)
-            )
-          );
+          const token = yield* client
+            .getAccessToken({
+              params: { Authorization: `User ${config.refreshToken}` },
+              payload: { _cloudId: config.cloudId },
+            })
+            .pipe(
+              Effect.map((response) => response.accessToken),
+              Effect.mapError((error) =>
+                mapDotyposClientError(error, "Get access token", config.apiUrl)
+              )
+            );
 
-        yield* Ref.set(tokenCache, {
-          token,
-          expiresAt: now + 59 * 60 * 1000,
+          const lease = {
+            token,
+            expiresAt: now + 59 * 60 * 1000,
+          };
+          yield* Ref.set(tokenCache, lease);
+
+          return lease;
         });
+      const get = prepare(0).pipe(Effect.map((lease) => lease.token));
 
-        return token;
-      });
-
-      return { get };
+      return { get, prepare };
     })
   );
 }
@@ -121,9 +132,23 @@ export class DotyposGeneratedClient extends Context.Service<
           )
         )
       ) as HttpClient.HttpClient;
+      const clientForAccessToken = (accessToken: string) =>
+        make(
+          httpClient.pipe(
+            HttpClient.mapRequestInput((request) =>
+              request.pipe(
+                HttpClientRequest.prependUrl(config.apiUrl),
+                HttpClientRequest.setHeaders({
+                  Authorization: `Bearer ${accessToken}`,
+                })
+              )
+            )
+          )
+        );
 
       return {
         client: make(authenticatedHttpClient),
+        clientForAccessToken,
       };
     })
   );

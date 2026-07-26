@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Logger, References } from "effect";
 import type { EmailMessage, EmailProviderConfig } from "../types/email.types";
 import { NetworkError } from "./network-error";
 import {
@@ -45,26 +45,36 @@ const templateService: EmailTemplateService = {
   ),
 };
 
+const makeEmailLayer = (
+  provider: EmailProvider,
+  template: EmailTemplateService = templateService
+) =>
+  EmailServiceLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(
+        Layer.succeed(EmailProviderTag, provider),
+        Layer.succeed(EmailTemplateServiceTag, template),
+        Layer.succeed(EmailConfigTag, config)
+      )
+    )
+  );
+
 const runWithEmail = <A, E>(
   effect: Effect.Effect<A, E, EmailServiceTag>,
   provider: EmailProvider,
   template: EmailTemplateService = templateService
 ) =>
   Effect.runPromise(
-    effect.pipe(
-      Effect.provide(
-        EmailServiceLive.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(EmailProviderTag, provider),
-              Layer.succeed(EmailTemplateServiceTag, template),
-              Layer.succeed(EmailConfigTag, config)
-            )
-          )
-        )
-      )
-    )
+    effect.pipe(Effect.provide(makeEmailLayer(provider, template)))
   );
+
+const makeCapturingLogger = (records: unknown[]) =>
+  Logger.make((options) => {
+    records.push({
+      annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+      message: options.message,
+    });
+  });
 
 const message: EmailMessage = {
   from: undefined as never,
@@ -127,6 +137,58 @@ describe("EmailService", () => {
 
     expect(result._tag).toBe("Failure");
     expect(serviceErrorSend).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not log dynamic contact or reservation subjects on provider failure", async () => {
+    const contactSubject = "SyntheticContactSubject42";
+    const reservationSubject = "SyntheticReservationSubject42";
+    const providerMessage = "SyntheticProviderMessage42";
+    const records: unknown[] = [];
+    const provider = makeProvider(
+      mock((_message: EmailMessage) =>
+        Effect.fail(new EmailServiceError(providerMessage))
+      )
+    );
+    const render = mock(() =>
+      Effect.succeed({
+        subject: reservationSubject,
+        html: "<p>Rendered</p>",
+        text: "Rendered",
+      })
+    );
+    const effects = Effect.gen(function* () {
+      const email = yield* EmailServiceTag;
+      const contactResult = yield* email
+        .send({ ...message, subject: contactSubject })
+        .pipe(Effect.result);
+      const reservationResult = yield* email
+        .sendTemplate("synthetic@example.test", {
+          type: "reservation-confirmation",
+          data: {
+            customerName: "Synthetic Customer",
+            reservationId: "synthetic-reservation",
+            datetime: new Date("2026-06-20T10:00:00Z"),
+            duration: 120,
+            guestCount: 2,
+          },
+        })
+        .pipe(Effect.result);
+      return { contactResult, reservationResult };
+    });
+
+    const results = await Effect.runPromise(
+      effects.pipe(
+        Effect.provide(makeEmailLayer(provider, { render })),
+        Effect.provide(Logger.layer([makeCapturingLogger(records)]))
+      )
+    );
+
+    expect(results.contactResult._tag).toBe("Failure");
+    expect(results.reservationResult._tag).toBe("Failure");
+    const serialized = JSON.stringify(records);
+    expect(serialized).not.toContain(contactSubject);
+    expect(serialized).not.toContain(reservationSubject);
+    expect(serialized).not.toContain(providerMessage);
   });
 
   test("sendTemplate sends rendered body, tags, and metadata", async () => {

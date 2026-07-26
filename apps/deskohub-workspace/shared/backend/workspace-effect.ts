@@ -42,9 +42,11 @@ export const defineWorkspaceTask =
       runWorkspaceEffect(operation, { boundary: "task" })
     );
 
-export const scheduleWorkspaceTelemetryFlush = () =>
+export const scheduleWorkspaceTelemetryFlush = Effect.suspend(() =>
   getRegisteredPostHogLoggerProvider()
-    ? Effect.try({
+    ? // The scheduling error is logged and deliberately removed below.
+      // @effect-diagnostics-next-line unknownInEffectCatch:off
+      Effect.try({
         try: () =>
           after(() =>
             flushTelemetry.pipe(runWorkspaceEffect("telemetry.flush"))
@@ -58,7 +60,8 @@ export const scheduleWorkspaceTelemetryFlush = () =>
         ),
         Effect.ignore
       )
-    : Effect.void;
+    : Effect.void
+);
 
 const registeredLoggerProvider = getRegisteredPostHogLoggerProvider();
 
@@ -73,6 +76,8 @@ const workspaceRuntime = NextEffect.make({
   layer: WorkspaceObservabilityLive,
 });
 
+// The flush error is logged and deliberately removed below.
+// @effect-diagnostics-next-line unknownInEffectCatch:off
 const flushTelemetry = Effect.tryPromise({
   try: () => flushPostHogLogs(),
   catch: (cause) => cause,

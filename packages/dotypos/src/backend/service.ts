@@ -18,9 +18,11 @@ import type {
   CreateReservationRequest,
   Customer,
   DiscountGroup,
+  Reservation,
   UpdateCustomerRequest,
   UpdateReservationRequest,
 } from "../generated/effect.gen";
+import { canonicalizeDotyposEntityId } from "../identity";
 import type {
   CreateDotyposReservationInput,
   UpdateDotyposReservationInput,
@@ -139,6 +141,129 @@ const loadAllDotyposPages = <A, E, R>(input: {
 
 export type CustomerLookupField = "email" | "phone";
 
+const preparedReservationCreationBrand = Symbol(
+  "PreparedDotyposReservationCreation"
+);
+
+export interface PreparedDotyposReservationCreation {
+  readonly [preparedReservationCreationBrand]: true;
+}
+
+type PreparedDotyposReservationCreationState = {
+  readonly accessToken: string;
+  readonly request: CreateReservationRequest;
+};
+
+const preparedReservationCreationState = new WeakMap<
+  PreparedDotyposReservationCreation,
+  PreparedDotyposReservationCreationState
+>();
+
+const reservationRequestEvidencePrefix = "Provider request evidence: ";
+
+const reservationRequestEvidence = (input: {
+  readonly branchId: string;
+  readonly cloudId: string;
+  readonly customerId: string;
+  readonly tableId: string;
+  readonly startDate: number;
+  readonly endDate: number;
+  readonly seats: number;
+  readonly note: string;
+}) =>
+  createHash("sha256")
+    .update(
+      JSON.stringify([
+        input.branchId,
+        input.cloudId,
+        input.customerId,
+        input.tableId,
+        input.startDate,
+        input.endDate,
+        input.seats,
+        "NEW",
+        input.note,
+      ])
+    )
+    .digest("base64url");
+
+const canonicalReservationProviderIdentity = (reservation: Reservation) => {
+  const branchId = canonicalizeDotyposEntityId(reservation._branchId);
+  const cloudId = canonicalizeDotyposEntityId(reservation._cloudId);
+  const customerId = canonicalizeDotyposEntityId(reservation._customerId);
+  const tableId = canonicalizeDotyposEntityId(reservation._tableId);
+  return branchId && cloudId && customerId && tableId
+    ? { branchId, cloudId, customerId, tableId }
+    : null;
+};
+
+export const hasValidDotyposReservationRequestEvidence = (
+  reservation: Reservation
+) => {
+  const lines = reservation.note?.split(/\r?\n/u) ?? [];
+  const evidenceLines = lines.filter((line) =>
+    line.startsWith(reservationRequestEvidencePrefix)
+  );
+  const evidence = evidenceLines[0]?.slice(
+    reservationRequestEvidencePrefix.length
+  );
+  const note = lines
+    .filter((line) => !line.startsWith(reservationRequestEvidencePrefix))
+    .join("\n");
+  const startDate = Date.parse(reservation.startDate);
+  const endDate = Date.parse(reservation.endDate);
+  const seats = Number(reservation.seats);
+  const identity = canonicalReservationProviderIdentity(reservation);
+  return Boolean(
+    evidenceLines.length === 1 &&
+      evidence &&
+      identity &&
+      Number.isFinite(startDate) &&
+      Number.isFinite(endDate) &&
+      Number.isInteger(seats) &&
+      evidence ===
+        reservationRequestEvidence({
+          branchId: identity.branchId,
+          cloudId: identity.cloudId,
+          customerId: identity.customerId,
+          tableId: identity.tableId,
+          startDate,
+          endDate,
+          seats,
+          note,
+        })
+  );
+};
+
+const verifyCreatedReservation = (
+  reservation: Reservation,
+  request: CreateReservationRequest
+) => {
+  const reservationId = canonicalizeDotyposEntityId(reservation.id);
+  const identity = canonicalReservationProviderIdentity(reservation);
+  const requestBranchId = canonicalizeDotyposEntityId(request._branchId);
+  const requestCloudId = canonicalizeDotyposEntityId(request._cloudId);
+  const requestCustomerId = canonicalizeDotyposEntityId(request._customerId);
+  const requestTableId = canonicalizeDotyposEntityId(request._tableId);
+  return Boolean(
+    reservationId &&
+      identity &&
+      requestBranchId &&
+      requestCloudId &&
+      requestCustomerId &&
+      requestTableId &&
+      reservation.status === request.status &&
+      identity.branchId === requestBranchId &&
+      identity.cloudId === requestCloudId &&
+      identity.customerId === requestCustomerId &&
+      identity.tableId === requestTableId &&
+      Date.parse(reservation.startDate) === request.startDate &&
+      Date.parse(reservation.endDate) === request.endDate &&
+      Number(reservation.seats) === request.seats &&
+      reservation.note === request.note
+  );
+};
+
 export type DotyposCustomerLookupData = {
   firstName: string;
   lastName?: string;
@@ -232,8 +357,11 @@ const presentCreateCustomerRequestFields = (request: CreateCustomerRequest) =>
   ).filter((field) => request[field] !== undefined);
 
 const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
+  const customerId = canonicalizeDotyposEntityId(customer.id);
   const isDuplicate = customers.find((existing) =>
-    customer.id ? existing.id === customer.id : existing === customer
+    customerId
+      ? canonicalizeDotyposEntityId(existing.id) === customerId
+      : existing === customer
   );
 
   if (!isDuplicate) {
@@ -258,7 +386,8 @@ const hasAtLeastTwoCustomers = (
 
 const makeDotyposService = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
-  const { client } = yield* DotyposGeneratedClient;
+  const accessToken = yield* DotyposAccessToken;
+  const { client, clientForAccessToken } = yield* DotyposGeneratedClient;
 
   const runDotyposRequest = <A, E>(
     effect: Effect.Effect<A, E>,
@@ -294,10 +423,31 @@ const makeDotyposService = Effect.gen(function* () {
         );
   };
 
+  const exactlyOneOrExternalError = <A>(
+    items: readonly A[],
+    operation: string
+  ) =>
+    items.length === 1 && items[0]
+      ? Effect.succeed(items[0])
+      : Effect.fail(
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation,
+            message: "Dotypos returned an ambiguous item count.",
+            statusCode: 502,
+          })
+        );
+
   const getReservation = Effect.fn("getReservation")(
     function* (id: string) {
+      const reservationId = canonicalizeDotyposEntityId(id);
+      if (!reservationId) {
+        return yield* new ValidationError({
+          message: "Reservation ID is required",
+        });
+      }
       const reservationResult = yield* runDotyposRequest(
-        client.getReservation(config.cloudId, id, undefined),
+        client.getReservation(config.cloudId, reservationId, undefined),
         "getReservation"
       ).pipe(
         Effect.retry(retryPolicy),
@@ -306,19 +456,20 @@ const makeDotyposService = Effect.gen(function* () {
 
       const reservation = {
         ...reservationResult,
-        id,
+        id: reservationId,
       };
 
-      if (!reservation._customerId) {
+      const customerId = canonicalizeDotyposEntityId(reservation._customerId);
+      if (!customerId) {
         return yield* new ValidationError({
-          message: `Reservation ${id} has no customer ID`,
+          message: "Reservation has no customer ID",
         });
       }
 
-      const customerResult = yield* getCustomer(reservation._customerId);
+      const customerResult = yield* getCustomer(customerId);
       const customer = {
         ...customerResult,
-        id: reservation._customerId,
+        id: customerId,
       };
 
       return { reservation, customer };
@@ -354,13 +505,14 @@ const makeDotyposService = Effect.gen(function* () {
       effect.pipe(Effect.annotateLogs({ reservationId }))
   );
 
-  const createReservation = Effect.fn("createReservation")(
+  const prepareReservationCreation = Effect.fn("prepareReservationCreation")(
     function* (input: CreateDotyposReservationInput) {
-      yield* Effect.annotateLogsScoped({ input });
       yield* Effect.logInfo("Dotypos reservation request build started");
 
       const customerId = input.customerId.trim();
       const tableId = input.tableId.trim();
+      const branchId = canonicalizeDotyposEntityId(config.branchId);
+      const cloudId = canonicalizeDotyposEntityId(config.cloudId);
 
       if (!customerId) {
         return yield* new ValidationError({
@@ -370,6 +522,11 @@ const makeDotyposService = Effect.gen(function* () {
 
       if (!tableId) {
         return yield* new ValidationError({ message: "Table ID is required" });
+      }
+      if (!branchId || !cloudId) {
+        return yield* new ValidationError({
+          message: "Dotypos provider identity is invalid",
+        });
       }
 
       if (!Number.isInteger(input.seats) || input.seats <= 0) {
@@ -394,9 +551,9 @@ const makeDotyposService = Effect.gen(function* () {
       }
 
       const note = input.note?.trim();
-      const request: CreateReservationRequest = {
-        _branchId: config.branchId,
-        _cloudId: config.cloudId,
+      let request: CreateReservationRequest = {
+        _branchId: branchId,
+        _cloudId: cloudId,
         _customerId: customerId,
         _tableId: tableId,
         startDate: input.startDate.getTime(),
@@ -407,44 +564,112 @@ const makeDotyposService = Effect.gen(function* () {
         ...(note && { note }),
         ...(config.employeeId && { _employeeId: config.employeeId }),
       };
+      if (
+        note
+          ?.split(/\r?\n/u)
+          .some((line) => line.startsWith("Provider creation epoch: "))
+      ) {
+        request = {
+          ...request,
+          note: `${note}\n${reservationRequestEvidencePrefix}${reservationRequestEvidence(
+            {
+              branchId: request._branchId,
+              cloudId: request._cloudId,
+              customerId,
+              tableId,
+              startDate: request.startDate,
+              endDate: request.endDate,
+              seats: request.seats,
+              note,
+            }
+          )}`,
+        };
+      }
 
-      yield* Effect.annotateLogsScoped({ requestBody: request });
+      // Authentication is prepared before the caller persists its irreversible
+      // provider boundary. The prepared send consumes this fixed lease and
+      // performs no token refresh or other fallible setup before the POST.
+      const tokenLease = yield* accessToken.prepare(
+        Math.max(config.apiTimeout + 15_000, 60_000)
+      );
+      const prepared = {
+        [preparedReservationCreationBrand]: true,
+      } as PreparedDotyposReservationCreation;
+      preparedReservationCreationState.set(prepared, {
+        accessToken: tokenLease.token,
+        request,
+      });
+      return prepared;
+    }
+  );
+
+  const createPreparedReservation = Effect.fn("createPreparedReservation")(
+    function* (input: PreparedDotyposReservationCreation) {
+      const prepared = preparedReservationCreationState.get(input);
+      if (!prepared) {
+        return yield* new ValidationError({
+          message: "Reservation creation was not prepared or was already sent",
+        });
+      }
+      preparedReservationCreationState.delete(input);
       yield* Effect.logInfo("Dotypos reservation API call started");
+      const preparedClient = clientForAccessToken(prepared.accessToken);
 
       const reservation = yield* runDotyposRequest(
-        client
-          .createReservation(config.cloudId, { payload: [request] })
+        preparedClient
+          .createReservation(prepared.request._cloudId, {
+            payload: [prepared.request],
+          })
           .pipe(
             Effect.flatMap((reservations) =>
-              firstOrExternalError(reservations, "createReservation")
-            )
+              exactlyOneOrExternalError(reservations, "createReservation")
+            ),
+            Effect.filterOrFail(
+              (created) => verifyCreatedReservation(created, prepared.request),
+              () =>
+                new ExternalAPIError({
+                  service: "Dotypos",
+                  operation: "createReservation",
+                  message:
+                    "Dotypos reservation creation returned ambiguous evidence",
+                  statusCode: 502,
+                })
+            ),
+            Effect.provideService(FetchHttpClient.RequestInit, {
+              redirect: "manual",
+            })
           ),
         "createReservation"
       ).pipe(
         Effect.withSpan("dotyposService.createReservation"),
-        Effect.retry(retryPolicy),
-        Effect.tapError((error) =>
-          Effect.logError("Dotypos reservation creation failed", {
-            error,
-          })
+        // Dotypos does not expose an idempotency key for reservation POSTs.
+        // Callers must reconcile an ambiguous result instead of sending again.
+        Effect.tapError(() =>
+          Effect.logError("Dotypos reservation creation failed")
         )
       );
 
-      yield* Effect.annotateLogsScoped({ reservation });
       yield* Effect.logInfo("Dotypos reservation created successfully");
 
-      return reservation;
+      const reservationId = canonicalizeDotyposEntityId(reservation.id);
+      if (!reservationId) {
+        return yield* new ExternalAPIError({
+          service: "Dotypos",
+          operation: "createReservation",
+          message: "Dotypos reservation creation returned ambiguous evidence",
+          statusCode: 502,
+        });
+      }
+      return { ...reservation, id: reservationId };
+    }
+  );
+
+  const createReservation = Effect.fn("createReservation")(
+    function* (input: CreateDotyposReservationInput) {
+      const prepared = yield* prepareReservationCreation(input);
+      return yield* createPreparedReservation(prepared);
     },
-    (effect, input) =>
-      effect.pipe(
-        Effect.annotateLogs({
-          customerId: input.customerId,
-          tableId: input.tableId,
-          status: input.status,
-          seats: input.seats,
-        }),
-        Effect.scoped
-      )
+    (effect) => effect.pipe(Effect.scoped)
   );
 
   const cancelReservation = Effect.fn("cancelReservation")(
@@ -590,8 +815,14 @@ const makeDotyposService = Effect.gen(function* () {
 
   const getCustomer = Effect.fn("getCustomer")(
     function* (id: string) {
+      const customerId = canonicalizeDotyposEntityId(id);
+      if (!customerId) {
+        return yield* new ValidationError({
+          message: "Customer ID is required",
+        });
+      }
       return yield* runDotyposRequest(
-        client.getCustomer(config.cloudId, id, undefined),
+        client.getCustomer(config.cloudId, customerId, undefined),
         "getCustomer"
       ).pipe(
         Effect.retry(retryPolicy),
@@ -749,16 +980,16 @@ const makeDotyposService = Effect.gen(function* () {
 
       const lookup = yield* lookupCustomer(customerData, options);
 
-      yield* Effect.logDebug("Dotypos customer lookup result", { lookup });
+      yield* Effect.logDebug("Dotypos customer lookup result", {
+        lookupResult: lookup._tag,
+        matchCount: lookup.matches.length,
+      });
 
       const normalizedCustomerData = lookup.normalizedCustomerData;
       const existingCustomer = yield* Match.value(lookup).pipe(
         Match.tag("Ambiguous", (ambiguousLookup) =>
           Effect.gen(function* () {
             yield* Effect.logError("Ambiguous Dotypos customer lookup", {
-              customerIds: ambiguousLookup.matches.map(
-                (customer) => customer.id
-              ),
               matchCount: ambiguousLookup.matches.length,
             });
 
@@ -782,9 +1013,7 @@ const makeDotyposService = Effect.gen(function* () {
           (normalizedCustomerData.lastName && !existingCustomer.lastName);
 
         yield* Effect.logDebug("Dotypos customer update-needed decision", {
-          needsUpdate,
-          existingCustomer,
-          normalizedCustomerData,
+          needsUpdate: Boolean(needsUpdate),
         });
 
         if (needsUpdate) {
@@ -819,32 +1048,20 @@ const makeDotyposService = Effect.gen(function* () {
             Effect.retry(retryPolicy),
             Effect.tapError((error) =>
               Effect.logWarning("Dotypos customer update failed", {
-                error,
-                existingCustomer,
-                input: normalizedCustomerData,
+                errorTag: error._tag,
                 operation: "updateCustomer",
-                request: {
-                  path: {
-                    cloudId: config.cloudId,
-                    customerId,
-                  },
-                  body: updateRequest,
-                },
+                requestFields: Object.keys(updateRequest),
               })
             ),
             Effect.orElseSucceed(() => existingCustomer)
           );
 
-          yield* Effect.logDebug("Dotypos existing customer result", {
-            customer: updatedCustomer,
-          });
+          yield* Effect.logDebug("Dotypos existing customer resolved");
 
           return updatedCustomer;
         }
 
-        yield* Effect.logDebug("Dotypos existing customer result", {
-          customer: existingCustomer,
-        });
+        yield* Effect.logDebug("Dotypos existing customer resolved");
 
         return existingCustomer;
       }
@@ -903,11 +1120,9 @@ const makeDotyposService = Effect.gen(function* () {
         Effect.tapError((error) => {
           const apiErrorDetails = Match.value(error).pipe(
             Match.tag("ExternalAPIError", (apiError) => ({
-              providerError: apiError.providerError,
               statusCode: apiError.statusCode,
             })),
             Match.orElse(() => ({
-              providerError: undefined,
               statusCode: undefined,
             }))
           );
@@ -921,7 +1136,7 @@ const makeDotyposService = Effect.gen(function* () {
         })
       );
 
-      yield* Effect.logInfo("Dotypos customer created", { customer });
+      yield* Effect.logInfo("Dotypos customer created");
 
       return customer;
     },
@@ -1070,6 +1285,8 @@ const makeDotyposService = Effect.gen(function* () {
   });
 
   return {
+    prepareReservationCreation,
+    createPreparedReservation,
     createReservation,
     updateReservation,
     cancelReservation,
@@ -1106,3 +1323,5 @@ export class DotyposService extends Context.Service<
     Layer.provide(FetchHttpClient.layer)
   );
 }
+
+import { createHash } from "node:crypto";

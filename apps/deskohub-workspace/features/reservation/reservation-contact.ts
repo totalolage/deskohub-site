@@ -68,3 +68,25 @@ export const normalizedReservationCustomerSchema = Schema.Struct({
   phone: Schema.toType(reservationCustomerPhoneSchema),
   message: Schema.optional(Schema.toType(reservationCustomerMessageSchema)),
 });
+
+export const normalizedReservationCustomerAttemptIdentitySchema = Schema.Struct(
+  {
+    name: normalizedReservationCustomerSchema.fields.name,
+    email: normalizedReservationCustomerSchema.fields.email,
+    phone: normalizedReservationCustomerSchema.fields.phone,
+    message: Schema.NullOr(reservationCustomerMessageSchema),
+  }
+);
+
+export type NormalizedReservationCustomerAttemptIdentity =
+  typeof normalizedReservationCustomerAttemptIdentitySchema.Type;
+
+export const getNormalizedReservationCustomerAttemptIdentity = (
+  customer: typeof normalizedReservationCustomerSchema.Type
+): NormalizedReservationCustomerAttemptIdentity =>
+  normalizedReservationCustomerAttemptIdentitySchema.make({
+    name: customer.name,
+    email: customer.email,
+    phone: customer.phone,
+    message: customer.message || null,
+  });

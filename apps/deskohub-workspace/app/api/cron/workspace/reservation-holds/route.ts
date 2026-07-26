@@ -1,13 +1,22 @@
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import {
+  enqueuePendingProviderAttachmentRecoveries,
+  ReservationHoldCleanupScheduleService,
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
+import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
 import { defineWorkspaceRoute } from "@/shared/backend/workspace-route";
 
 const cronBatchLimit = 25;
+const ReservationHoldRecoveryCronLive = Layer.mergeAll(
+  ReservationHoldCleanupServiceLiveWithDependencies,
+  ReservationHoldCleanupScheduleService.Live,
+  WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive))
+);
 
 const isAuthorizedCronRequest = (request: Request) => {
   if (!env.CRON_SECRET) return env.VERCEL_ENV === "development";
@@ -26,10 +35,12 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
     yield* Effect.logInfo("Reservation hold cleanup sweep started");
 
     const result = yield* cleanup.sweepExpiredHolds(input);
+    const providerAttachmentRecovery =
+      yield* enqueuePendingProviderAttachmentRecoveries(input);
     yield* Effect.annotateLogsScoped({ result });
     yield* Effect.logInfo("Reservation hold cleanup sweep completed");
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, providerAttachmentRecovery });
   },
   Effect.scoped
 );
@@ -62,7 +73,7 @@ export const GET = defineWorkspaceRoute(
     }
 
     return sweepExpiredReservationHolds().pipe(
-      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+      Effect.provide(ReservationHoldRecoveryCronLive),
       Effect.catch(handleReservationHoldCleanupCronError)
     );
   }

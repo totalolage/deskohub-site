@@ -9,7 +9,7 @@ import {
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
-import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
+import { CheckoutAutoRefresh } from "@/features/checkout/components/checkout-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import {
   appendExistingCheckoutReturnStateToken,
@@ -164,7 +164,7 @@ async function CheckoutStatusContent({
 
   return runWithRequestLocale(locale, () => (
     <>
-      <CheckoutStatusAutoRefresh
+      <CheckoutAutoRefresh
         enabled={shouldAutoRefreshCheckoutStatus(status.status)}
       />
       <CheckoutStatusPage locale={locale} status={status} />

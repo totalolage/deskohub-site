@@ -8,7 +8,7 @@ import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-quote";
-import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
+import { CheckoutAutoRefresh } from "@/features/checkout/components/checkout-auto-refresh";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -42,6 +42,28 @@ type CheckoutPayPageProps = {
 };
 
 type CheckoutPayActionVariant = "pay" | "retry";
+
+export function CheckoutPayStabilizingPage({
+  locale,
+  refreshIntervalMs,
+  summary,
+}: {
+  readonly locale: Locale;
+  readonly refreshIntervalMs?: number;
+  readonly summary: CheckoutSummaryData;
+}) {
+  return (
+    <CheckoutPayCard
+      aria-busy="true"
+      aria-live="polite"
+      lead={m.checkoutPayStabilizingLead({}, { locale })}
+      title={m.checkoutPayStabilizingTitle({}, { locale })}
+    >
+      <CheckoutSummary locale={locale} summary={summary} />
+      <CheckoutAutoRefresh enabled intervalMs={refreshIntervalMs} />
+    </CheckoutPayCard>
+  );
+}
 
 export function CheckoutPayPage({
   changedKeys,
@@ -128,8 +150,6 @@ export function CheckoutPayPage({
       {isPricingChanged && (
         <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
       )}
-
-      <CheckoutDiscountCountdownBanner locale={locale} summary={summary} />
 
       <CheckoutSummary
         changedKeys={changedKeys}

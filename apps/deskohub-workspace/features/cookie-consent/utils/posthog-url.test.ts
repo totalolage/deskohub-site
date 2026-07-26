@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { sensitiveUrlSearchParamKeys } from "@/shared/utils/sensitive-url-search-params";
 import { createPostHogPageUrl, sanitizePostHogProperties } from "./posthog-url";
 
 describe("createPostHogPageUrl", () => {
@@ -16,6 +17,19 @@ describe("createPostHogPageUrl", () => {
         "https://deskohub.test/checkout/status/order-id?x-vercel-protection-bypass=secret&step=done"
       )
     ).toBe("https://deskohub.test/checkout/status/order-id?step=done");
+  });
+
+  test("uses the complete shared case-insensitive capability-key contract", () => {
+    const query = sensitiveUrlSearchParamKeys
+      .map(
+        (key, index) =>
+          `${index % 2 === 0 ? key.toUpperCase() : key}=synthetic-marker-${index}`
+      )
+      .join("&");
+
+    expect(
+      createPostHogPageUrl(`https://deskohub.test/checkout?${query}&step=pay`)
+    ).toBe("https://deskohub.test/checkout?step=pay");
   });
 
   test("strips sensitive params from current, referrer, and initial urls", () => {

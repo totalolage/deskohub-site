@@ -5,6 +5,7 @@ import { Match } from "effect";
 import { env } from "@/env";
 import { getCoworkCheckoutAttemptDetails } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import { getNormalizedReservationCustomerAttemptIdentity } from "@/features/reservation/reservation-contact";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 const deriveCheckoutKey = (payload: object) =>
@@ -33,9 +34,7 @@ export const deriveCheckoutAttemptKey = (input: {
     checkoutSessionId: input.checkoutSessionId,
     checkoutAttemptId: input.checkoutAttemptId,
     reservation: {
-      name: input.reservation.name,
-      email: input.reservation.email,
-      phone: input.reservation.phone,
+      ...getNormalizedReservationCustomerAttemptIdentity(input.reservation),
       ...reservationDetails,
     },
   });

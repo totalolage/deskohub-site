@@ -3,7 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import { ExternalAPIError, NexiService } from "@deskohub/nexi";
+import { NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import type {
@@ -22,13 +22,11 @@ import {
   canonicalDiscountCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
-import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
-import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 import {
   buildSignedPayState,
@@ -126,34 +124,8 @@ const discountedQuote: DiscountQuote = {
   discountedSubtotal: money(27_500),
 };
 
-const fullyDiscountedApplication = {
-  ...application,
-  discount: {
-    ...application.discount,
-    adjustment: { kind: "percentage" as const, basisPoints: 10_000 },
-  },
-  amount: money(55_000),
-  subtotalAfter: money(0),
-};
-
-const fullyDiscountedQuote: DiscountQuote = {
-  product: { kind: "cowork", tier: "profi" },
-  discountableSubtotal: money(55_000),
-  discounts: [fullyDiscountedApplication],
-  totalDiscount: money(55_000),
-  discountedSubtotal: money(0),
-};
-
-const commitmentProduct = {
-  kind: "cowork",
-  tier: reservationData.entryTier,
-} as const;
-const emptyCommitment = makeDiscountCommitment({
-  product: commitmentProduct,
-  applications: [],
-});
+const emptyCommitment = makeDiscountCommitment({ applications: [] });
 const privateCommitment = makeDiscountCommitment({
-  product: commitmentProduct,
   applications: [
     {
       application,
@@ -162,21 +134,6 @@ const privateCommitment = makeDiscountCommitment({
         provenance: {
           providerNamespace: "private-provider-namespace",
           providerReference: "private-provider-reference",
-        },
-      },
-    },
-  ],
-});
-const fullyDiscountedCommitment = makeDiscountCommitment({
-  product: commitmentProduct,
-  applications: [
-    {
-      application: fullyDiscountedApplication,
-      candidate: {
-        discount: fullyDiscountedApplication.discount,
-        provenance: {
-          providerNamespace: "private-provider-namespace",
-          providerReference: "full-discount-reference",
         },
       },
     },
@@ -327,14 +284,11 @@ type CheckoutHarnessOptions = {
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: Record<string, unknown>;
-  readonly requireCurrent?: ReturnType<typeof mock>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
-  readonly createPendingNexiAttempt?: ReturnType<typeof mock>;
-  readonly completeInternalPayment?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
-  readonly fulfillPaidOrder?: ReturnType<typeof mock>;
-  readonly capture?: ReturnType<typeof mock>;
+  readonly requireCurrent?: ReturnType<typeof mock>;
+  readonly createAttempt?: ReturnType<typeof mock>;
 };
 
 const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
@@ -351,14 +305,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const { PaymentAttemptRepository } = await import(
     "../repositories/payment-attempt.repository"
   );
-  const { PaymentLifecycleRepository } = await import(
-    "../repositories/payment-lifecycle.repository"
-  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
-  );
-  const { WorkspacePaidFulfillmentService } = await import(
-    "../fulfillment/paid-fulfillment.service"
   );
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
@@ -374,29 +322,11 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     securityToken: "provider-security-token",
     providerRedirectUrl: "https://payments.example/hosted",
   };
-  const createPendingNexiAttempt =
-    options.createPendingNexiAttempt ??
-    mock(() => Effect.succeed(createdAttempt));
-  const internalAttempt = {
-    ...createdAttempt,
-    provider: "internal" as const,
-    providerOrderId: null,
-    state: "paid" as const,
-    amount: money(0),
-  };
-  const completeInternalPayment =
-    options.completeInternalPayment ??
-    mock(() =>
-      Effect.succeed({
-        attempt: internalAttempt,
-        changed: true,
-        timestamp: testInstant(),
-      })
-    );
-  const fulfillPaidOrder = options.fulfillPaidOrder ?? mock(() => Effect.void);
-  const capture = options.capture ?? mock(() => Effect.void);
+  const createAttempt =
+    options.createAttempt ?? mock(() => Effect.succeed(createdAttempt));
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
+  const markTerminal = mock(() => Effect.void);
   const markTerminalForReservation = mock(() =>
     Effect.succeed({
       attempt: {
@@ -410,27 +340,27 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     })
   );
   const paymentAttempts = {
+    create: createAttempt,
     findById: findAttempt,
     findByProviderOrderId: mock(() => Effect.succeed(null)),
     findDisplayableForReservation: mock(() => Effect.succeed(null)),
-  } satisfies PaymentAttemptRepositoryType;
-  const paymentLifecycle = {
-    createPendingNexiAttempt,
-    completeInternalPayment,
-    attachProviderSession: attachHostedPaymentPage,
-    markPaid: mock(() =>
+    attachHostedPaymentPage,
+    markPaid: mock(() => Effect.void),
+    markTerminal,
+    markPaidForReservation: mock(() =>
       Effect.succeed({
         attempt: createdAttempt,
         changed: true,
         timestamp: testInstant(),
       })
     ),
-    markTerminal: markTerminalForReservation,
-  } satisfies IPaymentLifecycleRepository;
+    markTerminalForReservation,
+  } satisfies PaymentAttemptRepositoryType;
 
   const updateReservationDetails = mock((input) =>
     Effect.succeed({ id: input.id } as never)
   );
+  const markPaymentTerminal = mock(() => Effect.void);
   const reservationRecord = makeReservation(options.orderId, {
     locale,
     ...options.reservationOverrides,
@@ -440,6 +370,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const reservations = {
     findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
+    markPaymentTerminal,
   } as unknown as WorkspaceReservationRepositoryType;
   const updateReservation = mock(
     (_input: {
@@ -511,12 +442,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
               requireCurrent,
             }),
             Layer.succeed(PaymentAttemptRepository, paymentAttempts),
-            Layer.succeed(PaymentLifecycleRepository, paymentLifecycle),
-            Layer.succeed(WorkspacePaidFulfillmentService, {
-              fulfillPaidOrder,
-            }),
             Layer.succeed(PostHogEventService, {
-              capture,
+              capture: mock(() => Effect.void),
             }),
             Layer.succeed(LegalEvidenceEventRepository, {
               recordMany: mock((_input: readonly unknown[]) => Effect.void),
@@ -530,51 +457,20 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   return {
     effect,
     affirm,
-    createPendingNexiAttempt,
-    completeInternalPayment,
+    createAttempt,
     findAttempt,
     attachHostedPaymentPage,
+    markTerminal,
     markTerminalForReservation,
+    markPaymentTerminal,
     updateReservationDetails,
     updateReservation,
-    createHostedPaymentPage,
-    fulfillPaidOrder,
-    capture,
     requireCurrent,
+    createHostedPaymentPage,
   };
 };
 
 describe("CheckoutService", () => {
-  test("prepares fallible local provider inputs before committing an attempt", async () => {
-    const source = await Bun.file(
-      new URL("./checkout.service.ts", import.meta.url)
-    ).text();
-    const start = source.indexOf(
-      'const startProviderSession = Effect.fn("checkout.startProviderSession")'
-    );
-    const end = source.indexOf("    return CheckoutService.of({", start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    const startProviderSession = source.slice(start, end);
-    const createAttemptAt = startProviderSession.indexOf(
-      "paymentLifecycle.createPendingNexiAttempt"
-    );
-
-    expect(createAttemptAt).toBeGreaterThanOrEqual(0);
-    expect(startProviderSession.indexOf("toNexiAmount(")).toBeLessThan(
-      createAttemptAt
-    );
-    expect(
-      startProviderSession.indexOf("yield* getNotificationUrl")
-    ).toBeLessThan(createAttemptAt);
-    expect(
-      startProviderSession.indexOf("yield* getCheckoutOrderReturnUrl(")
-    ).toBeLessThan(createAttemptAt);
-    expect(
-      startProviderSession.indexOf("yield* getCheckoutPaymentRetryUrl(")
-    ).toBeLessThan(createAttemptAt);
-  });
-
   test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {
     const orderId = "reservation-reuses-provider-attempt";
     const activeAttempt = makeAttempt({
@@ -603,7 +499,7 @@ describe("CheckoutService", () => {
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -630,7 +526,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({ status: "in_progress" });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -657,7 +553,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({ status: "in_progress" });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -683,7 +579,7 @@ describe("CheckoutService", () => {
     });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -726,10 +622,9 @@ describe("CheckoutService", () => {
         quote: acceptedQuote,
       })
     );
-    expect(harness.createPendingNexiAttempt).toHaveBeenCalledWith(
+    expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: money(55_000),
-        commitment: emptyCommitment,
       })
     );
     expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
@@ -752,7 +647,7 @@ describe("CheckoutService", () => {
 
       await Effect.runPromise(harness.effect);
 
-      expect(harness.createPendingNexiAttempt).toHaveBeenCalledWith(
+      expect(harness.createAttempt).toHaveBeenCalledWith(
         expect.objectContaining({
           amount: expect.objectContaining({ currency: "CZK" }),
         })
@@ -763,191 +658,6 @@ describe("CheckoutService", () => {
     } finally {
       env.NEXI_API_ORIGIN = originalNexiOrigin;
     }
-  });
-
-  test("completes a zero-total checkout internally without preparing Nexi", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
-    });
-    const affirm = mock(() =>
-      Effect.succeed({
-        quote: acceptedQuote,
-        commitment: fullyDiscountedCommitment,
-      })
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-zero-total",
-      acceptedQuote,
-      affirm,
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result).toEqual({
-      status: "redirect",
-      redirectUrl:
-        "/en-US/checkout/status/reservation-zero-total?outcome=success",
-    });
-    expect(harness.completeInternalPayment).toHaveBeenCalledWith({
-      workspaceReservationId: "reservation-zero-total",
-      amount: money(0),
-      commitment: fullyDiscountedCommitment,
-      locale: "en-US",
-    });
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-    expect(harness.attachHostedPaymentPage).not.toHaveBeenCalled();
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-zero-total",
-    });
-    expect(harness.capture).toHaveBeenCalledWith(
-      expect.objectContaining({
-        event: "payment completed",
-        properties: expect.objectContaining({
-          amount_value: 0,
-          provider: "internal",
-        }),
-      })
-    );
-  });
-
-  test("does not complete an internal payment when the live hold changes after checkout preparation", async () => {
-    const { PayableReservationUnavailableError } = await import(
-      "./payable-reservation.service"
-    );
-    const orderId = "reservation-zero-total-hold-race";
-    let validationCount = 0;
-    const requireCurrent = mock(() => {
-      validationCount += 1;
-      return validationCount === 1
-        ? Effect.succeed(makeReservation(orderId))
-        : Effect.fail(
-            new PayableReservationUnavailableError({
-              orderId,
-              reason: "dotypos_not_pending",
-            })
-          );
-    });
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
-    });
-    const harness = await createCheckoutHarness({
-      orderId,
-      acceptedQuote,
-      affirm: mock(() =>
-        Effect.succeed({
-          quote: acceptedQuote,
-          commitment: fullyDiscountedCommitment,
-        })
-      ),
-      requireCurrent,
-    });
-
-    const result = await Effect.runPromise(harness.effect.pipe(Effect.result));
-
-    expect(result._tag).toBe("Failure");
-    if (result._tag !== "Failure") {
-      throw new Error("Expected the invalid live hold to reject checkout");
-    }
-    expect(result.failure._tag).toBe("CheckoutError");
-    expect((result.failure as { cause?: unknown }).cause).toMatchObject({
-      _tag: "PayableReservationUnavailableError",
-      orderId,
-      reason: "dotypos_not_pending",
-    });
-    expect(requireCurrent).toHaveBeenCalledTimes(2);
-    expect(harness.completeInternalPayment).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-  });
-
-  test("keeps an internal payment completed when fulfillment fails", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
-    });
-    const affirm = mock(() =>
-      Effect.succeed({
-        quote: acceptedQuote,
-        commitment: fullyDiscountedCommitment,
-      })
-    );
-    const fulfillPaidOrder = mock(() =>
-      Effect.fail(
-        new CheckoutTestFailure({
-          message: "Fulfillment failed after payment committed.",
-        })
-      )
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-zero-total-fulfillment-fails",
-      acceptedQuote,
-      affirm,
-      fulfillPaidOrder,
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result.status).toBe("redirect");
-    expect(harness.completeInternalPayment).toHaveBeenCalledTimes(1);
-    expect(fulfillPaidOrder).toHaveBeenCalledTimes(1);
-  });
-
-  test("returns an already-paid checkout status and retries fulfillment idempotently", async () => {
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-already-paid",
-      reservationOverrides: {
-        paymentState: "paid",
-        paidAt: testInstant(),
-      },
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result).toEqual({
-      status: "redirect",
-      redirectUrl:
-        "/en-US/checkout/status/reservation-already-paid?outcome=success",
-    });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-already-paid",
-    });
-    expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.completeInternalPayment).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-  });
-
-  test("recovers an already-paid checkout after payable revalidation loses the race", async () => {
-    const { PayableReservationUnavailableError } = await import(
-      "./payable-reservation.service"
-    );
-    const requireCurrent = mock(() =>
-      Effect.fail(
-        new PayableReservationUnavailableError({
-          orderId: "reservation-paid-race",
-          reason: "dotypos_not_pending",
-        })
-      )
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-paid-race",
-      reservationOverrides: {
-        paymentState: "paid",
-        paidAt: testInstant(),
-      },
-      requireCurrent,
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result).toEqual({
-      status: "redirect",
-      redirectUrl:
-        "/en-US/checkout/status/reservation-paid-race?outcome=success",
-    });
-    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
-      orderId: "reservation-paid-race",
-    });
-    expect(harness.affirm).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   test("affirms meeting-room discounts and returns a fresh state when pricing changes", async () => {
@@ -1138,7 +848,7 @@ describe("CheckoutService", () => {
     );
     expect(harness.updateReservationDetails).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
@@ -1204,19 +914,129 @@ describe("CheckoutService", () => {
       message:
         "Payment checkout could not be started. Please review your details and try again.",
     });
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("revalidates unresolved attachment recovery at final payment admission", async () => {
+    const { PayableReservationUnavailableError } = await import(
+      "./payable-reservation.service"
+    );
+    const orderId = "reservation-final-recovery-guard";
+    const payableReservation = makeReservation(orderId);
+    let admission = 0;
+    const requireCurrent = mock(() => {
+      admission += 1;
+      return admission === 1
+        ? Effect.succeed(payableReservation as never)
+        : Effect.fail(
+            new PayableReservationUnavailableError({
+              orderId,
+              reason: "unresolved_attachment_recovery",
+            })
+          );
+    });
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+    expect(requireCurrent).toHaveBeenCalledTimes(2);
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    "hold_creation_candidate:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_candidate_compensating:synthetic-epoch:synthetic-provider:1780308000000",
+    "hold_creation_orphan_recovery:synthetic-epoch:synthetic-loser",
+    "hold_creation_orphan_processing:synthetic-epoch:synthetic-loser:synthetic-owner",
+  ])("atomically rejects payment admission when recovery commits after the final read: %s", async (failureCode) => {
+    const { PaymentAttemptStateError } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const orderId = "reservation-atomic-recovery-guard";
+    const persistedAttempts: unknown[] = [];
+    const reservation = makeReservation(orderId);
+    const createAttempt = mock(() =>
+      Effect.gen(function* () {
+        persistedAttempts.push({ state: "staged" });
+        Object.assign(reservation, { failureCode });
+        persistedAttempts.length = 0;
+        return yield* new PaymentAttemptStateError({
+          operation: "paymentAttempts.create",
+          paymentAttemptId: "synthetic-rolled-back-attempt",
+          message:
+            "Payment attempts cannot be linked while provider attachment recovery is unresolved.",
+        });
+      })
+    );
+    const requireCurrent = mock(() => Effect.succeed(reservation as never));
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent,
+      createAttempt,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+
+    expect(requireCurrent).toHaveBeenCalledTimes(2);
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(persistedAttempts).toEqual([]);
+    expect(reservation).toMatchObject({
+      reservationState: "held",
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      failureCode,
+    });
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("keeps payment blocked when winner attachment precedes delayed loser handoff", async () => {
+    const { PaymentAttemptStateError } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+    const orderId = "synthetic-delayed-loser-order";
+    const epoch = "synthetic-delayed-loser-epoch";
+    const winnerId = "synthetic-delayed-loser-winner";
+    const createdAt = testInstant("2026-06-01T09:55:00Z");
+    const reservation = makeReservation(orderId);
+    Object.assign(reservation, {
+      dotyposReservationId: winnerId,
+      reservationCreatedAt: createdAt,
+      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${createdAt.epochMilliseconds}`,
+    });
+    const createAttempt = mock(() =>
+      Effect.fail(
+        new PaymentAttemptStateError({
+          operation: "paymentAttempts.create",
+          paymentAttemptId: "synthetic-blocked-attempt",
+          message:
+            "Payment attempts cannot be linked while provider attachment recovery is unresolved.",
+        })
+      )
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      requireCurrent: mock(() => Effect.succeed(reservation as never)),
+      createAttempt,
+    });
+
+    await expect(Effect.runPromise(harness.effect)).rejects.toBeDefined();
+    expect(createAttempt).toHaveBeenCalledTimes(1);
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(reservation).toMatchObject({
+      paymentState: "not_started",
+      activePaymentAttemptId: null,
+      failureCode: `hold_creation_candidate:${epoch}:${winnerId}:${createdAt.epochMilliseconds}`,
+    });
   });
 
   test("marks HPP provider-create failures atomically for the reservation", async () => {
     const createHostedPaymentPage = mock(() =>
       Effect.fail(
-        new ExternalAPIError({
-          service: "Nexi",
-          operation: "createHostedPaymentPage",
-          statusCode: 400,
-          message: "provider create failed",
-        })
+        new CheckoutTestFailure({ message: "provider create failed" })
       )
     );
     const harness = await createCheckoutHarness({
@@ -1234,122 +1054,8 @@ describe("CheckoutService", () => {
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",
     });
+    expect(harness.markTerminal).not.toHaveBeenCalled();
+    expect(harness.markPaymentTerminal).not.toHaveBeenCalled();
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);
-  });
-
-  test("retains an ambiguous HPP creation attempt for reconciliation", async () => {
-    const createHostedPaymentPage = mock(() =>
-      Effect.fail(
-        new ExternalAPIError({
-          service: "Nexi",
-          operation: "createHostedPaymentPage",
-          statusCode: 503,
-          message: "provider outcome unknown",
-        })
-      )
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-hpp-create-ambiguous",
-      createHostedPaymentPage,
-    });
-
-    await Effect.runPromise(Effect.flip(harness.effect));
-
-    expect(harness.markTerminalForReservation).not.toHaveBeenCalled();
-    expect(harness.createPendingNexiAttempt).toHaveBeenCalledTimes(1);
-    expect(harness.updateReservation).toHaveBeenCalledTimes(1);
-  });
-
-  test("returns refreshed pricing when code claim admission loses a race", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: discountedQuote,
-    });
-    const affirm = mock()
-      .mockImplementationOnce(() =>
-        Effect.succeed({
-          quote: acceptedQuote,
-          commitment: privateCommitment,
-        })
-      )
-      .mockImplementationOnce(() =>
-        Effect.succeed({
-          quote: buildCoworkReservationQuote(reservationData),
-          commitment: emptyCommitment,
-        })
-      );
-    const createPendingNexiAttempt = mock(() =>
-      Effect.fail(
-        new DiscountClaimError({
-          operation: "reserve",
-          reason: "usage_limit_reached",
-          message: "The last use was claimed concurrently.",
-        })
-      )
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-code-claim-race",
-      acceptedQuote,
-      affirm,
-      createPendingNexiAttempt,
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result).toMatchObject({
-      status: "pricing_changed",
-      freshSummary: {
-        total: money(55_000),
-      },
-    });
-    expect(affirm).toHaveBeenCalledTimes(2);
-    expect(createPendingNexiAttempt).toHaveBeenCalledTimes(1);
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-  });
-
-  test("returns refreshed pricing when a zero-total code loses claim admission", async () => {
-    const acceptedQuote = buildCoworkReservationQuote(reservationData, {
-      discountQuote: fullyDiscountedQuote,
-    });
-    const affirm = mock()
-      .mockImplementationOnce(() =>
-        Effect.succeed({
-          quote: acceptedQuote,
-          commitment: fullyDiscountedCommitment,
-        })
-      )
-      .mockImplementationOnce(() =>
-        Effect.succeed({
-          quote: buildCoworkReservationQuote(reservationData),
-          commitment: emptyCommitment,
-        })
-      );
-    const completeInternalPayment = mock(() =>
-      Effect.fail(
-        new DiscountClaimError({
-          operation: "reserve",
-          reason: "usage_limit_reached",
-          message: "The last use was claimed concurrently.",
-        })
-      )
-    );
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-zero-total-claim-race",
-      acceptedQuote,
-      affirm,
-      completeInternalPayment,
-    });
-
-    const result = await Effect.runPromise(harness.effect);
-
-    expect(result).toMatchObject({
-      status: "pricing_changed",
-      freshSummary: {
-        total: money(55_000),
-      },
-    });
-    expect(affirm).toHaveBeenCalledTimes(2);
-    expect(completeInternalPayment).toHaveBeenCalledTimes(1);
-    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 });

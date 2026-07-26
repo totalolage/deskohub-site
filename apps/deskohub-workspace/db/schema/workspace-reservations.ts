@@ -21,6 +21,7 @@ export const reservationStates = [
   "confirming",
   "confirmed",
   "cancelling",
+  "cancellation_claimed",
   "cancelled",
   "cancellation_failed",
 ] as const;
@@ -69,6 +70,7 @@ const reservationStatesRequiringDotyposReservationId = [
   "confirming",
   "confirmed",
   "cancelling",
+  "cancellation_claimed",
   "cancelled",
   "cancellation_failed",
 ] as const satisfies readonly ReservationState[];
@@ -158,9 +160,13 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_cancellation_claim_check",
       sql`(
+        ${t.reservationState} <> 'cancellation_claimed'
+        and
         ${t.cancellationClaimOwner} is null
         and ${t.cancellationClaimedAt} is null
       ) or (
+        ${t.reservationState} = 'cancellation_claimed'
+        and
         ${t.cancellationClaimOwner} is not null
         and ${t.cancellationClaimedAt} is not null
       )`
@@ -212,7 +218,7 @@ export const workspaceReservations = pgTable(
         t.cancellationClaimedAt
       )
       .where(
-        sql`${t.reservationState} in ('cancelling', 'cancellation_failed')`
+        sql`${t.reservationState} in ('cancelling', 'cancellation_claimed', 'cancellation_failed')`
       ),
     index("workspace_reservations_dotypos_customer_idx").on(
       t.dotyposCustomerId

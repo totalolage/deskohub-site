@@ -12,12 +12,14 @@ import {
   requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
   switchToMainFrame,
+  validateProtectedBrowserNavigation,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import {
   browserDiagnosticsScript,
   payPageOrderIdScript,
+  payPageReadyScript,
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
@@ -80,6 +82,8 @@ export const completeCheckout = ({
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* submitReservationForPayPage({
+      config,
+      locale: data.locale,
       onOrderId,
       run,
       session,
@@ -139,6 +143,8 @@ export const startCheckoutPaymentAttempt = ({
       timeoutMs: config.timeouts.browserNavigation,
     });
     const orderId = yield* submitReservationForPayPage({
+      config,
+      locale: data.locale,
       onOrderId,
       run,
       session,
@@ -155,12 +161,16 @@ export const startCheckoutPaymentAttempt = ({
   });
 
 export const submitReservationForPayPage = ({
+  config,
+  locale,
   onOrderId,
   run,
   session,
   submitReservationScript,
   timeouts,
 }: {
+  config: WorkspaceE2EConfig;
+  locale: CheckoutData["locale"];
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -169,6 +179,8 @@ export const submitReservationForPayPage = ({
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
+      config,
+      locale,
       onOrderId,
       run,
       session,
@@ -205,12 +217,16 @@ const readPayPageOrderId = (
   });
 
 const submitReservationAndWaitForPayPage = ({
+  config,
+  locale,
   onOrderId,
   run,
   session,
   submitReservationScript,
   timeouts,
 }: {
+  config: WorkspaceE2EConfig;
+  locale: CheckoutData["locale"];
   onOrderId?: (orderId: string) => void;
   run: Runner;
   session: string;
@@ -234,7 +250,13 @@ const submitReservationAndWaitForPayPage = ({
           }
         );
 
-        const result = yield* waitForReservationStart(run, session, timeoutMs);
+        const result = yield* waitForReservationStart(
+          config,
+          locale,
+          run,
+          session,
+          timeoutMs
+        );
         if (
           result.status !== "retryable_error" ||
           attempt >= reservationSubmitAttemptCount
@@ -285,6 +307,8 @@ type ReservationStartResult =
     };
 
 const waitForReservationStart = (
+  config: WorkspaceE2EConfig,
+  locale: CheckoutData["locale"],
   run: Runner,
   session: string,
   timeoutMs: number
@@ -296,8 +320,18 @@ const waitForReservationStart = (
       pollUntil(
         Effect.gen(function* () {
           const url = yield* readBrowserUrl(run, session);
-          if (url?.includes("/checkout/pay"))
-            return { status: "ready" as const, url };
+          const parsedUrl = parseUrl(url ?? "");
+          if (parsedUrl?.pathname === `/${locale}/checkout/pay`) {
+            yield* validateProtectedBrowserNavigation(
+              config,
+              url as string,
+              `/${locale}/checkout/pay`
+            );
+            if (yield* isPayPageReady(run, session)) {
+              return { status: "ready" as const, url: url as string };
+            }
+            return undefined;
+          }
 
           latest = yield* readReservationStartDiagnostics(run, session);
           if (isRetryableReservationStartError(latest)) {
@@ -330,6 +364,28 @@ const waitForReservationStart = (
       url: latest?.url,
     };
   });
+
+const isPayPageReady = (
+  run: Runner,
+  session: string
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "check checkout pay page readiness",
+    run,
+    session,
+    ["eval", "--stdin"],
+    {
+      allowFailure: true,
+      input: payPageReadyScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  ).pipe(
+    Effect.map(
+      (result) =>
+        result.exitCode === 0 && result.stdout.trim().toLowerCase() === "true"
+    )
+  );
 
 type ReservationStartDiagnostics = {
   readonly body?: string;
