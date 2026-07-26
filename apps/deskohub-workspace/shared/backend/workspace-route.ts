@@ -1,5 +1,6 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
+<<<<<<< HEAD
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
@@ -9,6 +10,9 @@ import {
   WorkspaceFrameworkFailure,
 } from "./workspace-framework-failure";
 import type { WorkspaceOperation } from "./workspace-operation";
+=======
+import { runWorkspaceEffect } from "./workspace-effect";
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 export type WorkspaceRouteCancellation =
@@ -57,10 +61,16 @@ export const defineWorkspaceRoute =
       Effect.catch(recoverWorkspaceRouteFailure),
       withWorkspaceRequestContext(request.headers)
     );
+<<<<<<< HEAD
     const effect = Effect.andThen(
       scheduleWorkspaceTelemetryFlush,
       invocation
     ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
+=======
+    const effect = invocation.pipe(
+      Effect.annotateLogs({ method: request.method.toUpperCase() })
+    );
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
     const signal =
       options.cancellation === "interrupt-on-disconnect"
         ? request.signal
@@ -71,14 +81,13 @@ export const defineWorkspaceRoute =
     );
   };
 
-export const mapWorkspaceInternalRouteFailure = (publicMessage: string) =>
-  function mapFailure(cause: unknown) {
-    return new WorkspaceRouteFailure({
+export const mapWorkspaceInternalRouteFailure =
+  (publicMessage: string) => (cause: unknown) =>
+    new WorkspaceRouteFailure({
       statusCode: 500,
       publicMessage,
       cause,
     });
-  };
 
 const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
   function* (failure: WorkspaceRouteFailure) {

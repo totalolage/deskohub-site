@@ -1,13 +1,24 @@
+<<<<<<< HEAD
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { randomBytes } from "node:crypto";
 import type { LoggerProvider } from "@opentelemetry/api-logs";
 import { Effect, Logger } from "effect";
 import { createCensoredOtelLogger } from "./censorship";
+=======
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
+import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import {
   createPostHogLoggerProvider,
+  flushPostHogLogs,
   getPostHogLogsEndpoint,
-  schedulePostHogLogsFlush,
+  getRegisteredPostHogLoggerProvider,
+  registerPostHogLoggerProvider,
 } from "./posthog-otel";
+
+afterEach(() => {
+  registerPostHogLoggerProvider(undefined);
+});
 
 describe("PostHog OTel logs", () => {
   test("builds the PostHog OTLP logs endpoint", () => {
@@ -37,6 +48,7 @@ describe("PostHog OTel logs", () => {
     await provider?.shutdown();
   });
 
+<<<<<<< HEAD
   test("censors nested causes through the production OTLP log sink", async () => {
     const requests: string[] = [];
     const server = Bun.serve({
@@ -138,29 +150,61 @@ describe("PostHog OTel logs", () => {
     const schedule = mock((task: () => Promise<void>) => {
       scheduledTask = task;
     });
+=======
+  test("registers the provider used by implicit flushes", async () => {
+    const forceFlush = mock(() => Promise.resolve());
+    const provider = {
+      forceFlush,
+    } as unknown as Parameters<typeof registerPostHogLoggerProvider>[0];
+
+    registerPostHogLoggerProvider(provider);
+
+    expect(getRegisteredPostHogLoggerProvider()).toBe(provider);
+    await flushPostHogLogs();
+    expect(forceFlush).toHaveBeenCalledTimes(1);
+  });
+
+  test("does nothing when a flush has no provider", async () => {
+    await expect(flushPostHogLogs()).resolves.toBeUndefined();
+  });
+
+  test("contains provider flush failures", async () => {
+    const provider = {
+      forceFlush: () => Promise.reject(new Error("flush failed")),
+    } as Pick<LoggerProvider, "forceFlush">;
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+
+    try {
+      await expect(flushPostHogLogs({ provider })).resolves.toBeUndefined();
+      expect(warn).toHaveBeenCalledWith("PostHog log flush failed.");
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  test("bounds a flush when the logger provider does not settle", async () => {
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
     const provider = {
       forceFlush: () => new Promise<void>(() => undefined),
     } as Pick<LoggerProvider, "forceFlush">;
     const warn = spyOn(console, "warn").mockImplementation(() => undefined);
 
-    schedulePostHogLogsFlush(schedule, { provider, timeoutMs: 5 });
+    try {
+      const result = await Promise.race([
+        flushPostHogLogs({ provider, timeoutMs: 5 }).then(
+          () => "completed" as const
+        ),
+        new Promise<"still-pending">((resolve) =>
+          setTimeout(() => resolve("still-pending"), 100)
+        ),
+      ]);
 
-    expect(schedule).toHaveBeenCalledTimes(1);
-    const task = scheduledTask;
-    expect(task).toBeDefined();
-    if (!task) throw new Error("Expected a scheduled PostHog flush task");
-
-    const result = await Promise.race([
-      task().then(() => "completed" as const),
-      new Promise<"still-pending">((resolve) =>
-        setTimeout(() => resolve("still-pending"), 100)
-      ),
-    ]);
-
-    expect(result).toBe("completed");
-    expect(warn).toHaveBeenCalledWith(
-      "PostHog log flush exceeded its post-response deadline."
-    );
-    warn.mockRestore();
+      expect(result).toBe("completed");
+      expect(warn).toHaveBeenCalledWith(
+        "PostHog log flush exceeded its post-response deadline."
+      );
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

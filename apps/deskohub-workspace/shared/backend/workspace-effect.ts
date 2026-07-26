@@ -27,10 +27,18 @@ interface RunWorkspaceEffectOptions {
 export const runWorkspaceEffect =
   (operation: WorkspaceOperation, options: RunWorkspaceEffectOptions = {}) =>
   <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+<<<<<<< HEAD
     getWorkspaceRuntime().run(
       resolveWorkspaceOperation(operation).pipe(
         Effect.tapError(() => Effect.logError("Workspace operation rejected")),
         Effect.flatMap(() => effect),
+=======
+    workspaceRuntime.run(
+      (shouldScheduleTelemetryFlush(options.boundary)
+        ? Effect.andThen(scheduleWorkspaceTelemetryFlush(), effect)
+        : effect
+      ).pipe(
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
         Effect.annotateLogs({
           boundary: options.boundary ?? "run",
           operation: isWorkspaceOperation(operation) ? operation : "operation",
@@ -38,6 +46,10 @@ export const runWorkspaceEffect =
       ),
       { signal: options.signal }
     );
+
+const shouldScheduleTelemetryFlush = (
+  boundary: WorkspaceEffectBoundary | undefined
+) => boundary === "action" || boundary === "route";
 
 export const defineWorkspaceTask =
   <Args extends readonly unknown[], A, E>(
@@ -110,7 +122,6 @@ const flushTelemetry = Effect.tryPromise({
   try: () => flushPostHogLogs(),
   catch: (cause) => cause,
 }).pipe(
-  Effect.timeout("5 seconds"),
   Effect.tapError((cause) =>
     Effect.logWarning("PostHog log flush failed", { cause })
   ),

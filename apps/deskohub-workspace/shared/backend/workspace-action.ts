@@ -18,12 +18,16 @@ import {
   PublicSafeActionError,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
+<<<<<<< HEAD
 import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
 } from "./workspace-effect";
 import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
 import type { WorkspaceOperation } from "./workspace-operation";
+=======
+import { runWorkspaceEffect } from "./workspace-effect";
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -120,7 +124,11 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     })
   );
 
+<<<<<<< HEAD
   return Effect.andThen(scheduleWorkspaceTelemetryFlush, invocation);
+=======
+  return invocation;
+>>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 };
 
 const getActionInputMetadata = (input: unknown) =>
