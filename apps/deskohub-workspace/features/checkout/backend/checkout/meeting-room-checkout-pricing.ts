@@ -140,5 +140,5 @@ export const meetingRoomCheckoutPricing = reservationCheckoutPricing<
 >({
   getPricingContext: getMeetingRoomPricingContext,
   buildQuote: buildMeetingRoomQuote,
-  getCheckoutSummary: getMeetingRoomCheckoutSummary,
+  getCheckoutSummary: ({ quote }) => getMeetingRoomCheckoutSummary(quote),
 });

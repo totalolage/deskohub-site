@@ -76,31 +76,6 @@ export const normalizedCoworkReservationProductSchema = Schema.Union([
     "Canonical cowork product selection after tier-specific normalization.",
 });
 
-const basicCoworkPriceSelectionSchema = Schema.Struct({
-  entryTier: normalizedBasicCoworkReservationProductSchema.fields.entryTier,
-  coffee: normalizedBasicCoworkReservationProductSchema.fields.coffee,
-});
-
-const plusCoworkPriceSelectionSchema = Schema.Struct({
-  entryTier: normalizedPlusCoworkReservationProductSchema.fields.entryTier,
-  coffee: normalizedPlusCoworkReservationProductSchema.fields.coffee,
-});
-
-const profiCoworkPriceSelectionSchema = Schema.Struct({
-  entryTier: normalizedProfiCoworkReservationProductSchema.fields.entryTier,
-  coffee: normalizedProfiCoworkReservationProductSchema.fields.coffee,
-});
-
-export const coworkPriceSelectionSchema = Schema.Union([
-  basicCoworkPriceSelectionSchema,
-  plusCoworkPriceSelectionSchema,
-  profiCoworkPriceSelectionSchema,
-]).annotate({
-  identifier: "CoworkPriceSelection",
-  description:
-    "Canonical cowork product inputs that determine the catalog price.",
-});
-
 const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
   kind: workspaceCoworkProductIdentitySchema.fields.kind,
   ...normalizedBasicCoworkReservationProductSchema.fields,
@@ -129,7 +104,6 @@ export type CoworkReservationProductInput =
   typeof coworkReservationProductInputSchema.Type;
 export type NormalizedCoworkReservationProduct =
   typeof normalizedCoworkReservationProductSchema.Type;
-export type CoworkPriceSelection = typeof coworkPriceSelectionSchema.Type;
 export type StoredCoworkReservationDetails =
   typeof storedCoworkReservationDetailsSchema.Type;
 
@@ -235,31 +209,6 @@ export const normalizeCoworkReservationProduct = (
         entryTier: "profi",
         coffee: true,
         monitorOption: normalizeMonitorOption(data.monitorOption)!,
-      })
-    ),
-    Match.exhaustive
-  );
-
-export const getCoworkPriceSelection = (
-  product: CoworkReservationProductInput
-): CoworkPriceSelection =>
-  Match.value(product.entryTier).pipe(
-    Match.when("basic", () =>
-      basicCoworkPriceSelectionSchema.make({
-        entryTier: "basic",
-        coffee: product.coffee,
-      })
-    ),
-    Match.when("plus", () =>
-      plusCoworkPriceSelectionSchema.make({
-        entryTier: "plus",
-        coffee: true,
-      })
-    ),
-    Match.when("profi", () =>
-      profiCoworkPriceSelectionSchema.make({
-        entryTier: "profi",
-        coffee: true,
       })
     ),
     Match.exhaustive

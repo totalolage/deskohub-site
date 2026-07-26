@@ -1,5 +1,6 @@
 import { Schema } from "effect";
-import { coworkReservationQuoteSchema } from "@/features/checkout/checkout-quote";
+import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
+import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
@@ -31,12 +32,14 @@ const coworkAdvertisedPriceSchema = Schema.Struct({
   ...advertisedPriceBaseSchema.fields,
   kind: coworkAdvertisedPriceReservationSchema.fields.kind,
   quote: coworkReservationQuoteSchema,
+  summary: checkoutSummarySchema,
 });
 
 const meetingRoomAdvertisedPriceSchema = Schema.Struct({
   ...advertisedPriceBaseSchema.fields,
   kind: meetingRoomAdvertisedPriceReservationSchema.fields.kind,
   quote: meetingRoomReservationQuoteSchema,
+  summary: checkoutSummarySchema,
 });
 
 export const advertisedPriceSchema = Schema.Union([

@@ -463,7 +463,7 @@ export function ReservationForm({
                         );
                         const advertisedProductItem =
                           option.value === selectedTier
-                            ? advertisedPrice?.quote.summary.sections
+                            ? advertisedPrice?.summary.sections
                                 .find(({ key }) => key === "order")
                                 ?.items.find(
                                   (item) =>

@@ -3,7 +3,7 @@ import {
   type CheckoutSummary,
   type CheckoutSummaryChangedKeys,
   getCheckoutSummaryChangedKeys,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import type { ReservationQuotePayment } from "@/features/checkout/reservation-quote-schema";
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
@@ -140,7 +140,10 @@ type ReservationPricingDomain<
     readonly pricing: Context;
     readonly discountQuote: DiscountQuote;
   }) => Effect.Effect<Quote, QuoteError>;
-  readonly getCheckoutSummary: (quote: Quote) => CheckoutSummary;
+  readonly getCheckoutSummary: (input: {
+    readonly reservation: Details;
+    readonly quote: Quote;
+  }) => CheckoutSummary;
 };
 
 interface ReservationCheckoutPricing<
@@ -343,8 +346,14 @@ export const reservationCheckoutPricing = <
           locale: input.locale,
           quote: input.quote,
         });
-        const displayedSummary = domain.getCheckoutSummary(input.quote);
-        const affirmedSummary = domain.getCheckoutSummary(quote);
+        const displayedSummary = domain.getCheckoutSummary({
+          reservation: input.reservation,
+          quote: input.quote,
+        });
+        const affirmedSummary = domain.getCheckoutSummary({
+          reservation: input.reservation,
+          quote,
+        });
         const displayedPriceIsCurrent =
           quote.fingerprint === input.quote.fingerprint &&
           workspaceMoneyEquals(affirmedSummary.total, displayedSummary.total);

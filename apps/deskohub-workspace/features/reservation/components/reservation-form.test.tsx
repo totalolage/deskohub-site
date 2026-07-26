@@ -17,7 +17,10 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
-import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote,
+} from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   workspaceRouterPush as push,
@@ -92,6 +95,22 @@ const availabilityResponse = {
 const advertisedPriceResponse = {
   kind: "cowork" as const,
   quote: basicDiscountedQuote,
+  summary: buildCoworkCheckoutSummary(
+    {
+      entryTier: "basic",
+      coffee: true,
+      date: "2099-07-30",
+    },
+    {
+      discountQuote: {
+        product: { kind: "cowork", tier: "basic" },
+        discountableSubtotal: money(35_000),
+        discounts: basicDiscountedQuote.payment.discounts,
+        totalDiscount: money(17_500),
+        discountedSubtotal: money(17_500),
+      },
+    }
+  ),
   advertisedPriceToken: "sealed-advertised-price",
 };
 

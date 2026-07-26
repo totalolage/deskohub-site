@@ -7,7 +7,7 @@ import {
 import {
   type CheckoutSummaryChangedKeys,
   getCheckoutSummaryChangedKeys,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import {
   getMeetingRoomCheckoutSummary,
   type MeetingRoomReservationQuote,

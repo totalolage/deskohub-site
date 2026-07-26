@@ -1,7 +1,7 @@
 "use client";
 
 import { AlertTriangle, Clock3 } from "lucide-react";
-import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { formatDiscountCountdown } from "@/features/checkout/format-discount-countdown";
 import { type Locale, m } from "@/features/i18n";
 import { useDiscountCountdownState } from "./use-discount-countdown-state";

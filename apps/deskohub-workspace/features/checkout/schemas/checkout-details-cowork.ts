@@ -1,7 +1,8 @@
+import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
 import {
   type CoworkReservationQuote,
-  checkoutSummarySchema,
-} from "@/features/checkout/checkout-quote";
+  getCoworkCheckoutSummary,
+} from "@/features/checkout/reservation-quote-cowork";
 import { makeCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-base";
 import type { Locale } from "@/features/i18n";
 import {
@@ -31,7 +32,7 @@ export const getCoworkCheckoutDetails = (input: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,
     discounts: [...input.quote.payment.discounts],
-    summary: input.quote.summary,
+    summary: getCoworkCheckoutSummary(input.reservation, input.quote),
   },
   legal: input.legalEvidence,
 });

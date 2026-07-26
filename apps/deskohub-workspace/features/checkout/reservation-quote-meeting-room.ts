@@ -7,7 +7,7 @@ import {
   checkoutSummaryProductItemSchema,
   checkoutSummarySchema,
   checkoutSummaryTotalSectionSchema,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   isWorkspaceMeetingRoomDuration,

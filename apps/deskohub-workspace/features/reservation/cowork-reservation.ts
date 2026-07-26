@@ -4,7 +4,6 @@ import { m } from "@/features/i18n";
 import {
   coworkReservationProductInputSchema,
   getAllowedMonitorOptionsForCoworkTier,
-  getCoworkPriceSelection,
   getCoworkReservationProductCoffee,
   getCoworkReservationProductIssues,
   getCoworkReservationProductMonitorOption,
@@ -213,11 +212,33 @@ export const getCoworkAdvertisedPriceReservation = <
   reservation: Reservation
 ): CoworkAdvertisedPriceReservation => ({
   kind: coworkReservationKind,
-  details: {
-    kind: coworkReservationKind,
-    ...getCoworkPriceSelection(reservation),
-    date: reservation.date,
-  },
+  details: Match.value(reservation.entryTier).pipe(
+    Match.when("basic", () =>
+      basicCoworkAdvertisedPriceDetailsSchema.make({
+        kind: coworkReservationKind,
+        entryTier: "basic",
+        coffee: reservation.coffee,
+        date: reservation.date,
+      })
+    ),
+    Match.when("plus", () =>
+      plusCoworkAdvertisedPriceDetailsSchema.make({
+        kind: coworkReservationKind,
+        entryTier: "plus",
+        coffee: true,
+        date: reservation.date,
+      })
+    ),
+    Match.when("profi", () =>
+      profiCoworkAdvertisedPriceDetailsSchema.make({
+        kind: coworkReservationKind,
+        entryTier: "profi",
+        coffee: true,
+        date: reservation.date,
+      })
+    ),
+    Match.exhaustive
+  ),
 });
 
 export const getCoworkReservationDetails = (

@@ -1,5 +1,6 @@
 import { Data, Effect, Match, Schema } from "effect";
-import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummary } from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/reservation-quote-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
@@ -69,9 +70,8 @@ export const getSignedPayStateCheckoutSummary = (
   state: SignedPayState
 ): CheckoutSummary =>
   Match.value(state).pipe(
-    Match.when(
-      { reservation: { kind: "cowork" } },
-      ({ quote }) => quote.summary
+    Match.when({ reservation: { kind: "cowork" } }, ({ quote, reservation }) =>
+      getCoworkCheckoutSummary(reservation, quote)
     ),
     Match.when({ reservation: { kind: "meeting-room" } }, ({ quote }) =>
       getMeetingRoomCheckoutSummary(quote)

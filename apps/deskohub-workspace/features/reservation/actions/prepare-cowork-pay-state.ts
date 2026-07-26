@@ -4,11 +4,12 @@ import {
   CheckoutPricingService,
   openSubmittedAdvertisedPriceState,
 } from "@/features/checkout/backend/checkout";
-import type {
-  CheckoutSummaryChangedKeys,
-  CoworkReservationQuote,
-} from "@/features/checkout/checkout-quote";
-import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import {
+  type CoworkReservationQuote,
+  getCoworkCheckoutSummary,
+} from "@/features/checkout/reservation-quote-cowork";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
@@ -85,8 +86,8 @@ export const prepareCoworkAdvertisement = Effect.fn(
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
-        state.quote.summary,
-        affirmed.quote.summary
+        getCoworkCheckoutSummary(state.reservation.details, state.quote),
+        getCoworkCheckoutSummary(affirmed.reservation.details, affirmed.quote)
       ),
     }),
   };
