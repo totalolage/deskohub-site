@@ -2,12 +2,14 @@ import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import type { Pool } from "pg";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  readCheckoutRowFromPool,
   replayNexiWebhook,
 } from "./database";
 
@@ -30,10 +32,32 @@ test("polls for checkout rows before asserting reservation replacement state", a
     fileURLToPath(new URL("../cases/reservation-reuse.ts", import.meta.url))
   ).text();
 
-  expect(databaseSource).toContain("pollUntil(queryCheckoutRow(pool, orderId)");
+  expect(databaseSource).toContain(
+    "pollUntil(readCheckoutRowFromPool(pool, orderId)"
+  );
   expect(reservationReplacementSource).toContain(
     "waitForCheckoutRow(datasourceConfig, orderId)"
   );
+});
+
+test("retries a checkout-row read after a transient connection failure", async () => {
+  let attempts = 0;
+  const pool = {
+    query: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error("Connection terminated unexpectedly");
+      }
+      return { rows: [] };
+    },
+  } as unknown as Pool;
+
+  const row = await Effect.runPromise(
+    readCheckoutRowFromPool(pool, "reservation-1")
+  );
+
+  expect(row).toBeUndefined();
+  expect(attempts).toBe(2);
 });
 
 test("replays Nexi notification against the exact protected preview", async () => {

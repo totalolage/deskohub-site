@@ -19,8 +19,8 @@ import type {
 } from "../types";
 import { makeUrl } from "../urls";
 import {
-  queryPostgres as query,
-  queryPostgresRetrySafe,
+  queryPostgres as executePostgres,
+  queryPostgresRetrySafe as readPostgres,
   withPostgresPool as withPool,
 } from "./postgres";
 
@@ -31,7 +31,7 @@ export const waitForWebhookReplayRow = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     pollUntil(
-      queryCheckoutRow(pool, orderId).pipe(
+      readCheckoutRowFromPool(pool, orderId).pipe(
         Effect.tap((row) =>
           row ? Effect.sync(() => onRow?.(row)) : Effect.void
         ),
@@ -123,7 +123,7 @@ export const validatePostgres = (
   withPool(config, (pool) =>
     Effect.gen(function* () {
       const row = yield* pollUntil(
-        queryCheckoutRow(pool, orderId).pipe(
+        readCheckoutRowFromPool(pool, orderId).pipe(
           Effect.tap((row) =>
             row ? Effect.sync(() => onRow?.(row)) : Effect.void
           ),
@@ -166,7 +166,7 @@ export const validateDiscountApplications = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const result = yield* query<DiscountApplicationRow>(
+      const result = yield* readPostgres<DiscountApplicationRow>(
         pool,
         "read checkout discount applications",
         `select
@@ -194,14 +194,12 @@ export const validateDiscountApplications = (
         [orderId]
       );
 
-      yield* tryWorkspaceE2ESync(
-        "assert checkout discount applications",
-        () =>
-          assertDiscountApplications(
-            result.rows,
-            expected,
-            config.expectedCurrency
-          )
+      yield* tryWorkspaceE2ESync("assert checkout discount applications", () =>
+        assertDiscountApplications(
+          result.rows,
+          expected,
+          config.expectedCurrency
+        )
       );
       log("Discount applications validated");
     })
@@ -305,10 +303,7 @@ export const assertDiscountApplications = (
       `unexpected discount redemption state at sequence ${index}`
     );
     if (expectation.redemptionState === "redeemed") {
-      assert(
-        row.redeemed_at,
-        `discount redemption timestamp ${index} missing`
-      );
+      assert(row.redeemed_at, `discount redemption timestamp ${index} missing`);
     }
   });
 };
@@ -319,7 +314,7 @@ export const assertNoDiscountPaymentState = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const result = yield* queryPostgresRetrySafe<{
+      const result = yield* readPostgres<{
         application_count: number;
         attempt_count: number;
         redemption_count: number;
@@ -377,7 +372,7 @@ export const validateInternalPostgres = (
   withPool(config, (pool) =>
     Effect.gen(function* () {
       const row = yield* pollUntil(
-        queryCheckoutRow(pool, orderId).pipe(
+        readCheckoutRowFromPool(pool, orderId).pipe(
           Effect.tap((checkoutRow) =>
             checkoutRow ? Effect.sync(() => onRow?.(checkoutRow)) : Effect.void
           ),
@@ -409,11 +404,11 @@ export const validateInternalPostgres = (
     })
   );
 
-const queryCheckoutRow = (
+export const readCheckoutRowFromPool = (
   pool: Pool,
   orderId: string
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  query<CheckoutRow>(
+  readPostgres<CheckoutRow>(
     pool,
     "read checkout row",
     `select
@@ -470,14 +465,14 @@ export const readCheckoutRow = (
   config: DatasourceConfig,
   orderId: string
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  withPool(config, (pool) => queryCheckoutRow(pool, orderId));
+  withPool(config, (pool) => readCheckoutRowFromPool(pool, orderId));
 
 export const waitForCheckoutRow = (
   config: DatasourceConfig,
   orderId: string
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
-    pollUntil(queryCheckoutRow(pool, orderId), {
+    pollUntil(readCheckoutRowFromPool(pool, orderId), {
       intervalMs: workspaceE2EPollIntervalMs.datasource,
       label: "checkout row",
       timeoutMs: config.timeouts.datasource,
@@ -491,7 +486,7 @@ export const readCleanupCheckoutRows = (
 ): Effect.Effect<readonly CheckoutRow[], WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const result = yield* query<{ id: string }>(
+      const result = yield* readPostgres<{ id: string }>(
         pool,
         "read checkout cleanup rows",
         `select wr.id
@@ -511,7 +506,7 @@ export const readCleanupCheckoutRows = (
 
       return yield* Effect.forEach(
         result.rows,
-        ({ id }) => queryCheckoutRow(pool, id),
+        ({ id }) => readCheckoutRowFromPool(pool, id),
         { concurrency: "inherit" }
       ).pipe(
         Effect.map((rows) =>
@@ -528,7 +523,7 @@ export const markPaymentTerminalForE2E = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const current = yield* queryCheckoutRow(pool, orderId);
+      const current = yield* readCheckoutRowFromPool(pool, orderId);
       const paymentAttemptId = yield* tryWorkspaceE2ESync(
         "assert payment terminal checkout row",
         () => {
@@ -540,7 +535,7 @@ export const markPaymentTerminalForE2E = (
       const failureCode = `workspace_e2e_nexi_${scenario.state}`;
       const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
 
-      yield* query(
+      yield* executePostgres(
         pool,
         "mark payment attempt terminal state",
         `update payment_attempts
@@ -562,7 +557,7 @@ export const markPaymentTerminalForE2E = (
         ]
       );
 
-      yield* query(
+      yield* executePostgres(
         pool,
         "mark reservation terminal payment state",
         `update workspace_reservations
@@ -576,7 +571,7 @@ export const markPaymentTerminalForE2E = (
         [orderId, paymentAttemptId, scenario.state, failureCode]
       );
 
-      const row = yield* queryCheckoutRow(pool, orderId);
+      const row = yield* readCheckoutRowFromPool(pool, orderId);
       return yield* tryWorkspaceE2ESync(
         "assert terminal checkout row exists",
         () => {
@@ -593,7 +588,7 @@ export const markFulfillmentFailedForE2E = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const result = yield* query<{ id: string }>(
+      const result = yield* executePostgres<{ id: string }>(
         pool,
         "mark checkout fulfillment failed",
         `update workspace_reservations
@@ -626,7 +621,7 @@ export const markConsoleFulfillmentDeliveredForE2E = (
     Effect.gen(function* () {
       const row = yield* pollUntil(
         Effect.gen(function* () {
-          const result = yield* query<{ id: string }>(
+          const result = yield* executePostgres<{ id: string }>(
             pool,
             "mark console fulfillment delivered",
             `update workspace_reservations
@@ -643,13 +638,13 @@ export const markConsoleFulfillmentDeliveredForE2E = (
           );
 
           if (result.rows[0]?.id !== orderId) {
-            const current = yield* queryCheckoutRow(pool, orderId);
+            const current = yield* readCheckoutRowFromPool(pool, orderId);
             return current?.fulfillment_state === "fulfilled"
               ? current
               : undefined;
           }
 
-          return yield* queryCheckoutRow(pool, orderId);
+          return yield* readCheckoutRowFromPool(pool, orderId);
         }),
         {
           intervalMs: workspaceE2EPollIntervalMs.datasource,
@@ -876,7 +871,7 @@ const assertInternalDiscountState = (
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<InternalDiscountApplicationRow>(
+    const result = yield* readPostgres<InternalDiscountApplicationRow>(
       pool,
       "read internal discount application and claim",
       `select
@@ -939,7 +934,7 @@ const assertLegalEvidence = (
   locale: CheckoutData["locale"]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<{
+    const result = yield* readPostgres<{
       accepted: boolean;
       document_key: string;
       hash_algorithm: string;
@@ -989,7 +984,7 @@ const assertNoLocalPii = (
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<{ count: string }>(
+    const result = yield* readPostgres<{ count: string }>(
       pool,
       "scan checkout tables for local PII",
       `with payloads as (

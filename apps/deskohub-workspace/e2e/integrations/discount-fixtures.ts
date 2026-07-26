@@ -155,7 +155,9 @@ export const seedDiscountE2EFixtures = (
       }
 
       const now = Date.now();
-      const capacity = yield* queryPostgres<{ active_uses: number }>(
+      const capacity = yield* queryPostgresRetrySafe<{
+        active_uses: number;
+      }>(
         pool,
         "read E2E capacity-code usage",
         `select count(*)::int as active_uses
