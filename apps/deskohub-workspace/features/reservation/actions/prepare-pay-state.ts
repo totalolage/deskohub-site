@@ -1006,25 +1006,6 @@ const prepareReservationDraft = Effect.fn(
         checkoutAttemptKeys = rotatedAttemptKeys;
       }
     }
-    const attemptCandidate = existingAttempt;
-    if (
-      attemptCandidate &&
-      [
-        checkoutAttemptKeys.current,
-        checkoutAttemptKeys.identity,
-        checkoutAttemptKeys.legacy,
-      ].some((candidate) =>
-        [
-          attemptCandidate.checkoutAttemptKey,
-          attemptCandidate.checkoutAttemptIdentityKey,
-          attemptCandidate.checkoutAttemptCompatibilityKey,
-        ].includes(candidate)
-      )
-    ) {
-      return yield* new CheckoutAttemptUnavailableError({
-        reservation: attemptCandidate,
-      });
-    }
     const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
     const checkoutSessionKeys = deriveCheckoutSessionKeys(checkoutSessionId);
     if (existingAttempt) {

@@ -345,7 +345,7 @@ const createStatefulReservationFake = (input: {
           reservationCreatedAt: attached.reservationCreatedAt,
           reservationState: "held",
           paymentState: "not_started",
-          failureCode: `hold_creation_candidate:${attached.epoch}:${attached.dotyposReservationId}:${attached.reservationCreatedAt.epochMilliseconds}:${attached.reservationCreatedAt.epochMilliseconds + 120_000}:db`,
+          failureCode: `hold_creation_attached:${attached.epoch}`,
         })
       );
     })
@@ -1103,7 +1103,7 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result.status).toBe("ready");
     expect(findByAttemptKey).toHaveBeenCalledTimes(2);
-    expect(result.createDraft).toHaveBeenCalledTimes(1);
+    expect(result.createDraft).not.toHaveBeenCalled();
     expect(result.enqueueCleanup).toHaveBeenCalledWith({
       orderId: existingReservation.id,
       reason: "hold_expired",
@@ -1331,8 +1331,8 @@ describe("prepareWorkspacePayState", () => {
     expect(result.result.status).toBe("ready");
     expect(rotatedCandidates).toHaveLength(2);
     const attemptLookups = findByAttemptKey.mock.calls.map(([key]) => key);
-    expect(attemptLookups).toHaveLength(3);
-    expect(attemptLookups[1]).toBe(attemptLookups[2]);
+    expect(attemptLookups).toHaveLength(6);
+    expect(new Set(attemptLookups).size).toBe(4);
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
