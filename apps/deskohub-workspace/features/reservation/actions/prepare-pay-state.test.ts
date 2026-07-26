@@ -225,6 +225,8 @@ const makeReusableReservation = (
     reservationCreatedAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     reservationConfirmedAt: null,
     reservationCancelledAt: null,
+    cancellationClaimOwner: null,
+    cancellationClaimedAt: null,
     paidAt: null,
     fulfilledAt: null,
     fulfillmentFailedAt: null,
@@ -242,6 +244,7 @@ const runReusableReservationScenario = async (input: {
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
   readonly claimSupersessionCancellation?: ReturnType<typeof mock>;
+  readonly renewCancellationClaim?: ReturnType<typeof mock>;
   readonly completeSupersessionAndCreateDraft?: ReturnType<typeof mock>;
   readonly cancelReservation?: ReturnType<typeof mock>;
   readonly createReservation?: ReturnType<typeof mock>;
@@ -285,6 +288,9 @@ const runReusableReservationScenario = async (input: {
   const findById = input.findById ?? mock(() => Effect.succeed(null));
   const claimSupersessionCancellation =
     input.claimSupersessionCancellation ?? mock(() => Effect.succeed(null));
+  const renewCancellationClaim =
+    input.renewCancellationClaim ??
+    mock(() => Effect.succeed(makeReusableReservation()));
   const completeSupersessionAndCreateDraft =
     input.completeSupersessionAndCreateDraft ??
     mock(() => Effect.die("unused"));
@@ -338,8 +344,11 @@ const runReusableReservationScenario = async (input: {
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails,
       attachHold: mock(() => Effect.void),
-      markAttachFailedCancellationRequired: mock(() => Effect.void),
+      recordAttachmentCancellationHandoff: mock(() =>
+        Effect.succeed(makeReusableReservation())
+      ),
       claimSupersessionCancellation,
+      renewCancellationClaim,
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
@@ -388,6 +397,7 @@ const runReusableReservationScenario = async (input: {
     claimHoldCreation,
     findById,
     claimSupersessionCancellation,
+    renewCancellationClaim,
     completeSupersessionAndCreateDraft,
     cancelReservation,
     createReservation,
@@ -784,7 +794,9 @@ describe("prepareWorkspacePayState", () => {
         findById: mock(() => Effect.succeed(null)),
         releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
-        markAttachFailedCancellationRequired: mock(() => Effect.void),
+        recordAttachmentCancellationHandoff: mock(() =>
+          Effect.succeed(makeReusableReservation())
+        ),
         claimSupersessionCancellation: mock(() => Effect.succeed(null)),
         completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
         markCancelled: mock(() => Effect.void),
@@ -842,6 +854,7 @@ describe("prepareWorkspacePayState", () => {
       })
     );
     expect(enqueueCleanup).toHaveBeenCalledWith({
+      reason: "hold_expired",
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Temporal.Instant),
     });
@@ -981,6 +994,7 @@ describe("prepareWorkspacePayState", () => {
       claimSupersessionCancellation: mock(() =>
         Effect.succeed(previousReservation)
       ),
+      renewCancellationClaim: mock(() => Effect.succeed(previousReservation)),
       cancelReservation: mock(() =>
         Effect.sync(() => {
           lifecycleEvents.push("cancel-previous-dotypos-reservation");
@@ -1010,12 +1024,14 @@ describe("prepareWorkspacePayState", () => {
     expect(result.cancelReservation).toHaveBeenCalledWith(
       "previous-dotypos-reservation-id"
     );
-    expect(result.claimSupersessionCancellation).toHaveBeenCalledWith(
-      "previous-reservation-id"
-    );
+    expect(result.claimSupersessionCancellation).toHaveBeenCalledWith({
+      id: "previous-reservation-id",
+      ownerId: expect.any(String),
+    });
     expect(result.completeSupersessionAndCreateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
         cancelledReservationId: "previous-reservation-id",
+        cancellationOwnerId: expect.any(String),
         replacement: expect.objectContaining({
           checkoutSessionKey: expect.any(String),
           checkoutAttemptKey: expect.any(String),
@@ -1095,6 +1111,9 @@ describe("prepareWorkspacePayState", () => {
       claimSupersessionCancellation: mock(() =>
         Effect.succeed(rotatedSessionReservation)
       ),
+      renewCancellationClaim: mock(() =>
+        Effect.succeed(rotatedSessionReservation)
+      ),
       completeSupersessionAndCreateDraft: mock((input) =>
         Effect.succeed(
           makeReusableReservation({
@@ -1157,6 +1176,9 @@ describe("prepareWorkspacePayState", () => {
     expect(result.result.status).toBe("ready");
     expect(markCancellationFailed).toHaveBeenCalledWith({
       id: previousReservation.id,
+      ownerId: expect.any(String),
+      disposition: "retryable",
+      recoveryReason: "supersession_recovery",
       failureCode: "checkout_supersession_cancel_failed",
     });
     if (result.result.status !== "ready") throw new Error("Expected ready");
@@ -1198,8 +1220,68 @@ describe("prepareWorkspacePayState", () => {
     expect(result.cancelReservation).not.toHaveBeenCalled();
     expect(result.markCancellationFailed).toHaveBeenCalledWith({
       id: previousReservation.id,
+      ownerId: expect.any(String),
+      disposition: "manual_review",
+      recoveryReason: "supersession_recovery",
       failureCode: "checkout_supersession_cancel_failed",
     });
+  });
+
+  test("does not delete a superseded provider reservation after losing cancellation ownership", async () => {
+    const previousReservation = makeReusableReservation();
+    let currentLookupCount = 0;
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      findCurrentByCheckoutSessionKey: mock(() =>
+        Effect.succeed(currentLookupCount++ === 0 ? previousReservation : null)
+      ),
+      claimSupersessionCancellation: mock(() =>
+        Effect.succeed(previousReservation)
+      ),
+      renewCancellationClaim: mock(() => Effect.succeed(null)),
+      createDraft: mock((input) =>
+        Effect.succeed(
+          makeReusableReservation({
+            id: "rotated-reservation-id",
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
+            dotyposReservationId: null,
+            reservationState: "draft",
+          })
+        )
+      ),
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.getReservationStatus).toHaveBeenCalledTimes(1);
+    expect(result.cancelReservation).not.toHaveBeenCalled();
+    expect(result.markCancellationFailed).toHaveBeenCalledWith({
+      id: previousReservation.id,
+      ownerId: expect.any(String),
+      disposition: "retryable",
+      recoveryReason: "supersession_recovery",
+      failureCode: "checkout_supersession_cancel_failed",
+    });
+  });
+
+  test("attachment failures enqueue compensation without an unowned inline provider delete", async () => {
+    const source = await Bun.file(
+      new URL("./prepare-pay-state.ts", import.meta.url)
+    ).text();
+    const start = source.indexOf(
+      "Workspace reservation hold attach failed; scheduling owned cancellation compensation"
+    );
+    const end = source.indexOf(
+      'yield* Effect.logInfo("Workspace reservation hold attached")',
+      start
+    );
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const compensation = source.slice(start, end);
+
+    expect(compensation).toContain("enqueueAttachmentCancellationCompensation");
+    expect(compensation).toContain("dotyposReservationId");
+    expect(compensation).not.toContain("dotypos.cancelReservation");
   });
 
   test("rejects a tampered advertised-price snapshot before downstream work", async () => {
