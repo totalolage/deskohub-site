@@ -30,12 +30,6 @@ export const env = createEnv({
       process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID,
     RESEND_WEBHOOK_SECRET: process.env.RESEND_WEBHOOK_SECRET,
     CHECKOUT_PAY_STATE_KEYS: process.env.CHECKOUT_PAY_STATE_KEYS,
-    CHECKOUT_RESERVATION_HMAC_SECRET:
-      process.env.CHECKOUT_RESERVATION_HMAC_SECRET,
-    CHECKOUT_RESERVATION_HMAC_CUTOVER_AT:
-      process.env.CHECKOUT_RESERVATION_HMAC_CUTOVER_AT,
-    CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL:
-      process.env.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL,
     CHECKOUT_RETURN_STATE_TOKEN_SECRET:
       process.env.CHECKOUT_RETURN_STATE_TOKEN_SECRET,
     CRON_SECRET: process.env.CRON_SECRET,
@@ -65,32 +59,18 @@ export const env = createEnv({
   createFinalSchema: createEnvironmentSchema,
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
-    const sanitizedError = error.map((issue) => {
-      const path = issue.path?.map((segment) => {
-        const key = typeof segment === "object" ? segment.key : segment;
-        return typeof key === "string" || typeof key === "number"
-          ? key
-          : "unknown";
-      });
-      const isFeatureFlagOverride = path?.includes(
-        "POSTHOG_FEATURE_FLAG_OVERRIDES"
-      );
-      const isReservationHmac = path?.some((key) => {
-        return (
-          typeof key === "string" &&
-          key.startsWith("CHECKOUT_RESERVATION_HMAC_")
-        );
-      });
-
-      return {
-        path,
-        message: isFeatureFlagOverride
-          ? "Invalid PostHog feature flag override configuration."
-          : isReservationHmac
-            ? "Invalid checkout reservation HMAC rollout configuration."
-            : issue.message,
-      };
-    });
+    const sanitizedError = error.map((issue) =>
+      issue.path?.some((segment) =>
+        typeof segment === "object"
+          ? segment.key === "POSTHOG_FEATURE_FLAG_OVERRIDES"
+          : segment === "POSTHOG_FEATURE_FLAG_OVERRIDES"
+      )
+        ? {
+            ...issue,
+            message: "Invalid PostHog feature flag override configuration.",
+          }
+        : issue
+    );
 
     throw new Error(
       `Invalid workspace environment variables: ${JSON.stringify(sanitizedError, null, 2)}`

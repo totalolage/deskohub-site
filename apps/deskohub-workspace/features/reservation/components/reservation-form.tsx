@@ -62,7 +62,7 @@ import {
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
 import {
-  formatReservationInputDate,
+  formatReservationDisplayDate,
   parseReservationInputDate,
 } from "@/features/reservation/reservation-date";
 import {
@@ -216,7 +216,7 @@ const loadWorkspaceAvailability = async ({
 };
 
 const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationInputDate(
+  formatReservationDisplayDate(
     date,
     locale,
     m.reservationDatePlaceholder({}, { locale })
@@ -401,7 +401,7 @@ export function ReservationForm({
       date: selectedDate,
       dateFallback: m.reservationDatePlaceholder({}, { locale }),
       locale,
-      reservation: { kind: "cowork", entryTier: selectedTier },
+      tier: selectedTier,
     });
 
   const {
@@ -884,10 +884,10 @@ export function ReservationForm({
                 render={({ field }) => (
                   <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
                     <FormLabel
-                      className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-aquamarine-ink"
+                      className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
                       required
                     >
-                      <Monitor className="h-4 w-4 text-aquamarine-ink" />
+                      <Monitor className="h-4 w-4 text-aquamarine-green" />
                       {m.reservationMonitorLabel({}, { locale })}
                     </FormLabel>
                     <FormControl>

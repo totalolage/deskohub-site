@@ -15,74 +15,6 @@ const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
-const optionalCheckoutHmacSecretSchema = toEnvSchema(
-  Schema.optional(Schema.String.check(Schema.isMinLength(32)))
-);
-const canonicalUtcInstantPattern =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
-const optionalUtcInstantSchema = toEnvSchema(
-  Schema.optional(
-    Schema.String.check(
-      Schema.makeFilter((value) => {
-        if (!canonicalUtcInstantPattern.test(value)) {
-          return "Expected a canonical UTC RFC 3339 instant.";
-        }
-        const parsed = new Date(value);
-        return (
-          (Number.isFinite(parsed.getTime()) &&
-            parsed.toISOString() === value) ||
-          "Expected a canonical UTC RFC 3339 instant."
-        );
-      })
-    )
-  )
-);
-
-export const checkoutReservationHmacMinimumLegacyReadMilliseconds =
-  20 * 60 * 1000;
-
-export const checkoutReservationHmacEnvironmentCheck = Schema.makeFilter<{
-  readonly CHECKOUT_RESERVATION_HMAC_SECRET?: string | undefined;
-  readonly CHECKOUT_RESERVATION_HMAC_CUTOVER_AT?: string | undefined;
-  readonly CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL?: string | undefined;
-}>((environment) => {
-  const cutoverAt = environment.CHECKOUT_RESERVATION_HMAC_CUTOVER_AT;
-  const legacyReadUntil =
-    environment.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL;
-
-  if (cutoverAt === undefined && legacyReadUntil === undefined) {
-    return undefined;
-  }
-  if (
-    cutoverAt === undefined ||
-    legacyReadUntil === undefined ||
-    environment.CHECKOUT_RESERVATION_HMAC_SECRET === undefined
-  ) {
-    return {
-      path: ["CHECKOUT_RESERVATION_HMAC_CUTOVER_AT"],
-      issue:
-        "Checkout reservation HMAC cutover requires dedicated material and both rollout instants.",
-    };
-  }
-  if (Date.parse(legacyReadUntil) <= Date.parse(cutoverAt)) {
-    return {
-      path: ["CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL"],
-      issue: "Checkout reservation HMAC legacy reads must end after cutover.",
-    };
-  }
-  if (
-    Date.parse(legacyReadUntil) - Date.parse(cutoverAt) <
-    checkoutReservationHmacMinimumLegacyReadMilliseconds
-  ) {
-    return {
-      path: ["CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL"],
-      issue:
-        "Checkout reservation HMAC legacy reads do not cover the minimum safe window.",
-    };
-  }
-
-  return undefined;
-});
 
 export const workspaceServerEnvSchema = Schema.Struct({
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
@@ -108,9 +40,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
-  CHECKOUT_RESERVATION_HMAC_SECRET: optionalCheckoutHmacSecretSchema,
-  CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: optionalUtcInstantSchema,
-  CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: optionalUtcInstantSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isMinLength(32)))
   ),
@@ -138,9 +67,10 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
-})
-  .check(postHogFeatureFlagOverridesEnvironmentCheck)
-  .check(checkoutReservationHmacEnvironmentCheck);
+  WORKSPACE_PAYMENT_ADMISSION_VERSION: toEnvSchema(
+    Schema.optional(Schema.Literal("2"))
+  ),
+}).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
@@ -168,9 +98,7 @@ export const createEnvironmentSchema = (
 
   return Schema.toStandardSchemaV1(
     isServer
-      ? schema
-          .check(postHogFeatureFlagOverridesEnvironmentCheck)
-          .check(checkoutReservationHmacEnvironmentCheck)
+      ? schema.check(postHogFeatureFlagOverridesEnvironmentCheck)
       : schema
   );
 };
