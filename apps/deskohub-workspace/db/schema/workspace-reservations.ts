@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean,
   check,
   index,
   jsonb,
@@ -22,6 +21,7 @@ export const reservationStates = [
   "confirming",
   "confirmed",
   "cancelling",
+  "cancellation_claimed",
   "cancelled",
   "cancellation_failed",
 ] as const;
@@ -46,11 +46,31 @@ export type ReservationState = (typeof reservationStates)[number];
 export type PaymentState = (typeof paymentStates)[number];
 export type FulfillmentState = (typeof fulfillmentStates)[number];
 
+export const cancellationFailureDispositions = [
+  "retryable",
+  "manual_review",
+] as const;
+
+export type CancellationFailureDisposition =
+  (typeof cancellationFailureDispositions)[number];
+
+export const cancellationRecoveryReasons = [
+  "hold_expired",
+  "attachment_compensation",
+  "supersession_recovery",
+  "retryable_failure",
+  "stale_claim_recovery",
+] as const;
+
+export type CancellationRecoveryReason =
+  (typeof cancellationRecoveryReasons)[number];
+
 const reservationStatesRequiringDotyposReservationId = [
   "held",
   "confirming",
   "confirmed",
   "cancelling",
+  "cancellation_claimed",
   "cancelled",
   "cancellation_failed",
 ] as const satisfies readonly ReservationState[];
@@ -63,14 +83,6 @@ export const workspaceReservations = pgTable(
       .notNull()
       .default(postgresUuidV7),
     checkoutAttemptKey: text("checkout_attempt_key").notNull(),
-    checkoutSessionIdentityKey: text("checkout_session_identity_key").notNull(),
-    checkoutAttemptIdentityKey: text("checkout_attempt_identity_key").notNull(),
-    checkoutSessionCompatibilityKey: text(
-      "checkout_session_compatibility_key"
-    ).notNull(),
-    checkoutAttemptCompatibilityKey: text(
-      "checkout_attempt_compatibility_key"
-    ).notNull(),
     correlationId: text("correlation_id")
       .notNull()
       .unique()
@@ -86,16 +98,6 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<FulfillmentState>(),
     activePaymentAttemptId: text("active_payment_attempt_id"),
-    activePaymentEvidenceConflicted: boolean(
-      "active_payment_evidence_conflicted"
-    )
-      .notNull()
-      .default(false),
-    paymentReconciliationAttemptId: text("payment_reconciliation_attempt_id"),
-    paymentReconciliationClaimId: text("payment_reconciliation_claim_id"),
-    paymentReconciliationClaimExpiresAt: instant(
-      "payment_reconciliation_claim_expires_at"
-    ),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),
@@ -105,6 +107,15 @@ export const workspaceReservations = pgTable(
     reservationCreatedAt: instant("reservation_created_at"),
     reservationConfirmedAt: instant("reservation_confirmed_at"),
     reservationCancelledAt: instant("reservation_cancelled_at"),
+    cancellationClaimOwner: text("cancellation_claim_owner"),
+    cancellationClaimedAt: instant("cancellation_claimed_at"),
+    cancellationFailureDisposition: text(
+      "cancellation_failure_disposition"
+    ).$type<CancellationFailureDisposition>(),
+    cancellationRetryAt: instant("cancellation_retry_at"),
+    cancellationRecoveryReason: text(
+      "cancellation_recovery_reason"
+    ).$type<CancellationRecoveryReason>(),
     paidAt: instant("paid_at"),
     fulfilledAt: instant("fulfilled_at"),
     fulfillmentFailedAt: instant("fulfillment_failed_at"),
@@ -147,39 +158,44 @@ export const workspaceReservations = pgTable(
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
     ),
     check(
-      "workspace_reservations_payment_reconciliation_claim_check",
-      sql`(${t.paymentReconciliationAttemptId} is null and ${t.paymentReconciliationClaimId} is null and ${t.paymentReconciliationClaimExpiresAt} is null) or (${t.paymentReconciliationAttemptId} is not null and ${t.paymentReconciliationClaimId} is not null and ${t.paymentReconciliationClaimExpiresAt} is not null)`
+      "workspace_reservations_cancellation_claim_check",
+      sql`(
+        ${t.reservationState} <> 'cancellation_claimed'
+        and
+        ${t.cancellationClaimOwner} is null
+        and ${t.cancellationClaimedAt} is null
+      ) or (
+        ${t.reservationState} = 'cancellation_claimed'
+        and
+        ${t.cancellationClaimOwner} is not null
+        and ${t.cancellationClaimedAt} is not null
+      )`
+    ),
+    check(
+      "workspace_reservations_cancellation_failure_check",
+      sql`(
+        ${t.cancellationFailureDisposition} is null
+        and ${t.cancellationRetryAt} is null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'retryable'
+        and ${t.cancellationRetryAt} is not null
+      ) or (
+        ${t.cancellationFailureDisposition} = 'manual_review'
+        and ${t.cancellationRetryAt} is null
+      )`
+    ),
+    check(
+      "workspace_reservations_cancellation_recovery_reason_check",
+      sql`${t.cancellationRecoveryReason} is null or ${t.cancellationRecoveryReason} in (${quotedSqlList(cancellationRecoveryReasons)})`
     ),
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey
     ),
-    uniqueIndex("workspace_reservations_attempt_identity_key_unique_idx").on(
-      t.checkoutAttemptIdentityKey
-    ),
-    uniqueIndex(
-      "workspace_reservations_attempt_compatibility_key_unique_idx"
-    ).on(t.checkoutAttemptCompatibilityKey),
     uniqueIndex("workspace_reservations_active_session_unique_idx")
       .on(t.checkoutSessionKey)
       .where(sql`${t.reservationState} <> 'cancelled'`),
-    uniqueIndex("workspace_reservations_active_session_identity_unique_idx")
-      .on(t.checkoutSessionIdentityKey)
-      .where(sql`${t.reservationState} <> 'cancelled'`),
-    uniqueIndex(
-      "workspace_reservations_active_session_compatibility_unique_idx"
-    )
-      .on(t.checkoutSessionCompatibilityKey)
-      .where(sql`${t.reservationState} <> 'cancelled'`),
     index("workspace_reservations_checkout_session_idx").on(
       t.checkoutSessionKey,
-      t.createdAt
-    ),
-    index("workspace_reservations_checkout_session_identity_idx").on(
-      t.checkoutSessionIdentityKey,
-      t.createdAt
-    ),
-    index("workspace_reservations_checkout_session_compatibility_idx").on(
-      t.checkoutSessionCompatibilityKey,
       t.createdAt
     ),
     uniqueIndex("workspace_reservations_dotypos_reservation_unique_idx")
@@ -193,6 +209,17 @@ export const workspaceReservations = pgTable(
     index("workspace_reservations_expired_holds_idx")
       .on(t.reservationHoldExpiresAt)
       .where(sql`${t.reservationState} = 'held'`),
+    index("workspace_reservations_cancellation_recovery_idx")
+      .on(
+        t.reservationState,
+        t.cancellationRecoveryReason,
+        t.cancellationFailureDisposition,
+        t.cancellationRetryAt,
+        t.cancellationClaimedAt
+      )
+      .where(
+        sql`${t.reservationState} in ('cancelling', 'cancellation_claimed', 'cancellation_failed')`
+      ),
     index("workspace_reservations_dotypos_customer_idx").on(
       t.dotyposCustomerId
     ),

@@ -18,6 +18,10 @@ import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "../payment/provider-payment-finalization.service";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -73,6 +77,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
   ReservationHoldCleanupService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
+    const paymentAttempts = yield* PaymentAttemptRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
     const posthogEvents = yield* PostHogEventService;
@@ -102,13 +107,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             paymentState: active?.paymentState,
           }
         );
-
-        if (active?.activePaymentEvidenceConflicted) {
-          yield* Effect.logWarning(
-            "Reservation hold cancellation skipped: payment evidence requires manual review"
-          );
-          return "skipped";
-        }
 
         if (
           active?.paymentState === "pending" &&
@@ -145,18 +143,10 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           yield* Effect.logInfo(
             "Reservation hold cancellation provider finalization started"
           );
-          const result = yield* finalization
-            .finalizePendingProviderPayment({
-              orderId: active.id,
-              paymentAttemptId,
-            })
-            .pipe(
-              Effect.mapError(
-                ReservationHoldCleanupError.fromError(
-                  "Payment lifecycle finalization failed during hold cleanup."
-                )
-              )
-            );
+          const result = yield* finalization.finalizePendingProviderPayment({
+            orderId: active.id,
+            paymentAttemptId,
+          });
           yield* Effect.annotateLogsScoped({
             providerFinalizationResult: result,
           });
@@ -187,7 +177,44 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             );
             return "skipped";
           }
-          if (result !== "terminal") {
+          if (result === "not_verifiable") {
+            yield* Effect.logInfo(
+              "Reservation hold cancellation expiring not-verifiable payment attempt"
+            );
+            const expired = yield* paymentAttempts
+              .markTerminalForReservation({
+                id: paymentAttemptId,
+                workspaceReservationId: active.id,
+                state: "expired",
+                failureCode: "payment_not_verifiable_before_cleanup",
+              })
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Reservation hold cancellation payment attempt expiration failed",
+                    {
+                      orderId: active.id,
+                      paymentAttemptId,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.result
+              );
+            if (expired._tag === "Failure") {
+              yield* Effect.logWarning(
+                "Reservation hold cancellation skipped: payment attempt expiration failed"
+              );
+              yield* recordSkippedCleanupAttempt();
+              return "skipped";
+            }
+            yield* Effect.annotateLogsScoped({
+              paymentAttemptExpirationChanged: expired.success.changed,
+            });
+            yield* Effect.logInfo(
+              "Reservation hold cancellation expired not-verifiable payment attempt"
+            );
+          } else if (result !== "terminal") {
             yield* Effect.logWarning(
               "Reservation hold cancellation skipped: payment outcome unconfirmed"
             );
@@ -221,12 +248,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         if (!claimed) {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: claim not cancellable"
-          );
-          return "skipped";
-        }
-        if (claimed.activePaymentEvidenceConflicted) {
-          yield* Effect.logWarning(
-            "Reservation hold cancellation skipped: payment evidence requires manual review"
           );
           return "skipped";
         }
@@ -508,6 +529,7 @@ const getRecoveryContextFromInput = (
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+    Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
