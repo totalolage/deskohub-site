@@ -3,11 +3,14 @@ import { Effect, Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
+  getMeetingRoomReservationDefaultValues,
   getMeetingRoomReservationIssues,
+  getMeetingRoomReservationOrder,
   getStoredMeetingRoomReservationDetails,
   getWorkspaceMeetingRoomProductKey,
   meetingRoomReservationOrderInputSchema,
   meetingRoomReservationSchema,
+  normalizedMeetingRoomReservationOrderSchema,
   storedMeetingRoomReservationDetailsSchema,
   workspaceMeetingRoomProductKeySchema,
 } from "./meeting-room-reservation";
@@ -142,5 +145,50 @@ describe("meetingRoomReservationSchema", () => {
         })
       )
     ).toBe(true);
+  });
+
+  test("rejects Prague times that cannot identify one instant", () => {
+    setSystemTime(new Date("2026-01-01T00:00:00Z"));
+
+    for (const startDateTime of ["2026-03-29T02:00", "2026-10-25T02:00"]) {
+      const result = schema.safeParse({
+        startDateTime,
+        durationMinutes: 60,
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420777777777",
+        message: "",
+        legalConsent: true,
+      });
+
+      expect(Result.isFailure(result)).toBe(true);
+    }
+  });
+
+  test("projects signed state to Prague form values and back to an order", () => {
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-07-30T08:00:00Z",
+      endsAt: "2099-07-30T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "Workshop",
+    });
+
+    const defaults = getMeetingRoomReservationDefaultValues(reservation);
+    expect(defaults).toEqual({
+      startDateTime: "2099-07-30T10:00",
+      durationMinutes: 240,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "Workshop",
+      legalConsent: false,
+    });
+
+    expect(
+      getMeetingRoomReservationOrder({ ...defaults, legalConsent: true })
+    ).toEqual(reservation);
   });
 });

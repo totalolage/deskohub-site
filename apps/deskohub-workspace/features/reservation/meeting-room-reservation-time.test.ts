@@ -2,11 +2,20 @@ import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import {
   getEarliestMeetingRoomStartDateTime,
+  getEarliestSelectableMeetingRoomStartDateTime,
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationInterval,
 } from "./meeting-room-reservation-time";
 
 describe("meeting room reservation time helpers", () => {
+  test("keeps new selections at or after the next whole Prague hour", () => {
+    expect(
+      getEarliestSelectableMeetingRoomStartDateTime(
+        Temporal.Instant.from("2026-07-12T12:37:00Z")
+      )
+    ).toBe("2026-07-12T15:00");
+  });
+
   test("uses the earliest whole-hour start allowed by the duration", () => {
     expect(
       getEarliestMeetingRoomStartDateTime(

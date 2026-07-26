@@ -1,5 +1,8 @@
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
-import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
+import {
+  isWorkspaceMeetingRoomDuration,
+  workspaceMeetingRoomDurationOptions,
+} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
@@ -16,6 +19,7 @@ import {
 } from "@/features/reservation/reservation-interval";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { meetingRoomReservationKind } from "@/features/reservation/reservation-kind";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   localDateTimeSchema,
@@ -291,6 +295,19 @@ export const meetingRoomReservationSchema =
       );
 
       return (
+        interval !== null || {
+          path: ["startDateTime"],
+          issue: m.reservationValidationMeetingRoomStartInvalid(),
+        }
+      );
+    }),
+    Schema.makeFilter((reservation) => {
+      const interval = getMeetingRoomReservationInterval(
+        reservation.startDateTime,
+        reservation.durationMinutes
+      );
+
+      return (
         interval === null ||
         Temporal.Instant.compare(
           Temporal.Instant.from(interval.endsAt),
@@ -307,3 +324,61 @@ export type MeetingRoomReservationInput =
   typeof meetingRoomReservationSchema.Encoded;
 export type MeetingRoomReservationData =
   typeof meetingRoomReservationSchema.Type;
+
+export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
+  {
+    startDateTime: "",
+    durationMinutes: 60,
+    name: "",
+    email: "",
+    phone: "",
+    message: "",
+    legalConsent: false,
+  };
+
+export const getMeetingRoomReservationDefaultValues = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomReservationInput => {
+  const durationMinutes = getDurationMinutes(reservation);
+  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
+    throw new Error("Meeting-room pay state has an unsupported duration.");
+  }
+
+  const startDateTime = Temporal.Instant.from(reservation.startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
+  return {
+    startDateTime,
+    durationMinutes,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    ...(reservation.message !== undefined && { message: reservation.message }),
+    legalConsent: false,
+  };
+};
+
+export const getMeetingRoomReservationOrder = (
+  reservation: MeetingRoomReservationData
+): NormalizedMeetingRoomReservationOrder => {
+  const interval = getMeetingRoomReservationInterval(
+    reservation.startDateTime,
+    reservation.durationMinutes
+  );
+  if (!interval) {
+    throw new Error("Validated meeting-room reservation has no interval.");
+  }
+
+  return normalizedMeetingRoomReservationOrderSchema.make({
+    kind: meetingRoomReservationKind,
+    ...interval,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    ...(reservation.message !== undefined && {
+      message: reservation.message,
+    }),
+  });
+};
