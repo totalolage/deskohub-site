@@ -1,4 +1,4 @@
-import { Effect, type Layer, Option, Schema } from "effect";
+import { Effect, type Layer, Option, Ref, Schedule, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
@@ -6,8 +6,11 @@ import {
   WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import { CheckoutStatusService } from "./checkout-status.service";
-import { getCheckoutStatusPath } from "./checkout-status-url";
+import {
+  CheckoutStatusService,
+  type ICheckoutStatusService,
+} from "./checkout-status.service";
+import { getReservationStatusPath } from "./reservation-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
@@ -22,6 +25,46 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
     outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
+
+type CheckoutStatusRefreshInput = Parameters<
+  ICheckoutStatusService["refreshStatus"]
+>[0];
+
+const refreshCheckoutStatusAttempt = Effect.fn("refreshCheckoutStatusAttempt")(
+  function* (input: CheckoutStatusRefreshInput, attempts: Ref.Ref<number>) {
+    const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
+    yield* Effect.logWarning("Retrying checkout payment return refresh", {
+      orderId: input.orderId,
+      attempt,
+    }).pipe(Effect.when(Effect.succeed(attempt > 1)));
+
+    const checkoutStatus = yield* CheckoutStatusService;
+    return yield* checkoutStatus.refreshStatus(input).pipe(
+      Effect.catch((cause) =>
+        Effect.logError("Checkout payment return refresh failed", {
+          orderId: input.orderId,
+          outcome: input.returnOutcome,
+          attempt,
+          cause,
+        })
+      )
+    );
+  }
+);
+
+const refreshCheckoutStatusWithBriefRetry = Effect.fn(
+  "refreshCheckoutStatusWithBriefRetry"
+)(function* (input: CheckoutStatusRefreshInput) {
+  const attempts = yield* Ref.make(0);
+  return yield* refreshCheckoutStatusAttempt(input, attempts).pipe(
+    Effect.repeat({
+      schedule: Schedule.spaced("1500 millis"),
+      times: 3,
+      while: (status) =>
+        !status || status.status === "created" || status.status === "pending",
+    })
+  );
+});
 
 const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (
@@ -42,25 +85,14 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       () => ({ outcome: "unknown" as const })
     );
 
-    const checkoutStatus = yield* CheckoutStatusService;
-    yield* checkoutStatus
-      .refreshStatus({
-        orderId,
-        returnOutcome: outcome,
-      })
-      .pipe(
-        Effect.catch((cause) =>
-          Effect.logError("Checkout payment return refresh failed", {
-            orderId,
-            outcome,
-            cause,
-          })
-        )
-      );
+    yield* refreshCheckoutStatusWithBriefRetry({
+      orderId,
+      returnOutcome: outcome,
+    });
 
     return NextResponse.redirect(
       new URL(
-        getCheckoutStatusPath({
+        getReservationStatusPath({
           locale,
           orderId,
           outcome,

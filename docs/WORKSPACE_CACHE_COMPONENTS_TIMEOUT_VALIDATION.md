@@ -26,8 +26,8 @@ Use the production Vercel project and PostHog production logs.
 Primary signals:
 
 - Count of `Vercel Runtime Timeout Error: Task timed out after 300 seconds`.
-- Any timeout on `/en-US`, `/cs-CZ`, `/en-US/checkout/order`, or
-  `/cs-CZ/checkout/order`.
+- Any timeout on `/en-US`, `/cs-CZ`, `/en-US/reservation/cowork`, or
+  `/cs-CZ/reservation/cowork`.
 - Next Cache Components timer warnings mentioning `PRERENDER`.
 - Request duration distribution for the same routes.
 

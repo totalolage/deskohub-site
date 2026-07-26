@@ -113,7 +113,6 @@ describe("CheckoutStatusPage", () => {
       <CheckoutStatusPage
         locale="en-US"
         status={{
-          kind: undefined,
           orderId: "test-order",
           returnOutcome: "unknown",
           status: "not_found",

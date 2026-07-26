@@ -180,7 +180,7 @@ export const assertFulfilledStatusPage = ({
       config,
       run,
       session,
-      `${config.baseUrl}/${locale}/checkout/status/${orderId}`,
+      `${config.baseUrl}/${locale}/reservation/status/${orderId}`,
       { timeoutMs: config.timeouts.browserNavigation }
     );
     yield* waitForBrowserText({
@@ -223,7 +223,7 @@ const assertFulfillmentFailedSupportPath = ({
     yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
-      `${config.baseUrl}/${data.locale}/checkout/status/${orderId}`
+      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
     );
     yield* setSearchParams(statusUrl, {
       e2eAt: String(Date.now()),

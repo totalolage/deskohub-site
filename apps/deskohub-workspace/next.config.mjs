@@ -36,7 +36,7 @@ const nextConfig = {
     return [
       {
         source: `/:locale(${localeRedirectPattern})/reservation`,
-        destination: `/:locale/checkout/order?${new URLSearchParams({
+        destination: `/:locale/reservation/cowork?${new URLSearchParams({
           utm_source: "qr",
           utm_medium: "print",
           utm_campaign: "bud jako doma",

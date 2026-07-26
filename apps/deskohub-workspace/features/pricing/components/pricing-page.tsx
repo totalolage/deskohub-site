@@ -5,6 +5,7 @@ import {
   getPricingContent,
   type PricingTariff,
 } from "@/features/pricing/content";
+import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import {
   Card,
@@ -110,7 +111,7 @@ type TariffCardProps = {
 };
 
 function TariffCard({ includesLabel, tariff, locale }: TariffCardProps) {
-  const reservationHref = `/${locale}/checkout/order?tier=${tariff.reservationTier}`;
+  const reservationHref = `${getCoworkReservationPath(locale)}?entryTier=${tariff.reservationTier}`;
 
   return (
     <Link href={reservationHref} className="group block rounded-[1.9rem]">

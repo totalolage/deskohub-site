@@ -8,6 +8,15 @@ import {
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import {
+  ReservationForm,
+  ReservationFormFallback,
+} from "@/features/reservation/components/reservation-form";
+import {
+  coworkReservationDefaultValues,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
+import { coworkReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParam,
@@ -16,7 +25,7 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-type LocalizedCheckoutOrderPageProps = {
+type LocalizedCoworkReservationPageProps = {
   params: Promise<{ locale: string }>;
   searchParams: Promise<SearchParamsRecord>;
 };
@@ -35,14 +44,17 @@ const getOrderPayState = Effect.fn("checkoutOrder.getPayState")(function* (
 
 export async function generateMetadata({
   params,
-}: LocalizedCheckoutOrderPageProps): Promise<Metadata> {
+}: LocalizedCoworkReservationPageProps): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, () => {
     const title = m.checkoutOrderMetadataTitle({}, { locale });
     const description = m.checkoutOrderMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(locale, "/checkout/order");
+    const url = getWorkspaceLocalizedCanonicalUrl(
+      locale,
+      coworkReservationPath
+    );
 
     return {
       title,
@@ -52,7 +64,10 @@ export async function generateMetadata({
         languages: Object.fromEntries(
           locales.map((itemLocale) => [
             itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(itemLocale, "/checkout/order"),
+            getWorkspaceLocalizedCanonicalUrl(
+              itemLocale,
+              coworkReservationPath
+            ),
           ])
         ),
       },
@@ -68,26 +83,37 @@ export async function generateMetadata({
   });
 }
 
-export default async function LocalizedCheckoutOrderPage({
+export default async function LocalizedCoworkReservationPage({
   params,
   searchParams,
-}: LocalizedCheckoutOrderPageProps) {
+}: LocalizedCoworkReservationPageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
   const payState = await getOrderPayState(
     getSearchParam(await searchParams, payStateTokenQueryParam),
     locale
-  ).pipe(runWorkspaceEffect("checkout.order.load-state"));
+  ).pipe(runWorkspaceEffect("reservation.cowork.load-state"));
+  const initialReservation =
+    payState?.reservation.kind === "cowork" ? payState.reservation : undefined;
+  const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
+    initialReservation?.entryTier ?? coworkReservationDefaultValues.entryTier
+  );
 
   return runWithRequestLocale(locale, () => (
     <CheckoutOrderPage
-      initialReservation={
-        payState?.reservation.kind === "cowork"
-          ? payState.reservation
-          : undefined
+      fallback={
+        <ReservationFormFallback
+          locale={locale}
+          showMonitorOption={showMonitorOptionFallback}
+        />
       }
       locale={locale}
-      checkoutSessionId={payState?.checkoutSessionId}
-    />
+    >
+      <ReservationForm
+        initialReservation={initialReservation}
+        locale={locale}
+        checkoutSessionId={payState?.checkoutSessionId}
+      />
+    </CheckoutOrderPage>
   ));
 }

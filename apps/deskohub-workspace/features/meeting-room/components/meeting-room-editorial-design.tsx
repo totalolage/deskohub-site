@@ -9,6 +9,7 @@ import meetingRoomDetailPhoto from "@/features/landing-page/images/zasedacka/IMG
 import meetingRoomMuralPhoto from "@/features/landing-page/images/zasedacka/IMG_20260319_165943.jpg";
 import meetingRoomWidePhoto from "@/features/landing-page/images/zasedacka/IMG_20260418_162920.jpg";
 import meetingRoomHeroPhoto from "@/features/landing-page/images/zasedacka/IMG_20260418_162934.jpg";
+import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 
@@ -53,7 +54,7 @@ export function MeetingRoomEditorialDesign({
                 {m.meetingRoomChoiceText({}, { locale })}
               </p>
               <Button asChild className="mt-9 px-7 uppercase tracking-[0.08em]">
-                <Link href={`/${locale}/reservation/meeting-room`}>
+                <Link href={getMeetingRoomReservationPath(locale)}>
                   {m.meetingRoomReservationCta({}, { locale })}
                 </Link>
               </Button>

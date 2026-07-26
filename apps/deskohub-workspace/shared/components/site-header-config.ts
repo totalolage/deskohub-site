@@ -1,5 +1,6 @@
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { getCoworkReservationPath } from "@/features/reservation/routes";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -52,7 +53,7 @@ export async function getSiteHeaderConfig(locale: Locale) {
       },
     ].filter(Boolean),
     contactLabel: m.reservationNavCta({}, { locale }),
-    contactHref: `${localePath}/checkout/order`,
+    contactHref: getCoworkReservationPath(locale),
   };
 }
 

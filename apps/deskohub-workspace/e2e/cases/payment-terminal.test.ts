@@ -12,16 +12,13 @@ test("restarts a reservation through a hydrated stable link selector", async () 
   };
 
   await Effect.runPromise(
-    activateStatusReserveAgain(
-      run,
-      "payment-terminal",
-      workspaceE2ETimeouts
-    )
+    activateStatusReserveAgain(run, "payment-terminal", workspaceE2ETimeouts)
   );
 
   expect(calls.map((args) => args.slice(2))).toEqual([
     ["wait", "--fn", expect.any(String)],
-    ["click", 'a[href="/en-US/checkout/order"]'],
+    ["focus", 'a[href="/en-US/reservation/cowork"]'],
+    ["press", "Enter"],
   ]);
   expect(calls.some((args) => args.includes("eval"))).toBe(false);
 });
