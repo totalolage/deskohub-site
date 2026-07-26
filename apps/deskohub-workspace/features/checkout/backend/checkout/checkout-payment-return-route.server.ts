@@ -46,7 +46,7 @@ const refreshCheckoutStatusAttempt = Effect.fn("refreshCheckoutStatusAttempt")(
           outcome: input.returnOutcome,
           attempt,
           cause,
-        }).pipe(Effect.as(undefined))
+        })
       )
     );
   }
