@@ -1,7 +1,15 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { afterAll, beforeEach, describe, expect, test } from "bun:test";
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { randomUUID } from "node:crypto";
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
 import { EffectLogger, make } from "drizzle-orm/effect-postgres";
@@ -14,25 +22,41 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import { applyCommittedWorkspaceMigrations } from "@/shared/testing/workspace-migrations";
 import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
   PaymentAttemptStateError,
 } from "./payment-attempt.repository";
 
-const postgresConfig = {
-  database: "workspace_concurrency",
-  host: "127.0.0.1",
-  port: 55_432,
-  user: "postgres",
-} as const;
+const realPostgresUrl = process.env.WORKSPACE_REAL_POSTGRES_TEST_URL;
+let testDatabaseName: string | undefined;
+let testDatabaseUrl: string | undefined;
+
+const requireRealPostgresUrl = () => {
+  if (!realPostgresUrl) {
+    throw new Error(
+      "WORKSPACE_REAL_POSTGRES_TEST_URL is required for real PostgreSQL concurrency tests."
+    );
+  }
+  return realPostgresUrl;
+};
+
+const requireTestDatabaseUrl = () => {
+  if (!testDatabaseUrl) {
+    throw new Error(
+      "Real PostgreSQL concurrency database was not initialized."
+    );
+  }
+  return testDatabaseUrl;
+};
 
 const pools: Pool[] = [];
 const clients: Client[] = [];
 
 const connectClient = async (applicationName: string) => {
   const client = new Client({
-    ...postgresConfig,
+    connectionString: requireTestDatabaseUrl(),
     application_name: applicationName,
   });
   clients.push(client);
@@ -42,7 +66,7 @@ const connectClient = async (applicationName: string) => {
 
 const repositoryLayer = (applicationName: string) => {
   const pool = new Pool({
-    ...postgresConfig,
+    connectionString: requireTestDatabaseUrl(),
     application_name: applicationName,
     max: 1,
     types: drizzleRawTypeParsers,
@@ -170,88 +194,54 @@ const createPayment = (reservationId: string) =>
     }).pipe(Effect.result)
   );
 
+beforeAll(async () => {
+  const admin = new Client({ connectionString: requireRealPostgresUrl() });
+  testDatabaseName = `payment_cleanup_${randomUUID().replaceAll("-", "")}`;
+  const databaseUrl = new URL(requireRealPostgresUrl());
+  databaseUrl.pathname = `/${testDatabaseName}`;
+  testDatabaseUrl = databaseUrl.toString();
+
+  try {
+    await admin.connect();
+    await admin.query(`create database "${testDatabaseName}"`);
+    const migrationClient = new Client({ connectionString: testDatabaseUrl });
+    try {
+      await migrationClient.connect();
+      await applyCommittedWorkspaceMigrations(migrationClient);
+      const uuid = await migrationClient.query<{ generated: boolean }>(
+        "select uuid_generate_v7() is not null as generated"
+      );
+      expect(uuid.rows[0]?.generated).toBe(true);
+    } finally {
+      await migrationClient.end();
+    }
+  } finally {
+    await admin.end();
+  }
+});
+
 beforeEach(async () => {
   await Promise.all(pools.splice(0).map((pool) => pool.end()));
   await Promise.all(clients.splice(0).map((client) => client.end()));
   const admin = await connectClient("concurrency-setup");
   await admin.query(`
-    drop table if exists payment_attempts;
-    drop table if exists workspace_reservations;
+    drop trigger if exists block_payment_winner on workspace_reservations;
     drop function if exists block_payment_winner();
-    drop function if exists uuid_generate_v7();
-    create function uuid_generate_v7() returns uuid language sql volatile as $$
-      select gen_random_uuid()
-    $$;
-    create table workspace_reservations (
-      id text primary key,
-      checkout_session_key text not null,
-      checkout_attempt_key text not null unique,
-      checkout_session_identity_key text not null default '',
-      checkout_attempt_identity_key text not null default '',
-      checkout_session_compatibility_key text not null default '',
-      checkout_attempt_compatibility_key text not null default '',
-      correlation_id text not null unique,
-      dotypos_customer_id text not null,
-      dotypos_reservation_id text,
-      customer_access_code text not null,
-      reservation_state text not null,
-      payment_state text not null,
-      fulfillment_state text not null,
-      active_payment_attempt_id text,
-      active_payment_evidence_conflicted boolean not null default false,
-      payment_reconciliation_attempt_id text,
-      payment_reconciliation_claim_id text,
-      payment_reconciliation_claim_expires_at timestamptz,
-      reservation_details jsonb not null,
-      locale text not null,
-      reservation_hold_expires_at timestamptz,
-      reservation_hold_expired_at timestamptz,
-      reservation_created_at timestamptz,
-      reservation_confirmed_at timestamptz,
-      reservation_cancelled_at timestamptz,
-      cancellation_claim_owner text,
-      cancellation_claimed_at timestamptz,
-      cancellation_failure_disposition text,
-      cancellation_retry_at timestamptz,
-      cancellation_recovery_reason text,
-      paid_at timestamptz,
-      fulfilled_at timestamptz,
-      fulfillment_failed_at timestamptz,
-      failure_code text,
-      fulfillment_failure_code text,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    );
-    create table payment_attempts (
-      id text primary key,
-      workspace_reservation_id text not null references workspace_reservations(id),
-      provider text not null,
-      provider_order_id text not null unique,
-      admission_version integer not null default 1,
-      pricing_fingerprint text,
-      displayed_discount_ids jsonb,
-      provider_start_lease_id text,
-      provider_start_lease_expires_at timestamptz,
-      provider_evidence_conflicted boolean not null default false,
-      security_token text,
-      state text not null,
-      amount_value integer not null,
-      amount_exponent integer not null,
-      currency text not null,
-      provider_redirect_url text,
-      last_webhook_event_id text,
-      last_provider_operation_id text,
-      last_provider_status text,
-      failure_code text,
-      created_at timestamptz not null default now(),
-      updated_at timestamptz not null default now()
-    )
+    truncate table workspace_reservations cascade
   `);
 });
 
 afterAll(async () => {
   await Promise.all(pools.splice(0).map((pool) => pool.end()));
   await Promise.all(clients.splice(0).map((client) => client.end()));
+  if (!testDatabaseName) return;
+  const admin = new Client({ connectionString: requireRealPostgresUrl() });
+  try {
+    await admin.connect();
+    await admin.query(`drop database "${testDatabaseName}" with (force)`);
+  } finally {
+    await admin.end();
+  }
 });
 
 describe("payment and cleanup independent PostgreSQL sessions", () => {

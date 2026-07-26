@@ -18,7 +18,15 @@ import { PaymentLifecycleRepository } from "./payment-lifecycle.repository";
 mock.module("server-only", () => ({}));
 
 const realPostgresUrl = process.env.WORKSPACE_REAL_POSTGRES_TEST_URL;
-const realPostgresTest = realPostgresUrl ? test : test.skip;
+
+const requireRealPostgresUrl = () => {
+  if (!realPostgresUrl) {
+    throw new Error(
+      "WORKSPACE_REAL_POSTGRES_TEST_URL is required for real PostgreSQL reconciliation tests."
+    );
+  }
+  return realPostgresUrl;
+};
 
 const pricing = {
   fingerprint: "pricing-fingerprint",
@@ -76,40 +84,39 @@ const admit = (
   });
 
 const makeTestDatabaseUrl = (databaseName: string) => {
-  if (!realPostgresUrl) throw new Error("Real PostgreSQL URL is required.");
-  const url = new URL(realPostgresUrl);
+  const url = new URL(requireRealPostgresUrl());
   url.pathname = `/${databaseName}`;
   return url.toString();
 };
 
 describe("payment reconciliation real PostgreSQL locking", () => {
-  realPostgresTest(
-    "fences admission during lookup and fences a replacement from verified late evidence",
-    async () => {
-      if (!realPostgresUrl) return;
+  test("fences admission during lookup and fences a replacement from verified late evidence", async () => {
+    const databaseName = `payment_reconciliation_${randomUUID().replaceAll("-", "")}`;
+    const admin = new Client({ connectionString: requireRealPostgresUrl() });
+    await admin.connect();
+    await admin.query(`create database "${databaseName}"`);
 
-      const databaseName = `payment_reconciliation_${randomUUID().replaceAll("-", "")}`;
-      const admin = new Client({ connectionString: realPostgresUrl });
-      await admin.connect();
-      await admin.query(`create database "${databaseName}"`);
+    const testDatabaseUrl = makeTestDatabaseUrl(databaseName);
+    const migrationClient = new Client({ connectionString: testDatabaseUrl });
+    const ownerPool = new Pool({
+      connectionString: testDatabaseUrl,
+      max: 2,
+    });
+    const contenderPool = new Pool({
+      connectionString: testDatabaseUrl,
+      max: 1,
+    });
 
-      const testDatabaseUrl = makeTestDatabaseUrl(databaseName);
-      const migrationClient = new Client({ connectionString: testDatabaseUrl });
-      const ownerPool = new Pool({
-        connectionString: testDatabaseUrl,
-        max: 2,
-      });
-      const contenderPool = new Pool({
-        connectionString: testDatabaseUrl,
-        max: 1,
-      });
+    try {
+      await migrationClient.connect();
+      await applyCommittedWorkspaceMigrations(migrationClient);
+      const uuid = await migrationClient.query<{ generated: boolean }>(
+        "select uuid_generate_v7() is not null as generated"
+      );
+      expect(uuid.rows[0]?.generated).toBe(true);
 
-      try {
-        await migrationClient.connect();
-        await applyCommittedWorkspaceMigrations(migrationClient);
-
-        await migrationClient.query(
-          `insert into workspace_reservations (
+      await migrationClient.query(
+        `insert into workspace_reservations (
              id,
              checkout_session_key,
              checkout_attempt_key,
@@ -138,285 +145,283 @@ describe("payment reconciliation real PostgreSQL locking", () => {
              'not_started',
              clock_timestamp() + interval '5 minutes'
            )`
-        );
+      );
 
-        const admitted = await runRepository(
-          ownerPool,
-          Effect.gen(function* () {
-            const repository = yield* PaymentLifecycleRepository;
-            return yield* admit(repository, "provider-order-a");
-          })
-        );
-        expect(admitted.outcome).toBe("created");
-        if (admitted.outcome !== "created") return;
+      const admitted = await runRepository(
+        ownerPool,
+        Effect.gen(function* () {
+          const repository = yield* PaymentLifecycleRepository;
+          return yield* admit(repository, "provider-order-a");
+        })
+      );
+      expect(admitted.outcome).toBe("created");
+      if (admitted.outcome !== "created") return;
 
-        await migrationClient.query(
-          `update payment_attempts
+      await migrationClient.query(
+        `update payment_attempts
            set provider_start_lease_expires_at = clock_timestamp() - interval '1 second'
            where id = $1`,
-          [admitted.attempt.id]
-        );
+        [admitted.attempt.id]
+      );
 
-        let lookupStarted!: () => void;
-        const lookupStartedBarrier = new Promise<void>((resolve) => {
-          lookupStarted = resolve;
-        });
-        let releaseLookup!: () => void;
-        const lookupReleaseBarrier = new Promise<void>((resolve) => {
-          releaseLookup = resolve;
-        });
-        let historicalLookupStarted!: () => void;
-        const historicalLookupStartedBarrier = new Promise<void>((resolve) => {
-          historicalLookupStarted = resolve;
-        });
-        let releaseHistoricalLookup!: () => void;
-        const historicalLookupReleaseBarrier = new Promise<void>((resolve) => {
-          releaseHistoricalLookup = resolve;
-        });
-        let providerLookupCount = 0;
-        const verifyPaymentOutcome = mock(() =>
-          Effect.gen(function* () {
-            providerLookupCount += 1;
-            if (providerLookupCount > 1) {
-              historicalLookupStarted();
-              yield* Effect.promise(() => historicalLookupReleaseBarrier);
-              return {
-                status: "success",
-                provider: {
-                  orderId: "provider-order-a",
-                  operationId: "late-provider-operation-a",
-                  operationType: "CAPTURE",
-                  amount: "1000",
-                  currency: "CZK",
-                  orderStatus: "EXECUTED",
-                  captureExecuted: true,
-                },
-                mismatches: [],
-              } satisfies PaymentVerificationResult;
-            }
-            lookupStarted();
-            yield* Effect.promise(() => lookupReleaseBarrier);
+      let lookupStarted!: () => void;
+      const lookupStartedBarrier = new Promise<void>((resolve) => {
+        lookupStarted = resolve;
+      });
+      let releaseLookup!: () => void;
+      const lookupReleaseBarrier = new Promise<void>((resolve) => {
+        releaseLookup = resolve;
+      });
+      let historicalLookupStarted!: () => void;
+      const historicalLookupStartedBarrier = new Promise<void>((resolve) => {
+        historicalLookupStarted = resolve;
+      });
+      let releaseHistoricalLookup!: () => void;
+      const historicalLookupReleaseBarrier = new Promise<void>((resolve) => {
+        releaseHistoricalLookup = resolve;
+      });
+      let providerLookupCount = 0;
+      const verifyPaymentOutcome = mock(() =>
+        Effect.gen(function* () {
+          providerLookupCount += 1;
+          if (providerLookupCount > 1) {
+            historicalLookupStarted();
+            yield* Effect.promise(() => historicalLookupReleaseBarrier);
             return {
-              status: "pending",
+              status: "success",
               provider: {
                 orderId: "provider-order-a",
-                operationId: "provider-operation-a",
+                operationId: "late-provider-operation-a",
                 operationType: "CAPTURE",
                 amount: "1000",
                 currency: "CZK",
-                orderStatus: "PENDING",
-                captureExecuted: false,
+                orderStatus: "EXECUTED",
+                captureExecuted: true,
               },
               mismatches: [],
             } satisfies PaymentVerificationResult;
-          })
-        );
+          }
+          lookupStarted();
+          yield* Effect.promise(() => lookupReleaseBarrier);
+          return {
+            status: "pending",
+            provider: {
+              orderId: "provider-order-a",
+              operationId: "provider-operation-a",
+              operationType: "CAPTURE",
+              amount: "1000",
+              currency: "CZK",
+              orderStatus: "PENDING",
+              captureExecuted: false,
+            },
+            mismatches: [],
+          } satisfies PaymentVerificationResult;
+        })
+      );
 
-        const [
-          { NexiService },
-          {
-            ProviderPaymentFinalizationService,
-            ProviderPaymentFinalizationServiceLive,
-          },
-          { PaymentAttemptRepositoryLive },
-          { WorkspacePaidFulfillmentService },
-          { WorkspaceReservationRepositoryLive },
-          { PostHogEventService },
-        ] = await Promise.all([
-          import("@deskohub/nexi"),
-          import("../payment/provider-payment-finalization.service"),
-          import("./payment-attempt.repository"),
-          import("../fulfillment/paid-fulfillment.service"),
-          import(
-            "@/features/reservation/backend/workspace-reservation.repository"
-          ),
-          import("@/shared/backend/analytics/posthog-event.service"),
-        ]);
+      const [
+        { NexiService },
+        {
+          ProviderPaymentFinalizationService,
+          ProviderPaymentFinalizationServiceLive,
+        },
+        { PaymentAttemptRepositoryLive },
+        { WorkspacePaidFulfillmentService },
+        { WorkspaceReservationRepositoryLive },
+        { PostHogEventService },
+      ] = await Promise.all([
+        import("@deskohub/nexi"),
+        import("../payment/provider-payment-finalization.service"),
+        import("./payment-attempt.repository"),
+        import("../fulfillment/paid-fulfillment.service"),
+        import(
+          "@/features/reservation/backend/workspace-reservation.repository"
+        ),
+        import("@/shared/backend/analytics/posthog-event.service"),
+      ]);
 
-        const ownerDatabase = makeDatabaseLayer(ownerPool);
-        const ownerDependencies = Layer.mergeAll(
-          ownerDatabase,
-          PaymentLifecycleRepository.Live.pipe(Layer.provide(ownerDatabase)),
-          PaymentAttemptRepositoryLive.pipe(Layer.provide(ownerDatabase)),
-          WorkspaceReservationRepositoryLive.pipe(Layer.provide(ownerDatabase)),
-          Layer.succeed(NexiService, {
-            createHostedPaymentPage: () => Effect.die("must not create HPP"),
-            verifyPaymentOutcome,
-          }),
-          Layer.succeed(WorkspacePaidFulfillmentService, {
-            fulfillPaidOrder: () => Effect.die("must not fulfill"),
-          }),
-          Layer.succeed(PostHogEventService, {
-            capture: () => Effect.void,
-          })
-        );
-        const finalizationLayer = ProviderPaymentFinalizationServiceLive.pipe(
-          Layer.provide(ownerDependencies)
-        );
+      const ownerDatabase = makeDatabaseLayer(ownerPool);
+      const ownerDependencies = Layer.mergeAll(
+        ownerDatabase,
+        PaymentLifecycleRepository.Live.pipe(Layer.provide(ownerDatabase)),
+        PaymentAttemptRepositoryLive.pipe(Layer.provide(ownerDatabase)),
+        WorkspaceReservationRepositoryLive.pipe(Layer.provide(ownerDatabase)),
+        Layer.succeed(NexiService, {
+          createHostedPaymentPage: () => Effect.die("must not create HPP"),
+          verifyPaymentOutcome,
+        }),
+        Layer.succeed(WorkspacePaidFulfillmentService, {
+          fulfillPaidOrder: () => Effect.die("must not fulfill"),
+        }),
+        Layer.succeed(PostHogEventService, {
+          capture: () => Effect.void,
+        })
+      );
+      const finalizationLayer = ProviderPaymentFinalizationServiceLive.pipe(
+        Layer.provide(ownerDependencies)
+      );
 
-        const reconciliation = Effect.gen(function* () {
-          const finalization = yield* ProviderPaymentFinalizationService;
-          return yield* finalization.finalizePendingProviderPayment({
-            orderId: "reservation-a",
-            paymentAttemptId: admitted.attempt.id,
+      const reconciliation = Effect.gen(function* () {
+        const finalization = yield* ProviderPaymentFinalizationService;
+        return yield* finalization.finalizePendingProviderPayment({
+          orderId: "reservation-a",
+          paymentAttemptId: admitted.attempt.id,
+        });
+      }).pipe(
+        Effect.provide(finalizationLayer),
+        Effect.scoped,
+        Effect.runPromise
+      );
+
+      await lookupStartedBarrier;
+      const competingAdmission = await runRepository(
+        contenderPool,
+        Effect.gen(function* () {
+          const repository = yield* PaymentLifecycleRepository;
+          return yield* admit(repository, "provider-order-b");
+        })
+      );
+      expect(competingAdmission).toEqual({
+        outcome: "unavailable",
+        reason: "active_attempt",
+      });
+
+      releaseLookup();
+      expect(await reconciliation).toBe("pending");
+
+      const durableOrders = await migrationClient.query<{
+        attempts: string;
+        providerOrders: string;
+      }>(
+        `select count(*) as attempts,
+                  count(distinct provider_order_id) as "providerOrders"
+           from payment_attempts
+           where workspace_reservation_id = $1`,
+        ["reservation-a"]
+      );
+      expect(durableOrders.rows[0]).toEqual({
+        attempts: "1",
+        providerOrders: "1",
+      });
+      expect(providerLookupCount).toBe(1);
+      expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
+
+      await runRepository(
+        ownerPool,
+        Effect.gen(function* () {
+          const repository = yield* PaymentLifecycleRepository;
+          yield* repository.markTerminal({
+            id: admitted.attempt.id,
+            workspaceReservationId: "reservation-a",
+            state: "failed",
+            failureCode: "nexi_payment_failed",
+            providerOperationId: "initial-provider-operation-a",
+            providerStatus: "DECLINED",
           });
-        }).pipe(
-          Effect.provide(finalizationLayer),
-          Effect.scoped,
-          Effect.runPromise
-        );
+        })
+      );
+      const replacement = await runRepository(
+        ownerPool,
+        Effect.gen(function* () {
+          const repository = yield* PaymentLifecycleRepository;
+          return yield* admit(repository, "provider-order-b");
+        })
+      );
+      expect(replacement.outcome).toBe("created");
+      if (replacement.outcome !== "created") return;
 
-        await lookupStartedBarrier;
-        const competingAdmission = await runRepository(
+      const lateEvidence = Effect.gen(function* () {
+        const finalization = yield* ProviderPaymentFinalizationService;
+        return yield* finalization.finalizePendingProviderPayment({
+          orderId: "reservation-a",
+          paymentAttemptId: admitted.attempt.id,
+        });
+      }).pipe(
+        Effect.provide(finalizationLayer),
+        Effect.scoped,
+        Effect.runPromise
+      );
+
+      await historicalLookupStartedBarrier;
+      try {
+        const competingHistoricalAdmission = await runRepository(
           contenderPool,
           Effect.gen(function* () {
             const repository = yield* PaymentLifecycleRepository;
-            return yield* admit(repository, "provider-order-b");
+            return yield* admit(repository, "provider-order-c");
           })
         );
-        expect(competingAdmission).toEqual({
+        expect(competingHistoricalAdmission).toEqual({
           outcome: "unavailable",
           reason: "active_attempt",
         });
 
-        releaseLookup();
-        expect(await reconciliation).toBe("pending");
-
-        const durableOrders = await migrationClient.query<{
-          attempts: string;
-          providerOrders: string;
-        }>(
-          `select count(*) as attempts,
-                  count(distinct provider_order_id) as "providerOrders"
-           from payment_attempts
-           where workspace_reservation_id = $1`,
-          ["reservation-a"]
-        );
-        expect(durableOrders.rows[0]).toEqual({
-          attempts: "1",
-          providerOrders: "1",
-        });
-        expect(providerLookupCount).toBe(1);
-        expect(verifyPaymentOutcome).toHaveBeenCalledTimes(1);
-
-        await runRepository(
-          ownerPool,
-          Effect.gen(function* () {
-            const repository = yield* PaymentLifecycleRepository;
-            yield* repository.markTerminal({
-              id: admitted.attempt.id,
-              workspaceReservationId: "reservation-a",
-              state: "failed",
-              failureCode: "nexi_payment_failed",
-              providerOperationId: "initial-provider-operation-a",
-              providerStatus: "DECLINED",
-            });
-          })
-        );
-        const replacement = await runRepository(
-          ownerPool,
-          Effect.gen(function* () {
-            const repository = yield* PaymentLifecycleRepository;
-            return yield* admit(repository, "provider-order-b");
-          })
-        );
-        expect(replacement.outcome).toBe("created");
-        if (replacement.outcome !== "created") return;
-
-        const lateEvidence = Effect.gen(function* () {
-          const finalization = yield* ProviderPaymentFinalizationService;
-          return yield* finalization.finalizePendingProviderPayment({
-            orderId: "reservation-a",
-            paymentAttemptId: admitted.attempt.id,
-          });
-        }).pipe(
-          Effect.provide(finalizationLayer),
-          Effect.scoped,
-          Effect.runPromise
-        );
-
-        await historicalLookupStartedBarrier;
-        try {
-          const competingHistoricalAdmission = await runRepository(
-            contenderPool,
-            Effect.gen(function* () {
-              const repository = yield* PaymentLifecycleRepository;
-              return yield* admit(repository, "provider-order-c");
-            })
-          );
-          expect(competingHistoricalAdmission).toEqual({
-            outcome: "unavailable",
-            reason: "active_attempt",
-          });
-
-          for (const query of [
-            `update workspace_reservations
+        for (const query of [
+          `update workspace_reservations
              set payment_state = 'paid'
              where id = 'reservation-a'`,
-            `update workspace_reservations
+          `update workspace_reservations
              set fulfillment_state = 'processing'
              where id = 'reservation-a'`,
-            `update workspace_reservations
+          `update workspace_reservations
              set active_payment_attempt_id = null
              where id = 'reservation-a'`,
-            `update workspace_reservations
+          `update workspace_reservations
              set reservation_state = 'cancelling'
              where id = 'reservation-a'`,
-          ]) {
-            await expect(contenderPool.query(query)).rejects.toThrow(
-              "reservation is owned by authoritative provider reconciliation"
-            );
-          }
-        } finally {
-          releaseHistoricalLookup();
+        ]) {
+          await expect(contenderPool.query(query)).rejects.toThrow(
+            "reservation is owned by authoritative provider reconciliation"
+          );
         }
+      } finally {
+        releaseHistoricalLookup();
+      }
 
-        const lateEvidenceResult = await lateEvidence;
-        expect(lateEvidenceResult).toBe("manual_review");
-        expect(providerLookupCount).toBe(2);
-        expect(verifyPaymentOutcome).toHaveBeenCalledTimes(2);
-        const fencedReservation = await migrationClient.query<{
-          activeAttemptId: string;
-          evidenceConflicted: boolean;
-          paymentState: string;
-        }>(
-          `select active_payment_attempt_id as "activeAttemptId",
+      const lateEvidenceResult = await lateEvidence;
+      expect(lateEvidenceResult).toBe("manual_review");
+      expect(providerLookupCount).toBe(2);
+      expect(verifyPaymentOutcome).toHaveBeenCalledTimes(2);
+      const fencedReservation = await migrationClient.query<{
+        activeAttemptId: string;
+        evidenceConflicted: boolean;
+        paymentState: string;
+      }>(
+        `select active_payment_attempt_id as "activeAttemptId",
                   active_payment_evidence_conflicted as "evidenceConflicted",
                   payment_state as "paymentState"
            from workspace_reservations
            where id = $1`,
-          ["reservation-a"]
-        );
-        expect(fencedReservation.rows[0]).toEqual({
-          activeAttemptId: replacement.attempt.id,
-          evidenceConflicted: true,
-          paymentState: "pending",
-        });
-        const lateConflicts = await migrationClient.query<{
-          conflictCode: string;
-          paymentAttemptId: string;
-        }>(
-          `select conflict_code as "conflictCode",
+        ["reservation-a"]
+      );
+      expect(fencedReservation.rows[0]).toEqual({
+        activeAttemptId: replacement.attempt.id,
+        evidenceConflicted: true,
+        paymentState: "pending",
+      });
+      const lateConflicts = await migrationClient.query<{
+        conflictCode: string;
+        paymentAttemptId: string;
+      }>(
+        `select conflict_code as "conflictCode",
                   payment_attempt_id as "paymentAttemptId"
            from payment_evidence_conflicts
            where payment_attempt_id = $1`,
-          [admitted.attempt.id]
-        );
-        expect(lateConflicts.rows).toEqual([
-          {
-            conflictCode: "provider_terminal_state",
-            paymentAttemptId: admitted.attempt.id,
-          },
-        ]);
-      } finally {
-        await Promise.all([ownerPool.end(), contenderPool.end()]);
-        await migrationClient.end();
-        await admin.query(
-          `drop database if exists "${databaseName}" with (force)`
-        );
-        await admin.end();
-      }
-    },
-    60_000
-  );
+        [admitted.attempt.id]
+      );
+      expect(lateConflicts.rows).toEqual([
+        {
+          conflictCode: "provider_terminal_state",
+          paymentAttemptId: admitted.attempt.id,
+        },
+      ]);
+    } finally {
+      await Promise.all([ownerPool.end(), contenderPool.end()]);
+      await migrationClient.end();
+      await admin.query(
+        `drop database if exists "${databaseName}" with (force)`
+      );
+      await admin.end();
+    }
+  }, 60_000);
 });

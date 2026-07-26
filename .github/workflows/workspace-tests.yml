@@ -37,19 +37,6 @@ jobs:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       WORKSPACE_REAL_POSTGRES_TEST_URL: postgresql://postgres@localhost:5432/postgres
-    services:
-      postgres:
-        image: ghcr.io/fboulnois/pg_uuidv7:1.6.0
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +48,43 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Start disposable PostgreSQL 18.4 with pg_uuidv7 1.7.0
+        run: |
+          docker build \
+            --file .github/fixtures/workspace-postgres/Dockerfile \
+            --tag deskohub-workspace-postgres:18.4-pg_uuidv7-1.7.0 \
+            .github/fixtures/workspace-postgres
+          docker run --detach --rm --name deskohub-workspace-postgres \
+            --env POSTGRES_HOST_AUTH_METHOD=trust \
+            --publish 5432:5432 \
+            deskohub-workspace-postgres:18.4-pg_uuidv7-1.7.0
+          for attempt in {1..30}; do
+            docker exec deskohub-workspace-postgres pg_isready -U postgres && break
+            sleep 1
+          done
+          docker exec deskohub-workspace-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $$
+          BEGIN
+            IF current_setting('server_version') <> '18.4' THEN
+              RAISE EXCEPTION 'Expected PostgreSQL 18.4, got %', current_setting('server_version');
+            END IF;
+          END
+          $$;
+          CREATE EXTENSION pg_uuidv7;
+          DO $$
+          BEGIN
+            IF (SELECT extversion FROM pg_extension WHERE extname = 'pg_uuidv7') <> '1.7' THEN
+              RAISE EXCEPTION 'Expected pg_uuidv7 1.7, got %', (SELECT extversion FROM pg_extension WHERE extname = 'pg_uuidv7');
+            END IF;
+            PERFORM uuid_generate_v7();
+          END
+          $$;
+          SQL
+
       - run: bun turbo typecheck
 
       - run: bun turbo test --filter=./apps/deskohub-workspace
+
+      - name: Stop disposable PostgreSQL
+        if: always()
+        run: docker rm --force deskohub-workspace-postgres || true

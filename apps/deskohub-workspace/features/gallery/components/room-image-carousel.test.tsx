@@ -7,7 +7,13 @@ import {
   mock,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import type { StaticImageData } from "next/image";
 import {
   registerWorkspaceComponentTestEnv,
@@ -167,11 +173,13 @@ describe("RoomImageCarousel", () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
     });
 
-    expect(
-      view.container
-        .querySelector('[aria-current="true"]')
-        ?.getAttribute("aria-label")
-    ).toBe("Meeting room 2");
+    await waitFor(() => {
+      expect(
+        view.container
+          .querySelector('[aria-current="true"]')
+          ?.getAttribute("aria-label")
+      ).toBe("Meeting room 2");
+    });
 
     await act(async () => {
       fireEvent(
