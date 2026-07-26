@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "d41d8acc-ca11-4b49-9fda-efd78f8a80a0",
+  "id": "ed0ec16d-235f-40eb-bf8b-d975a91d438a",
   "prevIds": [
     "62a93562-4fa6-4428-89be-292741e06be3"
   ],
@@ -57,6 +57,12 @@
     {
       "isRlsEnabled": false,
       "name": "payment_attempts",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "payment_evidence_conflicts",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1145,6 +1151,84 @@
       "table": "payment_attempts"
     },
     {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "1",
+      "generated": null,
+      "identity": null,
+      "name": "admission_version",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "pricing_fingerprint",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "displayed_discount_ids",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_start_lease_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_start_lease_expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "provider_evidence_conflicted",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
       "type": "text",
       "typeSchema": null,
       "notNull": false,
@@ -1299,6 +1383,58 @@
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "uuid_generate_v7()",
+      "generated": null,
+      "identity": null,
+      "name": "id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "conflict_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "first_observed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
     },
     {
       "type": "text",
@@ -1652,6 +1788,58 @@
       "table": "workspace_reservations"
     },
     {
+      "type": "boolean",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "false",
+      "generated": null,
+      "identity": null,
+      "name": "active_payment_evidence_conflicted",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_reconciliation_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_reconciliation_claim_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_reconciliation_claim_expires_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
       "type": "jsonb",
       "typeSchema": null,
       "notNull": true,
@@ -1738,6 +1926,71 @@
       "generated": null,
       "identity": null,
       "name": "reservation_cancelled_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_claim_owner",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_claimed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_failure_disposition",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_retry_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "cancellation_recovery_reason",
       "entityType": "columns",
       "schema": "public",
       "table": "workspace_reservations"
@@ -2192,6 +2445,55 @@
           "asc": true,
           "nullsFirst": false,
           "opclass": null
+        },
+        {
+          "value": "conflict_code",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "payment_evidence_conflicts_attempt_code_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "payment_attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "payment_evidence_conflicts_attempt_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "payment_attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
         }
       ],
       "isUnique": true,
@@ -2446,6 +2748,55 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "reservation_state",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "cancellation_recovery_reason",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "cancellation_failure_disposition",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "cancellation_retry_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "cancellation_claimed_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": "\"reservation_state\" in ('cancelling', 'cancellation_claimed', 'cancellation_failed')",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_cancellation_recovery_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "dotypos_customer_id",
           "isExpression": false,
           "asc": true,
@@ -2678,6 +3029,23 @@
         "id"
       ],
       "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "payment_evidence_conflicts_6dfdhHtTg6gr_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "payment_attempt_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "payment_attempts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
       "onDelete": "NO ACTION",
       "name": "payment_paid_events_payment_attempt_id_payment_attempts_id_fkey",
       "entityType": "fks",
@@ -2808,6 +3176,16 @@
       "name": "payment_attempts_pkey",
       "schema": "public",
       "table": "payment_attempts",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
+        "id"
+      ],
+      "nameExplicit": false,
+      "name": "payment_evidence_conflicts_pkey",
+      "schema": "public",
+      "table": "payment_evidence_conflicts",
       "entityType": "pks"
     },
     {
@@ -3077,11 +3455,46 @@
       "table": "payment_attempts"
     },
     {
+      "value": "\"admission_version\" in (1, 2)",
+      "name": "payment_attempts_admission_version_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "\"admission_version\" < 2 or (\n        \"pricing_fingerprint\" is not null\n        and btrim(\"pricing_fingerprint\") <> ''\n        and \"displayed_discount_ids\" is not null\n        and jsonb_typeof(\"displayed_discount_ids\") = 'array'\n      )",
+      "name": "payment_attempts_pricing_identity_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "\"admission_version\" < 2 or \"state\" <> 'created' or (\n        \"provider_start_lease_id\" is not null\n        and \"provider_start_lease_expires_at\" is not null\n      )",
+      "name": "payment_attempts_v2_created_lease_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "value": "(\n        \"provider_start_lease_id\" is null\n        and \"provider_start_lease_expires_at\" is null\n      ) or (\n        \"state\" = 'created'\n        and btrim(\"provider_start_lease_id\") <> ''\n        and \"provider_start_lease_expires_at\" is not null\n      )",
+      "name": "payment_attempts_provider_start_lease_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
       "value": "\"state\" not in ('failed', 'cancelled', 'expired') or \"failure_code\" is not null",
       "name": "payment_attempts_failure_code_check",
       "entityType": "checks",
       "schema": "public",
       "table": "payment_attempts"
+    },
+    {
+      "value": "\"conflict_code\" in ('provider_order_identity', 'provider_amount', 'provider_currency', 'provider_security_token', 'provider_operation_evidence', 'provider_terminal_state')",
+      "name": "payment_evidence_conflicts_code_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "payment_evidence_conflicts"
     },
     {
       "value": "\"provider\" in ('nexi')",
@@ -3112,7 +3525,7 @@
       "table": "webhook_events"
     },
     {
-      "value": "\"reservation_state\" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed')",
+      "value": "\"reservation_state\" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed')",
       "name": "workspace_reservations_reservation_state_check",
       "entityType": "checks",
       "schema": "public",
@@ -3140,7 +3553,7 @@
       "table": "workspace_reservations"
     },
     {
-      "value": "\"reservation_state\" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed') or \"dotypos_reservation_id\" is not null",
+      "value": "\"reservation_state\" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed') or \"dotypos_reservation_id\" is not null",
       "name": "workspace_reservations_hold_id_check",
       "entityType": "checks",
       "schema": "public",
@@ -3163,6 +3576,34 @@
     {
       "value": "\"fulfillment_state\" <> 'failed' or (\"fulfillment_failed_at\" is not null and \"fulfillment_failure_code\" is not null)",
       "name": "workspace_reservations_fulfillment_failed_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "(\n        \"reservation_state\" <> 'cancellation_claimed'\n        and\n        \"cancellation_claim_owner\" is null\n        and \"cancellation_claimed_at\" is null\n      ) or (\n        \"reservation_state\" = 'cancellation_claimed'\n        and\n        \"cancellation_claim_owner\" is not null\n        and \"cancellation_claimed_at\" is not null\n      )",
+      "name": "workspace_reservations_cancellation_claim_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "(\n        \"cancellation_failure_disposition\" is null\n        and \"cancellation_retry_at\" is null\n      ) or (\n        \"cancellation_failure_disposition\" = 'retryable'\n        and \"cancellation_retry_at\" is not null\n      ) or (\n        \"cancellation_failure_disposition\" = 'manual_review'\n        and \"cancellation_retry_at\" is null\n      )",
+      "name": "workspace_reservations_cancellation_failure_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "\"cancellation_recovery_reason\" is null or \"cancellation_recovery_reason\" in ('hold_expired', 'attachment_compensation', 'supersession_recovery', 'retryable_failure', 'stale_claim_recovery')",
+      "name": "workspace_reservations_cancellation_recovery_reason_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "value": "(\"payment_reconciliation_attempt_id\" is null and \"payment_reconciliation_claim_id\" is null and \"payment_reconciliation_claim_expires_at\" is null) or (\"payment_reconciliation_attempt_id\" is not null and \"payment_reconciliation_claim_id\" is not null and \"payment_reconciliation_claim_expires_at\" is not null)",
+      "name": "workspace_reservations_payment_reconciliation_claim_check",
       "entityType": "checks",
       "schema": "public",
       "table": "workspace_reservations"
