@@ -19,6 +19,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type CancellationFailureDisposition,
   type CancellationRecoveryReason,
+  paymentAttempts,
   type WorkspaceReservation as WorkspaceReservationRow,
   workspaceReservations,
 } from "@/db/schema";
@@ -187,6 +188,19 @@ const providerHoldCreationOrphanResolvedMarker = (
 
 export const hasNoUnresolvedProviderAttachmentRecovery = () =>
   sql`(${workspaceReservations.failureCode} is null or (${workspaceReservations.failureCode} not like 'hold_creation_candidate:%' and ${workspaceReservations.failureCode} not like 'hold_creation_candidate_compensating:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_recovery:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_processing:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_awaiting_visibility:%' and ${workspaceReservations.failureCode} not like 'hold_creation_orphan_verifying:%'))`;
+
+const hasNoProviderEvidenceConflict = () =>
+  and(
+    eq(workspaceReservations.activePaymentEvidenceConflicted, false),
+    sql`not exists (
+      select 1 from ${paymentAttempts}
+      where ${eq(
+        paymentAttempts.workspaceReservationId,
+        workspaceReservations.id
+      )}
+        and ${eq(paymentAttempts.providerEvidenceConflicted, true)}
+    )`
+  );
 
 export const hasUnresolvedProviderAttachmentRecovery = (
   reservation: Pick<WorkspaceReservation, "failureCode">
@@ -2404,6 +2418,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   "expired",
                 ]),
                 sql`${workspaceReservations.reservationConfirmedAt} is null`,
+                hasNoProviderEvidenceConflict(),
                 hasNoUnresolvedProviderAttachmentRecovery()
               )
             )
@@ -2436,6 +2451,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "cancelled",
                 "expired",
               ]),
+              hasNoProviderEvidenceConflict(),
               hasNoUnresolvedProviderAttachmentRecovery()
             )
           )
@@ -3048,6 +3064,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                     )
                   )
                 ),
+                hasNoProviderEvidenceConflict(),
                 hasNoUnresolvedProviderAttachmentRecovery()
               )
             )
@@ -3083,7 +3100,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 "expired",
               ]),
               sql`${workspaceReservations.dotyposReservationId} is not null`,
-              sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`
+              sql`${workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()`,
+              hasNoProviderEvidenceConflict()
             )
           );
 

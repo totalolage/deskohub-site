@@ -83,5 +83,31 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain(
       "workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()"
     );
+    expect(section).toContain("hasNoProviderEvidenceConflict()");
+  });
+
+  test("keeps provider-evidence-conflicted attempts out of automatic cancellation selectors", async () => {
+    const source = await readRepository();
+    const cancellationClaim = sliceFrom(
+      source,
+      "claimCancellation: Effect.fn(",
+      "claimSupersessionCancellation: Effect.fn("
+    );
+    const cancellationCandidates = sliceFrom(
+      source,
+      "selectCancellationCandidates: Effect.fn(",
+      "selectExpiredHoldDotyposReservationIds: Effect.fn("
+    );
+    const expiredHoldIds = sliceFrom(
+      source,
+      "selectExpiredHoldDotyposReservationIds: Effect.fn(",
+      "const decodeOptionalWorkspaceReservation"
+    );
+
+    expect(source).toContain("const hasNoProviderEvidenceConflict = ()");
+    expect(source).toContain("paymentAttempts.providerEvidenceConflicted");
+    expect(cancellationClaim).toContain("hasNoProviderEvidenceConflict()");
+    expect(cancellationCandidates).toContain("hasNoProviderEvidenceConflict()");
+    expect(expiredHoldIds).toContain("hasNoProviderEvidenceConflict()");
   });
 });
