@@ -8,21 +8,139 @@ import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting
 import { getNormalizedReservationCustomerAttemptIdentity } from "@/features/reservation/reservation-contact";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
-const deriveCheckoutKey = (payload: object) =>
-  createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
-    .update(JSON.stringify(payload))
-    .digest("hex");
+type CheckoutKeyDerivationOptions = {
+  readonly rawPayStateKeys?: string;
+  readonly dedicatedSecret?: string;
+  readonly cutoverAt?: string;
+  readonly legacyReadUntil?: string;
+  readonly now?: () => Date;
+};
 
-export const deriveCheckoutSessionKey = (checkoutSessionId: string) =>
-  deriveCheckoutKey({
-    checkoutSessionId,
-  });
+export type CheckoutKeySet = {
+  readonly current: string;
+  readonly identity: string;
+  readonly legacy: string;
+  readonly candidates: readonly [string, ...string[]];
+};
 
-export const deriveCheckoutAttemptKey = (input: {
+const deriveCheckoutKey = (secret: string, payload: object) =>
+  createHmac("sha256", secret).update(JSON.stringify(payload)).digest("hex");
+
+const getCheckoutKeySecretSet = (
+  options: CheckoutKeyDerivationOptions
+): {
+  readonly current: string;
+  readonly identity: string;
+  readonly legacy: string;
+  readonly candidates: readonly [string, ...string[]];
+} => {
+  const rawPayStateKeys =
+    options.rawPayStateKeys ?? env.CHECKOUT_PAY_STATE_KEYS;
+  const cutoverAt =
+    options.cutoverAt ?? env.CHECKOUT_RESERVATION_HMAC_CUTOVER_AT;
+  const legacyReadUntil =
+    options.legacyReadUntil ?? env.CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL;
+  if (cutoverAt === undefined || legacyReadUntil === undefined) {
+    const identity =
+      options.dedicatedSecret ??
+      env.CHECKOUT_RESERVATION_HMAC_SECRET ??
+      rawPayStateKeys;
+    return {
+      current: rawPayStateKeys,
+      identity,
+      legacy: rawPayStateKeys,
+      candidates: [...new Set([rawPayStateKeys, identity])] as [
+        string,
+        ...string[],
+      ],
+    };
+  }
+
+  const dedicatedSecret =
+    options.dedicatedSecret ?? env.CHECKOUT_RESERVATION_HMAC_SECRET;
+  if (dedicatedSecret === undefined) {
+    throw new Error(
+      "Checkout reservation HMAC cutover is missing dedicated material."
+    );
+  }
+
+  const now = (options.now?.() ?? new Date()).getTime();
+  if (now < Date.parse(cutoverAt)) {
+    return {
+      current: rawPayStateKeys,
+      identity: dedicatedSecret,
+      legacy: rawPayStateKeys,
+      candidates: [rawPayStateKeys, dedicatedSecret],
+    };
+  }
+  if (now >= Date.parse(legacyReadUntil)) {
+    return {
+      current: dedicatedSecret,
+      identity: dedicatedSecret,
+      legacy: rawPayStateKeys,
+      candidates: [dedicatedSecret],
+    };
+  }
+  return {
+    current: dedicatedSecret,
+    identity: dedicatedSecret,
+    legacy: rawPayStateKeys,
+    candidates: [dedicatedSecret, rawPayStateKeys],
+  };
+};
+
+const deriveCheckoutKeySet = (
+  payload: object,
+  options: CheckoutKeyDerivationOptions
+) => {
+  const secrets = getCheckoutKeySecretSet(options);
+  const candidates = [
+    ...new Set(
+      secrets.candidates.map((secret) => deriveCheckoutKey(secret, payload))
+    ),
+  ] as [string, ...string[]];
+
+  return {
+    current: deriveCheckoutKey(secrets.current, payload),
+    identity: deriveCheckoutKey(secrets.identity, payload),
+    legacy: deriveCheckoutKey(secrets.legacy, payload),
+    candidates,
+  } satisfies CheckoutKeySet;
+};
+
+export type CheckoutKeyDerivation = {
+  readonly attempt: (input: CheckoutAttemptKeyInput) => CheckoutKeySet;
+  readonly session: (checkoutSessionId: string) => CheckoutKeySet;
+};
+
+export const deriveCheckoutSessionKeys = (
+  checkoutSessionId: string,
+  options: CheckoutKeyDerivationOptions = {}
+) =>
+  deriveCheckoutKeySet(
+    {
+      checkoutSessionId,
+    },
+    options
+  );
+
+export const deriveCheckoutSessionKeyCandidates = (
+  checkoutSessionId: string,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutSessionKeys(checkoutSessionId, options).candidates;
+
+export const deriveCheckoutSessionKey = (
+  checkoutSessionId: string,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutSessionKeys(checkoutSessionId, options).current;
+
+type CheckoutAttemptKeyInput = {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: ReservationOrderData;
-}) => {
+};
+
+const getCheckoutAttemptKeyPayload = (input: CheckoutAttemptKeyInput) => {
   const reservationDetails = Match.value(input.reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: getCoworkCheckoutAttemptDetails,
@@ -30,12 +148,52 @@ export const deriveCheckoutAttemptKey = (input: {
     })
   );
 
-  return deriveCheckoutKey({
+  return {
     checkoutSessionId: input.checkoutSessionId,
     checkoutAttemptId: input.checkoutAttemptId,
     reservation: {
       ...getNormalizedReservationCustomerAttemptIdentity(input.reservation),
       ...reservationDetails,
     },
-  });
+  };
 };
+
+export const freezeCheckoutKeyDerivation = (
+  options: CheckoutKeyDerivationOptions = {}
+): CheckoutKeyDerivation => {
+  const secrets = getCheckoutKeySecretSet(options);
+  const derive = (payload: object) => {
+    const candidates = [
+      ...new Set(
+        secrets.candidates.map((secret) => deriveCheckoutKey(secret, payload))
+      ),
+    ] as [string, ...string[]];
+
+    return {
+      current: deriveCheckoutKey(secrets.current, payload),
+      identity: deriveCheckoutKey(secrets.identity, payload),
+      legacy: deriveCheckoutKey(secrets.legacy, payload),
+      candidates,
+    } satisfies CheckoutKeySet;
+  };
+
+  return {
+    attempt: (input) => derive(getCheckoutAttemptKeyPayload(input)),
+    session: (checkoutSessionId) => derive({ checkoutSessionId }),
+  };
+};
+
+export const deriveCheckoutAttemptKeys = (
+  input: CheckoutAttemptKeyInput,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutKeySet(getCheckoutAttemptKeyPayload(input), options);
+
+export const deriveCheckoutAttemptKeyCandidates = (
+  input: CheckoutAttemptKeyInput,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutAttemptKeys(input, options).candidates;
+
+export const deriveCheckoutAttemptKey = (
+  input: CheckoutAttemptKeyInput,
+  options: CheckoutKeyDerivationOptions = {}
+) => deriveCheckoutAttemptKeys(input, options).current;

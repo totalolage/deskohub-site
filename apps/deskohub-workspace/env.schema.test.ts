@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { randomBytes } from "node:crypto";
 import { Schema } from "effect";
 import {
+  checkoutReservationHmacMinimumLegacyReadMilliseconds,
   workspaceClientEnvSchema,
   workspaceServerEnvSchema,
 } from "./env.schema";
@@ -21,6 +23,26 @@ const validateFeatureFlagOverrideEnvironment = (
       ...process.env,
       POSTHOG_FEATURE_FLAG_OVERRIDES: '{"discount_codes":true}',
       VERCEL_ENV: vercelEnvironment,
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
+const validateReservationHmacEnvironment = (syntheticMaterial: string) =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      CHECKOUT_RESERVATION_HMAC_SECRET: syntheticMaterial,
+      CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:30:00.000Z",
+      CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:00:00.000Z",
     },
     stderr: "pipe",
     stdout: "pipe",
@@ -54,6 +76,103 @@ describe("workspace environment schemas", () => {
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
     expect(decodePostHogHost(undefined)).toBeUndefined();
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
+  });
+
+  test("requires a valid paired reservation HMAC cutover window", () => {
+    const decodeSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.CHECKOUT_RESERVATION_HMAC_SECRET
+    );
+    const syntheticMaterial = randomBytes(32).toString("base64url");
+
+    expect(decodeSecret(undefined)).toBeUndefined();
+    expect(decodeSecret(syntheticMaterial)).toBe(syntheticMaterial);
+    expect(() => decodeSecret("too-short")).toThrow();
+
+    const decodeEnvironment = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema
+    );
+    const base = {
+      ...process.env,
+      CHECKOUT_RESERVATION_HMAC_SECRET: syntheticMaterial,
+      POSTHOG_FEATURE_FLAG_OVERRIDES: undefined,
+      VERCEL_ENV: "preview",
+    };
+
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: undefined,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "not-an-instant",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "also-not-an-instant",
+      })
+    ).toThrow();
+    expect(() =>
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:30:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:00:00.000Z",
+      })
+    ).toThrow();
+    for (const impossibleOrNonCanonicalInstant of [
+      "2026-02-30T10:00:00.000Z",
+      "2026-06-01T10:00:00Z",
+      "2026-06-01T10:00:00.000+00:00",
+    ]) {
+      expect(() =>
+        decodeEnvironment({
+          ...base,
+          CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: impossibleOrNonCanonicalInstant,
+          CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL:
+            "2026-06-01T11:00:00.000Z",
+        })
+      ).toThrow();
+    }
+    for (const unsafeWindowMilliseconds of [
+      1,
+      checkoutReservationHmacMinimumLegacyReadMilliseconds - 1,
+    ]) {
+      expect(() =>
+        decodeEnvironment({
+          ...base,
+          CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+          CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: new Date(
+            Date.parse("2026-06-01T10:00:00.000Z") + unsafeWindowMilliseconds
+          ).toISOString(),
+        })
+      ).toThrow();
+    }
+    expect(
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: "2026-06-01T10:30:00.000Z",
+      }).CHECKOUT_RESERVATION_HMAC_SECRET
+    ).toBe(syntheticMaterial);
+    expect(
+      decodeEnvironment({
+        ...base,
+        CHECKOUT_RESERVATION_HMAC_CUTOVER_AT: "2026-06-01T10:00:00.000Z",
+        CHECKOUT_RESERVATION_HMAC_LEGACY_READ_UNTIL: new Date(
+          Date.parse("2026-06-01T10:00:00.000Z") +
+            checkoutReservationHmacMinimumLegacyReadMilliseconds
+        ).toISOString(),
+      }).CHECKOUT_RESERVATION_HMAC_SECRET
+    ).toBe(syntheticMaterial);
+
+    const invalidEnvironment =
+      validateReservationHmacEnvironment(syntheticMaterial);
+    const invalidEnvironmentError = invalidEnvironment.stderr.toString();
+    expect(invalidEnvironment.exitCode).toBe(1);
+    expect(invalidEnvironmentError).toContain(
+      "Invalid checkout reservation HMAC rollout configuration."
+    );
+    expect(invalidEnvironmentError).not.toContain(syntheticMaterial);
   });
 
   test("exposes fields through Standard Schema for T3 Env", async () => {

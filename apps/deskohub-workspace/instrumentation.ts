@@ -3,18 +3,28 @@ import "./shared/polyfills/temporal";
 import { logs } from "@opentelemetry/api-logs";
 import { registerOTel } from "@vercel/otel";
 import { env } from "./env";
+import { CensoringSpanProcessor } from "./shared/backend/logging/censorship";
 import {
   createPostHogLoggerProvider,
   registerPostHogLoggerProvider,
 } from "./shared/backend/logging/posthog-otel";
-import { createWorkspaceOtelConfiguration } from "./shared/backend/observability/workspace-otel";
+import {
+  WORKSPACE_SERVICE_NAME,
+  WORKSPACE_SERVICE_NAMESPACE,
+} from "./shared/backend/observability/workspace-service";
 
 export { flushPostHogLogs } from "./shared/backend/logging/posthog-otel";
 
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
 
-  registerOTel(createWorkspaceOtelConfiguration());
+  registerOTel({
+    serviceName: WORKSPACE_SERVICE_NAME,
+    spanProcessors: [CensoringSpanProcessor, "auto"],
+    attributes: {
+      "service.namespace": WORKSPACE_SERVICE_NAMESPACE,
+    },
+  });
 
   const postHogLoggerProvider = createPostHogLoggerProvider({
     posthogHost: env.NEXT_PUBLIC_POSTHOG_HOST,

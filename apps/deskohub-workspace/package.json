@@ -19,7 +19,7 @@
     "lint:biome": "cd ../.. && biome check apps/deskohub-workspace/app apps/deskohub-workspace/db apps/deskohub-workspace/features apps/deskohub-workspace/scripts apps/deskohub-workspace/shared apps/deskohub-workspace/*.ts --config-path biome.json --vcs-root .",
     "lint:eslint": "eslint --ext .ts,.tsx app db features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun ../../node_modules/typescript/bin/tsc --noEmit",
     "start": "next start"
   },
   "dependencies": {
@@ -115,6 +115,7 @@
     "babel-plugin-react-compiler": "^1.0.0",
     "chokidar-cli": "^3.0.0",
     "drizzle-kit": "1.0.0-rc.4",
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "^10.6.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "postcss": "^8.5",

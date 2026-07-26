@@ -4,9 +4,13 @@ import { Config, Data, Effect, Schema } from "effect";
 const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
+const keyIdMaxLength = 64;
+const base64UrlPattern = /^[A-Za-z0-9_-]+$/;
 
 export const checkoutStateClaimsSchema = Schema.Struct({
-  kid: Schema.NonEmptyString,
+  kid: Schema.NonEmptyString.check(Schema.isMaxLength(keyIdMaxLength)).check(
+    Schema.isPattern(base64UrlPattern)
+  ),
   iat: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   exp: Schema.Int.check(Schema.isGreaterThan(0)),
 });
@@ -59,24 +63,38 @@ const invalidToken = (message: string, cause?: unknown) =>
 const base64UrlEncode = (bytes: Buffer | Uint8Array | string) =>
   Buffer.from(bytes).toString("base64url");
 
-const base64UrlDecode = Effect.fn("checkoutStateToken.base64UrlDecode")(
-  (value: string, message: string) =>
-    Effect.try({
-      try: () => Buffer.from(value, "base64url"),
-      catch: (cause) => invalidToken(message, cause),
-    })
+const decodeCanonicalBase64Url = Effect.fn(
+  "checkoutStateToken.decodeCanonicalBase64Url"
+)((value: string, onError: (cause: unknown) => CheckoutStateTokenError) =>
+  Effect.try({
+    try: () => {
+      if (!base64UrlPattern.test(value)) {
+        throw new Error("Non-canonical base64url alphabet.");
+      }
+      const decoded = Buffer.from(value, "base64url");
+      if (base64UrlEncode(decoded) !== value) {
+        throw new Error("Non-canonical base64url encoding.");
+      }
+      return decoded;
+    },
+    catch: onError,
+  })
 );
 
 export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
   function* (kid: string, base64UrlKey: string) {
-    const key = yield* Effect.try({
-      try: () => Buffer.from(base64UrlKey, "base64url"),
-      catch: (cause) =>
-        invalidSecret(
-          "Checkout state encryption key is not valid base64url.",
-          cause
-        ),
-    });
+    if (kid.length > keyIdMaxLength || !base64UrlPattern.test(kid)) {
+      return yield* invalidSecret(
+        "Checkout state encryption key ids must use 1-64 base64url characters."
+      );
+    }
+
+    const key = yield* decodeCanonicalBase64Url(base64UrlKey, (cause) =>
+      invalidSecret(
+        "Checkout state encryption key is not valid canonical base64url.",
+        cause
+      )
+    );
 
     if (key.byteLength !== keyByteLength) {
       return yield* invalidSecret(
@@ -85,6 +103,41 @@ export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
     }
 
     return { kid, key } satisfies CheckoutStateKey;
+  }
+);
+
+const validateCheckoutStateKeys = Effect.fn("checkoutStateToken.validateKeys")(
+  function* (keys: readonly CheckoutStateKey[]) {
+    const seenKeyIds = new Set<string>();
+    for (const key of keys) {
+      if (key.kid.length > keyIdMaxLength || !base64UrlPattern.test(key.kid)) {
+        return yield* invalidSecret(
+          "Checkout state encryption key ids must use 1-64 base64url characters."
+        );
+      }
+      if (seenKeyIds.has(key.kid)) {
+        return yield* invalidSecret(
+          "Checkout state encryption key ids must be unique."
+        );
+      }
+      seenKeyIds.add(key.kid);
+
+      if (key.key.byteLength !== keyByteLength) {
+        return yield* invalidSecret(
+          "Checkout state encryption keys must be 32 bytes."
+        );
+      }
+    }
+
+    const [first, ...rest] = keys;
+    if (!first) {
+      return yield* new CheckoutStateTokenError({
+        code: "missing-secret",
+        message: "At least one checkout state encryption key is required.",
+      });
+    }
+
+    return [first, ...rest] as CheckoutStateKeys;
   }
 );
 
@@ -104,15 +157,7 @@ export const parseCheckoutStateKeys = Effect.fn("checkoutStateToken.parseKeys")(
       return parseCheckoutStateKey(kid, key);
     });
 
-    const [first, ...rest] = keys;
-    if (!first) {
-      return yield* new CheckoutStateTokenError({
-        code: "missing-secret",
-        message: "At least one checkout state encryption key is required.",
-      });
-    }
-
-    return [first, ...rest] as CheckoutStateKeys;
+    return yield* validateCheckoutStateKeys(keys);
   }
 );
 
@@ -133,23 +178,7 @@ export const getCheckoutStateKeys = Effect.fn("checkoutStateToken.getKeys")(
       ? [...options.keys]
       : [...(yield* loadConfiguredCheckoutStateKeys())];
 
-    const [first, ...rest] = keys;
-    if (!first) {
-      return yield* new CheckoutStateTokenError({
-        code: "missing-secret",
-        message: "At least one checkout state encryption key is required.",
-      });
-    }
-
-    for (const key of keys) {
-      if (key.key.byteLength !== keyByteLength) {
-        return yield* invalidSecret(
-          "Checkout state encryption keys must be 32 bytes."
-        );
-      }
-    }
-
-    return [first, ...rest] as CheckoutStateKeys;
+    return yield* validateCheckoutStateKeys(keys);
   }
 );
 
@@ -225,7 +254,7 @@ const parseJson = Effect.fn("checkoutStateToken.parseJson")(
   (value: Buffer, message: string) =>
     Effect.try({
       try: () => JSON.parse(textDecoder.decode(value)) as unknown,
-      catch: (cause) => invalidToken(message, cause),
+      catch: () => invalidToken(message),
     })
 );
 
@@ -257,6 +286,9 @@ export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
         const encodedHeader = base64UrlEncode(headerJson);
         const iv =
           options.randomBytes?.(ivByteLength) ?? randomBytes(ivByteLength);
+        if (iv.byteLength !== ivByteLength) {
+          throw new Error("Invalid checkout state IV length.");
+        }
         const cipher = createCipheriv("aes-256-gcm", key.key, iv, {
           authTagLength: authTagByteLength,
         });
@@ -267,11 +299,16 @@ export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
           cipher.final(),
         ]);
 
+        const authTag = cipher.getAuthTag();
+        if (authTag.byteLength !== authTagByteLength) {
+          throw new Error("Invalid checkout state authentication tag length.");
+        }
+
         return [
           encodedHeader,
           base64UrlEncode(iv),
           base64UrlEncode(ciphertext),
-          base64UrlEncode(cipher.getAuthTag()),
+          base64UrlEncode(authTag),
         ].join(".");
       },
       catch: (cause) =>
@@ -288,25 +325,37 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
   ) {
     const { encodedHeader, encodedIv, encodedCiphertext, encodedAuthTag } =
       yield* parseTokenParts(token);
-    const encodedHeaderBytes = yield* base64UrlDecode(
+    const encodedHeaderBytes = yield* decodeCanonicalBase64Url(
       encodedHeader,
-      "Invalid checkout state token header."
+      (cause) => invalidToken("Invalid checkout state token header.", cause)
     );
     const headerJson = yield* parseJson(
       encodedHeaderBytes,
       "Invalid checkout state token header."
     );
     const header = yield* decodeProtectedHeader(headerJson).pipe(
-      Effect.mapError((cause) =>
-        invalidToken("Invalid checkout state token header.", cause)
+      Effect.mapError(() =>
+        invalidToken("Invalid checkout state token header.")
       )
     );
     const key = yield* getCheckoutStateKeyByKid(header.kid, options);
     const [iv, ciphertext, authTag] = yield* Effect.all([
-      base64UrlDecode(encodedIv, "Invalid checkout state token."),
-      base64UrlDecode(encodedCiphertext, "Invalid checkout state token."),
-      base64UrlDecode(encodedAuthTag, "Invalid checkout state token."),
+      decodeCanonicalBase64Url(encodedIv, (cause) =>
+        invalidToken("Invalid checkout state token.", cause)
+      ),
+      decodeCanonicalBase64Url(encodedCiphertext, (cause) =>
+        invalidToken("Invalid checkout state token.", cause)
+      ),
+      decodeCanonicalBase64Url(encodedAuthTag, (cause) =>
+        invalidToken("Invalid checkout state token.", cause)
+      ),
     ]);
+    if (
+      iv.byteLength !== ivByteLength ||
+      authTag.byteLength !== authTagByteLength
+    ) {
+      return yield* invalidToken("Invalid checkout state token.");
+    }
     const plaintext = yield* Effect.try({
       try: () => {
         const decipher = createDecipheriv("aes-256-gcm", key.key, iv, {
@@ -325,8 +374,8 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
     const state = yield* Schema.decodeUnknownEffect(schema, {
       onExcessProperty: "error",
     })(stateJson).pipe(
-      Effect.mapError((cause) =>
-        invalidToken("Invalid checkout state token payload.", cause)
+      Effect.mapError(() =>
+        invalidToken("Invalid checkout state token payload.")
       )
     );
 

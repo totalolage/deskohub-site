@@ -56,6 +56,16 @@ const reservation = {
   phone: "+420 777 777 777",
 };
 
+const { deriveCheckoutAttemptKeys, deriveCheckoutSessionKeys } = await import(
+  "@/features/checkout/backend/checkout/checkout-session-key.server"
+);
+const reusableSessionKeys = deriveCheckoutSessionKeys("session-id");
+const reusableAttemptKeys = deriveCheckoutAttemptKeys({
+  checkoutSessionId: "session-id",
+  checkoutAttemptId: "attempt-id",
+  reservation,
+});
+
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
 const buildAdvertisedPriceToken = async (
@@ -201,8 +211,12 @@ const makeReusableReservation = (
 ): WorkspaceReservation =>
   ({
     id: "existing-reservation-id",
-    checkoutSessionKey: "session-key",
-    checkoutAttemptKey: "attempt-key",
+    checkoutSessionKey: reusableSessionKeys.current,
+    checkoutAttemptKey: reusableAttemptKeys.current,
+    checkoutSessionIdentityKey: reusableSessionKeys.identity,
+    checkoutAttemptIdentityKey: reusableAttemptKeys.identity,
+    checkoutSessionCompatibilityKey: reusableSessionKeys.legacy,
+    checkoutAttemptCompatibilityKey: reusableAttemptKeys.legacy,
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
@@ -250,6 +264,7 @@ const runReusableReservationScenario = async (input: {
   readonly advertisedPriceToken?: string;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
+  readonly keyDerivationClock?: () => Date;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -368,15 +383,18 @@ const runReusableReservationScenario = async (input: {
     } as unknown as typeof DotyposService.Service)
   );
 
-  const result = await prepareWorkspacePayState({
-    locale: "en-US",
-    checkoutSessionId: "session-id",
-    checkoutAttemptId: "attempt-id",
-    advertisedPriceToken:
-      input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
-    reservation,
-    legalConsent: true,
-  }).pipe(Effect.provide(testLayer), Effect.runPromise);
+  const result = await prepareWorkspacePayState(
+    {
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken:
+        input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
+      reservation,
+      legalConsent: true,
+    },
+    { keyDerivationClock: input.keyDerivationClock }
+  ).pipe(Effect.provide(testLayer), Effect.runPromise);
 
   return {
     result,
@@ -444,6 +462,8 @@ const runMeetingRoomNewHoldScenario = async () => {
       id: "meeting-room-reservation-id",
       checkoutSessionKey: input.checkoutSessionKey,
       checkoutAttemptKey: input.checkoutAttemptKey,
+      checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+      checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
       reservationState: "draft",
       reservationDetails: input.reservationDetails,
     } as never)
@@ -707,6 +727,8 @@ describe("prepareWorkspacePayState", () => {
         id: "reservation-id",
         checkoutSessionKey: input.checkoutSessionKey,
         checkoutAttemptKey: input.checkoutAttemptKey,
+        checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+        checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
         correlationId: "correlation-id",
         reservationState: "draft",
         paymentState: "not_started",
@@ -910,6 +932,34 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
+  test("reuses an immediate retry stored with the legacy attempt digest", async () => {
+    const { deriveCheckoutAttemptKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const [, legacyAttemptKey] = deriveCheckoutAttemptKeyCandidates({
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      reservation,
+    });
+    if (!legacyAttemptKey) {
+      throw new Error("Expected a synthetic legacy checkout attempt key.");
+    }
+    const existingReservation = makeReusableReservation({
+      checkoutAttemptKey: legacyAttemptKey,
+    });
+    const findByAttemptKey = mock((candidate: string) =>
+      Effect.succeed(
+        candidate === legacyAttemptKey ? existingReservation : null
+      )
+    );
+    const result = await runReusableReservationScenario({ findByAttemptKey });
+
+    expect(result.result.status).toBe("ready");
+    expect(findByAttemptKey).toHaveBeenCalledTimes(2);
+    expect(result.createDraft).not.toHaveBeenCalled();
+    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+  });
+
   test("reuses a held reservation returned by a conflicting draft insert", async () => {
     const claimConflictReservation = makeReusableReservation({
       id: "claim-conflict-reservation-id",
@@ -921,6 +971,8 @@ describe("prepareWorkspacePayState", () => {
           ...claimConflictReservation,
           checkoutSessionKey: input.checkoutSessionKey,
           checkoutAttemptKey: input.checkoutAttemptKey,
+          checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+          checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
         })
       ),
     });
@@ -993,6 +1045,10 @@ describe("prepareWorkspacePayState", () => {
             id: "replacement-reservation-id",
             checkoutSessionKey: input.replacement.checkoutSessionKey,
             checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+            checkoutSessionIdentityKey:
+              input.replacement.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey:
+              input.replacement.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           });
@@ -1049,6 +1105,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1069,20 +1127,26 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("rotates the checkout session instead of cancelling a conflicted hold", async () => {
-    const { openPayState, payStateTokenQueryParam } = await import(
-      "@/features/checkout/backend/checkout"
+  test("freezes the HMAC schedule once across session rotation and deadline crossing", async () => {
+    const { deriveCheckoutAttemptKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
     );
-    const conflictedReservation = makeReusableReservation({
-      activePaymentEvidenceConflicted: true,
-    });
+    const beforeDeadline = new Date("2098-12-31T23:59:59.999Z");
+    const atDeadline = new Date("2099-01-01T00:00:00.000Z");
+    const times = [beforeDeadline, atDeadline];
+    let clockReads = 0;
     let currentLookupCount = 0;
+    const pendingReservation = makeReusableReservation({
+      paymentState: "pending",
+      activePaymentAttemptId: "payment-attempt-id",
+    });
+    const findByAttemptKey = mock(() => Effect.succeed(null));
     const result = await runReusableReservationScenario({
-      findByAttemptKey: mock(() => Effect.succeed(null)),
+      keyDerivationClock: () =>
+        times[Math.min(clockReads++, times.length - 1)] as Date,
+      findByAttemptKey,
       findCurrentByCheckoutSessionKey: mock(() =>
-        Effect.succeed(
-          currentLookupCount++ === 0 ? conflictedReservation : null
-        )
+        Effect.succeed(currentLookupCount++ === 0 ? pendingReservation : null)
       ),
       createDraft: mock((input) =>
         Effect.succeed(
@@ -1090,47 +1154,62 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
         )
       ),
     });
+    const rotatedCandidates = deriveCheckoutAttemptKeyCandidates(
+      {
+        checkoutSessionId: "attempt-id",
+        checkoutAttemptId: "attempt-id",
+        reservation,
+      },
+      { now: () => beforeDeadline }
+    );
 
     expect(result.result.status).toBe("ready");
-    expect(result.cancelReservation).not.toHaveBeenCalled();
-    expect(result.claimSupersessionCancellation).not.toHaveBeenCalled();
-    if (result.result.status !== "ready") throw new Error("Expected ready");
-    const token = new URL(
-      result.result.redirectUrl,
-      "https://deskohub.test"
-    ).searchParams.get(payStateTokenQueryParam);
-    expect(Effect.runSync(openPayState(token ?? "")).checkoutSessionId).toBe(
-      "attempt-id"
-    );
+    expect(clockReads).toBe(1);
+    expect(rotatedCandidates).toHaveLength(2);
+    for (const candidate of rotatedCandidates) {
+      expect(findByAttemptKey).toHaveBeenCalledWith(candidate);
+    }
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
+    const { deriveCheckoutSessionKeyCandidates } = await import(
+      "@/features/checkout/backend/checkout/checkout-session-key.server"
+    );
+    const [initialSessionKey] =
+      deriveCheckoutSessionKeyCandidates("session-id");
+    const [rotatedSessionKey] =
+      deriveCheckoutSessionKeyCandidates("attempt-id");
     const pendingReservation = makeReusableReservation({
       id: "pending-reservation-id",
+      checkoutSessionKey: initialSessionKey,
       paymentState: "pending",
       activePaymentAttemptId: "payment-attempt-id",
     });
     const rotatedSessionReservation = makeReusableReservation({
       id: "rotated-session-reservation-id",
+      checkoutSessionKey: rotatedSessionKey,
       dotyposReservationId: "rotated-session-dotypos-reservation-id",
     });
-    let currentLookupCount = 0;
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(null)),
-      findCurrentByCheckoutSessionKey: mock(() =>
+      findCurrentByCheckoutSessionKey: mock((candidate: string) =>
         Effect.succeed(
-          currentLookupCount++ === 0
+          candidate === initialSessionKey
             ? pendingReservation
-            : rotatedSessionReservation
+            : candidate === rotatedSessionKey
+              ? rotatedSessionReservation
+              : null
         )
       ),
       claimSupersessionCancellation: mock(() =>
@@ -1142,6 +1221,10 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-session-replacement-id",
             checkoutSessionKey: input.replacement.checkoutSessionKey,
             checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+            checkoutSessionIdentityKey:
+              input.replacement.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey:
+              input.replacement.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1188,6 +1271,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1228,6 +1313,8 @@ describe("prepareWorkspacePayState", () => {
             id: "rotated-reservation-id",
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
             dotyposReservationId: null,
             reservationState: "draft",
           })
@@ -1372,6 +1459,7 @@ describe("prepareWorkspacePayState", () => {
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.changedKeys?.itemKeys).toContain("product:cowork:basic");
     expect(state.quote.payment.discounts).toEqual([]);
+    expect(state.checkoutSessionId).toBe("session-id");
   });
 
   test("allows the customer discount to first appear on a ready summary", async () => {

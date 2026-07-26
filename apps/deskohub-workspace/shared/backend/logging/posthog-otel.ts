@@ -5,6 +5,7 @@ import {
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
 import { workspaceServiceResourceAttributes } from "../observability/workspace-service";
+import { createCensoredOtelLogExporter } from "./censorship";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 const POSTHOG_LOGS_PATH = "/i/v1/logs";
@@ -50,14 +51,16 @@ export function createPostHogLoggerProvider({
     }),
     processors: [
       new BatchLogRecordProcessor(
-        new OTLPLogExporter({
-          headers: {
-            Authorization: `Bearer ${posthogProjectToken}`,
-            "Content-Type": "application/json",
-          },
-          timeoutMillis: postHogLogsFlushTimeoutMs,
-          url: getPostHogLogsEndpoint(posthogHost),
-        }),
+        createCensoredOtelLogExporter(
+          new OTLPLogExporter({
+            headers: {
+              Authorization: `Bearer ${posthogProjectToken}`,
+              "Content-Type": "application/json",
+            },
+            timeoutMillis: postHogLogsFlushTimeoutMs,
+            url: getPostHogLogsEndpoint(posthogHost),
+          })
+        ),
         { exportTimeoutMillis: postHogLogsFlushTimeoutMs }
       ),
     ],

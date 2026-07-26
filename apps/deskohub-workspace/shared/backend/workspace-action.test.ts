@@ -1,8 +1,9 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { ExternalAPIError } from "@deskohub/dotypos";
-import { EmailServiceError } from "@deskohub/email";
-import { Cause, Effect, Schema } from "effect";
-import { StorageError } from "./errors";
+import { Effect, Schema } from "effect";
+import {
+  checkoutStatePrivacySentinels,
+  makeAuthenticatedMalformedPayStateToken,
+} from "@/features/checkout/backend/checkout/checkout-state-observability.test-utils";
 
 let actionHeaderReads = 0;
 
@@ -22,18 +23,6 @@ mock.module("next/headers", () => ({
   },
 }));
 
-class ArbitraryErrorShape extends Error {
-  readonly _tag: string;
-  readonly operation: string;
-
-  constructor(readonly syntheticIdentifier: string) {
-    super(syntheticIdentifier);
-    this.name = `${syntheticIdentifier}Error`;
-    this._tag = `${syntheticIdentifier}Error`;
-    this.operation = `lookup.${syntheticIdentifier}`;
-  }
-}
-
 describe("Workspace actions", () => {
   test("starts the lifecycle after validation and provides Bot protection", async () => {
     const { BotProtectionService } = await import(
@@ -43,7 +32,7 @@ describe("Workspace actions", () => {
     actionHeaderReads = 0;
     const action = defineWorkspaceAction(
       {
-        operation: "test.action",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
       },
       (input, context) =>
@@ -74,7 +63,7 @@ describe("Workspace actions", () => {
     );
     const action = defineWorkspaceAction(
       {
-        operation: "test.public-failure",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
@@ -86,91 +75,212 @@ describe("Workspace actions", () => {
     });
   });
 
-  test("censors nested provider Causes before action failure logging", async () => {
+  test("preserves only genuinely branded nested public failures", async () => {
     const { defineWorkspaceAction } = await import("./workspace-action");
     const { PublicSafeActionError } = await import(
       "../utils/safe-action-client"
     );
-    const marker = "synthetic-sensitive-action-marker";
-    const errorOutput: unknown[][] = [];
-    const consoleError = spyOn(console, "error").mockImplementation(
-      (...args: unknown[]) => {
-        errorOutput.push(args);
-      }
-    );
-    const action = defineWorkspaceAction(
+    const { DEFAULT_SERVER_ERROR_MESSAGE } = await import("next-safe-action");
+    const genuine = defineWorkspaceAction(
       {
-        operation: "test.censored-provider-failure",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
         Effect.fail(
-          new PublicSafeActionError({
-            message: "Safe public failure",
-            cause: Cause.fail(
-              new ExternalAPIError({
-                service: "Dotypos",
-                operation: "createReservation",
-                message: marker,
-                providerError: { errorDescription: marker },
-                cause: new Error(marker),
-              })
-            ),
+          new Error("internal wrapper", {
+            cause: new PublicSafeActionError({
+              message: "Genuine public failure",
+            }),
           })
         )
     );
+    const forgedSentinels = [
+      "SYNTHETIC-FORGED-PLAIN-MESSAGE",
+      "SYNTHETIC-FORGED-NESTED-MESSAGE",
+      "SYNTHETIC-FORGED-AGGREGATE-MESSAGE",
+      "SYNTHETIC-FORGED-CUSTOM-MESSAGE",
+      "SYNTHETIC-FORGED-PROTOTYPE-MESSAGE",
+      "SYNTHETIC-FORGED-CYCLIC-MESSAGE",
+    ] as const;
+    const cyclicForgery: {
+      readonly _tag: "PublicSafeActionError";
+      readonly message: string;
+      cause?: unknown;
+    } = {
+      _tag: "PublicSafeActionError",
+      message: forgedSentinels[5],
+    };
+    cyclicForgery.cause = cyclicForgery;
+    const prototypeForgery = Object.create(PublicSafeActionError.prototype) as {
+      message: string;
+    };
+    prototypeForgery.message = forgedSentinels[4];
+    const forgedValues = [
+      {
+        _tag: "PublicSafeActionError",
+        message: forgedSentinels[0],
+      },
+      new Error("custom wrapper", {
+        cause: {
+          _tag: "PublicSafeActionError",
+          message: forgedSentinels[1],
+        },
+      }),
+      new AggregateError(
+        [
+          {
+            _tag: "PublicSafeActionError",
+            message: forgedSentinels[2],
+          },
+        ],
+        "aggregate wrapper"
+      ),
+      new (class extends Error {
+        readonly _tag = "PublicSafeActionError";
+      })(forgedSentinels[3]),
+      prototypeForgery,
+      cyclicForgery,
+    ];
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
 
     try {
-      await expect(action("input")).resolves.toEqual({
-        serverError: "Safe public failure",
+      await expect(genuine("input")).resolves.toEqual({
+        serverError: "Genuine public failure",
       });
-      expect(JSON.stringify(errorOutput)).not.toContain(marker);
-      expect(JSON.stringify(errorOutput)).toContain("PublicSafeActionError");
+      for (const forged of forgedValues) {
+        const action = defineWorkspaceAction(
+          {
+            operation: "contact.submit",
+            schema: Schema.toStandardSchemaV1(Schema.String),
+          },
+          () => Effect.fail(forged)
+        );
+        const result = await action("input");
+        expect(result).toEqual({
+          serverError: DEFAULT_SERVER_ERROR_MESSAGE,
+        });
+      }
+
+      const consoleOutput = JSON.stringify(errorLog.mock.calls);
+      for (const sentinel of forgedSentinels) {
+        expect(consoleOutput).not.toContain(sentinel);
+      }
     } finally {
-      consoleError.mockRestore();
+      errorLog.mockRestore();
     }
   });
 
-  test("censors provider-derived custom errors through generic action console logging", async () => {
-    const { defineWorkspaceAction } = await import("./workspace-action");
-    const marker = "SyntheticActionIdentifier42";
-    const errorOutput: unknown[][] = [];
-    const consoleError = spyOn(console, "error").mockImplementation(
-      (...args: unknown[]) => {
-        errorOutput.push(args);
-      }
+  test("keeps authenticated malformed checkout state out of action console errors", async () => {
+    const { openPayState } = await import(
+      "@/features/checkout/backend/checkout/pay-state"
     );
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const payStateToken = makeAuthenticatedMalformedPayStateToken();
     const action = defineWorkspaceAction(
       {
-        operation: "test.censored-email-provider-failure",
+        operation: "checkout.prepare-pay-state",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({ payStateToken: Schema.NonEmptyString })
+        ),
+      },
+      (input) => openPayState(input.payStateToken)
+    );
+
+    try {
+      const result = await action({ payStateToken });
+      const output = JSON.stringify(errorLog.mock.calls);
+
+      expect(result).toHaveProperty("serverError");
+      expect(output).not.toContain(payStateToken);
+      for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
+        expect(output).not.toContain(sentinel);
+      }
+    } finally {
+      errorLog.mockRestore();
+    }
+  });
+
+  test("keeps arbitrary nested causes out of framework responses and console errors", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const sentinel = "SYNTHETIC-SENSITIVE-SENTINEL";
+    const action = defineWorkspaceAction(
+      {
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
         Effect.fail(
-          new StorageError({
-            message: "Reservation delivery failed",
-            operation: "deliverReservationEmail",
-            cause: new EmailServiceError(
-              marker,
-              new ArbitraryErrorShape(marker),
-              "resend"
-            ),
-          })
+          new AggregateError(
+            [
+              sentinel,
+              {
+                _tag: "SyntheticCause",
+                customerId: sentinel,
+                cause: new Error(sentinel),
+              },
+            ],
+            sentinel
+          )
         )
     );
 
     try {
-      await expect(action("input")).resolves.toEqual({
-        serverError: "Something went wrong while executing the operation.",
-      });
-      const serialized = JSON.stringify(errorOutput);
-      expect(serialized).not.toContain(marker);
-      expect(serialized).toContain("StorageError");
-      expect(serialized).toContain("EmailServiceError");
-      expect(serialized).toContain("deliverReservationEmail");
-      expect(serialized).not.toContain("resend");
+      const result = await action("synthetic-input");
+      const emitted = JSON.stringify({ result, logs: errorLog.mock.calls });
+
+      expect(result).toHaveProperty("serverError");
+      expect(emitted).not.toContain(sentinel);
+      expect(emitted).not.toContain("customerId");
     } finally {
-      consoleError.mockRestore();
+      errorLog.mockRestore();
+    }
+  });
+
+  test("normalizes synchronous and asynchronous framework defects", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
+    const syncAction = defineWorkspaceAction(
+      {
+        operation: "contact.submit",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => {
+        throw new Error(sentinel);
+      }
+    );
+    const asyncAction = defineWorkspaceAction(
+      {
+        operation: "contact.submit",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.promise(() => Promise.reject(new Error(sentinel)))
+    );
+
+    try {
+      const results = await Promise.all([
+        syncAction("synthetic-input"),
+        asyncAction("synthetic-input"),
+      ]);
+      const emitted = JSON.stringify({ results, logs: errorLog.mock.calls });
+
+      for (const result of results) {
+        expect(result).toHaveProperty("serverError");
+      }
+      expect(emitted).not.toContain(sentinel);
+    } finally {
+      errorLog.mockRestore();
     }
   });
 
@@ -178,7 +288,7 @@ describe("Workspace actions", () => {
     const { defineWorkspaceStateAction } = await import("./workspace-action");
     const action = defineWorkspaceStateAction(
       {
-        operation: "test.state-action",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
       },
       (input, _context, { prevResult }) =>

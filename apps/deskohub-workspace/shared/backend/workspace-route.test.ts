@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   defineWorkspaceRoute,
@@ -19,7 +19,7 @@ describe("Workspace routes", () => {
   test("preserves route arguments and successful responses", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.route",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       (_request, context: { readonly value: string }) =>
@@ -34,10 +34,21 @@ describe("Workspace routes", () => {
   });
 
   test("recovers typed failures without exposing their cause", async () => {
-    const cause = new TestLayerError({ message: "private setup" });
+    const sentinel = "SYNTHETIC-SENSITIVE-SENTINEL";
+    const cause = new AggregateError(
+      [
+        sentinel,
+        new TestLayerError({ message: sentinel }),
+        { customerId: sentinel, cause: new Error(sentinel) },
+      ],
+      sentinel
+    );
+    const errorLog = spyOn(console, "error").mockImplementation(
+      () => undefined
+    );
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.failure",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () =>
@@ -50,20 +61,27 @@ describe("Workspace routes", () => {
         ).pipe(Effect.as(new Response("unused")))
     );
 
-    const response = await GET(new Request("https://deskohub.test"));
-    const body = await response.clone().text();
+    try {
+      const response = await GET(new Request("https://deskohub.test"));
+      const body = await response.clone().text();
+      const emitted = JSON.stringify(errorLog.mock.calls);
 
-    expect(response.status).toBe(503);
-    await expect(response.json()).resolves.toEqual({
-      error: "Temporarily unavailable",
-    });
-    expect(body).not.toContain("private setup");
+      expect(response.status).toBe(503);
+      await expect(response.json()).resolves.toEqual({
+        error: "Temporarily unavailable",
+      });
+      expect(body).not.toContain(sentinel);
+      expect(emitted).not.toContain(sentinel);
+      expect(emitted).not.toContain("customerId");
+    } finally {
+      errorLog.mockRestore();
+    }
   });
 
   test("maps Layer acquisition failures in the declared Effect", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.layer-failure",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () =>
@@ -89,21 +107,38 @@ describe("Workspace routes", () => {
     });
   });
 
-  test("suspends synchronous handler construction as a defect", async () => {
-    const defect = new Error("construction defect");
+  test("normalizes synchronous and asynchronous framework defects", async () => {
+    const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.defect",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () => {
-        throw defect;
+        throw new Error(sentinel);
       }
     );
-
-    await expect(GET(new Request("https://deskohub.test"))).rejects.toBe(
-      defect
+    const POST = defineWorkspaceRoute(
+      {
+        operation: "workspaceAvailability",
+        cancellation: "continue-after-disconnect",
+      },
+      () => Effect.promise(() => Promise.reject(new Error(sentinel)))
     );
+
+    for (const response of [
+      await GET(new Request("https://deskohub.test")),
+      await POST(
+        new Request("https://deskohub.test", {
+          method: "POST",
+        })
+      ),
+    ]) {
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual({
+        error: "Request failed.",
+      });
+    }
   });
 
   test("uses the request signal only when interruption is declared", async () => {
@@ -114,7 +149,7 @@ describe("Workspace routes", () => {
     });
     const interrupted = defineWorkspaceRoute(
       {
-        operation: "test.interrupt",
+        operation: "workspaceAvailability",
         cancellation: "interrupt-on-disconnect",
       },
       () => Effect.sync(markStarted).pipe(Effect.andThen(Effect.never))
@@ -130,7 +165,7 @@ describe("Workspace routes", () => {
 
     const continued = defineWorkspaceRoute(
       {
-        operation: "test.continue",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () => Effect.succeed(new Response("continued"))

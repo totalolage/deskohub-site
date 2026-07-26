@@ -22,6 +22,8 @@ import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
 } from "./workspace-effect";
+import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
+import type { WorkspaceOperation } from "./workspace-operation";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -34,7 +36,7 @@ type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
 
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /** Stable, low-cardinality name without IDs or payload data. */
-  readonly operation: string;
+  readonly operation: WorkspaceOperation;
   readonly schema: S;
 }
 
@@ -86,11 +88,12 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        input: args.parsedInput,
+        inputMetadata: getActionInputMetadata(args.parsedInput),
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
-      Effect.provide(BotProtectionService.Live)
+      Effect.provide(BotProtectionService.Live),
+      normalizeWorkspaceFrameworkDefects("action")
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;
@@ -119,6 +122,16 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
 
   return Effect.andThen(scheduleWorkspaceTelemetryFlush, invocation);
 };
+
+const getActionInputMetadata = (input: unknown) =>
+  typeof input === "object" && input !== null
+    ? {
+        shape: Array.isArray(input) ? "array" : "object",
+        fieldCount: Object.keys(input).length,
+      }
+    : {
+        shape: input === null ? "null" : typeof input,
+      };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   args: WorkspaceActionArgs<S>

@@ -115,12 +115,10 @@ const toPayStateTokenError = (cause: unknown) =>
     ? new PayStateTokenError({
         code: cause.code,
         message: cause.message.replaceAll("checkout state", "Pay state"),
-        cause,
       })
     : new PayStateTokenError({
         code: "invalid-token",
         message: "Invalid Pay state.",
-        cause,
       });
 
 export const parsePayStateKey = Effect.fn("payState.parseKey")(

@@ -8,6 +8,7 @@ import {
   useAction,
 } from "next-safe-action/hooks";
 import posthog from "posthog-js";
+import { projectErrorMetadata } from "./error-metadata";
 
 type WorkspaceActionTransportErrorInput<
   Schema extends StandardSchemaV1 | undefined,
@@ -28,19 +29,20 @@ type UseWorkspaceActionOptions<
   }) => void;
 };
 
-export const captureWorkspaceActionTransportError = ({
+const captureTransportError = ({
   actionName,
   error,
 }: {
   readonly actionName: string;
   readonly error: unknown;
 }) => {
-  void error;
+  const metadata = projectErrorMetadata(error);
 
   try {
     posthog.capture("workspace_safe_action_transport_error", {
       actionName,
-      errorCategory: "transport_failure",
+      errorCategory: metadata.category,
+      errorKind: metadata.kind,
     });
   } catch {}
 };
@@ -61,7 +63,7 @@ export function useWorkspaceAction<
     error: unknown,
     input: WorkspaceActionTransportErrorInput<Schema>
   ) => {
-    captureWorkspaceActionTransportError({ actionName, error });
+    captureTransportError({ actionName, error });
     try {
       onTransportError?.({ error, input });
     } catch {}

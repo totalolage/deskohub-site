@@ -28,7 +28,10 @@ const isValidationError = (cause: unknown): cause is ValidationError =>
 const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
   function* (cause: unknown) {
     if (isValidationError(cause)) {
-      return NextResponse.json({ error: cause.message }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid availability request" },
+        { status: 400 }
+      );
     }
 
     yield* Effect.logError("Workspace availability route failed", { cause });

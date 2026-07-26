@@ -4,6 +4,11 @@ import {
   runWorkspaceEffect,
   scheduleWorkspaceTelemetryFlush,
 } from "./workspace-effect";
+import {
+  normalizeWorkspaceFrameworkDefects,
+  WorkspaceFrameworkFailure,
+} from "./workspace-framework-failure";
+import type { WorkspaceOperation } from "./workspace-operation";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 export type WorkspaceRouteCancellation =
@@ -24,7 +29,7 @@ export type WorkspaceRouteErrorResponse = NextResponse<{
 
 export interface WorkspaceRouteOptions {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
-  readonly operation: string;
+  readonly operation: WorkspaceOperation;
   readonly cancellation: WorkspaceRouteCancellation;
 }
 
@@ -39,6 +44,16 @@ export const defineWorkspaceRoute =
   (...args: Args): Promise<A | WorkspaceRouteErrorResponse> => {
     const request = args[0];
     const invocation = Effect.suspend(() => handler(...args)).pipe(
+      normalizeWorkspaceFrameworkDefects("route"),
+      Effect.mapError((error) =>
+        error instanceof WorkspaceFrameworkFailure
+          ? new WorkspaceRouteFailure({
+              statusCode: 500,
+              publicMessage: "Request failed.",
+              cause: error,
+            })
+          : error
+      ),
       Effect.catch(recoverWorkspaceRouteFailure),
       withWorkspaceRequestContext(request.headers)
     );

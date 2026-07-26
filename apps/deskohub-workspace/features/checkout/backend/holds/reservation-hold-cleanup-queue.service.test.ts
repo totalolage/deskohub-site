@@ -871,7 +871,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(source).toContain('Effect.succeed("duplicate" as const)');
   });
 
-  test("keeps enqueue failure causes visible in structured logs", async () => {
+  test("keeps safe enqueue failure metadata visible in structured logs", async () => {
     const { makeReservationHoldCleanupScheduleService } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
@@ -890,10 +890,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(error.message).toBe(
       "Reservation hold cleanup could not be enqueued."
     );
-    expect(error.cause).toMatchObject({
-      name: "Error",
-      message: "queue unavailable",
-    });
+    expect(error.cause).toEqual({ kind: "error", category: "native" });
     expect(error.cause).not.toBe(source);
   });
 

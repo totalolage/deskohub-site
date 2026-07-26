@@ -17,7 +17,7 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   DotyposServiceLive
 );
 
-const processCleanupMessage = defineWorkspaceTask(
+export const processCleanupMessage = defineWorkspaceTask(
   "reservationHoldCleanupSchedule",
   (
     message: Parameters<typeof processReservationHoldCleanupScheduleMessage>[0]

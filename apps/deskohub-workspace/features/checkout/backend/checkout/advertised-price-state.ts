@@ -90,12 +90,10 @@ const toAdvertisedPriceStateTokenError = (cause: unknown) =>
     ? new AdvertisedPriceStateTokenError({
         code: cause.code,
         message: cause.message,
-        cause,
       })
     : new AdvertisedPriceStateTokenError({
         code: "invalid-token",
         message: "Invalid advertised price state.",
-        cause,
       });
 
 export const buildAdvertisedPriceState = Effect.fn(

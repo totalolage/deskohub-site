@@ -17,15 +17,13 @@ export class SeatingMapFeatureFlagService extends Context.Service<
       const featureFlags = yield* WorkspaceFeatureFlagService;
 
       return {
-        isEnabled: featureFlags
-          .isEnabled("seating_map")
-          .pipe(
-            Effect.catch((error) =>
-              Effect.logWarning(error.message, { cause: error.cause }).pipe(
-                Effect.as(false)
-              )
-            )
-          ),
+        isEnabled: featureFlags.isEnabled("seating_map").pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("Seating map feature flag evaluation failed", {
+              cause: error.cause,
+            }).pipe(Effect.as(false))
+          )
+        ),
       } satisfies ISeatingMapFeatureFlagService;
     })
   );

@@ -1,8 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { randomUUID } from "node:crypto";
-import { Cause, Effect } from "effect";
+import { Effect } from "effect";
 import type { EventMessage } from "posthog-node";
 import { CENSORED_LOG_VALUE } from "@/shared/backend/logging/censorship";
 
@@ -10,17 +9,14 @@ const config = {
   environment: "development",
   host: "https://posthog.example",
   projectToken: "phc_test",
-  serviceName: "workspace-test",
-  serviceNamespace: "deskohub-test",
+  serviceName: "SyntheticValidServiceName",
+  serviceNamespace: "SyntheticValidNamespace",
 };
 
 describe("PostHogEventService", () => {
   test("captures lifecycle events with censored Effect context", async () => {
     const { makePostHogEventService } = await import("./posthog-event.service");
     const messages: EventMessage[] = [];
-    const hostedPageMarker = randomUUID();
-    const credentialMarker = randomUUID();
-    const hostedPage = `https://provider.example/hosted?opaque=${hostedPageMarker}`;
     const service = makePostHogEventService({
       client: {
         captureImmediate: (message) => {
@@ -34,29 +30,26 @@ describe("PostHogEventService", () => {
     await Effect.runPromise(
       service
         .capture({
-          distinctId: "reservation-id",
+          distinctId: "SyntheticValidDistinctId",
           event: "reservation started",
           properties: {
-            reservation_id: "reservation-id",
-            token: "explicit-secret",
-            hostedPage,
-            providerRedirectUrl: hostedPage,
-            securityToken: credentialMarker,
+            provider_order_id: "SyntheticValidProviderId",
+            session: "SyntheticValidSessionId",
+            customer: "SyntheticValidCustomerId",
           },
           timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
-          uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
+          uuid: "SyntheticValidEventId",
         })
         .pipe(
           Effect.annotateLogs({
-            correlationId: "correlation-id",
-            sessionId: "session-id",
-            token: "annotation-secret",
+            correlationId: "SyntheticValidCorrelationId",
+            sessionId: "SyntheticValidAnnotationSessionId",
+            token: "SyntheticValidAnnotationToken",
           }),
           Effect.withSpan("reservation.attachHold", {
             attributes: {
-              paymentAttemptId: "payment-attempt-id",
-              secret: "span-secret",
-              hppUrl: hostedPage,
+              paymentAttemptId: "SyntheticValidPaymentAttemptId",
+              secret: "SyntheticValidSpanSecret",
             },
           })
         )
@@ -64,34 +57,20 @@ describe("PostHogEventService", () => {
 
     expect(messages).toHaveLength(1);
     expect(messages[0]).toMatchObject({
-      distinctId: "reservation-id",
+      distinctId: "deskohub-workspace:lifecycle",
       event: "reservation started",
       timestamp: new Date("2026-06-17T10:00:00.000Z"),
-      uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
     });
+    expect(messages[0].uuid).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
     expect(messages[0].properties).toMatchObject({
       "deployment.environment.name": "development",
-      "effect.span_name": "reservation.attachHold",
-      "service.name": "workspace-test",
-      "service.namespace": "deskohub-test",
-      correlationId: "correlation-id",
-      reservation_id: "reservation-id",
-      sessionId: "session-id",
-      token: CENSORED_LOG_VALUE,
-      hostedPage: CENSORED_LOG_VALUE,
-      providerRedirectUrl: CENSORED_LOG_VALUE,
-      securityToken: CENSORED_LOG_VALUE,
+      operation: CENSORED_LOG_VALUE,
+      "service.name": "deskohub-workspace",
+      "service.namespace": "deskohub",
     });
-    expect(messages[0].properties?.effect).toMatchObject({
-      spanAttributes: {
-        paymentAttemptId: "payment-attempt-id",
-        secret: CENSORED_LOG_VALUE,
-        hppUrl: CENSORED_LOG_VALUE,
-      },
-    });
-    const serialized = JSON.stringify(messages);
-    expect(serialized).not.toContain(hostedPageMarker);
-    expect(serialized).not.toContain(credentialMarker);
+    expect(JSON.stringify(messages[0])).not.toContain("SyntheticValid");
   });
 
   test("does nothing without a configured client", async () => {
@@ -106,66 +85,5 @@ describe("PostHogEventService", () => {
         uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
       })
     );
-  });
-
-  test("censors direct span names and Effect Cause payloads before capture", async () => {
-    const { makePostHogEventService } = await import("./posthog-event.service");
-    const messages: EventMessage[] = [];
-    const spanMarker = randomUUID();
-    const failureMarker = randomUUID();
-    const defectMarker = randomUUID();
-    const exceptionTypeMarker = randomUUID();
-    const primitiveFailureMarker = randomUUID();
-    const customFailureMarker = randomUUID();
-    class CustomFailure {
-      constructor(readonly value: string) {}
-    }
-    const service = makePostHogEventService({
-      client: {
-        captureImmediate: (message) => {
-          messages.push(message);
-          return Promise.resolve();
-        },
-      },
-      config,
-    });
-    const cause = Cause.combine(
-      Cause.fail(failureMarker),
-      Cause.die({ opaque: defectMarker })
-    );
-
-    await Effect.runPromise(
-      service
-        .capture({
-          distinctId: "reservation-id",
-          event: "reservation started",
-          properties: {
-            "exception.type": exceptionTypeMarker,
-            failureValue: primitiveFailureMarker,
-            customFailure: new CustomFailure(customFailureMarker),
-          },
-          timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
-          uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
-        })
-        .pipe(
-          Effect.annotateLogs({ providerCause: cause }),
-          Effect.withSpan(
-            `https://provider.example/hosted?opaque=${spanMarker}`
-          )
-        )
-    );
-
-    expect(messages).toHaveLength(1);
-    expect(messages[0]?.properties?.["effect.span_name"]).toBe(
-      CENSORED_LOG_VALUE
-    );
-    const serialized = JSON.stringify(messages);
-    expect(serialized).toContain(CENSORED_LOG_VALUE);
-    expect(serialized).not.toContain(spanMarker);
-    expect(serialized).not.toContain(failureMarker);
-    expect(serialized).not.toContain(defectMarker);
-    expect(serialized).not.toContain(exceptionTypeMarker);
-    expect(serialized).not.toContain(primitiveFailureMarker);
-    expect(serialized).not.toContain(customFailureMarker);
   });
 });

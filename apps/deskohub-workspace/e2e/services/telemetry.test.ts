@@ -166,16 +166,12 @@ test("exports one run trace with nested case and step spans", async () => {
     expect(stepSpan.parentSpanContext?.spanId).toBe(
       caseSpan.spanContext().spanId
     );
-    expect(stepSpan.attributes).toMatchObject({
-      "e2e.case.id": "checkout-cowork-basic",
+    expect(stepSpan.attributes).toEqual({
       "e2e.execution_context": "ci",
       "e2e.outcome": "passed",
-      "e2e.run.id": "987-3",
       "e2e.scope": "step",
-      "e2e.step.id": "complete-hosted-payment",
       "e2e.timeout_ms": 45_000,
       "github.run.attempt": 3,
-      "github.run.id": "987",
     });
     expect(spanDurationMs(stepSpan)).toBeGreaterThan(0);
     expect(spanDurationMs(caseSpan)).toBeGreaterThanOrEqual(

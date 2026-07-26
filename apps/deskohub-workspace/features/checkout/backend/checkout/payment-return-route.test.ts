@@ -63,9 +63,12 @@ describe("checkout payment return route", () => {
     );
   });
 
-  test("does not hide refresh defects behind the fail-open redirect", async () => {
-    const defect = new Error("unexpected defect");
+  test("normalizes refresh defects before the framework response", async () => {
+    const sentinel = "SyntheticValidRefreshDefect";
+    const response = await invoke(() => Effect.die(new Error(sentinel)));
 
-    await expect(invoke(() => Effect.die(defect))).rejects.toBe(defect);
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "Request failed." });
+    expect(JSON.stringify(response)).not.toContain(sentinel);
   });
 });
