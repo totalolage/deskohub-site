@@ -131,7 +131,7 @@ test("retries a transient reservation preparation failure with the same checkout
 
 test("waits for the production handoff to make a fenced fresh-candidate pay page payable", async () => {
   const submitReservationScript = "submit-fresh-reservation";
-  const payPageUrl = `${checkoutUrl.replace("/order", "/pay")}?orderId=${orderId}`;
+  const payPageUrl = `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`;
   let payPageReadinessChecks = 0;
   let reservationSubmitted = false;
   const openedUrls: string[] = [];

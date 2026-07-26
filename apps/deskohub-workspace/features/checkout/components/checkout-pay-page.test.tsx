@@ -185,7 +185,7 @@ describe("CheckoutPayPage discount urgency", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("keeps discount urgency out of the pay page", async () => {
+  test("shows urgency while a displayed discount expires", async () => {
     jest.useFakeTimers({
       now: new Date("2026-08-02T09:18:00.000Z"),
     });
@@ -203,10 +203,19 @@ describe("CheckoutPayPage discount urgency", () => {
       />
     );
 
-    expect(view.queryByText(/Hurry/)).toBeNull();
+    const banner = view.getByText(
+      "Hurry — Summer sale ends in 42 minutes"
+    ).parentElement;
+    expect(banner?.className).toContain("text-aquamarine-ink");
+
+    act(() => jest.advanceTimersByTime(1000));
+
+    expect(
+      view.getByText("Hurry — Summer sale ends in 41 minutes and 59 seconds")
+    ).toBeDefined();
   });
 
-  test("does not add urgency at the one-hour boundary", async () => {
+  test("keeps the urgency banner hidden until less than one hour remains", async () => {
     jest.useFakeTimers({
       now: new Date("2026-08-02T09:00:00.000Z"),
     });
@@ -228,10 +237,12 @@ describe("CheckoutPayPage discount urgency", () => {
 
     act(() => jest.advanceTimersByTime(1));
 
-    expect(view.queryByText(/Hurry/)).toBeNull();
+    expect(
+      view.getByText("Hurry — Summer sale ends in 60 minutes")
+    ).toBeDefined();
   });
 
-  test("does not add urgency when a discount applies to multiple rows", async () => {
+  test("shows a discount only once when it applies to multiple product rows", async () => {
     jest.useFakeTimers({
       now: new Date("2026-08-02T09:18:00.000Z"),
     });
@@ -268,7 +279,9 @@ describe("CheckoutPayPage discount urgency", () => {
       />
     );
 
-    expect(view.queryByText(/Hurry/)).toBeNull();
+    expect(
+      view.getAllByText("Hurry — Summer sale ends in 42 minutes")
+    ).toHaveLength(1);
   });
 
   test("explains when a displayed discount expires", async () => {

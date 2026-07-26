@@ -9,6 +9,7 @@ import type {
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-quote";
 import { CheckoutAutoRefresh } from "@/features/checkout/components/checkout-auto-refresh";
+import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -151,6 +152,8 @@ export function CheckoutPayPage({
       {isPricingChanged && (
         <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
       )}
+
+      <CheckoutDiscountCountdownBanner locale={locale} summary={summary} />
 
       <CheckoutSummary
         changedKeys={changedKeys}
