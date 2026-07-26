@@ -50,7 +50,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("checkout identity migration bridges old writers without persisting return state", async () => {
     const migration = await readAppFile(
-      "db/migrations/20260726041910_checkout_reservation_identity_compatibility/migration.sql"
+      "db/migrations/20260726065958_pink_komodo/migration.sql"
     );
     const lowerMigration = migration.toLowerCase();
 

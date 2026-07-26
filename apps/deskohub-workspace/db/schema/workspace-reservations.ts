@@ -84,6 +84,14 @@ export const workspaceReservations = pgTable(
       .notNull()
       .default(postgresUuidV7),
     checkoutAttemptKey: text("checkout_attempt_key").notNull(),
+    checkoutSessionIdentityKey: text("checkout_session_identity_key").notNull(),
+    checkoutAttemptIdentityKey: text("checkout_attempt_identity_key").notNull(),
+    checkoutSessionCompatibilityKey: text(
+      "checkout_session_compatibility_key"
+    ).notNull(),
+    checkoutAttemptCompatibilityKey: text(
+      "checkout_attempt_compatibility_key"
+    ).notNull(),
     correlationId: text("correlation_id")
       .notNull()
       .unique()
@@ -206,11 +214,33 @@ export const workspaceReservations = pgTable(
     uniqueIndex("workspace_reservations_attempt_key_unique_idx").on(
       t.checkoutAttemptKey
     ),
+    uniqueIndex("workspace_reservations_attempt_identity_key_unique_idx").on(
+      t.checkoutAttemptIdentityKey
+    ),
+    uniqueIndex(
+      "workspace_reservations_attempt_compatibility_key_unique_idx"
+    ).on(t.checkoutAttemptCompatibilityKey),
     uniqueIndex("workspace_reservations_active_session_unique_idx")
       .on(t.checkoutSessionKey)
       .where(sql`${t.reservationState} <> 'cancelled'`),
+    uniqueIndex("workspace_reservations_active_session_identity_unique_idx")
+      .on(t.checkoutSessionIdentityKey)
+      .where(sql`${t.reservationState} <> 'cancelled'`),
+    uniqueIndex(
+      "workspace_reservations_active_session_compatibility_unique_idx"
+    )
+      .on(t.checkoutSessionCompatibilityKey)
+      .where(sql`${t.reservationState} <> 'cancelled'`),
     index("workspace_reservations_checkout_session_idx").on(
       t.checkoutSessionKey,
+      t.createdAt
+    ),
+    index("workspace_reservations_checkout_session_identity_idx").on(
+      t.checkoutSessionIdentityKey,
+      t.createdAt
+    ),
+    index("workspace_reservations_checkout_session_compatibility_idx").on(
+      t.checkoutSessionCompatibilityKey,
       t.createdAt
     ),
     uniqueIndex("workspace_reservations_dotypos_reservation_unique_idx")

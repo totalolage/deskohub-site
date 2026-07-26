@@ -38,7 +38,7 @@ mock.module("server-only", () => ({}));
 
 const paidEventMigration = await Bun.file(
   new URL(
-    "../../../../db/migrations/20260725004304_payment_admission_settlement/migration.sql",
+    "../../../../db/migrations/20260726065958_pink_komodo/migration.sql",
     import.meta.url
   )
 ).text();
@@ -61,7 +61,13 @@ const rollbackFenceStatements = paidEventMigration
   .filter(Boolean)
   .map(sql.raw);
 const paidEventBridgeStatements = paidEventMigration
-  .slice(paidEventBridgeStart)
+  .slice(
+    paidEventBridgeStart,
+    paidEventMigration.indexOf(
+      "-- The fulfillment queue is jobs-only",
+      paidEventBridgeStart
+    )
+  )
   .split("--> statement-breakpoint")
   .map((statement) => statement.trim())
   .filter(Boolean)

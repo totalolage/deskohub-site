@@ -10,7 +10,7 @@ describe("payment paid event migration contract", () => {
     ).json();
     const paymentSnapshot = await Bun.file(
       new URL(
-        "../migrations/20260725004304_payment_admission_settlement/snapshot.json",
+        "../migrations/20260726065958_pink_komodo/snapshot.json",
         import.meta.url
       )
     ).json();
@@ -21,7 +21,7 @@ describe("payment paid event migration contract", () => {
   test("installs both mixed-version triggers and the idempotent backfill", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260725004304_payment_admission_settlement/migration.sql",
+        "../migrations/20260726065958_pink_komodo/migration.sql",
         import.meta.url
       )
     ).text();
@@ -65,7 +65,7 @@ describe("payment paid event migration contract", () => {
       '"active_payment_evidence_conflicted" boolean DEFAULT false NOT NULL'
     );
     expect(migration).toContain(
-      "NEW.\"reservation_state\" IN (\n      'hold_expired',\n      'cancelling',\n      'cancelled'"
+      "NEW.\"reservation_state\" IN ('hold_expired', 'cancelling', 'cancelled')"
     );
     expect(migration).toContain(
       "provider evidence conflict rejects active attempt replacement"

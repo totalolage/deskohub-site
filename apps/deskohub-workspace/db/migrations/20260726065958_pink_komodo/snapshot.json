@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "ed0ec16d-235f-40eb-bf8b-d975a91d438a",
+  "id": "e2449bd5-7bf0-451a-a4f1-83d3286575e1",
   "prevIds": [
     "62a93562-4fa6-4428-89be-292741e06be3"
   ],
@@ -1688,6 +1688,58 @@
       "typeSchema": null,
       "notNull": true,
       "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "checkout_session_identity_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "checkout_attempt_identity_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "checkout_session_compatibility_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "checkout_attempt_compatibility_key",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
       "default": "uuid_generate_v7()",
       "generated": null,
       "identity": null,
@@ -2622,6 +2674,48 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "checkout_attempt_identity_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_attempt_identity_key_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "checkout_attempt_compatibility_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_attempt_compatibility_key_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "checkout_session_key",
           "isExpression": false,
           "asc": true,
@@ -2635,6 +2729,48 @@
       "method": "btree",
       "concurrently": false,
       "name": "workspace_reservations_active_session_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "checkout_session_identity_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"reservation_state\" <> 'cancelled'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_active_session_identity_unique_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "checkout_session_compatibility_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"reservation_state\" <> 'cancelled'",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_active_session_compatibility_unique_idx",
       "entityType": "indexes",
       "schema": "public",
       "table": "workspace_reservations"
@@ -2663,6 +2799,62 @@
       "method": "btree",
       "concurrently": false,
       "name": "workspace_reservations_checkout_session_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "checkout_session_identity_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_checkout_session_identity_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "workspace_reservations"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "checkout_session_compatibility_key",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "workspace_reservations_checkout_session_compatibility_idx",
       "entityType": "indexes",
       "schema": "public",
       "table": "workspace_reservations"

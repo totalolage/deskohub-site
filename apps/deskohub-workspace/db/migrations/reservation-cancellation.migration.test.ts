@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 
 const databases: PGlite[] = [];
 const cancellationMigrationUrl = new URL(
-  "./20260724182538_reservation_cancellation_ownership_fail_closed/migration.sql",
+  "../migrations/20260726065958_pink_komodo/migration.sql",
   import.meta.url
 );
 
@@ -15,7 +15,24 @@ afterEach(async () => {
 
 const applyCancellationMigration = async (database: PGlite) => {
   const migration = await Bun.file(cancellationMigrationUrl).text();
-  for (const statement of migration.split("--> statement-breakpoint")) {
+  const compatibilityStart = migration.indexOf(
+    'DROP TRIGGER IF EXISTS "workspace_reservations_stamp_ownerless_cancellation_time"'
+  );
+  const compatibilityEnd = migration.indexOf(
+    "-- Stage 6 payment admission",
+    compatibilityStart
+  );
+  const compatibilityMigration = [
+    'ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "cancellation_claim_owner" text;',
+    'ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "cancellation_claimed_at" timestamp with time zone;',
+    'ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "cancellation_failure_disposition" text;',
+    'ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "cancellation_retry_at" timestamp with time zone;',
+    'ALTER TABLE "workspace_reservations" ADD COLUMN IF NOT EXISTS "cancellation_recovery_reason" text;',
+    'ALTER TABLE "workspace_reservations" DROP CONSTRAINT IF EXISTS "workspace_reservations_reservation_state_check";',
+    `ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_reservation_state_check" CHECK ("reservation_state" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed'));`,
+    migration.slice(compatibilityStart, compatibilityEnd),
+  ].join("--> statement-breakpoint");
+  for (const statement of compatibilityMigration.split("--> statement-breakpoint")) {
     if (statement.trim()) await database.exec(statement);
   }
 };
@@ -34,6 +51,11 @@ describe("reservation cancellation ownership migration", () => {
         reservation_hold_expired_at timestamptz,
         reservation_confirmed_at timestamptz,
         failure_code text,
+        cancellation_claim_owner text,
+        cancellation_claimed_at timestamptz,
+        cancellation_failure_disposition text,
+        cancellation_retry_at timestamptz,
+        cancellation_recovery_reason text,
         updated_at timestamptz not null default now(),
         constraint workspace_reservations_reservation_state_check
           check (reservation_state in (
@@ -44,6 +66,7 @@ describe("reservation cancellation ownership migration", () => {
             'confirming',
             'confirmed',
             'cancelling',
+            'cancellation_claimed',
             'cancelled',
             'cancellation_failed'
           ))

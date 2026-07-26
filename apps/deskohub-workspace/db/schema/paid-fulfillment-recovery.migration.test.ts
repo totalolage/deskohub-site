@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 const migrationUrl = new URL(
-  "../migrations/20260725201938_paid_fulfillment_recovery/migration.sql",
+  "../migrations/20260726065958_pink_komodo/migration.sql",
   import.meta.url
 );
 const snapshotUrl = new URL(
-  "../migrations/20260725201938_paid_fulfillment_recovery/snapshot.json",
+  "../migrations/20260726065958_pink_komodo/snapshot.json",
   import.meta.url
 );
 const predecessorUrl = new URL(

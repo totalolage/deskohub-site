@@ -49,6 +49,10 @@ ALTER TABLE "payment_attempts" ADD COLUMN "displayed_discount_ids" jsonb;--> sta
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_id" text;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_start_lease_expires_at" timestamp with time zone;--> statement-breakpoint
 ALTER TABLE "payment_attempts" ADD COLUMN "provider_evidence_conflicted" boolean DEFAULT false NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "checkout_session_identity_key" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "checkout_attempt_identity_key" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "checkout_session_compatibility_key" text;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD COLUMN "checkout_attempt_compatibility_key" text;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "active_payment_evidence_conflicted" boolean DEFAULT false NOT NULL;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "payment_reconciliation_attempt_id" text;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD COLUMN "payment_reconciliation_claim_id" text;--> statement-breakpoint
@@ -64,6 +68,12 @@ CREATE UNIQUE INDEX "payment_evidence_conflicts_attempt_code_unique_idx" ON "pay
 CREATE INDEX "payment_evidence_conflicts_attempt_idx" ON "payment_evidence_conflicts" ("payment_attempt_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "payment_paid_events_attempt_unique_idx" ON "payment_paid_events" ("payment_attempt_id");--> statement-breakpoint
 CREATE INDEX "payment_paid_events_reservation_idx" ON "payment_paid_events" ("workspace_reservation_id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_attempt_identity_key_unique_idx" ON "workspace_reservations" ("checkout_attempt_identity_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_attempt_compatibility_key_unique_idx" ON "workspace_reservations" ("checkout_attempt_compatibility_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_active_session_identity_unique_idx" ON "workspace_reservations" ("checkout_session_identity_key") WHERE "reservation_state" <> 'cancelled';--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_active_session_compatibility_unique_idx" ON "workspace_reservations" ("checkout_session_compatibility_key") WHERE "reservation_state" <> 'cancelled';--> statement-breakpoint
+CREATE INDEX "workspace_reservations_checkout_session_identity_idx" ON "workspace_reservations" ("checkout_session_identity_key","created_at");--> statement-breakpoint
+CREATE INDEX "workspace_reservations_checkout_session_compatibility_idx" ON "workspace_reservations" ("checkout_session_compatibility_key","created_at");--> statement-breakpoint
 CREATE INDEX "workspace_reservations_cancellation_recovery_idx" ON "workspace_reservations" ("reservation_state","cancellation_recovery_reason","cancellation_failure_disposition","cancellation_retry_at","cancellation_claimed_at") WHERE "reservation_state" in ('cancelling', 'cancellation_claimed', 'cancellation_failed');--> statement-breakpoint
 ALTER TABLE "paid_fulfillment_jobs" ADD CONSTRAINT "paid_fulfillment_jobs_Ecnat6TaiDsL_fkey" FOREIGN KEY ("payment_paid_event_id") REFERENCES "payment_paid_events"("id");--> statement-breakpoint
 ALTER TABLE "paid_fulfillment_jobs" ADD CONSTRAINT "paid_fulfillment_jobs_etoWMNoUJncz_fkey" FOREIGN KEY ("workspace_reservation_id") REFERENCES "workspace_reservations"("id");--> statement-breakpoint
@@ -113,4 +123,311 @@ ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_canc
 ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_recovery_reason_check" CHECK ("cancellation_recovery_reason" is null or "cancellation_recovery_reason" in ('hold_expired', 'attachment_compensation', 'supersession_recovery', 'retryable_failure', 'stale_claim_recovery'));--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_payment_reconciliation_claim_check" CHECK (("payment_reconciliation_attempt_id" is null and "payment_reconciliation_claim_id" is null and "payment_reconciliation_claim_expires_at" is null) or ("payment_reconciliation_attempt_id" is not null and "payment_reconciliation_claim_id" is not null and "payment_reconciliation_claim_expires_at" is not null));--> statement-breakpoint
 ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_reservation_state_check", ADD CONSTRAINT "workspace_reservations_reservation_state_check" CHECK ("reservation_state" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed'));--> statement-breakpoint
-ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_hold_id_check", ADD CONSTRAINT "workspace_reservations_hold_id_check" CHECK ("reservation_state" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed') or "dotypos_reservation_id" is not null);
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_hold_id_check", ADD CONSTRAINT "workspace_reservations_hold_id_check" CHECK ("reservation_state" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed') or "dotypos_reservation_id" is not null);--> statement-breakpoint
+
+-- Stage 6 cancellation ownership compatibility and fail-closed rollout.
+CREATE FUNCTION "workspace_reservations_stamp_ownerless_cancellation_time"()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."reservation_state" = 'cancelling'
+    AND NEW."cancellation_claim_owner" IS NULL
+    AND NEW."cancellation_claimed_at" IS NULL THEN
+    NEW."updated_at" = clock_timestamp();
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_stamp_ownerless_cancellation_time"
+BEFORE INSERT OR UPDATE ON "workspace_reservations"
+FOR EACH ROW EXECUTE FUNCTION "workspace_reservations_stamp_ownerless_cancellation_time"();--> statement-breakpoint
+UPDATE "workspace_reservations"
+SET "updated_at" = clock_timestamp()
+WHERE "reservation_state" = 'cancelling'
+  AND "cancellation_claim_owner" IS NULL
+  AND "cancellation_claimed_at" IS NULL;--> statement-breakpoint
+DROP TRIGGER IF EXISTS "workspace_reservations_stamp_ownerless_cancellation_time" ON "workspace_reservations";--> statement-breakpoint
+DROP FUNCTION IF EXISTS "workspace_reservations_stamp_ownerless_cancellation_time"();--> statement-breakpoint
+DROP TRIGGER IF EXISTS "workspace_reservations_handoff_ownerless_cancellation" ON "workspace_reservations";--> statement-breakpoint
+DROP FUNCTION IF EXISTS "workspace_reservations_handoff_ownerless_cancellation"();--> statement-breakpoint
+DROP TRIGGER IF EXISTS "workspace_reservations_reject_ownerless_cancellation" ON "workspace_reservations";--> statement-breakpoint
+DROP FUNCTION IF EXISTS "workspace_reservations_reject_ownerless_cancellation"();--> statement-breakpoint
+UPDATE "workspace_reservations"
+SET "reservation_state" = 'cancellation_claimed'
+WHERE "reservation_state" = 'cancelling'
+  AND "cancellation_claim_owner" IS NOT NULL
+  AND "cancellation_claimed_at" IS NOT NULL;--> statement-breakpoint
+UPDATE "workspace_reservations"
+SET "reservation_state" = 'cancellation_failed',
+  "cancellation_failure_disposition" = 'retryable',
+  "cancellation_retry_at" = clock_timestamp(),
+  "cancellation_recovery_reason" = 'retryable_failure',
+  "updated_at" = clock_timestamp()
+WHERE "reservation_state" = 'cancelling'
+  AND "cancellation_claim_owner" IS NULL
+  AND "cancellation_claimed_at" IS NULL;--> statement-breakpoint
+CREATE FUNCTION "workspace_reservations_reject_ownerless_cancellation"()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."reservation_state" = 'cancelling'
+    AND NEW."cancellation_claim_owner" IS NULL
+    AND NEW."cancellation_claimed_at" IS NULL THEN
+    RAISE EXCEPTION USING ERRCODE = '55000', MESSAGE = 'ownerless cancellation claims are disabled';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_reject_ownerless_cancellation"
+BEFORE INSERT OR UPDATE ON "workspace_reservations"
+FOR EACH ROW EXECUTE FUNCTION "workspace_reservations_reject_ownerless_cancellation"();--> statement-breakpoint
+UPDATE "workspace_reservations"
+SET "cancellation_failure_disposition" = 'retryable',
+  "cancellation_retry_at" = COALESCE("cancellation_retry_at", now()),
+  "cancellation_recovery_reason" = COALESCE("cancellation_recovery_reason", 'retryable_failure')
+WHERE "reservation_state" = 'cancellation_failed'
+  AND "cancellation_failure_disposition" IS NULL
+  AND "cancellation_retry_at" IS NULL
+  AND "cancellation_recovery_reason" IS NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT IF EXISTS "workspace_reservations_cancellation_claim_check";--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_claim_check" CHECK ((
+  "reservation_state" <> 'cancellation_claimed'
+  and "cancellation_claim_owner" is null and "cancellation_claimed_at" is null
+) or (
+  "reservation_state" = 'cancellation_claimed'
+  and "cancellation_claim_owner" is not null and "cancellation_claimed_at" is not null
+));--> statement-breakpoint
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT IF EXISTS "workspace_reservations_cancellation_failure_check";--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_failure_check" CHECK ((
+  "cancellation_failure_disposition" is null and "cancellation_retry_at" is null
+) or (
+  "cancellation_failure_disposition" = 'retryable' and "cancellation_retry_at" is not null
+) or (
+  "cancellation_failure_disposition" = 'manual_review' and "cancellation_retry_at" is null
+));--> statement-breakpoint
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT IF EXISTS "workspace_reservations_cancellation_recovery_reason_check";--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_cancellation_recovery_reason_check" CHECK ("cancellation_recovery_reason" is null or "cancellation_recovery_reason" in ('hold_expired', 'attachment_compensation', 'supersession_recovery', 'retryable_failure', 'stale_claim_recovery'));--> statement-breakpoint
+
+-- Stage 6 payment admission, evidence, reconciliation, and durable paid-event rollout.
+CREATE FUNCTION "guard_unverified_v2_terminal_settlement"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."admission_version" = 2 AND OLD."state" IN ('created', 'pending')
+    AND NEW."state" IN ('failed', 'cancelled', 'expired')
+    AND current_setting('deskohub.verified_v2_terminal_settlement', true) IS DISTINCT FROM 'on' THEN
+    RAISE EXCEPTION 'active v2 payment cannot be terminalized without verified settlement' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "payment_attempts_guard_unverified_v2_terminal"
+BEFORE UPDATE OF "state" ON "payment_attempts"
+FOR EACH ROW EXECUTE FUNCTION "guard_unverified_v2_terminal_settlement"();--> statement-breakpoint
+CREATE FUNCTION "materialize_payment_evidence_conflict"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE "payment_attempts" SET "provider_evidence_conflicted" = true WHERE "id" = NEW."payment_attempt_id";
+  UPDATE "workspace_reservations" AS reservation SET "active_payment_evidence_conflicted" = true
+  FROM "payment_attempts" AS attempt
+  WHERE attempt."id" = NEW."payment_attempt_id" AND reservation."id" = attempt."workspace_reservation_id";
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "payment_evidence_conflicts_materialize"
+AFTER INSERT ON "payment_evidence_conflicts"
+FOR EACH ROW EXECUTE FUNCTION "materialize_payment_evidence_conflict"();--> statement-breakpoint
+CREATE FUNCTION "guard_provider_evidence_conflicted_attempt"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."provider_evidence_conflicted" AND NOT NEW."provider_evidence_conflicted" THEN
+    RAISE EXCEPTION 'provider evidence conflict cannot be cleared in place' USING ERRCODE = '23514';
+  END IF;
+  IF NEW."provider_evidence_conflicted" AND OLD."state" IS DISTINCT FROM NEW."state"
+    AND NEW."state" IN ('paid', 'failed', 'cancelled', 'expired') THEN
+    RAISE EXCEPTION 'provider evidence conflict requires manual review before settlement' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "payment_attempts_guard_provider_evidence_conflict"
+BEFORE UPDATE OF "state", "provider_evidence_conflicted" ON "payment_attempts"
+FOR EACH ROW EXECUTE FUNCTION "guard_provider_evidence_conflicted_attempt"();--> statement-breakpoint
+CREATE FUNCTION "reject_provider_evidence_conflicted_attempt_settlement"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF (OLD."provider_evidence_conflicted" OR NEW."provider_evidence_conflicted")
+    AND NEW."state" IN ('paid', 'failed', 'cancelled', 'expired') THEN
+    RAISE EXCEPTION 'provider evidence conflict rejects attempt settlement replay' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "payment_attempts_reject_provider_evidence_conflicted_settlement"
+BEFORE UPDATE OF "state" ON "payment_attempts"
+FOR EACH ROW EXECUTE FUNCTION "reject_provider_evidence_conflicted_attempt_settlement"();--> statement-breakpoint
+CREATE FUNCTION "guard_unverified_v2_reservation_terminal"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF OLD."payment_reconciliation_claim_id" IS NOT NULL
+    AND OLD."payment_reconciliation_claim_expires_at" > clock_timestamp()
+    AND (OLD."payment_state" IS DISTINCT FROM NEW."payment_state"
+      OR OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+      OR OLD."fulfillment_state" IS DISTINCT FROM NEW."fulfillment_state"
+      OR OLD."active_payment_attempt_id" IS DISTINCT FROM NEW."active_payment_attempt_id")
+    AND current_setting('deskohub.provider_reconciliation_claim_id', true) IS DISTINCT FROM OLD."payment_reconciliation_claim_id" THEN
+    RAISE EXCEPTION 'reservation is owned by authoritative provider reconciliation' USING ERRCODE = '23514';
+  END IF;
+  IF NEW."active_payment_attempt_id" IS DISTINCT FROM OLD."active_payment_attempt_id" THEN
+    IF OLD."active_payment_attempt_id" IS NOT NULL AND (
+      OLD."active_payment_evidence_conflicted" OR EXISTS (
+        SELECT 1 FROM "payment_evidence_conflicts" AS conflict
+        WHERE conflict."payment_attempt_id" = OLD."active_payment_attempt_id"
+      )
+    ) THEN
+      RAISE EXCEPTION 'provider evidence conflict rejects active attempt replacement' USING ERRCODE = '23514';
+    END IF;
+    SELECT COALESCE(attempt."provider_evidence_conflicted", false)
+    INTO NEW."active_payment_evidence_conflicted"
+    FROM (SELECT 1) AS singleton
+    LEFT JOIN "payment_attempts" AS attempt
+      ON attempt."id" = NEW."active_payment_attempt_id"
+      AND attempt."workspace_reservation_id" = NEW."id";
+  ELSIF OLD."active_payment_evidence_conflicted" THEN
+    NEW."active_payment_evidence_conflicted" := true;
+  END IF;
+  IF NEW."active_payment_evidence_conflicted"
+    AND OLD."payment_state" IS DISTINCT FROM NEW."payment_state"
+    AND NEW."payment_state" IN ('paid', 'failed', 'cancelled', 'expired') THEN
+    RAISE EXCEPTION 'provider evidence conflict requires manual review before reservation settlement' USING ERRCODE = '23514';
+  END IF;
+  IF OLD."payment_state" = 'pending'
+    AND NEW."payment_state" IN ('failed', 'cancelled', 'expired')
+    AND current_setting('deskohub.verified_v2_terminal_settlement', true) IS DISTINCT FROM 'on'
+    AND EXISTS (
+      SELECT 1 FROM "payment_attempts" AS attempt
+      WHERE attempt."id" = OLD."active_payment_attempt_id"
+        AND attempt."workspace_reservation_id" = OLD."id"
+        AND attempt."admission_version" = 2
+        AND attempt."state" IN ('created', 'pending')
+    ) THEN
+    RAISE EXCEPTION 'reservation with active v2 payment cannot be terminalized without verified settlement' USING ERRCODE = '23514';
+  END IF;
+  IF OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+    AND NEW."reservation_state" IN ('hold_expired', 'cancelling', 'cancelled')
+    AND (OLD."active_payment_evidence_conflicted" OR NEW."active_payment_evidence_conflicted" OR EXISTS (
+      SELECT 1 FROM "payment_attempts" AS attempt
+      WHERE attempt."workspace_reservation_id" = NEW."id"
+        AND (attempt."provider_evidence_conflicted" OR EXISTS (
+          SELECT 1 FROM "payment_evidence_conflicts" AS conflict
+          WHERE conflict."payment_attempt_id" = attempt."id"
+        ))
+    )) THEN
+    RAISE EXCEPTION 'provider evidence conflict rejects automatic reservation hold cancellation' USING ERRCODE = '23514';
+  END IF;
+  IF OLD."reservation_state" IS DISTINCT FROM NEW."reservation_state"
+    AND NEW."reservation_state" IN ('hold_expired', 'cancelling', 'cancelled')
+    AND EXISTS (
+      SELECT 1 FROM "payment_attempts" AS attempt
+      WHERE attempt."id" = OLD."active_payment_attempt_id"
+        AND attempt."workspace_reservation_id" = OLD."id"
+        AND attempt."admission_version" = 2
+        AND attempt."state" IN ('created', 'pending')
+    ) THEN
+    RAISE EXCEPTION 'reservation with active v2 payment cannot enter cleanup cancellation' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_guard_unverified_v2_terminal"
+BEFORE UPDATE OF "payment_state", "reservation_state", "fulfillment_state", "active_payment_attempt_id", "active_payment_evidence_conflicted", "payment_reconciliation_attempt_id", "payment_reconciliation_claim_id", "payment_reconciliation_claim_expires_at"
+ON "workspace_reservations" FOR EACH ROW EXECUTE FUNCTION "guard_unverified_v2_reservation_terminal"();--> statement-breakpoint
+CREATE FUNCTION "reject_provider_evidence_conflicted_reservation_settlement"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."payment_state" IN ('paid', 'failed', 'cancelled', 'expired') AND (
+    OLD."active_payment_evidence_conflicted" OR NEW."active_payment_evidence_conflicted" OR EXISTS (
+      SELECT 1 FROM "payment_attempts" AS attempt
+      WHERE attempt."id" = NEW."active_payment_attempt_id"
+        AND attempt."workspace_reservation_id" = NEW."id"
+        AND attempt."provider_evidence_conflicted"
+    )
+  ) THEN
+    RAISE EXCEPTION 'provider evidence conflict rejects reservation settlement replay' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_reject_provider_evidence_conflicted_settlement"
+BEFORE UPDATE OF "payment_state" ON "workspace_reservations"
+FOR EACH ROW EXECUTE FUNCTION "reject_provider_evidence_conflicted_reservation_settlement"();--> statement-breakpoint
+CREATE FUNCTION "enqueue_paid_event_from_reservation"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."payment_state" = 'paid' AND NEW."active_payment_attempt_id" IS NOT NULL AND NEW."paid_at" IS NOT NULL THEN
+    INSERT INTO "payment_paid_events" ("payment_attempt_id", "workspace_reservation_id", "paid_at")
+    SELECT attempt."id", NEW."id", NEW."paid_at"
+    FROM "payment_attempts" AS attempt
+    WHERE attempt."id" = NEW."active_payment_attempt_id"
+      AND attempt."workspace_reservation_id" = NEW."id"
+      AND attempt."state" = 'paid'
+    ON CONFLICT ("payment_attempt_id") DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservations_enqueue_paid_event"
+AFTER UPDATE OF "payment_state", "active_payment_attempt_id", "paid_at" ON "workspace_reservations"
+FOR EACH ROW EXECUTE FUNCTION "enqueue_paid_event_from_reservation"();--> statement-breakpoint
+CREATE FUNCTION "enqueue_paid_event_from_attempt"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."state" = 'paid' THEN
+    INSERT INTO "payment_paid_events" ("payment_attempt_id", "workspace_reservation_id", "paid_at")
+    SELECT NEW."id", reservation."id", reservation."paid_at"
+    FROM "workspace_reservations" AS reservation
+    WHERE reservation."id" = NEW."workspace_reservation_id"
+      AND reservation."active_payment_attempt_id" = NEW."id"
+      AND reservation."payment_state" = 'paid'
+      AND reservation."paid_at" IS NOT NULL
+    ON CONFLICT ("payment_attempt_id") DO NOTHING;
+  END IF;
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "payment_attempts_enqueue_paid_event"
+AFTER UPDATE OF "state" ON "payment_attempts"
+FOR EACH ROW EXECUTE FUNCTION "enqueue_paid_event_from_attempt"();--> statement-breakpoint
+INSERT INTO "payment_paid_events" ("payment_attempt_id", "workspace_reservation_id", "paid_at")
+SELECT attempt."id", reservation."id", reservation."paid_at"
+FROM "payment_attempts" AS attempt
+JOIN "workspace_reservations" AS reservation
+  ON reservation."id" = attempt."workspace_reservation_id"
+  AND reservation."active_payment_attempt_id" = attempt."id"
+WHERE attempt."state" = 'paid'
+  AND reservation."payment_state" = 'paid'
+  AND reservation."paid_at" IS NOT NULL
+ON CONFLICT ("payment_attempt_id") DO NOTHING;--> statement-breakpoint
+
+-- The fulfillment queue is jobs-only: it references durable paid-event IDs and carries no customer payload.
+
+-- Stage 6 checkout identity compatibility for old writers before non-null enforcement.
+UPDATE "workspace_reservations"
+SET "checkout_session_identity_key" = "checkout_session_key",
+  "checkout_attempt_identity_key" = "checkout_attempt_key",
+  "checkout_session_compatibility_key" = "checkout_session_key",
+  "checkout_attempt_compatibility_key" = "checkout_attempt_key";--> statement-breakpoint
+CREATE FUNCTION "workspace_reservation_checkout_identity_defaults"()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  NEW."checkout_session_identity_key" := COALESCE(NEW."checkout_session_identity_key", NEW."checkout_session_key");
+  NEW."checkout_attempt_identity_key" := COALESCE(NEW."checkout_attempt_identity_key", NEW."checkout_attempt_key");
+  NEW."checkout_session_compatibility_key" := COALESCE(NEW."checkout_session_compatibility_key", NEW."checkout_session_key");
+  NEW."checkout_attempt_compatibility_key" := COALESCE(NEW."checkout_attempt_compatibility_key", NEW."checkout_attempt_key");
+  RETURN NEW;
+END;
+$$;--> statement-breakpoint
+CREATE TRIGGER "workspace_reservation_checkout_identity_defaults"
+BEFORE INSERT ON "workspace_reservations"
+FOR EACH ROW EXECUTE FUNCTION "workspace_reservation_checkout_identity_defaults"();--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ALTER COLUMN "checkout_session_identity_key" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ALTER COLUMN "checkout_attempt_identity_key" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ALTER COLUMN "checkout_session_compatibility_key" SET NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ALTER COLUMN "checkout_attempt_compatibility_key" SET NOT NULL;
