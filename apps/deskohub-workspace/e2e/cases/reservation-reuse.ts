@@ -8,7 +8,6 @@ import {
 } from "../browser";
 import {
   getPrefilledReservationConditionScript,
-  getSubmitCoworkReservationScript,
 } from "../browser-scripts";
 import { submitReservationForPayPage } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -24,6 +23,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   CheckoutRow,
+  WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
 
@@ -31,18 +31,26 @@ export const assertReservationReplacement = ({
   config,
   data,
   datasourceConfig,
+  initialHoldStep,
+  replacementData,
+  reservationPath,
   run,
   runStep,
   session,
   state,
+  submitReservationScript,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
+  initialHoldStep?: (row: CheckoutRow) => WorkspaceE2EStep<void>;
+  replacementData: CheckoutData;
+  reservationPath: string;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
+  submitReservationScript: (data: CheckoutData) => string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
@@ -57,7 +65,7 @@ export const assertReservationReplacement = ({
           },
           run,
           session,
-          submitReservationScript: getSubmitCoworkReservationScript(data),
+          submitReservationScript: submitReservationScript(data),
           timeouts: config.timeouts,
         });
       }),
@@ -79,10 +87,14 @@ export const assertReservationReplacement = ({
         return firstRow.dotypos_reservation_id;
       }
     );
+    if (initialHoldStep) {
+      yield* runStep(initialHoldStep(firstRow));
+    }
 
     yield* runStep({
       execute: returnToPrefilledReservation({
         data,
+        reservationPath,
         run,
         session,
         timeouts: config.timeouts,
@@ -97,7 +109,7 @@ export const assertReservationReplacement = ({
         },
         run,
         session,
-        submitReservationScript: getSubmitCoworkReservationScript(data),
+        submitReservationScript: submitReservationScript(replacementData),
         timeouts: config.timeouts,
       }),
       id: "resubmit-prefilled-reservation",
@@ -120,6 +132,7 @@ export const assertReservationReplacement = ({
     );
     state.orderId = secondOrderId;
     state.checkoutRow = secondRow;
+    state.data = replacementData;
     const cancelledFirstRow = yield* runStep({
       execute: readCheckoutRow(firstOrderId).pipe(
         Effect.flatMap((row) =>
@@ -162,17 +175,19 @@ export const assertReservationReplacement = ({
 
 const returnToPrefilledReservation = ({
   data,
+  reservationPath,
   run,
   session,
   timeouts,
 }: {
   data: CheckoutData;
+  reservationPath: string;
   run: Runner;
   session: string;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const reservationStepSelector = `a[href^="/${data.locale}/reservation/cowork?payState="]`;
+    const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
@@ -185,7 +200,7 @@ const returnToPrefilledReservation = ({
       matches: (value) => {
         const url = parseUrl(value);
         return (
-          url?.pathname === `/${data.locale}/reservation/cowork` &&
+          url?.pathname === reservationPath &&
           url.searchParams.has("payState")
         );
       },

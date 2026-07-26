@@ -1,11 +1,21 @@
 import { expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import {
+  getAssertPrefilledReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
+  getPrepareMeetingRoomAdvertisedPriceScript,
   getSubmitCoworkReservationScript,
+  getSubmitMeetingRoomReservationScript,
   submitPreparedCoworkReservationScript,
+  submitPreparedMeetingRoomReservationScript,
 } from "./browser-scripts";
-import { makeCoworkCheckoutData } from "./checkout/data";
+import {
+  makeCoworkCheckoutData,
+  makeMeetingRoomCheckoutData,
+} from "./checkout/data";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
+
+const workspaceTemporal = globalThis.Temporal;
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(
@@ -125,6 +135,7 @@ test("prepares the Profi advertised price without requiring another tier", async
     expect(profiPrice.dataset.reservationTierPriceReady).toBe("true");
   } finally {
     await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
   }
 });
 
@@ -179,5 +190,61 @@ test("accepts an already-prepared prefilled Profi price", async () => {
     ).resolves.toBe(location.href);
   } finally {
     await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
   }
+});
+
+test("drives meeting-room date, time, duration, and consent controls", () => {
+  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 240);
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-01",
+      durationMinutes: 240,
+      startDateTime: "2099-09-01T10:00",
+      ...interval!,
+    },
+    "meeting-room-script"
+  );
+  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(data);
+  const combined = getSubmitMeetingRoomReservationScript(data);
+
+  expect(prepare).toContain('button[aria-label="Meeting room start date"]');
+  expect(prepare).toContain("'[data-day=\"' + expected.date");
+  expect(prepare).toContain(
+    'input[aria-label="Meeting room start time"]'
+  );
+  expect(prepare).toContain("meeting-room-duration-");
+  expect(prepare).toContain("2099-09-01T10:00");
+  expect(prepare).not.toContain(
+    "setField('input[name=\"startDateTime\"]'"
+  );
+  expect(submitPreparedMeetingRoomReservationScript).toContain(
+    "meeting-room-privacy-consent"
+  );
+  expect(combined).toContain(prepare.trim());
+  expect(() => new Function(`return ${combined}`)).not.toThrow();
+});
+
+test("asserts restored meeting-room state and reset legal consent", () => {
+  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 1440);
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-01",
+      durationMinutes: 1440,
+      startDateTime: "2099-09-01T10:00",
+      ...interval!,
+    },
+    "meeting-room-backfill"
+  );
+  const assertion = getAssertPrefilledReservationScript(data);
+
+  expect(assertion).toContain("meeting-room-duration-");
+  expect(assertion).toContain("2099-09-01T10:00");
+  expect(assertion).toContain("meeting-room-privacy-consent");
+  expect(assertion).toContain("privacy consent reset");
+  expect(() => new Function(`return ${assertion}`)).not.toThrow();
 });

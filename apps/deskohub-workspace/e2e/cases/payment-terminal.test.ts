@@ -12,7 +12,12 @@ test("restarts a reservation through a hydrated stable link selector", async () 
   };
 
   await Effect.runPromise(
-    activateStatusReserveAgain(run, "payment-terminal", workspaceE2ETimeouts)
+    activateStatusReserveAgain(
+      run,
+      "payment-terminal",
+      "/en-US/reservation/cowork",
+      workspaceE2ETimeouts
+    )
   );
 
   expect(calls.map((args) => args.slice(2))).toEqual([

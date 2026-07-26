@@ -3,8 +3,15 @@ import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
   WorkspaceCoworkProductTier,
+  WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import {
+  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomReservationDate,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
+import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
@@ -15,6 +22,19 @@ import {
 } from "../errors";
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
+
+export type MeetingRoomCheckoutSlot = {
+  readonly date: string;
+  readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
+  readonly endsAt: ReservationInterval["endsAt"];
+  readonly startDateTime: string;
+  readonly startsAt: ReservationInterval["startsAt"];
+};
+
+export type MeetingRoomAvailability = {
+  readonly meetingRoomUnavailable: boolean;
+  readonly unavailableDates: readonly string[];
+};
 
 let checkoutContactSequence = 0;
 const emailLocalPartLimit = 64;
@@ -93,6 +113,58 @@ export const reuseCoworkCheckoutContact = (
     },
     product
   );
+
+export const makeMeetingRoomCheckoutData = (
+  checkoutBaseUrl: string,
+  slot: MeetingRoomCheckoutSlot,
+  flowId = `meeting-room-${slot.durationMinutes}`
+): CheckoutData => {
+  const contact = makeCheckoutContact(flowId);
+  return makeMeetingRoomCheckoutDataWithContact(
+    checkoutBaseUrl,
+    slot,
+    contact
+  );
+};
+
+export const reuseMeetingRoomCheckoutContact = (
+  checkoutBaseUrl: string,
+  slot: MeetingRoomCheckoutSlot,
+  source: CheckoutData
+): CheckoutData => {
+  return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, {
+    email: source.email,
+    message: source.message,
+    name: source.name,
+    phone: source.phone,
+  });
+};
+
+const makeMeetingRoomCheckoutDataWithContact = (
+  checkoutBaseUrl: string,
+  slot: MeetingRoomCheckoutSlot,
+  contact: ReturnType<typeof makeCheckoutContact>
+): CheckoutData => {
+  const locale: CheckoutData["locale"] = "en-US";
+
+  return {
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
+    date: slot.date,
+    email: contact.email,
+    expectedReservationDetails: { kind: "meeting-room" },
+    locale,
+    meetingRoom: {
+      durationMinutes: slot.durationMinutes,
+      endsAt: slot.endsAt,
+      startDateTime: slot.startDateTime,
+      startsAt: slot.startsAt,
+    },
+    message: contact.message,
+    name: contact.name,
+    orderIdHint: "",
+    phone: contact.phone,
+  };
+};
 
 const makeCoworkCheckoutDataWithContact = (
   checkoutBaseUrl: string,
@@ -259,6 +331,143 @@ export const selectAvailableCoworkDates = (
     );
   });
 
+export const selectAvailableMeetingRoomSlots = (
+  config: WorkspaceE2EConfig,
+  durations: readonly WorkspaceMeetingRoomDurationMinutes[]
+): Effect.Effect<
+  readonly MeetingRoomCheckoutSlot[],
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const slots: MeetingRoomCheckoutSlot[] = [];
+    const reservedDates = new Set<string>();
+
+    for (const durationMinutes of durations) {
+      let selected: MeetingRoomCheckoutSlot | undefined;
+
+      for (let offset = 14; offset <= 90; offset += 1) {
+        const date = futureIsoDate(offset);
+        if (!isWeekday(date) || reservedDates.has(date)) continue;
+
+        const startDateTime = `${date}T10:00`;
+        const interval = yield* tryWorkspaceE2ESync(
+          "create meeting-room checkout interval",
+          () => {
+            const value = getMeetingRoomReservationInterval(
+              startDateTime,
+              durationMinutes
+            );
+            assert(value, "meeting-room test interval could not be created");
+            return value;
+          }
+        );
+        const slot = {
+          date: getMeetingRoomReservationDate(interval),
+          durationMinutes,
+          endsAt: interval.endsAt,
+          startDateTime,
+          startsAt: interval.startsAt,
+        } satisfies MeetingRoomCheckoutSlot;
+        const availability = yield* loadMeetingRoomAvailability(config, slot);
+
+        if (
+          availability.meetingRoomUnavailable ||
+          availability.unavailableDates.includes(slot.date)
+        ) {
+          continue;
+        }
+
+        selected = slot;
+        break;
+      }
+
+      if (!selected) {
+        return yield* workspaceE2EError(
+          `No available ${durationMinutes}-minute meeting-room checkout slot found`,
+          { operation: "select available meeting-room checkout slots" }
+        );
+      }
+
+      slots.push(selected);
+      for (const date of getTouchedDates(selected)) reservedDates.add(date);
+      log(
+        `Selected available ${durationMinutes}-minute meeting-room slot ${selected.startDateTime}`
+      );
+    }
+
+    return slots;
+  });
+
+export const loadMeetingRoomAvailability = (
+  config: WorkspaceE2EConfig,
+  slot: MeetingRoomCheckoutSlot
+): Effect.Effect<
+  MeetingRoomAvailability,
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.gen(function* () {
+    const params = new URLSearchParams({
+      kind: "meeting-room",
+      from: slot.date,
+      to: getMeetingRoomAvailabilityToDate(slot),
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+    });
+    const httpClient = yield* HttpClient.HttpClient;
+    const request = HttpClientRequest.get(
+      `${config.baseUrl}/api/workspace/availability?${params}`
+    ).pipe(
+      HttpClientRequest.setHeaders(
+        config.bypassSecret
+          ? { "x-vercel-protection-bypass": config.bypassSecret }
+          : {}
+      )
+    );
+    const response = yield* httpClient.execute(request).pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("fetch meeting-room availability", cause)
+      ),
+      Effect.filterOrFail(
+        ({ status }) => status >= 200 && status < 300,
+        ({ status }) =>
+          workspaceE2EError(
+            `meeting-room availability check failed with ${status}`,
+            { operation: "fetch meeting-room availability" }
+          )
+      )
+    );
+    const availability = (yield* response.json.pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("read meeting-room availability response", cause)
+      )
+    )) as {
+      readonly meetingRoomUnavailable?: unknown;
+      readonly unavailableDates?: unknown;
+    };
+
+    return yield* tryWorkspaceE2ESync(
+      "parse meeting-room availability",
+      () => {
+        assert(
+          typeof availability.meetingRoomUnavailable === "boolean",
+          "availability response missing meetingRoomUnavailable"
+        );
+        assert(
+          Array.isArray(availability.unavailableDates),
+          "availability response missing unavailableDates"
+        );
+        return {
+          meetingRoomUnavailable: availability.meetingRoomUnavailable,
+          unavailableDates: availability.unavailableDates.filter(
+            (date): date is string => typeof date === "string"
+          ),
+        };
+      }
+    );
+  });
+
 const futureIsoDate = (offsetDays: number) => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
@@ -268,4 +477,11 @@ const futureIsoDate = (offsetDays: number) => {
 const isWeekday = (date: string) => {
   const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
   return day !== 0 && day !== 6;
+};
+
+const getTouchedDates = (slot: MeetingRoomCheckoutSlot) => {
+  const dates = [slot.date];
+  const endDate = getMeetingRoomAvailabilityToDate(slot);
+  if (endDate !== slot.date) dates.push(endDate);
+  return dates;
 };

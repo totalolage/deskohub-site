@@ -2,6 +2,7 @@ import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
+import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -122,6 +123,17 @@ export const validateDotypos = (
         timeoutMs: config.timeouts.datasource,
       }
     );
+    const meetingRoomTables = data.meetingRoom
+      ? yield* Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.getTables();
+        }).pipe(
+          Effect.provide(getDotyposLayer(config)),
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("validate Dotypos meeting-room table", cause)
+          )
+        )
+      : [];
 
     yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
       assert(
@@ -141,14 +153,44 @@ export const validateDotypos = (
         result.reservation.note?.includes(row.reservation_id),
         "Dotypos note missing workspace order id"
       );
-      assert(
-        dotyposDateCovers(
-          result.reservation.startDate,
-          result.reservation.endDate,
-          data.date
-        ),
-        "Dotypos date does not cover selected checkout date"
-      );
+      if (data.meetingRoom) {
+        assert(
+          dotyposTimestampMatches(
+            result.reservation.startDate,
+            data.meetingRoom.startsAt
+          ),
+          "Dotypos meeting-room start does not match the selected time"
+        );
+        assert(
+          dotyposTimestampMatches(
+            result.reservation.endDate,
+            data.meetingRoom.endsAt
+          ),
+          "Dotypos meeting-room end does not match the selected time"
+        );
+        const assignedTable = meetingRoomTables.find(
+          (table) => table.id === result.reservation._tableId
+        );
+        assert(
+          assignedTable?.enabled === true && assignedTable.display === true,
+          "Dotypos meeting-room table is not active and visible"
+        );
+        assert(
+          assignedTable.tags?.includes(
+            workspaceMeetingRoomReservationTableTag
+          ),
+          "Dotypos reservation is not assigned to a meeting-room table"
+        );
+      } else {
+        assert(
+          dotyposDateCovers(
+            result.reservation.startDate,
+            result.reservation.endDate,
+            data.date
+          ),
+          "Dotypos date does not cover selected checkout date"
+        );
+      }
     });
     log("Dotypos reservation state validated");
   });
@@ -289,3 +331,6 @@ const dotyposDateCovers = (
 
 const parseDotyposTimestamp = (value: string) =>
   /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
+
+export const dotyposTimestampMatches = (actual: string, expected: string) =>
+  parseDotyposTimestamp(actual) === new Date(expected).getTime();

@@ -1,6 +1,8 @@
 import type { Effect } from "effect";
+import type { WorkspaceMeetingRoomDurationMinutes } from "../features/checkout/product-catalog";
 import type { E2EDatabase } from "./integrations/database.service";
 import type { StoredWorkspaceReservationDetails } from "../features/reservation/persistence-contracts";
+import type { ReservationInterval } from "../features/reservation/reservation-interval";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
 
@@ -55,6 +57,12 @@ export type CheckoutData = {
   readonly email: string;
   readonly expectedReservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: "en-US";
+  readonly meetingRoom?: {
+    readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
+    readonly endsAt: ReservationInterval["endsAt"];
+    readonly startDateTime: string;
+    readonly startsAt: ReservationInterval["startsAt"];
+  };
   readonly message: string;
   readonly name: string;
   readonly orderIdHint: string;

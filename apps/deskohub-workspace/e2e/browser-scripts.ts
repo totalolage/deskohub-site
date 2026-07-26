@@ -1,8 +1,8 @@
 import type { CheckoutData } from "./types";
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
-  if (data.expectedReservationDetails.kind !== "cowork") {
-    throw new Error("Reservation backfill assertions require cowork data");
+  if (data.expectedReservationDetails.kind === "meeting-room") {
+    return getAssertPrefilledMeetingRoomReservationScript(data);
   }
 
   const expectedReservation = data.expectedReservationDetails;
@@ -62,6 +62,47 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 `;
 };
 
+const getAssertPrefilledMeetingRoomReservationScript = (
+  data: CheckoutData
+) => {
+  if (!data.meetingRoom) {
+    throw new Error("Meeting-room backfill assertions require interval data");
+  }
+
+  return `
+(() => {
+  const expected = ${JSON.stringify({
+    durationMinutes: data.meetingRoom.durationMinutes,
+    email: data.email,
+    message: data.message,
+    name: data.name,
+    phone: data.phone,
+    startDateTime: data.meetingRoom.startDateTime,
+  })};
+  const fail = (field) => {
+    throw new Error('restored meeting-room ' + field + ' did not match');
+  };
+  const value = (selector, field) => {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
+    return element.value;
+  };
+
+  if (value('input[name="startDateTime"]', 'start date-time') !== expected.startDateTime) fail('start date-time');
+  const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
+  if (!(duration instanceof HTMLInputElement) || duration.value !== String(expected.durationMinutes)) fail('duration');
+  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
+
+  const consent = document.querySelector('#meeting-room-privacy-consent');
+  if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
+  return true;
+})()
+`;
+};
+
 export const getPrefilledReservationConditionScript = (data: CheckoutData) => {
   const assertion = getAssertPrefilledReservationScript(data).trim();
 
@@ -83,6 +124,17 @@ export const getSubmitCoworkReservationScript = (data: CheckoutData) => {
 (async () => {
   await (${prepare});
   return await (${submitPreparedCoworkReservationScript.trim()});
+})()
+`;
+};
+
+export const getSubmitMeetingRoomReservationScript = (data: CheckoutData) => {
+  const prepare = getPrepareMeetingRoomAdvertisedPriceScript(data).trim();
+
+  return `
+(async () => {
+  await (${prepare});
+  return await (${submitPreparedMeetingRoomReservationScript.trim()});
 })()
 `;
 };
@@ -177,8 +229,108 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
 `;
 };
 
-export const submitPreparedCoworkReservationScript = `
+export const getPrepareMeetingRoomAdvertisedPriceScript = (
+  data: CheckoutData
+) => {
+  if (
+    data.expectedReservationDetails.kind !== "meeting-room" ||
+    !data.meetingRoom
+  ) {
+    throw new Error("Meeting-room reservation submission requires room data");
+  }
+
+  return `
 (async () => {
+  const expected = ${JSON.stringify({
+    date: data.date,
+    durationMinutes: data.meetingRoom.durationMinutes,
+    email: data.email,
+    message: data.message,
+    name: data.name,
+    phone: data.phone,
+    startDateTime: data.meetingRoom.startDateTime,
+    time: data.meetingRoom.startDateTime.slice(11),
+  })};
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
+  const setField = (selector, value) => {
+    const field = document.querySelector(selector);
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) {
+      throw new Error(selector + ' not found');
+    }
+    field.focus();
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
+    descriptor?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  let dateTrigger;
+  await waitUntil(() => {
+    const candidate = document.querySelector('button[aria-label="Meeting room start date"]');
+    if (candidate instanceof HTMLButtonElement) {
+      dateTrigger = candidate;
+      return true;
+    }
+    return false;
+  }, 'meeting-room date control not found');
+  dateTrigger.click();
+
+  let dateButton;
+  for (let month = 0; month < 5; month += 1) {
+    dateButton = document.querySelector('[data-day="' + expected.date + '"] button:not(:disabled)');
+    if (dateButton instanceof HTMLButtonElement) break;
+    const nextMonth = document.querySelector(
+      'button[aria-label="Go to the Next Month"]'
+    );
+    if (!(nextMonth instanceof HTMLButtonElement) || nextMonth.disabled) {
+      throw new Error('meeting-room date is outside the selectable calendar');
+    }
+    nextMonth.click();
+    await wait(100);
+  }
+  if (!(dateButton instanceof HTMLButtonElement)) {
+    throw new Error('meeting-room date was not found in the calendar');
+  }
+  dateButton.click();
+
+  setField('input[aria-label="Meeting room start time"]', expected.time);
+  const duration = document.querySelector('#meeting-room-duration-' + expected.durationMinutes);
+  if (!(duration instanceof HTMLInputElement)) {
+    throw new Error('meeting-room duration control not found');
+  }
+  if (!duration.checked) (duration.closest('label') ?? duration).click();
+  setField('input[name="email"]', expected.email);
+  setField('input[name="phone"]', expected.phone);
+  setField('input[name="name"]', expected.name);
+  setField('textarea[name="message"]', expected.message);
+
+  await waitUntil(() => {
+    const hiddenStart = document.querySelector('input[name="startDateTime"]');
+    const submit = document.querySelector('button[type="submit"]');
+    return (
+      hiddenStart instanceof HTMLInputElement &&
+      hiddenStart.value === expected.startDateTime &&
+      duration.checked &&
+      submit instanceof HTMLButtonElement &&
+      !submit.disabled
+    );
+  }, 'meeting-room availability or advertised price did not become ready');
+  return location.href;
+})()
+`;
+};
+
+const getSubmitPreparedReservationScript = (consentSelector: string) => `
+(async () => {
+  const consentSelector = ${JSON.stringify(consentSelector)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
     const deadline = Date.now() + 25000;
@@ -190,7 +342,7 @@ export const submitPreparedCoworkReservationScript = `
   };
   let checkbox;
   await waitUntil(() => {
-    const candidate = document.querySelector('#reservation-privacy-consent');
+    const candidate = document.querySelector(consentSelector);
     if (candidate instanceof HTMLButtonElement) {
       checkbox = candidate;
       return true;
@@ -208,6 +360,12 @@ export const submitPreparedCoworkReservationScript = `
   return location.href;
 })()
 `;
+
+export const submitPreparedCoworkReservationScript =
+  getSubmitPreparedReservationScript("#reservation-privacy-consent");
+
+export const submitPreparedMeetingRoomReservationScript =
+  getSubmitPreparedReservationScript("#meeting-room-privacy-consent");
 
 export const getSubmitContactFormScript = (data: {
   readonly email: string;

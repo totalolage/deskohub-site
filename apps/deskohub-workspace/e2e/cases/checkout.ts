@@ -1,6 +1,10 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
+import {
   activateHydratedBrowserElement,
   evalBrowserScript,
   openBrowserPage,
@@ -160,7 +164,7 @@ export const executeCheckoutFlow = ({
     yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
-        locale: data.locale,
+        data,
         orderId,
         run,
         session,
@@ -204,13 +208,13 @@ const waitForCheckoutStatusPage = (
 
 export const assertFulfilledStatusPage = ({
   config,
-  locale,
+  data,
   orderId,
   run,
   session,
 }: {
   config: WorkspaceE2EConfig;
-  locale: CheckoutData["locale"];
+  data: CheckoutData;
   orderId: string;
   run: Runner;
   session: string;
@@ -220,14 +224,28 @@ export const assertFulfilledStatusPage = ({
       config,
       run,
       session,
-      `${config.baseUrl}/${locale}/reservation/status/${orderId}`,
+      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`,
       { timeoutMs: config.timeouts.browserNavigation }
     );
+    const expectedMeetingRoomText = data.meetingRoom
+      ? [
+          formatReservationDisplayDate(
+            Temporal.Instant.from(data.meetingRoom.startsAt),
+            data.locale
+          ),
+          formatReservationDisplayTimeRange(
+            Temporal.Instant.from(data.meetingRoom.startsAt),
+            Temporal.Instant.from(data.meetingRoom.endsAt),
+            data.locale
+          ),
+        ]
+      : [];
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
       matches: (text) =>
         /Your workspace access is ready\./i.test(text) &&
-        /sent by email/i.test(text),
+        /sent by email/i.test(text) &&
+        expectedMeetingRoomText.every((expected) => text.includes(expected)),
       run,
       session,
       timeoutMs: config.timeouts.uiTransition,

@@ -110,7 +110,7 @@ export const executeZeroTotalCheckout = ({
     yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
-        locale: data.locale,
+        data,
         orderId,
         run,
         session,
