@@ -8,20 +8,33 @@ import {
   describe,
   expect,
   mock,
+  setSystemTime,
   test,
 } from "bun:test";
-import { createHmac } from "node:crypto";
-import { mkdtemp, readdir, readFile, symlink } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { cp, mkdtemp, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, relative } from "node:path";
-import { Data, Effect, Layer } from "effect";
+import { dirname, join, relative, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { Cause, Clock, Effect, Layer } from "effect";
+import { TestClock } from "effect/testing";
 import EmbeddedPostgres from "embedded-postgres";
 import type { Client } from "pg";
 import type { CreateWorkspaceReservationInput } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
+mock.module("./bot-protection/bot-protection.runtime", () => ({
+  isWorkspaceBotIdEnforcedAtRuntime: () => false,
+}));
+mock.module("botid/server", () => ({
+  checkBotId: () => Promise.resolve({ isBot: false }),
+}));
+mock.module("next/headers", () => ({
+  cookies: async () => ({ getAll: () => [] }),
+  headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
+}));
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
     Effect.succeed({
@@ -48,6 +61,18 @@ const embeddedPostgresPlatformRoot = dirname(
   dirname(embeddedPostgresPlatformEntry)
 );
 const migrationsDirectory = new URL(".", import.meta.url);
+const repositoryRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../.."
+);
+const immutableWriterRevision = "34b07b3e045d8e9bf3468c51378c69991db70889";
+const immutableWriterIdentity = {
+  tree: "2cc3492aa7c4fab621d4710c728e36d800a84d29",
+  preparePayState: "c8402f6d2b7a87f99d6430b3556f858ed28c5491",
+  repository: "02dc6dd716ca4cbe55a38bb2d311e1fe7bcb63a6",
+  keyDerivation: "f8fb05deb1919cbcf9fa1a459bb2633025ebd0c5",
+  schema: "22888c3dbaec13ea0369003609b6f0fa46b3bb73",
+} as const;
 
 const reservation = {
   kind: "cowork" as const,
@@ -79,8 +104,10 @@ const boundaryScenarios = [
 
 let postgres: EmbeddedPostgres;
 let assertionClient: Client;
+let immutableWriterRoot: string;
 
 beforeAll(async () => {
+  immutableWriterRoot = await extractImmutableWriter();
   await hydrateEmbeddedPostgresSymlinks();
   const databaseDir = await mkdtemp(
     join(tmpdir(), "workspace-checkout-identity-")
@@ -121,6 +148,9 @@ beforeEach(async () => {
 afterAll(async () => {
   await assertionClient?.end();
   await postgres?.stop();
+  if (immutableWriterRoot) {
+    await rm(immutableWriterRoot, { recursive: true, force: true });
+  }
 }, 30_000);
 
 describe("production checkout identity mixed-version concurrency", () => {
@@ -137,54 +167,109 @@ describe("production checkout identity mixed-version concurrency", () => {
 });
 
 describe("production repository identity conflict safety", () => {
-  test("fails closed on divergent candidates before provider start", async () => {
-    const layer = await makeRepositoryLayer();
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
-    const rawAttempt = "a".repeat(64);
-    const dedicatedAttempt = "b".repeat(64);
-    let providerStarts = 0;
-    const error = await Effect.gen(function* () {
-      const repository = yield* WorkspaceReservationRepository;
-      yield* repository.createDraft(
-        makeDraftInput("divergent-a", {
-          checkoutAttemptKey: rawAttempt,
-          checkoutAttemptIdentityKey: "c".repeat(64),
-        })
-      );
-      yield* repository.createDraft(
-        makeDraftInput("divergent-b", {
-          checkoutAttemptKey: "d".repeat(64),
-          checkoutAttemptIdentityKey: dedicatedAttempt,
-        })
-      );
-      return yield* repository
-        .createDraft(
-          makeDraftInput("divergent-probe", {
-            checkoutAttemptKey: rawAttempt,
-            checkoutAttemptIdentityKey: dedicatedAttempt,
+  test("real action fails closed on divergent candidates before provider start", async () => {
+    const keyDerivationTime = new Date("2099-01-01T00:00:00.001Z");
+    setSystemTime(keyDerivationTime);
+    try {
+      const advertisedPriceToken = await buildAdvertisedPriceToken();
+      const [
+        { freezeCheckoutKeyDerivation },
+        { WorkspaceReservationRepository },
+        { prepareWorkspacePayState },
+        { preparePayStateSchema },
+        { defineWorkspaceAction },
+        { m },
+      ] = await Promise.all([
+        import(
+          "@/features/checkout/backend/checkout/checkout-session-key.server"
+        ),
+        import(
+          "@/features/reservation/backend/workspace-reservation.repository"
+        ),
+        import("@/features/reservation/actions/prepare-pay-state"),
+        import("@/features/reservation/actions/prepare-pay-state.schema"),
+        import("@/shared/backend/workspace-action"),
+        import("@/features/i18n"),
+      ]);
+      const keys = freezeCheckoutKeyDerivation({
+        now: () => keyDerivationTime,
+      }).attempt({
+        checkoutSessionId,
+        checkoutAttemptId,
+        reservation,
+      });
+      const repositoryLayer = await makeRepositoryLayer();
+      await Effect.gen(function* () {
+        const repository = yield* WorkspaceReservationRepository;
+        yield* repository.createDraft(
+          makeDraftInput("divergent-raw", {
+            checkoutAttemptKey: keys.legacy,
+            checkoutAttemptIdentityKey: "divergent-raw-identity",
+            checkoutAttemptCompatibilityKey: "divergent-raw-compatibility",
+            checkoutAttemptKeyCandidates: [keys.legacy],
           })
-        )
-        .pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              providerStarts += 1;
-            })
-          )
         );
-    }).pipe(Effect.provide(layer), Effect.flip, Effect.runPromise);
+        yield* repository.createDraft(
+          makeDraftInput("divergent-identity", {
+            checkoutAttemptKey: "divergent-identity-current",
+            checkoutAttemptIdentityKey: keys.identity,
+            checkoutAttemptCompatibilityKey: "divergent-identity-compatibility",
+            checkoutAttemptKeyCandidates: [keys.identity],
+          })
+        );
+      }).pipe(Effect.provide(repositoryLayer), Effect.runPromise);
+      const rowsBefore = await readReservationIdentityState();
+      let providerStarts = 0;
+      const actionLayer = await makeProductionActionLayer(() => {
+        providerStarts += 1;
+      });
+      const action = defineWorkspaceAction(
+        {
+          operation: "checkout.prepare-pay-state",
+          schema: preparePayStateSchema,
+        },
+        (input) =>
+          prepareWorkspacePayState(input, { keyDerivationTime }).pipe(
+            Effect.provide(actionLayer)
+          )
+      );
+      const errorLog = mock(() => undefined);
+      const originalConsoleError = console.error;
+      let result: Awaited<ReturnType<typeof action>>;
+      try {
+        console.error = errorLog;
+        result = await action({
+          locale: "en-US",
+          checkoutSessionId,
+          checkoutAttemptId,
+          advertisedPriceToken,
+          reservation,
+          legalConsent: true,
+        });
+      } finally {
+        console.error = originalConsoleError;
+      }
 
-    expect(error).toMatchObject({
-      _tag: "WorkspaceReservationStateError",
-      operation: "workspaceReservations.createDraft",
-      reservationId: "conflicting-checkout-attempt",
-    });
-    expect(providerStarts).toBe(0);
-    const rows = await assertionClient.query(
-      'SELECT "id" FROM "workspace_reservations"'
-    );
-    expect(rows.rows).toHaveLength(2);
+      expect(result).toEqual({
+        serverError: m.reservationErrorMessage({}, { locale: "en-US" }),
+      });
+      expect(providerStarts).toBe(0);
+      expect(await readReservationIdentityState()).toEqual(rowsBefore);
+      const emitted = JSON.stringify({ logs: errorLog.mock.calls, result });
+      for (const sentinel of [
+        checkoutSessionId,
+        checkoutAttemptId,
+        keys.identity,
+        keys.legacy,
+        "divergent-raw",
+        "divergent-identity",
+        "synthetic-customer",
+      ]) {
+        expect(emitted).not.toContain(sentinel);
+      }
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("rolls back replacement identity conflicts and preserves the prior row", async () => {
@@ -251,44 +336,94 @@ const assertMixedVersionOverlap = async (input: {
   const gate = makeConcurrencyGate(input.winner);
   const providerId = `synthetic-provider-${input.winner}-${input.currentTime}`;
   const providerCalls: string[] = [];
+  const providerRelease = promiseWithResolvers<string>();
   const claimResults: { generation: WriterGeneration; claimed: boolean }[] = [];
+  setSystemTime(new Date(input.currentTime));
   const advertisedPriceToken = await buildAdvertisedPriceToken();
 
-  const run = async (generation: WriterGeneration) => {
-    const layer = await makeRequestLayer({
-      generation,
-      gate,
-      providerCalls,
-      providerId,
-      claimResults,
-    });
-    if (generation === "legacy") {
-      return await (await makeImmutableLegacyWriter()).pipe(
-        Effect.provide(layer),
-        Effect.runPromise
-      );
-    }
-    const { prepareWorkspacePayState } = await import(
-      "@/features/reservation/actions/prepare-pay-state"
-    );
-    return await prepareWorkspacePayState(
-      {
+  const results = await Effect.gen(function* () {
+    const testClock = yield* TestClock.make({ warningDelay: "1 hour" });
+    yield* testClock.setTime(Date.parse(input.currentTime));
+
+    const run = async (generation: WriterGeneration) => {
+      const layer =
+        generation === "legacy"
+          ? await makeImmutableWriterRequestLayer({
+              generation,
+              gate,
+              providerCalls,
+              providerId,
+              providerRelease,
+              claimResults,
+            })
+          : await makeCurrentRequestLayer({
+              generation,
+              gate,
+              providerCalls,
+              providerId,
+              providerRelease,
+              claimResults,
+            });
+      const prepareWorkspacePayState =
+        generation === "legacy"
+          ? (
+              await importImmutableWriterModule(
+                "features/reservation/actions/prepare-pay-state.ts"
+              )
+            ).prepareWorkspacePayState
+          : (await import("@/features/reservation/actions/prepare-pay-state"))
+              .prepareWorkspacePayState;
+      const actionInput = {
         locale: "en-US",
         checkoutSessionId,
         checkoutAttemptId,
         advertisedPriceToken,
         reservation,
         legalConsent: true,
-      },
-      { keyDerivationTime: new Date(input.currentTime) }
-    ).pipe(Effect.provide(layer), Effect.runPromise);
-  };
+      };
+      const effect =
+        generation === "legacy"
+          ? prepareWorkspacePayState(actionInput)
+          : prepareWorkspacePayState(actionInput, {
+              keyDerivationTime: new Date(input.currentTime),
+            });
 
-  const results = await Promise.allSettled([run("legacy"), run("current")]);
+      return await effect.pipe(
+        Effect.provide(layer),
+        Effect.provideService(Clock.Clock, testClock),
+        Effect.runPromise
+      );
+    };
+
+    const running = Promise.allSettled([run("legacy"), run("current")]);
+    yield* Effect.promise(() =>
+      Promise.race([
+        gate.claimsCompleted,
+        running.then((settled) => {
+          const outcomes = settled.map((result) =>
+            result.status === "fulfilled"
+              ? "fulfilled"
+              : getErrorKind(result.reason)
+          );
+          throw new Error(
+            `Writers settled before both claims: ${outcomes.join(",")}.`
+          );
+        }),
+      ])
+    );
+    yield* Effect.promise(
+      () => new Promise<void>((resolveTick) => setTimeout(resolveTick, 0))
+    );
+    yield* testClock.adjust("41 seconds");
+    providerRelease.resolve(providerId);
+    return yield* Effect.promise(() => running);
+  }).pipe(Effect.scoped, Effect.runPromise);
+  setSystemTime();
 
   const rows = await assertionClient.query<{
     id: string;
     checkout_attempt_identity_key: string;
+    checkout_attempt_compatibility_key: string;
     dotypos_reservation_id: string | null;
     reservation_state: string;
   }>(
@@ -296,6 +431,7 @@ const assertMixedVersionOverlap = async (input: {
       SELECT
         "id",
         "checkout_attempt_identity_key",
+        "checkout_attempt_compatibility_key",
         "dotypos_reservation_id",
         "reservation_state"
       FROM "workspace_reservations"
@@ -319,6 +455,9 @@ const assertMixedVersionOverlap = async (input: {
     reservation_state: "held",
   });
   expect(rows.rows[0]?.checkout_attempt_identity_key).toMatch(/^[a-f0-9]{64}$/);
+  expect(rows.rows[0]?.checkout_attempt_compatibility_key).toMatch(
+    /^[a-f0-9]{64}$/
+  );
 
   const ready = results.filter(
     (result) =>
@@ -343,96 +482,32 @@ const assertMixedVersionOverlap = async (input: {
 
 type WriterGeneration = "current" | "legacy";
 
-class LegacyWriterConflictFailure extends Data.TaggedError(
-  "LegacyWriterConflictFailure"
-)<{
-  readonly kind: "claim_conflict";
-}> {}
-
-const makeImmutableLegacyWriter = async () => {
-  const [{ DotyposService }, { WorkspaceReservationRepository }] =
-    await Promise.all([
-      import("@deskohub/dotypos"),
-      import("@/features/reservation/backend/workspace-reservation.repository"),
-    ]);
-
-  return Effect.gen(function* () {
-    const rawPayStateKeys = process.env.CHECKOUT_PAY_STATE_KEYS;
-    if (!rawPayStateKeys) {
-      return yield* Effect.die(
-        "Synthetic test Pay-state material was not configured."
-      );
-    }
-    const derive = (payload: object) =>
-      createHmac("sha256", rawPayStateKeys)
-        .update(JSON.stringify(payload))
-        .digest("hex");
-    const checkoutSessionKey = derive({ checkoutSessionId });
-    const checkoutAttemptKey = derive({
-      checkoutSessionId,
-      checkoutAttemptId,
-      reservation: {
-        name: reservation.name,
-        email: reservation.email,
-        phone: reservation.phone,
-        kind: reservation.kind,
-        date: reservation.date,
-        entryTier: reservation.entryTier,
-        coffee: reservation.coffee,
-        monitorOption: null,
-      },
-    });
-    const reservations = yield* WorkspaceReservationRepository;
-    const dotypos = yield* DotyposService;
-    const draft = yield* reservations.createDraft({
-      checkoutSessionKey,
-      checkoutAttemptKey,
-      checkoutSessionIdentityKey: checkoutSessionKey,
-      checkoutAttemptIdentityKey: checkoutAttemptKey,
-      dotyposCustomerId: "synthetic-customer",
-      customerAccessCode: "SYNTHETIC-ACCESS",
-      reservationDetails: {
-        kind: "cowork",
-        entryTier: reservation.entryTier,
-        coffee: reservation.coffee,
-      },
-      locale: "en-US",
-      reservationHoldExpiresAt: Temporal.Instant.from(
-        "2099-06-10T12:00:00.000Z"
-      ),
-    });
-    const claimed = yield* reservations.claimHoldCreation(draft.id);
-    if (!claimed) {
-      return yield* new LegacyWriterConflictFailure({
-        kind: "claim_conflict",
-      });
-    }
-    const created = yield* dotypos.createReservation({} as never);
-    if (
-      !created ||
-      typeof created !== "object" ||
-      !("id" in created) ||
-      typeof created.id !== "string"
-    ) {
-      return yield* Effect.die("Synthetic provider did not return an ID.");
-    }
-    const createdAt = Temporal.Instant.from("2099-06-10T10:00:00.000Z");
-    yield* reservations.attachHold({
-      id: draft.id,
-      dotyposReservationId: created.id,
-      reservationCreatedAt: createdAt,
-      reservationHoldExpiresAt: createdAt.add({ minutes: 10 }),
-    });
-    return { status: "ready" as const, reservationId: draft.id };
-  });
+const getErrorKind = (error: unknown) => {
+  if (!error || typeof error !== "object") return typeof error;
+  if ("_tag" in error && typeof error._tag === "string") return error._tag;
+  if (error instanceof Error) return error.name;
+  if ("cause" in error && Cause.isCause(error.cause)) {
+    return `cause:${error.cause.reasons
+      .map((reason) =>
+        Cause.isFailReason(reason)
+          ? `fail:${getErrorKind(reason.error)}`
+          : Cause.isDieReason(reason)
+            ? `die:${getErrorKind(reason.defect)}`
+            : "interrupt"
+      )
+      .join("+")}`;
+  }
+  return error.constructor?.name ?? "object";
 };
 
 const makeConcurrencyGate = (winner: WriterGeneration) => {
   const bothAtInsert = promiseWithResolvers<void>();
   const winnerCommitted = promiseWithResolvers<void>();
   const bothAtClaim = promiseWithResolvers<void>();
+  const claimsCompleted = promiseWithResolvers<void>();
   let insertEntrants = 0;
   let claimEntrants = 0;
+  let completedClaims = 0;
 
   return {
     winner,
@@ -456,21 +531,29 @@ const makeConcurrencyGate = (winner: WriterGeneration) => {
       if (claimEntrants === 2) bothAtClaim.resolve();
       await waitForBarrier(bothAtClaim.promise, "claim", claimEntrants);
     },
+    markClaimCompleted: () => {
+      completedClaims += 1;
+      if (completedClaims === 2) claimsCompleted.resolve();
+    },
+    claimsCompleted: claimsCompleted.promise,
   };
 };
 
 type ConcurrencyGate = ReturnType<typeof makeConcurrencyGate>;
 
-const makeRequestLayer = async (input: {
+type RequestLayerInput = {
   readonly generation: WriterGeneration;
   readonly gate: ConcurrencyGate;
   readonly providerCalls: string[];
   readonly providerId: string;
+  readonly providerRelease: ReturnType<typeof promiseWithResolvers<string>>;
   readonly claimResults: {
     generation: WriterGeneration;
     claimed: boolean;
   }[];
-}) => {
+};
+
+const loadCurrentRequestLayerModules = async () => {
   const [
     { DotyposService },
     { CheckoutPricingService },
@@ -481,11 +564,7 @@ const makeRequestLayer = async (input: {
     { ReservationHoldCleanupScheduleService },
     { WorkspaceCheckoutAccessCodeService, WorkspaceTableAssignmentService },
     { WorkspaceAvailabilityService },
-    {
-      WorkspaceReservationRepository,
-      WorkspaceReservationRepositoryLegacyWriterLive,
-      WorkspaceReservationRepositoryLive,
-    },
+    { WorkspaceReservationRepository, WorkspaceReservationRepositoryLive },
     { WorkspaceDatabaseLive },
     { PostHogEventService },
     { WorkspaceLoggerLive },
@@ -505,11 +584,132 @@ const makeRequestLayer = async (input: {
     import("@/shared/backend/logging/censorship"),
   ]);
 
-  const repositoryBase = (
-    input.generation === "legacy"
-      ? WorkspaceReservationRepositoryLegacyWriterLive
-      : WorkspaceReservationRepositoryLive
-  ).pipe(Layer.provide(WorkspaceDatabaseLive));
+  return {
+    BotProtectionService,
+    CheckoutPricingService,
+    DotyposService,
+    LegalEvidenceEventRepository,
+    PostHogEventService,
+    ReservationHoldCleanupScheduleService,
+    WorkspaceAvailabilityService,
+    WorkspaceCheckoutAccessCodeService,
+    WorkspaceDatabaseLive,
+    WorkspaceLoggerLive,
+    WorkspaceReservationRepository,
+    WorkspaceReservationRepositoryLive,
+    WorkspaceTableAssignmentService,
+    affirmedDiscountAdvertisementQuoteCodec,
+    buildCoworkReservationQuote,
+  };
+};
+
+type RequestLayerModules = Awaited<
+  ReturnType<typeof loadCurrentRequestLayerModules>
+>;
+
+const loadImmutableWriterRequestLayerModules =
+  async (): Promise<RequestLayerModules> => {
+    const [
+      dotypos,
+      checkoutPricing,
+      checkoutQuote,
+      discounts,
+      botProtection,
+      repositories,
+      holds,
+      reservationServices,
+      availability,
+      reservationRepository,
+      database,
+      posthog,
+      currentLogging,
+    ] = await Promise.all([
+      import("@deskohub/dotypos"),
+      importImmutableWriterModule(
+        "features/checkout/backend/checkout/checkout-pricing.service.ts"
+      ),
+      importImmutableWriterModule(
+        "features/checkout/checkout-quote.test-utils.ts"
+      ),
+      importImmutableWriterModule("features/discounts/index.ts"),
+      importImmutableWriterModule(
+        "shared/backend/bot-protection/bot-protection.service.ts"
+      ),
+      importImmutableWriterModule(
+        "features/checkout/backend/repositories/index.ts"
+      ),
+      importImmutableWriterModule("features/checkout/backend/holds/index.ts"),
+      importImmutableWriterModule(
+        "features/checkout/backend/reservation/index.ts"
+      ),
+      importImmutableWriterModule(
+        "features/reservation/backend/workspace-availability.service.ts"
+      ),
+      importImmutableWriterModule(
+        "features/reservation/backend/workspace-reservation.repository.ts"
+      ),
+      importImmutableWriterModule("db/database.service.ts"),
+      importImmutableWriterModule(
+        "shared/backend/analytics/posthog-event.service.ts"
+      ),
+      import("@/shared/backend/logging/censorship"),
+    ]);
+
+    return {
+      BotProtectionService: botProtection.BotProtectionService,
+      CheckoutPricingService: checkoutPricing.CheckoutPricingService,
+      DotyposService: dotypos.DotyposService,
+      LegalEvidenceEventRepository: repositories.LegalEvidenceEventRepository,
+      PostHogEventService: posthog.PostHogEventService,
+      ReservationHoldCleanupScheduleService:
+        holds.ReservationHoldCleanupScheduleService,
+      WorkspaceAvailabilityService: availability.WorkspaceAvailabilityService,
+      WorkspaceCheckoutAccessCodeService:
+        reservationServices.WorkspaceCheckoutAccessCodeService,
+      WorkspaceDatabaseLive: database.WorkspaceDatabaseLive,
+      WorkspaceLoggerLive: currentLogging.WorkspaceLoggerLive,
+      WorkspaceReservationRepository:
+        reservationRepository.WorkspaceReservationRepository,
+      WorkspaceReservationRepositoryLive:
+        reservationRepository.WorkspaceReservationRepositoryLive,
+      WorkspaceTableAssignmentService:
+        reservationServices.WorkspaceTableAssignmentService,
+      affirmedDiscountAdvertisementQuoteCodec:
+        discounts.affirmedDiscountAdvertisementQuoteCodec,
+      buildCoworkReservationQuote: checkoutQuote.buildCoworkReservationQuote,
+    } as RequestLayerModules;
+  };
+
+const makeCurrentRequestLayer = async (input: RequestLayerInput) =>
+  makeRequestLayer(input, await loadCurrentRequestLayerModules());
+
+const makeImmutableWriterRequestLayer = async (input: RequestLayerInput) =>
+  makeRequestLayer(input, await loadImmutableWriterRequestLayerModules());
+
+const makeRequestLayer = (
+  input: RequestLayerInput,
+  modules: RequestLayerModules
+) => {
+  const {
+    BotProtectionService,
+    CheckoutPricingService,
+    DotyposService,
+    LegalEvidenceEventRepository,
+    PostHogEventService,
+    ReservationHoldCleanupScheduleService,
+    WorkspaceAvailabilityService,
+    WorkspaceCheckoutAccessCodeService,
+    WorkspaceDatabaseLive,
+    WorkspaceLoggerLive,
+    WorkspaceReservationRepository,
+    WorkspaceReservationRepositoryLive,
+    WorkspaceTableAssignmentService,
+    affirmedDiscountAdvertisementQuoteCodec,
+    buildCoworkReservationQuote,
+  } = modules;
+  const repositoryBase = WorkspaceReservationRepositoryLive.pipe(
+    Layer.provide(WorkspaceDatabaseLive)
+  );
   const coordinatedRepository = Layer.effect(
     WorkspaceReservationRepository,
     Effect.gen(function* () {
@@ -533,6 +733,7 @@ const makeRequestLayer = async (input: {
               generation: input.generation,
               claimed,
             });
+            input.gate.markClaimCompleted();
             return claimed;
           }),
       };
@@ -601,10 +802,102 @@ const makeRequestLayer = async (input: {
       findOrCreateCustomer: () =>
         Effect.succeed({ id: "synthetic-customer" } as never),
       createReservation: () =>
-        Effect.sync(() => {
+        Effect.promise(async () => {
           input.providerCalls.push(input.providerId);
-          return { id: input.providerId } as never;
+          if (input.providerCalls.length > 1) {
+            throw new Error("Provider creation invoked more than once.");
+          }
+          return { id: await input.providerRelease.promise } as never;
         }),
+    } as never)
+  );
+};
+
+const makeProductionActionLayer = async (onProviderStart: () => void) => {
+  const modules = await loadCurrentRequestLayerModules();
+  const {
+    BotProtectionService,
+    CheckoutPricingService,
+    DotyposService,
+    LegalEvidenceEventRepository,
+    PostHogEventService,
+    ReservationHoldCleanupScheduleService,
+    WorkspaceAvailabilityService,
+    WorkspaceCheckoutAccessCodeService,
+    WorkspaceDatabaseLive,
+    WorkspaceLoggerLive,
+    WorkspaceReservationRepositoryLive,
+    WorkspaceTableAssignmentService,
+    affirmedDiscountAdvertisementQuoteCodec,
+    buildCoworkReservationQuote,
+  } = modules;
+  const discountableSubtotal = {
+    value: 35_000,
+    exponent: 2,
+    currency: "CZK",
+  } as const;
+  const discountQuote = affirmedDiscountAdvertisementQuoteCodec.make({
+    product: { kind: "cowork", tier: "basic" },
+    discountableSubtotal,
+    discounts: [],
+    totalDiscount: { ...discountableSubtotal, value: 0 },
+    discountedSubtotal: discountableSubtotal,
+  });
+  const quote = buildCoworkReservationQuote(reservation, { discountQuote });
+
+  return Layer.mergeAll(
+    WorkspaceLoggerLive,
+    WorkspaceReservationRepositoryLive.pipe(
+      Layer.provide(WorkspaceDatabaseLive)
+    ),
+    Layer.succeed(CheckoutPricingService, {
+      quoteAdvertisement: () => Effect.die("unused"),
+      affirmAdvertisement: ({ reservation: advertisedReservation }) =>
+        Effect.succeed({
+          kind: "cowork" as const,
+          reservation: advertisedReservation,
+          quote,
+          discountQuote,
+        }),
+      quoteForCustomer: ({ reservation: customerReservation }) =>
+        Effect.succeed({
+          kind: "cowork" as const,
+          reservation: customerReservation,
+          quote,
+        }),
+      affirmForPayment: () => Effect.die("unused"),
+      applyDiscountCode: () => Effect.die("unused"),
+    } as never),
+    Layer.succeed(BotProtectionService, {
+      verifyHuman: () => Effect.void,
+    }),
+    Layer.succeed(WorkspaceAvailabilityService, {
+      getAvailability: () => Effect.die("unused"),
+      ensureAvailable: () => Effect.void,
+    }),
+    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+      generateCustomerAccessCode: Effect.succeed("SYNTHETIC-ACCESS"),
+    }),
+    Layer.succeed(LegalEvidenceEventRepository, {
+      record: () => Effect.die("unused"),
+      recordMany: (events) => Effect.succeed(events),
+    } as never),
+    Layer.succeed(ReservationHoldCleanupScheduleService, {
+      enqueueCleanup: () => Effect.void,
+    } as never),
+    Layer.succeed(WorkspaceTableAssignmentService, {
+      assignTableId: () => Effect.succeed("synthetic-table"),
+    }),
+    Layer.succeed(PostHogEventService, {
+      capture: () => Effect.void,
+    }),
+    Layer.succeed(DotyposService, {
+      findOrCreateCustomer: () =>
+        Effect.succeed({ id: "synthetic-customer" } as never),
+      createReservation: () =>
+        Effect.sync(onProviderStart).pipe(
+          Effect.andThen(Effect.die("Provider must not start."))
+        ),
     } as never)
   );
 };
@@ -638,15 +931,52 @@ const buildAdvertisedPriceToken = async () => {
 };
 
 const makeRepositoryLayer = async () => {
-  const [{ WorkspaceDatabaseLive }, { WorkspaceReservationRepositoryLive }] =
-    await Promise.all([
-      import("@/db/database.service"),
-      import("@/features/reservation/backend/workspace-reservation.repository"),
-    ]);
-  return WorkspaceReservationRepositoryLive.pipe(
-    Layer.provide(WorkspaceDatabaseLive)
+  const [
+    { WorkspaceDatabaseLive },
+    { WorkspaceReservationRepositoryLive },
+    { WorkspaceLoggerLive },
+  ] = await Promise.all([
+    import("@/db/database.service"),
+    import("@/features/reservation/backend/workspace-reservation.repository"),
+    import("@/shared/backend/logging/censorship"),
+  ]);
+  return Layer.merge(
+    WorkspaceLoggerLive,
+    WorkspaceReservationRepositoryLive.pipe(
+      Layer.provide(WorkspaceDatabaseLive)
+    )
   );
 };
+
+const readReservationIdentityState = async () =>
+  (
+    await assertionClient.query<{
+      checkout_attempt_compatibility_key: string;
+      checkout_attempt_identity_key: string;
+      checkout_attempt_key: string;
+      checkout_session_compatibility_key: string;
+      checkout_session_identity_key: string;
+      checkout_session_key: string;
+      dotypos_reservation_id: string | null;
+      id: string;
+      reservation_state: string;
+      updated_at: Date;
+    }>(`
+      SELECT
+        "id",
+        "checkout_session_key",
+        "checkout_attempt_key",
+        "checkout_session_identity_key",
+        "checkout_attempt_identity_key",
+        "checkout_session_compatibility_key",
+        "checkout_attempt_compatibility_key",
+        "dotypos_reservation_id",
+        "reservation_state",
+        "updated_at"
+      FROM "workspace_reservations"
+      ORDER BY "id"
+    `)
+  ).rows;
 
 const makeDraftInput = (
   suffix: string,
@@ -656,6 +986,16 @@ const makeDraftInput = (
   checkoutAttemptKey: `attempt-${suffix}`,
   checkoutSessionIdentityKey: `session-identity-${suffix}`,
   checkoutAttemptIdentityKey: `attempt-identity-${suffix}`,
+  checkoutSessionCompatibilityKey: `session-compatibility-${suffix}`,
+  checkoutAttemptCompatibilityKey: `attempt-compatibility-${suffix}`,
+  checkoutSessionKeyCandidates: [
+    `session-${suffix}`,
+    `session-identity-${suffix}`,
+  ],
+  checkoutAttemptKeyCandidates: [
+    `attempt-${suffix}`,
+    `attempt-identity-${suffix}`,
+  ],
   dotyposCustomerId: "synthetic-customer",
   customerAccessCode: "SYNTHETIC-ACCESS",
   reservationDetails: {
@@ -699,6 +1039,86 @@ const applyProductionMigrations = async (client: Client) => {
     }
   }
 };
+
+const extractImmutableWriter = async () => {
+  const git = (...args: readonly string[]) =>
+    execFileSync("git", args, {
+      cwd: repositoryRoot,
+      encoding: "utf8",
+    }).trim();
+
+  expect(git("rev-parse", `${immutableWriterRevision}^{tree}`)).toBe(
+    immutableWriterIdentity.tree
+  );
+  expect(
+    git(
+      "rev-parse",
+      `${immutableWriterRevision}:apps/deskohub-workspace/features/reservation/actions/prepare-pay-state.ts`
+    )
+  ).toBe(immutableWriterIdentity.preparePayState);
+  expect(
+    git(
+      "rev-parse",
+      `${immutableWriterRevision}:apps/deskohub-workspace/features/reservation/backend/workspace-reservation.repository.ts`
+    )
+  ).toBe(immutableWriterIdentity.repository);
+  expect(
+    git(
+      "rev-parse",
+      `${immutableWriterRevision}:apps/deskohub-workspace/features/checkout/backend/checkout/checkout-session-key.server.ts`
+    )
+  ).toBe(immutableWriterIdentity.keyDerivation);
+  expect(
+    git(
+      "rev-parse",
+      `${immutableWriterRevision}:apps/deskohub-workspace/db/schema/workspace-reservations.ts`
+    )
+  ).toBe(immutableWriterIdentity.schema);
+
+  const destination = await mkdtemp(
+    join(tmpdir(), "workspace-immutable-writer-")
+  );
+  const archive = execFileSync(
+    "git",
+    [
+      "archive",
+      "--format=tar",
+      immutableWriterRevision,
+      "package.json",
+      "tsconfig.json",
+      "apps/deskohub-workspace",
+    ],
+    {
+      cwd: repositoryRoot,
+      maxBuffer: 100 * 1024 * 1024,
+    }
+  );
+  execFileSync("tar", ["-x", "-C", destination], {
+    input: archive,
+    maxBuffer: 100 * 1024 * 1024,
+  });
+  await symlink(
+    join(repositoryRoot, "node_modules"),
+    join(destination, "node_modules")
+  );
+  await symlink(
+    join(repositoryRoot, "apps/deskohub-workspace/node_modules"),
+    join(destination, "apps/deskohub-workspace/node_modules")
+  );
+  await cp(
+    join(repositoryRoot, "apps/deskohub-workspace/features/i18n/paraglide"),
+    join(destination, "apps/deskohub-workspace/features/i18n/paraglide"),
+    { recursive: true }
+  );
+  return destination;
+};
+
+const importImmutableWriterModule = (applicationPath: string) =>
+  import(
+    pathToFileURL(
+      join(immutableWriterRoot, "apps/deskohub-workspace", applicationPath)
+    ).href
+  );
 
 const promiseWithResolvers = <T>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;

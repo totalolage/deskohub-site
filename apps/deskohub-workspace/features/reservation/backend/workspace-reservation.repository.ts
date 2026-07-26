@@ -44,6 +44,10 @@ export interface CreateWorkspaceReservationInput {
   readonly checkoutAttemptKey: string;
   readonly checkoutSessionIdentityKey: string;
   readonly checkoutAttemptIdentityKey: string;
+  readonly checkoutSessionCompatibilityKey: string;
+  readonly checkoutAttemptCompatibilityKey: string;
+  readonly checkoutSessionKeyCandidates: readonly string[];
+  readonly checkoutAttemptKeyCandidates: readonly string[];
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
@@ -70,13 +74,17 @@ export interface WorkspaceReservationRepository {
     checkoutAttemptKey: string
   ) => Effect.Effect<
     WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly findCurrentByCheckoutSessionKey: (
     checkoutSessionKey: string
   ) => Effect.Effect<
     WorkspaceReservation | null,
-    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly updateReservationDetails: (input: {
     readonly id: string;
@@ -231,11 +239,36 @@ const ensureUpdated = (
         })
       );
 
-type ReservationWriterGeneration = "current" | "legacy";
+const checkoutAttemptColumns = [
+  workspaceReservations.checkoutAttemptKey,
+  workspaceReservations.checkoutAttemptIdentityKey,
+  workspaceReservations.checkoutAttemptCompatibilityKey,
+] as const;
 
-const reservationRepositoryLayer = (
-  writerGeneration: ReservationWriterGeneration
-) =>
+const checkoutSessionColumns = [
+  workspaceReservations.checkoutSessionKey,
+  workspaceReservations.checkoutSessionIdentityKey,
+  workspaceReservations.checkoutSessionCompatibilityKey,
+] as const;
+
+const matchesAnyCheckoutKey = (
+  values: readonly string[],
+  keys: readonly string[]
+) => values.some((value) => keys.includes(value));
+
+const getAttemptKeys = (reservation: WorkspaceReservationRow) => [
+  reservation.checkoutAttemptKey,
+  reservation.checkoutAttemptIdentityKey,
+  reservation.checkoutAttemptCompatibilityKey,
+];
+
+const getSessionKeys = (reservation: WorkspaceReservationRow) => [
+  reservation.checkoutSessionKey,
+  reservation.checkoutSessionIdentityKey,
+  reservation.checkoutSessionCompatibilityKey,
+];
+
+const reservationRepositoryLayer = () =>
   Layer.effect(
     WorkspaceReservationRepository,
     Effect.gen(function* () {
@@ -261,14 +294,12 @@ const reservationRepositoryLayer = (
               id: postgresUuidV7,
               checkoutSessionKey: input.checkoutSessionKey,
               checkoutAttemptKey: input.checkoutAttemptKey,
-              checkoutSessionIdentityKey:
-                writerGeneration === "current"
-                  ? input.checkoutSessionIdentityKey
-                  : sql`default`,
-              checkoutAttemptIdentityKey:
-                writerGeneration === "current"
-                  ? input.checkoutAttemptIdentityKey
-                  : sql`default`,
+              checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+              checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
+              checkoutSessionCompatibilityKey:
+                input.checkoutSessionCompatibilityKey,
+              checkoutAttemptCompatibilityKey:
+                input.checkoutAttemptCompatibilityKey,
               correlationId: postgresUuidV7,
               dotyposCustomerId: input.dotyposCustomerId,
               customerAccessCode: input.customerAccessCode,
@@ -292,24 +323,15 @@ const reservationRepositoryLayer = (
               .select()
               .from(workspaceReservations)
               .where(
-                writerGeneration === "legacy"
-                  ? eq(
-                      workspaceReservations.checkoutAttemptKey,
-                      input.checkoutAttemptKey
-                    )
-                  : or(
-                      inArray(workspaceReservations.checkoutAttemptKey, [
-                        input.checkoutAttemptKey,
-                        input.checkoutAttemptIdentityKey,
-                      ]),
-                      inArray(
-                        workspaceReservations.checkoutAttemptIdentityKey,
-                        [
-                          input.checkoutAttemptKey,
-                          input.checkoutAttemptIdentityKey,
-                        ]
-                      )
-                    )
+                or(
+                  ...checkoutAttemptColumns.map((column) =>
+                    inArray(column, [
+                      input.checkoutAttemptKey,
+                      input.checkoutAttemptIdentityKey,
+                      input.checkoutAttemptCompatibilityKey,
+                    ])
+                  )
+                )
               );
 
             if (matchingAttempts.length > 1) {
@@ -321,7 +343,38 @@ const reservationRepositoryLayer = (
               });
             }
             if (matchingAttempts[0]) {
-              return yield* decodeWorkspaceReservation(matchingAttempts[0]);
+              if (
+                !matchesAnyCheckoutKey(
+                  getAttemptKeys(matchingAttempts[0]),
+                  input.checkoutAttemptKeyCandidates
+                )
+              ) {
+                return yield* new WorkspaceReservationStateError({
+                  operation: "workspaceReservations.createDraft",
+                  reservationId: "unreadable-checkout-attempt",
+                  message:
+                    "Checkout attempt matched only outside the active read window.",
+                });
+              }
+              const [repaired] = yield* db
+                .update(workspaceReservations)
+                .set({
+                  checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+                  checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
+                  checkoutSessionCompatibilityKey:
+                    input.checkoutSessionCompatibilityKey,
+                  checkoutAttemptCompatibilityKey:
+                    input.checkoutAttemptCompatibilityKey,
+                  updatedAt: Temporal.Now.instant(),
+                })
+                .where(eq(workspaceReservations.id, matchingAttempts[0].id))
+                .returning();
+              if (!repaired) {
+                return yield* Effect.die(
+                  "Workspace reservation compatibility repair returned no row."
+                );
+              }
+              return yield* decodeWorkspaceReservation(repaired);
             }
 
             const currentAttempts = yield* db
@@ -329,24 +382,15 @@ const reservationRepositoryLayer = (
               .from(workspaceReservations)
               .where(
                 and(
-                  writerGeneration === "legacy"
-                    ? eq(
-                        workspaceReservations.checkoutSessionKey,
-                        input.checkoutSessionKey
-                      )
-                    : or(
-                        inArray(workspaceReservations.checkoutSessionKey, [
-                          input.checkoutSessionKey,
-                          input.checkoutSessionIdentityKey,
-                        ]),
-                        inArray(
-                          workspaceReservations.checkoutSessionIdentityKey,
-                          [
-                            input.checkoutSessionKey,
-                            input.checkoutSessionIdentityKey,
-                          ]
-                        )
-                      ),
+                  or(
+                    ...checkoutSessionColumns.map((column) =>
+                      inArray(column, [
+                        input.checkoutSessionKey,
+                        input.checkoutSessionIdentityKey,
+                        input.checkoutSessionCompatibilityKey,
+                      ])
+                    )
+                  ),
                   sql`${workspaceReservations.reservationState} <> 'cancelled'`
                 )
               )
@@ -365,7 +409,35 @@ const reservationRepositoryLayer = (
                 "Workspace reservation insert returned no row."
               );
             }
-            return yield* decodeWorkspaceReservation(currentAttempts[0]);
+            if (
+              !matchesAnyCheckoutKey(
+                getSessionKeys(currentAttempts[0]),
+                input.checkoutSessionKeyCandidates
+              )
+            ) {
+              return yield* new WorkspaceReservationStateError({
+                operation: "workspaceReservations.createDraft",
+                reservationId: "unreadable-checkout-session",
+                message:
+                  "Checkout session matched only outside the active read window.",
+              });
+            }
+            const [repaired] = yield* db
+              .update(workspaceReservations)
+              .set({
+                checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+                checkoutSessionCompatibilityKey:
+                  input.checkoutSessionCompatibilityKey,
+                updatedAt: Temporal.Now.instant(),
+              })
+              .where(eq(workspaceReservations.id, currentAttempts[0].id))
+              .returning();
+            if (!repaired) {
+              return yield* Effect.die(
+                "Workspace reservation compatibility repair returned no row."
+              );
+            }
+            return yield* decodeWorkspaceReservation(repaired);
           },
           (effect, input) =>
             effect.pipe(
@@ -374,34 +446,35 @@ const reservationRepositoryLayer = (
                 checkoutAttemptKey: input.checkoutAttemptKey,
                 checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
                 checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
+                checkoutSessionCompatibilityKey:
+                  input.checkoutSessionCompatibilityKey,
+                checkoutAttemptCompatibilityKey:
+                  input.checkoutAttemptCompatibilityKey,
               })
             )
         ),
         findById,
         findByAttemptKey: Effect.fn("workspaceReservations.findByAttemptKey")(
           function* (checkoutAttemptKey) {
-            const [reservation] = yield* db
+            const reservations = yield* db
               .select()
               .from(workspaceReservations)
               .where(
-                writerGeneration === "legacy"
-                  ? eq(
-                      workspaceReservations.checkoutAttemptKey,
-                      checkoutAttemptKey
-                    )
-                  : or(
-                      eq(
-                        workspaceReservations.checkoutAttemptKey,
-                        checkoutAttemptKey
-                      ),
-                      eq(
-                        workspaceReservations.checkoutAttemptIdentityKey,
-                        checkoutAttemptKey
-                      )
-                    )
-              )
-              .limit(1);
-            return yield* decodeOptionalWorkspaceReservation(reservation);
+                or(
+                  ...checkoutAttemptColumns.map((column) =>
+                    eq(column, checkoutAttemptKey)
+                  )
+                )
+              );
+            if (reservations.length > 1) {
+              return yield* new WorkspaceReservationStateError({
+                operation: "workspaceReservations.findByAttemptKey",
+                reservationId: "conflicting-checkout-attempt",
+                message:
+                  "Checkout attempt digest resolves to different reservations.",
+              });
+            }
+            return yield* decodeOptionalWorkspaceReservation(reservations[0]);
           },
           (effect, checkoutAttemptKey) =>
             effect.pipe(Effect.annotateLogs({ checkoutAttemptKey }))
@@ -410,32 +483,30 @@ const reservationRepositoryLayer = (
           "workspaceReservations.findCurrentByCheckoutSessionKey"
         )(
           function* (checkoutSessionKey) {
-            const [reservation] = yield* db
+            const reservations = yield* db
               .select()
               .from(workspaceReservations)
               .where(
                 and(
-                  writerGeneration === "legacy"
-                    ? eq(
-                        workspaceReservations.checkoutSessionKey,
-                        checkoutSessionKey
-                      )
-                    : or(
-                        eq(
-                          workspaceReservations.checkoutSessionKey,
-                          checkoutSessionKey
-                        ),
-                        eq(
-                          workspaceReservations.checkoutSessionIdentityKey,
-                          checkoutSessionKey
-                        )
-                      ),
+                  or(
+                    ...checkoutSessionColumns.map((column) =>
+                      eq(column, checkoutSessionKey)
+                    )
+                  ),
                   sql`${workspaceReservations.reservationState} <> 'cancelled'`
                 )
               )
-              .orderBy(desc(workspaceReservations.createdAt))
-              .limit(1);
-            return yield* decodeOptionalWorkspaceReservation(reservation);
+              .orderBy(desc(workspaceReservations.createdAt));
+            if (reservations.length > 1) {
+              return yield* new WorkspaceReservationStateError({
+                operation:
+                  "workspaceReservations.findCurrentByCheckoutSessionKey",
+                reservationId: "conflicting-checkout-session",
+                message:
+                  "Checkout session digest resolves to different reservations.",
+              });
+            }
+            return yield* decodeOptionalWorkspaceReservation(reservations[0]);
           },
           (effect, checkoutSessionKey) =>
             effect.pipe(Effect.annotateLogs({ checkoutSessionKey }))
@@ -684,6 +755,10 @@ const reservationRepositoryLayer = (
                     input.replacement.checkoutSessionIdentityKey,
                   checkoutAttemptIdentityKey:
                     input.replacement.checkoutAttemptIdentityKey,
+                  checkoutSessionCompatibilityKey:
+                    input.replacement.checkoutSessionCompatibilityKey,
+                  checkoutAttemptCompatibilityKey:
+                    input.replacement.checkoutAttemptCompatibilityKey,
                   correlationId: postgresUuidV7,
                   dotyposCustomerId: input.replacement.dotyposCustomerId,
                   customerAccessCode: input.replacement.customerAccessCode,
@@ -961,11 +1036,7 @@ const reservationRepositoryLayer = (
     })
   );
 
-export const WorkspaceReservationRepositoryLive =
-  reservationRepositoryLayer("current");
-
-export const WorkspaceReservationRepositoryLegacyWriterLive =
-  reservationRepositoryLayer("legacy");
+export const WorkspaceReservationRepositoryLive = reservationRepositoryLayer();
 
 const decodeOptionalWorkspaceReservation = (
   reservation: WorkspaceReservationRow | undefined

@@ -74,6 +74,10 @@ export class PayableReservationService extends Context.Service<
               checkoutSessionKeys,
               (checkoutSessionKey) =>
                 reservations.findCurrentByCheckoutSessionKey(checkoutSessionKey)
+            ).pipe(
+              Effect.catchTag("WorkspaceReservationStateError", () =>
+                unavailable(input, "not_current")
+              )
             );
             const currentReservationIds = new Set(
               currentReservations.flatMap((current) =>

@@ -427,6 +427,10 @@ const prepareReservationDraft = Effect.fn(
     | "checkoutAttemptKey"
     | "checkoutSessionIdentityKey"
     | "checkoutAttemptIdentityKey"
+    | "checkoutSessionCompatibilityKey"
+    | "checkoutAttemptCompatibilityKey"
+    | "checkoutSessionKeyCandidates"
+    | "checkoutAttemptKeyCandidates"
   >;
 }) {
   const reservations = yield* WorkspaceReservationRepository;
@@ -443,8 +447,13 @@ const prepareReservationDraft = Effect.fn(
     });
 
     const existingAttempts = getDistinctReservations(
-      yield* Effect.forEach(checkoutKeys.attempt.candidates, (candidate) =>
-        reservations.findByAttemptKey(candidate)
+      yield* Effect.forEach(
+        new Set([
+          checkoutKeys.attempt.current,
+          checkoutKeys.attempt.identity,
+          checkoutKeys.attempt.legacy,
+        ]),
+        (candidate) => reservations.findByAttemptKey(candidate)
       )
     );
     if (existingAttempts.length > 1) {
@@ -453,6 +462,23 @@ const prepareReservationDraft = Effect.fn(
       });
     }
     let existingAttempt = existingAttempts[0] ?? null;
+    const existingAttemptKeys = existingAttempt
+      ? [
+          existingAttempt.checkoutAttemptKey,
+          existingAttempt.checkoutAttemptIdentityKey,
+          existingAttempt.checkoutAttemptCompatibilityKey,
+        ]
+      : [];
+    if (
+      existingAttempt &&
+      !checkoutKeys.attempt.candidates.some((candidate) =>
+        existingAttemptKeys.includes(candidate)
+      )
+    ) {
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: existingAttempt,
+      });
+    }
     if (
       existingAttempt?.reservationState === "creating_hold" ||
       existingAttempt?.reservationState === "cancelling"
@@ -500,8 +526,13 @@ const prepareReservationDraft = Effect.fn(
     }
 
     const currentReservations = getDistinctReservations(
-      yield* Effect.forEach(checkoutKeys.session.candidates, (candidate) =>
-        reservations.findCurrentByCheckoutSessionKey(candidate)
+      yield* Effect.forEach(
+        new Set([
+          checkoutKeys.session.current,
+          checkoutKeys.session.identity,
+          checkoutKeys.session.legacy,
+        ]),
+        (candidate) => reservations.findCurrentByCheckoutSessionKey(candidate)
       )
     );
     if (currentReservations.length > 1) {
@@ -510,6 +541,23 @@ const prepareReservationDraft = Effect.fn(
       });
     }
     const currentReservation = currentReservations[0] ?? null;
+    const currentReservationKeys = currentReservation
+      ? [
+          currentReservation.checkoutSessionKey,
+          currentReservation.checkoutSessionIdentityKey,
+          currentReservation.checkoutSessionCompatibilityKey,
+        ]
+      : [];
+    if (
+      currentReservation &&
+      !checkoutKeys.session.candidates.some((candidate) =>
+        currentReservationKeys.includes(candidate)
+      )
+    ) {
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: currentReservation,
+      });
+    }
     if (
       currentReservation?.reservationState === "creating_hold" ||
       currentReservation?.reservationState === "cancelling" ||
@@ -634,10 +682,14 @@ const prepareReservationDraft = Effect.fn(
             cancelledAt,
             replacement: {
               ...input.draft,
-              checkoutSessionKey: checkoutKeys.session.legacy,
-              checkoutAttemptKey: checkoutKeys.attempt.legacy,
+              checkoutSessionKey: checkoutKeys.session.current,
+              checkoutAttemptKey: checkoutKeys.attempt.current,
               checkoutSessionIdentityKey: checkoutKeys.session.identity,
               checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
+              checkoutSessionCompatibilityKey: checkoutKeys.session.legacy,
+              checkoutAttemptCompatibilityKey: checkoutKeys.attempt.legacy,
+              checkoutSessionKeyCandidates: checkoutKeys.session.candidates,
+              checkoutAttemptKeyCandidates: checkoutKeys.attempt.candidates,
             },
           })
         ),
@@ -659,11 +711,26 @@ const prepareReservationDraft = Effect.fn(
     });
     const reservationDraft = yield* reservations.createDraft({
       ...input.draft,
-      checkoutSessionKey: checkoutKeys.session.legacy,
-      checkoutAttemptKey: checkoutKeys.attempt.legacy,
+      checkoutSessionKey: checkoutKeys.session.current,
+      checkoutAttemptKey: checkoutKeys.attempt.current,
       checkoutSessionIdentityKey: checkoutKeys.session.identity,
       checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
+      checkoutSessionCompatibilityKey: checkoutKeys.session.legacy,
+      checkoutAttemptCompatibilityKey: checkoutKeys.attempt.legacy,
+      checkoutSessionKeyCandidates: checkoutKeys.session.candidates,
+      checkoutAttemptKeyCandidates: checkoutKeys.attempt.candidates,
     });
+    if (
+      !checkoutKeys.attempt.candidates.some((candidate) =>
+        [
+          reservationDraft.checkoutAttemptKey,
+          reservationDraft.checkoutAttemptIdentityKey,
+          reservationDraft.checkoutAttemptCompatibilityKey,
+        ].includes(candidate)
+      )
+    ) {
+      continue;
+    }
     return {
       checkoutSessionId,
       reservationDraft,

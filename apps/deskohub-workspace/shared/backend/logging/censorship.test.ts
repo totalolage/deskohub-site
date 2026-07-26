@@ -370,6 +370,48 @@ describe("censorLogValue", () => {
 });
 
 describe("censorLoggerOptions", () => {
+  test("projects fail, die, aggregate, primitive, custom, and nested logger causes closed", () => {
+    const sentinel = "SYNTHETIC-LOGGER-CAUSE-SENTINEL";
+    class CustomFailure extends Error {}
+    const causes = Cause.fromReasons([
+      Cause.makeFailReason(sentinel),
+      Cause.makeFailReason(
+        new AggregateError(
+          [
+            new CustomFailure(sentinel, {
+              cause: { detail: sentinel },
+            }),
+            42,
+          ],
+          sentinel
+        )
+      ),
+      Cause.makeDieReason(
+        new Error(sentinel, {
+          cause: {
+            _tag: "NestedDefect",
+            cause: sentinel,
+          },
+        })
+      ),
+    ]);
+    const options = {
+      message: "code-owned message",
+      logLevel: "Error",
+      cause: causes,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: () => [],
+      },
+    } as Logger.Options<unknown>;
+
+    const projected = censorLoggerOptions(options);
+
+    expect(JSON.stringify(projected.cause)).not.toContain(sentinel);
+    expect(projected.cause).not.toBe(causes);
+  });
+
   test("redacts message values and annotation values or sensitive annotation keys", () => {
     const annotations = {
       request: { headers: { authorization: "Bearer secret" } },
@@ -446,6 +488,55 @@ describe("censorLoggerOptions", () => {
     );
 
     expect(capturedAnnotations).toEqual({});
+  });
+});
+
+describe("production runWorkspaceEffect operation names", () => {
+  test("keeps every literal production operation in the closed allowlist", async () => {
+    const workspaceRoot = new URL("../../../", import.meta.url).pathname;
+    const sourceFiles = new Bun.Glob(
+      "{app,features,shared}/**/*.{ts,tsx}"
+    ).scan({
+      cwd: workspaceRoot,
+      absolute: true,
+      onlyFiles: true,
+    });
+    const operations = new Set<string>();
+
+    for await (const sourceFile of sourceFiles) {
+      const relativePath = sourceFile.slice(workspaceRoot.length);
+      if (
+        relativePath.includes(".test.") ||
+        relativePath.startsWith("e2e/") ||
+        relativePath.includes("/e2e/")
+      ) {
+        continue;
+      }
+      const source = await Bun.file(sourceFile).text();
+      for (const match of source.matchAll(
+        /runWorkspaceEffect\(\s*["']([^"']+)["']/g
+      )) {
+        operations.add(match[1] as string);
+      }
+    }
+
+    const missing = [...operations]
+      .filter(
+        (operation) =>
+          (
+            censorLogValue({ operation }) as {
+              readonly operation?: unknown;
+            }
+          ).operation !== operation
+      )
+      .sort();
+
+    expect(missing).toEqual([]);
+    expect(
+      censorLogValue({ operation: "synthetic.dynamic.operation" })
+    ).toEqual({
+      operation: CENSORED_LOG_VALUE,
+    });
   });
 });
 

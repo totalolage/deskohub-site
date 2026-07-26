@@ -1,5 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
 import { defineWorkspaceTask, runWorkspaceEffect } from "./workspace-effect";
 
 describe("Workspace Effect execution", () => {
@@ -42,6 +42,62 @@ describe("Workspace Effect execution", () => {
       }).pipe(runWorkspaceEffect("test.cause-projection"));
 
       const output = log.mock.calls.flat().join(" ");
+      expect(output).toContain("operation=test.cause-projection");
+      expect(output).not.toContain(sentinel);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  test("projects runtime fail and die causes through the combined production console layer", async () => {
+    const log = spyOn(console, "error").mockImplementation(() => undefined);
+    const sentinel = "SYNTHETIC-RUNTIME-CAUSE-SENTINEL";
+    class CustomFailure extends Error {}
+    const failures = [
+      sentinel,
+      new CustomFailure(sentinel, {
+        cause: { detail: sentinel },
+      }),
+      new AggregateError(
+        [
+          42,
+          {
+            _tag: "NestedFailure",
+            cause: new Error(sentinel),
+          },
+        ],
+        sentinel
+      ),
+    ];
+
+    try {
+      for (const failure of failures) {
+        await Effect.fail(failure).pipe(
+          Effect.ignoreCause({
+            log: "Error",
+            message: "code-owned failure",
+          }),
+          runWorkspaceEffect("test.cause-projection")
+        );
+      }
+      await Effect.failCause(
+        Cause.die(
+          new Error(sentinel, {
+            cause: {
+              _tag: "NestedDefect",
+              cause: sentinel,
+            },
+          })
+        )
+      ).pipe(
+        Effect.ignoreCause({
+          log: "Error",
+          message: "code-owned defect",
+        }),
+        runWorkspaceEffect("test.cause-projection")
+      );
+
+      const output = JSON.stringify(log.mock.calls);
       expect(output).toContain("operation=test.cause-projection");
       expect(output).not.toContain(sentinel);
     } finally {

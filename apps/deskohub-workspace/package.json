@@ -19,7 +19,7 @@
     "lint:biome": "biome check app db features scripts shared *.ts --config-path ../../biome.json --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "bun ../../node_modules/typescript/bin/tsc --noEmit",
     "start": "next start"
   },
   "dependencies": {

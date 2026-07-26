@@ -16,7 +16,7 @@ import type {
   SpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Logger, type LogLevel, References } from "effect";
+import { Cause, Effect, Logger, type LogLevel, References } from "effect";
 import { projectErrorMetadata } from "@/shared/utils/error-metadata";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
@@ -151,14 +151,17 @@ const codeOwnedTelemetryNames = new Set([
   "@effect/opentelemetry",
   "checkout.advertised-price.load",
   "checkout.apply-discount-code",
+  "checkout.order.load-state",
   "checkout.pay.load",
   "checkout.payment-return",
   "checkout.prepare-pay-state",
   "checkout.provider-log-projection",
   "checkout.result.refresh",
+  "checkout.status.load",
   "checkout.submit-reservation",
   "cloudinaryWebhook",
   "contact.submit",
+  "dotypos.tables-preview.load",
   "e2e.case",
   "e2e.run",
   "e2e.step",
@@ -436,6 +439,21 @@ export const censorTelemetryValue = (value: unknown): unknown =>
 
 export const censorLogValue = censorTelemetryValue;
 
+const projectLoggerCause = (
+  cause: Cause.Cause<unknown>
+): Cause.Cause<unknown> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason) => {
+      if (Cause.isFailReason(reason)) {
+        return Cause.makeFailReason(projectErrorMetadata(reason.error));
+      }
+      if (Cause.isDieReason(reason)) {
+        return Cause.makeDieReason(projectErrorMetadata(reason.defect));
+      }
+      return Cause.makeInterruptReason(reason.fiberId);
+    })
+  );
+
 export const censorLoggerOptions = (
   options: Logger.Options<unknown>
 ): Logger.Options<unknown> => {
@@ -443,6 +461,7 @@ export const censorLoggerOptions = (
 
   return {
     ...options,
+    cause: projectLoggerCause(options.cause),
     message: censorLogValue(options.message),
     fiber: {
       ...fiber,

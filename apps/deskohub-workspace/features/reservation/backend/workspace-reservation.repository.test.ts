@@ -65,7 +65,7 @@ describe("WorkspaceReservationRepository", () => {
     const section = sliceFrom(
       source,
       "selectExpiredHoldDotyposReservationIds: Effect.fn(",
-      "export const WorkspaceReservationRepositoryLive"
+      "const decodeOptionalWorkspaceReservation"
     );
 
     expect(section).toContain("dotyposReservationId");

@@ -49,10 +49,14 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("checkout identity migration bridges old writers without persisting return state", async () => {
-    const migration = await readAppFile(
+    const identityMigration = await readAppFile(
       "db/migrations/20260725232210_majestic_blackheart/migration.sql"
     );
-    const lowerMigration = migration.toLowerCase();
+    const compatibilityMigration = await readAppFile(
+      "db/migrations/20260726025450_little_rhino/migration.sql"
+    );
+    const lowerMigration =
+      `${identityMigration}\n${compatibilityMigration}`.toLowerCase();
 
     expect(lowerMigration).toContain(
       '"checkout_session_identity_key" = "checkout_session_key"'
@@ -68,6 +72,18 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
     expect(lowerMigration).toContain(
       "workspace_reservations_active_session_identity_unique_idx"
+    );
+    expect(lowerMigration).toContain(
+      '"checkout_session_compatibility_key" = "checkout_session_key"'
+    );
+    expect(lowerMigration).toContain(
+      '"checkout_attempt_compatibility_key" = "checkout_attempt_key"'
+    );
+    expect(lowerMigration).toContain(
+      "workspace_reservations_attempt_compatibility_key_unique_idx"
+    );
+    expect(lowerMigration).toContain(
+      "workspace_reservations_active_session_compatibility_unique_idx"
     );
     expect(lowerMigration).not.toContain("checkout_return_state_tokens");
     for (const fragment of piiColumnFragments) {

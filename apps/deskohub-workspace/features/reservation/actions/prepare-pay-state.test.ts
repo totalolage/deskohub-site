@@ -56,6 +56,16 @@ const reservation = {
   phone: "+420 777 777 777",
 };
 
+const { deriveCheckoutAttemptKeys, deriveCheckoutSessionKeys } = await import(
+  "@/features/checkout/backend/checkout/checkout-session-key.server"
+);
+const reusableSessionKeys = deriveCheckoutSessionKeys("session-id");
+const reusableAttemptKeys = deriveCheckoutAttemptKeys({
+  checkoutSessionId: "session-id",
+  checkoutAttemptId: "attempt-id",
+  reservation,
+});
+
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
 const buildAdvertisedPriceToken = async (
@@ -201,10 +211,12 @@ const makeReusableReservation = (
 ): WorkspaceReservation =>
   ({
     id: "existing-reservation-id",
-    checkoutSessionKey: "session-key",
-    checkoutAttemptKey: "attempt-key",
-    checkoutSessionIdentityKey: "session-key",
-    checkoutAttemptIdentityKey: "attempt-key",
+    checkoutSessionKey: reusableSessionKeys.current,
+    checkoutAttemptKey: reusableAttemptKeys.current,
+    checkoutSessionIdentityKey: reusableSessionKeys.identity,
+    checkoutAttemptIdentityKey: reusableAttemptKeys.identity,
+    checkoutSessionCompatibilityKey: reusableSessionKeys.legacy,
+    checkoutAttemptCompatibilityKey: reusableAttemptKeys.legacy,
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",
