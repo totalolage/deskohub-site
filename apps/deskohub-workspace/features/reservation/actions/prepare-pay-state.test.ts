@@ -504,7 +504,16 @@ const runMeetingRoomNewHoldScenario = async () => {
   const createReservation = mock(() =>
     Effect.succeed({ id: "dotypos-meeting-room-id" } as never)
   );
-  const attachHold = mock(() => Effect.void);
+  let attachedReservation: WorkspaceReservation | null = null;
+  const attachHold = mock((attached) =>
+    Effect.sync(() => {
+      attachedReservation = makeReusableReservation({
+        dotyposReservationId: attached.dotyposReservationId,
+        reservationCreatedAt: attached.reservationCreatedAt,
+        failureCode: `hold_creation_attached:${attached.epoch}`,
+      });
+    })
+  );
   const enqueueCleanup = mock(() => Effect.void);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
     product: { kind: "meeting-room", durationMinutes: 240 },
@@ -553,13 +562,7 @@ const runMeetingRoomNewHoldScenario = async () => {
       beginProviderHoldCreation: mock(() => Effect.succeed(true)),
       recordProviderHoldCandidate: mock(() => Effect.void),
       attachHold,
-      findById: mock(() =>
-        Effect.succeed(
-          makeReusableReservation({
-            dotyposReservationId: "dotypos-meeting-room-id",
-          })
-        )
-      ),
+      findById: mock(() => Effect.succeed(attachedReservation)),
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails: mock(() => Effect.die("unused")),
       markAttachFailedCancellationRequired: mock(() => Effect.void),
@@ -790,9 +793,15 @@ describe("prepareWorkspacePayState", () => {
       } as never)
     );
     const claimHoldCreation = mock(() => Effect.succeed(true));
-    const attachHold = mock(() =>
+    let attachedReservation: WorkspaceReservation | null = null;
+    const attachHold = mock((attached) =>
       Effect.sync(() => {
         eventOrder.push("attach");
+        attachedReservation = makeReusableReservation({
+          dotyposReservationId: attached.dotyposReservationId,
+          reservationCreatedAt: attached.reservationCreatedAt,
+          failureCode: `hold_creation_attached:${attached.epoch}`,
+        });
       })
     );
     const enqueueCleanup = mock(() =>
@@ -852,13 +861,7 @@ describe("prepareWorkspacePayState", () => {
         beginProviderHoldCreation: mock(() => Effect.succeed(true)),
         recordProviderHoldCandidate: mock(() => Effect.void),
         attachHold,
-        findById: mock(() =>
-          Effect.succeed(
-            makeReusableReservation({
-              dotyposReservationId: "new-dotypos-reservation-id",
-            })
-          )
-        ),
+        findById: mock(() => Effect.succeed(attachedReservation)),
         releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
         markAttachFailedCancellationRequired: mock(() => Effect.void),

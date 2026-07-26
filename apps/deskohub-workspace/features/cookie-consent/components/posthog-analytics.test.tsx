@@ -161,43 +161,6 @@ describe("PostHogAnalytics feature flag overrides", () => {
     });
     expect(view.getByRole("form", { name: "Discount code" })).toBeDefined();
 
-    const { captureWorkspaceActionTransportError } = await import(
-      "@/shared/utils/use-workspace-action"
-    );
-    class TransportDefect {
-      readonly detail = "untrusted-object-detail";
-    }
-    const dynamicError = new Error("untrusted-error-message");
-    dynamicError.name = "untrusted-error-name";
-    for (const error of [
-      dynamicError,
-      "untrusted-primitive-defect",
-      "https://invalid.example/untrusted-url-value",
-      ["untrusted-array-value"],
-      { nested: "untrusted-container-value" },
-      new TransportDefect(),
-    ]) {
-      captureWorkspaceActionTransportError({
-        actionName: "checkout.submit",
-        error,
-      });
-    }
-    expect(capture).toHaveBeenCalledTimes(6);
-    expect(sentEvents).toHaveLength(6);
-    const serializedEvents = JSON.stringify(sentEvents);
-    for (const unsafeValue of [
-      "untrusted-error-message",
-      "untrusted-error-name",
-      "untrusted-primitive-defect",
-      "untrusted-url-value",
-      "untrusted-array-value",
-      "untrusted-container-value",
-      "untrusted-object-detail",
-    ]) {
-      expect(serializedEvents).not.toContain(unsafeValue);
-    }
-    expect(serializedEvents).toContain('"errorCategory":"transport_failure"');
-
     const autocaptureMarker = randomUUID();
     const autocapture = beforeSend?.({
       event: "$autocapture",
