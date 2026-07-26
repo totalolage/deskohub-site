@@ -257,27 +257,26 @@ export const setE2ECalendarSaleProfiEligibility = (
   eligible: boolean
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPostgresPool(config, (pool) => {
-    const products: readonly WorkspaceProductIdentity[] = [
-      { kind: "cowork", tier: "plus" },
-      ...(eligible ? [{ kind: "cowork", tier: "profi" } as const] : []),
-    ];
+    const product = JSON.stringify({
+      kind: "cowork",
+      tier: "profi",
+    } satisfies WorkspaceProductIdentity);
 
     return queryPostgres(
       pool,
       eligible
         ? "restore E2E Calendar sale Profi eligibility"
         : "remove E2E Calendar sale Profi eligibility",
-      `with removed as (
-        delete from discount_product_targets
-        where discount_id = $1
-      )
-      insert into discount_product_targets (
-        discount_id,
-        product_identity
-      )
-      select $1, target
-      from jsonb_array_elements($2::jsonb) as targets(target)`,
-      [E2E_CALENDAR_SALE_DISCOUNT_ID, JSON.stringify(products)]
+      eligible
+        ? `insert into discount_product_targets (
+            discount_id,
+            product_identity
+          ) values ($1, $2::jsonb)
+          on conflict do nothing`
+        : `delete from discount_product_targets
+          where discount_id = $1
+            and product_identity = $2::jsonb`,
+      [E2E_CALENDAR_SALE_DISCOUNT_ID, product]
     ).pipe(Effect.asVoid);
   });
 

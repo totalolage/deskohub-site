@@ -9,3 +9,13 @@ test("expires a code beyond cross-host clock skew", async () => {
   expect(source).toContain("timestamp '2000-01-01 00:00:00+00'");
   expect(source).not.toContain("now() - interval '1 second'");
 });
+
+test("toggles only the transient Calendar target idempotently", async () => {
+  const source = await Bun.file(
+    fileURLToPath(new URL("./discount-fixtures.ts", import.meta.url))
+  ).text();
+
+  expect(source).toContain("on conflict do nothing");
+  expect(source).toContain("product_identity = $2::jsonb");
+  expect(source).not.toContain("with removed as (");
+});
