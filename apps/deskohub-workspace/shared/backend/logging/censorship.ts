@@ -18,6 +18,7 @@ import type {
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Logger, type LogLevel, References } from "effect";
 import { projectErrorMetadata } from "@/shared/utils/error-metadata";
+import { workspaceOperations } from "../workspace-operation";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -149,32 +150,14 @@ const isEffectDrizzleQueryError = (
 
 const codeOwnedTelemetryNames = new Set([
   "@effect/opentelemetry",
-  "checkout.advertised-price.load",
-  "checkout.apply-discount-code",
-  "checkout.order.load-state",
-  "checkout.pay.load",
-  "checkout.payment-return",
-  "checkout.prepare-pay-state",
+  ...workspaceOperations,
   "checkout.provider-log-projection",
-  "checkout.result.refresh",
-  "checkout.status.load",
-  "checkout.submit-reservation",
-  "cloudinaryWebhook",
-  "contact.submit",
-  "dotypos.tables-preview.load",
   "e2e.case",
   "e2e.run",
   "e2e.step",
   "events.list",
-  "gallery.images.load",
-  "meeting-room.page-enabled",
-  "nexiWebhook",
   "operation",
-  "reservationHoldCleanupCron",
-  "reservationHoldCleanupSchedule",
-  "resendWebhook",
   "safe.operation",
-  "telemetry.flush",
   "test.action",
   "test.cause-projection",
   "test.checkout-state-failure",
@@ -191,9 +174,6 @@ const codeOwnedTelemetryNames = new Set([
   "test.task",
   "test.task-defect",
   "test.task-failure",
-  "workspace.availability.load",
-  "workspaceAvailability",
-  "workspaceLocationMap.get",
 ]);
 
 const codeOwnedTelemetryEnumValues = new Set([

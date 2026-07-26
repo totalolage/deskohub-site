@@ -11,6 +11,11 @@ import {
 } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
+import {
+  isWorkspaceOperation,
+  resolveWorkspaceOperation,
+  type WorkspaceOperation,
+} from "./workspace-operation";
 
 type WorkspaceEffectBoundary = "action" | "route" | "run" | "task";
 
@@ -20,13 +25,15 @@ interface RunWorkspaceEffectOptions {
 }
 
 export const runWorkspaceEffect =
-  (operation: string, options: RunWorkspaceEffectOptions = {}) =>
+  (operation: WorkspaceOperation, options: RunWorkspaceEffectOptions = {}) =>
   <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
-    workspaceRuntime.run(
-      effect.pipe(
+    getWorkspaceRuntime().run(
+      resolveWorkspaceOperation(operation).pipe(
+        Effect.tapError(() => Effect.logError("Workspace operation rejected")),
+        Effect.flatMap(() => effect),
         Effect.annotateLogs({
           boundary: options.boundary ?? "run",
-          operation,
+          operation: isWorkspaceOperation(operation) ? operation : "operation",
         })
       ),
       { signal: options.signal }
@@ -34,7 +41,7 @@ export const runWorkspaceEffect =
 
 export const defineWorkspaceTask =
   <Args extends readonly unknown[], A, E>(
-    operation: string,
+    operation: WorkspaceOperation,
     handler: (...args: Args) => Effect.Effect<A, E, never>
   ) =>
   (...args: Args): Promise<A> =>
@@ -62,18 +69,37 @@ export const scheduleWorkspaceTelemetryFlush = () =>
       )
     : Effect.void;
 
-const registeredLoggerProvider = getRegisteredPostHogLoggerProvider();
+let workspaceRuntime:
+  | {
+      readonly loggerProvider: ReturnType<
+        typeof getRegisteredPostHogLoggerProvider
+      >;
+      readonly runtime: ReturnType<typeof createWorkspaceRuntime>;
+    }
+  | undefined;
 
-const WorkspaceObservabilityLive = Layer.merge(
-  registeredLoggerProvider
-    ? createWorkspaceOtelLoggerLive(registeredLoggerProvider)
-    : WorkspaceLoggerLive,
-  WorkspaceTracingLive
-);
+const getWorkspaceRuntime = () => {
+  const loggerProvider = getRegisteredPostHogLoggerProvider();
+  if (workspaceRuntime && workspaceRuntime.loggerProvider === loggerProvider) {
+    return workspaceRuntime.runtime;
+  }
 
-const workspaceRuntime = NextEffect.make({
-  layer: WorkspaceObservabilityLive,
-});
+  const runtime = createWorkspaceRuntime(loggerProvider);
+  workspaceRuntime = { loggerProvider, runtime };
+  return runtime;
+};
+
+const createWorkspaceRuntime = (
+  loggerProvider: ReturnType<typeof getRegisteredPostHogLoggerProvider>
+) =>
+  NextEffect.make({
+    layer: Layer.merge(
+      loggerProvider
+        ? createWorkspaceOtelLoggerLive(loggerProvider)
+        : WorkspaceLoggerLive,
+      WorkspaceTracingLive
+    ),
+  });
 
 const flushTelemetry = Effect.tryPromise({
   try: () => flushPostHogLogs(),

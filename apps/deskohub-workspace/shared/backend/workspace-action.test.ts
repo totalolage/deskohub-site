@@ -32,7 +32,7 @@ describe("Workspace actions", () => {
     actionHeaderReads = 0;
     const action = defineWorkspaceAction(
       {
-        operation: "test.action",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
       },
       (input, context) =>
@@ -63,7 +63,7 @@ describe("Workspace actions", () => {
     );
     const action = defineWorkspaceAction(
       {
-        operation: "test.public-failure",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
@@ -83,7 +83,7 @@ describe("Workspace actions", () => {
     const { DEFAULT_SERVER_ERROR_MESSAGE } = await import("next-safe-action");
     const genuine = defineWorkspaceAction(
       {
-        operation: "test.public-failure",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
@@ -153,7 +153,7 @@ describe("Workspace actions", () => {
       for (const forged of forgedValues) {
         const action = defineWorkspaceAction(
           {
-            operation: "test.public-failure",
+            operation: "contact.submit",
             schema: Schema.toStandardSchemaV1(Schema.String),
           },
           () => Effect.fail(forged)
@@ -184,7 +184,7 @@ describe("Workspace actions", () => {
     const payStateToken = makeAuthenticatedMalformedPayStateToken();
     const action = defineWorkspaceAction(
       {
-        operation: "test.checkout-state-failure",
+        operation: "checkout.prepare-pay-state",
         schema: Schema.toStandardSchemaV1(
           Schema.Struct({ payStateToken: Schema.NonEmptyString })
         ),
@@ -214,7 +214,7 @@ describe("Workspace actions", () => {
     const sentinel = "SYNTHETIC-SENSITIVE-SENTINEL";
     const action = defineWorkspaceAction(
       {
-        operation: "test.nested-cause-failure",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () =>
@@ -253,7 +253,7 @@ describe("Workspace actions", () => {
     );
     const syncAction = defineWorkspaceAction(
       {
-        operation: "test.defect",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () => {
@@ -262,7 +262,7 @@ describe("Workspace actions", () => {
     );
     const asyncAction = defineWorkspaceAction(
       {
-        operation: "test.defect",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.String),
       },
       () => Effect.promise(() => Promise.reject(new Error(sentinel)))
@@ -288,7 +288,7 @@ describe("Workspace actions", () => {
     const { defineWorkspaceStateAction } = await import("./workspace-action");
     const action = defineWorkspaceStateAction(
       {
-        operation: "test.state-action",
+        operation: "contact.submit",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
       },
       (input, _context, { prevResult }) =>

@@ -1,10 +1,15 @@
 import { Context, Data, Effect, Layer } from "effect";
 import { after } from "next/server";
 import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
+import {
+  isWorkspaceOperation,
+  resolveWorkspaceOperation,
+  type WorkspaceOperation,
+} from "@/shared/backend/workspace-operation";
 
 interface IPostResponseTaskService {
   readonly run: (options: {
-    readonly operation: string;
+    readonly operation: WorkspaceOperation;
     readonly task: Effect.Effect<void, never, never>;
   }) => Effect.Effect<void>;
 }
@@ -23,23 +28,32 @@ export class PostResponseTaskService extends Context.Service<
     this,
     Effect.succeed({
       run: ({ operation, task }) =>
-        Effect.try({
-          try: () => {
-            const runTask = defineWorkspaceTask(operation, () =>
-              task.pipe(
-                Effect.catchCause((cause) =>
-                  Effect.logWarning("Post-response task failed", { cause })
-                )
-              )
-            );
-            after(runTask);
-          },
-          catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
-        }).pipe(
+        resolveWorkspaceOperation(operation).pipe(
+          Effect.flatMap((validOperation) =>
+            Effect.try({
+              try: () => {
+                const runTask = defineWorkspaceTask(validOperation, () =>
+                  task.pipe(
+                    Effect.catchCause((cause) =>
+                      Effect.logWarning("Post-response task failed", { cause })
+                    )
+                  )
+                );
+                after(runTask);
+              },
+              catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
+            })
+          ),
           Effect.tapError((cause) =>
             Effect.logWarning("Post-response task could not be scheduled", {
               cause,
-            })
+            }).pipe(
+              Effect.annotateLogs({
+                operation: isWorkspaceOperation(operation)
+                  ? operation
+                  : "operation",
+              })
+            )
           ),
           Effect.ignore
         ),

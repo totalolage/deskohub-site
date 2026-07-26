@@ -8,6 +8,7 @@ import {
   normalizeWorkspaceFrameworkDefects,
   WorkspaceFrameworkFailure,
 } from "./workspace-framework-failure";
+import type { WorkspaceOperation } from "./workspace-operation";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 export type WorkspaceRouteCancellation =
@@ -28,7 +29,7 @@ export type WorkspaceRouteErrorResponse = NextResponse<{
 
 export interface WorkspaceRouteOptions {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
-  readonly operation: string;
+  readonly operation: WorkspaceOperation;
   readonly cancellation: WorkspaceRouteCancellation;
 }
 

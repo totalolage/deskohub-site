@@ -1,6 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Cause, Effect } from "effect";
+import {
+  createPostHogLoggerProvider,
+  registerPostHogLoggerProvider,
+} from "./logging/posthog-otel";
 import { defineWorkspaceTask, runWorkspaceEffect } from "./workspace-effect";
+import type { WorkspaceOperation } from "./workspace-operation";
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -8,7 +13,7 @@ describe("Workspace Effect execution", () => {
 
     try {
       await Effect.logInfo("executed", { token: "private" }).pipe(
-        runWorkspaceEffect("test.run")
+        runWorkspaceEffect("gallery.images.load")
       );
 
       expect(log).toHaveBeenCalledTimes(1);
@@ -39,10 +44,10 @@ describe("Workspace Effect execution", () => {
           sentinel
         ),
         providerOrderId: sentinel,
-      }).pipe(runWorkspaceEffect("test.cause-projection"));
+      }).pipe(runWorkspaceEffect("checkout.pay.load"));
 
       const output = log.mock.calls.flat().join(" ");
-      expect(output).toContain("operation=test.cause-projection");
+      expect(output).toContain("operation=checkout.pay.load");
       expect(output).not.toContain(sentinel);
     } finally {
       log.mockRestore();
@@ -77,7 +82,7 @@ describe("Workspace Effect execution", () => {
             log: "Error",
             message: "code-owned failure",
           }),
-          runWorkspaceEffect("test.cause-projection")
+          runWorkspaceEffect("checkout.pay.load")
         );
       }
       await Effect.failCause(
@@ -94,11 +99,11 @@ describe("Workspace Effect execution", () => {
           log: "Error",
           message: "code-owned defect",
         }),
-        runWorkspaceEffect("test.cause-projection")
+        runWorkspaceEffect("checkout.pay.load")
       );
 
       const output = JSON.stringify(log.mock.calls);
-      expect(output).toContain("operation=test.cause-projection");
+      expect(output).toContain("operation=checkout.pay.load");
       expect(output).not.toContain(sentinel);
     } finally {
       log.mockRestore();
@@ -118,23 +123,83 @@ describe("Workspace Effect execution", () => {
         custom: new (class {
           readonly value = sentinel;
         })(),
-      }).pipe(runWorkspaceEffect("test.run"));
+      }).pipe(runWorkspaceEffect("gallery.images.load"));
 
       const output = log.mock.calls.flat().join(" ");
       expect(output).toContain("shape");
-      expect(output).toContain("operation=test.run");
+      expect(output).toContain("operation=gallery.images.load");
       expect(output).not.toContain(sentinel);
     } finally {
       log.mockRestore();
     }
   });
 
+  test("rejects unknown operations through task, console, and OTLP runtime paths", async () => {
+    const requests: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        requests.push(await request.text());
+        return new Response(null, { status: 200 });
+      },
+    });
+    const provider = createPostHogLoggerProvider({
+      posthogHost: server.url.toString(),
+      posthogProjectToken: crypto.randomUUID(),
+      vercelEnv: "development",
+    });
+    if (!provider) throw new Error("Expected a synthetic logger provider.");
+    const log = spyOn(console, "error").mockImplementation(() => undefined);
+    const unknownOperation = "SENSITIVE-UNKNOWN-OPERATION-IDENTIFIER";
+    let effectExecuted = false;
+    let taskExecuted = false;
+
+    registerPostHogLoggerProvider(provider);
+    try {
+      await expect(
+        Effect.sync(() => {
+          effectExecuted = true;
+        }).pipe(runWorkspaceEffect(unknownOperation as WorkspaceOperation))
+      ).rejects.toMatchObject({ _tag: "InvalidWorkspaceOperation" });
+
+      const task = defineWorkspaceTask(
+        unknownOperation as WorkspaceOperation,
+        () =>
+          Effect.sync(() => {
+            taskExecuted = true;
+          })
+      );
+      await expect(task()).rejects.toMatchObject({
+        _tag: "InvalidWorkspaceOperation",
+      });
+      await provider.forceFlush();
+
+      const consoleOutput = JSON.stringify(log.mock.calls);
+      const otlpOutput = requests.join("");
+
+      expect(effectExecuted).toBe(false);
+      expect(taskExecuted).toBe(false);
+      expect(consoleOutput).toContain("operation=operation");
+      expect(otlpOutput).toContain('"key":"operation"');
+      expect(otlpOutput).toContain('"stringValue":"operation"');
+      expect(otlpOutput).toContain('"stringValue":"run"');
+      expect(otlpOutput).toContain('"stringValue":"task"');
+      expect(consoleOutput).not.toContain(unknownOperation);
+      expect(otlpOutput).not.toContain(unknownOperation);
+    } finally {
+      registerPostHogLoggerProvider(undefined);
+      log.mockRestore();
+      await provider.shutdown();
+      server.stop(true);
+    }
+  });
+
   test("tasks preserve success and failure results", async () => {
-    const succeeds = defineWorkspaceTask("test.task", () =>
+    const succeeds = defineWorkspaceTask("reservationHoldCleanupSchedule", () =>
       Effect.succeed("done")
     );
     const failure = new Error("retry");
-    const fails = defineWorkspaceTask("test.task-failure", () =>
+    const fails = defineWorkspaceTask("reservationHoldCleanupSchedule", () =>
       Effect.fail(failure)
     );
 
@@ -144,11 +209,12 @@ describe("Workspace Effect execution", () => {
 
   test("tasks normalize synchronous and asynchronous framework defects", async () => {
     const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
-    const task = defineWorkspaceTask("test.task-defect", () => {
+    const task = defineWorkspaceTask("reservationHoldCleanupSchedule", () => {
       throw new Error(sentinel);
     });
-    const asyncTask = defineWorkspaceTask("test.task-defect", () =>
-      Effect.promise(() => Promise.reject(new Error(sentinel)))
+    const asyncTask = defineWorkspaceTask(
+      "reservationHoldCleanupSchedule",
+      () => Effect.promise(() => Promise.reject(new Error(sentinel)))
     );
 
     await expect(task()).rejects.toMatchObject({

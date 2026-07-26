@@ -23,6 +23,7 @@ import {
   scheduleWorkspaceTelemetryFlush,
 } from "./workspace-effect";
 import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
+import type { WorkspaceOperation } from "./workspace-operation";
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -35,7 +36,7 @@ type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
 
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /** Stable, low-cardinality name without IDs or payload data. */
-  readonly operation: string;
+  readonly operation: WorkspaceOperation;
   readonly schema: S;
 }
 

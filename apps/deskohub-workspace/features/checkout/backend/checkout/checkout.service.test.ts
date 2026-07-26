@@ -660,16 +660,14 @@ describe("CheckoutService", () => {
 
     try {
       await expect(
-        harness.effect.pipe(
-          runWorkspaceEffect("checkout.provider-log-projection")
-        )
+        harness.effect.pipe(runWorkspaceEffect("checkout.pay.load"))
       ).resolves.toMatchObject({
         status: "redirect",
         redirectUrl: providerUrl,
       });
       const output = JSON.stringify([info.mock.calls, error.mock.calls]);
 
-      expect(output).toContain("checkout.provider-log-projection");
+      expect(output).toContain("operation=checkout.pay.load");
       expect(output).not.toContain("hasProviderRedirectUrl");
       for (const sentinel of Object.values(checkoutStatePrivacySentinels)) {
         expect(output).not.toContain(sentinel);

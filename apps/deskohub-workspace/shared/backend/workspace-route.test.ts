@@ -19,7 +19,7 @@ describe("Workspace routes", () => {
   test("preserves route arguments and successful responses", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.route",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       (_request, context: { readonly value: string }) =>
@@ -48,7 +48,7 @@ describe("Workspace routes", () => {
     );
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.failure",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () =>
@@ -81,7 +81,7 @@ describe("Workspace routes", () => {
   test("maps Layer acquisition failures in the declared Effect", async () => {
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.layer-failure",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () =>
@@ -111,7 +111,7 @@ describe("Workspace routes", () => {
     const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
     const GET = defineWorkspaceRoute(
       {
-        operation: "test.defect",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () => {
@@ -120,7 +120,7 @@ describe("Workspace routes", () => {
     );
     const POST = defineWorkspaceRoute(
       {
-        operation: "test.defect",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () => Effect.promise(() => Promise.reject(new Error(sentinel)))
@@ -149,7 +149,7 @@ describe("Workspace routes", () => {
     });
     const interrupted = defineWorkspaceRoute(
       {
-        operation: "test.interrupt",
+        operation: "workspaceAvailability",
         cancellation: "interrupt-on-disconnect",
       },
       () => Effect.sync(markStarted).pipe(Effect.andThen(Effect.never))
@@ -165,7 +165,7 @@ describe("Workspace routes", () => {
 
     const continued = defineWorkspaceRoute(
       {
-        operation: "test.continue",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () => Effect.succeed(new Response("continued"))

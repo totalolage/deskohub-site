@@ -11,11 +11,14 @@ import {
   InMemorySpanExporter,
   SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { parse } from "@typescript-eslint/parser";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, Effect, Layer, Logger, References } from "effect";
 import { createTracingLive } from "../observability/otel-tracing";
+import {
+  isWorkspaceOperation,
+  workspaceOperations,
+} from "../workspace-operation";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
@@ -492,159 +495,39 @@ describe("censorLoggerOptions", () => {
   });
 });
 
-type SyntaxNode = {
-  readonly type: string;
-  readonly [key: string]: unknown;
-};
-
-const isSyntaxNode = (value: unknown): value is SyntaxNode =>
-  typeof value === "object" &&
-  value !== null &&
-  "type" in value &&
-  typeof value.type === "string";
-
-const getIdentifierName = (value: unknown) =>
-  isSyntaxNode(value) &&
-  value.type === "Identifier" &&
-  typeof value.name === "string"
-    ? value.name
-    : undefined;
-
-const getStringLiteral = (value: unknown) =>
-  isSyntaxNode(value) &&
-  value.type === "Literal" &&
-  typeof value.value === "string"
-    ? value.value
-    : undefined;
-
-const getObjectOperation = (value: unknown) => {
-  if (
-    !isSyntaxNode(value) ||
-    value.type !== "ObjectExpression" ||
-    !Array.isArray(value.properties)
-  ) {
-    return undefined;
-  }
-
-  for (const property of value.properties) {
-    if (
-      !isSyntaxNode(property) ||
-      property.type !== "Property" ||
-      (getIdentifierName(property.key) ?? getStringLiteral(property.key)) !==
-        "operation"
-    ) {
-      continue;
-    }
-
-    return getStringLiteral(property.value);
-  }
-
-  return undefined;
-};
-
-const workspaceBoundaryWrappers = new Set([
-  "defineWorkspaceAction",
-  "defineWorkspaceRoute",
-  "defineWorkspaceStateAction",
-]);
-const workspaceBoundaryCallNames = [
-  "runWorkspaceEffect",
-  "defineWorkspaceTask",
-  ...workspaceBoundaryWrappers,
-];
-
-const getWorkspaceBoundaryOperation = (node: SyntaxNode) => {
-  if (
-    node.type !== "CallExpression" ||
-    !Array.isArray(node.arguments) ||
-    node.arguments.length === 0
-  ) {
-    return undefined;
-  }
-
-  const calleeName = getIdentifierName(node.callee);
-  if (
-    calleeName === "runWorkspaceEffect" ||
-    calleeName === "defineWorkspaceTask"
-  ) {
-    return getStringLiteral(node.arguments[0]);
-  }
-  if (calleeName && workspaceBoundaryWrappers.has(calleeName)) {
-    return getObjectOperation(node.arguments[0]);
-  }
-
-  return undefined;
-};
-
-const visitSyntaxTree = (
-  value: unknown,
-  visit: (node: SyntaxNode) => void
-): void => {
-  if (Array.isArray(value)) {
-    for (const item of value) visitSyntaxTree(item, visit);
-    return;
-  }
-  if (!isSyntaxNode(value)) return;
-
-  visit(value);
-  for (const [key, child] of Object.entries(value)) {
-    if (key !== "type") visitSyntaxTree(child, visit);
-  }
-};
-
 describe("production runWorkspaceEffect operation names", () => {
-  test("keeps every literal production operation in the closed allowlist", async () => {
-    const workspaceRoot = new URL("../../../", import.meta.url).pathname;
-    const sourceFiles = new Bun.Glob(
-      "{app,features,shared}/**/*.{ts,tsx}"
-    ).scan({
-      cwd: workspaceRoot,
-      absolute: true,
-      onlyFiles: true,
-    });
-    const operations = new Set<string>();
-
-    for await (const sourceFile of sourceFiles) {
-      const relativePath = sourceFile.slice(workspaceRoot.length);
-      if (
-        relativePath.includes(".test.") ||
-        relativePath.includes(".typecheck.") ||
-        relativePath.startsWith("e2e/") ||
-        relativePath.includes("/e2e/")
-      ) {
-        continue;
-      }
-      const source = await Bun.file(sourceFile).text();
-      if (
-        !workspaceBoundaryCallNames.some((callName) =>
-          source.includes(callName)
-        )
-      ) {
-        continue;
-      }
-      const syntaxTree = parse(source, {
-        jsx: relativePath.endsWith(".tsx"),
-        sourceType: "module",
-      });
-
-      visitSyntaxTree(syntaxTree, (node) => {
-        const operation = getWorkspaceBoundaryOperation(node);
-        if (operation) operations.add(operation);
-      });
+  test("keeps the exact production contract in the closed allowlist", () => {
+    expect(workspaceOperations).toEqual([
+      "checkout.advertised-price.load",
+      "checkout.apply-discount-code",
+      "checkout.order.load-state",
+      "checkout.pay.load",
+      "checkout.payment-return",
+      "checkout.prepare-pay-state",
+      "checkout.result.refresh",
+      "checkout.status.load",
+      "checkout.submit-reservation",
+      "cloudinaryWebhook",
+      "contact.submit",
+      "dotypos.tables-preview.load",
+      "gallery.images.load",
+      "meeting-room.page-enabled",
+      "nexiWebhook",
+      "resendWebhook",
+      "reservationHoldCleanupCron",
+      "reservationHoldCleanupSchedule",
+      "telemetry.flush",
+      "workspace.availability.load",
+      "workspaceAvailability",
+      "workspaceLocationMap.get",
+    ]);
+    expect(workspaceOperations).toHaveLength(22);
+    for (const operation of workspaceOperations) {
+      expect(isWorkspaceOperation(operation)).toBe(true);
+      expect(censorLogValue({ operation })).toEqual({ operation });
     }
 
-    const missing = [...operations]
-      .filter(
-        (operation) =>
-          (
-            censorLogValue({ operation }) as {
-              readonly operation?: unknown;
-            }
-          ).operation !== operation
-      )
-      .sort();
-
-    expect(missing).toEqual([]);
+    expect(isWorkspaceOperation("synthetic.dynamic.operation")).toBe(false);
     expect(
       censorLogValue({ operation: "synthetic.dynamic.operation" })
     ).toEqual({
