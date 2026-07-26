@@ -8,7 +8,7 @@ import {
 } from "../browser";
 import {
   getPrefilledReservationConditionScript,
-  submitCoworkReservationScript,
+  getSubmitCoworkReservationScript,
 } from "../browser-scripts";
 import { submitReservationForPayPage } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -56,7 +56,7 @@ export const assertReservationReplacement = ({
           },
           run,
           session,
-          submitReservationScript: submitCoworkReservationScript,
+          submitReservationScript: getSubmitCoworkReservationScript(data),
           timeouts: config.timeouts,
         });
       }),
@@ -96,7 +96,7 @@ export const assertReservationReplacement = ({
         },
         run,
         session,
-        submitReservationScript: submitCoworkReservationScript,
+        submitReservationScript: getSubmitCoworkReservationScript(data),
         timeouts: config.timeouts,
       }),
       id: "resubmit-prefilled-reservation",

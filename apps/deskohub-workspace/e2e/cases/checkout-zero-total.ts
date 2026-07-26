@@ -1,13 +1,6 @@
 import { Effect } from "effect";
-import {
-  fillBrowserField,
-  focusBrowserElement,
-  openBrowserPage,
-  pressBrowserKey,
-  waitForBrowserReactFormAction,
-  waitForBrowserTextContent,
-  waitForBrowserUrl,
-} from "../browser";
+import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import { applyDiscountCode } from "../checkout/discount-code";
 import {
   submitCheckoutPayment,
   submitReservationForPayPage,
@@ -16,13 +9,11 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
   markConsoleFulfillmentDeliveredForE2E,
-  seedZeroTotalDiscountCode,
   validateInternalPostgres,
-  ZERO_TOTAL_DISCOUNT_CODE,
 } from "../integrations/database";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { addRedaction, log } from "../runtime";
+import { log } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -40,6 +31,7 @@ export const executeZeroTotalCheckout = ({
   session,
   state,
   submitReservationScript,
+  discountCode,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
@@ -49,14 +41,10 @@ export const executeZeroTotalCheckout = ({
   readonly session: string;
   readonly state: CheckoutFlowState;
   readonly submitReservationScript: string;
+  readonly discountCode: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    yield* runStep({
-      execute: seedZeroTotalDiscountCode(datasourceConfig),
-      id: "seed-zero-total-code",
-      timeoutMs: config.timeouts.datasource,
-    });
     yield* runStep({
       execute: openBrowserPage(config, run, session, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
@@ -79,7 +67,7 @@ export const executeZeroTotalCheckout = ({
     });
     state.orderId = orderId;
     yield* runStep({
-      execute: applyZeroTotalCode(config, run, session),
+      execute: applyZeroTotalCode(config, discountCode, run, session),
       id: "apply-zero-total-code",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -139,37 +127,14 @@ export const executeZeroTotalCheckout = ({
 
 const applyZeroTotalCode = (
   config: WorkspaceE2EConfig,
+  discountCode: string,
   run: Runner,
   session: string
 ) =>
-  Effect.gen(function* () {
-    addRedaction(ZERO_TOTAL_DISCOUNT_CODE, true);
-    yield* waitForBrowserReactFormAction(
-      run,
-      session,
-      "#checkout-discount-code-form",
-      { timeoutMs: config.timeouts.uiTransition }
-    );
-    yield* fillBrowserField(
-      run,
-      session,
-      "#checkout-discount-code",
-      ZERO_TOTAL_DISCOUNT_CODE,
-      { timeoutMs: config.timeouts.browserAction }
-    );
-    yield* focusBrowserElement(
-      run,
-      session,
-      '#checkout-discount-code-form button[type="submit"]',
-      { timeoutMs: config.timeouts.browserAction }
-    );
-    yield* pressBrowserKey(run, session, "Enter", {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* waitForBrowserTextContent(
-      run,
-      session,
-      "Discount code applied: 100% off 🎉",
-      { timeoutMs: config.timeouts.uiTransition }
-    );
+  applyDiscountCode({
+    appliedMessage: "Discount code applied: 100% off 🎉",
+    code: discountCode,
+    config,
+    run,
+    session,
   });

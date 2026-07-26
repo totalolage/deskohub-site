@@ -1,7 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { submitCoworkReservationScript } from "../browser-scripts";
+import {
+  getStoredCoworkReservationDetails,
+  normalizeCoworkReservationProduct,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
+} from "@/features/reservation/cowork-reservation-product";
+import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -21,7 +27,7 @@ export const checkoutFlows: readonly CheckoutFlow[] = [
     id: "cowork-basic",
     makeData: (config, _datasourceConfig, date) =>
       Effect.succeed(makeCoworkCheckoutData(config.baseUrl, date)),
-    submitReservationScript: () => submitCoworkReservationScript,
+    submitReservationScript: getSubmitCoworkReservationScript,
   },
 ];
 
@@ -52,29 +58,81 @@ const makeCheckoutContact = (flowId: string) => {
 export const makeCoworkCheckoutData = (
   checkoutBaseUrl: string,
   date: string,
-  flowId = "cowork-basic"
+  flowId = "cowork-basic",
+  product: {
+    readonly coffee?: boolean;
+    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  } = {}
+): CheckoutData => {
+  const contact = makeCheckoutContact(flowId);
+  return makeCoworkCheckoutDataWithContact(
+    checkoutBaseUrl,
+    date,
+    contact,
+    product
+  );
+};
+
+export const reuseCoworkCheckoutContact = (
+  checkoutBaseUrl: string,
+  date: string,
+  source: CheckoutData,
+  product: {
+    readonly coffee?: boolean;
+    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  } = {}
+): CheckoutData =>
+  makeCoworkCheckoutDataWithContact(
+    checkoutBaseUrl,
+    date,
+    {
+      email: source.email,
+      message: source.message,
+      name: source.name,
+      phone: source.phone,
+    },
+    product
+  );
+
+const makeCoworkCheckoutDataWithContact = (
+  checkoutBaseUrl: string,
+  date: string,
+  contact: ReturnType<typeof makeCheckoutContact>,
+  product: {
+    readonly coffee?: boolean;
+    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  }
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-  const contact = makeCheckoutContact(flowId);
+  const entryTier = product.entryTier ?? "basic";
+  const normalizedProduct = normalizeCoworkReservationProduct({
+    coffee: product.coffee ?? false,
+    entryTier,
+    monitorOption:
+      product.monitorOption ?? (entryTier === "profi" ? "2x27-qhd" : undefined),
+  });
   const params = new URLSearchParams({
-    coffee: "false",
+    coffee: String(normalizedProduct.coffee),
     date,
     email: contact.email,
-    entryTier: "basic",
+    entryTier: normalizedProduct.entryTier,
     message: contact.message,
     name: contact.name,
     phone: contact.phone,
   });
+  if (normalizedProduct.monitorOption) {
+    params.set("monitorOption", normalizedProduct.monitorOption);
+  }
 
   return {
     checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/cowork?${params}`,
     date,
     email: contact.email,
-    expectedReservationDetails: {
-      kind: "cowork",
-      entryTier: "basic",
-      coffee: false,
-    },
+    expectedReservationDetails:
+      getStoredCoworkReservationDetails(normalizedProduct),
     locale,
     message: contact.message,
     name: contact.name,
@@ -95,12 +153,22 @@ export const requireCheckoutDate = (
 
 export const selectAvailableCoworkDates = (
   config: WorkspaceE2EConfig,
-  count: number
+  count: number,
+  {
+    entryTier = "basic",
+    excludedDates = new Set<string>(),
+    monitorOption,
+  }: {
+    readonly entryTier?: WorkspaceCoworkProductTier;
+    readonly excludedDates?: ReadonlySet<string>;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  } = {}
 ): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const from = futureIsoDate(14);
     const to = futureIsoDate(90);
-    const params = new URLSearchParams({ entryTier: "basic", from, to });
+    const params = new URLSearchParams({ entryTier, from, to });
+    if (monitorOption) params.set("monitorOption", monitorOption);
     const httpClient = yield* HttpClient.HttpClient;
     const request = HttpClientRequest.get(
       `${config.baseUrl}/api/workspace/availability?${params}`
@@ -149,7 +217,13 @@ export const selectAvailableCoworkDates = (
     const dates: string[] = [];
     for (let offset = 14; offset <= 90; offset += 1) {
       const date = futureIsoDate(offset);
-      if (!isWeekday(date) || unavailable.has(date)) continue;
+      if (
+        !isWeekday(date) ||
+        unavailable.has(date) ||
+        excludedDates.has(date)
+      ) {
+        continue;
+      }
       dates.push(date);
       if (dates.length === count) {
         log(`Selected available checkout dates ${dates.join(", ")}`);

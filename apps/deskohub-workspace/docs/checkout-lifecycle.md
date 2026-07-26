@@ -38,6 +38,11 @@ Once a customer discount has appeared in a signed summary, it is an accepted dis
 - If a discount in the signed summary cannot be freshly affirmed at order submission, return `pricing_changed` with a refreshed signed summary. Create no durable payment attempt and no external payment session.
 - Newly available anonymously discoverable automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. The customer discount may first appear only at the first signed-summary boundary after Dotypos identity resolution, as described above. A successfully submitted discount code is a separate deliberate exception because the customer explicitly requested that quote change.
 
+Calendar discovery caching never extends the accepted interval. Eligibility is
+checked against the current instant after a cached occurrence is read, so the
+exclusive-end Prague midnight remains authoritative without waiting for the
+60-second discovery cache to expire.
+
 Discount code entry belongs on the order-summary page as an independent form with its own server action, pending state, and field error. It must not resubmit the reservation form or the main order submission:
 
 - The action receives the current signed summary and submitted code.

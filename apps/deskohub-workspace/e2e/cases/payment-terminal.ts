@@ -6,7 +6,7 @@ import {
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import { submitCoworkReservationScript } from "../browser-scripts";
+import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import { startCheckoutPaymentAttempt } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -70,7 +70,7 @@ export const assertPaymentTerminalPath = ({
         },
         run,
         session,
-        submitReservationScript: submitCoworkReservationScript,
+        submitReservationScript: getSubmitCoworkReservationScript(data),
       }),
       id: "start-checkout-payment",
       timeoutMs: config.timeouts.checkoutStart,

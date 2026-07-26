@@ -1,12 +1,10 @@
 import { deepStrictEqual } from "node:assert/strict";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { Pool, type QueryResultRow } from "pg";
-import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
+import type { Pool } from "pg";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
-  tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -20,6 +18,10 @@ import type {
   PaymentTerminalScenario,
 } from "../types";
 import { makeUrl } from "../urls";
+import {
+  queryPostgres as query,
+  withPostgresPool as withPool,
+} from "./postgres";
 
 export const waitForWebhookReplayRow = (
   config: DatasourceConfig,
@@ -149,71 +151,213 @@ export const validatePostgres = (
     })
   );
 
-export const ZERO_TOTAL_DISCOUNT_CODE = "E2E_ZERO_TOTAL";
+export interface ExpectedDiscountApplication {
+  readonly basisPoints: number;
+  readonly hasExpiration?: boolean;
+  readonly label: string;
+  readonly redemptionState?: "redeemed";
+}
 
-const zeroTotalDiscountId = "019c91dd-c560-7e55-b9d8-c95065efd51d";
-const zeroTotalDiscountCodeId = "019c91de-61d7-7ccb-adb8-f4de2a5a32b8";
-
-export const seedZeroTotalDiscountCode = (
-  config: DatasourceConfig
+export const validateDiscountApplications = (
+  config: DatasourceConfig,
+  orderId: string,
+  expected: readonly ExpectedDiscountApplication[]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      yield* query(
+      const result = yield* query<DiscountApplicationRow>(
         pool,
-        "seed zero-total discount definition",
-        `insert into discounts (
-          id,
-          labels,
-          percentage_basis_points,
-          created_at,
-          updated_at
-        ) values ($1, $2::jsonb, 10000, now(), now())
-        on conflict (id) do update
-        set labels = excluded.labels,
-          percentage_basis_points = excluded.percentage_basis_points,
-          fixed_amount_value = null,
-          fixed_amount_exponent = null,
-          fixed_amount_currency = null,
-          updated_at = now()`,
-        [
-          zeroTotalDiscountId,
-          JSON.stringify({
-            "cs-CZ": "E2E sleva 100 %",
-            "en-US": "E2E 100% discount",
-          }),
-        ]
+        "read checkout discount applications",
+        `select
+          da.sequence,
+          da.label,
+          da.adjustment,
+          da.subtotal_before_value,
+          da.subtotal_before_exponent,
+          da.subtotal_before_currency,
+          da.applied_amount_value,
+          da.applied_amount_exponent,
+          da.applied_amount_currency,
+          da.subtotal_after_value,
+          da.subtotal_after_exponent,
+          da.subtotal_after_currency,
+          da.expires_at,
+          da.countdown_starts_at,
+          dcr.state as redemption_state,
+          dcr.redeemed_at
+        from discount_applications da
+        left join discount_code_redemptions dcr
+          on dcr.application_id = da.id
+        where da.workspace_reservation_id = $1
+        order by da.sequence`,
+        [orderId]
       );
-      yield* query(
+
+      yield* tryWorkspaceE2ESync(
+        "assert checkout discount applications",
+        () => {
+          assert(
+            result.rows.length === expected.length,
+            `expected ${expected.length} discount applications`
+          );
+          expected.forEach((expectation, index) => {
+            const row = result.rows[index];
+            assert(row, `discount application ${index} missing`);
+            assert(
+              row.sequence === index,
+              `unexpected discount sequence ${index}`
+            );
+            assert(
+              row.label === expectation.label,
+              `unexpected discount label at sequence ${index}`
+            );
+            assert(
+              row.adjustment.kind === "percentage" &&
+                row.adjustment.basisPoints === expectation.basisPoints,
+              `unexpected discount adjustment at sequence ${index}`
+            );
+            assert(
+              row.applied_amount_value ===
+                Math.round(
+                  (row.subtotal_before_value * expectation.basisPoints) / 10_000
+                ),
+              `unexpected discount benefit at sequence ${index}`
+            );
+            assert(
+              row.subtotal_before_value - row.applied_amount_value ===
+                row.subtotal_after_value,
+              `discount money mismatch at sequence ${index}`
+            );
+            assert(
+              row.applied_amount_value > 0,
+              `discount amount must be positive at sequence ${index}`
+            );
+            assert(
+              row.subtotal_before_currency === config.expectedCurrency &&
+                row.applied_amount_currency === config.expectedCurrency &&
+                row.subtotal_after_currency === config.expectedCurrency,
+              `unexpected discount currency at sequence ${index}`
+            );
+            assert(
+              row.subtotal_before_exponent === 0 &&
+                row.applied_amount_exponent === 0 &&
+                row.subtotal_after_exponent === 0,
+              `unexpected discount exponent at sequence ${index}`
+            );
+            if (index > 0) {
+              assert(
+                row.subtotal_before_value ===
+                  result.rows[index - 1]?.subtotal_after_value,
+                `discount subtotal chain broke at sequence ${index}`
+              );
+            }
+            if (expectation.hasExpiration) {
+              assert(row.expires_at, `discount expiration ${index} missing`);
+              assert(
+                row.countdown_starts_at,
+                `discount countdown start ${index} missing`
+              );
+            } else {
+              assert(
+                row.expires_at === null,
+                `unexpected discount expiration at sequence ${index}`
+              );
+              assert(
+                row.countdown_starts_at === null,
+                `unexpected discount countdown at sequence ${index}`
+              );
+            }
+            assert(
+              row.redemption_state === (expectation.redemptionState ?? null),
+              `unexpected discount redemption state at sequence ${index}`
+            );
+            if (expectation.redemptionState === "redeemed") {
+              assert(
+                row.redeemed_at,
+                `discount redemption timestamp ${index} missing`
+              );
+            }
+          });
+        }
+      );
+      log("Discount applications validated");
+    })
+  );
+
+interface DiscountApplicationRow {
+  readonly adjustment: {
+    readonly basisPoints?: number;
+    readonly kind?: string;
+  };
+  readonly applied_amount_currency: string;
+  readonly applied_amount_exponent: number;
+  readonly applied_amount_value: number;
+  readonly countdown_starts_at: Date | null;
+  readonly expires_at: Date | null;
+  readonly label: string;
+  readonly redeemed_at: Date | null;
+  readonly redemption_state: string | null;
+  readonly sequence: number;
+  readonly subtotal_after_currency: string;
+  readonly subtotal_after_exponent: number;
+  readonly subtotal_after_value: number;
+  readonly subtotal_before_currency: string;
+  readonly subtotal_before_exponent: number;
+  readonly subtotal_before_value: number;
+}
+
+export const assertNoDiscountPaymentState = (
+  config: DatasourceConfig,
+  orderId: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  withPool(config, (pool) =>
+    Effect.gen(function* () {
+      const result = yield* query<{
+        application_count: number;
+        attempt_count: number;
+        redemption_count: number;
+      }>(
         pool,
-        "seed zero-total discount target",
-        `insert into discount_product_targets (discount_id, product_identity)
-        values ($1, $2::jsonb)
-        on conflict do nothing`,
-        [zeroTotalDiscountId, JSON.stringify({ kind: "cowork", tier: "basic" })]
+        "read unavailable-code payment state",
+        `select
+          (
+            select count(*)::int
+            from payment_attempts
+            where workspace_reservation_id = $1
+          ) as attempt_count,
+          (
+            select count(*)::int
+            from discount_applications
+            where workspace_reservation_id = $1
+          ) as application_count,
+          (
+            select count(*)::int
+            from discount_code_redemptions dcr
+            join discount_applications da on da.id = dcr.application_id
+            where da.workspace_reservation_id = $1
+          ) as redemption_count`,
+        [orderId]
       );
-      yield* query(
-        pool,
-        "seed zero-total discount code",
-        `insert into discount_codes (
-          id,
-          discount_id,
-          code,
-          enabled,
-          max_uses,
-          created_at,
-          updated_at
-        ) values ($1, $2, $3, true, null, now(), now())
-        on conflict (code) do update
-        set discount_id = excluded.discount_id,
-          enabled = true,
-          valid_from = null,
-          valid_until = null,
-          max_uses = null,
-          updated_at = now()`,
-        [zeroTotalDiscountCodeId, zeroTotalDiscountId, ZERO_TOTAL_DISCOUNT_CODE]
+      yield* tryWorkspaceE2ESync(
+        "assert unavailable-code payment state",
+        () => {
+          const row = result.rows[0];
+          assert(row, "unavailable-code payment state missing");
+          assert(
+            row.attempt_count === 0,
+            "unavailable code created payment attempt"
+          );
+          assert(
+            row.application_count === 0,
+            "unavailable code created discount application"
+          );
+          assert(
+            row.redemption_count === 0,
+            "unavailable code created discount redemption"
+          );
+        }
       );
-      log("Zero-total checkout discount fixture seeded");
+      log("Unavailable discount code created no payment state");
     })
   );
 
@@ -333,16 +477,16 @@ export const waitForCheckoutRow = (
     })
   );
 
-export const readLatestCleanupCheckoutRow = (
+export const readCleanupCheckoutRows = (
   config: DatasourceConfig,
   createdAfter: Date,
   data: CheckoutData
-): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
+): Effect.Effect<readonly CheckoutRow[], WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
       const result = yield* query<{ id: string }>(
         pool,
-        "read latest checkout cleanup row",
+        "read checkout cleanup rows",
         `select wr.id
       from workspace_reservations wr
       where wr.reservation_created_at >= $1
@@ -350,8 +494,7 @@ export const readLatestCleanupCheckoutRow = (
         and wr.payment_state <> 'paid'
         and wr.reservation_details = $2::jsonb
         and wr.locale = $3
-      order by wr.reservation_created_at desc
-      limit 1`,
+      order by wr.reservation_created_at desc`,
         [
           createdAfter,
           JSON.stringify(data.expectedReservationDetails),
@@ -359,8 +502,15 @@ export const readLatestCleanupCheckoutRow = (
         ]
       );
 
-      const orderId = result.rows[0]?.id;
-      return orderId ? yield* queryCheckoutRow(pool, orderId) : undefined;
+      return yield* Effect.forEach(
+        result.rows,
+        ({ id }) => queryCheckoutRow(pool, id),
+        { concurrency: "inherit" }
+      ).pipe(
+        Effect.map((rows) =>
+          rows.filter((row): row is CheckoutRow => row !== undefined)
+        )
+      );
     })
   );
 
@@ -875,34 +1025,3 @@ const assertNoLocalPii = (
         )
     );
   });
-
-const makePool = (config: DatasourceConfig) =>
-  new Pool({
-    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
-    connectionTimeoutMillis: config.timeouts.datasource,
-    query_timeout: config.timeouts.datasource,
-    statement_timeout: config.timeouts.datasource,
-  });
-
-const withPool = <A>(
-  config: DatasourceConfig,
-  use: (pool: Pool) => Effect.Effect<A, WorkspaceE2EError>
-): Effect.Effect<A, WorkspaceE2EError> =>
-  tryWorkspaceE2ESync("create Postgres pool", () => makePool(config)).pipe(
-    Effect.flatMap((pool) =>
-      use(pool).pipe(
-        Effect.ensuring(
-          tryWorkspaceE2EPromise("close Postgres pool", () => pool.end()).pipe(
-            Effect.ignore
-          )
-        )
-      )
-    )
-  );
-
-const query = <T extends QueryResultRow>(
-  pool: Pool,
-  operation: string,
-  text: string,
-  values: readonly unknown[] = []
-) => tryWorkspaceE2EPromise(operation, () => pool.query<T>(text, [...values]));

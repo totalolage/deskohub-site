@@ -652,6 +652,43 @@ describe("CalendarDiscountProvider", () => {
     expect(loadById).toHaveBeenCalledTimes(3);
   });
 
+  test("stops accepting a cached sale after its exclusive-end instant", async () => {
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        yield* TestClock.setTime(
+          Temporal.Instant.from("2026-08-01T21:59:59.500Z").epochMilliseconds
+        );
+        const provider = yield* CalendarDiscountProvider;
+        const beforeExpiry = yield* provider.quote({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        yield* TestClock.adjust("1 second");
+        const cachedAfterExpiry = yield* provider.quote({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        const freshAfterExpiry = yield* provider.revalidate({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+
+        return { beforeExpiry, cachedAfterExpiry, freshAfterExpiry };
+      }),
+      listEvents
+    );
+
+    expect(result.beforeExpiry).toHaveLength(1);
+    expect(result.cachedAfterExpiry).toEqual([]);
+    expect(result.freshAfterExpiry).toEqual([]);
+    expect(listEvents).toHaveBeenCalledTimes(2);
+  });
+
   test("keeps the quote cache across separate process-lifetime layer builds", async () => {
     let currentLabels = {
       "en-US": "Initial database sale",

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { submitCoworkReservationScript } from "../browser-scripts";
+import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,
@@ -9,6 +9,10 @@ import {
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
+import {
+  discountCodeFixtures,
+  seedDiscountE2EFixtures,
+} from "../integrations/discount-fixtures";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import type {
@@ -19,6 +23,7 @@ import type {
 import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
+import { makeDiscountE2ECases } from "./discounts";
 import { assertLocaleSwitcher } from "./locale";
 import {
   assertPaymentTerminalPath,
@@ -43,6 +48,7 @@ export const makeWorkspaceE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
+    yield* seedDiscountE2EFixtures(datasourceConfig);
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
@@ -159,7 +165,9 @@ export const makeWorkspaceE2ECases = ({
           runStep,
           session,
           state: zeroTotalState,
-          submitReservationScript: submitCoworkReservationScript,
+          submitReservationScript:
+            getSubmitCoworkReservationScript(zeroTotalData),
+          discountCode: discountCodeFixtures.zeroTotal.code,
         }).pipe(
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run zero-total checkout e2e case", cause)
@@ -200,6 +208,16 @@ export const makeWorkspaceE2ECases = ({
         timeoutMs: config.timeouts.checkoutCase,
       });
     }
+
+    cases.push(
+      ...(yield* makeDiscountE2ECases({
+        config,
+        datasourceConfig,
+        excludedDates: new Set(checkoutDates),
+        flowStates,
+        run,
+      }))
+    );
 
     return cases;
   });
