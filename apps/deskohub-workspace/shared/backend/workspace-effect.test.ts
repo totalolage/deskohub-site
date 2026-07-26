@@ -2,7 +2,6 @@ import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import { Effect } from "effect";
 import { notFound, redirect } from "next/navigation";
-import { CENSORED_LOG_VALUE } from "./logging/censorship";
 import { registerPostHogLoggerProvider } from "./logging/posthog-otel";
 
 let scheduleAfter = (task: () => Promise<void>) => {
@@ -41,7 +40,7 @@ describe("Workspace Effect execution", () => {
 
       expect(log).toHaveBeenCalledTimes(1);
       const output = log.mock.calls.flat().join(" ");
-      expect(output).toContain(CENSORED_LOG_VALUE);
+      expect(output).toContain('\\"shape\\":\\"array\\"');
       expect(output).not.toContain("private");
     } finally {
       log.mockRestore();

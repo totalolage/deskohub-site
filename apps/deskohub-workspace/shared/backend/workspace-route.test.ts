@@ -135,7 +135,7 @@ describe("Workspace routes", () => {
     });
   });
 
-  test("normalizes synchronous and asynchronous framework defects", async () => {
+  test("preserves synchronous and asynchronous framework defects", async () => {
     const sentinel = "SYNTHETIC-FRAMEWORK-DEFECT";
     const GET = defineWorkspaceRoute(
       {
@@ -154,19 +154,12 @@ describe("Workspace routes", () => {
       () => Effect.promise(() => Promise.reject(new Error(sentinel)))
     );
 
-    for (const response of [
-      await GET(new Request("https://deskohub.test")),
-      await POST(
-        new Request("https://deskohub.test", {
-          method: "POST",
-        })
-      ),
-    ]) {
-      expect(response.status).toBe(500);
-      await expect(response.json()).resolves.toEqual({
-        error: "Request failed.",
-      });
-    }
+    await expect(GET(new Request("https://deskohub.test"))).rejects.toThrow(
+      sentinel
+    );
+    await expect(
+      POST(new Request("https://deskohub.test", { method: "POST" }))
+    ).rejects.toThrow(sentinel);
   });
 
   test("annotates logs with the request method and consented request context", async () => {
@@ -176,7 +169,7 @@ describe("Workspace routes", () => {
     const info = spyOn(console, "info").mockImplementation(() => undefined);
     const POST = defineWorkspaceRoute(
       {
-        operation: "test.annotations",
+        operation: "workspaceAvailability",
         cancellation: "continue-after-disconnect",
       },
       () =>
@@ -197,10 +190,10 @@ describe("Workspace routes", () => {
 
       const output = info.mock.calls.flat().join(" ");
       expect(output).toContain("boundary=route");
-      expect(output).toContain("operation=test.annotations");
+      expect(output).toContain("operation=workspaceAvailability");
       expect(output).toContain("method=POST");
-      expect(output).toContain("posthogDistinctId=distinct-id");
-      expect(output).toContain("sessionId=session-id");
+      expect(output).not.toContain("distinct-id");
+      expect(output).not.toContain("session-id");
     } finally {
       info.mockRestore();
     }
