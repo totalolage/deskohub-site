@@ -1,12 +1,13 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   type CoworkReservationQuoteOrder,
+  calculateCoworkAdvertisedPriceQuote,
   getCheckoutSummaryChangedKeys,
 } from "./checkout-quote";
 import { buildCoworkReservationQuote } from "./checkout-quote.test-utils";
@@ -145,6 +146,40 @@ describe("cowork reservation quotes", () => {
         coffee: true,
       })
     ).toThrow("monitorOption");
+  });
+
+  test("calculates Profi advertised pricing without a monitor selection", () => {
+    const quote = Effect.runSync(
+      calculateCoworkAdvertisedPriceQuote({
+        entryTier: "profi",
+        coffee: true,
+      })
+    );
+
+    expect(quote.order).toEqual({
+      entryTier: "profi",
+      coffee: true,
+    });
+    expect(quote.summary.sections[0]?.items).not.toContainEqual(
+      expect.objectContaining({ key: expect.stringContaining("monitor:") })
+    );
+    expect(quote.payment.expectedPrice.value).toBe(55_000);
+  });
+
+  test("keeps the final monitor composition in the quote fingerprint", () => {
+    const firstMonitor = buildCoworkReservationQuote({
+      entryTier: "profi",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+    const secondMonitor = buildCoworkReservationQuote({
+      entryTier: "profi",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    });
+
+    expect(firstMonitor.order).toEqual(secondMonitor.order);
+    expect(firstMonitor.fingerprint).not.toBe(secondMonitor.fingerprint);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {

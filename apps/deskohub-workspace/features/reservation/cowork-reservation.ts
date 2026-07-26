@@ -4,6 +4,7 @@ import { m } from "@/features/i18n";
 import {
   coworkReservationProductInputSchema,
   getAllowedMonitorOptionsForCoworkTier,
+  getCoworkPriceSelection,
   getCoworkReservationProductCoffee,
   getCoworkReservationProductIssues,
   getCoworkReservationProductMonitorOption,
@@ -153,13 +154,46 @@ export const coworkReservationDetailsSchema = Schema.Union([
 export type CoworkReservationDetails =
   typeof coworkReservationDetailsSchema.Type;
 
+const basicCoworkAdvertisedPriceDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  entryTier: normalizedBasicCoworkReservationProductSchema.fields.entryTier,
+  coffee: normalizedBasicCoworkReservationProductSchema.fields.coffee,
+  date: coworkReservationDetailsDateSchema,
+});
+
+const plusCoworkAdvertisedPriceDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  entryTier: normalizedPlusCoworkReservationProductSchema.fields.entryTier,
+  coffee: normalizedPlusCoworkReservationProductSchema.fields.coffee,
+  date: coworkReservationDetailsDateSchema,
+});
+
+const profiCoworkAdvertisedPriceDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  entryTier: normalizedProfiCoworkReservationProductSchema.fields.entryTier,
+  coffee: normalizedProfiCoworkReservationProductSchema.fields.coffee,
+  date: coworkReservationDetailsDateSchema,
+});
+
+export const coworkAdvertisedPriceDetailsSchema = Schema.Union([
+  basicCoworkAdvertisedPriceDetailsSchema,
+  plusCoworkAdvertisedPriceDetailsSchema,
+  profiCoworkAdvertisedPriceDetailsSchema,
+]).annotate({
+  identifier: "CoworkAdvertisedPriceDetails",
+  description: "Cowork reservation inputs that determine the advertised price.",
+});
+
+export type CoworkAdvertisedPriceDetails =
+  typeof coworkAdvertisedPriceDetailsSchema.Type;
+
 export const coworkAdvertisedPriceReservationSchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  details: coworkReservationDetailsSchema,
+  details: coworkAdvertisedPriceDetailsSchema,
 }).annotate({
   identifier: "CoworkAdvertisedPriceReservation",
   description:
-    "PII-free normalized cowork reservation inputs whose price is advertised.",
+    "Normalized cowork reservation inputs whose price is advertised.",
 });
 
 export type CoworkAdvertisedPriceReservation =
@@ -168,6 +202,23 @@ export type CoworkAdvertisedPriceReservation =
 export const coworkAdvertisedPriceReservationEquals = Schema.toEquivalence(
   coworkAdvertisedPriceReservationSchema
 );
+
+export const getCoworkAdvertisedPriceReservation = <
+  const Reservation extends {
+    readonly entryTier: WorkspaceCoworkProductTier;
+    readonly coffee: boolean;
+    readonly date: string;
+  },
+>(
+  reservation: Reservation
+): CoworkAdvertisedPriceReservation => ({
+  kind: coworkReservationKind,
+  details: {
+    kind: coworkReservationKind,
+    ...getCoworkPriceSelection(reservation),
+    date: reservation.date,
+  },
+});
 
 export const getCoworkReservationDetails = (
   reservation: NormalizedCoworkReservationOrder

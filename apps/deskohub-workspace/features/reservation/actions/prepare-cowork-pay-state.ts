@@ -16,7 +16,7 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   coworkAdvertisedPriceReservationEquals,
-  getCoworkReservationDetails,
+  getCoworkAdvertisedPriceReservation,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import type { PrepareCoworkPayStateInput } from "./prepare-cowork-pay-state.schema";
@@ -40,10 +40,9 @@ export const prepareCoworkAdvertisement = Effect.fn(
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
-  const expectedReservation = {
-    kind: input.reservation.kind,
-    details: getCoworkReservationDetails(input.reservation),
-  } as const;
+  const expectedReservation = getCoworkAdvertisedPriceReservation(
+    input.reservation
+  );
 
   if (state.kind !== "cowork") {
     return yield* new AdvertisedPriceMismatchError({

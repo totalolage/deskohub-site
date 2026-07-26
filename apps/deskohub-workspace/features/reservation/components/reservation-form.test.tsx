@@ -135,6 +135,7 @@ describe("ReservationForm advertised pricing", () => {
 
   afterEach(() => {
     cleanup();
+    getAdvertisedPrice.mockClear();
     push.mockClear();
     execute.mockClear();
   });
@@ -244,6 +245,67 @@ describe("ReservationForm advertised pricing", () => {
       expect(
         view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
       ).toBe(false);
+    });
+  });
+
+  test("does not refetch the advertised price when the monitor changes", async () => {
+    const advertisedRequests: unknown[] = [];
+    const availabilityRequests: string[] = [];
+    getAdvertisedPrice.mockImplementation((input) => {
+      advertisedRequests.push(input);
+      return Promise.resolve({ data: advertisedPriceResponse });
+    });
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        availabilityRequests.push(url);
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+    await view.findByText(/original price.*350/i, {}, { timeout: 3000 });
+
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector(
+          '[data-reservation-tier-price="profi"]'
+        ) as HTMLElement
+      );
+    });
+    await waitFor(() => {
+      expect(advertisedRequests.at(-1)).toMatchObject({
+        reservation: {
+          details: {
+            entryTier: "profi",
+          },
+        },
+      });
+    });
+    expect(advertisedRequests.at(-1)).not.toHaveProperty(
+      "reservation.details.monitorOption"
+    );
+    const requestCount = advertisedRequests.length;
+
+    await act(async () => {
+      fireEvent.click(
+        view.container.querySelector('input[value="2x27-qhd"]') as HTMLElement
+      );
+    });
+    await waitFor(() => {
+      expect(
+        (
+          view.container.querySelector(
+            'input[value="2x27-qhd"]'
+          ) as HTMLInputElement
+        ).checked
+      ).toBe(true);
+    });
+
+    expect(advertisedRequests).toHaveLength(requestCount);
+    await waitFor(() => {
+      expect(availabilityRequests.at(-1)).toContain("monitorOption=2x27-qhd");
     });
   });
 });

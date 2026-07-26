@@ -22,15 +22,18 @@ import {
   type DiscountQuote,
 } from "@/features/discounts/contracts";
 import {
+  type CoworkPriceSelection,
+  coworkPriceSelectionSchema,
   coworkReservationProductSchema,
-  normalizedCoworkReservationProductSchema,
+  getCoworkPriceSelection,
+  type WorkspaceProductMonitorOption,
   workspaceCoworkProductIdentitySchema,
 } from "@/features/reservation/cowork-reservation-product";
 
 export const coworkReservationQuoteOrderSchema =
-  normalizedCoworkReservationProductSchema.annotate({
+  coworkPriceSelectionSchema.annotate({
     identifier: "CoworkReservationQuoteOrder",
-    description: "Canonical normalized product selection for checkout.",
+    description: "Canonical product inputs that determine the cowork price.",
   });
 
 export type CoworkReservationQuoteOrderInput =
@@ -168,9 +171,9 @@ export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly cause?: unknown;
 }> {}
 
-export const normalizeCoworkReservationQuoteOrder = Effect.fn(
-  "normalizeCoworkReservationQuoteOrder"
-)((order: CoworkReservationQuoteOrderInput) =>
+const normalizeCoworkReservationQuoteInput = (
+  order: CoworkReservationQuoteOrderInput
+) =>
   Schema.decodeUnknownEffect(coworkReservationProductSchema)(order).pipe(
     Effect.mapError(
       (cause) =>
@@ -179,8 +182,7 @@ export const normalizeCoworkReservationQuoteOrder = Effect.fn(
           cause,
         })
     )
-  )
-);
+  );
 
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
@@ -228,7 +230,6 @@ const getQuoteFingerprint = (
       tier: quote.order.entryTier,
       coffee: quote.order.coffee,
       coffeePriceAmount,
-      monitorOption: quote.order.monitorOption ?? null,
     },
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,
@@ -254,109 +255,136 @@ const getQuoteFingerprint = (
     .toString(16);
 };
 
+const calculateCoworkPriceQuote = Effect.fn("calculateCoworkPriceQuote")(
+  function* (
+    order: CoworkPriceSelection,
+    monitorOption: WorkspaceProductMonitorOption | undefined,
+    options: {
+      readonly discountQuote?: DiscountQuote;
+    } = {}
+  ) {
+    const product = getWorkspaceProductByTier(order.entryTier);
+    const productPrice = product.price;
+    const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(
+      order.entryTier
+    );
+    const productIdentity = workspaceCoworkProductIdentitySchema.make({
+      kind: "cowork",
+      tier: order.entryTier,
+    });
+    const productItemKey =
+      `product:${getWorkspaceProductKey(productIdentity)}` as const;
+    const addOnItems: CheckoutSummaryOrderItem[] = [];
+
+    if (order.coffee) {
+      addOnItems.push({
+        key: "addon:coffee",
+        amount: coffeePrice,
+      });
+    }
+
+    if (monitorOption) {
+      addOnItems.push({
+        key: `monitor:${monitorOption}`,
+        amount: workspaceMoneyWithValue(0, productPrice),
+      });
+    }
+
+    const orderTotal = yield* addWorkspaceMoney([
+      productPrice,
+      ...addOnItems.map((item) => item.amount),
+    ]);
+    const discountQuote = options.discountQuote;
+    const discounts = discountQuote?.discounts ?? [];
+    const discountedProductPrice =
+      discountQuote?.discountedSubtotal ?? productPrice;
+    const summaryDiscounts = discounts.map(({ amount, discount }) =>
+      checkoutSummaryDiscountSchema.make({ discount, amount })
+    );
+    const productItem =
+      summaryDiscounts.length > 0
+        ? checkoutSummaryDiscountedProductItemSchema.make({
+            key: productItemKey,
+            product: productIdentity,
+            amount: discountedProductPrice,
+            originalAmount: productPrice,
+            discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
+          })
+        : checkoutSummaryProductItemSchema.make({
+            key: productItemKey,
+            product: productIdentity,
+            amount: productPrice,
+          });
+    const orderItems: CheckoutSummaryOrderItem[] = [productItem, ...addOnItems];
+    const expectedPrice = yield* addWorkspaceMoney([
+      discountedProductPrice,
+      ...addOnItems.map(({ amount }) => amount),
+    ]);
+    const orderSection = checkoutSummaryOrderSectionSchema.make({
+      key: "order",
+      items: orderItems,
+      total: expectedPrice,
+    });
+    const sections: CheckoutSummarySection[] = [orderSection];
+
+    sections.push(
+      checkoutSummaryTotalSectionSchema.make({
+        key: "total",
+        items: [
+          {
+            key: "total:final",
+            amount: expectedPrice,
+          },
+        ],
+        total: expectedPrice,
+      })
+    );
+
+    const summary = checkoutSummarySchema.make({
+      sections,
+      total: expectedPrice,
+    });
+    const quoteWithoutFingerprint = {
+      order,
+      summary,
+      payment: {
+        expectedPrice,
+        undiscountedPrice: orderTotal,
+        discounts,
+      },
+    };
+    return {
+      ...quoteWithoutFingerprint,
+      fingerprint: getQuoteFingerprint(quoteWithoutFingerprint),
+    };
+  }
+);
+
+export const calculateCoworkAdvertisedPriceQuote = Effect.fn(
+  "calculateCoworkAdvertisedPriceQuote"
+)(
+  (
+    order: CoworkPriceSelection,
+    options: {
+      readonly discountQuote?: DiscountQuote;
+    } = {}
+  ) => calculateCoworkPriceQuote(order, undefined, options)
+);
+
 export const calculateCoworkReservationQuote = Effect.fn(
   "calculateCoworkReservationQuote"
 )(function* (
-  order: CoworkReservationQuoteOrderInput,
+  input: CoworkReservationQuoteOrderInput,
   options: {
     readonly discountQuote?: DiscountQuote;
   } = {}
 ) {
-  const normalizedOrder = yield* normalizeCoworkReservationQuoteOrder(order);
-  const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
-  const productPrice = product.price;
-  const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(
-    normalizedOrder.entryTier
+  const product = yield* normalizeCoworkReservationQuoteInput(input);
+  return yield* calculateCoworkPriceQuote(
+    getCoworkPriceSelection(product),
+    product.monitorOption,
+    options
   );
-  const productIdentity = workspaceCoworkProductIdentitySchema.make({
-    kind: "cowork",
-    tier: normalizedOrder.entryTier,
-  });
-  const productItemKey =
-    `product:${getWorkspaceProductKey(productIdentity)}` as const;
-  const addOnItems: CheckoutSummaryOrderItem[] = [];
-
-  if (normalizedOrder.coffee) {
-    addOnItems.push({
-      key: "addon:coffee",
-      amount: coffeePrice,
-    });
-  }
-
-  if (normalizedOrder.monitorOption) {
-    addOnItems.push({
-      key: `monitor:${normalizedOrder.monitorOption}`,
-      amount: workspaceMoneyWithValue(0, productPrice),
-    });
-  }
-
-  const orderTotal = yield* addWorkspaceMoney([
-    productPrice,
-    ...addOnItems.map((item) => item.amount),
-  ]);
-  const discountQuote = options.discountQuote;
-  const discounts = discountQuote?.discounts ?? [];
-  const discountedProductPrice =
-    discountQuote?.discountedSubtotal ?? productPrice;
-  const summaryDiscounts = discounts.map(({ amount, discount }) =>
-    checkoutSummaryDiscountSchema.make({ discount, amount })
-  );
-  const productItem =
-    summaryDiscounts.length > 0
-      ? checkoutSummaryDiscountedProductItemSchema.make({
-          key: productItemKey,
-          product: productIdentity,
-          amount: discountedProductPrice,
-          originalAmount: productPrice,
-          discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
-        })
-      : checkoutSummaryProductItemSchema.make({
-          key: productItemKey,
-          product: productIdentity,
-          amount: productPrice,
-        });
-  const orderItems: CheckoutSummaryOrderItem[] = [productItem, ...addOnItems];
-  const expectedPrice = yield* addWorkspaceMoney([
-    discountedProductPrice,
-    ...addOnItems.map(({ amount }) => amount),
-  ]);
-  const orderSection = checkoutSummaryOrderSectionSchema.make({
-    key: "order",
-    items: orderItems,
-    total: expectedPrice,
-  });
-  const sections: CheckoutSummarySection[] = [orderSection];
-
-  sections.push(
-    checkoutSummaryTotalSectionSchema.make({
-      key: "total",
-      items: [
-        {
-          key: "total:final",
-          amount: expectedPrice,
-        },
-      ],
-      total: expectedPrice,
-    })
-  );
-
-  const summary = checkoutSummarySchema.make({
-    sections,
-    total: expectedPrice,
-  });
-  const quoteWithoutFingerprint = {
-    order: normalizedOrder,
-    summary,
-    payment: {
-      expectedPrice,
-      undiscountedPrice: orderTotal,
-      discounts,
-    },
-  };
-  return {
-    ...quoteWithoutFingerprint,
-    fingerprint: getQuoteFingerprint(quoteWithoutFingerprint),
-  };
 });
 
 const getSummarySectionMap = (summary: CheckoutSummary) =>

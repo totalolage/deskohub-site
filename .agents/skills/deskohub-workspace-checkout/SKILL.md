@@ -23,6 +23,8 @@ Any change to price facts accepted at the immediately preceding boundary returns
 
 Reservation-page advertisement evaluates only anonymously discoverable automatic discounts, currently Calendar sales. Customer-specific pricing is outside that boundary by contract; do not add an inert snapshot field merely to restate that it was not evaluated. After advertised discounts are affirmed on reservation submission, the customer discount may first appear in the signed summary following Dotypos identity resolution without `pricing_changed`. This is the only automatic-discount exception at that boundary. Once shown, the customer discount follows the normal affirmation and `pricing_changed` rules.
 
+Advertised-price requests and protected snapshots contain only inputs that determine the advertised amount. In cowork checkout, monitor selection affects availability and final zero-priced product composition, not price; keep it out of advertisement requests, query keys, and snapshot comparison while preserving it in reservation validation, availability, table assignment, and the signed summary.
+
 Inside `apps/deskohub-workspace`, do not prefix new app-owned services, operations, or supporting types with `Workspace`; the app boundary already supplies that context. Keep the prefix only when it distinguishes a real alternative or belongs to an established contract whose broad rename is outside the current change.
 
 Pass canonical reservation projections through pricing boundaries. Do not repair an incomplete checkout product type by manually intersecting reservation fields such as `date`; use the reservation domain's existing PII-free details projection.

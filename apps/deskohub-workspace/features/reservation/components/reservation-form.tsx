@@ -49,12 +49,12 @@ import {
   type CoworkReservationInput,
   coworkReservationSchema,
   getAllowedMonitorOptionsForCoworkTier,
+  getCoworkAdvertisedPriceReservation,
   getCoworkReservationOrder,
   getCoworkTierIncludesCourtesyCoffee,
   getCoworkTierRequiresMonitorOption,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
-import { normalizeCoworkReservationProduct } from "@/features/reservation/cowork-reservation-product";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import { getReservationAnalyticsProperties } from "@/features/reservation/reservation-analytics";
 import {
@@ -257,36 +257,19 @@ export function ReservationForm({
     staleTime: 30_000,
   });
   const advertisedPriceRequest = useMemo(() => {
-    if (
-      !selectedDate ||
-      (getCoworkTierRequiresMonitorOption(selectedTier) &&
-        !isWorkspaceProductMonitorOption(selectedMonitorOption))
-    ) {
+    if (!selectedDate) {
       return undefined;
     }
 
     return {
       locale,
-      reservation: {
-        kind: "cowork",
-        details: {
-          kind: "cowork",
-          ...normalizeCoworkReservationProduct({
-            entryTier: selectedTier,
-            coffee: Boolean(selectedCoffee),
-            monitorOption: selectedMonitorOption,
-          }),
-          date: selectedDate,
-        },
-      },
+      reservation: getCoworkAdvertisedPriceReservation({
+        entryTier: selectedTier,
+        coffee: Boolean(selectedCoffee),
+        date: selectedDate,
+      }),
     } satisfies AdvertisedPriceRequest;
-  }, [
-    locale,
-    selectedCoffee,
-    selectedDate,
-    selectedMonitorOption,
-    selectedTier,
-  ]);
+  }, [locale, selectedCoffee, selectedDate, selectedTier]);
   const advertisedPriceQueryResult = useAdvertisedPrice(advertisedPriceRequest);
   const advertisedPriceData =
     advertisedPriceRequest && !advertisedPriceQueryResult.isError
