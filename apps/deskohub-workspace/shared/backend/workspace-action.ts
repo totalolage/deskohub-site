@@ -18,16 +18,7 @@ import {
   PublicSafeActionError,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
-<<<<<<< HEAD
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
-import { normalizeWorkspaceFrameworkDefects } from "./workspace-framework-failure";
-import type { WorkspaceOperation } from "./workspace-operation";
-=======
 import { runWorkspaceEffect } from "./workspace-effect";
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
@@ -40,7 +31,7 @@ type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
 
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /** Stable, low-cardinality name without IDs or payload data. */
-  readonly operation: WorkspaceOperation;
+  readonly operation: string;
   readonly schema: S;
 }
 
@@ -92,12 +83,11 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        inputMetadata: getActionInputMetadata(args.parsedInput),
+        input: args.parsedInput,
       })
     );
     const result = yield* Effect.suspend(handler).pipe(
-      Effect.provide(BotProtectionService.Live),
-      normalizeWorkspaceFrameworkDefects("action")
+      Effect.provide(BotProtectionService.Live)
     );
     yield* Effect.logDebug("Action completed successfully");
     return result;
@@ -124,22 +114,8 @@ const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
     })
   );
 
-<<<<<<< HEAD
-  return Effect.andThen(scheduleWorkspaceTelemetryFlush, invocation);
-=======
   return invocation;
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 };
-
-const getActionInputMetadata = (input: unknown) =>
-  typeof input === "object" && input !== null
-    ? {
-        shape: Array.isArray(input) ? "array" : "object",
-        fieldCount: Object.keys(input).length,
-      }
-    : {
-        shape: input === null ? "null" : typeof input,
-      };
 
 const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   args: WorkspaceActionArgs<S>
@@ -148,9 +124,6 @@ const getWorkspaceActionContext = <S extends StandardSchemaV1>(
   locale: args.ctx.locale,
 });
 
-// The error is immediately converted to a defect and cannot enter a typed
-// feature error channel.
-// @effect-diagnostics-next-line unknownInEffectCatch:off
 const readActionHeaders = Effect.tryPromise({
   try: () => headers(),
   catch: (cause) => cause,

@@ -1,13 +1,5 @@
-<<<<<<< HEAD
-import { describe, expect, mock, spyOn, test } from "bun:test";
-import { randomBytes } from "node:crypto";
-import type { LoggerProvider } from "@opentelemetry/api-logs";
-import { Effect, Logger } from "effect";
-import { createCensoredOtelLogger } from "./censorship";
-=======
 import { afterEach, describe, expect, mock, spyOn, test } from "bun:test";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import {
   createPostHogLoggerProvider,
   flushPostHogLogs,
@@ -48,109 +40,6 @@ describe("PostHog OTel logs", () => {
     await provider?.shutdown();
   });
 
-<<<<<<< HEAD
-  test("censors nested causes through the production OTLP log sink", async () => {
-    const requests: string[] = [];
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (request) => {
-        requests.push(await request.text());
-        return new Response(null, { status: 200 });
-      },
-    });
-    const provider = createPostHogLoggerProvider({
-      posthogHost: server.url.toString(),
-      posthogProjectToken: randomBytes(24).toString("base64url"),
-      vercelEnv: "development",
-    });
-    if (!provider) throw new Error("Expected a synthetic logger provider.");
-
-    try {
-      const sentinel = "SENSITIVE-CATEGORY-SENTINEL";
-      const nestedCause = new AggregateError(
-        [
-          sentinel,
-          42,
-          false,
-          {
-            _tag: "SyntheticTaggedCause",
-            cause: new Error(sentinel, {
-              cause: { providerOrderId: sentinel },
-            }),
-            customerId: sentinel,
-          },
-        ],
-        sentinel
-      );
-
-      await Effect.runPromise(
-        Effect.logError("code-owned log message", {
-          cause: nestedCause,
-          checkoutSessionId: sentinel,
-        }).pipe(
-          Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
-        )
-      );
-      await provider.forceFlush();
-
-      const exported = requests.join("");
-      expect(exported).toContain("fieldCount");
-      expect(exported).not.toContain(sentinel);
-    } finally {
-      await provider.shutdown();
-      server.stop(true);
-    }
-  });
-
-  test("censors direct global-style OTLP log records at the provider boundary", async () => {
-    const requests: string[] = [];
-    const server = Bun.serve({
-      port: 0,
-      fetch: async (request) => {
-        requests.push(await request.text());
-        return new Response(null, { status: 200 });
-      },
-    });
-    const provider = createPostHogLoggerProvider({
-      posthogHost: server.url.toString(),
-      posthogProjectToken: randomBytes(24).toString("base64url"),
-      vercelEnv: "development",
-    });
-    if (!provider) throw new Error("Expected a synthetic logger provider.");
-
-    try {
-      provider
-        .getLogger("framework", "SyntheticValidScopeVersion", {
-          schemaUrl: "https://SyntheticValidScopeSchema.test",
-        })
-        .emit({
-          body: "SyntheticValidDirectLogBody",
-          eventName: "SyntheticValidDirectEvent",
-          attributes: {
-            SyntheticValidDynamicKey: "SyntheticValidDynamicValue",
-            category: "SyntheticValidCategory",
-            detail: "SyntheticValidDetail",
-            response: JSON.stringify({
-              payload: "SyntheticValidNestedPayload",
-            }),
-          },
-        });
-      await provider.forceFlush();
-
-      expect(requests).toHaveLength(1);
-      expect(requests[0]).not.toContain("SyntheticValid");
-    } finally {
-      await provider.shutdown();
-      server.stop(true);
-    }
-  });
-
-  test("bounds a scheduled flush when the logger provider does not settle", async () => {
-    let scheduledTask: (() => Promise<void>) | undefined;
-    const schedule = mock((task: () => Promise<void>) => {
-      scheduledTask = task;
-    });
-=======
   test("registers the provider used by implicit flushes", async () => {
     const forceFlush = mock(() => Promise.resolve());
     const provider = {
@@ -183,7 +72,6 @@ describe("PostHog OTel logs", () => {
   });
 
   test("bounds a flush when the logger provider does not settle", async () => {
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
     const provider = {
       forceFlush: () => new Promise<void>(() => undefined),
     } as Pick<LoggerProvider, "forceFlush">;

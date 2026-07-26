@@ -1,13 +1,17 @@
 import { Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
+import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
   mapWorkspaceInternalRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import { CheckoutStatusService } from "./checkout-status.service";
-import { getCheckoutStatusPath } from "./checkout-status-url";
+import {
+  type CheckoutStatusReturnOutcome,
+  CheckoutStatusService,
+} from "./checkout-status.service";
+import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
@@ -29,9 +33,6 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   })
 );
 
-<<<<<<< HEAD
-const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
-=======
 const getCheckoutStatusRedirectPath = (input: {
   readonly locale: Locale;
   readonly orderId: string;
@@ -48,7 +49,6 @@ const getCheckoutStatusRedirectPath = (input: {
 };
 
 const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
   function* (
     request: Request,
     { params }: LocalizedCheckoutPaymentRouteContext
@@ -90,19 +90,7 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       );
 
     return NextResponse.redirect(
-<<<<<<< HEAD
-      new URL(
-        getCheckoutStatusPath({
-          locale,
-          orderId,
-          outcome,
-          setBypassCookie: true,
-        }),
-        request.url
-      )
-=======
       new URL(getCheckoutStatusRedirectPath(input), request.url)
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
     );
   }
 );

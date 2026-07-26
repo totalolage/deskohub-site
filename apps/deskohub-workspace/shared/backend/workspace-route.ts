@@ -1,18 +1,6 @@
 import { Data, Effect } from "effect";
 import { NextResponse } from "next/server";
-<<<<<<< HEAD
-import {
-  runWorkspaceEffect,
-  scheduleWorkspaceTelemetryFlush,
-} from "./workspace-effect";
-import {
-  normalizeWorkspaceFrameworkDefects,
-  WorkspaceFrameworkFailure,
-} from "./workspace-framework-failure";
-import type { WorkspaceOperation } from "./workspace-operation";
-=======
 import { runWorkspaceEffect } from "./workspace-effect";
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
 import { withWorkspaceRequestContext } from "./workspace-request-context";
 
 export type WorkspaceRouteCancellation =
@@ -33,7 +21,7 @@ export type WorkspaceRouteErrorResponse = NextResponse<{
 
 export interface WorkspaceRouteOptions {
   /** Stable, low-cardinality name without IDs, URLs, or payload data. */
-  readonly operation: WorkspaceOperation;
+  readonly operation: string;
   readonly cancellation: WorkspaceRouteCancellation;
 }
 
@@ -48,29 +36,12 @@ export const defineWorkspaceRoute =
   (...args: Args): Promise<A | WorkspaceRouteErrorResponse> => {
     const request = args[0];
     const invocation = Effect.suspend(() => handler(...args)).pipe(
-      normalizeWorkspaceFrameworkDefects("route"),
-      Effect.mapError((error) =>
-        error instanceof WorkspaceFrameworkFailure
-          ? new WorkspaceRouteFailure({
-              statusCode: 500,
-              publicMessage: "Request failed.",
-              cause: error,
-            })
-          : error
-      ),
       Effect.catch(recoverWorkspaceRouteFailure),
       withWorkspaceRequestContext(request.headers)
     );
-<<<<<<< HEAD
-    const effect = Effect.andThen(
-      scheduleWorkspaceTelemetryFlush,
-      invocation
-    ).pipe(Effect.annotateLogs({ method: request.method.toUpperCase() }));
-=======
     const effect = invocation.pipe(
       Effect.annotateLogs({ method: request.method.toUpperCase() })
     );
->>>>>>> 71b705cb2396074a4a58813c2ab71fc15f9514df
     const signal =
       options.cancellation === "interrupt-on-disconnect"
         ? request.signal
