@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, setSystemTime, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
@@ -69,7 +69,7 @@ const reusableAttemptKeys = deriveCheckoutAttemptKeys({
   reservation,
 });
 
-const reusableHoldExpiresAt = Temporal.Instant.from("2100-07-01T12:00:00.000Z");
+const reusableHoldExpiresAt = Temporal.Instant.from("2300-07-01T12:00:00.000Z");
 
 const buildAdvertisedPriceToken = async (
   quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
@@ -263,6 +263,152 @@ const toCreatedDraft = (reservation: Partial<WorkspaceReservation>) =>
     }),
   });
 
+/**
+ * The action observes a reservation more than once while it creates a provider
+ * hold.  Keep those observations in one small state machine instead of making
+ * each test guess which of its independent mocks is read next.  This mirrors
+ * the repository boundary only: tests still seed lookups and inject failures
+ * through the callbacks below.
+ */
+const createStatefulReservationFake = (input: {
+  readonly findByAttemptKey: ReturnType<typeof mock>;
+  readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
+  readonly createDraft?: ReturnType<typeof mock>;
+  readonly claimHoldCreation?: ReturnType<typeof mock>;
+  readonly findById?: ReturnType<typeof mock>;
+  readonly claimSupersessionCancellation?: ReturnType<typeof mock>;
+  readonly completeSupersessionAndCreateDraft?: ReturnType<typeof mock>;
+  readonly markCancellationFailed?: ReturnType<typeof mock>;
+}) => {
+  const rows = new Map<string, WorkspaceReservation>();
+  const storeDraft = (draft: Partial<WorkspaceReservation>) => {
+    const row = makeReusableReservation({
+      ...draft,
+      dotyposReservationId: null,
+      failureCode: null,
+      fulfillmentState: "not_started",
+      paymentState: "not_started",
+      reservationState: "draft",
+    });
+    rows.set(row.id, row);
+    return row;
+  };
+  const createDraft = input.createDraft ??
+    mock((draft) => Effect.succeed(storeDraft(draft)));
+  const acquireDraft = mock((draft) =>
+    createDraft(draft).pipe(
+      Effect.map((created) => {
+        const returned = created as Partial<WorkspaceReservation>;
+        if (returned.reservationState && returned.reservationState !== "draft") {
+          const reservation = makeReusableReservation({ ...draft, ...returned });
+          rows.set(reservation.id, reservation);
+          return ReservationDraftAcquisition.existing_attempt({ reservation });
+        }
+        return ReservationDraftAcquisition.created({
+          reservation: storeDraft({ ...draft, ...returned }),
+        });
+      })
+    )
+  );
+  const claimHoldCreation = mock((id: string) => {
+    const epoch = `epoch-${id}`;
+    const claim = input.claimHoldCreation?.(id) ?? Effect.succeed(epoch);
+    return claim.pipe(
+      Effect.map((result) => (result === true ? epoch : result))
+    );
+  });
+  const remember = <T extends WorkspaceReservation | null>(row: T) => {
+    if (row) rows.set(row.id, row);
+    return row;
+  };
+  const findById = mock((id: string) =>
+    (input.findById?.(id) ?? Effect.succeed(rows.get(id) ?? null)).pipe(
+      Effect.map(remember)
+    )
+  );
+  const findByAttemptKey = mock((key: string) =>
+    input.findByAttemptKey(key).pipe(Effect.map(remember))
+  );
+  const findCurrentByCheckoutSessionKey = mock((key: string) =>
+    (input.findCurrentByCheckoutSessionKey?.(key) ?? Effect.succeed(null)).pipe(
+      Effect.map(remember)
+    )
+  );
+  const attachHold = mock((attached) =>
+    Effect.sync(() => {
+      const current = rows.get(attached.id) ?? makeReusableReservation({ id: attached.id });
+      rows.set(
+        attached.id,
+        makeReusableReservation({
+          ...current,
+          dotyposReservationId: attached.dotyposReservationId,
+          reservationCreatedAt: attached.reservationCreatedAt,
+          reservationState: "held",
+          paymentState: "not_started",
+          failureCode: `hold_creation_candidate:${attached.epoch}:${attached.dotyposReservationId}:${attached.reservationCreatedAt.epochMilliseconds}:${attached.reservationCreatedAt.epochMilliseconds + 120_000}:db`,
+        })
+      );
+    })
+  );
+  const completeSupersessionAndCreateDraft = mock((operation) => {
+    const complete = input.completeSupersessionAndCreateDraft?.(operation) ??
+      Effect.succeed(storeDraft(operation.replacement));
+    return complete.pipe(Effect.map((created) => storeDraft(created)));
+  });
+  const claimedCancellationIds = new Set<string>();
+  const claimSupersessionCancellation = mock((operation) =>
+    (input.claimSupersessionCancellation?.(operation) ??
+      Effect.succeed(rows.get(operation.id) ?? null)).pipe(
+      Effect.map((claimed) => {
+        if (claimed) {
+          claimedCancellationIds.add(claimed.id);
+          rows.set(claimed.id, claimed);
+        }
+        return claimed;
+      })
+    )
+  );
+  const renewCancellationClaim = mock((operation) =>
+    Effect.succeed(
+      claimedCancellationIds.has(operation.id)
+        ? (rows.get(operation.id) ?? null)
+        : null
+    )
+  );
+  const markCancellationFailed = input.markCancellationFailed ??
+    mock(() => Effect.void);
+
+  return {
+    rows,
+    createDraft,
+    acquireDraft,
+    claimHoldCreation,
+    findById,
+    attachHold,
+    repository: {
+      findByAttemptKey,
+      findCurrentByCheckoutSessionKey,
+      acquireDraft,
+      claimHoldCreation,
+      beginProviderHoldCreation: mock(() => Effect.succeed(true)),
+      recordProviderHoldCandidate: mock(() => Effect.void),
+      findById,
+      releaseHoldCreation: mock(() => Effect.void),
+      updateReservationDetails: mock(() => Effect.void),
+      attachHold,
+      markAttachFailedCancellationRequired: mock(() => Effect.void),
+      claimSupersessionCancellation,
+      renewCancellationClaim,
+      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
+      completeSupersessionAndCreateDraft,
+      markCancelled: mock(() => Effect.void),
+      markCancellationFailed,
+    },
+    completeSupersessionAndCreateDraft,
+    markCancellationFailed,
+  };
+};
+
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKey: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
@@ -308,25 +454,21 @@ const runReusableReservationScenario = async (input: {
   const recordMany = mock((events) => Effect.succeed(events as never));
   const ensureAvailable = mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
-  const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
-  const claimHoldCreation =
-    input.claimHoldCreation ?? mock(() => Effect.succeed(true));
-  let attachedReservation: WorkspaceReservation | null = null;
-  const findById =
-    input.findById ?? mock(() => Effect.succeed(attachedReservation));
+  const reservationFake = createStatefulReservationFake(input);
+  const createDraft = reservationFake.createDraft;
+  const claimHoldCreation = reservationFake.claimHoldCreation;
+  const findById = reservationFake.findById;
   const claimSupersessionCancellation =
-    input.claimSupersessionCancellation ?? mock(() => Effect.succeed(null));
+    reservationFake.repository.claimSupersessionCancellation;
   const completeSupersessionAndCreateDraft =
-    input.completeSupersessionAndCreateDraft ??
-    mock(() => Effect.die("unused"));
+    reservationFake.completeSupersessionAndCreateDraft;
   const cancelReservation = input.cancelReservation ?? mock(() => Effect.void);
   const createReservation =
     input.createReservation ??
     mock(() => Effect.succeed({ id: "new-dotypos-reservation-id" } as never));
   const getReservationStatus =
     input.getReservationStatus ?? mock(() => Effect.succeed("NEW" as const));
-  const markCancellationFailed =
-    input.markCancellationFailed ?? mock(() => Effect.void);
+  const markCancellationFailed = reservationFake.markCancellationFailed;
   const affirmAdvertisement =
     input.affirmAdvertisement ??
     mock(() => Effect.succeed(makeAdvertisementAffirmation()));
@@ -359,34 +501,8 @@ const runReusableReservationScenario = async (input: {
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
     Layer.succeed(WorkspaceReservationRepository, {
-      findByAttemptKey: input.findByAttemptKey,
-      findCurrentByCheckoutSessionKey:
-        input.findCurrentByCheckoutSessionKey ??
-        mock(() => Effect.succeed(null)),
-      acquireDraft: (draft) =>
-        createDraft(draft).pipe(Effect.map(toCreatedDraft)),
-      claimHoldCreation,
-      beginProviderHoldCreation: mock(() => Effect.succeed(true)),
-      recordProviderHoldCandidate: mock(() => Effect.void),
-      findById,
-      releaseHoldCreation: mock(() => Effect.void),
+      ...reservationFake.repository,
       updateReservationDetails,
-      attachHold: mock((attached) =>
-        Effect.sync(() => {
-          attachedReservation = makeReusableReservation({
-            dotyposReservationId: attached.dotyposReservationId,
-            reservationCreatedAt: attached.reservationCreatedAt,
-            failureCode: `hold_creation_attached:${attached.epoch}`,
-          });
-        })
-      ),
-      markAttachFailedCancellationRequired: mock(() => Effect.void),
-      claimSupersessionCancellation,
-      renewCancellationClaim: mock(() => Effect.succeed(true)),
-      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
-      completeSupersessionAndCreateDraft,
-      markCancelled: mock(() => Effect.void),
-      markCancellationFailed,
     } as unknown as WorkspaceReservationRepositoryType),
     Layer.succeed(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
@@ -504,16 +620,11 @@ const runMeetingRoomNewHoldScenario = async () => {
   const createReservation = mock(() =>
     Effect.succeed({ id: "dotypos-meeting-room-id" } as never)
   );
-  let attachedReservation: WorkspaceReservation | null = null;
-  const attachHold = mock((attached) =>
-    Effect.sync(() => {
-      attachedReservation = makeReusableReservation({
-        dotyposReservationId: attached.dotyposReservationId,
-        reservationCreatedAt: attached.reservationCreatedAt,
-        failureCode: `hold_creation_attached:${attached.epoch}`,
-      });
-    })
-  );
+  const reservationFake = createStatefulReservationFake({
+    findByAttemptKey: mock(() => Effect.succeed(null)),
+    createDraft,
+  });
+  const attachHold = reservationFake.attachHold;
   const enqueueCleanup = mock(() => Effect.void);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
     product: { kind: "meeting-room", durationMinutes: 240 },
@@ -554,24 +665,8 @@ const runMeetingRoomNewHoldScenario = async () => {
       ensureAvailable,
     } satisfies IWorkspaceAvailabilityService),
     Layer.succeed(WorkspaceReservationRepository, {
-      findByAttemptKey: mock(() => Effect.succeed(null)),
-      findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
-      acquireDraft: (draft) =>
-        createDraft(draft).pipe(Effect.map(toCreatedDraft)),
-      claimHoldCreation: mock(() => Effect.succeed(true)),
-      beginProviderHoldCreation: mock(() => Effect.succeed(true)),
-      recordProviderHoldCandidate: mock(() => Effect.void),
-      attachHold,
-      findById: mock(() => Effect.succeed(attachedReservation)),
-      releaseHoldCreation: mock(() => Effect.void),
+      ...reservationFake.repository,
       updateReservationDetails: mock(() => Effect.die("unused")),
-      markAttachFailedCancellationRequired: mock(() => Effect.void),
-      claimSupersessionCancellation: mock(() => Effect.succeed(null)),
-      renewCancellationClaim: mock(() => Effect.succeed(true)),
-      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
-      completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
-      markCancelled: mock(() => Effect.void),
-      markCancellationFailed: mock(() => Effect.void),
     } as unknown as WorkspaceReservationRepositoryType),
     Layer.succeed(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
@@ -675,12 +770,12 @@ describe("prepareWorkspacePayState", () => {
       endsAt,
     });
     expect(scenario.createReservation).toHaveBeenCalledWith(
-      expect.objectContaining({
+      expect.objectContaining({ request: expect.objectContaining({
         startDate: new Date(startsAt),
         endDate: new Date(endsAt),
         tableId: "meeting-room-table-id",
         status: "NEW",
-      })
+      }) })
     );
     expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -702,7 +797,7 @@ describe("prepareWorkspacePayState", () => {
         dotyposReservationId: "dotypos-meeting-room-id",
       })
     );
-    expect(scenario.enqueueCleanup).toHaveBeenCalledTimes(1);
+    expect(scenario.enqueueCleanup).toHaveBeenCalledTimes(2);
 
     expect(scenario.result.status).toBe("ready");
     if (scenario.result.status !== "ready") {
@@ -792,17 +887,19 @@ describe("prepareWorkspacePayState", () => {
         reservationHoldExpiresAt: input.reservationHoldExpiresAt,
       } as never)
     );
-    const claimHoldCreation = mock(() => Effect.succeed(true));
-    let attachedReservation: WorkspaceReservation | null = null;
+    const reservationFake = createStatefulReservationFake({
+      findByAttemptKey: mock(() => Effect.succeed(null)),
+      createDraft,
+    });
+    const claimHoldCreation = reservationFake.claimHoldCreation;
     const attachHold = mock((attached) =>
-      Effect.sync(() => {
-        eventOrder.push("attach");
-        attachedReservation = makeReusableReservation({
-          dotyposReservationId: attached.dotyposReservationId,
-          reservationCreatedAt: attached.reservationCreatedAt,
-          failureCode: `hold_creation_attached:${attached.epoch}`,
-        });
-      })
+      reservationFake.attachHold(attached).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            eventOrder.push("attach");
+          })
+        )
+      )
     );
     const enqueueCleanup = mock(() =>
       Effect.sync(() => {
@@ -853,24 +950,9 @@ describe("prepareWorkspacePayState", () => {
         ensureAvailable,
       } satisfies IWorkspaceAvailabilityService),
       Layer.succeed(WorkspaceReservationRepository, {
-        findByAttemptKey: mock(() => Effect.succeed(null)),
-        findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
-        acquireDraft: (draft) =>
-          createDraft(draft).pipe(Effect.map(toCreatedDraft)),
-        claimHoldCreation,
-        beginProviderHoldCreation: mock(() => Effect.succeed(true)),
-        recordProviderHoldCandidate: mock(() => Effect.void),
+        ...reservationFake.repository,
         attachHold,
-        findById: mock(() => Effect.succeed(attachedReservation)),
-        releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
-        markAttachFailedCancellationRequired: mock(() => Effect.void),
-        claimSupersessionCancellation: mock(() => Effect.succeed(null)),
-        renewCancellationClaim: mock(() => Effect.succeed(true)),
-        reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
-        completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
-        markCancelled: mock(() => Effect.void),
-        markCancellationFailed: mock(() => Effect.void),
       } as unknown as WorkspaceReservationRepositoryType),
       Layer.succeed(WorkspaceCheckoutAccessCodeService, {
         generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
@@ -926,17 +1008,21 @@ describe("prepareWorkspacePayState", () => {
         dotyposReservationId: "dotypos-reservation-id",
       })
     );
-    expect(enqueueCleanup).toHaveBeenCalledWith({
-      orderId: "reservation-id",
-      reservationHoldExpiresAt: expect.any(Temporal.Instant),
-    });
+    expect(enqueueCleanup).toHaveBeenCalledTimes(2);
+    expect(enqueueCleanup.mock.calls).toContainEqual([
+      expect.objectContaining({
+        orderId: "reservation-id",
+        reservationHoldExpiresAt: expect.any(Temporal.Instant),
+      }),
+    ]);
     expect(eventOrder).toEqual([
       "bot-verification",
       "advertisement",
       "customer",
-      "quote",
       "availability",
+      "quote",
       "attach",
+      "enqueue",
       "enqueue",
     ]);
     expect(verifyHuman).toHaveBeenCalledWith({
@@ -966,7 +1052,7 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("reuses an immediate retry without scheduling cleanup", async () => {
+  test("reuses an immediate retry and refreshes its durable cleanup schedule", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(existingReservation)),
@@ -974,19 +1060,15 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result.status).toBe("ready");
     expect(result.ensureAvailable).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.enqueueCleanup).toHaveBeenCalledWith({
+      orderId: existingReservation.id,
+      reason: "hold_expired",
+      reservationHoldExpiresAt: existingReservation.reservationHoldExpiresAt,
+    });
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
     });
-    expect(result.updateReservationDetails).toHaveBeenCalledWith({
-      id: existingReservation.id,
-      reservationDetails: {
-        kind: "cowork",
-        entryTier: "basic",
-        coffee: false,
-      },
-      locale: "en-US",
-    });
+    expect(result.updateReservationDetails).not.toHaveBeenCalled();
     expect(result.findOrCreateCustomer).toHaveBeenCalledTimes(1);
     expect(result.quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1009,6 +1091,8 @@ describe("prepareWorkspacePayState", () => {
     }
     const existingReservation = makeReusableReservation({
       checkoutAttemptKey: legacyAttemptKey,
+      checkoutAttemptIdentityKey: legacyAttemptKey,
+      checkoutAttemptCompatibilityKey: legacyAttemptKey,
     });
     const findByAttemptKey = mock((candidate: string) =>
       Effect.succeed(
@@ -1019,8 +1103,12 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result.status).toBe("ready");
     expect(findByAttemptKey).toHaveBeenCalledTimes(2);
-    expect(result.createDraft).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.createDraft).toHaveBeenCalledTimes(1);
+    expect(result.enqueueCleanup).toHaveBeenCalledWith({
+      orderId: existingReservation.id,
+      reason: "hold_expired",
+      reservationHoldExpiresAt: existingReservation.reservationHoldExpiresAt,
+    });
   });
 
   test("reuses a held reservation returned by a conflicting draft insert", async () => {
@@ -1042,8 +1130,12 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result.status).toBe("ready");
     expect(result.claimHoldCreation).not.toHaveBeenCalled();
-    expect(result.findById).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.findById).toHaveBeenCalledWith(claimConflictReservation.id);
+    expect(result.enqueueCleanup).toHaveBeenCalledWith({
+      orderId: claimConflictReservation.id,
+      reason: "hold_expired",
+      reservationHoldExpiresAt: claimConflictReservation.reservationHoldExpiresAt,
+    });
     expect(result.quoteForCustomer).toHaveBeenLastCalledWith(
       expect.objectContaining({
         dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
@@ -1068,9 +1160,14 @@ describe("prepareWorkspacePayState", () => {
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(cancellingReservation)
       ),
-      findById: mock(() =>
+      findById: mock((id: string) =>
         Effect.succeed(
-          makeReusableReservation({ reservationState: "cancelled" })
+          id === cancellingReservation.id
+            ? makeReusableReservation({
+                id,
+                reservationState: "cancelled",
+              })
+            : replacementReservation
         )
       ),
     });
@@ -1130,7 +1227,7 @@ describe("prepareWorkspacePayState", () => {
       "previous-dotypos-reservation-id"
     );
     expect(result.claimSupersessionCancellation).toHaveBeenCalledWith(
-      "previous-reservation-id"
+      expect.objectContaining({ id: "previous-reservation-id", ownerId: expect.any(String) })
     );
     expect(result.completeSupersessionAndCreateDraft).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1195,18 +1292,14 @@ describe("prepareWorkspacePayState", () => {
       "@/features/checkout/backend/checkout/checkout-session-key.server"
     );
     const beforeDeadline = new Date("2098-12-31T23:59:59.999Z");
-    const atDeadline = new Date("2099-01-01T00:00:00.000Z");
-    const times = [beforeDeadline, atDeadline];
-    let clockReads = 0;
     let currentLookupCount = 0;
     const pendingReservation = makeReusableReservation({
       paymentState: "pending",
       activePaymentAttemptId: "payment-attempt-id",
     });
     const findByAttemptKey = mock(() => Effect.succeed(null));
+    setSystemTime(beforeDeadline);
     const result = await runReusableReservationScenario({
-      keyDerivationClock: () =>
-        times[Math.min(clockReads++, times.length - 1)] as Date,
       findByAttemptKey,
       findCurrentByCheckoutSessionKey: mock(() =>
         Effect.succeed(currentLookupCount++ === 0 ? pendingReservation : null)
@@ -1225,6 +1318,7 @@ describe("prepareWorkspacePayState", () => {
         )
       ),
     });
+    setSystemTime();
     const rotatedCandidates = deriveCheckoutAttemptKeyCandidates(
       {
         checkoutSessionId: "attempt-id",
@@ -1235,11 +1329,10 @@ describe("prepareWorkspacePayState", () => {
     );
 
     expect(result.result.status).toBe("ready");
-    expect(clockReads).toBe(1);
     expect(rotatedCandidates).toHaveLength(2);
-    for (const candidate of rotatedCandidates) {
-      expect(findByAttemptKey).toHaveBeenCalledWith(candidate);
-    }
+    const attemptLookups = findByAttemptKey.mock.calls.map(([key]) => key);
+    expect(attemptLookups).toHaveLength(3);
+    expect(attemptLookups[1]).toBe(attemptLookups[2]);
   });
 
   test("keeps the rotated checkout session when superseding its current reservation", async () => {
@@ -1344,10 +1437,15 @@ describe("prepareWorkspacePayState", () => {
     });
 
     expect(result.result.status).toBe("ready");
-    expect(markCancellationFailed).toHaveBeenCalledWith({
-      id: previousReservation.id,
-      failureCode: "checkout_supersession_cancel_failed",
-    });
+    expect(markCancellationFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: previousReservation.id,
+        ownerId: expect.any(String),
+        disposition: "retryable",
+        recoveryReason: "supersession_recovery",
+        failureCode: "checkout_supersession_cancel_failed",
+      })
+    );
     if (result.result.status !== "ready") throw new Error("Expected ready");
     const token = new URL(
       result.result.redirectUrl,
@@ -1387,10 +1485,15 @@ describe("prepareWorkspacePayState", () => {
 
     expect(result.result.status).toBe("ready");
     expect(result.cancelReservation).not.toHaveBeenCalled();
-    expect(result.markCancellationFailed).toHaveBeenCalledWith({
-      id: previousReservation.id,
-      failureCode: "checkout_supersession_cancel_failed",
-    });
+    expect(result.markCancellationFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: previousReservation.id,
+        ownerId: expect.any(String),
+        disposition: "manual_review",
+        recoveryReason: "supersession_recovery",
+        failureCode: "checkout_supersession_cancel_failed",
+      })
+    );
   });
 
   test("rejects a tampered advertised-price snapshot before downstream work", async () => {
