@@ -66,7 +66,7 @@ export const runWorkspaceE2ECases = ({
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
-      yield* Effect.forEach(cases, (testCase) =>
+      yield* Effect.forEach(cases.entries(), ([caseIndex, testCase]) =>
         telemetry
           .traceCase({
             caseId: testCase.id,
@@ -76,7 +76,7 @@ export const runWorkspaceE2ECases = ({
                   artifactDir: resolve(artifactRoot, testCase.id),
                   browserHarStarted: false,
                   browserHarStopped: false,
-                  session: `${sessionPrefix}-${testCase.id}`,
+                  session: `${sessionPrefix}-${caseIndex}`,
                   testCase,
                 })
               ),
