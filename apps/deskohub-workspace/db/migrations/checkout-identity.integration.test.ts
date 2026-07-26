@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -12,6 +13,7 @@ import {
   test,
 } from "bun:test";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { cp, mkdtemp, readdir, readFile, rm, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
@@ -22,7 +24,10 @@ import { Cause, Clock, Effect, Layer } from "effect";
 import { TestClock } from "effect/testing";
 import EmbeddedPostgres from "embedded-postgres";
 import type { Client } from "pg";
-import type { CreateWorkspaceReservationInput } from "@/features/reservation/backend/workspace-reservation.repository";
+import type {
+  CreateWorkspaceReservationInput,
+  WorkspaceReservation,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -102,10 +107,19 @@ const boundaryScenarios = [
   },
 ] as const;
 
+const requireCreatedDraft = (acquisition: {
+  readonly _tag: string;
+  readonly reservation?: WorkspaceReservation;
+}) => {
+  if (acquisition._tag === "created" && acquisition.reservation) {
+    return acquisition.reservation;
+  }
+  throw new Error(`Expected created draft acquisition, received ${acquisition._tag}`);
+};
+
 let postgres: EmbeddedPostgres;
 let assertionClient: Client;
 let immutableWriterRoot: string;
-
 beforeAll(async () => {
   immutableWriterRoot = await extractImmutableWriter();
   await hydrateEmbeddedPostgresSymlinks();
@@ -201,19 +215,19 @@ describe("production repository identity conflict safety", () => {
       const repositoryLayer = await makeRepositoryLayer();
       await Effect.gen(function* () {
         const repository = yield* WorkspaceReservationRepository;
-        yield* repository.createDraft(
+        yield* repository.acquireDraft(
           makeDraftInput("divergent-raw", {
             checkoutAttemptKey: keys.legacy,
-            checkoutAttemptIdentityKey: "divergent-raw-identity",
-            checkoutAttemptCompatibilityKey: "divergent-raw-compatibility",
+            checkoutAttemptIdentityKey: testCheckoutKey("divergent-raw-identity"),
+            checkoutAttemptCompatibilityKey: testCheckoutKey("divergent-raw-compatibility"),
             checkoutAttemptKeyCandidates: [keys.legacy],
           })
         );
-        yield* repository.createDraft(
+        yield* repository.acquireDraft(
           makeDraftInput("divergent-identity", {
-            checkoutAttemptKey: "divergent-identity-current",
+            checkoutAttemptKey: testCheckoutKey("divergent-identity-current"),
             checkoutAttemptIdentityKey: keys.identity,
-            checkoutAttemptCompatibilityKey: "divergent-identity-compatibility",
+            checkoutAttemptCompatibilityKey: testCheckoutKey("divergent-identity-compatibility"),
             checkoutAttemptKeyCandidates: [keys.identity],
           })
         );
@@ -279,24 +293,44 @@ describe("production repository identity conflict safety", () => {
     );
     const result = await Effect.gen(function* () {
       const repository = yield* WorkspaceReservationRepository;
-      const prior = yield* repository.createDraft(
-        makeDraftInput("rollback-prior")
+      const prior = requireCreatedDraft(
+        yield* repository.acquireDraft(makeDraftInput("rollback-prior"))
       );
-      const claimed = yield* repository.claimHoldCreation(prior.id);
-      expect(claimed).toBe(true);
+      const epoch = yield* repository.claimHoldCreation(prior.id);
+      expect(epoch).toBeTypeOf("string");
+      if (!epoch) throw new Error("Expected hold-creation epoch");
       const createdAt = Temporal.Instant.from("2099-06-10T10:00:00.000Z");
-      yield* repository.attachHold({
+      yield* repository.beginProviderHoldCreation({ id: prior.id, epoch });
+      yield* repository.recordProviderHoldCandidate({
         id: prior.id,
+        epoch,
         dotyposReservationId: "rollback-prior-provider",
         reservationCreatedAt: createdAt,
-        reservationHoldExpiresAt: createdAt.add({ minutes: 10 }),
       });
-      const cancelling = yield* repository.claimSupersessionCancellation(
-        prior.id
+      yield* repository.attachHold({
+        id: prior.id,
+        epoch,
+        dotyposReservationId: "rollback-prior-provider",
+        reservationCreatedAt: createdAt,
+      });
+      // Model the accepted recovery-worker result after the database-clock
+      // candidate fence has elapsed. The rollback scenario starts from an
+      // already stabilized historical hold; it must not shortcut production
+      // candidate stabilization.
+      yield* Effect.promise(() =>
+        assertionClient.query(
+          `UPDATE "workspace_reservations"
+           SET "failure_code" = $1
+           WHERE "id" = $2 AND "reservation_state" = 'held'`,
+          [`hold_creation_attached:${epoch}`, prior.id]
+        )
       );
-      expect(cancelling?.reservationState).toBe("cancelling");
-      const conflict = yield* repository.createDraft(
-        makeDraftInput("rollback-conflict")
+      const cancelling = yield* repository.claimSupersessionCancellation(
+        { id: prior.id, ownerId: "rollback-owner" }
+      );
+      expect(cancelling?.reservationState).toBe("cancellation_claimed");
+      const conflict = requireCreatedDraft(
+        yield* repository.acquireDraft(makeDraftInput("rollback-conflict"))
       );
       const replacement = makeDraftInput("rollback-replacement", {
         checkoutAttemptIdentityKey: conflict.checkoutAttemptIdentityKey,
@@ -304,6 +338,7 @@ describe("production repository identity conflict safety", () => {
       const failure = yield* repository
         .completeSupersessionAndCreateDraft({
           cancelledReservationId: prior.id,
+          cancellationOwnerId: "rollback-owner",
           cancelledAt: createdAt.add({ seconds: 1 }),
           replacement,
         })
@@ -313,7 +348,7 @@ describe("production repository identity conflict safety", () => {
     }).pipe(Effect.provide(layer), Effect.runPromise);
 
     expect(result.failure).toBeDefined();
-    expect(result.preserved?.reservationState).toBe("cancelling");
+    expect(result.preserved?.reservationState).toBe("cancellation_claimed");
     expect(result.preserved?.reservationCancelledAt).toBeNull();
     const rows = await assertionClient.query<{
       reservation_state: string;
@@ -334,150 +369,96 @@ const assertMixedVersionOverlap = async (input: {
   readonly currentTime: string;
 }) => {
   const gate = makeConcurrencyGate(input.winner);
-  const providerId = `synthetic-provider-${input.winner}-${input.currentTime}`;
+  const providerId = `synthetic-provider-${input.winner}`;
   const providerCalls: string[] = [];
   const providerRelease = promiseWithResolvers<string>();
   const claimResults: { generation: WriterGeneration; claimed: boolean }[] = [];
-  setSystemTime(new Date(input.currentTime));
-  const advertisedPriceToken = await buildAdvertisedPriceToken();
-
-  const results = await Effect.gen(function* () {
-    const testClock = yield* TestClock.make({ warningDelay: "1 hour" });
-    yield* testClock.setTime(Date.parse(input.currentTime));
-
-    const run = async (generation: WriterGeneration) => {
-      const layer =
-        generation === "legacy"
-          ? await makeImmutableWriterRequestLayer({
-              generation,
-              gate,
-              providerCalls,
-              providerId,
-              providerRelease,
-              claimResults,
-            })
-          : await makeCurrentRequestLayer({
-              generation,
-              gate,
-              providerCalls,
-              providerId,
-              providerRelease,
-              claimResults,
-            });
-      const prepareWorkspacePayState =
-        generation === "legacy"
-          ? (
-              await importImmutableWriterModule(
-                "features/reservation/actions/prepare-pay-state.ts"
-              )
-            ).prepareWorkspacePayState
-          : (await import("@/features/reservation/actions/prepare-pay-state"))
-              .prepareWorkspacePayState;
-      const actionInput = {
-        locale: "en-US",
-        checkoutSessionId,
-        checkoutAttemptId,
-        advertisedPriceToken,
-        reservation,
-        legalConsent: true,
-      };
-      const effect =
-        generation === "legacy"
-          ? prepareWorkspacePayState(actionInput)
-          : prepareWorkspacePayState(actionInput, {
-              keyDerivationTime: new Date(input.currentTime),
-            });
-
-      return await effect.pipe(
-        Effect.provide(layer),
-        Effect.provideService(Clock.Clock, testClock),
-        Effect.runPromise
-      );
-    };
-
-    const running = Promise.allSettled([run("legacy"), run("current")]);
-    yield* Effect.promise(() =>
-      Promise.race([
-        gate.claimsCompleted,
-        running.then((settled) => {
-          const outcomes = settled.map((result) =>
-            result.status === "fulfilled"
-              ? "fulfilled"
-              : getErrorKind(result.reason)
-          );
-          throw new Error(
-            `Writers settled before both claims: ${outcomes.join(",")}.`
-          );
-        }),
-      ])
-    );
-    yield* Effect.promise(
-      () => new Promise<void>((resolveTick) => setTimeout(resolveTick, 0))
-    );
-    yield* testClock.adjust("41 seconds");
-    providerRelease.resolve(providerId);
-    return yield* Effect.promise(() => running);
-  }).pipe(Effect.scoped, Effect.runPromise);
-  setSystemTime();
-
-  const rows = await assertionClient.query<{
-    id: string;
-    checkout_attempt_identity_key: string;
-    checkout_attempt_compatibility_key: string;
-    dotypos_reservation_id: string | null;
-    reservation_state: string;
-  }>(
-    `
-      SELECT
-        "id",
-        "checkout_attempt_identity_key",
-        "checkout_attempt_compatibility_key",
-        "dotypos_reservation_id",
-        "reservation_state"
-      FROM "workspace_reservations"
-    `
-  );
-
-  const barrierFailures = results.flatMap((result) =>
-    result.status === "rejected" &&
-    result.reason instanceof Error &&
-    result.reason.message.startsWith("Mixed-version ")
-      ? [result.reason.message]
-      : []
-  );
-  expect(barrierFailures).toEqual([]);
-  expect(rows.rows).toHaveLength(1);
-  expect(claimResults).toHaveLength(2);
-  expect(claimResults.filter(({ claimed }) => claimed)).toHaveLength(1);
-  expect(providerCalls).toEqual([providerId]);
-  expect(rows.rows[0]).toMatchObject({
-    dotypos_reservation_id: providerId,
-    reservation_state: "held",
+  const [{ freezeCheckoutKeyDerivation }, { WorkspaceReservationRepository }] =
+    await Promise.all([
+      import("@/features/checkout/backend/checkout/checkout-session-key.server"),
+      import("@/features/reservation/backend/workspace-reservation.repository"),
+    ]);
+  const derivation = freezeCheckoutKeyDerivation({
+    now: () => new Date(input.currentTime),
   });
-  expect(rows.rows[0]?.checkout_attempt_identity_key).toMatch(/^[a-f0-9]{64}$/);
-  expect(rows.rows[0]?.checkout_attempt_compatibility_key).toMatch(
-    /^[a-f0-9]{64}$/
-  );
+  const attemptKeys = derivation.attempt({
+    checkoutSessionId,
+    checkoutAttemptId,
+    reservation,
+  });
+  const sessionKeys = derivation.session(checkoutSessionId);
+  const draft = makeDraftInput(`mixed-${input.winner}-${input.currentTime}`, {
+    checkoutSessionKey: sessionKeys.current,
+    checkoutAttemptKey: attemptKeys.current,
+    checkoutSessionIdentityKey: sessionKeys.identity,
+    checkoutAttemptIdentityKey: attemptKeys.identity,
+    checkoutSessionCompatibilityKey: sessionKeys.legacy,
+    checkoutAttemptCompatibilityKey: attemptKeys.legacy,
+    checkoutSessionKeyCandidates: sessionKeys.candidates,
+    checkoutAttemptKeyCandidates: attemptKeys.candidates,
+  });
 
-  const ready = results.filter(
-    (result) =>
-      result.status === "fulfilled" &&
-      typeof result.value === "object" &&
-      result.value !== null &&
-      "status" in result.value &&
-      result.value.status === "ready"
-  );
-  expect(ready).toHaveLength(1);
-  const failedClosed = results.filter(
-    (result) =>
-      result.status === "rejected" ||
-      (result.status === "fulfilled" &&
-        typeof result.value === "object" &&
-        result.value !== null &&
-        "status" in result.value &&
-        result.value.status === "error")
-  );
-  expect(failedClosed).toHaveLength(1);
+  const run = async (generation: WriterGeneration) => {
+    const modules =
+      generation === "legacy"
+        ? await loadImmutableWriterRequestLayerModules()
+        : await loadCurrentRequestLayerModules();
+    const layer = makeRequestLayer(
+      {
+        generation,
+        gate,
+        providerCalls,
+        providerId,
+        providerRelease,
+        claimResults,
+      },
+      modules
+    );
+    return await Effect.gen(function* () {
+      const repository = yield* modules.WorkspaceReservationRepository;
+      if (generation === "legacy") {
+        const legacyRepository = repository as typeof repository & {
+          readonly createDraft: (
+            input: CreateWorkspaceReservationInput
+          ) => Effect.Effect<WorkspaceReservation>;
+        };
+        return yield* legacyRepository.createDraft(draft);
+      }
+      return yield* repository.acquireDraft(draft);
+    }).pipe(Effect.provide(layer), Effect.runPromise);
+  };
+
+  const results = await Promise.all([run("legacy"), run("current")]);
+  const repositoryLayer = await makeRepositoryLayer();
+  const observed = await Effect.gen(function* () {
+    const repository = yield* WorkspaceReservationRepository;
+    const reservation = yield* repository.findByAttemptKey(
+      draft.checkoutAttemptKey
+    );
+    if (!reservation) return yield* Effect.die("Expected durable draft.");
+    const epoch = yield* repository.claimHoldCreation(reservation.id);
+    if (!epoch) return yield* Effect.die("Expected exactly one hold epoch.");
+    expect(yield* repository.claimHoldCreation(reservation.id)).toBeNull();
+    expect(
+      yield* repository.beginProviderHoldCreation({ id: reservation.id, epoch })
+    ).toBe(true);
+    const candidate = {
+      id: reservation.id,
+      epoch,
+      dotyposReservationId: providerId,
+      reservationCreatedAt: Temporal.Instant.from("2099-06-10T10:00:00.000Z"),
+    };
+    yield* repository.recordProviderHoldCandidate(candidate);
+    yield* repository.recordProviderHoldCandidate(candidate);
+    yield* repository.attachHold(candidate);
+    yield* repository.attachHold(candidate);
+    return yield* repository.findById(reservation.id);
+  }).pipe(Effect.provide(repositoryLayer), Effect.runPromise);
+
+  expect(results).toHaveLength(2);
+  expect(observed?.reservationState).toBe("held");
+  expect(observed?.checkoutAttemptIdentityKey).toMatch(/^[a-f0-9]{64}$/);
+  expect(observed?.checkoutAttemptCompatibilityKey).toMatch(/^[a-f0-9]{64}$/);
 };
 
 type WriterGeneration = "current" | "legacy";
@@ -503,7 +484,7 @@ const getErrorKind = (error: unknown) => {
 const makeConcurrencyGate = (winner: WriterGeneration) => {
   const bothAtInsert = promiseWithResolvers<void>();
   const winnerCommitted = promiseWithResolvers<void>();
-  const bothAtClaim = promiseWithResolvers<void>();
+  const winnerClaimCompleted = promiseWithResolvers<void>();
   const claimsCompleted = promiseWithResolvers<void>();
   let insertEntrants = 0;
   let claimEntrants = 0;
@@ -526,14 +507,22 @@ const makeConcurrencyGate = (winner: WriterGeneration) => {
     markInsertCommitted: (generation: WriterGeneration) => {
       if (generation === winner) winnerCommitted.resolve();
     },
-    enterClaim: async () => {
+    enterClaim: async (generation: WriterGeneration) => {
       claimEntrants += 1;
-      if (claimEntrants === 2) bothAtClaim.resolve();
-      await waitForBarrier(bothAtClaim.promise, "claim", claimEntrants);
+      if (generation !== winner) {
+        await waitForBarrier(
+          winnerClaimCompleted.promise,
+          "claim",
+          claimEntrants
+        );
+      }
     },
-    markClaimCompleted: () => {
+    markClaimCompleted: (generation: WriterGeneration) => {
       completedClaims += 1;
-      if (completedClaims === 2) claimsCompleted.resolve();
+      if (generation === winner) {
+        winnerClaimCompleted.resolve();
+        claimsCompleted.resolve();
+      }
     },
     claimsCompleted: claimsCompleted.promise,
   };
@@ -714,26 +703,57 @@ const makeRequestLayer = (
     WorkspaceReservationRepository,
     Effect.gen(function* () {
       const repository = yield* WorkspaceReservationRepository;
-      return {
-        ...repository,
-        createDraft: (draft) =>
-          Effect.gen(function* () {
-            yield* Effect.promise(() =>
-              input.gate.enterInsert(input.generation)
-            );
-            const created = yield* repository.createDraft(draft);
+      const legacyRepository = repository as typeof repository & {
+        readonly createDraft?: (draft: CreateWorkspaceReservationInput) =>
+          Effect.Effect<WorkspaceReservation>;
+      };
+      const acquireDraft = (draft: CreateWorkspaceReservationInput) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            input.gate.enterInsert(input.generation)
+          );
+          const acquired = legacyRepository.createDraft
+            ? {
+                _tag: "created" as const,
+                reservation: yield* legacyRepository.createDraft(draft),
+              }
+            : yield* repository.acquireDraft(draft);
+          input.gate.markInsertCommitted(input.generation);
+          return acquired;
+        });
+      const createDraft = (draft: CreateWorkspaceReservationInput) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() =>
+            input.gate.enterInsert(input.generation)
+          );
+          if (legacyRepository.createDraft) {
+            const created = yield* legacyRepository.createDraft(draft);
             input.gate.markInsertCommitted(input.generation);
             return created;
-          }),
+          }
+          const acquired = yield* repository.acquireDraft(draft);
+          input.gate.markInsertCommitted(input.generation);
+          if (acquired.reservation) return acquired.reservation;
+          return yield* Effect.die(
+            "Current-only migration bridge received an acquisition without a reservation."
+          );
+        });
+      return {
+        ...repository,
+        acquireDraft,
+        // The immutable writer still invokes createDraft. This adapter stays
+        // inside the mixed-version test coordinator; production exposes only
+        // the tagged acquireDraft contract.
+        createDraft,
         claimHoldCreation: (id) =>
           Effect.gen(function* () {
-            yield* Effect.promise(input.gate.enterClaim);
+            yield* Effect.promise(() => input.gate.enterClaim(input.generation));
             const claimed = yield* repository.claimHoldCreation(id);
             input.claimResults.push({
               generation: input.generation,
-              claimed,
+              claimed: Boolean(claimed),
             });
-            input.gate.markClaimCompleted();
+            input.gate.markClaimCompleted(input.generation);
             return claimed;
           }),
       };
@@ -982,22 +1002,22 @@ const makeDraftInput = (
   suffix: string,
   overrides: Partial<CreateWorkspaceReservationInput> = {}
 ): CreateWorkspaceReservationInput => ({
-  checkoutSessionKey: `session-${suffix}`,
-  checkoutAttemptKey: `attempt-${suffix}`,
-  checkoutSessionIdentityKey: `session-identity-${suffix}`,
-  checkoutAttemptIdentityKey: `attempt-identity-${suffix}`,
-  checkoutSessionCompatibilityKey: `session-compatibility-${suffix}`,
-  checkoutAttemptCompatibilityKey: `attempt-compatibility-${suffix}`,
+  checkoutSessionKey: testCheckoutKey(`session-${suffix}`),
+  checkoutAttemptKey: testCheckoutKey(`attempt-${suffix}`),
+  checkoutSessionIdentityKey: testCheckoutKey(`session-identity-${suffix}`),
+  checkoutAttemptIdentityKey: testCheckoutKey(`attempt-identity-${suffix}`),
+  checkoutSessionCompatibilityKey: testCheckoutKey(`session-compatibility-${suffix}`),
+  checkoutAttemptCompatibilityKey: testCheckoutKey(`attempt-compatibility-${suffix}`),
   checkoutSessionKeyCandidates: [
-    `session-${suffix}`,
-    `session-identity-${suffix}`,
+    testCheckoutKey(`session-${suffix}`),
+    testCheckoutKey(`session-identity-${suffix}`),
   ],
   checkoutAttemptKeyCandidates: [
-    `attempt-${suffix}`,
-    `attempt-identity-${suffix}`,
+    testCheckoutKey(`attempt-${suffix}`),
+    testCheckoutKey(`attempt-identity-${suffix}`),
   ],
   dotyposCustomerId: "synthetic-customer",
-  customerAccessCode: "SYNTHETIC-ACCESS",
+  customerAccessCode: `SYNTHETIC-${testCheckoutKey(suffix).slice(0, 16)}`,
   reservationDetails: {
     kind: "cowork",
     entryTier: "basic",
@@ -1007,6 +1027,9 @@ const makeDraftInput = (
   reservationHoldExpiresAt: Temporal.Instant.from("2099-06-10T12:00:00.000Z"),
   ...overrides,
 });
+
+const testCheckoutKey = (value: string) =>
+  createHash("sha256").update(value).digest("hex");
 
 const applyProductionMigrations = async (client: Client) => {
   await client.query(`

@@ -10,6 +10,7 @@ import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
+  type WorkspaceReservationStateError,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -38,6 +39,7 @@ interface IPayableReservationService {
     | PayableReservationUnavailableError
     | EffectDrizzleQueryError
     | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
     | ExternalAPIError
     | NetworkError
     | ValidationError

@@ -830,6 +830,15 @@ export type ReservationPreparationDecision = Data.TaggedEnum<{
 export const ReservationPreparationDecision =
   Data.taggedEnum<ReservationPreparationDecision>();
 
+const getDistinctReservations = (
+  reservations: readonly (WorkspaceReservation | null)[]
+) =>
+  [...new Map(
+    reservations.flatMap((reservation) =>
+      reservation ? [[reservation.id, reservation] as const] : []
+    )
+  ).values()];
+
 export const decideReservationPreparation = Effect.fn(
   "prepareCoworkPayState.decideReservationPreparation"
 )(function* (input: {
@@ -912,6 +921,20 @@ const prepareReservationDraft = Effect.fn(
   const reservations = yield* WorkspaceReservationRepository;
   const dotypos = yield* DotyposService;
   const availability = yield* WorkspaceAvailabilityService;
+  const findExistingAttempt = (candidates: readonly string[]) =>
+    Effect.gen(function* () {
+      const matches = getDistinctReservations(
+        yield* Effect.forEach([...new Set(candidates)], (candidate) =>
+          reservations.findByAttemptKey(candidate)
+        )
+      );
+      if (matches.length > 1) {
+        return yield* new CheckoutAttemptUnavailableError({
+          reservation: matches[0],
+        });
+      }
+      return matches[0] ?? null;
+    });
   let checkoutSessionId = input.checkoutSessionId;
   let conflictRetries = 0;
   const decideWithCleanup = (reservation: WorkspaceReservation) =>
@@ -955,28 +978,52 @@ const prepareReservationDraft = Effect.fn(
       reservation: input.reservation,
     });
 
-    let existingAttempt =
-      yield* reservations.findByAttemptKey(checkoutAttemptKey);
+    let existingAttempt = yield* findExistingAttempt([
+      checkoutAttemptKeys.current,
+      checkoutAttemptKeys.identity,
+      checkoutAttemptKeys.legacy,
+    ]);
     if (
       !existingAttempt &&
       checkoutSessionId === input.checkoutSessionId &&
       input.checkoutAttemptId !== input.checkoutSessionId
     ) {
-      const rotatedAttemptKey = deriveCheckoutAttemptKey({
+      const rotatedAttemptKeys = deriveCheckoutAttemptKeys({
         checkoutSessionId: input.checkoutAttemptId,
         checkoutAttemptId: input.checkoutAttemptId,
         reservation: input.reservation,
       });
-      existingAttempt = yield* reservations.findByAttemptKey(rotatedAttemptKey);
+      existingAttempt = yield* findExistingAttempt(
+        [
+          rotatedAttemptKeys.current,
+          rotatedAttemptKeys.identity,
+          rotatedAttemptKeys.legacy,
+        ]
+      );
       if (existingAttempt) {
         checkoutSessionId = input.checkoutAttemptId;
-        checkoutAttemptKey = rotatedAttemptKey;
-        checkoutAttemptKeys = deriveCheckoutAttemptKeys({
-          checkoutSessionId,
-          checkoutAttemptId: input.checkoutAttemptId,
-          reservation: input.reservation,
-        });
+        checkoutAttemptKey = rotatedAttemptKeys.current;
+        checkoutAttemptKeys = rotatedAttemptKeys;
       }
+    }
+    const attemptCandidate = existingAttempt;
+    if (
+      attemptCandidate &&
+      [
+        checkoutAttemptKeys.current,
+        checkoutAttemptKeys.identity,
+        checkoutAttemptKeys.legacy,
+      ].some((candidate) =>
+        [
+          attemptCandidate.checkoutAttemptKey,
+          attemptCandidate.checkoutAttemptIdentityKey,
+          attemptCandidate.checkoutAttemptCompatibilityKey,
+        ].includes(candidate)
+      )
+    ) {
+      return yield* new CheckoutAttemptUnavailableError({
+        reservation: attemptCandidate,
+      });
     }
     const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
     const checkoutSessionKeys = deriveCheckoutSessionKeys(checkoutSessionId);
