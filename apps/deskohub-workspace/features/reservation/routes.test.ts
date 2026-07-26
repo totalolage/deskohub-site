@@ -25,9 +25,23 @@ describe("reservation routes", () => {
     expect(getReservationStartPath("en-US", "cowork")).toBe(
       "/en-US/reservation/cowork"
     );
+    expect(
+      getReservationStartPath(
+        "en-US",
+        "cowork",
+        new URLSearchParams({ payState: "signed-state" })
+      )
+    ).toBe("/en-US/reservation/cowork?payState=signed-state");
     expect(getReservationStartPath("cs-CZ", "meeting-room")).toBe(
       "/cs-CZ/meeting-room"
     );
+    expect(
+      getReservationStartPath(
+        "cs-CZ",
+        "meeting-room",
+        new URLSearchParams({ payState: "cowork-only-state" })
+      )
+    ).toBe("/cs-CZ/meeting-room");
   });
 
   test("keeps only the P14 route entries", () => {

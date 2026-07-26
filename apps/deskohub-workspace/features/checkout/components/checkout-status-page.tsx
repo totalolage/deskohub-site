@@ -244,7 +244,7 @@ const getFulfillmentFailedContactMessage = (
 
 const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
   Match.value(status).pipe(
-    Match.when({ kind: undefined }, () => getCoworkReservationPath(locale)),
+    Match.when({ status: "not_found" }, () => getCoworkReservationPath(locale)),
     Match.when({ kind: "cowork" }, ({ kind }) =>
       getReservationStartPath(locale, kind)
     ),

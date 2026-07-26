@@ -152,16 +152,13 @@ async function CheckoutPayContent({
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
   const submittedCodeApplication =
     getSignedPayStateSubmittedCodeApplication(state);
-  const reservationStartPath = getReservationStartPath(
+  const orderPath = getReservationStartPath(
     locale,
-    state.reservation.kind
+    state.reservation.kind,
+    new URLSearchParams({
+      [payStateTokenQueryParam]: payStateToken,
+    })
   );
-  const orderPath =
-    state.reservation.kind === "cowork"
-      ? `${reservationStartPath}?${new URLSearchParams({
-          [payStateTokenQueryParam]: payStateToken,
-        })}`
-      : reservationStartPath;
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout

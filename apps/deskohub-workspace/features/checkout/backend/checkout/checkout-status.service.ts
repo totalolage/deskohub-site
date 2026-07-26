@@ -96,7 +96,6 @@ type CheckoutMeetingRoomStatusViewModel =
   };
 
 type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
-  readonly kind: undefined;
   readonly status: "not_found";
   readonly summary?: undefined;
 };
@@ -348,7 +347,6 @@ const implementation = Effect.gen(function* () {
 
       if (!reservation) {
         const result: CheckoutStatusViewModel = {
-          kind: undefined,
           orderId: input.orderId,
           returnOutcome: input.returnOutcome,
           status: "not_found",
@@ -500,10 +498,20 @@ const implementation = Effect.gen(function* () {
         }
 
         const status = yield* getStatus(input);
-        yield* Effect.annotateLogsScoped({
-          status: status.status,
-          reservationKind: status.kind,
-        });
+        yield* Effect.annotateLogsScoped(
+          Match.value(status).pipe(
+            Match.when({ status: "not_found" }, ({ status }) => ({ status })),
+            Match.when({ kind: "cowork" }, ({ kind, status }) => ({
+              status,
+              reservationKind: kind,
+            })),
+            Match.when({ kind: "meeting-room" }, ({ kind, status }) => ({
+              status,
+              reservationKind: kind,
+            })),
+            Match.exhaustive
+          )
+        );
         yield* Effect.logInfo("Checkout status refresh completed");
 
         return status;

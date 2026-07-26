@@ -14,11 +14,15 @@ export const getMeetingRoomReservationPath = (locale: Locale) =>
 
 export const getReservationStartPath = (
   locale: Locale,
-  kind: ReservationOrderData["kind"]
+  kind: ReservationOrderData["kind"],
+  coworkSearchParams?: URLSearchParams
 ) =>
   Match.value({ kind }).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: () => getCoworkReservationPath(locale),
+      cowork: () => {
+        const path = getCoworkReservationPath(locale);
+        return coworkSearchParams ? `${path}?${coworkSearchParams}` : path;
+      },
       "meeting-room": () => `/${locale}/meeting-room`,
     })
   );

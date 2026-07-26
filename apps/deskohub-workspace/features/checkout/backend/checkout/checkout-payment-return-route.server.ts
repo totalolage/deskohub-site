@@ -1,4 +1,4 @@
-import { Effect, type Layer, Option, Ref, Schema } from "effect";
+import { Effect, type Layer, Option, Ref, Schedule, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
@@ -33,13 +33,10 @@ type CheckoutStatusRefreshInput = Parameters<
 const refreshCheckoutStatusAttempt = Effect.fn("refreshCheckoutStatusAttempt")(
   function* (input: CheckoutStatusRefreshInput, attempts: Ref.Ref<number>) {
     const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
-    if (attempt > 1) {
-      yield* Effect.logWarning("Retrying checkout payment return refresh", {
-        orderId: input.orderId,
-        attempt,
-      });
-      yield* Effect.sleep("1500 millis");
-    }
+    yield* Effect.logWarning("Retrying checkout payment return refresh", {
+      orderId: input.orderId,
+      attempt,
+    }).pipe(Effect.when(Effect.succeed(attempt > 1)));
 
     const checkoutStatus = yield* CheckoutStatusService;
     return yield* checkoutStatus.refreshStatus(input).pipe(
@@ -61,6 +58,7 @@ const refreshCheckoutStatusWithBriefRetry = Effect.fn(
   const attempts = yield* Ref.make(0);
   return yield* refreshCheckoutStatusAttempt(input, attempts).pipe(
     Effect.repeat({
+      schedule: Schedule.spaced("1500 millis"),
       times: 3,
       while: (status) =>
         !status || status.status === "created" || status.status === "pending",
