@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Schedule } from "effect";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig } from "../config";
@@ -49,7 +49,8 @@ export const queryPostgresRetrySafe = <T extends QueryResultRow>(
     pool.query<T>(text, [...values])
   ).pipe(
     Effect.retry({
-      times: 1,
+      schedule: Schedule.spaced("250 millis"),
+      times: 3,
       while: isTransientPostgresConnectionFailure,
     })
   );

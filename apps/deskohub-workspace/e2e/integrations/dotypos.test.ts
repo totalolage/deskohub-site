@@ -1,6 +1,10 @@
 import { expect, test } from "bun:test";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
-import { selectE2EDotyposDiscountGroup } from "./dotypos";
+import { Effect } from "effect";
+import {
+  selectE2EDotyposDiscountGroup,
+  waitForConfirmedDotyposReservation,
+} from "./dotypos";
 
 test("selects an active partial Dotypos discount deterministically", () => {
   const selected = selectE2EDotyposDiscountGroup([
@@ -35,4 +39,24 @@ test("rejects a near-total group that leaves too little for stacked discounts", 
   ).toThrow(
     "the E2E Dotypos cloud must contain an active percentage discount group from 0.01% through 90%"
   );
+});
+
+test("waits for Dotypos to expose the confirmed reservation state", async () => {
+  let reads = 0;
+  const result = await Effect.runPromise(
+    waitForConfirmedDotyposReservation(
+      Effect.sync(() => {
+        reads += 1;
+        return {
+          reservation: {
+            status: reads < 3 ? "NEW" : "CONFIRMED",
+          },
+        };
+      }),
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(result.reservation.status).toBe("CONFIRMED");
+  expect(reads).toBe(3);
 });

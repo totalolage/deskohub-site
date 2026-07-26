@@ -8,7 +8,9 @@ import {
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
+import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
+import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type { CheckoutData, CheckoutRow } from "../types";
 
 export interface E2EDotyposDiscountGroup {
@@ -105,14 +107,20 @@ export const validateDotypos = (
       }
     );
 
-    const result = yield* Effect.gen(function* () {
-      const dotypos = yield* DotyposService;
-      return yield* dotypos.getReservation(dotyposReservationId);
-    }).pipe(
-      Effect.provide(getDotyposLayer(config)),
-      Effect.mapError((cause) =>
-        toWorkspaceE2EError("validate Dotypos reservation", cause)
-      )
+    const result = yield* waitForConfirmedDotyposReservation(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getReservation(dotyposReservationId);
+      }).pipe(
+        Effect.provide(getDotyposLayer(config)),
+        Effect.mapError((cause) =>
+          toWorkspaceE2EError("validate Dotypos reservation", cause)
+        )
+      ),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: config.timeouts.datasource,
+      }
     );
 
     yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
@@ -144,6 +152,34 @@ export const validateDotypos = (
     });
     log("Dotypos reservation state validated");
   });
+
+export const waitForConfirmedDotyposReservation = <
+  A extends {
+    readonly reservation: {
+      readonly status?: string | null;
+    };
+  },
+  E,
+  R,
+>(
+  readReservation: Effect.Effect<A, E, R>,
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<A, E | WorkspaceE2EError, R> =>
+  pollUntil(
+    readReservation.pipe(
+      Effect.map((result) =>
+        result.reservation.status === "CONFIRMED" ? result : undefined
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "confirmed Dotypos reservation",
+      timeoutMs: options.timeoutMs,
+    }
+  );
 
 export const cancelDotyposReservation = (
   config: DatasourceConfig,

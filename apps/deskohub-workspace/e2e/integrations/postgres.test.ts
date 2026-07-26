@@ -25,12 +25,12 @@ test("does not retry a query with an ambiguous outcome", async () => {
   expect(attempts).toBe(1);
 });
 
-test("retries an explicitly retry-safe query after a dropped connection", async () => {
+test("retries an explicitly retry-safe query after consecutive dropped connections", async () => {
   let attempts = 0;
   const pool = {
     query: async () => {
       attempts += 1;
-      if (attempts === 1) {
+      if (attempts < 3) {
         throw new Error("Connection terminated unexpectedly");
       }
       return { rows: [{ value: 1 }] };
@@ -46,5 +46,5 @@ test("retries an explicitly retry-safe query after a dropped connection", async 
   );
 
   expect(result.rows).toEqual([{ value: 1 }]);
-  expect(attempts).toBe(2);
+  expect(attempts).toBe(3);
 });
