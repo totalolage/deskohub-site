@@ -32,7 +32,7 @@ export type CalendarDiscountProviderInput = Pick<
 >;
 
 export interface ICalendarDiscountProvider {
-  readonly quote: (
+  readonly discover: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
   readonly revalidate: (
@@ -93,52 +93,50 @@ export class CalendarDiscountProvider extends Context.Service<
 
       const loadCalendarSales = Effect.fn(
         "CalendarDiscountProvider.loadCalendarSales"
-      )(
-        (key: CalendarSalesCacheKey) =>
-          Effect.succeed(key).pipe(
-            Effect.bind("events", ({ calendarId, reservationDate }) =>
-              calendar
-                .listEvents({
-                  calendarId,
-                  from: reservationDate,
-                  to: reservationDate,
-                })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new DiscountProviderError({
-                        reason: "provider_failure",
-                        message: "Google Calendar sales could not be loaded.",
-                        cause,
-                      })
-                  )
+      )((key: CalendarSalesCacheKey) =>
+        Effect.succeed(key).pipe(
+          Effect.bind("events", ({ calendarId, reservationDate }) =>
+            calendar
+              .listEvents({
+                calendarId,
+                from: reservationDate,
+                to: reservationDate,
+              })
+              .pipe(
+                Effect.mapError(
+                  (cause) =>
+                    new DiscountProviderError({
+                      reason: "provider_failure",
+                      message: "Google Calendar sales could not be loaded.",
+                      cause,
+                    })
                 )
-            ),
-            Effect.bind(
-              "normalization",
-              ({ calendarId, events, reservationDate }) =>
-                normalizeCalendarSales({
-                  calendarId,
-                  events,
-                  reservationDate,
-                })
-            ),
-            Effect.bind("definitionResolution", ({ normalization }) =>
-              loadDiscountDefinitions({ sales: normalization.sales })
-            ),
-            Effect.map(({ definitionResolution, normalization }) => ({
-              sales: normalization.sales.flatMap((sale) => {
-                const definition = definitionResolution.definitions.get(
-                  sale.discountId
-                );
-
-                return definition ? [{ sale, definition }] : [];
-              }),
-              cacheable:
-                !normalization.hasFailures && !definitionResolution.hasFailures,
-            }))
+              )
           ),
-        (effect) => effect
+          Effect.bind(
+            "normalization",
+            ({ calendarId, events, reservationDate }) =>
+              normalizeCalendarSales({
+                calendarId,
+                events,
+                reservationDate,
+              })
+          ),
+          Effect.bind("definitionResolution", ({ normalization }) =>
+            loadDiscountDefinitions({ sales: normalization.sales })
+          ),
+          Effect.map(({ definitionResolution, normalization }) => ({
+            sales: normalization.sales.flatMap((sale) => {
+              const definition = definitionResolution.definitions.get(
+                sale.discountId
+              );
+
+              return definition ? [{ sale, definition }] : [];
+            }),
+            cacheable:
+              !normalization.hasFailures && !definitionResolution.hasFailures,
+          }))
+        )
       );
 
       const salesCache = yield* Cache.makeWith(loadCalendarSales, {
@@ -149,7 +147,7 @@ export class CalendarDiscountProvider extends Context.Service<
             : Duration.zero,
       });
 
-      const quote = Effect.fn("CalendarDiscountProvider.quote")(
+      const discover = Effect.fn("CalendarDiscountProvider.discover")(
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
             Effect.let(
@@ -167,7 +165,7 @@ export class CalendarDiscountProvider extends Context.Service<
             Effect.let("candidates", toEligibleCalendarCandidates),
             Effect.map(({ candidates }) => candidates)
           ),
-        withProviderAnnotations("quote")
+        withProviderAnnotations("discover")
       );
 
       const revalidate = Effect.fn("CalendarDiscountProvider.revalidate")(
@@ -191,7 +189,7 @@ export class CalendarDiscountProvider extends Context.Service<
         withProviderAnnotations("revalidate")
       );
 
-      return { quote, revalidate } satisfies ICalendarDiscountProvider;
+      return { discover, revalidate } satisfies ICalendarDiscountProvider;
     })
   );
 }
@@ -259,7 +257,7 @@ const isSameProduct = (
 ) => getWorkspaceProductKey(left) === getWorkspaceProductKey(right);
 
 const withProviderAnnotations =
-  (operation: "quote" | "revalidate") =>
+  (operation: "discover" | "revalidate") =>
   <A, E>(effect: Effect.Effect<A, E>, input: CalendarDiscountProviderInput) =>
     effect.pipe(
       Effect.annotateLogs({

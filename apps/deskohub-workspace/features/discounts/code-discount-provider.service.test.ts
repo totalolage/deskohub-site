@@ -6,7 +6,7 @@ import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   CodeDiscountProvider,
-  type SubmittedCodeDiscountProviderInput,
+  type CodeDiscountProviderInput,
 } from "./code-discount-provider.service";
 import { canonicalDiscountCodeSchema } from "./contracts";
 import {
@@ -43,7 +43,7 @@ const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
 );
 const product = { kind: "cowork", tier: "basic" } as const;
 
-const input: SubmittedCodeDiscountProviderInput = {
+const input: CodeDiscountProviderInput = {
   submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
   locale: "en-US",
@@ -125,11 +125,11 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
-const resolve = (overrides: Partial<SubmittedCodeDiscountProviderInput> = {}) =>
+const resolve = (overrides: Partial<CodeDiscountProviderInput> = {}) =>
   Effect.gen(function* () {
     yield* TestClock.setTime(now);
     const provider = yield* CodeDiscountProvider;
-    return yield* provider.quote({ ...input, ...overrides });
+    return yield* provider.revalidate({ ...input, ...overrides });
   });
 
 describe("CodeDiscountProvider", () => {
@@ -434,7 +434,7 @@ describe("CodeDiscountProvider", () => {
     });
   });
 
-  test("quote and revalidate both perform fresh reads", async () => {
+  test("revalidation performs fresh reads", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
     const loadDefinition = mock(defaultLoadDefinition);
@@ -443,7 +443,7 @@ describe("CodeDiscountProvider", () => {
       Effect.gen(function* () {
         yield* TestClock.setTime(now);
         const provider = yield* CodeDiscountProvider;
-        yield* provider.quote(input);
+        yield* provider.revalidate(input);
         yield* provider.revalidate(input);
       }),
       { findByCode, loadAvailability, loadDefinition }
