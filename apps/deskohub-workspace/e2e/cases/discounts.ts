@@ -4,6 +4,7 @@ import {
   evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
+  waitForBrowserReactHydration,
   waitForBrowserTextContent,
 } from "../browser";
 import {
@@ -1088,7 +1089,7 @@ const discountCheckoutFlow = (id: string) => ({
   submitReservationScript: getSubmitCoworkReservationScript,
 });
 
-const assertDisplayedDiscounts = ({
+export const assertDisplayedDiscounts = ({
   config,
   discounts,
   run,
@@ -1100,12 +1101,13 @@ const assertDisplayedDiscounts = ({
   readonly session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* focusBrowserElement(
-      run,
-      session,
-      'button[aria-label^="Show discounts applied to"]',
-      { timeoutMs: config.timeouts.browserAction }
-    );
+    const triggerSelector = 'button[aria-label^="Show discounts applied to"]';
+    yield* waitForBrowserReactHydration(run, session, triggerSelector, {
+      timeoutMs: config.timeouts.uiTransition,
+    });
+    yield* focusBrowserElement(run, session, triggerSelector, {
+      timeoutMs: config.timeouts.browserAction,
+    });
     for (const { basisPoints, label } of discounts) {
       yield* waitForBrowserTextContent(run, session, label, {
         timeoutMs: config.timeouts.uiTransition,

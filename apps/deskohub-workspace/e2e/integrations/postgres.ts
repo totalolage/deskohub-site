@@ -38,3 +38,33 @@ export const queryPostgres = <T extends QueryResultRow>(
   text: string,
   values: readonly unknown[] = []
 ) => tryWorkspaceE2EPromise(operation, () => pool.query<T>(text, [...values]));
+
+export const queryPostgresRetrySafe = <T extends QueryResultRow>(
+  pool: Pool,
+  operation: string,
+  text: string,
+  values: readonly unknown[] = []
+) =>
+  tryWorkspaceE2EPromise(operation, () =>
+    pool.query<T>(text, [...values])
+  ).pipe(
+    Effect.retry({
+      times: 1,
+      while: isTransientPostgresConnectionFailure,
+    })
+  );
+
+const transientPostgresConnectionMessages = new Set([
+  "Connection closed unexpectedly",
+  "Connection terminated unexpectedly",
+]);
+
+const isTransientPostgresConnectionFailure = (
+  error: WorkspaceE2EError
+): boolean => {
+  const cause = error.cause;
+  return (
+    cause instanceof Error &&
+    transientPostgresConnectionMessages.has(cause.message)
+  );
+};

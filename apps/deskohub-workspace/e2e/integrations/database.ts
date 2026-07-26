@@ -20,6 +20,7 @@ import type {
 import { makeUrl } from "../urls";
 import {
   queryPostgres as query,
+  queryPostgresRetrySafe,
   withPostgresPool as withPool,
 } from "./postgres";
 
@@ -318,7 +319,7 @@ export const assertNoDiscountPaymentState = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const result = yield* query<{
+      const result = yield* queryPostgresRetrySafe<{
         application_count: number;
         attempt_count: number;
         redemption_count: number;

@@ -4,7 +4,11 @@ import type { WorkspaceProductIdentity } from "@/features/checkout/product-ident
 import type { DatasourceConfig } from "../config";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { log } from "../runtime";
-import { queryPostgres, withPostgresPool } from "./postgres";
+import {
+  queryPostgres,
+  queryPostgresRetrySafe,
+  withPostgresPool,
+} from "./postgres";
 
 export const E2E_CALENDAR_SALE_DISCOUNT_ID =
   "454784dd-380b-43a1-bae7-cc070bf1aec2";
@@ -232,7 +236,7 @@ export const expireDiscountCodeForE2E = (
   codeId: string
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPostgresPool(config, (pool) =>
-    queryPostgres(
+    queryPostgresRetrySafe(
       pool,
       "expire E2E discount code",
       `update discount_codes
@@ -262,7 +266,7 @@ export const setE2ECalendarSaleProfiEligibility = (
       tier: "profi",
     } satisfies WorkspaceProductIdentity);
 
-    return queryPostgres(
+    return queryPostgresRetrySafe(
       pool,
       eligible
         ? "restore E2E Calendar sale Profi eligibility"
