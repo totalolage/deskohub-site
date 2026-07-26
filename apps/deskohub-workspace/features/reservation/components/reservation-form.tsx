@@ -25,11 +25,10 @@ import {
   formatWorkspaceProductCurrencyAmount,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
-  workspaceProductCatalog,
+  workspaceCoworkProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -63,9 +62,9 @@ import {
 } from "@/features/reservation/reservation-checkout-query";
 import { parseReservationInputDate } from "@/features/reservation/reservation-date";
 import {
+  type CoworkWorkspaceAvailabilityQuery,
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
-  type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
 } from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
@@ -118,21 +117,16 @@ type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
-type CoworkAvailabilityQuery = Extract<
-  WorkspaceAvailabilityQuery,
-  { readonly kind: "cowork" }
->;
-
 const reservationFormSchema = Schema.toStandardSchemaV1(
   coworkReservationSchema
 );
 
 const tierOptions: ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
-  value: WorkspaceProductTier;
+  value: WorkspaceCoworkProductTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceProductCatalog.map((product) => ({
+}> = workspaceCoworkProductCatalog.map((product) => ({
   product,
   value: product.tier,
   ...workspaceProductTierMessages[product.tier],
@@ -173,20 +167,22 @@ const getWorkspaceAvailabilityQuery = ({
   date?: string;
   from: string;
   monitorOption?: string;
-  tier: WorkspaceProductTier;
+  tier: WorkspaceCoworkProductTier;
   to: string;
-}): CoworkAvailabilityQuery => {
+}): CoworkWorkspaceAvailabilityQuery => {
   return {
     kind: "cowork",
     from,
     to,
+    entryTier: tier,
     ...(date && { date }),
-    ...(isWorkspaceProductTier(tier) && { entryTier: tier }),
     ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
   };
 };
 
-const getWorkspaceAvailabilityUrl = (query: CoworkAvailabilityQuery) => {
+const getWorkspaceAvailabilityUrl = (
+  query: CoworkWorkspaceAvailabilityQuery
+) => {
   const params = new URLSearchParams({
     from: query.from,
     to: query.to,
@@ -203,7 +199,7 @@ const loadWorkspaceAvailability = async ({
   query,
   signal,
 }: {
-  query: CoworkAvailabilityQuery;
+  query: CoworkWorkspaceAvailabilityQuery;
   signal: AbortSignal;
 }): Promise<WorkspaceAvailability> => {
   const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
