@@ -6,6 +6,7 @@ import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
 import {
+  assertDiscountApplications,
   assertInternalDiscountApplications,
   replayNexiWebhook,
 } from "./database";
@@ -108,6 +109,35 @@ test("accepts automatic discounts stacked before the redeemed zero-total code", 
         subtotal_before_value: 900,
       },
     ])
+  ).not.toThrow();
+});
+
+test("accepts the catalog money exponent in persisted discount applications", () => {
+  expect(() =>
+    assertDiscountApplications(
+      [
+        {
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          applied_amount_currency: "CZK",
+          applied_amount_exponent: 2,
+          applied_amount_value: 3500,
+          countdown_starts_at: null,
+          expires_at: null,
+          label: "Customer discount",
+          redeemed_at: null,
+          redemption_state: null,
+          sequence: 0,
+          subtotal_after_currency: "CZK",
+          subtotal_after_exponent: 2,
+          subtotal_after_value: 31_500,
+          subtotal_before_currency: "CZK",
+          subtotal_before_exponent: 2,
+          subtotal_before_value: 35_000,
+        },
+      ],
+      [{ basisPoints: 1000, label: "Customer discount" }],
+      "CZK"
+    )
   ).not.toThrow();
 });
 

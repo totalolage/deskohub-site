@@ -42,9 +42,11 @@ names. Inspect settings and deployment metadata without printing their values.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
 - Workspace E2E Dotypos URL, credentials, and tenant IDs.
-  The dedicated E2E cloud must contain exactly one active 10% discount group
-  and one active 20% discount group. The runner resolves them through the
-  Dotypos API and fails closed if either percentage is missing or ambiguous.
+  The dedicated E2E cloud must contain at least one active percentage discount
+  from 0.01% through 90%. The upper bound keeps enough payable subtotal for
+  stacked-discount and external-payment cases. The runner selects a usable
+  group deterministically through the Dotypos API and fails closed when none
+  exists.
 - GitHub Actions variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when
   using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
   `workspace-checkout-e2e` environment. The token is the public project ingest
@@ -115,12 +117,12 @@ must receive `pricing_changed`, and the database must contain no payment
 attempt, application, or claim.
 
 Customer fixtures are created through the normal Dotypos customer API. The
-runner discovers the unique active 10% and 20% groups in the E2E cloud, then
+runner discovers a deterministic active partial-percentage group in the E2E
+cloud, derives the expected application from its actual percentage, then
 assigns customers through an ETag-protected customer patch. The browser matrix
-covers customer-only, customer-plus-code,
-Calendar-plus-customer, and all three sources together. A separate customer is
-moved from the 10% group to the 20% group after summary creation; payment must
-return `pricing_changed`.
+covers customer-only, customer-plus-code, Calendar-plus-customer, and all three
+sources together. A separate customer's group is cleared after summary
+creation; payment must return `pricing_changed`.
 
 The stable Calendar definition targets Plus and Profi. Calendar pricing-change
 edge cases use Profi while all Calendar happy paths use Plus. In one serialized

@@ -195,96 +195,18 @@ export const validateDiscountApplications = (
 
       yield* tryWorkspaceE2ESync(
         "assert checkout discount applications",
-        () => {
-          assert(
-            result.rows.length === expected.length,
-            `expected ${expected.length} discount applications`
-          );
-          expected.forEach((expectation, index) => {
-            const row = result.rows[index];
-            assert(row, `discount application ${index} missing`);
-            assert(
-              row.sequence === index,
-              `unexpected discount sequence ${index}`
-            );
-            assert(
-              row.label === expectation.label,
-              `unexpected discount label at sequence ${index}`
-            );
-            assert(
-              row.adjustment.kind === "percentage" &&
-                row.adjustment.basisPoints === expectation.basisPoints,
-              `unexpected discount adjustment at sequence ${index}`
-            );
-            assert(
-              row.applied_amount_value ===
-                Math.round(
-                  (row.subtotal_before_value * expectation.basisPoints) / 10_000
-                ),
-              `unexpected discount benefit at sequence ${index}`
-            );
-            assert(
-              row.subtotal_before_value - row.applied_amount_value ===
-                row.subtotal_after_value,
-              `discount money mismatch at sequence ${index}`
-            );
-            assert(
-              row.applied_amount_value > 0,
-              `discount amount must be positive at sequence ${index}`
-            );
-            assert(
-              row.subtotal_before_currency === config.expectedCurrency &&
-                row.applied_amount_currency === config.expectedCurrency &&
-                row.subtotal_after_currency === config.expectedCurrency,
-              `unexpected discount currency at sequence ${index}`
-            );
-            assert(
-              row.subtotal_before_exponent === 0 &&
-                row.applied_amount_exponent === 0 &&
-                row.subtotal_after_exponent === 0,
-              `unexpected discount exponent at sequence ${index}`
-            );
-            if (index > 0) {
-              assert(
-                row.subtotal_before_value ===
-                  result.rows[index - 1]?.subtotal_after_value,
-                `discount subtotal chain broke at sequence ${index}`
-              );
-            }
-            if (expectation.hasExpiration) {
-              assert(row.expires_at, `discount expiration ${index} missing`);
-              assert(
-                row.countdown_starts_at,
-                `discount countdown start ${index} missing`
-              );
-            } else {
-              assert(
-                row.expires_at === null,
-                `unexpected discount expiration at sequence ${index}`
-              );
-              assert(
-                row.countdown_starts_at === null,
-                `unexpected discount countdown at sequence ${index}`
-              );
-            }
-            assert(
-              row.redemption_state === (expectation.redemptionState ?? null),
-              `unexpected discount redemption state at sequence ${index}`
-            );
-            if (expectation.redemptionState === "redeemed") {
-              assert(
-                row.redeemed_at,
-                `discount redemption timestamp ${index} missing`
-              );
-            }
-          });
-        }
+        () =>
+          assertDiscountApplications(
+            result.rows,
+            expected,
+            config.expectedCurrency
+          )
       );
       log("Discount applications validated");
     })
   );
 
-interface DiscountApplicationRow {
+export interface DiscountApplicationRow {
   readonly adjustment: {
     readonly basisPoints?: number;
     readonly kind?: string;
@@ -305,6 +227,90 @@ interface DiscountApplicationRow {
   readonly subtotal_before_exponent: number;
   readonly subtotal_before_value: number;
 }
+
+export const assertDiscountApplications = (
+  rows: readonly DiscountApplicationRow[],
+  expected: readonly ExpectedDiscountApplication[],
+  expectedCurrency: string
+) => {
+  assert(
+    rows.length === expected.length,
+    `expected ${expected.length} discount applications`
+  );
+  expected.forEach((expectation, index) => {
+    const row = rows[index];
+    assert(row, `discount application ${index} missing`);
+    assert(row.sequence === index, `unexpected discount sequence ${index}`);
+    assert(
+      row.label === expectation.label,
+      `unexpected discount label at sequence ${index}`
+    );
+    assert(
+      row.adjustment.kind === "percentage" &&
+        row.adjustment.basisPoints === expectation.basisPoints,
+      `unexpected discount adjustment at sequence ${index}`
+    );
+    assert(
+      row.applied_amount_value ===
+        Math.round(
+          (row.subtotal_before_value * expectation.basisPoints) / 10_000
+        ),
+      `unexpected discount benefit at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_value - row.applied_amount_value ===
+        row.subtotal_after_value,
+      `discount money mismatch at sequence ${index}`
+    );
+    assert(
+      row.applied_amount_value > 0,
+      `discount amount must be positive at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_currency === expectedCurrency &&
+        row.applied_amount_currency === expectedCurrency &&
+        row.subtotal_after_currency === expectedCurrency,
+      `unexpected discount currency at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_exponent === row.applied_amount_exponent &&
+        row.applied_amount_exponent === row.subtotal_after_exponent,
+      `unexpected discount exponent at sequence ${index}`
+    );
+    if (index > 0) {
+      assert(
+        row.subtotal_before_value === rows[index - 1]?.subtotal_after_value,
+        `discount subtotal chain broke at sequence ${index}`
+      );
+    }
+    if (expectation.hasExpiration) {
+      assert(row.expires_at, `discount expiration ${index} missing`);
+      assert(
+        row.countdown_starts_at,
+        `discount countdown start ${index} missing`
+      );
+    } else {
+      assert(
+        row.expires_at === null,
+        `unexpected discount expiration at sequence ${index}`
+      );
+      assert(
+        row.countdown_starts_at === null,
+        `unexpected discount countdown at sequence ${index}`
+      );
+    }
+    assert(
+      row.redemption_state === (expectation.redemptionState ?? null),
+      `unexpected discount redemption state at sequence ${index}`
+    );
+    if (expectation.redemptionState === "redeemed") {
+      assert(
+        row.redeemed_at,
+        `discount redemption timestamp ${index} missing`
+      );
+    }
+  });
+};
 
 export const assertNoDiscountPaymentState = (
   config: DatasourceConfig,

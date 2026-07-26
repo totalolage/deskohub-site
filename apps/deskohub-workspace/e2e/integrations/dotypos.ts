@@ -1,5 +1,7 @@
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
+import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -9,43 +11,78 @@ import {
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutRow } from "../types";
 
-export const resolveE2EDotyposDiscountGroups = (
+export interface E2EDotyposDiscountGroup {
+  readonly basisPoints: number;
+  readonly id: string;
+}
+
+const maximumE2ECustomerDiscountBasisPoints = 9000;
+
+export const resolveE2EDotyposDiscountGroup = (
   config: DatasourceConfig
-): Effect.Effect<
-  { readonly tenPercent: string; readonly twentyPercent: string },
-  WorkspaceE2EError
-> =>
+): Effect.Effect<E2EDotyposDiscountGroup, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     const groups = yield* dotypos.getDiscountGroups();
-
-    const findUniqueGroup = (percent: number) =>
-      tryWorkspaceE2ESync(`resolve ${percent}% Dotypos discount group`, () => {
-        const matches = groups.filter(
-          (group) =>
-            group.id &&
-            !group.deleted &&
-            Number(group.discountPercent) === percent
-        );
-        assert(
-          matches.length === 1,
-          `the E2E Dotypos cloud must contain exactly one active ${percent}% discount group`
-        );
-        const id = matches[0]?.id;
-        assert(id, `${percent}% Dotypos discount group ID missing`);
-        return id;
-      });
-
-    const tenPercent = yield* findUniqueGroup(10);
-    const twentyPercent = yield* findUniqueGroup(20);
+    const group = yield* tryWorkspaceE2ESync(
+      "resolve Dotypos discount group",
+      () => selectE2EDotyposDiscountGroup(groups)
+    );
     log("Dotypos customer-discount fixtures resolved");
-    return { tenPercent, twentyPercent };
+    return group;
   }).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("resolve Dotypos discount fixtures", cause)
     )
   );
+
+export const selectE2EDotyposDiscountGroup = (
+  groups: readonly DiscountGroup[]
+): E2EDotyposDiscountGroup => {
+  const selected = groups
+    .flatMap((group) => {
+      const id = group.id?.trim();
+      const basisPoints = toPartialDiscountBasisPoints(group.discountPercent);
+
+      return id &&
+        !group.deleted &&
+        basisPoints &&
+        basisPoints <= maximumE2ECustomerDiscountBasisPoints
+        ? [{ basisPoints, id }]
+        : [];
+    })
+    .toSorted(
+      (left, right) =>
+        left.basisPoints - right.basisPoints || left.id.localeCompare(right.id)
+    )[0];
+
+  assert(
+    selected,
+    "the E2E Dotypos cloud must contain an active percentage discount group from 0.01% through 90%"
+  );
+  return selected;
+};
+
+const toPartialDiscountBasisPoints = (
+  discountPercent: DiscountGroup["discountPercent"]
+) => {
+  const normalized = discountPercent?.trim();
+  if (!normalized || !/^\d+(?:\.\d+)?$/.test(normalized)) return undefined;
+
+  const [whole = "", decimal = ""] = normalized.split(".");
+  const significantDecimal = decimal.replace(/0+$/, "");
+  if (significantDecimal.length > 2) return undefined;
+
+  const wholePercentage = Number(whole);
+  const fractionalBasisPoints = Number(significantDecimal.padEnd(2, "0"));
+  const basisPoints = wholePercentage * 100 + fractionalBasisPoints;
+  return Number.isSafeInteger(basisPoints) &&
+    basisPoints >= 1 &&
+    basisPoints < 10_000
+    ? basisPoints
+    : undefined;
+};
 
 export const validateDotypos = (
   config: DatasourceConfig,
@@ -144,10 +181,11 @@ export const prepareDotyposCustomerDiscount = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const customerName = splitCustomerName(data.name);
     const customer = yield* dotypos.findOrCreateCustomer(
       {
+        ...customerName,
         email: data.email,
-        firstName: data.name,
         phone: data.phone,
       },
       { lookupFields: ["email"] }

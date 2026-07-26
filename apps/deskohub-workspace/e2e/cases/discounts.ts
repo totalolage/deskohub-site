@@ -44,7 +44,7 @@ import {
 import {
   changeDotyposCustomerDiscount,
   prepareDotyposCustomerDiscount,
-  resolveE2EDotyposDiscountGroups,
+  resolveE2EDotyposDiscountGroup,
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
@@ -95,8 +95,11 @@ export const makeDiscountE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const discountGroups =
-      yield* resolveE2EDotyposDiscountGroups(datasourceConfig);
+    const customerDiscountGroup =
+      yield* resolveE2EDotyposDiscountGroup(datasourceConfig);
+    const customerDiscountExpectation = makeCustomerDiscountExpectation(
+      customerDiscountGroup.basisPoints
+    );
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
       unavailableCodeScenarios.length + 9,
@@ -137,7 +140,6 @@ export const makeDiscountE2ECases = ({
           datasourceConfig,
           discountCode: discountCodeFixtures.partial.code,
           expectedDiscounts: [codeDiscountExpectation],
-          expectedLabels: [discountLabels.code],
           flowId: "cowork-discount-code",
           run,
           runStep,
@@ -198,7 +200,6 @@ export const makeDiscountE2ECases = ({
           data: calendarCheckoutData,
           datasourceConfig,
           expectedDiscounts: [calendarDiscountExpectation],
-          expectedLabels: [discountLabels.calendar],
           flowId: "cowork-calendar-sale",
           run,
           runStep,
@@ -235,7 +236,6 @@ export const makeDiscountE2ECases = ({
             calendarDiscountExpectation,
             codeDiscountExpectation,
           ],
-          expectedLabels: [discountLabels.calendar, discountLabels.code],
           flowId: "cowork-calendar-sale-and-code",
           run,
           runStep,
@@ -318,7 +318,6 @@ export const makeDiscountE2ECases = ({
           "cowork-customer-discount"
         ),
         expectedDiscounts: [customerDiscountExpectation],
-        expectedLabels: [discountLabels.customer],
         id: "customer-discount",
       },
       {
@@ -332,7 +331,6 @@ export const makeDiscountE2ECases = ({
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
-        expectedLabels: [discountLabels.customer, discountLabels.code],
         id: "customer-discount-and-code",
       },
       {
@@ -346,7 +344,6 @@ export const makeDiscountE2ECases = ({
           calendarDiscountExpectation,
           customerDiscountExpectation,
         ],
-        expectedLabels: [discountLabels.calendar, discountLabels.customer],
         id: "calendar-and-customer-discount",
       },
       {
@@ -362,11 +359,6 @@ export const makeDiscountE2ECases = ({
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
-        expectedLabels: [
-          discountLabels.calendar,
-          discountLabels.customer,
-          discountLabels.code,
-        ],
         id: "all-discounts",
       },
     ] as const;
@@ -381,7 +373,7 @@ export const makeDiscountE2ECases = ({
               execute: prepareDotyposCustomerDiscount(
                 datasourceConfig,
                 scenario.data,
-                discountGroups.tenPercent
+                customerDiscountGroup.id
               ),
               id: "prepare-customer-discount",
               timeoutMs: config.timeouts.datasource,
@@ -393,7 +385,6 @@ export const makeDiscountE2ECases = ({
               discountCode:
                 "discountCode" in scenario ? scenario.discountCode : undefined,
               expectedDiscounts: scenario.expectedDiscounts,
-              expectedLabels: scenario.expectedLabels,
               flowId: `cowork-${scenario.id}`,
               run,
               runStep,
@@ -425,10 +416,10 @@ export const makeDiscountE2ECases = ({
       execute: ({ runStep, session }) =>
         executeCustomerDiscountChangesBeforePayment({
           config,
+          customerDiscount: customerDiscountExpectation,
           data: changingCustomerDiscountData,
           datasourceConfig,
-          discountGroup10Id: discountGroups.tenPercent,
-          discountGroup20Id: discountGroups.twentyPercent,
+          discountGroupId: customerDiscountGroup.id,
           run,
           runStep,
           session,
@@ -597,9 +588,9 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
           getPrepareCoworkAdvertisedPriceScript(data),
           { timeoutMs: config.timeouts.checkoutStart }
         );
-        yield* assertDisplayedDiscountLabels({
+        yield* assertDisplayedDiscounts({
           config,
-          labels: [calendarSaleLabel],
+          discounts: [calendarDiscountExpectation],
           run,
           session,
         });
@@ -672,9 +663,9 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
-    yield* assertDisplayedDiscountLabels({
+    yield* assertDisplayedDiscounts({
       config,
-      labels: [calendarSaleLabel],
+      discounts: [calendarDiscountExpectation],
       run,
       session,
     });
@@ -700,20 +691,20 @@ const executeCalendarSaleDisappearsBeforePayment = ({
 
 const executeCustomerDiscountChangesBeforePayment = ({
   config,
+  customerDiscount,
   data,
   datasourceConfig,
-  discountGroup10Id,
-  discountGroup20Id,
+  discountGroupId,
   run,
   runStep,
   session,
   state,
 }: {
   readonly config: WorkspaceE2EConfig;
+  readonly customerDiscount: ExpectedDiscountApplication;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
-  readonly discountGroup10Id: string;
-  readonly discountGroup20Id: string;
+  readonly discountGroupId: string;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -724,7 +715,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
       execute: prepareDotyposCustomerDiscount(
         datasourceConfig,
         data,
-        discountGroup10Id
+        discountGroupId
       ),
       id: "prepare-changing-customer-discount",
       timeoutMs: config.timeouts.datasource,
@@ -749,9 +740,9 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
-    yield* assertDisplayedDiscountLabels({
+    yield* assertDisplayedDiscounts({
       config,
-      labels: [customerDiscountLabel],
+      discounts: [customerDiscount],
       run,
       session,
     });
@@ -771,9 +762,9 @@ const executeCustomerDiscountChangesBeforePayment = ({
       execute: changeDotyposCustomerDiscount(
         datasourceConfig,
         customerId,
-        discountGroup20Id
+        null
       ),
-      id: "change-customer-discount-before-payment",
+      id: "remove-customer-discount-before-payment",
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
@@ -857,7 +848,6 @@ export const executeDiscountCheckout = ({
   datasourceConfig,
   discountCode,
   expectedDiscounts,
-  expectedLabels,
   flowId,
   run,
   runStep,
@@ -869,7 +859,6 @@ export const executeDiscountCheckout = ({
   readonly datasourceConfig: DatasourceConfig;
   readonly discountCode?: string;
   readonly expectedDiscounts: readonly ExpectedDiscountApplication[];
-  readonly expectedLabels: readonly string[];
   readonly flowId: string;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
@@ -884,10 +873,13 @@ export const executeDiscountCheckout = ({
     flow: discountCheckoutFlow(flowId),
     payPageStep: () => ({
       execute: Effect.gen(function* () {
-        if (expectedLabels.includes(calendarSaleLabel)) {
-          yield* assertDisplayedDiscountLabels({
+        const automaticDiscounts = expectedDiscounts.filter(
+          ({ label }) => label !== codeDiscountLabel
+        );
+        if (automaticDiscounts.length > 0) {
+          yield* assertDisplayedDiscounts({
             config,
-            labels: [calendarSaleLabel],
+            discounts: automaticDiscounts,
             run,
             session,
           });
@@ -901,9 +893,9 @@ export const executeDiscountCheckout = ({
             session,
           });
         }
-        yield* assertDisplayedDiscountLabels({
+        yield* assertDisplayedDiscounts({
           config,
-          labels: expectedLabels,
+          discounts: expectedDiscounts,
           run,
           session,
         });
@@ -1084,30 +1076,26 @@ export const codeDiscountExpectation = {
   redemptionState: "redeemed",
 } as const satisfies ExpectedDiscountApplication;
 
-export const customerDiscountExpectation = {
-  basisPoints: 1000,
+const makeCustomerDiscountExpectation = (
+  basisPoints: number
+): ExpectedDiscountApplication => ({
+  basisPoints,
   label: customerDiscountLabel,
-} as const satisfies ExpectedDiscountApplication;
-
-export const discountLabels = {
-  calendar: calendarSaleLabel,
-  code: codeDiscountLabel,
-  customer: customerDiscountLabel,
-} as const;
+});
 
 const discountCheckoutFlow = (id: string) => ({
   id,
   submitReservationScript: getSubmitCoworkReservationScript,
 });
 
-const assertDisplayedDiscountLabels = ({
+const assertDisplayedDiscounts = ({
   config,
-  labels,
+  discounts,
   run,
   session,
 }: {
   readonly config: WorkspaceE2EConfig;
-  readonly labels: readonly string[];
+  readonly discounts: readonly ExpectedDiscountApplication[];
   readonly run: Runner;
   readonly session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
@@ -1118,11 +1106,14 @@ const assertDisplayedDiscountLabels = ({
       'button[aria-label^="Show discounts applied to"]',
       { timeoutMs: config.timeouts.browserAction }
     );
-    for (const label of labels) {
+    for (const { basisPoints, label } of discounts) {
       yield* waitForBrowserTextContent(run, session, label, {
         timeoutMs: config.timeouts.uiTransition,
       });
-      const adjustment = label === calendarSaleLabel ? "20% off" : "10% off";
+      const adjustment = new Intl.NumberFormat("en-US", {
+        style: "percent",
+        maximumFractionDigits: 2,
+      }).format(basisPoints / 10_000);
       yield* evalBrowserScript(
         `assert ${label} adjustment`,
         run,
