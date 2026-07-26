@@ -54,6 +54,36 @@ describe("checkout pay return route", () => {
     });
   });
 
+  test("briefly retries while provider settlement is not yet visible", async () => {
+    const refreshStatus = mock()
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "created" as const,
+        })
+      )
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "pending" as const,
+        })
+      )
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "fulfilled" as const,
+        })
+      );
+
+    const response = await invoke(refreshStatus);
+
+    expect(response.status).toBe(307);
+    expect(refreshStatus).toHaveBeenCalledTimes(3);
+  });
+
   test("preserves the fail-open redirect when refresh fails", async () => {
     const response = await invoke(() => Effect.fail(new Error("unavailable")));
 
