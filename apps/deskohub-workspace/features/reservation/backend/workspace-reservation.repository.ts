@@ -72,6 +72,10 @@ export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
 export interface CreateWorkspaceReservationInput {
   readonly checkoutSessionKey: string;
   readonly checkoutAttemptKey: string;
+  readonly checkoutSessionIdentityKey: string;
+  readonly checkoutAttemptIdentityKey: string;
+  readonly checkoutSessionCompatibilityKey: string;
+  readonly checkoutAttemptCompatibilityKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
@@ -965,6 +969,12 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             id: postgresUuidV7,
             checkoutSessionKey: input.checkoutSessionKey,
             checkoutAttemptKey: input.checkoutAttemptKey,
+            checkoutSessionIdentityKey: input.checkoutSessionIdentityKey,
+            checkoutAttemptIdentityKey: input.checkoutAttemptIdentityKey,
+            checkoutSessionCompatibilityKey:
+              input.checkoutSessionCompatibilityKey,
+            checkoutAttemptCompatibilityKey:
+              input.checkoutAttemptCompatibilityKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId,
             customerAccessCode: input.customerAccessCode,
@@ -1054,7 +1064,17 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .select()
             .from(workspaceReservations)
             .where(
-              eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey)
+              or(
+                eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey),
+                eq(
+                  workspaceReservations.checkoutAttemptIdentityKey,
+                  checkoutAttemptKey
+                ),
+                eq(
+                  workspaceReservations.checkoutAttemptCompatibilityKey,
+                  checkoutAttemptKey
+                )
+              )
             )
             .limit(1);
           return yield* decodeOptionalWorkspaceReservation(reservation);
@@ -1071,9 +1091,19 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .from(workspaceReservations)
             .where(
               and(
-                eq(
-                  workspaceReservations.checkoutSessionKey,
-                  checkoutSessionKey
+                or(
+                  eq(
+                    workspaceReservations.checkoutSessionKey,
+                    checkoutSessionKey
+                  ),
+                  eq(
+                    workspaceReservations.checkoutSessionIdentityKey,
+                    checkoutSessionKey
+                  ),
+                  eq(
+                    workspaceReservations.checkoutSessionCompatibilityKey,
+                    checkoutSessionKey
+                  )
                 ),
                 sql`${workspaceReservations.reservationState} <> 'cancelled'`
               )
@@ -2583,6 +2613,14 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 id: postgresUuidV7,
                 checkoutSessionKey: input.replacement.checkoutSessionKey,
                 checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+                checkoutSessionIdentityKey:
+                  input.replacement.checkoutSessionIdentityKey,
+                checkoutAttemptIdentityKey:
+                  input.replacement.checkoutAttemptIdentityKey,
+                checkoutSessionCompatibilityKey:
+                  input.replacement.checkoutSessionCompatibilityKey,
+                checkoutAttemptCompatibilityKey:
+                  input.replacement.checkoutAttemptCompatibilityKey,
                 correlationId: postgresUuidV7,
                 dotyposCustomerId,
                 customerAccessCode: input.replacement.customerAccessCode,

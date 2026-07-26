@@ -24,7 +24,9 @@ import {
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
 import {
+  deriveCheckoutAttemptKeys,
   deriveCheckoutAttemptKey,
+  deriveCheckoutSessionKeys,
   deriveCheckoutSessionKey,
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import {
@@ -899,7 +901,12 @@ const prepareReservationDraft = Effect.fn(
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
-    "checkoutSessionKey" | "checkoutAttemptKey"
+    | "checkoutSessionKey"
+    | "checkoutAttemptKey"
+    | "checkoutSessionIdentityKey"
+    | "checkoutAttemptIdentityKey"
+    | "checkoutSessionCompatibilityKey"
+    | "checkoutAttemptCompatibilityKey"
   >;
 }) {
   const reservations = yield* WorkspaceReservationRepository;
@@ -942,6 +949,11 @@ const prepareReservationDraft = Effect.fn(
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
     });
+    let checkoutAttemptKeys = deriveCheckoutAttemptKeys({
+      checkoutSessionId,
+      checkoutAttemptId: input.checkoutAttemptId,
+      reservation: input.reservation,
+    });
 
     let existingAttempt =
       yield* reservations.findByAttemptKey(checkoutAttemptKey);
@@ -959,9 +971,15 @@ const prepareReservationDraft = Effect.fn(
       if (existingAttempt) {
         checkoutSessionId = input.checkoutAttemptId;
         checkoutAttemptKey = rotatedAttemptKey;
+        checkoutAttemptKeys = deriveCheckoutAttemptKeys({
+          checkoutSessionId,
+          checkoutAttemptId: input.checkoutAttemptId,
+          reservation: input.reservation,
+        });
       }
     }
     const checkoutSessionKey = deriveCheckoutSessionKey(checkoutSessionId);
+    const checkoutSessionKeys = deriveCheckoutSessionKeys(checkoutSessionId);
     if (existingAttempt) {
       existingAttempt = yield* resolvePendingReservationTransition({
         reservations,
@@ -1238,6 +1256,10 @@ const prepareReservationDraft = Effect.fn(
               ...input.draft,
               checkoutSessionKey,
               checkoutAttemptKey,
+              checkoutSessionIdentityKey: checkoutSessionKeys.identity,
+              checkoutAttemptIdentityKey: checkoutAttemptKeys.identity,
+              checkoutSessionCompatibilityKey: checkoutSessionKeys.legacy,
+              checkoutAttemptCompatibilityKey: checkoutAttemptKeys.legacy,
             },
           })
         ),
@@ -1263,6 +1285,10 @@ const prepareReservationDraft = Effect.fn(
       ...input.draft,
       checkoutSessionKey,
       checkoutAttemptKey,
+      checkoutSessionIdentityKey: checkoutSessionKeys.identity,
+      checkoutAttemptIdentityKey: checkoutAttemptKeys.identity,
+      checkoutSessionCompatibilityKey: checkoutSessionKeys.legacy,
+      checkoutAttemptCompatibilityKey: checkoutAttemptKeys.legacy,
     });
     const preparationDecision = yield* Match.value(acquisition).pipe(
       Match.tag("created", ({ reservation }) => decideWithCleanup(reservation)),

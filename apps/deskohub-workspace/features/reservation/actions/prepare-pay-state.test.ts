@@ -24,7 +24,10 @@ import {
 } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  ReservationDraftAcquisition,
+  type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 
 mock.module("server-only", () => ({}));
@@ -249,6 +252,17 @@ const makeReusableReservation = (
     ...overrides,
   }) as WorkspaceReservation;
 
+const toCreatedDraft = (reservation: Partial<WorkspaceReservation>) =>
+  ReservationDraftAcquisition.created({
+    reservation: makeReusableReservation({
+      ...reservation,
+      dotyposReservationId: null,
+      fulfillmentState: "not_started",
+      paymentState: "not_started",
+      reservationState: "draft",
+    }),
+  });
+
 const runReusableReservationScenario = async (input: {
   readonly findByAttemptKey: ReturnType<typeof mock>;
   readonly findCurrentByCheckoutSessionKey?: ReturnType<typeof mock>;
@@ -297,7 +311,15 @@ const runReusableReservationScenario = async (input: {
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.succeed(true));
-  const findById = input.findById ?? mock(() => Effect.succeed(null));
+  const findById =
+    input.findById ??
+    mock(() =>
+      Effect.succeed(
+        makeReusableReservation({
+          dotyposReservationId: "new-dotypos-reservation-id",
+        })
+      )
+    );
   const claimSupersessionCancellation =
     input.claimSupersessionCancellation ?? mock(() => Effect.succeed(null));
   const completeSupersessionAndCreateDraft =
@@ -347,14 +369,21 @@ const runReusableReservationScenario = async (input: {
       findCurrentByCheckoutSessionKey:
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
-      createDraft,
+      acquireDraft: (draft) =>
+        createDraft(draft).pipe(
+          Effect.map(toCreatedDraft)
+        ),
       claimHoldCreation,
+      beginProviderHoldCreation: mock(() => Effect.succeed(true)),
+      recordProviderHoldCandidate: mock(() => Effect.void),
       findById,
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails,
       attachHold: mock(() => Effect.void),
       markAttachFailedCancellationRequired: mock(() => Effect.void),
       claimSupersessionCancellation,
+      renewCancellationClaim: mock(() => Effect.succeed(true)),
+      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
       completeSupersessionAndCreateDraft,
       markCancelled: mock(() => Effect.void),
       markCancellationFailed,
@@ -379,7 +408,10 @@ const runReusableReservationScenario = async (input: {
       findOrCreateCustomer,
       getReservationStatus,
       cancelReservation,
-      createReservation,
+      prepareReservationCreation: mock((input) =>
+        Effect.succeed({ request: input } as never)
+      ),
+      createPreparedReservation: createReservation,
     } as unknown as typeof DotyposService.Service)
   );
 
@@ -515,14 +547,27 @@ const runMeetingRoomNewHoldScenario = async () => {
     Layer.succeed(WorkspaceReservationRepository, {
       findByAttemptKey: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
-      createDraft,
+      acquireDraft: (draft) =>
+        createDraft(draft).pipe(
+          Effect.map(toCreatedDraft)
+        ),
       claimHoldCreation: mock(() => Effect.succeed(true)),
+      beginProviderHoldCreation: mock(() => Effect.succeed(true)),
+      recordProviderHoldCandidate: mock(() => Effect.void),
       attachHold,
-      findById: mock(() => Effect.succeed(null)),
+      findById: mock(() =>
+        Effect.succeed(
+          makeReusableReservation({
+            dotyposReservationId: "dotypos-meeting-room-id",
+          })
+        )
+      ),
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails: mock(() => Effect.die("unused")),
       markAttachFailedCancellationRequired: mock(() => Effect.void),
       claimSupersessionCancellation: mock(() => Effect.succeed(null)),
+      renewCancellationClaim: mock(() => Effect.succeed(true)),
+      reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
       completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
       markCancelled: mock(() => Effect.void),
       markCancellationFailed: mock(() => Effect.void),
@@ -540,7 +585,10 @@ const runMeetingRoomNewHoldScenario = async () => {
     } as never),
     Layer.succeed(DotyposService, {
       findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
-      createReservation,
+      prepareReservationCreation: mock((input) =>
+        Effect.succeed({ request: input } as never)
+      ),
+      createPreparedReservation: createReservation,
     } as unknown as typeof DotyposService.Service),
     Layer.succeed(PostHogEventService, {
       capture: mock(() => Effect.void),
@@ -800,14 +848,27 @@ describe("prepareWorkspacePayState", () => {
       Layer.succeed(WorkspaceReservationRepository, {
         findByAttemptKey: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
-        createDraft,
+        acquireDraft: (draft) =>
+          createDraft(draft).pipe(
+            Effect.map(toCreatedDraft)
+          ),
         claimHoldCreation,
+        beginProviderHoldCreation: mock(() => Effect.succeed(true)),
+        recordProviderHoldCandidate: mock(() => Effect.void),
         attachHold,
-        findById: mock(() => Effect.succeed(null)),
+        findById: mock(() =>
+          Effect.succeed(
+            makeReusableReservation({
+              dotyposReservationId: "new-dotypos-reservation-id",
+            })
+          )
+        ),
         releaseHoldCreation: mock(() => Effect.void),
         updateReservationDetails: mock(() => Effect.die("unused")),
         markAttachFailedCancellationRequired: mock(() => Effect.void),
         claimSupersessionCancellation: mock(() => Effect.succeed(null)),
+        renewCancellationClaim: mock(() => Effect.succeed(true)),
+        reclaimPreProviderHoldCreation: mock(() => Effect.succeed(true)),
         completeSupersessionAndCreateDraft: mock(() => Effect.die("unused")),
         markCancelled: mock(() => Effect.void),
         markCancellationFailed: mock(() => Effect.void),
@@ -827,7 +888,10 @@ describe("prepareWorkspacePayState", () => {
       } as never),
       Layer.succeed(DotyposService, {
         findOrCreateCustomer,
-        createReservation,
+        prepareReservationCreation: mock((input) =>
+          Effect.succeed({ request: input } as never)
+        ),
+        createPreparedReservation: createReservation,
       } as unknown as typeof DotyposService.Service),
       Layer.succeed(PostHogEventService, {
         capture: mock(() => Effect.void),

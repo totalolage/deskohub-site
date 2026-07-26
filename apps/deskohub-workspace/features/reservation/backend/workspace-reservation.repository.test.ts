@@ -20,7 +20,7 @@ describe("WorkspaceReservationRepository", () => {
     const source = await readRepository();
     const section = sliceFrom(
       source,
-      "selectExpiredHolds: Effect.fn(",
+      "selectCancellationCandidates: Effect.fn(",
       "selectExpiredHoldDotyposReservationIds: Effect.fn("
     );
 
@@ -47,10 +47,11 @@ describe("WorkspaceReservationRepository", () => {
     const section = sliceFrom(
       source,
       "recordHoldCleanupSkipped: Effect.fn(",
-      "claimPaidFulfillment: Effect.fn("
+      "markPaymentPaid: Effect.fn("
     );
 
-    expect(section).toContain("reservationHoldExpiredAt: input.holdExpiredAt");
+    expect(section).toContain("reservationHoldExpiredAt: sql`coalesce(");
+    expect(section).toContain("clock_timestamp()");
     expect(section).toContain("failureCode: input.failureCode");
     expect(section).toContain(
       'eq(workspaceReservations.reservationState, "held")'
@@ -80,7 +81,7 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).not.toContain('"pending"');
     expect(section).toContain("dotyposReservationId} is not null");
     expect(section).toContain(
-      "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
+      "workspaceReservations.reservationHoldExpiresAt} <= clock_timestamp()"
     );
   });
 });
