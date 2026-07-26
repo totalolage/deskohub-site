@@ -3,7 +3,6 @@ import "@/shared/testing/workspace-test-env";
 
 import {
   afterAll,
-  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -20,8 +19,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { Cause, Clock, Effect, Layer } from "effect";
-import { TestClock } from "effect/testing";
+import { Effect, Layer } from "effect";
 import EmbeddedPostgres from "embedded-postgres";
 import type { Client } from "pg";
 import type {
@@ -114,7 +112,9 @@ const requireCreatedDraft = (acquisition: {
   if (acquisition._tag === "created" && acquisition.reservation) {
     return acquisition.reservation;
   }
-  throw new Error(`Expected created draft acquisition, received ${acquisition._tag}`);
+  throw new Error(
+    `Expected created draft acquisition, received ${acquisition._tag}`
+  );
 };
 
 let postgres: EmbeddedPostgres;
@@ -218,8 +218,12 @@ describe("production repository identity conflict safety", () => {
         yield* repository.acquireDraft(
           makeDraftInput("divergent-raw", {
             checkoutAttemptKey: keys.legacy,
-            checkoutAttemptIdentityKey: testCheckoutKey("divergent-raw-identity"),
-            checkoutAttemptCompatibilityKey: testCheckoutKey("divergent-raw-compatibility"),
+            checkoutAttemptIdentityKey: testCheckoutKey(
+              "divergent-raw-identity"
+            ),
+            checkoutAttemptCompatibilityKey: testCheckoutKey(
+              "divergent-raw-compatibility"
+            ),
             checkoutAttemptKeyCandidates: [keys.legacy],
           })
         );
@@ -227,7 +231,9 @@ describe("production repository identity conflict safety", () => {
           makeDraftInput("divergent-identity", {
             checkoutAttemptKey: testCheckoutKey("divergent-identity-current"),
             checkoutAttemptIdentityKey: keys.identity,
-            checkoutAttemptCompatibilityKey: testCheckoutKey("divergent-identity-compatibility"),
+            checkoutAttemptCompatibilityKey: testCheckoutKey(
+              "divergent-identity-compatibility"
+            ),
             checkoutAttemptKeyCandidates: [keys.identity],
           })
         );
@@ -325,9 +331,10 @@ describe("production repository identity conflict safety", () => {
           [`hold_creation_attached:${epoch}`, prior.id]
         )
       );
-      const cancelling = yield* repository.claimSupersessionCancellation(
-        { id: prior.id, ownerId: "rollback-owner" }
-      );
+      const cancelling = yield* repository.claimSupersessionCancellation({
+        id: prior.id,
+        ownerId: "rollback-owner",
+      });
       expect(cancelling?.reservationState).toBe("cancellation_claimed");
       const conflict = requireCreatedDraft(
         yield* repository.acquireDraft(makeDraftInput("rollback-conflict"))
@@ -375,7 +382,9 @@ const assertMixedVersionOverlap = async (input: {
   const claimResults: { generation: WriterGeneration; claimed: boolean }[] = [];
   const [{ freezeCheckoutKeyDerivation }, { WorkspaceReservationRepository }] =
     await Promise.all([
-      import("@/features/checkout/backend/checkout/checkout-session-key.server"),
+      import(
+        "@/features/checkout/backend/checkout/checkout-session-key.server"
+      ),
       import("@/features/reservation/backend/workspace-reservation.repository"),
     ]);
   const derivation = freezeCheckoutKeyDerivation({
@@ -463,24 +472,6 @@ const assertMixedVersionOverlap = async (input: {
 
 type WriterGeneration = "current" | "legacy";
 
-const getErrorKind = (error: unknown) => {
-  if (!error || typeof error !== "object") return typeof error;
-  if ("_tag" in error && typeof error._tag === "string") return error._tag;
-  if (error instanceof Error) return error.name;
-  if ("cause" in error && Cause.isCause(error.cause)) {
-    return `cause:${error.cause.reasons
-      .map((reason) =>
-        Cause.isFailReason(reason)
-          ? `fail:${getErrorKind(reason.error)}`
-          : Cause.isDieReason(reason)
-            ? `die:${getErrorKind(reason.defect)}`
-            : "interrupt"
-      )
-      .join("+")}`;
-  }
-  return error.constructor?.name ?? "object";
-};
-
 const makeConcurrencyGate = (winner: WriterGeneration) => {
   const bothAtInsert = promiseWithResolvers<void>();
   const winnerCommitted = promiseWithResolvers<void>();
@@ -488,7 +479,6 @@ const makeConcurrencyGate = (winner: WriterGeneration) => {
   const claimsCompleted = promiseWithResolvers<void>();
   let insertEntrants = 0;
   let claimEntrants = 0;
-  let completedClaims = 0;
 
   return {
     winner,
@@ -518,7 +508,6 @@ const makeConcurrencyGate = (winner: WriterGeneration) => {
       }
     },
     markClaimCompleted: (generation: WriterGeneration) => {
-      completedClaims += 1;
       if (generation === winner) {
         winnerClaimCompleted.resolve();
         claimsCompleted.resolve();
@@ -669,12 +658,6 @@ const loadImmutableWriterRequestLayerModules =
     } as RequestLayerModules;
   };
 
-const makeCurrentRequestLayer = async (input: RequestLayerInput) =>
-  makeRequestLayer(input, await loadCurrentRequestLayerModules());
-
-const makeImmutableWriterRequestLayer = async (input: RequestLayerInput) =>
-  makeRequestLayer(input, await loadImmutableWriterRequestLayerModules());
-
 const makeRequestLayer = (
   input: RequestLayerInput,
   modules: RequestLayerModules
@@ -704,14 +687,13 @@ const makeRequestLayer = (
     Effect.gen(function* () {
       const repository = yield* WorkspaceReservationRepository;
       const legacyRepository = repository as typeof repository & {
-        readonly createDraft?: (draft: CreateWorkspaceReservationInput) =>
-          Effect.Effect<WorkspaceReservation>;
+        readonly createDraft?: (
+          draft: CreateWorkspaceReservationInput
+        ) => Effect.Effect<WorkspaceReservation>;
       };
       const acquireDraft = (draft: CreateWorkspaceReservationInput) =>
         Effect.gen(function* () {
-          yield* Effect.promise(() =>
-            input.gate.enterInsert(input.generation)
-          );
+          yield* Effect.promise(() => input.gate.enterInsert(input.generation));
           const acquired = legacyRepository.createDraft
             ? {
                 _tag: "created" as const,
@@ -723,9 +705,7 @@ const makeRequestLayer = (
         });
       const createDraft = (draft: CreateWorkspaceReservationInput) =>
         Effect.gen(function* () {
-          yield* Effect.promise(() =>
-            input.gate.enterInsert(input.generation)
-          );
+          yield* Effect.promise(() => input.gate.enterInsert(input.generation));
           if (legacyRepository.createDraft) {
             const created = yield* legacyRepository.createDraft(draft);
             input.gate.markInsertCommitted(input.generation);
@@ -747,7 +727,9 @@ const makeRequestLayer = (
         createDraft,
         claimHoldCreation: (id) =>
           Effect.gen(function* () {
-            yield* Effect.promise(() => input.gate.enterClaim(input.generation));
+            yield* Effect.promise(() =>
+              input.gate.enterClaim(input.generation)
+            );
             const claimed = yield* repository.claimHoldCreation(id);
             input.claimResults.push({
               generation: input.generation,
@@ -1006,8 +988,12 @@ const makeDraftInput = (
   checkoutAttemptKey: testCheckoutKey(`attempt-${suffix}`),
   checkoutSessionIdentityKey: testCheckoutKey(`session-identity-${suffix}`),
   checkoutAttemptIdentityKey: testCheckoutKey(`attempt-identity-${suffix}`),
-  checkoutSessionCompatibilityKey: testCheckoutKey(`session-compatibility-${suffix}`),
-  checkoutAttemptCompatibilityKey: testCheckoutKey(`attempt-compatibility-${suffix}`),
+  checkoutSessionCompatibilityKey: testCheckoutKey(
+    `session-compatibility-${suffix}`
+  ),
+  checkoutAttemptCompatibilityKey: testCheckoutKey(
+    `attempt-compatibility-${suffix}`
+  ),
   checkoutSessionKeyCandidates: [
     testCheckoutKey(`session-${suffix}`),
     testCheckoutKey(`session-identity-${suffix}`),

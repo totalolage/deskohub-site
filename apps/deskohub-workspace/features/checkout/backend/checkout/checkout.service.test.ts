@@ -408,7 +408,10 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const attachHostedPaymentPage = mock((input) =>
     Effect.succeed({
       outcome: "attached" as const,
-      attempt: { ...attachedAttempt, providerRedirectUrl: input.providerRedirectUrl },
+      attempt: {
+        ...attachedAttempt,
+        providerRedirectUrl: input.providerRedirectUrl,
+      },
     })
   );
   const markTerminalForReservation = mock(() =>
@@ -429,26 +432,29 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     findDisplayableForReservation: mock(() => Effect.succeed(null)),
   } satisfies PaymentAttemptRepositoryType;
   const admitPaymentStart = mock((input) => {
-      const active = options.activeAttempt;
-      if (active) {
-        const matches =
-          active.amount.value === input.acceptedPricing.total.value &&
-          active.amount.exponent === input.acceptedPricing.total.exponent &&
-          active.amount.currency === input.acceptedPricing.total.currency;
-        return Effect.succeed(
-          matches
-            ? { outcome: "reuse" as const, attempt: active }
-            : { outcome: "pricing_changed" as const, reason: "active_attempt_pricing_mismatch" }
-        );
-      }
-      return createPendingNexiAttempt(input).pipe(
-        Effect.map((attempt) => ({
-          outcome: "created" as const,
-          attempt: { ...attempt, providerOrderId: input.providerOrderId },
-          providerStartLeaseId: "test-provider-start-lease",
-        }))
+    const active = options.activeAttempt;
+    if (active) {
+      const matches =
+        active.amount.value === input.acceptedPricing.total.value &&
+        active.amount.exponent === input.acceptedPricing.total.exponent &&
+        active.amount.currency === input.acceptedPricing.total.currency;
+      return Effect.succeed(
+        matches
+          ? { outcome: "reuse" as const, attempt: active }
+          : {
+              outcome: "pricing_changed" as const,
+              reason: "active_attempt_pricing_mismatch",
+            }
       );
-    });
+    }
+    return createPendingNexiAttempt(input).pipe(
+      Effect.map((attempt) => ({
+        outcome: "created" as const,
+        attempt: { ...attempt, providerOrderId: input.providerOrderId },
+        providerStartLeaseId: "test-provider-start-lease",
+      }))
+    );
+  });
   const markProviderStartFailed = mock(() =>
     Effect.succeed({
       outcome: "settled" as const,
@@ -615,10 +621,7 @@ describe("CheckoutService", () => {
     const start = source.indexOf(
       'createHostedPaymentCheckout: Effect.fn(\n        "checkout.createHostedPaymentCheckout"'
     );
-    const end = source.indexOf(
-      "Effect.mapError(mapCheckoutFailure)",
-      start
-    );
+    const end = source.indexOf("Effect.mapError(mapCheckoutFailure)", start);
     const stateOpening = source.slice(start, end);
 
     expect(start).toBeGreaterThanOrEqual(0);

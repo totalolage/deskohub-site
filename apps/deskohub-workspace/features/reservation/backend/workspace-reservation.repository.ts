@@ -1104,7 +1104,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             return yield* new WorkspaceReservationStateError({
               operation: "workspaceReservations.findByAttemptKey",
               reservationId: "conflicting-checkout-attempt",
-              message: "Checkout attempt digest resolves to different reservations.",
+              message:
+                "Checkout attempt digest resolves to different reservations.",
             });
           }
           return yield* decodeOptionalWorkspaceReservation(reservations[0]);
@@ -1132,9 +1133,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .orderBy(desc(workspaceReservations.createdAt));
           if (reservations.length > 1) {
             return yield* new WorkspaceReservationStateError({
-              operation: "workspaceReservations.findCurrentByCheckoutSessionKey",
+              operation:
+                "workspaceReservations.findCurrentByCheckoutSessionKey",
               reservationId: "conflicting-checkout-session",
-              message: "Checkout session digest resolves to different reservations.",
+              message:
+                "Checkout session digest resolves to different reservations.",
             });
           }
           return yield* decodeOptionalWorkspaceReservation(reservations[0]);

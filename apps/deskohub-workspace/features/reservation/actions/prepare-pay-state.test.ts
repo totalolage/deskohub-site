@@ -252,17 +252,6 @@ const makeReusableReservation = (
     ...overrides,
   }) as WorkspaceReservation;
 
-const toCreatedDraft = (reservation: Partial<WorkspaceReservation>) =>
-  ReservationDraftAcquisition.created({
-    reservation: makeReusableReservation({
-      ...reservation,
-      dotyposReservationId: null,
-      fulfillmentState: "not_started",
-      paymentState: "not_started",
-      reservationState: "draft",
-    }),
-  });
-
 /**
  * The action observes a reservation more than once while it creates a provider
  * hold.  Keep those observations in one small state machine instead of making
@@ -293,14 +282,20 @@ const createStatefulReservationFake = (input: {
     rows.set(row.id, row);
     return row;
   };
-  const createDraft = input.createDraft ??
-    mock((draft) => Effect.succeed(storeDraft(draft)));
+  const createDraft =
+    input.createDraft ?? mock((draft) => Effect.succeed(storeDraft(draft)));
   const acquireDraft = mock((draft) =>
     createDraft(draft).pipe(
       Effect.map((created) => {
         const returned = created as Partial<WorkspaceReservation>;
-        if (returned.reservationState && returned.reservationState !== "draft") {
-          const reservation = makeReusableReservation({ ...draft, ...returned });
+        if (
+          returned.reservationState &&
+          returned.reservationState !== "draft"
+        ) {
+          const reservation = makeReusableReservation({
+            ...draft,
+            ...returned,
+          });
           rows.set(reservation.id, reservation);
           return ReservationDraftAcquisition.existing_attempt({ reservation });
         }
@@ -336,7 +331,8 @@ const createStatefulReservationFake = (input: {
   );
   const attachHold = mock((attached) =>
     Effect.sync(() => {
-      const current = rows.get(attached.id) ?? makeReusableReservation({ id: attached.id });
+      const current =
+        rows.get(attached.id) ?? makeReusableReservation({ id: attached.id });
       rows.set(
         attached.id,
         makeReusableReservation({
@@ -351,14 +347,17 @@ const createStatefulReservationFake = (input: {
     })
   );
   const completeSupersessionAndCreateDraft = mock((operation) => {
-    const complete = input.completeSupersessionAndCreateDraft?.(operation) ??
+    const complete =
+      input.completeSupersessionAndCreateDraft?.(operation) ??
       Effect.succeed(storeDraft(operation.replacement));
     return complete.pipe(Effect.map((created) => storeDraft(created)));
   });
   const claimedCancellationIds = new Set<string>();
   const claimSupersessionCancellation = mock((operation) =>
-    (input.claimSupersessionCancellation?.(operation) ??
-      Effect.succeed(rows.get(operation.id) ?? null)).pipe(
+    (
+      input.claimSupersessionCancellation?.(operation) ??
+      Effect.succeed(rows.get(operation.id) ?? null)
+    ).pipe(
       Effect.map((claimed) => {
         if (claimed) {
           claimedCancellationIds.add(claimed.id);
@@ -375,8 +374,8 @@ const createStatefulReservationFake = (input: {
         : null
     )
   );
-  const markCancellationFailed = input.markCancellationFailed ??
-    mock(() => Effect.void);
+  const markCancellationFailed =
+    input.markCancellationFailed ?? mock(() => Effect.void);
 
   return {
     rows,
@@ -770,12 +769,14 @@ describe("prepareWorkspacePayState", () => {
       endsAt,
     });
     expect(scenario.createReservation).toHaveBeenCalledWith(
-      expect.objectContaining({ request: expect.objectContaining({
-        startDate: new Date(startsAt),
-        endDate: new Date(endsAt),
-        tableId: "meeting-room-table-id",
-        status: "NEW",
-      }) })
+      expect.objectContaining({
+        request: expect.objectContaining({
+          startDate: new Date(startsAt),
+          endDate: new Date(endsAt),
+          tableId: "meeting-room-table-id",
+          status: "NEW",
+        }),
+      })
     );
     expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1134,7 +1135,8 @@ describe("prepareWorkspacePayState", () => {
     expect(result.enqueueCleanup).toHaveBeenCalledWith({
       orderId: claimConflictReservation.id,
       reason: "hold_expired",
-      reservationHoldExpiresAt: claimConflictReservation.reservationHoldExpiresAt,
+      reservationHoldExpiresAt:
+        claimConflictReservation.reservationHoldExpiresAt,
     });
     expect(result.quoteForCustomer).toHaveBeenLastCalledWith(
       expect.objectContaining({
@@ -1227,7 +1229,10 @@ describe("prepareWorkspacePayState", () => {
       "previous-dotypos-reservation-id"
     );
     expect(result.claimSupersessionCancellation).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "previous-reservation-id", ownerId: expect.any(String) })
+      expect.objectContaining({
+        id: "previous-reservation-id",
+        ownerId: expect.any(String),
+      })
     );
     expect(result.completeSupersessionAndCreateDraft).toHaveBeenCalledWith(
       expect.objectContaining({

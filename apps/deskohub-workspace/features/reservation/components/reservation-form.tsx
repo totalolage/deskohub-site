@@ -61,10 +61,7 @@ import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
-import {
-  formatReservationDisplayDate,
-  parseReservationInputDate,
-} from "@/features/reservation/reservation-date";
+import { parseReservationInputDate } from "@/features/reservation/reservation-date";
 import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,

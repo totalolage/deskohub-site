@@ -8,12 +8,12 @@ import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
+  hasUnresolvedProviderAttachmentRecovery,
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
-  type WorkspaceReservationStateError,
-  hasUnresolvedProviderAttachmentRecovery,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
+  type WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { deriveCheckoutSessionKeyCandidates } from "./checkout-session-key.server";
@@ -68,7 +68,6 @@ export class PayableReservationService extends Context.Service<
             const checkoutSessionKeys = deriveCheckoutSessionKeyCandidates(
               input.checkoutSessionId
             );
-            const checkoutSessionKey = checkoutSessionKeys[0];
             const reservation = yield* reservations.findById(input.orderId);
             if (!reservation) {
               return yield* unavailable(input, "missing_reservation");
@@ -84,7 +83,8 @@ export class PayableReservationService extends Context.Service<
               !checkoutSessionKeys.includes(reservation.checkoutSessionKey) ||
               current?.id !== reservation.id ||
               currents.some(
-                (candidate) => candidate !== null && candidate.id !== reservation.id
+                (candidate) =>
+                  candidate !== null && candidate.id !== reservation.id
               )
             ) {
               return yield* unavailable(input, "not_current");
@@ -95,7 +95,10 @@ export class PayableReservationService extends Context.Service<
             }
 
             if (hasUnresolvedProviderAttachmentRecovery(reservation)) {
-              return yield* unavailable(input, "unresolved_attachment_recovery");
+              return yield* unavailable(
+                input,
+                "unresolved_attachment_recovery"
+              );
             }
 
             if (!reservation.dotyposReservationId) {

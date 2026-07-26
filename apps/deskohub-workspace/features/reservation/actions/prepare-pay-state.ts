@@ -832,12 +832,13 @@ export const ReservationPreparationDecision =
 
 const getDistinctReservations = (
   reservations: readonly (WorkspaceReservation | null)[]
-) =>
-  [...new Map(
+) => [
+  ...new Map(
     reservations.flatMap((reservation) =>
       reservation ? [[reservation.id, reservation] as const] : []
     )
-  ).values()];
+  ).values(),
+];
 
 export const decideReservationPreparation = Effect.fn(
   "prepareCoworkPayState.decideReservationPreparation"
@@ -993,13 +994,11 @@ const prepareReservationDraft = Effect.fn(
         checkoutAttemptId: input.checkoutAttemptId,
         reservation: input.reservation,
       });
-      existingAttempt = yield* findExistingAttempt(
-        [
-          rotatedAttemptKeys.current,
-          rotatedAttemptKeys.identity,
-          rotatedAttemptKeys.legacy,
-        ]
-      );
+      existingAttempt = yield* findExistingAttempt([
+        rotatedAttemptKeys.current,
+        rotatedAttemptKeys.identity,
+        rotatedAttemptKeys.legacy,
+      ]);
       if (existingAttempt) {
         checkoutSessionId = input.checkoutAttemptId;
         checkoutAttemptKey = rotatedAttemptKeys.current;

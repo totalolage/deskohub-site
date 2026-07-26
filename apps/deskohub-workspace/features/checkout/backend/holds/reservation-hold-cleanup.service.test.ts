@@ -82,7 +82,10 @@ describe("ReservationHoldCleanupService", () => {
     );
 
     expect(selectCancellationCandidates).toHaveBeenCalledTimes(1);
-    expect(selectCancellationCandidates).toHaveBeenCalledWith({ now, limit: 25 });
+    expect(selectCancellationCandidates).toHaveBeenCalledWith({
+      now,
+      limit: 25,
+    });
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected failure");
     expect(result.failure.message).toBe(
