@@ -69,7 +69,7 @@ const reusableAttemptKeys = deriveCheckoutAttemptKeys({
   reservation,
 });
 
-const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
+const reusableHoldExpiresAt = Temporal.Instant.from("2100-07-01T12:00:00.000Z");
 
 const buildAdvertisedPriceToken = async (
   quote: CoworkReservationQuote = buildCoworkReservationQuote(reservation),
@@ -311,15 +311,9 @@ const runReusableReservationScenario = async (input: {
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.succeed(true));
+  let attachedReservation: WorkspaceReservation | null = null;
   const findById =
-    input.findById ??
-    mock(() =>
-      Effect.succeed(
-        makeReusableReservation({
-          dotyposReservationId: "new-dotypos-reservation-id",
-        })
-      )
-    );
+    input.findById ?? mock(() => Effect.succeed(attachedReservation));
   const claimSupersessionCancellation =
     input.claimSupersessionCancellation ?? mock(() => Effect.succeed(null));
   const completeSupersessionAndCreateDraft =
@@ -370,16 +364,22 @@ const runReusableReservationScenario = async (input: {
         input.findCurrentByCheckoutSessionKey ??
         mock(() => Effect.succeed(null)),
       acquireDraft: (draft) =>
-        createDraft(draft).pipe(
-          Effect.map(toCreatedDraft)
-        ),
+        createDraft(draft).pipe(Effect.map(toCreatedDraft)),
       claimHoldCreation,
       beginProviderHoldCreation: mock(() => Effect.succeed(true)),
       recordProviderHoldCandidate: mock(() => Effect.void),
       findById,
       releaseHoldCreation: mock(() => Effect.void),
       updateReservationDetails,
-      attachHold: mock(() => Effect.void),
+      attachHold: mock((attached) =>
+        Effect.sync(() => {
+          attachedReservation = makeReusableReservation({
+            dotyposReservationId: attached.dotyposReservationId,
+            reservationCreatedAt: attached.reservationCreatedAt,
+            failureCode: `hold_creation_attached:${attached.epoch}`,
+          });
+        })
+      ),
       markAttachFailedCancellationRequired: mock(() => Effect.void),
       claimSupersessionCancellation,
       renewCancellationClaim: mock(() => Effect.succeed(true)),
@@ -548,9 +548,7 @@ const runMeetingRoomNewHoldScenario = async () => {
       findByAttemptKey: mock(() => Effect.succeed(null)),
       findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
       acquireDraft: (draft) =>
-        createDraft(draft).pipe(
-          Effect.map(toCreatedDraft)
-        ),
+        createDraft(draft).pipe(Effect.map(toCreatedDraft)),
       claimHoldCreation: mock(() => Effect.succeed(true)),
       beginProviderHoldCreation: mock(() => Effect.succeed(true)),
       recordProviderHoldCandidate: mock(() => Effect.void),
@@ -849,9 +847,7 @@ describe("prepareWorkspacePayState", () => {
         findByAttemptKey: mock(() => Effect.succeed(null)),
         findCurrentByCheckoutSessionKey: mock(() => Effect.succeed(null)),
         acquireDraft: (draft) =>
-          createDraft(draft).pipe(
-            Effect.map(toCreatedDraft)
-          ),
+          createDraft(draft).pipe(Effect.map(toCreatedDraft)),
         claimHoldCreation,
         beginProviderHoldCreation: mock(() => Effect.succeed(true)),
         recordProviderHoldCandidate: mock(() => Effect.void),

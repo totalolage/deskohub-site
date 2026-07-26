@@ -32,7 +32,9 @@ const applyCancellationMigration = async (database: PGlite) => {
     `ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_reservation_state_check" CHECK ("reservation_state" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancellation_claimed', 'cancelled', 'cancellation_failed'));`,
     migration.slice(compatibilityStart, compatibilityEnd),
   ].join("--> statement-breakpoint");
-  for (const statement of compatibilityMigration.split("--> statement-breakpoint")) {
+  for (const statement of compatibilityMigration.split(
+    "--> statement-breakpoint"
+  )) {
     if (statement.trim()) await database.exec(statement);
   }
 };
