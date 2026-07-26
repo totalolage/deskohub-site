@@ -42,7 +42,7 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { preparePayState } from "@/features/reservation/actions/prepare-pay-state.action";
+import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import { useAdvertisedPrice } from "@/features/reservation/components/use-advertised-price";
 import {
   type CoworkReservationData,
@@ -401,7 +401,7 @@ export function ReservationForm({
       date: selectedDate,
       dateFallback: m.reservationDatePlaceholder({}, { locale }),
       locale,
-      tier: selectedTier,
+      reservation: { kind: "cowork", entryTier: selectedTier },
     });
 
   const {
