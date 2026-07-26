@@ -26,4 +26,4 @@ export const paymentPaidEvents = pgTable(
   ]
 );
 
-export type PaymentPaidEventRow = typeof paymentPaidEvents.$inferSelect;
+export type PaymentPaidEvent = typeof paymentPaidEvents.$inferSelect;
