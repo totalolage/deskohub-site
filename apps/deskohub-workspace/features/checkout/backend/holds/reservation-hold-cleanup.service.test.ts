@@ -7,7 +7,15 @@ import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
+import { PaymentAttemptRepository } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
+
+const PaymentAttemptRepositoryTestLive = Layer.succeed(
+  PaymentAttemptRepository,
+  {
+    markTerminalForReservation: () => Effect.succeed({ changed: false }),
+  } as never
+);
 
 describe("ReservationHoldCleanupService", () => {
   test("fails the expired hold sweep when expired hold selection fails", async () => {
@@ -27,7 +35,7 @@ describe("ReservationHoldCleanupService", () => {
     );
 
     const unused = () => Effect.die("not used");
-    const selectExpiredHolds = mock(() =>
+    const selectCancellationCandidates = mock(() =>
       Effect.fail(
         new EffectDrizzleQueryError({
           query: "select expired holds",
@@ -37,7 +45,7 @@ describe("ReservationHoldCleanupService", () => {
       )
     );
     const reservations = {
-      selectExpiredHolds,
+      selectCancellationCandidates,
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {} as unknown as typeof DotyposService.Service;
 
@@ -53,6 +61,7 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: unused,
               } satisfies ProviderPaymentFinalizationServiceType),
@@ -72,12 +81,12 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
-    expect(selectExpiredHolds).toHaveBeenCalledTimes(1);
-    expect(selectExpiredHolds).toHaveBeenCalledWith({ now, limit: 25 });
+    expect(selectCancellationCandidates).toHaveBeenCalledTimes(1);
+    expect(selectCancellationCandidates).toHaveBeenCalledWith({ now, limit: 25 });
     expect(result._tag).toBe("Failure");
     if (result._tag !== "Failure") throw new Error("Expected failure");
     expect(result.failure.message).toBe(
-      "Expired reservation holds could not be selected."
+      "Reservation cancellation candidates could not be selected."
     );
   });
 
@@ -132,6 +141,7 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, finalization),
               Layer.succeed(PaymentLifecycleRepository, {
                 markTerminal: mock(() => Effect.die("not used")),
@@ -175,7 +185,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-evidence-conflict";
     const claimCancellation = mock(() =>
-      Effect.die("conflicted cleanup must not claim cancellation")
+      Effect.die("uncertain payment cleanup must not claim cancellation")
     );
     const cancelReservation = mock(() =>
       Effect.die("conflicted cleanup must not cancel the Dotypos hold")
@@ -192,9 +202,10 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
-                  Effect.die("terminal attempts need no provider finalization")
+                  Effect.succeed("pending" as const)
                 ),
               } satisfies ProviderPaymentFinalizationServiceType),
               Layer.succeed(PaymentLifecycleRepository, {
@@ -205,12 +216,13 @@ describe("ReservationHoldCleanupService", () => {
                   Effect.succeed({
                     id: orderId,
                     reservationState: "held",
-                    paymentState: "failed",
+                    paymentState: "pending",
                     activePaymentAttemptId: "terminal-attempt-id",
                     activePaymentEvidenceConflicted: true,
                   })
                 ),
                 claimCancellation,
+                recordHoldCleanupSkipped: mock(() => Effect.void),
               } as unknown as WorkspaceReservationRepositoryType),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
@@ -255,7 +267,7 @@ describe("ReservationHoldCleanupService", () => {
       paymentState: "pending",
       activePaymentAttemptId: attemptId,
     };
-    const selectExpiredHolds = mock(() =>
+    const selectCancellationCandidates = mock(() =>
       Effect.succeed([activeReservation] as never)
     );
     const recordHoldCleanupSkipped = mock(() => Effect.void);
@@ -265,7 +277,7 @@ describe("ReservationHoldCleanupService", () => {
       finalizePendingProviderPayment: mock(() => Effect.succeed("pending")),
     };
     const reservations = {
-      selectExpiredHolds,
+      selectCancellationCandidates,
       findById: mock(() => Effect.succeed(activeReservation as never)),
       recordHoldCleanupSkipped,
       claimCancellation,
@@ -283,6 +295,7 @@ describe("ReservationHoldCleanupService", () => {
           ReservationHoldCleanupServiceLive.pipe(
             Layer.provide(
               Layer.mergeAll(
+                PaymentAttemptRepositoryTestLive,
                 Layer.succeed(ProviderPaymentFinalizationService, finalization),
                 Layer.succeed(PaymentLifecycleRepository, {
                   markTerminal: mock(() => Effect.die("not used")),
@@ -355,6 +368,7 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
                   Effect.succeed("not_verifiable" as const)
@@ -390,14 +404,10 @@ describe("ReservationHoldCleanupService", () => {
     );
 
     expect(markTerminalForReservation).not.toHaveBeenCalled();
-    expect(claimCancellation).not.toHaveBeenCalled();
+    expect(claimCancellation).toHaveBeenCalledTimes(1);
     expect(cancelReservation).not.toHaveBeenCalled();
     expect(markCancelled).not.toHaveBeenCalled();
-    expect(recordHoldCleanupSkipped).toHaveBeenCalledWith({
-      id: orderId,
-      holdExpiredAt,
-      failureCode: "payment_outcome_unconfirmed_before_cleanup",
-    });
+    expect(recordHoldCleanupSkipped).not.toHaveBeenCalled();
   });
 
   test("does not enter terminal settlement for a stale unverified attempt", async () => {
@@ -429,6 +439,7 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
                   Effect.succeed("not_verifiable" as const)
@@ -461,7 +472,7 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
-    expect(claimCancellation).not.toHaveBeenCalled();
+    expect(claimCancellation).toHaveBeenCalledTimes(1);
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
@@ -495,6 +506,7 @@ describe("ReservationHoldCleanupService", () => {
         ReservationHoldCleanupServiceLive.pipe(
           Layer.provide(
             Layer.mergeAll(
+              PaymentAttemptRepositoryTestLive,
               Layer.succeed(ProviderPaymentFinalizationService, {
                 finalizePendingProviderPayment: mock(() =>
                   Effect.succeed("provider_verification_failed" as const)
