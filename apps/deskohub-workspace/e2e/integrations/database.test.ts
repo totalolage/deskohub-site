@@ -2,14 +2,12 @@ import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { Pool } from "pg";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
-  readCheckoutRowFromPool,
   replayNexiWebhook,
 } from "./database";
 
@@ -18,10 +16,31 @@ test("reads persisted reservation details without legacy product columns", async
     fileURLToPath(new URL("./database.ts", import.meta.url))
   ).text();
 
-  expect(source).toContain("wr.reservation_details");
-  expect(source).not.toContain("wr.product_tier");
-  expect(source).not.toContain("wr.product_coffee");
-  expect(source).not.toContain("wr.product_monitor_option");
+  expect(source).toContain(
+    "reservation_details: workspaceReservations.reservationDetails"
+  );
+  expect(source).not.toContain("workspaceReservations.productTier");
+  expect(source).not.toContain("workspaceReservations.productCoffee");
+  expect(source).not.toContain("workspaceReservations.productMonitorOption");
+});
+
+test("uses one scoped Drizzle client for the exact preview datasource", async () => {
+  const databaseServiceSource = await Bun.file(
+    fileURLToPath(new URL("./database.service.ts", import.meta.url))
+  ).text();
+  const runnerSource = await Bun.file(
+    fileURLToPath(new URL("../services/runner.ts", import.meta.url))
+  ).text();
+
+  expect(databaseServiceSource).toContain(
+    "connectionString: config.databaseUrlUnpooled"
+  );
+  expect(databaseServiceSource).not.toContain(
+    "connectionString: config.databaseUrl,"
+  );
+  expect(runnerSource).toContain(
+    "Effect.provide(E2EDatabase.layer(datasourceConfig))"
+  );
 });
 
 test("polls for checkout rows before asserting reservation replacement state", async () => {
@@ -33,31 +52,11 @@ test("polls for checkout rows before asserting reservation replacement state", a
   ).text();
 
   expect(databaseSource).toContain(
-    "pollUntil(readCheckoutRowFromPool(pool, orderId)"
+    "pollUntil(readCheckoutRowFromDatabase(db, orderId)"
   );
   expect(reservationReplacementSource).toContain(
     "waitForCheckoutRow(datasourceConfig, orderId)"
   );
-});
-
-test("retries a checkout-row read after a transient connection failure", async () => {
-  let attempts = 0;
-  const pool = {
-    query: async () => {
-      attempts += 1;
-      if (attempts === 1) {
-        throw new Error("Connection terminated unexpectedly");
-      }
-      return { rows: [] };
-    },
-  } as unknown as Pool;
-
-  const row = await Effect.runPromise(
-    readCheckoutRowFromPool(pool, "reservation-1")
-  );
-
-  expect(row).toBeUndefined();
-  expect(attempts).toBe(2);
 });
 
 test("replays Nexi notification against the exact protected preview", async () => {

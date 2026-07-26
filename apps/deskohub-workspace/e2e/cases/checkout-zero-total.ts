@@ -11,6 +11,7 @@ import {
   markConsoleFulfillmentDeliveredForE2E,
   validateInternalPostgres,
 } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
@@ -42,7 +43,7 @@ export const executeZeroTotalCheckout = ({
   readonly state: CheckoutFlowState;
   readonly submitReservationScript: string;
   readonly discountCode: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     yield* runStep({

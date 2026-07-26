@@ -1,4 +1,5 @@
 import type { Effect } from "effect";
+import type { E2EDatabase } from "./integrations/database.service";
 import type { StoredWorkspaceReservationDetails } from "../features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
@@ -16,14 +17,14 @@ export type CheckoutRow = {
   active_payment_attempt_id: string | null;
   reservation_details: unknown;
   locale: string;
-  reservation_created_at: Date | null;
-  reservation_hold_expires_at: Date | null;
-  reservation_confirmed_at: Date | null;
-  reservation_cancelled_at: Date | null;
-  reservation_hold_expired_at: Date | null;
-  paid_at: Date | null;
-  fulfilled_at: Date | null;
-  fulfillment_failed_at: Date | null;
+  reservation_created_at: Temporal.Instant | null;
+  reservation_hold_expires_at: Temporal.Instant | null;
+  reservation_confirmed_at: Temporal.Instant | null;
+  reservation_cancelled_at: Temporal.Instant | null;
+  reservation_hold_expired_at: Temporal.Instant | null;
+  paid_at: Temporal.Instant | null;
+  fulfilled_at: Temporal.Instant | null;
+  fulfillment_failed_at: Temporal.Instant | null;
   failure_code: string | null;
   fulfillment_failure_code: string | null;
   payment_attempt_id: string | null;
@@ -43,7 +44,7 @@ export type CheckoutRow = {
   webhook_provider: string | null;
   webhook_event_id: string | null;
   webhook_provider_order_id: string | null;
-  webhook_processed_at: Date | null;
+  webhook_processed_at: Temporal.Instant | null;
   webhook_state: string | null;
   webhook_error_code: string | null;
 };
@@ -89,15 +90,15 @@ export type WorkspaceE2ECase = {
   readonly execute: (context: {
     readonly runStep: WorkspaceE2EStepRunner;
     readonly session: string;
-  }) => Effect.Effect<void, WorkspaceE2EError>;
+  }) => Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
 };
 
-export type WorkspaceE2EStep<A> = {
-  readonly execute: Effect.Effect<A, WorkspaceE2EError>;
+export type WorkspaceE2EStep<A, R = never> = {
+  readonly execute: Effect.Effect<A, WorkspaceE2EError, R>;
   readonly id: string;
   readonly timeoutMs: number;
 };
 
-export type WorkspaceE2EStepRunner = <A>(
-  step: WorkspaceE2EStep<A>
-) => Effect.Effect<A, WorkspaceE2EError>;
+export type WorkspaceE2EStepRunner = <A, R>(
+  step: WorkspaceE2EStep<A, R>
+) => Effect.Effect<A, WorkspaceE2EError, R>;

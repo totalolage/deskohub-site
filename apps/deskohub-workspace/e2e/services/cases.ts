@@ -3,6 +3,7 @@ import { HttpClient } from "effect/unstable/http";
 import { makeWorkspaceE2ECases } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
+import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { runWorkspaceE2ECases } from "../suite";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
@@ -15,14 +16,18 @@ interface IWorkspaceE2ECaseService {
     readonly datasourceConfig: DatasourceConfig;
     readonly flowStates: CheckoutFlowState[];
     readonly run: Runner;
-  }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
+  }) => Effect.Effect<
+    readonly WorkspaceE2ECase[],
+    WorkspaceE2EError,
+    E2EDatabase
+  >;
   readonly runCases: (input: {
     readonly artifactRoot: string;
     readonly cases: readonly WorkspaceE2ECase[];
     readonly run: Runner;
     readonly sessionPrefix: string;
     readonly timeouts: WorkspaceE2ETimeouts;
-  }) => Effect.Effect<void, WorkspaceE2EError>;
+  }) => Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
 }
 
 export class WorkspaceE2ECaseService extends Context.Service<

@@ -15,6 +15,7 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
 import { readCheckoutRow, waitForCheckoutRow } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
@@ -42,7 +43,7 @@ export const assertReservationReplacement = ({
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const firstOrderId = yield* runStep({
@@ -120,7 +121,7 @@ export const assertReservationReplacement = ({
     state.orderId = secondOrderId;
     state.checkoutRow = secondRow;
     const cancelledFirstRow = yield* runStep({
-      execute: readCheckoutRow(datasourceConfig, firstOrderId).pipe(
+      execute: readCheckoutRow(firstOrderId).pipe(
         Effect.flatMap((row) =>
           tryWorkspaceE2ESync("assert superseded reservation row", () => {
             assert(row, "superseded reservation row missing");
@@ -212,7 +213,7 @@ const returnToPrefilledReservation = ({
 const readHeldReservation = (
   datasourceConfig: DatasourceConfig,
   orderId: string
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const row = yield* waitForCheckoutRow(datasourceConfig, orderId);
     return yield* tryWorkspaceE2ESync("assert held reservation row", () => {

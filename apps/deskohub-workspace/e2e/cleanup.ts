@@ -9,6 +9,7 @@ import {
   readCheckoutRow,
   readCleanupCheckoutRows,
 } from "./integrations/database";
+import type { E2EDatabase } from "./integrations/database.service";
 import { cancelDotyposReservation } from "./integrations/dotypos";
 import { log, redact } from "./runtime";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "./types";
@@ -24,7 +25,7 @@ export const cleanupCheckoutFlowStates = (
     workflowError: unknown;
   },
   dependencies: CleanupDependencies = liveCleanupDependencies
-): Effect.Effect<WorkspaceE2EError | undefined, never> =>
+): Effect.Effect<WorkspaceE2EError | undefined, never, E2EDatabase> =>
   Effect.gen(function* () {
     const cleanupErrors: WorkspaceE2EError[] = [];
     const checkoutRows: CheckoutRow[] = [];
@@ -38,7 +39,7 @@ export const cleanupCheckoutFlowStates = (
       ) {
         const orderId = state.orderId;
         const rowExit = yield* Effect.exit(
-          dependencies.readCheckoutRow(datasourceConfig, orderId)
+          dependencies.readCheckoutRow(orderId)
         );
         if (Exit.isSuccess(rowExit)) {
           state.checkoutRow = rowExit.value;
@@ -57,11 +58,7 @@ export const cleanupCheckoutFlowStates = (
     if (datasourceConfig) {
       for (const { data, startedAt } of getFallbackCleanupQueries(flowStates)) {
         const rowExit = yield* Effect.exit(
-          dependencies.readCleanupCheckoutRows(
-            datasourceConfig,
-            startedAt,
-            data
-          )
+          dependencies.readCleanupCheckoutRows(startedAt, data)
         );
         if (Exit.isSuccess(rowExit)) {
           checkoutRows.push(...rowExit.value);

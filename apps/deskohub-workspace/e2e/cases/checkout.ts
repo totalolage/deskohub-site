@@ -27,6 +27,7 @@ import {
   validatePostgres,
   waitForWebhookReplayRow,
 } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
@@ -61,7 +62,11 @@ export const executeCheckoutFlow = ({
   state: CheckoutFlowState;
   payPageStep?: (orderId: string) => WorkspaceE2EStep<void>;
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
-}): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
@@ -209,7 +214,7 @@ export const assertFulfilledStatusPage = ({
   orderId: string;
   run: Runner;
   session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     yield* openBrowserPage(
       config,
@@ -253,9 +258,9 @@ const assertFulfillmentFailedSupportPath = ({
   orderId: string;
   run: Runner;
   session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
+    yield* markFulfillmentFailedForE2E(orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
       `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`

@@ -13,6 +13,7 @@ import {
   discountCodeFixtures,
   seedDiscountE2EFixtures,
 } from "../integrations/discount-fixtures";
+import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import type {
@@ -44,11 +45,11 @@ export const makeWorkspaceE2ECases = ({
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
-  HttpClient.HttpClient
+  HttpClient.HttpClient | E2EDatabase
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    yield* seedDiscountE2EFixtures(datasourceConfig);
+    yield* seedDiscountE2EFixtures;
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,

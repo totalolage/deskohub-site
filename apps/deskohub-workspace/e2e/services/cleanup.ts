@@ -2,6 +2,7 @@ import { Context, type Effect, Layer } from "effect";
 import { cleanupCheckoutFlowStates } from "../cleanup";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
+import type { E2EDatabase } from "../integrations/database.service";
 import type { CheckoutFlowState } from "../types";
 
 interface IWorkspaceE2ECleanupService {
@@ -9,7 +10,11 @@ interface IWorkspaceE2ECleanupService {
     readonly datasourceConfig: DatasourceConfig | undefined;
     readonly flowStates: readonly CheckoutFlowState[];
     readonly workflowError: unknown;
-  }) => Effect.Effect<WorkspaceE2EError | undefined, never>;
+  }) => Effect.Effect<
+    WorkspaceE2EError | undefined,
+    never,
+    E2EDatabase
+  >;
 }
 
 export class WorkspaceE2ECleanupService extends Context.Service<

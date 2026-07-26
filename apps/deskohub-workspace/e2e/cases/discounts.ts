@@ -37,6 +37,7 @@ import {
   type ExpectedDiscountApplication,
   waitForCheckoutRow,
 } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import {
   discountCodeFixtures,
   expireDiscountCodeForE2E,
@@ -275,7 +276,6 @@ export const makeDiscountE2ECases = ({
     cases.push({
       execute: ({ runStep, session }) =>
         withE2ECalendarSaleProfiEligibility(
-          datasourceConfig,
           executeCalendarSaleDisappearsBeforeQuote({
             config,
             data: quoteChangeData,
@@ -288,7 +288,6 @@ export const makeDiscountE2ECases = ({
         ).pipe(
           Effect.andThen(
             withE2ECalendarSaleProfiEligibility(
-              datasourceConfig,
               executeCalendarSaleDisappearsBeforePayment({
                 config,
                 data: paymentChangeData,
@@ -574,7 +573,7 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     yield* runStep({
@@ -600,7 +599,7 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     yield* runStep({
-      execute: setE2ECalendarSaleProfiEligibility(datasourceConfig, false),
+      execute: setE2ECalendarSaleProfiEligibility(false),
       id: "remove-calendar-sale-eligibility-before-quote",
       timeoutMs: config.timeouts.datasource,
     });
@@ -619,7 +618,7 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
     });
     state.orderId = orderId;
     yield* runStep({
-      execute: assertNoDiscountPaymentState(datasourceConfig, orderId),
+      execute: assertNoDiscountPaymentState(orderId),
       id: "assert-calendar-quote-change-created-no-payment-state",
       timeoutMs: config.timeouts.datasource,
     });
@@ -642,7 +641,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
@@ -671,7 +670,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       session,
     });
     yield* runStep({
-      execute: setE2ECalendarSaleProfiEligibility(datasourceConfig, false),
+      execute: setE2ECalendarSaleProfiEligibility(false),
       id: "remove-calendar-sale-eligibility-before-payment",
       timeoutMs: config.timeouts.datasource,
     });
@@ -683,7 +682,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
-      execute: assertNoDiscountPaymentState(datasourceConfig, orderId),
+      execute: assertNoDiscountPaymentState(orderId),
       id: "assert-calendar-payment-change-created-no-payment-state",
       timeoutMs: config.timeouts.datasource,
     });
@@ -710,7 +709,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     yield* runStep({
       execute: prepareDotyposCustomerDiscount(
@@ -776,7 +775,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
-      execute: assertNoDiscountPaymentState(datasourceConfig, orderId),
+      execute: assertNoDiscountPaymentState(orderId),
       id: "assert-changed-customer-discount-created-no-payment-state",
       timeoutMs: config.timeouts.datasource,
     });
@@ -784,15 +783,14 @@ const executeCustomerDiscountChangesBeforePayment = ({
   });
 
 const withE2ECalendarSaleProfiEligibility = <A>(
-  config: DatasourceConfig,
-  effect: Effect.Effect<A, WorkspaceE2EError>
-): Effect.Effect<A, WorkspaceE2EError> =>
+  effect: Effect.Effect<A, WorkspaceE2EError, E2EDatabase>
+): Effect.Effect<A, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* setE2ECalendarSaleProfiEligibility(config, true);
+    yield* setE2ECalendarSaleProfiEligibility(true);
     return yield* effect;
   }).pipe(
     Effect.ensuring(
-      setE2ECalendarSaleProfiEligibility(config, true).pipe(Effect.orDie)
+      setE2ECalendarSaleProfiEligibility(true).pipe(Effect.orDie)
     )
   );
 
@@ -818,7 +816,7 @@ const executeConsumedDiscountCode = ({
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     yield* executeZeroTotalCheckout({
       config,
@@ -865,7 +863,11 @@ export const executeDiscountCheckout = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | HttpClient.HttpClient
+> =>
   executeCheckoutFlow({
     config,
     data,
@@ -928,7 +930,7 @@ export const executeUnavailableDiscountCode = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
@@ -985,7 +987,7 @@ export const executeUnavailableDiscountCode = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: assertNoDiscountPaymentState(datasourceConfig, orderId),
+      execute: assertNoDiscountPaymentState(orderId),
       id: "assert-unavailable-code-created-no-payment-state",
       timeoutMs: config.timeouts.datasource,
     });
@@ -1012,7 +1014,7 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
   readonly state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
@@ -1046,7 +1048,7 @@ export const executeDiscountCodeExpiresBeforePayment = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: expireDiscountCodeForE2E(datasourceConfig, codeId),
+      execute: expireDiscountCodeForE2E(codeId),
       id: "expire-code-before-payment",
       timeoutMs: config.timeouts.datasource,
     });
@@ -1058,7 +1060,7 @@ export const executeDiscountCodeExpiresBeforePayment = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
-      execute: assertNoDiscountPaymentState(datasourceConfig, orderId),
+      execute: assertNoDiscountPaymentState(orderId),
       id: "assert-expired-code-created-no-payment-state",
       timeoutMs: config.timeouts.datasource,
     });
