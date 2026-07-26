@@ -1065,7 +1065,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .from(workspaceReservations)
             .where(
               or(
-                eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey),
+                eq(
+                  workspaceReservations.checkoutAttemptKey,
+                  checkoutAttemptKey
+                ),
                 eq(
                   workspaceReservations.checkoutAttemptIdentityKey,
                   checkoutAttemptKey
