@@ -17,6 +17,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -62,23 +63,26 @@ const initialReservation = normalizedMeetingRoomReservationOrderSchema.make({
   message: "Workshop",
 });
 
+const meetingRoomQuote = {
+  fingerprint: "meeting-room-quote",
+  items: [
+    {
+      type: "meeting-room" as const,
+      durationMinutes: 60 as const,
+      amount: money(30_000),
+    },
+  ] as const,
+  payment: {
+    expectedPrice: money(30_000),
+    undiscountedPrice: money(30_000),
+    discounts: [],
+  },
+};
+
 const advertisedPriceResponse = {
   kind: "meeting-room" as const,
-  quote: {
-    fingerprint: "meeting-room-quote",
-    items: [
-      {
-        type: "meeting-room" as const,
-        durationMinutes: 60 as const,
-        amount: money(30_000),
-      },
-    ] as const,
-    payment: {
-      expectedPrice: money(30_000),
-      undiscountedPrice: money(30_000),
-      discounts: [],
-    },
-  },
+  quote: meetingRoomQuote,
+  summary: getMeetingRoomCheckoutSummary(meetingRoomQuote),
   advertisedPriceToken: "sealed-advertised-price",
 };
 
@@ -224,34 +228,36 @@ describe("MeetingRoomReservationForm", () => {
   });
 
   test("renders the selected advertised discount without adding a price card", async () => {
+    const discountedQuote = {
+      ...advertisedPriceResponse.quote,
+      payment: {
+        expectedPrice: money(15_000),
+        undiscountedPrice: money(30_000),
+        discounts: [
+          {
+            discount: {
+              id: Schema.decodeUnknownSync(discountIdSchema)(
+                "meeting-room-sale"
+              ),
+              label: "Meeting room sale",
+              adjustment: {
+                kind: "percentage" as const,
+                basisPoints: 5000,
+              },
+            },
+            subtotalBefore: money(30_000),
+            amount: money(15_000),
+            subtotalAfter: money(15_000),
+          },
+        ],
+      },
+    };
     getAdvertisedPrice.mockImplementation(() =>
       Promise.resolve({
         data: {
           ...advertisedPriceResponse,
-          quote: {
-            ...advertisedPriceResponse.quote,
-            payment: {
-              expectedPrice: money(15_000),
-              undiscountedPrice: money(30_000),
-              discounts: [
-                {
-                  discount: {
-                    id: Schema.decodeUnknownSync(discountIdSchema)(
-                      "meeting-room-sale"
-                    ),
-                    label: "Meeting room sale",
-                    adjustment: {
-                      kind: "percentage" as const,
-                      basisPoints: 5000,
-                    },
-                  },
-                  subtotalBefore: money(30_000),
-                  amount: money(15_000),
-                  subtotalAfter: money(15_000),
-                },
-              ],
-            },
-          },
+          quote: discountedQuote,
+          summary: getMeetingRoomCheckoutSummary(discountedQuote),
         },
       })
     );
