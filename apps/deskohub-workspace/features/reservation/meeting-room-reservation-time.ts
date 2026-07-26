@@ -22,14 +22,11 @@ const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
       .toInstant()
 );
 
-export const getEarliestMeetingRoomStartDateTime = (
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
-  now = Temporal.Now.instant()
-) => {
-  const earliestStart = now
-    .subtract({ minutes: durationMinutes })
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone);
-  const wholeHour = earliestStart.with({
+const roundUpToWholePragueHour = (instant: Temporal.Instant) => {
+  const dateTime = instant.toZonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  );
+  const wholeHour = dateTime.with({
     minute: 0,
     second: 0,
     millisecond: 0,
@@ -37,9 +34,21 @@ export const getEarliestMeetingRoomStartDateTime = (
     nanosecond: 0,
   });
 
-  return (
-    earliestStart.equals(wholeHour) ? wholeHour : wholeHour.add({ hours: 1 })
-  )
+  return dateTime.equals(wholeHour) ? wholeHour : wholeHour.add({ hours: 1 });
+};
+
+export const getEarliestSelectableMeetingRoomStartDateTime = (
+  now = Temporal.Now.instant()
+) =>
+  roundUpToWholePragueHour(now)
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
+export const getEarliestMeetingRoomStartDateTime = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
+  now = Temporal.Now.instant()
+) => {
+  return roundUpToWholePragueHour(now.subtract({ minutes: durationMinutes }))
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
 };

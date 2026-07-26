@@ -19,6 +19,7 @@ import {
   type AdvertisedPriceRequest,
   isCoworkAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
+import { createCheckoutIdentifier } from "@/features/checkout/checkout-identifiers";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import {
@@ -55,18 +56,21 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import { normalizeCoworkReservationProduct } from "@/features/reservation/cowork-reservation-product";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import { getReservationAnalyticsProperties } from "@/features/reservation/reservation-analytics";
 import {
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
-import { parseReservationInputDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationInputDate,
+  parseReservationInputDate,
+} from "@/features/reservation/reservation-date";
 import {
   type CoworkWorkspaceAvailabilityQuery,
-  parseWorkspaceAvailabilityResponse,
-  type WorkspaceAvailability,
   workspaceAvailabilityKeys,
 } from "@/features/reservation/workspace-availability";
+import { loadWorkspaceAvailability } from "@/features/reservation/workspace-availability-client";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -104,18 +108,6 @@ type SubmissionMessage = {
   status: "error";
   text: string;
 };
-
-const utmKeys = [
-  "utm_source",
-  "utm_medium",
-  "utm_campaign",
-  "utm_content",
-  "utm_term",
-] as const;
-
-type UtmKey = (typeof utmKeys)[number];
-
-type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
 const reservationFormSchema = Schema.toStandardSchemaV1(
   coworkReservationSchema
@@ -180,57 +172,12 @@ const getWorkspaceAvailabilityQuery = ({
   };
 };
 
-const getWorkspaceAvailabilityUrl = (
-  query: CoworkWorkspaceAvailabilityQuery
-) => {
-  const params = new URLSearchParams({
-    from: query.from,
-    to: query.to,
-  });
-
-  if (query.date) params.set("date", query.date);
-  if (query.entryTier) params.set("entryTier", query.entryTier);
-  if (query.monitorOption) params.set("monitorOption", query.monitorOption);
-
-  return `/api/workspace/availability?${params.toString()}`;
-};
-
-const loadWorkspaceAvailability = async ({
-  query,
-  signal,
-}: {
-  query: CoworkWorkspaceAvailabilityQuery;
-  signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
-  if (!response.ok) throw new Error("Availability request failed");
-
-  return parseWorkspaceAvailabilityResponse(await response.json());
-};
-
-const formatDisplayDate = (date: string) => date;
-
-const getSanitizedUtmParams = (
-  searchParams: URLSearchParams
-): SanitizedUtmParams => {
-  const sanitizedParams: SanitizedUtmParams = {};
-
-  for (const key of utmKeys) {
-    const value = searchParams.get(key)?.trim();
-
-    if (!value) {
-      continue;
-    }
-
-    sanitizedParams[key] = value.slice(0, 128);
-  }
-
-  return sanitizedParams;
-};
-
-const createCheckoutIdentifier = () =>
-  globalThis.crypto?.randomUUID?.() ??
-  `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const formatDisplayDate = (date: string, locale: Locale) =>
+  formatReservationInputDate(
+    date,
+    locale,
+    m.reservationDatePlaceholder({}, { locale })
+  );
 
 export function ReservationForm({
   initialReservation,
@@ -250,8 +197,8 @@ export function ReservationForm({
   const lastSubmittedReservationRef = useRef<string | null>(null);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
-  const sanitizedUtmParams = useMemo(
-    () => getSanitizedUtmParams(searchParams),
+  const analyticsProperties = useMemo(
+    () => getReservationAnalyticsProperties(searchParams),
     [searchParams]
   );
   const defaultValues = useMemo(
@@ -419,7 +366,7 @@ export function ReservationForm({
 
       if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
         hasTrackedSuccessfulSubmission.current = true;
-        track("workspace_checkout_started", sanitizedUtmParams);
+        track("workspace_checkout_started", analyticsProperties);
       }
 
       router.push(redirectUrl);
@@ -1102,7 +1049,7 @@ function ReservationDateField({
                   )}
                 >
                   <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                  {formatDisplayDate(field.value)}
+                  {formatDisplayDate(field.value, locale)}
                 </Button>
               </FormControl>
             </PopoverTrigger>
