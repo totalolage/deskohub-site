@@ -215,8 +215,7 @@ const loadWorkspaceAvailability = async ({
   return parseWorkspaceAvailabilityResponse(await response.json());
 };
 
-const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationDisplayDate(date, locale);
+const formatDisplayDate = (date: string) => date;
 
 const getSanitizedUtmParams = (
   searchParams: URLSearchParams
@@ -1110,7 +1109,7 @@ function ReservationDateField({
                   )}
                 >
                   <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                  {formatDisplayDate(field.value, locale)}
+                  {formatDisplayDate(field.value)}
                 </Button>
               </FormControl>
             </PopoverTrigger>

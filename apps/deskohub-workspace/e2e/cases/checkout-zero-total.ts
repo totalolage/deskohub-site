@@ -66,6 +66,8 @@ export const executeZeroTotalCheckout = ({
     });
     const orderId = yield* runStep({
       execute: submitReservationForPayPage({
+        config,
+        locale: data.locale,
         onOrderId: (startedOrderId) => {
           state.orderId = startedOrderId;
         },
