@@ -50,6 +50,17 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   case/step IDs and safe GitHub correlation metadata, and never attach preview
   URLs, provider or database identifiers, customer/order/reservation data, raw
   errors, secrets, or artifact contents.
+- When an in-process E2E case fails, inspect its exported PostHog trace before
+  diagnosing from console output or rerunning. Correlate the exact GitHub run
+  and attempt as `<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`, then find the failed or
+  timed-out `e2e.case` and its terminal `e2e.step`. Compare native span duration
+  with `e2e.timeout_ms`, inspect only the closed outcome/failure attributes, and
+  use that timing and step boundary to decide which bounded GitHub log section,
+  browser snapshot, HAR, or database assertion to inspect next. Artifacts remain
+  complementary evidence for page and request state; do not replace trace-first
+  triage with an undirected artifact dump. Setup failures before
+  `bun run test:e2e` have no suite spans and must still be diagnosed from the
+  responsible GitHub Actions step.
 - Configure the public PostHog project ingest token and ingest host as
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.

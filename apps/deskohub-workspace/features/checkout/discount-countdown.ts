@@ -9,18 +9,26 @@ export type DiscountCountdown = {
   readonly unit: "hour" | "second";
 };
 
-export type DiscountCountdownState = {
-  readonly countdown?: DiscountCountdown;
-  readonly refreshAfterMilliseconds?: number;
-  readonly refreshEveryMilliseconds?: number;
-};
+export type DiscountCountdownState =
+  | { readonly status: "idle" }
+  | {
+      readonly status: "scheduled";
+      readonly refreshAfterMilliseconds: number;
+    }
+  | {
+      readonly status: "active";
+      readonly countdown: DiscountCountdown;
+      readonly refreshAfterMilliseconds?: number;
+      readonly refreshEveryMilliseconds?: number;
+    }
+  | { readonly status: "expired" };
 
 export const getDiscountCountdownState = (
   discount: Pick<Discount, "countdownStartsAt" | "expiresAt">,
   now: Temporal.Instant
 ): DiscountCountdownState => {
   if (!(discount.countdownStartsAt && discount.expiresAt)) {
-    return {};
+    return { status: "idle" };
   }
 
   const countdownStartsAt = Temporal.Instant.from(discount.countdownStartsAt);
@@ -28,13 +36,14 @@ export const getDiscountCountdownState = (
 
   if (Temporal.Instant.compare(now, countdownStartsAt) < 0) {
     return {
+      status: "scheduled",
       refreshAfterMilliseconds:
         countdownStartsAt.epochMilliseconds - now.epochMilliseconds,
     };
   }
 
   if (Temporal.Instant.compare(now, expiresAt) >= 0) {
-    return {};
+    return { status: "expired" };
   }
 
   const remainingMilliseconds =
@@ -50,6 +59,7 @@ export const getDiscountCountdownState = (
   );
 
   return {
+    status: "active",
     countdown: { value, unit },
     ...(unit === "second"
       ? { refreshEveryMilliseconds: millisecondsPerSecond }

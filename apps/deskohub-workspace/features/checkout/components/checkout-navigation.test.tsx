@@ -81,7 +81,7 @@ test("uses a Next Link without prefetch to reopen signed reservation state", asy
   });
 });
 
-test("uses an ordinary Next Link for the failed-fulfillment support handoff", async () => {
+test("keeps status-page actions as Next Links without background prefetch", async () => {
   const { CheckoutStatusPage } = await import("./checkout-status-page");
 
   const view = render(
@@ -110,6 +110,14 @@ test("uses an ordinary Next Link for the failed-fulfillment support handoff", as
   expect(supportHref).toStartWith("/en-US/contact?");
   expect(capturedLinks).toContainEqual({
     href: supportHref,
-    prefetch: undefined,
+    prefetch: false,
+  });
+  expect(capturedLinks).toContainEqual({
+    href: "/en-US/checkout/order",
+    prefetch: false,
+  });
+  expect(capturedLinks).toContainEqual({
+    href: "/en-US",
+    prefetch: false,
   });
 });

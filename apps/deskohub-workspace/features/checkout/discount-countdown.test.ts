@@ -15,7 +15,7 @@ describe("getDiscountCountdown", () => {
         { expiresAt: timedDiscount.expiresAt },
         Temporal.Instant.from("2026-08-01T12:00:00.000Z")
       )
-    ).toEqual({});
+    ).toEqual({ status: "idle" });
   });
 
   test("omits the countdown and schedules its declared start", () => {
@@ -24,7 +24,7 @@ describe("getDiscountCountdown", () => {
         timedDiscount,
         Temporal.Instant.from("2026-08-01T09:59:59.999Z")
       )
-    ).toEqual({ refreshAfterMilliseconds: 1 });
+    ).toEqual({ status: "scheduled", refreshAfterMilliseconds: 1 });
   });
 
   test("counts hours and schedules the next displayed value", () => {
@@ -34,6 +34,7 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-01T10:00:00.000Z")
       )
     ).toEqual({
+      status: "active",
       countdown: { value: 24, unit: "hour" },
       refreshAfterMilliseconds: 3_600_000,
     });
@@ -43,6 +44,7 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-01T12:30:00.000Z")
       )
     ).toEqual({
+      status: "active",
       countdown: { value: 22, unit: "hour" },
       refreshAfterMilliseconds: 1_800_000,
     });
@@ -52,6 +54,7 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-02T09:00:00.000Z")
       )
     ).toEqual({
+      status: "active",
       countdown: { value: 1, unit: "hour" },
       refreshAfterMilliseconds: 1,
     });
@@ -64,6 +67,7 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-02T09:00:00.001Z")
       )
     ).toEqual({
+      status: "active",
       countdown: { value: 3600, unit: "second" },
       refreshEveryMilliseconds: 1000,
     });
@@ -73,17 +77,18 @@ describe("getDiscountCountdown", () => {
         Temporal.Instant.from("2026-08-02T09:50:00.000Z")
       )
     ).toEqual({
+      status: "active",
       countdown: { value: 600, unit: "second" },
       refreshEveryMilliseconds: 1000,
     });
   });
 
-  test("omits the countdown once the discount expires", () => {
+  test("reports when the discount expires", () => {
     expect(
       getDiscountCountdownState(
         timedDiscount,
         Temporal.Instant.from("2026-08-02T10:00:00.000Z")
       )
-    ).toEqual({});
+    ).toEqual({ status: "expired" });
   });
 });

@@ -1,3 +1,4 @@
+import { AlertTriangle } from "lucide-react";
 import { applyDiscountCodeForm } from "@/features/checkout/actions/apply-discount-code";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
@@ -65,11 +66,17 @@ export function CheckoutDiscountCodeForm({
       </div>
       {fieldError && (
         <p
-          className="text-sm text-destructive"
+          className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"
           id="checkout-discount-code-error"
           role="alert"
         >
-          {m.checkoutDiscountCodeUnavailable({}, { locale })}
+          <AlertTriangle
+            aria-hidden="true"
+            className="mt-0.5 size-4 shrink-0 text-burned-orange"
+          />
+          <span className="min-w-0">
+            {m.checkoutDiscountCodeUnavailable({}, { locale })}
+          </span>
         </p>
       )}
     </form>

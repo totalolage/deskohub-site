@@ -202,6 +202,34 @@ In the Workspace PostHog project:
 6. Use `e2e.execution_context` to separate `manual` and `ci` runs, and inspect
    `e2e.outcome` plus `e2e.failure.kind` when a span did not pass.
 
+### Investigating a failed run
+
+For any failure that reached `bun run test:e2e`, start with the exported trace:
+
+1. Record the exact GitHub run ID and run attempt, then query
+   `e2e.run.id = <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`.
+2. Find the `e2e.case` whose `e2e.outcome` is `failed` or `timed_out`, then find
+   its terminal non-passing `e2e.step`.
+3. Compare that step's native duration with `e2e.timeout_ms` and note its closed
+   `e2e.failure.kind`. This identifies whether the failure was an immediate
+   error or defect, or a wait that exhausted its intended boundary.
+4. Use the case and step IDs to inspect only the matching GitHub log section and
+   the failed case's browser snapshot, HAR, and database assertion artifacts.
+   The trace identifies where and when the run failed; those artifacts explain
+   the page, request, or persisted state at that boundary.
+5. Form a specific failure hypothesis before rerunning. A rerun is validation,
+   not the first diagnostic step, and a repeated failure requires a regression
+   test and underlying fix.
+
+Do not dump full spans or artifact payloads. Apply the safe reporting boundary
+below and report only correlation values, span names, durations, configured
+timeouts, closed outcomes/failure kinds, and the minimum artifact facts needed
+to explain the failure.
+
+Failures before the E2E process starts—target resolution, dependency
+installation, preview-database resolution, or migration—do not produce suite
+spans. Diagnose those from the responsible GitHub Actions step.
+
 For scripted inspection, authenticate `posthog-cli` to the EU Workspace
 project with a personal API key granting `tracing:read`. The public project
 token used by E2E can ingest spans but cannot read them. Query the PostHog

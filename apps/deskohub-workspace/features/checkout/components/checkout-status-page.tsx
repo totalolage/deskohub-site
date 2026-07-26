@@ -308,6 +308,7 @@ export function CheckoutStatusPage({
             <Link
               href={supportContactHref}
               id="checkout-status-support-contact"
+              prefetch={false}
             >
               {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
             </Link>
@@ -345,7 +346,7 @@ export function CheckoutStatusPage({
             </dl>
 
             {summaryRows.length === 0 && (
-              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
                 {m.checkoutStatusMissingSummary({}, { locale })}
               </p>
             )}
@@ -382,12 +383,12 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={getReserveAgainPath(status, locale)}>
+            <Link href={getReserveAgainPath(status, locale)} prefetch={false}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>
           <Button asChild variant="secondary" className="h-12 px-6">
-            <Link href={`/${locale}`}>
+            <Link href={`/${locale}`} prefetch={false}>
               {m.checkoutStatusBackHome({}, { locale })}
             </Link>
           </Button>

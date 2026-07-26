@@ -360,7 +360,7 @@ function Banner({ children }: { readonly children: string }) {
       aria-live="polite"
       className={cn(
         "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
-        "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
+        "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
       )}
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />

@@ -1,13 +1,13 @@
 "use client";
 
-import { Timer } from "lucide-react";
+import { AlertTriangle, Timer } from "lucide-react";
 import type {
   CheckoutSummary,
   CheckoutSummaryDiscount,
 } from "@/features/checkout/checkout-quote";
 import { formatDiscountCountdown } from "@/features/checkout/format-discount-countdown";
 import { type Locale, m } from "@/features/i18n";
-import { useDiscountCountdown } from "./use-discount-countdown";
+import { useDiscountCountdownState } from "./use-discount-countdown-state";
 
 export function CheckoutDiscountCountdownBanner({
   locale,
@@ -55,25 +55,44 @@ function ActiveDiscountCountdownBanner({
   readonly discount: CheckoutSummaryDiscount["discount"];
   readonly locale: Locale;
 }) {
-  const countdown = useDiscountCountdown(discount);
+  const countdownState = useDiscountCountdownState(discount);
 
-  if (countdown?.unit !== "second") {
+  if (countdownState?.status === "expired") {
+    return (
+      <output className="flex items-start gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
+        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-burned-orange/12 text-burned-orange">
+          <AlertTriangle aria-hidden="true" className="size-4" />
+        </span>
+        <span className="min-w-0 self-center font-semibold">
+          {m.checkoutDiscountExpiredBanner(
+            { discount: discount.label },
+            { locale }
+          )}
+        </span>
+      </output>
+    );
+  }
+
+  if (
+    countdownState?.status !== "active" ||
+    countdownState.countdown.unit !== "second"
+  ) {
     return null;
   }
 
-  const remaining = formatDiscountCountdown(countdown, locale);
+  const remaining = formatDiscountCountdown(countdownState.countdown, locale);
 
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm leading-6 text-aquamarine-ink ring-1 ring-aquamarine-green/10">
+    <output className="flex items-start gap-3 rounded-2xl border border-aquamarine-green/40 bg-aquamarine-green/12 px-4 py-3 text-sm leading-6 text-aquamarine-ink ring-1 ring-aquamarine-green/10">
       <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-aquamarine-green/18 text-aquamarine-ink">
         <Timer aria-hidden="true" className="size-4" />
       </span>
-      <span className="self-center font-semibold">
+      <span className="min-w-0 self-center font-semibold">
         {m.checkoutDiscountCountdownBanner(
           { discount: discount.label, remaining },
           { locale }
         )}
       </span>
-    </div>
+    </output>
   );
 }
