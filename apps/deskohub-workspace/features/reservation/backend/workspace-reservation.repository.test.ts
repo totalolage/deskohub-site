@@ -2042,5 +2042,11 @@ describe("WorkspaceReservationRepository cancellation ownership", () => {
         expect(summarizedRows[0]?.expired).not.toBe(holdExpiredAt.toString());
       })
     );
+    expect(section).toContain(
+      "workspaceReservations.activePaymentEvidenceConflicted"
+    );
+    expect(section).toContain(
+      "workspaceReservations.paymentReconciliationClaimExpiresAt"
+    );
   });
 });

@@ -7,7 +7,9 @@ import {
   mock,
   test,
 } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
+import type { BeforeSendFn } from "posthog-js";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -18,7 +20,36 @@ process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN = "phc_test";
 const featureFlagListeners = new Set<() => void>();
 let featureFlagOverrides: Readonly<Record<string, boolean | string>> = {};
 
-const init = mock(() => undefined);
+let beforeSend: BeforeSendFn | undefined;
+let initOptions:
+  | {
+      readonly before_send?: BeforeSendFn;
+      readonly disable_session_recording?: boolean;
+    }
+  | undefined;
+const sentEvents: unknown[] = [];
+const init = mock(
+  (
+    _projectToken: string,
+    options: {
+      readonly before_send?: BeforeSendFn;
+      readonly disable_session_recording?: boolean;
+    }
+  ) => {
+    initOptions = options;
+    beforeSend = options.before_send;
+  }
+);
+const capture = mock(
+  (event: string, properties?: Readonly<Record<string, unknown>>) => {
+    const posthogEvent = {
+      event,
+      properties: { ...(properties ?? {}) },
+    } as NonNullable<Parameters<BeforeSendFn>[0]>;
+    const sanitized = beforeSend?.(posthogEvent);
+    if (sanitized) sentEvents.push(sanitized);
+  }
+);
 const overrideFeatureFlags = mock(
   (
     overrides:
@@ -39,6 +70,7 @@ const startSessionRecording = mock(() => undefined);
 const stopSessionRecording = mock(() => undefined);
 
 const posthog = {
+  capture,
   featureFlags: {
     hasLoadedFlags: false,
     overrideFeatureFlags,
@@ -122,10 +154,77 @@ describe("PostHogAnalytics feature flag overrides", () => {
     });
 
     expect(init).toHaveBeenCalledTimes(1);
+    expect(initOptions?.disable_session_recording).toBe(true);
+    expect(startSessionRecording).not.toHaveBeenCalled();
     expect(overrideFeatureFlags).toHaveBeenLastCalledWith({
       flags: { discount_codes: true },
     });
     expect(view.getByRole("form", { name: "Discount code" })).toBeDefined();
+
+    const { captureWorkspaceActionTransportError } = await import(
+      "@/shared/utils/use-workspace-action"
+    );
+    class TransportDefect {
+      readonly detail = "untrusted-object-detail";
+    }
+    const dynamicError = new Error("untrusted-error-message");
+    dynamicError.name = "untrusted-error-name";
+    for (const error of [
+      dynamicError,
+      "untrusted-primitive-defect",
+      "https://invalid.example/untrusted-url-value",
+      ["untrusted-array-value"],
+      { nested: "untrusted-container-value" },
+      new TransportDefect(),
+    ]) {
+      captureWorkspaceActionTransportError({
+        actionName: "checkout.submit",
+        error,
+      });
+    }
+    expect(capture).toHaveBeenCalledTimes(6);
+    expect(sentEvents).toHaveLength(6);
+    const serializedEvents = JSON.stringify(sentEvents);
+    for (const unsafeValue of [
+      "untrusted-error-message",
+      "untrusted-error-name",
+      "untrusted-primitive-defect",
+      "untrusted-url-value",
+      "untrusted-array-value",
+      "untrusted-container-value",
+      "untrusted-object-detail",
+    ]) {
+      expect(serializedEvents).not.toContain(unsafeValue);
+    }
+    expect(serializedEvents).toContain('"errorCategory":"transport_failure"');
+
+    const autocaptureMarker = randomUUID();
+    const autocapture = beforeSend?.({
+      event: "$autocapture",
+      properties: {
+        $current_url: `https://deskohub.test/checkout?payState=${autocaptureMarker}`,
+        $elements: [
+          {
+            href: `https://deskohub.test/checkout?payState=${autocaptureMarker}`,
+            text: autocaptureMarker,
+            attr__data_contact: autocaptureMarker,
+          },
+        ],
+      },
+    } as NonNullable<Parameters<BeforeSendFn>[0]>);
+    expect(autocapture).toBeNull();
+    expect(JSON.stringify(sentEvents)).not.toContain(autocaptureMarker);
+
+    const replayMarker = randomUUID();
+    const replay = beforeSend?.({
+      event: "$snapshot",
+      properties: {
+        $current_url: `https://deskohub.test/checkout?payState=${replayMarker}`,
+        $snapshot_data: { href: replayMarker },
+      },
+    } as NonNullable<Parameters<BeforeSendFn>[0]>);
+    expect(replay).toBeNull();
+    expect(JSON.stringify(sentEvents)).not.toContain(replayMarker);
 
     await act(async () => {
       view.rerender(

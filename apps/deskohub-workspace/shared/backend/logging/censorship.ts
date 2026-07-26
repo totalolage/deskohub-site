@@ -1,22 +1,17 @@
 import {
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
-} from "@deskohub/dotypos";
-import { EmailServiceError } from "@deskohub/email";
-import {
   type AnyValue,
   type AnyValueMap,
   type LoggerProvider,
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
-import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
+import type {
+  ReadableSpan,
+  SpanExporter,
+  SpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Cause, Effect, Logger, type LogLevel, References } from "effect";
-import { PublicSafeActionError } from "../../utils/safe-action-client";
-import { isSensitiveUrlSearchParam } from "../../utils/sensitive-url-search-params";
-import { StorageError } from "../errors";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -37,56 +32,84 @@ const sensitiveLogKeyFragments = [
   "auth",
   "cookie",
   "set cookie",
+  "parameter",
+  "parameters",
+  "bind",
   "session cookie",
   "session secret",
   "session token",
+  "hosted page",
+  "hpp url",
+  "payment page",
+  "redirect url",
+  "session url",
   "name",
   "message",
+  "cause",
+  "error",
+  "failure",
+  "defect",
+  "exception",
   "error description",
   "email",
   "phone",
   "first name",
   "last name",
-  "subject",
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
-  "addressline1",
-  "addressline2",
-  "barcode",
-  "birthday",
-  "city",
-  "companyid",
-  "companyname",
-  "country",
-  "description",
-  "detail",
   "discountcode",
-  "error",
-  "expiredate",
-  "externalid",
-  "headerprint",
-  "hexcolor",
-  "internalnote",
-  "modifiedby",
-  "note",
+  "exception.type",
+  "error.type",
   "exception.stacktrace",
+  "providerredirecturl",
+  "redirecturl",
+  "hostedpage",
+  "hppurl",
+  "url",
+  "url.full",
+  "http.url",
+  "http.target",
+  "db.statement",
+  "db.query.text",
+  "db.query.summary",
   "submittedcode",
-  "stack",
-  "tags",
-  "vatid",
   "x-vercel-sc-headers",
-  "zip",
+]);
+const trustedTelemetryClassificationKeys = new Set(["e2e.failure.kind"]);
+
+const sensitiveLogUrlSearchParams = new Set([
+  "checkouttoken",
+  "paystate",
+  "paystateref",
+  "x-vercel-protection-bypass",
+  "token",
+  "state",
+  "secret",
+  "name",
+  "message",
 ]);
 
+const isSensitiveLogUrlSearchParam = (key: string): boolean =>
+  sensitiveLogUrlSearchParams.has(key.toLowerCase());
+
 const isSensitiveLogRecordKey = (key: string): boolean =>
-  isSensitiveLogKey(key) || isSensitiveUrlSearchParam(key);
+  isSensitiveLogKey(key) || isSensitiveLogUrlSearchParam(key);
 
 const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 
 const sensitiveLogKeyFragmentWords = sensitiveLogKeyFragments.map(
   splitSensitiveLogKeyFragment
 );
+const opaqueFailureKeyWords = new Set([
+  "cause",
+  "error",
+  "errors",
+  "failure",
+  "failures",
+  "defect",
+  "exception",
+]);
 
 const logKeyWordPattern = /[A-Z]+(?=[A-Z][a-z]|\d|$)|[A-Z]?[a-z]+|\d+/g;
 const logKeySegmentPattern = /[a-z0-9]+/gi;
@@ -143,10 +166,17 @@ const endsWithSensitiveLogKeyFragment = (key: string): boolean => {
   });
 };
 
-export const isSensitiveLogKey = (key: string): boolean =>
-  sensitiveLogExactKeys.has(key.toLowerCase()) ||
-  containsSensitiveLogKeyFragmentSegment(key) ||
-  endsWithSensitiveLogKeyFragment(key);
+export const isSensitiveLogKey = (key: string): boolean => {
+  const normalizedKey = key.toLowerCase();
+  if (trustedTelemetryClassificationKeys.has(normalizedKey)) return false;
+
+  return (
+    sensitiveLogExactKeys.has(normalizedKey) ||
+    tokenizeLogKey(key).some((word) => opaqueFailureKeyWords.has(word)) ||
+    containsSensitiveLogKeyFragmentSegment(key) ||
+    endsWithSensitiveLogKeyFragment(key)
+  );
+};
 
 const isMap = (value: unknown): value is Map<unknown, unknown> =>
   value instanceof Map;
@@ -166,9 +196,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 
 const redactUrlSearchParams = (url: URL): void => {
   for (const key of Array.from(url.searchParams.keys())) {
-    if (isSensitiveLogRecordKey(key)) {
-      url.searchParams.set(key, CENSORED_LOG_VALUE);
-    }
+    url.searchParams.set(key, CENSORED_LOG_VALUE);
   }
 };
 
@@ -228,169 +256,11 @@ const isEffectDrizzleQueryError = (
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
 
-const isPlainDotyposProviderError = (
-  value: unknown
-): value is Record<string, unknown> =>
-  isPlainObject(value) &&
-  !("_tag" in value) &&
-  Object.keys(value).every((key) =>
-    ["code", "error", "errorDescription"].includes(key)
-  ) &&
-  ("errorDescription" in value ||
-    ("error" in value && ("code" in value || Object.keys(value).length <= 2)));
-
-const serializedKnownErrorTags = new Set([
-  "EmailServiceError",
-  "ExternalAPIError",
-  "NetworkError",
-  "PublicSafeActionError",
-  "StorageError",
-  "ValidationError",
-]);
-
-const getSerializedKnownErrorTag = (value: unknown): string | undefined => {
-  if (!isPlainObject(value)) return undefined;
-  const tag =
-    typeof value._tag === "string"
-      ? value._tag
-      : typeof value.name === "string"
-        ? value.name
-        : undefined;
-  return tag && serializedKnownErrorTags.has(tag) ? tag : undefined;
-};
-
-const projectTrustedErrorMetadata = (
-  value: object,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  const existing = seen.get(value);
-  if (existing) return existing;
-
-  if (value instanceof EmailServiceError) {
-    const result = { _tag: "EmailServiceError" };
-    seen.set(value, result);
-    return result;
-  }
-
-  if (value instanceof ExternalAPIError) {
-    const result = {
-      _tag: "ExternalAPIError",
-      operation: value.operation,
-      ...(typeof value.statusCode === "number" && {
-        statusCode: value.statusCode,
-      }),
-    };
-    seen.set(value, result);
-    return result;
-  }
-
-  if (value instanceof NetworkError) {
-    const result = { _tag: "NetworkError" };
-    seen.set(value, result);
-    return result;
-  }
-
-  if (value instanceof ValidationError) {
-    const result = { _tag: "ValidationError" };
-    seen.set(value, result);
-    return result;
-  }
-
-  if (value instanceof StorageError) {
-    const result: Record<string, unknown> = { _tag: "StorageError" };
-    seen.set(value, result);
-    if (value.operation) result.operation = value.operation;
-    if (typeof value.cause === "object" && value.cause !== null) {
-      const cause = censorErrorCause(value.cause, seen);
-      if (cause !== CENSORED_LOG_VALUE) result.cause = cause;
-    }
-    return result;
-  }
-
-  if (value instanceof PublicSafeActionError) {
-    const result: Record<string, unknown> = { _tag: "PublicSafeActionError" };
-    seen.set(value, result);
-    const cause = censorErrorCause(value.cause, seen);
-    if (cause !== CENSORED_LOG_VALUE) {
-      result.cause = cause;
-    }
-    return result;
-  }
-
-  if (value instanceof Error) {
-    const result = { _tag: "Error" };
-    seen.set(value, result);
-    return result;
-  }
-
-  return CENSORED_LOG_VALUE;
-};
-
-const projectSerializedKnownError = (
-  value: Record<string, unknown>,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  const tag = getSerializedKnownErrorTag(value);
-  if (!tag) return CENSORED_LOG_VALUE;
-
-  const existing = seen.get(value);
-  if (existing) return existing;
-
-  const result: Record<string, unknown> = { _tag: tag };
-  seen.set(value, result);
-  if (tag === "ExternalAPIError" && typeof value.statusCode === "number") {
-    result.statusCode = value.statusCode;
-  }
-  return result;
-};
-
-function censorErrorCause(
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown {
-  if (typeof value !== "object" || value === null) return CENSORED_LOG_VALUE;
-
-  if (
-    Cause.isCause(value) ||
-    isPlainDotyposProviderError(value) ||
-    isEffectDrizzleQueryError(value) ||
-    value instanceof EmailServiceError ||
-    value instanceof ExternalAPIError ||
-    value instanceof NetworkError ||
-    value instanceof PublicSafeActionError ||
-    value instanceof StorageError ||
-    value instanceof ValidationError ||
-    value instanceof Error ||
-    getSerializedKnownErrorTag(value) !== undefined
-  ) {
-    return censorLogValueInternal(value, seen);
-  }
-
-  return CENSORED_LOG_VALUE;
-}
-
-const censorQueryParameter = (
-  value: unknown,
-  seen: WeakMap<object, unknown>
-): unknown => {
-  if (typeof value !== "string") {
-    return censorLogValueInternal(value, seen);
-  }
-
-  try {
-    return JSON.stringify(
-      censorLogValueInternal(JSON.parse(value) as unknown, seen)
-    );
-  } catch {
-    return censorLogValueInternal(value, seen);
-  }
-};
-
 const censorQueryParams = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
+  if (!Array.isArray(value)) return CENSORED_LOG_VALUE;
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -400,7 +270,7 @@ const censorQueryParams = (
 
   for (let index = 0; index < value.length; index += 1) {
     if (index in value) {
-      result[index] = censorQueryParameter(value[index], seen);
+      result[index] = CENSORED_LOG_VALUE;
     }
   }
 
@@ -412,19 +282,40 @@ const censorLogRecordValue = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  const normalizedKey = key.toLowerCase();
-  if (normalizedKey === "error" || normalizedKey === "cause") {
-    return censorErrorCause(value, seen);
-  }
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  if (normalizedKey === "params") return censorQueryParams(value, seen);
-  return censorLogValueInternal(value, seen);
+  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  return censorLogValueInternal(value, seen, "record");
 };
+
+type CensorValueContext = "direct" | "record";
 
 const censorLogValueInternal = (
   value: unknown,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  context: CensorValueContext
 ): unknown => {
+  if (Cause.isCause(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+    seen.set(value, Cause.empty);
+
+    const reasons = value.reasons.map((reason) => {
+      if (Cause.isFailReason(reason)) {
+        return Cause.fail(CENSORED_LOG_VALUE);
+      }
+      if (Cause.isDieReason(reason)) {
+        return Cause.die(CENSORED_LOG_VALUE);
+      }
+      return Cause.interrupt(reason.fiberId);
+    });
+    const result = reasons.reduce(
+      (combined, reason) => Cause.combine(combined, reason),
+      Cause.empty as Cause.Cause<unknown>
+    );
+    seen.set(value, result);
+    return result;
+  }
+
   if (Array.isArray(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
@@ -434,7 +325,7 @@ const censorLogValueInternal = (
 
     for (let index = 0; index < value.length; index += 1) {
       if (index in value) {
-        result[index] = censorLogValueInternal(value[index], seen);
+        result[index] = censorLogValueInternal(value[index], seen, "direct");
       }
     }
 
@@ -453,7 +344,7 @@ const censorLogValueInternal = (
         key,
         typeof key === "string"
           ? censorLogRecordValue(key, nestedValue, seen)
-          : censorLogValueInternal(nestedValue, seen)
+          : censorLogValueInternal(nestedValue, seen, "direct")
       );
     }
 
@@ -472,7 +363,7 @@ const censorLogValueInternal = (
         key,
         isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
+          : String(censorLogValueInternal(nestedValue, seen, "record"))
       );
     });
 
@@ -491,30 +382,24 @@ const censorLogValueInternal = (
         key,
         isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
-          : String(censorLogValueInternal(nestedValue, seen))
+          : String(censorLogValueInternal(nestedValue, seen, "record"))
       );
     });
 
     return result;
   }
 
-  if (typeof value === "string") return censorUrlString(value);
-
-  if (Cause.isCause(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-    seen.set(value, Cause.empty);
-    const result = Cause.fromReasons(
-      value.reasons.map((reason) =>
-        Cause.isFailReason(reason)
-          ? Cause.makeFailReason(censorErrorCause(reason.error, seen))
-          : Cause.isDieReason(reason)
-            ? Cause.makeDieReason(censorErrorCause(reason.defect, seen))
-            : Cause.makeInterruptReason(reason.fiberId)
-      )
-    );
-    seen.set(value, result);
-    return result;
+  if (
+    value === null ||
+    value === undefined ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "symbol"
+  ) {
+    if (context === "direct") return CENSORED_LOG_VALUE;
+    return typeof value === "string" ? censorUrlString(value) : value;
   }
 
   if (isEffectDrizzleQueryError(value)) {
@@ -523,37 +408,21 @@ const censorLogValueInternal = (
 
     const result: Record<string, unknown> = {
       _tag: value._tag,
-      query: value.query,
+      query: CENSORED_LOG_VALUE,
     };
     seen.set(value, result);
     result.params = censorQueryParams(value.params, seen);
     return result;
   }
 
-  if (
-    value instanceof EmailServiceError ||
-    value instanceof ExternalAPIError ||
-    value instanceof NetworkError ||
-    value instanceof PublicSafeActionError ||
-    value instanceof StorageError ||
-    value instanceof ValidationError ||
-    value instanceof Error
-  ) {
-    return projectTrustedErrorMetadata(value, seen);
-  }
-
-  if (isPlainDotyposProviderError(value)) {
+  if (value instanceof Error) {
     return {
-      ...("code" in value &&
-        typeof value.code === "number" && { code: value.code }),
+      name: normalizeErrorName(value.name),
+      message: CENSORED_LOG_VALUE,
     };
   }
 
-  if (isPlainObject(value) && getSerializedKnownErrorTag(value) !== undefined) {
-    return projectSerializedKnownError(value, seen);
-  }
-
-  if (!isPlainObject(value)) return value;
+  if (!isPlainObject(value)) return CENSORED_LOG_VALUE;
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -568,8 +437,22 @@ const censorLogValueInternal = (
   return result;
 };
 
+const safeErrorNames = new Set([
+  "AggregateError",
+  "Error",
+  "EvalError",
+  "RangeError",
+  "ReferenceError",
+  "SyntaxError",
+  "TypeError",
+  "URIError",
+]);
+
+const normalizeErrorName = (name: string): string =>
+  safeErrorNames.has(name) ? name : CENSORED_LOG_VALUE;
+
 export const censorTelemetryValue = (value: unknown): unknown =>
-  censorLogValueInternal(value, new WeakMap());
+  censorLogValueInternal(value, new WeakMap(), "direct");
 
 export const censorLogValue = censorTelemetryValue;
 
@@ -581,7 +464,7 @@ export const censorLoggerOptions = (
   return {
     ...options,
     message: censorLogValue(options.message),
-    cause: censorLogValue(options.cause) as typeof options.cause,
+    cause: censorLogValue(options.cause) as Logger.Options<unknown>["cause"],
     fiber: {
       ...fiber,
       getRef: (ref) => {
@@ -633,17 +516,7 @@ const toOtelValue = (value: unknown): AnyValue => {
   }
 
   try {
-    return JSON.stringify(
-      Cause.isCause(value)
-        ? value.reasons.map((reason) =>
-            Cause.isFailReason(reason)
-              ? { _tag: "Fail", error: reason.error }
-              : Cause.isDieReason(reason)
-                ? { _tag: "Die", defect: reason.defect }
-                : { _tag: "Interrupt" }
-          )
-        : value
-    );
+    return JSON.stringify(value);
   } catch {
     return String(value);
   }
@@ -698,6 +571,43 @@ export const createCensoredOtelSpanExporter = (
   shutdown: () => spanExporter.shutdown(),
 });
 
+/**
+ * Must precede every production exporter processor. OpenTelemetry invokes
+ * processors synchronously in configured order, so this replaces the mutable
+ * ended-span projection before any following processor can enqueue or export it.
+ */
+export const createCensoringOtelSpanProcessor = (): SpanProcessor => ({
+  forceFlush: () => Promise.resolve(),
+  onEnd: (span) => {
+    const censored = censorReadableSpan(span);
+    replaceRecordContents(span.attributes, censored.attributes);
+    replaceArrayContents(span.events, censored.events);
+    replaceArrayContents(span.links, censored.links);
+    replaceRecordContents(span.status, censored.status);
+    (span as { name: string }).name = censored.name;
+    replaceRecordContents(
+      span.resource.attributes,
+      censored.resource.attributes
+    );
+  },
+  onStart: () => undefined,
+  shutdown: () => Promise.resolve(),
+});
+
+const replaceRecordContents = (target: object, source: Readonly<object>) => {
+  for (const key of Object.keys(target)) {
+    delete (target as Record<string, unknown>)[key];
+  }
+  Object.assign(target, source);
+};
+
+const replaceArrayContents = <A>(
+  target: readonly A[],
+  source: readonly A[]
+) => {
+  (target as A[]).splice(0, target.length, ...source);
+};
+
 const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
   attributes: censorTelemetryValue(
     span.attributes
@@ -719,7 +629,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     return {
       ...event,
       attributes,
-      name: isException ? "exception" : event.name,
+      name: isException ? "exception" : censorSpanLabel(event.name),
     };
   }),
   instrumentationScope: span.instrumentationScope,
@@ -728,7 +638,7 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     ...link,
     attributes: censorTelemetryValue(link.attributes) as typeof link.attributes,
   })),
-  name: span.name,
+  name: censorSpanLabel(span.name),
   parentSpanContext: span.parentSpanContext,
   resource: resourceFromAttributes(
     censorOtelResourceAttributes(span.resource.attributes),
@@ -740,6 +650,13 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
     ? { ...span.status, message: CENSORED_LOG_VALUE }
     : span.status,
 });
+
+export const censorSpanLabel = (label: string): string =>
+  /https?:\/\//i.test(label) ||
+  label.includes("?") ||
+  /^\s*(delete|insert|select|update|with)\b/i.test(label)
+    ? CENSORED_LOG_VALUE
+    : label;
 
 const trustedOtelResourceIdentityKeys = [
   "service.name",

@@ -581,6 +581,7 @@ const isDueReservation = (
   dueReservationStates.includes(reservation?.reservationState ?? "") &&
   !getDifferentProviderAttachmentRecovery(reservation) &&
   reservation.paymentState !== "paid" &&
+  !reservation.activePaymentEvidenceConflicted &&
   reservation.reservationHoldExpiresAt?.equals(reservationHoldExpiresAt) &&
   Temporal.Instant.compare(reservation.reservationHoldExpiresAt, now) <= 0;
 

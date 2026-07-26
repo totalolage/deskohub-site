@@ -3357,6 +3357,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       makeReservation({ paymentState: "paid" }),
       makeReservation({ reservationState: "cancelled" }),
       makeReservation({ reservationState: "confirmed" }),
+      makeReservation({ activePaymentEvidenceConflicted: true }),
     ]) {
       const result = await runProcessMessage(duePayload, {
         findById: mock(() => Effect.succeed(reservation)),

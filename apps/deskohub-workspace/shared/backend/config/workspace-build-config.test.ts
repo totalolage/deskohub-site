@@ -37,3 +37,26 @@ test("includes runtime feature flag overrides in the Workspace build cache", asy
     "POSTHOG_FEATURE_FLAG_OVERRIDES"
   );
 });
+
+test("passes and hashes the payment admission rollout version for Workspace builds", async () => {
+  const [appConfig, rootConfig] = (await Promise.all([
+    Bun.file(new URL("../../../turbo.json", import.meta.url)).json(),
+    Bun.file(new URL("../../../../../turbo.json", import.meta.url)).json(),
+  ])) as [
+    {
+      readonly tasks: {
+        readonly build: { readonly env: readonly string[] };
+      };
+    },
+    {
+      readonly globalPassThroughEnv: readonly string[];
+    },
+  ];
+
+  expect(appConfig.tasks.build.env).toContain(
+    "WORKSPACE_PAYMENT_ADMISSION_VERSION"
+  );
+  expect(rootConfig.globalPassThroughEnv).toContain(
+    "WORKSPACE_PAYMENT_ADMISSION_VERSION"
+  );
+});

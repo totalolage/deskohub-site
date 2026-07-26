@@ -1,7 +1,7 @@
 # PostHog API service
 
-`@deskohub/posthog` provides the Effect client generated from PostHog's current
-public OpenAPI schema.
+`@deskohub/posthog` provides the Effect client generated from a reviewed,
+committed snapshot of PostHog's public OpenAPI schema.
 
 Run generation from the repository root:
 
@@ -9,11 +9,13 @@ Run generation from the repository root:
 bun turbo run generate --filter=@deskohub/posthog
 ```
 
-The generator downloads `https://eu.posthog.com/api/schema/?format=json` and
-runs Effect's OpenAPI generator against the complete schema. Set
-`POSTHOG_OPENAPI_SCHEMA_URL` only when generation should target another PostHog
-installation. Turbo caching is disabled for this task so each generation uses
-the schema currently published by PostHog.
+Normal generation is hermetic: it verifies
+`posthog-openapi.json.gz.sha256`, reads `posthog-openapi.json.gz`, and runs the
+pinned Effect OpenAPI generator without network access. Updating the schema is
+a separate reviewed operation: download the public schema, gzip it
+deterministically, update its digest, regenerate the client, and update the
+generated-client digest. `generated:check` verifies both committed digests, and
+the package typecheck depends on that check.
 
 Before generation, nullable feature-flag fields are converted from OpenAPI 3.1's
 `type: [value, null]` notation to the equivalent `oneOf` notation because

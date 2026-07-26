@@ -4,6 +4,8 @@
 
 Generate Drizzle migrations, journals, and snapshots with Drizzle tooling. Do not hand-write migration metadata or journal entries.
 
+When a generated migration contains a required custom trigger/function or backfill contract that Drizzle snapshots cannot model, preserve that SQL explicitly during later migration regeneration, composition, or squashing. For mixed-version payment settlement, verify trigger inventory, drain old writers by exact deployment/version, rerun the idempotent reconciliation, and require both missing-event and invalid-event counts to be zero before enabling new admission.
+
 ## Release Workspace production
 
 Keep the production release sequence intentionally simple:

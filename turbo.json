@@ -38,7 +38,8 @@
     "!VERCEL_ENV",
     "VERCEL_AUTOMATION_BYPASS_SECRET",
     "VERCEL_PROJECT_PRODUCTION_URL",
-    "VERCEL_URL"
+    "VERCEL_URL",
+    "WORKSPACE_PAYMENT_ADMISSION_VERSION"
   ],
   "tasks": {
     "@deskohub/dotypos#generate": {

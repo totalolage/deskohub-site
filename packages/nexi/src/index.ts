@@ -26,6 +26,8 @@ export {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   getNexiPaymentMetadata,
+  isBoundedNexiProviderIdentifier,
+  isNexiWebhookEvidenceConsistent,
   locales,
   NexiAmountSchema,
   NexiCurrencySchema,

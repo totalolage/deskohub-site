@@ -3,12 +3,24 @@
   "extends": ["//"],
   "tasks": {
     "generate": {
-      "cache": false,
-      "env": ["POSTHOG_OPENAPI_SCHEMA_URL"],
+      "inputs": [
+        "posthog-openapi.json.gz",
+        "posthog-openapi.json.gz.sha256",
+        "scripts/generate.ts"
+      ],
       "outputs": ["src/generated/**"]
     },
+    "generated:check": {
+      "inputs": [
+        "scripts/check-generated.ts",
+        "posthog-openapi.json.gz",
+        "posthog-openapi.json.gz.sha256",
+        "src/generated/effect.gen.ts",
+        "src/generated/effect.gen.sha256"
+      ]
+    },
     "typecheck": {
-      "dependsOn": ["generate"]
+      "dependsOn": ["generated:check"]
     }
   }
 }

@@ -18,7 +18,6 @@ import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "../payment/provider-payment-finalization.service";
-import { PaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -74,7 +73,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
   ReservationHoldCleanupService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
-    const paymentLifecycle = yield* PaymentLifecycleRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
     const posthogEvents = yield* PostHogEventService;
@@ -104,6 +102,13 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             paymentState: active?.paymentState,
           }
         );
+
+        if (active?.activePaymentEvidenceConflicted) {
+          yield* Effect.logWarning(
+            "Reservation hold cancellation skipped: payment evidence requires manual review"
+          );
+          return "skipped";
+        }
 
         if (
           active?.paymentState === "pending" &&
@@ -182,51 +187,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             );
             return "skipped";
           }
-          if (result === "not_verifiable") {
-            yield* Effect.logInfo(
-              "Reservation hold cancellation expiring not-verifiable payment attempt"
-            );
-            const expired = yield* paymentLifecycle
-              .markTerminal({
-                id: paymentAttemptId,
-                workspaceReservationId: active.id,
-                state: "expired",
-                failureCode: "payment_not_verifiable_before_cleanup",
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Reservation hold cancellation payment attempt expiration failed",
-                    {
-                      orderId: active.id,
-                      paymentAttemptId,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.catchTag("PaymentLifecycleStateError", () =>
-                  Effect.succeed(undefined)
-                ),
-                Effect.mapError(
-                  ReservationHoldCleanupError.fromError(
-                    "Payment attempt expiration failed during hold cleanup."
-                  )
-                )
-              );
-            if (!expired) {
-              yield* Effect.logWarning(
-                "Reservation hold cancellation skipped: payment attempt state changed"
-              );
-              yield* recordSkippedCleanupAttempt();
-              return "skipped";
-            }
-            yield* Effect.annotateLogsScoped({
-              paymentAttemptExpirationChanged: expired.changed,
-            });
-            yield* Effect.logInfo(
-              "Reservation hold cancellation expired not-verifiable payment attempt"
-            );
-          } else if (result !== "terminal") {
+          if (result !== "terminal") {
             yield* Effect.logWarning(
               "Reservation hold cancellation skipped: payment outcome unconfirmed"
             );
@@ -260,6 +221,12 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         if (!claimed) {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: claim not cancellable"
+          );
+          return "skipped";
+        }
+        if (claimed.activePaymentEvidenceConflicted) {
+          yield* Effect.logWarning(
+            "Reservation hold cancellation skipped: payment evidence requires manual review"
           );
           return "skipped";
         }
@@ -541,7 +508,6 @@ const getRecoveryContextFromInput = (
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(PaymentLifecycleRepository.Live),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

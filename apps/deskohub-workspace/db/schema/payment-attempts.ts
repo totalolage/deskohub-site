@@ -1,12 +1,15 @@
 import { sql } from "drizzle-orm";
 import {
+  boolean,
   check,
   index,
   integer,
+  jsonb,
   pgTable,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { DiscountId } from "@/features/discounts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -42,6 +45,16 @@ export const paymentAttempts = pgTable(
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
     providerOrderId: text("provider_order_id"),
+    admissionVersion: integer("admission_version").notNull().default(1),
+    pricingFingerprint: text("pricing_fingerprint"),
+    displayedDiscountIds: jsonb("displayed_discount_ids").$type<
+      readonly DiscountId[]
+    >(),
+    providerStartLeaseId: text("provider_start_lease_id"),
+    providerStartLeaseExpiresAt: instant("provider_start_lease_expires_at"),
+    providerEvidenceConflicted: boolean("provider_evidence_conflicted")
+      .notNull()
+      .default(false),
     securityToken: text("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     amountValue: integer("amount_value").notNull(),
@@ -76,6 +89,37 @@ export const paymentAttempts = pgTable(
     check(
       "payment_attempts_internal_state_check",
       sql`${t.provider} <> 'internal' or (${t.state} = 'paid' and ${t.failureCode} is null)`
+    ),
+    check(
+      "payment_attempts_admission_version_check",
+      sql`${t.admissionVersion} in (1, 2)`
+    ),
+    check(
+      "payment_attempts_pricing_identity_check",
+      sql`${t.admissionVersion} < 2 or (
+        ${t.pricingFingerprint} is not null
+        and btrim(${t.pricingFingerprint}) <> ''
+        and ${t.displayedDiscountIds} is not null
+        and jsonb_typeof(${t.displayedDiscountIds}) = 'array'
+      )`
+    ),
+    check(
+      "payment_attempts_v2_created_lease_check",
+      sql`${t.admissionVersion} < 2 or ${t.state} <> 'created' or (
+        ${t.providerStartLeaseId} is not null
+        and ${t.providerStartLeaseExpiresAt} is not null
+      )`
+    ),
+    check(
+      "payment_attempts_provider_start_lease_check",
+      sql`(
+        ${t.providerStartLeaseId} is null
+        and ${t.providerStartLeaseExpiresAt} is null
+      ) or (
+        ${t.state} = 'created'
+        and btrim(${t.providerStartLeaseId}) <> ''
+        and ${t.providerStartLeaseExpiresAt} is not null
+      )`
     ),
     check(
       "payment_attempts_failure_code_check",

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   assertValidMigrationCount,
+  candidateMigrationDiffRange,
   parseChangedMigrationPaths,
 } from "./validate-migration-count";
 
@@ -19,6 +20,17 @@ apps/deskohub-workspace/db/migrations/20260720120000_new_migration/migration.sql
 
   test("returns an empty list when no migrations changed", () => {
     expect(parseChangedMigrationPaths("\n")).toEqual([]);
+  });
+});
+
+describe("candidateMigrationDiffRange", () => {
+  test("compares the candidate tree to the current integration tree", () => {
+    expect(candidateMigrationDiffRange("current-main")).toBe(
+      "current-main..HEAD"
+    );
+    expect(candidateMigrationDiffRange("current-main", "candidate")).toBe(
+      "current-main..candidate"
+    );
   });
 });
 

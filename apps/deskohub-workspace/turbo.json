@@ -19,7 +19,8 @@
         "POSTHOG_API_KEY",
         "POSTHOG_FEATURE_FLAG_OVERRIDES",
         "POSTHOG_PROJECT_ID",
-        "VERCEL_PROJECT_PRODUCTION_URL"
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "WORKSPACE_PAYMENT_ADMISSION_VERSION"
       ]
     },
     "i18n:compile": {
@@ -57,7 +58,8 @@
         "@deskohub/dotypos#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
-      ]
+      ],
+      "env": ["WORKSPACE_REAL_POSTGRES_TEST_URL"]
     },
     "typecheck": {
       "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]

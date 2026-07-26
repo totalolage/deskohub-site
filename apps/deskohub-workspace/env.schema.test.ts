@@ -77,6 +77,17 @@ describe("workspace environment schemas", () => {
     expect(() => decodeVercelEnvironment("staging")).toThrow();
   });
 
+  test("supports admission v2 rollout and unset rollback only", () => {
+    const decodeAdmissionVersion = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.WORKSPACE_PAYMENT_ADMISSION_VERSION
+    );
+
+    expect(decodeAdmissionVersion("2")).toBe("2");
+    expect(decodeAdmissionVersion(undefined)).toBeUndefined();
+    expect(() => decodeAdmissionVersion("1")).toThrow();
+    expect(() => decodeAdmissionVersion("3")).toThrow();
+  });
+
   test("retains server cross-field checks through T3 Env composition", () => {
     const previewValidation = validateFeatureFlagOverrideEnvironment("preview");
     const productionValidation =

@@ -68,6 +68,22 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.workspaceReservations.id,
       optional: false,
     }),
+    paidEvent: r.one.paymentPaidEvents({
+      from: r.paymentAttempts.id,
+      to: r.paymentPaidEvents.paymentAttemptId,
+    }),
+  },
+  paymentPaidEvents: {
+    paymentAttempt: r.one.paymentAttempts({
+      from: r.paymentPaidEvents.paymentAttemptId,
+      to: r.paymentAttempts.id,
+      optional: false,
+    }),
+    workspaceReservation: r.one.workspaceReservations({
+      from: r.paymentPaidEvents.workspaceReservationId,
+      to: r.workspaceReservations.id,
+      optional: false,
+    }),
   },
   webhookEvents: {
     paymentAttempt: r.one.paymentAttempts({
