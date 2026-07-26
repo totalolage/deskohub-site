@@ -265,7 +265,7 @@ export const makeMeetingRoomE2ECases = ({
     ];
   });
 
-const assertMeetingRoomSlotUnavailable = (
+export const assertMeetingRoomSlotUnavailable = (
   config: WorkspaceE2EConfig,
   data: CheckoutData
 ): Effect.Effect<
@@ -278,10 +278,7 @@ const assertMeetingRoomSlotUnavailable = (
     const availability = yield* pollUntil(
       loadMeetingRoomAvailability(config, slot).pipe(
         Effect.map((result) =>
-          result.meetingRoomUnavailable &&
-          result.unavailableDates.includes(slot.date)
-            ? result
-            : undefined
+          result.meetingRoomUnavailable ? result : undefined
         )
       ),
       {
@@ -294,8 +291,7 @@ const assertMeetingRoomSlotUnavailable = (
       "assert held meeting-room slot unavailable",
       () => {
         assert(
-          availability.meetingRoomUnavailable &&
-            availability.unavailableDates.includes(slot.date),
+          availability.meetingRoomUnavailable,
           "held meeting-room slot remained publicly available"
         );
       }

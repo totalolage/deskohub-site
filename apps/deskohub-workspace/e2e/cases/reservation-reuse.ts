@@ -173,7 +173,7 @@ export const assertReservationReplacement = ({
     log(`Reservation replacement e2e passed for order ${secondOrderId}`);
   });
 
-const returnToPrefilledReservation = ({
+export const returnToPrefilledReservation = ({
   data,
   reservationPath,
   run,
@@ -188,6 +188,10 @@ const returnToPrefilledReservation = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
+    const consentSelector =
+      data.expectedReservationDetails.kind === "meeting-room"
+        ? "#meeting-room-privacy-consent"
+        : "#reservation-privacy-consent";
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
@@ -211,7 +215,7 @@ const returnToPrefilledReservation = ({
     yield* waitForBrowserReactHydration(
       run,
       session,
-      "#reservation-privacy-consent",
+      consentSelector,
       { timeoutMs: timeouts.uiTransition }
     );
     yield* waitForBrowserCondition(
