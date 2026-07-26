@@ -91,6 +91,44 @@ describe("PostHog OTel logs", () => {
     }
   });
 
+  test("censors direct global-style OTLP log records at the provider boundary", async () => {
+    const requests: string[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        requests.push(await request.text());
+        return new Response(null, { status: 200 });
+      },
+    });
+    const provider = createPostHogLoggerProvider({
+      posthogHost: server.url.toString(),
+      posthogProjectToken: randomBytes(24).toString("base64url"),
+      vercelEnv: "development",
+    });
+    if (!provider) throw new Error("Expected a synthetic logger provider.");
+
+    try {
+      provider.getLogger("framework").emit({
+        body: "SyntheticValidDirectLogBody",
+        eventName: "SyntheticValidDirectEvent",
+        attributes: {
+          category: "SyntheticValidCategory",
+          detail: "SyntheticValidDetail",
+          response: JSON.stringify({
+            payload: "SyntheticValidNestedPayload",
+          }),
+        },
+      });
+      await provider.forceFlush();
+
+      expect(requests).toHaveLength(1);
+      expect(requests[0]).not.toContain("SyntheticValid");
+    } finally {
+      await provider.shutdown();
+      server.stop(true);
+    }
+  });
+
   test("bounds a scheduled flush when the logger provider does not settle", async () => {
     let scheduledTask: (() => Promise<void>) | undefined;
     const schedule = mock((task: () => Promise<void>) => {

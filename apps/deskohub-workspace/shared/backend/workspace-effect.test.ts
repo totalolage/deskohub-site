@@ -50,6 +50,30 @@ describe("Workspace Effect execution", () => {
     }
   });
 
+  test("projects benign-looking dynamic console metadata closed", async () => {
+    const log = spyOn(console, "warn").mockImplementation(() => undefined);
+    const sentinel = "SyntheticValidConsoleValue";
+
+    try {
+      await Effect.logWarning(sentinel, {
+        category: sentinel,
+        detail: sentinel,
+        response: { payload: sentinel },
+        visible: sentinel,
+        custom: new (class {
+          readonly value = sentinel;
+        })(),
+      }).pipe(runWorkspaceEffect("test.run"));
+
+      const output = log.mock.calls.flat().join(" ");
+      expect(output).toContain(CENSORED_LOG_VALUE);
+      expect(output).toContain("operation=test.run");
+      expect(output).not.toContain(sentinel);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
   test("tasks preserve success and failure results", async () => {
     const succeeds = defineWorkspaceTask("test.task", () =>
       Effect.succeed("done")

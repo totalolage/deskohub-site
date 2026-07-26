@@ -6,6 +6,10 @@ import {
 } from "@opentelemetry/api-logs";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type {
+  LogRecordExporter,
+  ReadableLogRecord,
+} from "@opentelemetry/sdk-logs";
+import type {
   ReadableSpan,
   SpanExporter,
   SpanProcessor,
@@ -161,62 +165,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const redactUrlSearchParams = (url: URL): void => {
-  for (const key of Array.from(url.searchParams.keys())) {
-    if (isSensitiveLogRecordKey(key)) {
-      url.searchParams.set(key, CENSORED_LOG_VALUE);
-    }
-  }
-};
-
-const censorUrlString = (value: string) => {
-  let absoluteUrl: URL | undefined;
-
-  try {
-    absoluteUrl = new URL(value);
-  } catch {
-    absoluteUrl = undefined;
-  }
-
-  if (absoluteUrl) {
-    if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
-      return value;
-    }
-
-    redactUrlSearchParams(absoluteUrl);
-    return absoluteUrl.toString();
-  }
-
-  const isQueryOnlyRelativeUrl = value.startsWith("?");
-  const isPathRelativeUrl = value.startsWith("/");
-  const isBareRelativeUrlWithQuery = value.includes("?");
-
-  if (
-    !(isPathRelativeUrl || isQueryOnlyRelativeUrl || isBareRelativeUrlWithQuery)
-  ) {
-    return value;
-  }
-
-  try {
-    const relativeUrl = new URL(value, "https://deskohub.local");
-    redactUrlSearchParams(relativeUrl);
-
-    if (value.startsWith("//")) {
-      return `//${relativeUrl.host}${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
-    }
-
-    if (!(isPathRelativeUrl || isQueryOnlyRelativeUrl)) {
-      return `${relativeUrl.pathname.slice(1)}${relativeUrl.search}${relativeUrl.hash}`;
-    }
-
-    return isQueryOnlyRelativeUrl
-      ? `${relativeUrl.search}${relativeUrl.hash}`
-      : `${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
-  } catch {
-    return value;
-  }
-};
-
 const isEffectDrizzleQueryError = (
   value: unknown
 ): value is EffectDrizzleQueryError =>
@@ -224,6 +172,186 @@ const isEffectDrizzleQueryError = (
   value !== null &&
   "_tag" in value &&
   value._tag === "EffectDrizzleQueryError";
+
+const codeOwnedTelemetryNames = new Set([
+  "@effect/opentelemetry",
+  "checkout.advertised-price.load",
+  "checkout.apply-discount-code",
+  "checkout.pay.load",
+  "checkout.payment-return",
+  "checkout.prepare-pay-state",
+  "checkout.provider-log-projection",
+  "checkout.result.refresh",
+  "checkout.submit-reservation",
+  "cloudinaryWebhook",
+  "contact.submit",
+  "e2e.case",
+  "e2e.run",
+  "e2e.step",
+  "events.list",
+  "gallery.images.load",
+  "meeting-room.page-enabled",
+  "nexiWebhook",
+  "operation",
+  "reservationHoldCleanupCron",
+  "resendWebhook",
+  "safe.operation",
+  "telemetry.flush",
+  "test.action",
+  "test.cause-projection",
+  "test.checkout-state-failure",
+  "test.continue",
+  "test.defect",
+  "test.failure",
+  "test.interrupt",
+  "test.layer-failure",
+  "test.nested-cause-failure",
+  "test.public-failure",
+  "test.route",
+  "test.run",
+  "test.state-action",
+  "test.task",
+  "test.task-defect",
+  "test.task-failure",
+  "workspace.availability.load",
+  "workspaceAvailability",
+  "workspaceLocationMap.get",
+]);
+
+const codeOwnedTelemetryEnumValues = new Set([
+  "action",
+  "aggregate_error",
+  "array",
+  "bigint",
+  "boolean",
+  "cancelled",
+  "cancelling",
+  "case",
+  "ci",
+  "confirmed",
+  "confirming",
+  "continue-after-disconnect",
+  "cowork",
+  "custom",
+  "created",
+  "creating_hold",
+  "cs-CZ",
+  "debug",
+  "defect",
+  "development",
+  "draft",
+  "en-US",
+  "error",
+  "expired",
+  "failed",
+  "fatal",
+  "fulfilled",
+  "held",
+  "HEAD",
+  "hold_expired",
+  "info",
+  "internal",
+  "interrupt-on-disconnect",
+  "manual",
+  "meeting-room",
+  "nexi",
+  "native",
+  "nodejs",
+  "not_started",
+  "null",
+  "number",
+  "object",
+  "paid",
+  "PATCH",
+  "passed",
+  "pending",
+  "preview",
+  "POST",
+  "PUT",
+  "processing",
+  "production",
+  "route",
+  "run",
+  "step",
+  "string",
+  "symbol",
+  "task",
+  "timed_out",
+  "timeout",
+  "trace",
+  "undefined",
+  "warn",
+  "DELETE",
+  "GET",
+  "OPTIONS",
+]);
+
+const codeOwnedTelemetryEnumKeys = new Set([
+  "boundary",
+  "category",
+  "currency",
+  "deployment.environment.name",
+  "e2e.execution_context",
+  "e2e.failure.kind",
+  "e2e.outcome",
+  "e2e.scope",
+  "failureKind",
+  "fulfillmentState",
+  "kind",
+  "locale",
+  "method",
+  "outcome",
+  "paymentState",
+  "provider",
+  "reservationKind",
+  "reservationState",
+  "severityText",
+  "shape",
+  "state",
+  "status",
+  "vercel.runtime",
+]);
+
+const codeOwnedTelemetryBooleanKeys = new Set([
+  "accepted",
+  "providerResponseReceived",
+  "responseReceived",
+]);
+
+const codeOwnedTelemetryCountKeys = new Set([
+  "documentCount",
+  "e2e.timeout_ms",
+  "fieldCount",
+  "github.pull_request.number",
+  "github.run.attempt",
+  "legalDocumentCount",
+  "limit",
+  "statusCode",
+  "timeoutMs",
+]);
+
+const projectTelemetryNumber = (key: string, value: number): unknown => {
+  if (!codeOwnedTelemetryCountKeys.has(key) || !Number.isFinite(value)) {
+    return CENSORED_LOG_VALUE;
+  }
+  if (key === "statusCode") {
+    return Number.isInteger(value) && value >= 100 && value <= 599
+      ? value
+      : CENSORED_LOG_VALUE;
+  }
+  return Math.min(1_000_000, Math.max(0, Math.trunc(value)));
+};
+
+const projectTelemetryString = (key: string, value: string): string => {
+  if (key === "operation" && codeOwnedTelemetryNames.has(value)) return value;
+  if (
+    codeOwnedTelemetryEnumKeys.has(key) &&
+    codeOwnedTelemetryEnumValues.has(value)
+  ) {
+    return value;
+  }
+  return CENSORED_LOG_VALUE;
+};
 
 const censorQueryParameter = (
   value: unknown,
@@ -268,7 +396,6 @@ const censorLogRecordValue = (
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
-  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   if (
     key.toLowerCase() === "cause" ||
     key.toLowerCase() === "error" ||
@@ -277,7 +404,13 @@ const censorLogRecordValue = (
   ) {
     return projectErrorMetadata(value);
   }
+  if (typeof value === "string") return projectTelemetryString(key, value);
+  if (typeof value === "number") return projectTelemetryNumber(key, value);
+  if (typeof value === "boolean") {
+    return codeOwnedTelemetryBooleanKeys.has(key) ? value : CENSORED_LOG_VALUE;
+  }
   if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
   return censorLogValueInternal(value, seen);
 };
 
@@ -358,26 +491,28 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (typeof value === "string") return censorUrlString(value);
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    typeof value === "bigint" ||
+    typeof value === "symbol" ||
+    typeof value === "function" ||
+    value === null ||
+    value === undefined
+  ) {
+    return CENSORED_LOG_VALUE;
+  }
 
   if (isEffectDrizzleQueryError(value)) {
-    const existing = seen.get(value);
-    if (existing) return existing;
-
-    const result: Record<string, unknown> = {
-      _tag: value._tag,
-      query: value.query,
-    };
-    seen.set(value, result);
-    result.params = censorQueryParams(value.params, seen);
-    return result;
+    return projectErrorMetadata(value);
   }
 
   if (value instanceof Error) {
     return projectErrorMetadata(value);
   }
 
-  if (!isPlainObject(value)) return value;
+  if (!isPlainObject(value)) return projectErrorMetadata(value);
 
   const existing = seen.get(value);
   if (existing) return existing;
@@ -455,11 +590,7 @@ const toOtelValue = (value: unknown): AnyValue => {
     return value;
   }
 
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return String(value);
-  }
+  return value as AnyValue;
 };
 
 const toOtelBody = (message: unknown): AnyValue => {
@@ -511,9 +642,8 @@ export const createCensoredOtelSpanExporter = (
   shutdown: () => spanExporter.shutdown(),
 });
 
-const safeSpanNamePattern = /^[A-Za-z][A-Za-z0-9_.-]{0,127}$/;
 const censorSpanName = (name: string) =>
-  safeSpanNamePattern.test(name) ? name : "operation";
+  codeOwnedTelemetryNames.has(name) ? name : "operation";
 
 const replaceRecord = (
   target: Record<string, unknown>,
@@ -569,10 +699,17 @@ const censorReadableSpanInPlace = (span: ReadableSpan): void => {
   );
 
   const mutableSpan = span as ReadableSpan & {
+    instrumentationScope: ReadableSpan["instrumentationScope"];
     name: string;
     status: ReadableSpan["status"];
   };
   mutableSpan.name = censorSpanName(span.name);
+  mutableSpan.instrumentationScope = {
+    ...span.instrumentationScope,
+    name: censorSpanName(span.instrumentationScope.name),
+    version: undefined,
+    schemaUrl: undefined,
+  };
   if (span.status.message) {
     mutableSpan.status = { ...span.status, message: CENSORED_LOG_VALUE };
   }
@@ -628,7 +765,12 @@ const censorReadableSpan = (span: ReadableSpan): ReadableSpan => ({
       name: isException ? "exception" : censorSpanName(event.name),
     };
   }),
-  instrumentationScope: span.instrumentationScope,
+  instrumentationScope: {
+    ...span.instrumentationScope,
+    name: censorSpanName(span.instrumentationScope.name),
+    version: undefined,
+    schemaUrl: undefined,
+  },
   kind: span.kind,
   links: span.links.map((link) => ({
     ...link,
@@ -659,13 +801,81 @@ const censorOtelResourceAttributes = (
     attributes
   ) as ReadableSpan["resource"]["attributes"];
 
+  const trustedResourceValues = new Set([
+    "deskohub",
+    "deskohub-workspace",
+    "deskohub-workspace-e2e",
+    "opentelemetry",
+  ]);
+
   for (const key of trustedOtelResourceIdentityKeys) {
     const value = attributes[key];
-    if (value !== undefined) censored[key] = value;
+    if (typeof value === "string" && trustedResourceValues.has(value)) {
+      censored[key] = value;
+    }
+  }
+
+  const namespace = attributes["service.namespace"];
+  if (namespace === "deskohub") censored["service.namespace"] = namespace;
+  const environment = attributes["deployment.environment.name"];
+  if (
+    typeof environment === "string" &&
+    codeOwnedTelemetryEnumValues.has(environment)
+  ) {
+    censored["deployment.environment.name"] = environment;
   }
 
   return censored;
 };
+
+const censorReadableLogRecord = (
+  record: ReadableLogRecord
+): ReadableLogRecord => ({
+  ...record,
+  attributes: censorTelemetryValue(
+    record.attributes
+  ) as ReadableLogRecord["attributes"],
+  body:
+    record.body === undefined
+      ? undefined
+      : (censorTelemetryValue(record.body) as ReadableLogRecord["body"]),
+  eventName: record.eventName
+    ? censorSpanName(record.eventName)
+    : record.eventName,
+  instrumentationScope: {
+    ...record.instrumentationScope,
+    name: censorSpanName(record.instrumentationScope.name),
+    version: undefined,
+    schemaUrl: undefined,
+    attributes: record.instrumentationScope.attributes
+      ? (censorTelemetryValue(
+          record.instrumentationScope.attributes
+        ) as NonNullable<
+          ReadableLogRecord["instrumentationScope"]["attributes"]
+        >)
+      : undefined,
+  },
+  severityText:
+    record.severityText &&
+    codeOwnedTelemetryEnumValues.has(record.severityText.toLowerCase())
+      ? record.severityText.toLowerCase()
+      : undefined,
+  resource: resourceFromAttributes(
+    censorOtelResourceAttributes(record.resource.attributes),
+    record.resource.schemaUrl
+      ? { schemaUrl: record.resource.schemaUrl }
+      : undefined
+  ),
+});
+
+export const createCensoredOtelLogExporter = (
+  exporter: LogRecordExporter
+): LogRecordExporter => ({
+  export: (records, resultCallback) =>
+    exporter.export(records.map(censorReadableLogRecord), resultCallback),
+  forceFlush: () => exporter.forceFlush(),
+  shutdown: () => exporter.shutdown(),
+});
 
 export const WorkspaceLoggerLive = Logger.layer([CensoringLogger]);
 

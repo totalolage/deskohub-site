@@ -397,12 +397,18 @@ const ensureReservationAvailable = (input: {
     })
   );
 
+export type PreparePayStateRequestVersion = {
+  readonly keyDerivationTime?: Date;
+  readonly writerGeneration?: "current" | "legacy";
+};
+
 const getCheckoutKeys = (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: PreparePayStateInput["reservation"];
+  readonly requestVersion?: PreparePayStateRequestVersion;
 }) => {
-  const derivationTime = new Date();
+  const derivationTime = input.requestVersion?.keyDerivationTime ?? new Date();
   const options = { now: () => derivationTime };
 
   return {
@@ -417,6 +423,7 @@ const prepareReservationDraft = Effect.fn(
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
   readonly reservation: PreparePayStateInput["reservation"];
+  readonly requestVersion?: PreparePayStateRequestVersion;
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
     | "checkoutSessionKey"
@@ -435,6 +442,7 @@ const prepareReservationDraft = Effect.fn(
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
+      requestVersion: input.requestVersion,
     });
 
     const existingAttempts = getDistinctReservations(
@@ -660,8 +668,9 @@ const prepareReservationDraft = Effect.fn(
       checkoutAttemptIdentityKey: checkoutKeys.attempt.identity,
     });
     if (
+      input.requestVersion?.writerGeneration !== "legacy" &&
       reservationDraft.checkoutAttemptIdentityKey !==
-      checkoutKeys.attempt.identity
+        checkoutKeys.attempt.identity
     ) {
       continue;
     }
@@ -674,7 +683,10 @@ const prepareReservationDraft = Effect.fn(
 });
 
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
-  function* (input: PreparePayStateInput) {
+  function* (
+    input: PreparePayStateInput,
+    requestVersion: PreparePayStateRequestVersion = {}
+  ) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
@@ -763,6 +775,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
       reservation: input.reservation,
+      requestVersion,
       draft: {
         dotyposCustomerId,
         customerAccessCode,

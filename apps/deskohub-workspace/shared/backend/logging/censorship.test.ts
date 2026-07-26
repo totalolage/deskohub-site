@@ -109,6 +109,30 @@ describe("isSensitiveLogKey", () => {
 });
 
 describe("censorLogValue", () => {
+  test("never exposes dynamic values behind benign keys or custom containers", () => {
+    const sentinel = "SyntheticValidLookingTelemetryValue";
+    class BenignContainer {
+      readonly detail = sentinel;
+    }
+
+    const projected = censorLogValue({
+      category: sentinel,
+      detail: sentinel,
+      visible: sentinel,
+      response: { payload: sentinel },
+      custom: new BenignContainer(),
+      set: new Set([sentinel]),
+      map: new Map([["display", sentinel]]),
+      primitive: sentinel,
+      aggregate: new AggregateError(
+        [sentinel, 42, false, { cause: new Error(sentinel), detail: sentinel }],
+        sentinel
+      ),
+    });
+
+    expect(JSON.stringify(projected)).not.toContain(sentinel);
+  });
+
   test("redacts nested sensitive object keys without mutating input", () => {
     const input = {
       user: "deskohub",
@@ -146,7 +170,7 @@ describe("censorLogValue", () => {
     const censored = censorLogValue(input);
 
     expect(censored).toEqual({
-      user: "deskohub",
+      user: CENSORED_LOG_VALUE,
       nested: {
         apiKey: CENSORED_LOG_VALUE,
         "x-vercel-sc-headers": CENSORED_LOG_VALUE,
@@ -159,19 +183,19 @@ describe("censorLogValue", () => {
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,
         submittedCode: CENSORED_LOG_VALUE,
-        params: '["SUMMER50"]',
-        query: "select * from discount_codes where code = $1",
+        params: CENSORED_LOG_VALUE,
+        query: CENSORED_LOG_VALUE,
         discountCodeId: CENSORED_LOG_VALUE,
         name: CENSORED_LOG_VALUE,
         message: CENSORED_LOG_VALUE,
         errorDescription: CENSORED_LOG_VALUE,
-        visible: "safe",
+        visible: CENSORED_LOG_VALUE,
         email: CENSORED_LOG_VALUE,
         phone: CENSORED_LOG_VALUE,
         firstName: CENSORED_LOG_VALUE,
         lastName: CENSORED_LOG_VALUE,
-        sessionDuration: 123,
-        userSessionCount: 2,
+        sessionDuration: CENSORED_LOG_VALUE,
+        userSessionCount: CENSORED_LOG_VALUE,
       },
       credentials: [{ password: CENSORED_LOG_VALUE, name: CENSORED_LOG_VALUE }],
     });
@@ -205,7 +229,7 @@ describe("censorLogValue", () => {
     expect(censored.self).toBe(censored);
   });
 
-  test("redacts sensitive fields inside query params without hiding safe values", () => {
+  test("projects every query parameter closed", () => {
     const input = {
       params: [
         "visible",
@@ -214,7 +238,13 @@ describe("censorLogValue", () => {
     };
 
     expect(censorLogValue(input)).toEqual({
-      params: ["visible", { email: CENSORED_LOG_VALUE, sessionDuration: 123 }],
+      params: [
+        CENSORED_LOG_VALUE,
+        {
+          email: CENSORED_LOG_VALUE,
+          sessionDuration: CENSORED_LOG_VALUE,
+        },
+      ],
     });
   });
 
@@ -245,7 +275,7 @@ describe("censorLogValue", () => {
     expect(serialized).not.toContain("Failed query");
   });
 
-  test("projects errors while preserving other non-plain objects", () => {
+  test("projects errors and arbitrary non-plain objects", () => {
     const error = new Error("boom");
     const date = new Date("2026-05-30T00:00:00.000Z");
     const set = new Set(["secret"]);
@@ -256,14 +286,13 @@ describe("censorLogValue", () => {
     const censored = censorLogValue(input) as typeof input;
 
     expect(censored).toEqual({
-      ...input,
       thrown: { kind: "error", category: "native" },
+      date: { kind: "object" },
+      set: { kind: "object" },
+      custom: { kind: "object" },
+      promise: { kind: "object" },
     });
     expect(censored.thrown).toEqual({ kind: "error", category: "native" });
-    expect(censored.date).toBe(date);
-    expect(censored.set).toBe(set);
-    expect(censored.custom).toBe(custom);
-    expect(censored.promise).toBe(promise);
     expect(censorLogValue(error)).toEqual({
       kind: "error",
       category: "native",
@@ -291,9 +320,9 @@ describe("censorLogValue", () => {
     expect(censored.get("payState")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("payStateRef")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.get("sessionDuration")).toBe(123);
+    expect(censored.get("sessionDuration")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("nested")).toEqual({ apiKey: CENSORED_LOG_VALUE });
-    expect(censored.get(objectKey)).toBe("visible");
+    expect(censored.get(objectKey)).toBe(CENSORED_LOG_VALUE);
     expect(input.get("password")).toBe("secret-password");
     expect(input.get("headers:authorization")).toBe("Bearer secret");
     expect(input.get("payState")).toBe("pay-state-secret");
@@ -302,40 +331,32 @@ describe("censorLogValue", () => {
     expect(input.get("nested")).toEqual({ apiKey: "secret-api-key" });
   });
 
-  test("redacts sensitive relative URL query params", () => {
+  test("drops dynamic relative URLs", () => {
     expect(
       censorLogValue(
         "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&discountCode=SUMMER50&submittedCode=SUMMER50&visible=safe#summary"
       )
-    ).toBe(
-      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts sensitive bare relative URL query params", () => {
+  test("drops dynamic bare relative URLs", () => {
     expect(
       censorLogValue(
         "checkout/pay?payState=secret&checkoutToken=token&visible=safe#summary"
       )
-    ).toBe(
-      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts bare relative URL query params case-insensitively", () => {
+  test("drops dynamic mixed-case relative URLs", () => {
     expect(
       censorLogValue("checkout/pay?PayState=secret&CHECKOUTTOKEN=token")
-    ).toBe(
-      `checkout/pay?PayState=${encodeURIComponent(CENSORED_LOG_VALUE)}&CHECKOUTTOKEN=${encodeURIComponent(CENSORED_LOG_VALUE)}`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
-  test("redacts production-observed name and message URL query params", () => {
+  test("drops dynamic contact URLs", () => {
     expect(
       censorLogValue("contact?name=Ada&message=Private&visible=safe")
-    ).toBe(
-      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe`
-    );
+    ).toBe(CENSORED_LOG_VALUE);
   });
 
   test("redacts Headers and URLSearchParams by key without mutating input", () => {
@@ -375,14 +396,16 @@ describe("censorLogValue", () => {
     expect(censored.headers.get("x-vercel-sc-headers")).toBe(
       CENSORED_LOG_VALUE
     );
-    expect(censored.headers.get("x-visible")).toBe("safe");
+    expect(censored.headers.get("x-visible")).toBe(CENSORED_LOG_VALUE);
     expect(headers.get("authorization")).toBe("Bearer secret");
     expect(censored.searchParams).not.toBe(searchParams);
     expect(censored.searchParams.get("client_secret")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("payState")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("PayStateRef")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
-    expect(censored.searchParams.get("sessionDuration")).toBe("123");
+    expect(censored.searchParams.get("sessionDuration")).toBe(
+      CENSORED_LOG_VALUE
+    );
     expect(searchParams.get("client_secret")).toBe("secret-client");
     expect(censored.plain.payStateRef).toBe(CENSORED_LOG_VALUE);
     expect(censored.plain.nested.checkoutToken).toBe(CENSORED_LOG_VALUE);
@@ -414,7 +437,7 @@ describe("censorLoggerOptions", () => {
 
     expect(censored.message).toEqual({
       password: CENSORED_LOG_VALUE,
-      safe: "visible",
+      safe: CENSORED_LOG_VALUE,
     });
     expect(censoredAnnotations.request).toEqual({
       headers: { authorization: CENSORED_LOG_VALUE },
@@ -445,7 +468,7 @@ describe("censorLoggerOptions", () => {
       References.CurrentLogAnnotations
     );
 
-    expect(censoredAnnotations.session).toBe("public-session");
+    expect(censoredAnnotations.session).toBe(CENSORED_LOG_VALUE);
     expect(censoredAnnotations.sessionId).toBe(CENSORED_LOG_VALUE);
   });
 
@@ -473,9 +496,9 @@ describe("censorLoggerOptions", () => {
     );
 
     expect(capturedParams).toEqual([
-      '"visible"',
-      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
-      "42",
+      `"${CENSORED_LOG_VALUE}"`,
+      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":"${CENSORED_LOG_VALUE}"}`,
+      `"${CENSORED_LOG_VALUE}"`,
     ]);
   });
 });
@@ -500,7 +523,7 @@ describe("createCensoredOtelLogger", () => {
 
     const record = exporter.getFinishedLogRecords()[0];
 
-    expect(record?.body).toBe("safe message");
+    expect(record?.body).toBe(CENSORED_LOG_VALUE);
     expect(record?.severityNumber).toBe(9);
     expect(record?.severityText).toBe("info");
     expect(record?.attributes).toMatchObject({
@@ -537,6 +560,51 @@ describe("createCensoredOtelLogger", () => {
 });
 
 describe("createCensoredOtelSpanExporter", () => {
+  test("rejects valid-format dynamic names and benign attributes everywhere", async () => {
+    const exporter = new InMemorySpanExporter();
+    const provider = new BasicTracerProvider({
+      resource: resourceFromAttributes({
+        "service.name": "SyntheticValidServiceName",
+        "telemetry.sdk.name": "SyntheticValidSdkName",
+        detail: "SyntheticValidResourceValue",
+      }),
+      spanProcessors: [
+        new SimpleSpanProcessor(createCensoredOtelSpanExporter(exporter)),
+      ],
+    });
+    const tracer = provider.getTracer("closed-projection-test");
+    const span = tracer.startSpan("SyntheticValidSpanName", {
+      attributes: { detail: "SyntheticValidSpanValue" },
+      links: [
+        {
+          context: {
+            traceId: "1".repeat(32),
+            spanId: "2".repeat(16),
+            traceFlags: 1,
+          },
+          attributes: { visible: "SyntheticValidLinkValue" },
+        },
+      ],
+    });
+    span.addEvent("SyntheticValidEventName", {
+      response: "SyntheticValidEventValue",
+    });
+    span.end();
+
+    const [exported] = exporter.getFinishedSpans();
+    const serialized = JSON.stringify({
+      name: exported?.name,
+      attributes: exported?.attributes,
+      events: exported?.events,
+      links: exported?.links,
+      resource: exported?.resource.attributes,
+    });
+
+    expect(serialized).not.toContain("SyntheticValid");
+    expect(exported?.name).toBe("operation");
+    await provider.shutdown();
+  });
+
   test("applies the shared telemetry censorship policy to span data", async () => {
     const exporter = new InMemorySpanExporter();
     const privateValue = "private@example.com";
@@ -572,13 +640,13 @@ describe("createCensoredOtelSpanExporter", () => {
     const [span] = exporter.getFinishedSpans();
     expect(span?.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
-      sessionDuration: 123,
+      sessionDuration: CENSORED_LOG_VALUE,
     });
     expect(span?.events[0]?.name).toBe("exception");
     expect(span?.resource.attributes).toMatchObject({
       email: CENSORED_LOG_VALUE,
-      "service.name": "censorship-test",
-      sessionDuration: 456,
+      "service.name": CENSORED_LOG_VALUE,
+      sessionDuration: CENSORED_LOG_VALUE,
     });
     const serialized = JSON.stringify({
       attributes: span?.attributes,

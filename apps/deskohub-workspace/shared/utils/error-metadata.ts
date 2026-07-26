@@ -29,6 +29,23 @@ const nativeErrorPrototypes = new Set<object>([
   URIError.prototype,
 ]);
 
+const errorMetadataKinds = new Set<ErrorMetadata["kind"]>([
+  "aggregate_error",
+  "bigint",
+  "boolean",
+  "circular",
+  "error",
+  "function",
+  "null",
+  "number",
+  "object",
+  "string",
+  "symbol",
+  "tagged_object",
+  "truncated",
+  "undefined",
+]);
+
 const getOwnValue = (input: object, property: string): unknown =>
   Object.getOwnPropertyDescriptor(input, property)?.value;
 
@@ -57,6 +74,32 @@ const projectErrorMetadataInternal = (
 
   if (seen.has(value)) return { kind: "circular" };
   seen.add(value);
+
+  const projectedKind = getOwnValue(value, "kind");
+  if (
+    typeof projectedKind === "string" &&
+    errorMetadataKinds.has(projectedKind as ErrorMetadata["kind"])
+  ) {
+    const category = getOwnValue(value, "category");
+    const cause = getOwnValue(value, "cause");
+    const errors = getOwnValue(value, "errors");
+    return {
+      kind: projectedKind as ErrorMetadata["kind"],
+      ...(category === "custom" || category === "native" ? { category } : {}),
+      ...(cause !== undefined
+        ? { cause: projectErrorMetadataInternal(cause, depth + 1, seen) }
+        : {}),
+      ...(Array.isArray(errors)
+        ? {
+            errors: errors
+              .slice(0, 8)
+              .map((error) =>
+                projectErrorMetadataInternal(error, depth + 1, seen)
+              ),
+          }
+        : {}),
+    };
+  }
 
   if (value instanceof AggregateError) {
     return {

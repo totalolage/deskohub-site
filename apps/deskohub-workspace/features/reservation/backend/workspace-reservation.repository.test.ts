@@ -20,8 +20,8 @@ describe("WorkspaceReservationRepository", () => {
     const source = await readRepository();
     const section = sliceFrom(
       source,
-      'selectExpiredHolds: Effect.fn("workspaceReservations.selectExpiredHolds")',
-      "        (effect, input) => effect.pipe(Effect.annotateLogs(input))"
+      "selectExpiredHolds: Effect.fn(",
+      "selectExpiredHoldDotyposReservationIds: Effect.fn("
     );
 
     expect(source).toContain("readonly limit: number");
@@ -65,7 +65,7 @@ describe("WorkspaceReservationRepository", () => {
     const section = sliceFrom(
       source,
       "selectExpiredHoldDotyposReservationIds: Effect.fn(",
-      "      }),\n    });"
+      "export const WorkspaceReservationRepositoryLive"
     );
 
     expect(section).toContain("dotyposReservationId");

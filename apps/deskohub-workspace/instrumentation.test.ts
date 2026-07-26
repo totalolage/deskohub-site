@@ -34,6 +34,7 @@ test("censors the actual global Vercel tracing export path", async () => {
     const exported = requests.join("");
     expect(exported).toContain("[REDACTED]");
     expect(exported).not.toContain("SENSITIVE-CATEGORY-SENTINEL");
+    expect(exported).not.toContain("SyntheticValid");
   } finally {
     server.stop(true);
   }
