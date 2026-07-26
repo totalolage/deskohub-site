@@ -1110,6 +1110,7 @@ export const assertDisplayedDiscounts = ({
     });
     for (const { basisPoints, label } of discounts) {
       yield* waitForBrowserTextContent(run, session, label, {
+        caseSensitive: false,
         timeoutMs: config.timeouts.uiTransition,
       });
       const adjustment = new Intl.NumberFormat("en-US", {

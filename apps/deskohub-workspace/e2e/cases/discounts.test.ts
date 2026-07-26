@@ -44,4 +44,7 @@ test("waits for the discount trigger to hydrate before focusing it", async () =>
     "wait",
     "eval",
   ]);
+  expect(calls.at(2)?.at(4)).toContain(
+    'innerText.toLocaleLowerCase().includes("e2e calendar sale")'
+  );
 });
