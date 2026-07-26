@@ -67,7 +67,7 @@ export const makeCoworkCheckoutData = (
   });
 
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/checkout/order?${params}`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/cowork?${params}`,
     date,
     email: contact.email,
     expectedReservationDetails: {

@@ -760,10 +760,7 @@ describe("CheckoutService", () => {
       startProviderSession.indexOf("yield* getNotificationUrl")
     ).toBeLessThan(createAttemptAt);
     expect(
-      startProviderSession.indexOf("yield* getCheckoutOrderReturnUrl(")
-    ).toBeLessThan(createAttemptAt);
-    expect(
-      startProviderSession.indexOf("yield* getCheckoutPaymentRetryUrl(")
+      startProviderSession.indexOf("yield* getCheckoutPayReturnUrl(")
     ).toBeLessThan(createAttemptAt);
   });
 
@@ -934,6 +931,10 @@ describe("CheckoutService", () => {
       expect.objectContaining({
         amount: "55000",
         currency: "EUR",
+        resultUrl:
+          "http://deskohub.test/cs-CZ/checkout/pay/return/reservation-affirms-code",
+        cancelUrl:
+          "http://deskohub.test/cs-CZ/checkout/pay/return/reservation-affirms-code?outcome=cancelled",
       })
     );
   });
@@ -986,7 +987,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl:
-        "/en-US/checkout/status/reservation-zero-total?outcome=success",
+        "/en-US/reservation/status/reservation-zero-total?outcome=success",
     });
     expect(harness.completeInternalPayment).toHaveBeenCalledWith({
       workspaceReservationId: "reservation-zero-total",
@@ -1106,7 +1107,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl:
-        "/en-US/checkout/status/reservation-already-paid?outcome=success",
+        "/en-US/reservation/status/reservation-already-paid?outcome=success",
     });
     expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-already-paid",
@@ -1142,7 +1143,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl:
-        "/en-US/checkout/status/reservation-paid-race?outcome=success",
+        "/en-US/reservation/status/reservation-paid-race?outcome=success",
     });
     expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-paid-race",

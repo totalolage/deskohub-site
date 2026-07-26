@@ -16,6 +16,7 @@ import {
 } from "@/features/checkout/components/checkout-summary";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
+import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -164,7 +165,7 @@ export function CheckoutPayPage({
           asChild
           className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
         >
-          <Link href={freshPayUrl ?? `/${locale}/checkout/order`}>
+          <Link href={freshPayUrl ?? getCoworkReservationPath(locale)}>
             {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
           </Link>
         </Button>
@@ -380,7 +381,7 @@ function Banner({ children }: { readonly children: string }) {
       aria-live="polite"
       className={cn(
         "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
-        "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
+        "border-burned-orange/20 bg-burned-orange/8 text-burned-orange-ink"
       )}
     >
       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />

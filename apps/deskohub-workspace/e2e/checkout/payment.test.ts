@@ -17,7 +17,7 @@ import {
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
-  "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/checkout/order";
+  "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
 
 test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
@@ -58,7 +58,7 @@ test("retries a transient reservation preparation failure with the same checkout
         return success("https://xpay.nexigroup.com/hpp/nexi/test");
       if (reservationSubmitAttempts > 1)
         return success(
-          `${checkoutUrl.replace("/order", "/pay")}?orderId=${orderId}`
+          `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
         );
       return success(checkoutUrl);
     }
@@ -265,7 +265,7 @@ test("retries a hosted payment field when its first fill does not stick", async 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
       return success(
         phase === "status"
-          ? "https://workspace.example/en-US/checkout/status/order-id"
+          ? "https://workspace.example/en-US/reservation/status/order-id"
           : "https://xpay.nexigroup.com/hpp/nexi/test"
       );
     }
@@ -286,14 +286,14 @@ test("retries a hosted payment field when its first fill does not stick", async 
   expect(cardFillAttempts).toBe(2);
 });
 
-test("activates freshly discovered hosted-payment targets with the keyboard", async () => {
+test("activates hosted-payment targets and recognizes the reservation status return", async () => {
   const calls: string[][] = [];
+  const returnedUrls: string[] = [];
   const values = new Map<string, string>();
   const buttons = [
     'button "CONTINUE" [ref=e6]',
     'button "PAY" [ref=e7]',
     'button "Authentication successful" [ref=e8]',
-    'link "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
   const run: Runner = async (_command, args) => {
@@ -316,11 +316,12 @@ test("activates freshly discovered hosted-payment targets with the keyboard", as
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
-      return success(
-        buttonIndex > 3
-          ? `${checkoutUrl.replace("/order", "/status/")}${orderId}`
-          : "https://xpay.nexigroup.com/hpp/nexi/test"
-      );
+      const url =
+        buttonIndex > 2
+          ? `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`
+          : "https://xpay.nexigroup.com/hpp/nexi/test";
+      returnedUrls.push(url);
+      return success(url);
     }
 
     if (commandArgs[0] === "fill") {
@@ -353,14 +354,15 @@ test("activates freshly discovered hosted-payment targets with the keyboard", as
     ["focus", "@e6"],
     ["focus", "@e7"],
     ["focus", "@e8"],
-    ["focus", "@e9"],
   ]);
   expect(calls.filter(([command]) => command === "press")).toEqual([
     ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
-    ["press", "Enter"],
   ]);
+  expect(returnedUrls).toContain(
+    `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`
+  );
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });

@@ -36,13 +36,13 @@ const invokeGet = (
 ) =>
   GET(
     new Request(
-      "https://deskohub.test/en-US/checkout/payment/order-id?outcome=success"
+      "https://deskohub.test/en-US/checkout/pay/return/order-id?outcome=success"
     ),
     { params: Promise.resolve(params) }
   );
 
-describe("checkout payment return route", () => {
-  test("refreshes the provider state and redirects to status", async () => {
+describe("checkout pay return route", () => {
+  test("refreshes the provider state and redirects to reservation status", async () => {
     const refreshStatus = mock(() =>
       Effect.succeed({
         orderId: "order-id",
@@ -55,12 +55,42 @@ describe("checkout payment return route", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/en-US/checkout/status/order-id?outcome=success"
+      "/en-US/reservation/status/order-id?outcome=success"
     );
     expect(refreshStatus).toHaveBeenCalledWith({
       orderId: "order-id",
       returnOutcome: "success",
     });
+  });
+
+  test("briefly retries while provider settlement is not yet visible", async () => {
+    const refreshStatus = mock()
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "created" as const,
+        })
+      )
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "pending" as const,
+        })
+      )
+      .mockReturnValueOnce(
+        Effect.succeed({
+          orderId: "order-id",
+          returnOutcome: "success" as const,
+          status: "fulfilled" as const,
+        })
+      );
+
+    const response = await invoke(refreshStatus);
+
+    expect(response.status).toBe(307);
+    expect(refreshStatus).toHaveBeenCalledTimes(3);
   });
 
   test("preserves the fail-open redirect when refresh fails", async () => {
@@ -76,7 +106,7 @@ describe("checkout payment return route", () => {
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain(
-      "/en-US/checkout/status/order-id?outcome=success"
+      "/en-US/reservation/status/order-id?outcome=success"
     );
   });
 

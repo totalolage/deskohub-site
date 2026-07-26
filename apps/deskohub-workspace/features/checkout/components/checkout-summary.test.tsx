@@ -273,7 +273,7 @@ describe("CheckoutSummary", () => {
     expect(await czech.findByText("Končí za 22 hodin")).toBeDefined();
   });
 
-  test("removes the discount countdown at its expiry boundary", () => {
+  test("replaces the discount countdown with its expiry state", () => {
     jest.useFakeTimers({
       now: new Date("2026-08-02T09:59:45.000Z"),
     });
@@ -295,6 +295,7 @@ describe("CheckoutSummary", () => {
     act(() => jest.advanceTimersByTime(15_000));
 
     expect(view.queryByText("Ends in 15 seconds")).toBeNull();
+    expect(view.getByText("Ended — price will be rechecked")).toBeDefined();
   });
 
   test("updates the countdown at its start and unit boundaries", () => {

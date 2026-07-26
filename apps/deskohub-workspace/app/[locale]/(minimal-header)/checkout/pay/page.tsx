@@ -17,6 +17,10 @@ import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import {
+  getCoworkReservationPath,
+  getReservationStartPath,
+} from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -125,6 +129,13 @@ async function CheckoutPayContent({
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
   const submittedCodeApplication =
     getSignedPayStateSubmittedCodeApplication(state);
+  const orderPath = getReservationStartPath(
+    locale,
+    state.reservation.kind,
+    new URLSearchParams({
+      [payStateTokenQueryParam]: payStateToken,
+    })
+  );
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -132,9 +143,7 @@ async function CheckoutPayContent({
       locale={locale}
       stepLinks={{
         order: {
-          href: `/${locale}/checkout/order?${new URLSearchParams({
-            [payStateTokenQueryParam]: payStateToken,
-          })}`,
+          href: orderPath,
           prefetch: false,
         },
       }}
@@ -179,7 +188,7 @@ function InvalidPayState({ locale }: { readonly locale: Locale }) {
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={getCoworkReservationPath(locale)}>
               {m.checkoutPayRestartButton({}, { locale })}
             </Link>
           </Button>

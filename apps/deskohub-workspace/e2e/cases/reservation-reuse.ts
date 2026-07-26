@@ -175,7 +175,7 @@ const returnToPrefilledReservation = ({
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
+    const reservationStepSelector = `a[href^="/${data.locale}/reservation/cowork?payState="]`;
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
@@ -188,7 +188,7 @@ const returnToPrefilledReservation = ({
       matches: (value) => {
         const url = parseUrl(value);
         return (
-          url?.pathname === `/${data.locale}/checkout/order` &&
+          url?.pathname === `/${data.locale}/reservation/cowork` &&
           url.searchParams.has("payState")
         );
       },

@@ -1,16 +1,19 @@
 import { describe, expect, mock, test } from "bun:test";
-import { isValidElement, type ReactNode } from "react";
+import { createElement, isValidElement, type ReactNode } from "react";
 import "@/shared/testing/workspace-test-env";
 
 mock.module("server-only", () => ({}));
 
-const getRenderedProps = async (
-  props: Parameters<
-    typeof import("./checkout-order-page").CheckoutOrderPage
-  >[0] = { locale: "en-US" }
-) => {
+const getSuspenseProps = async (input: {
+  readonly children: ReactNode;
+  readonly fallback: ReactNode;
+}) => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
-  const page = CheckoutOrderPage(props);
+  const page = CheckoutOrderPage({
+    children: input.children,
+    fallback: input.fallback,
+    locale: "en-US",
+  });
 
   if (!isValidElement(page)) {
     throw new Error("CheckoutOrderPage did not return a React element");
@@ -26,55 +29,23 @@ const getRenderedProps = async (
     throw new Error("CheckoutOrderPage did not render a Suspense boundary");
   }
 
-  const fallback = (suspense.props as { fallback: ReactNode }).fallback;
-
-  if (!isValidElement(fallback)) {
-    throw new Error("CheckoutOrderPage did not configure a React fallback");
-  }
-
-  const reservationForm = (suspense.props as { children: ReactNode }).children;
-
-  if (!isValidElement(reservationForm)) {
-    throw new Error("CheckoutOrderPage did not render a reservation form");
-  }
-
-  return {
-    fallback: fallback.props as { readonly showMonitorOption?: boolean },
-    reservationForm: reservationForm.props as {
-      readonly initialReservation?: unknown;
-      readonly checkoutSessionId?: string;
-    },
+  return suspense.props as {
+    readonly children: ReactNode;
+    readonly fallback: ReactNode;
   };
 };
 
 describe("CheckoutOrderPage", () => {
-  test("uses a static generic reservation fallback", async () => {
-    expect((await getRenderedProps()).fallback.showMonitorOption).toBe(false);
-  });
-
-  test("passes restored pay state through to the reservation form", async () => {
-    const initialReservation = {
-      kind: "cowork" as const,
-      entryTier: "profi" as const,
-      date: "2099-06-10" as never,
-      coffee: true as const,
-      monitorOption: "2x27-qhd" as const,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 000 111",
-      message: "Please prepare the standing desk.",
-    };
-    const props = await getRenderedProps({
-      initialReservation,
-      locale: "en-US",
-      checkoutSessionId: "checkout-session-id",
+  test("renders the reservation-specific content and fallback", async () => {
+    const children = createElement("div", {
+      "data-testid": "reservation-form",
     });
-
-    expect(props.fallback.showMonitorOption).toBe(true);
-    expect(props.reservationForm).toEqual({
-      initialReservation,
-      locale: "en-US",
-      checkoutSessionId: "checkout-session-id",
+    const fallback = createElement("div", {
+      "data-testid": "reservation-form-fallback",
     });
+    const suspenseProps = await getSuspenseProps({ children, fallback });
+
+    expect(suspenseProps.children).toBe(children);
+    expect(suspenseProps.fallback).toBe(fallback);
   });
 });

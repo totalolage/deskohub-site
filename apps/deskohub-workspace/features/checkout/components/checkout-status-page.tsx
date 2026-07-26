@@ -26,6 +26,10 @@ import {
   formatReservationDisplayDate,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
+import {
+  getCoworkReservationPath,
+  getReservationStartPath,
+} from "@/features/reservation/routes";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -240,9 +244,13 @@ const getFulfillmentFailedContactMessage = (
 
 const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
   Match.value(status).pipe(
-    Match.when({ kind: undefined }, () => `/${locale}/checkout/order`),
-    Match.when({ kind: "cowork" }, () => `/${locale}/checkout/order`),
-    Match.when({ kind: "meeting-room" }, () => `/${locale}/meeting-room`),
+    Match.when({ status: "not_found" }, () => getCoworkReservationPath(locale)),
+    Match.when({ kind: "cowork" }, ({ kind }) =>
+      getReservationStartPath(locale, kind)
+    ),
+    Match.when({ kind: "meeting-room" }, ({ kind }) =>
+      getReservationStartPath(locale, kind)
+    ),
     Match.exhaustive
   );
 
@@ -308,6 +316,7 @@ export function CheckoutStatusPage({
             <Link
               href={supportContactHref}
               id="checkout-status-support-contact"
+              prefetch={false}
             >
               {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
             </Link>
@@ -345,7 +354,7 @@ export function CheckoutStatusPage({
             </dl>
 
             {summaryRows.length === 0 && (
-              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink">
                 {m.checkoutStatusMissingSummary({}, { locale })}
               </p>
             )}
@@ -382,12 +391,12 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={getReserveAgainPath(status, locale)}>
+            <Link href={getReserveAgainPath(status, locale)} prefetch={false}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>
           <Button asChild variant="secondary" className="h-12 px-6">
-            <Link href={`/${locale}`}>
+            <Link href={`/${locale}`} prefetch={false}>
               {m.checkoutStatusBackHome({}, { locale })}
             </Link>
           </Button>
