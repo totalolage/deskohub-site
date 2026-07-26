@@ -11,11 +11,12 @@ import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   type WorkspaceReservationStateError,
+  hasUnresolvedProviderAttachmentRecovery,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
+import { deriveCheckoutSessionKeyCandidates } from "./checkout-session-key.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
@@ -26,6 +27,7 @@ export class PayableReservationUnavailableError extends Data.TaggedError(
     | "missing_reservation"
     | "not_current"
     | "not_held"
+    | "unresolved_attachment_recovery"
     | "missing_dotypos_reservation"
     | "dotypos_not_pending";
 }> {}
@@ -63,27 +65,37 @@ export class PayableReservationService extends Context.Service<
               return yield* unavailable(input, "missing_checkout_session");
             }
 
-            const checkoutSessionKey = deriveCheckoutSessionKey(
+            const checkoutSessionKeys = deriveCheckoutSessionKeyCandidates(
               input.checkoutSessionId
             );
+            const checkoutSessionKey = checkoutSessionKeys[0];
             const reservation = yield* reservations.findById(input.orderId);
             if (!reservation) {
               return yield* unavailable(input, "missing_reservation");
             }
 
-            const current =
-              yield* reservations.findCurrentByCheckoutSessionKey(
-                checkoutSessionKey
-              );
+            const currents = yield* Effect.all(
+              checkoutSessionKeys.map((key) =>
+                reservations.findCurrentByCheckoutSessionKey(key)
+              )
+            );
+            const current = currents.find((candidate) => candidate !== null);
             if (
-              reservation.checkoutSessionKey !== checkoutSessionKey ||
-              current?.id !== reservation.id
+              !checkoutSessionKeys.includes(reservation.checkoutSessionKey) ||
+              current?.id !== reservation.id ||
+              currents.some(
+                (candidate) => candidate !== null && candidate.id !== reservation.id
+              )
             ) {
               return yield* unavailable(input, "not_current");
             }
 
             if (reservation.reservationState !== "held") {
               return yield* unavailable(input, "not_held");
+            }
+
+            if (hasUnresolvedProviderAttachmentRecovery(reservation)) {
+              return yield* unavailable(input, "unresolved_attachment_recovery");
             }
 
             if (!reservation.dotyposReservationId) {
