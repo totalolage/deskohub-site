@@ -171,6 +171,7 @@ const codeOwnedTelemetryNames = new Set([
   "nexiWebhook",
   "operation",
   "reservationHoldCleanupCron",
+  "reservationHoldCleanupSchedule",
   "resendWebhook",
   "safe.operation",
   "telemetry.flush",

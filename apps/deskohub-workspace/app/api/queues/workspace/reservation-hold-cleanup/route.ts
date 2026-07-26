@@ -13,7 +13,7 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive))
 );
 
-const processCleanupMessage = defineWorkspaceTask(
+export const processCleanupMessage = defineWorkspaceTask(
   "reservationHoldCleanupSchedule",
   (
     message: Parameters<typeof processReservationHoldCleanupScheduleMessage>[0]

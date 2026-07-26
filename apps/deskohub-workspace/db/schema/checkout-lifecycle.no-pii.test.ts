@@ -49,14 +49,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("checkout identity migration bridges old writers without persisting return state", async () => {
-    const identityMigration = await readAppFile(
-      "db/migrations/20260725232210_majestic_blackheart/migration.sql"
+    const migration = await readAppFile(
+      "db/migrations/20260726041910_checkout_reservation_identity_compatibility/migration.sql"
     );
-    const compatibilityMigration = await readAppFile(
-      "db/migrations/20260726025450_little_rhino/migration.sql"
-    );
-    const lowerMigration =
-      `${identityMigration}\n${compatibilityMigration}`.toLowerCase();
+    const lowerMigration = migration.toLowerCase();
 
     expect(lowerMigration).toContain(
       '"checkout_session_identity_key" = "checkout_session_key"'
