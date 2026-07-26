@@ -1,10 +1,10 @@
 import { Effect, Schema } from "effect";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import type { DiscountQuote } from "@/features/discounts";
 import { coworkReservationProductSchema } from "@/features/reservation/cowork-reservation-product";
 import {
   buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
   type CoworkReservationQuote,
-  getCoworkCheckoutSummary,
 } from "./reservation-quote-cowork";
 
 export type CoworkReservationQuoteOrder =

@@ -11,13 +11,13 @@ import {
   type CheckoutSummary,
   getCheckoutSummaryChangedKeys,
 } from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
   type LegalEvidenceMap,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { getCoworkCheckoutSummary } from "@/features/checkout/reservation-quote-cowork";
-import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import {

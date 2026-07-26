@@ -1,9 +1,9 @@
 import { Effect } from "effect";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   buildCoworkReservationQuote,
   type CoworkReservationQuote,
-  getCoworkCheckoutSummary,
 } from "@/features/checkout/reservation-quote-cowork";
 import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
 import type {

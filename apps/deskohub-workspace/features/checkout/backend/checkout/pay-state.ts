@@ -1,7 +1,7 @@
 import { Data, Effect, Match, Schema } from "effect";
 import type { CheckoutSummary } from "@/features/checkout/checkout-summary";
-import { getCoworkCheckoutSummary } from "@/features/checkout/reservation-quote-cowork";
-import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import type { AppliedDiscount } from "@/features/discounts";
 import {
   type CheckoutStateCryptoOptions,

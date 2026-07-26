@@ -6,10 +6,8 @@ import {
 } from "@/features/checkout/backend/checkout";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
-import {
-  type CoworkReservationQuote,
-  getCoworkCheckoutSummary,
-} from "@/features/checkout/reservation-quote-cowork";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";

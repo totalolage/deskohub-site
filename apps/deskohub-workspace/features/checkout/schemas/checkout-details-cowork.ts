@@ -1,8 +1,6 @@
 import { checkoutSummarySchema } from "@/features/checkout/checkout-summary";
-import {
-  type CoworkReservationQuote,
-  getCoworkCheckoutSummary,
-} from "@/features/checkout/reservation-quote-cowork";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { makeCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-base";
 import type { Locale } from "@/features/i18n";
 import {

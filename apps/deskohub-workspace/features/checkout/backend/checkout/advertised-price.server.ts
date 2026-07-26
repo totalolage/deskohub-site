@@ -3,8 +3,8 @@ import type {
   AdvertisedPrice,
   AdvertisedPriceRequest,
 } from "@/features/checkout/advertised-price";
-import { getCoworkCheckoutSummary } from "@/features/checkout/reservation-quote-cowork";
-import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
   buildAdvertisedPriceState,
   sealAdvertisedPriceState,
