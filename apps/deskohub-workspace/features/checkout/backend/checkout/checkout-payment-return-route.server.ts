@@ -1,26 +1,16 @@
 import { Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
-import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import {
-  type CheckoutStatusReturnOutcome,
-  CheckoutStatusService,
-} from "./checkout-status.service";
-import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
+import { CheckoutStatusService } from "./checkout-status.service";
+import { getCheckoutStatusPath } from "./checkout-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
-};
-
-type CheckoutPaymentReturn = {
-  readonly locale: Locale;
-  readonly orderId: string;
-  readonly outcome: CheckoutStatusReturnOutcome;
 };
 
 const decodeCheckoutPaymentParams = getParamsDecoder({
@@ -33,22 +23,7 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   })
 );
 
-const getCheckoutStatusRedirectPath = (input: {
-  readonly locale: Locale;
-  readonly orderId: string;
-  readonly outcome: CheckoutStatusReturnOutcome;
-}) => {
-  const url = new URL(
-    `/${input.locale}/checkout/status/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  url.searchParams.set("outcome", input.outcome);
-  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  return `${url.pathname}${url.search}`;
-};
-
-const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
+const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (
     request: Request,
     { params }: LocalizedCheckoutPaymentRouteContext
@@ -57,7 +32,7 @@ const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
       yield* Effect.promise(() => params)
     );
     const routeParams = Option.getOrUndefined(decodedParams);
-    if (!routeParams) return Option.none<CheckoutPaymentReturn>();
+    if (!routeParams) return new NextResponse(null, { status: 404 });
 
     const { locale, orderId } = routeParams;
     const { outcome } = Option.getOrElse(
@@ -67,30 +42,32 @@ const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
       () => ({ outcome: "unknown" as const })
     );
 
-    return Option.some({ locale, orderId, outcome });
-  }
-);
-
-const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
-  function* (request: Request, input: CheckoutPaymentReturn) {
     const checkoutStatus = yield* CheckoutStatusService;
     yield* checkoutStatus
       .refreshStatus({
-        orderId: input.orderId,
-        returnOutcome: input.outcome,
+        orderId,
+        returnOutcome: outcome,
       })
       .pipe(
         Effect.catch((cause) =>
           Effect.logError("Checkout payment return refresh failed", {
-            orderId: input.orderId,
-            outcome: input.outcome,
+            orderId,
+            outcome,
             cause,
           })
         )
       );
 
     return NextResponse.redirect(
-      new URL(getCheckoutStatusRedirectPath(input), request.url)
+      new URL(
+        getCheckoutStatusPath({
+          locale,
+          orderId,
+          outcome,
+          setBypassCookie: true,
+        }),
+        request.url
+      )
     );
   }
 );
@@ -104,21 +81,15 @@ export const makeCheckoutPaymentReturnGet = (
       cancellation: "continue-after-disconnect",
     },
     (request, context: LocalizedCheckoutPaymentRouteContext) =>
-      decodeCheckoutPaymentReturn(request, context).pipe(
-        Effect.flatMap((decoded) =>
-          Option.match(decoded, {
-            onNone: () =>
-              Effect.succeed(new NextResponse(null, { status: 404 })),
-            onSome: (input) =>
-              handleCheckoutPaymentReturn(request, input).pipe(
-                Effect.provide(statusServiceLayer),
-                Effect.mapError(
-                  mapWorkspaceInternalRouteFailure(
-                    "Checkout status could not be refreshed"
-                  )
-                )
-              ),
-          })
+      handleCheckoutPaymentReturn(request, context).pipe(
+        Effect.provide(statusServiceLayer),
+        Effect.mapError(
+          (cause) =>
+            new WorkspaceRouteFailure({
+              statusCode: 500,
+              publicMessage: "Checkout status could not be refreshed",
+              cause,
+            })
         )
       )
   );
