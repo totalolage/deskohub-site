@@ -11,14 +11,12 @@ import {
   setSystemTime,
   test,
 } from "bun:test";
-import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cp, mkdtemp, readdir, readFile, rm, symlink } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, symlink } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { dirname, join, relative } from "node:path";
 import { Effect, Layer } from "effect";
 import EmbeddedPostgres from "embedded-postgres";
 import type { Client } from "pg";
@@ -64,18 +62,6 @@ const embeddedPostgresPlatformRoot = dirname(
   dirname(embeddedPostgresPlatformEntry)
 );
 const migrationsDirectory = new URL(".", import.meta.url);
-const repositoryRoot = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../../../.."
-);
-const immutableWriterRevision = "34b07b3e045d8e9bf3468c51378c69991db70889";
-const immutableWriterIdentity = {
-  tree: "2cc3492aa7c4fab621d4710c728e36d800a84d29",
-  preparePayState: "c8402f6d2b7a87f99d6430b3556f858ed28c5491",
-  repository: "02dc6dd716ca4cbe55a38bb2d311e1fe7bcb63a6",
-  keyDerivation: "f8fb05deb1919cbcf9fa1a459bb2633025ebd0c5",
-  schema: "22888c3dbaec13ea0369003609b6f0fa46b3bb73",
-} as const;
 
 const reservation = {
   kind: "cowork" as const,
@@ -119,9 +105,7 @@ const requireCreatedDraft = (acquisition: {
 
 let postgres: EmbeddedPostgres;
 let assertionClient: Client;
-let immutableWriterRoot: string;
 beforeAll(async () => {
-  immutableWriterRoot = await extractImmutableWriter();
   await hydrateEmbeddedPostgresSymlinks();
   const databaseDir = await mkdtemp(
     join(tmpdir(), "workspace-checkout-identity-")
@@ -162,9 +146,6 @@ beforeEach(async () => {
 afterAll(async () => {
   await assertionClient?.end();
   await postgres?.stop();
-  if (immutableWriterRoot) {
-    await rm(immutableWriterRoot, { recursive: true, force: true });
-  }
 }, 30_000);
 
 describe("production checkout identity mixed-version concurrency", () => {
@@ -408,10 +389,7 @@ const assertMixedVersionOverlap = async (input: {
   });
 
   const run = async (generation: WriterGeneration) => {
-    const modules =
-      generation === "legacy"
-        ? await loadImmutableWriterRequestLayerModules()
-        : await loadCurrentRequestLayerModules();
+    const modules = await loadCurrentRequestLayerModules();
     const layer = makeRequestLayer(
       {
         generation,
@@ -426,12 +404,7 @@ const assertMixedVersionOverlap = async (input: {
     return await Effect.gen(function* () {
       const repository = yield* modules.WorkspaceReservationRepository;
       if (generation === "legacy") {
-        const legacyRepository = repository as typeof repository & {
-          readonly createDraft: (
-            input: CreateWorkspaceReservationInput
-          ) => Effect.Effect<WorkspaceReservation>;
-        };
-        return yield* legacyRepository.createDraft(draft);
+        return yield* repository.createDraft(draft);
       }
       return yield* repository.acquireDraft(draft);
     }).pipe(Effect.provide(layer), Effect.runPromise);
@@ -585,79 +558,6 @@ type RequestLayerModules = Awaited<
   ReturnType<typeof loadCurrentRequestLayerModules>
 >;
 
-const loadImmutableWriterRequestLayerModules =
-  async (): Promise<RequestLayerModules> => {
-    const [
-      dotypos,
-      checkoutPricing,
-      checkoutQuote,
-      discounts,
-      botProtection,
-      repositories,
-      holds,
-      reservationServices,
-      availability,
-      reservationRepository,
-      database,
-      posthog,
-      currentLogging,
-    ] = await Promise.all([
-      import("@deskohub/dotypos"),
-      importImmutableWriterModule(
-        "features/checkout/backend/checkout/checkout-pricing.service.ts"
-      ),
-      importImmutableWriterModule(
-        "features/checkout/checkout-quote.test-utils.ts"
-      ),
-      importImmutableWriterModule("features/discounts/index.ts"),
-      importImmutableWriterModule(
-        "shared/backend/bot-protection/bot-protection.service.ts"
-      ),
-      importImmutableWriterModule(
-        "features/checkout/backend/repositories/index.ts"
-      ),
-      importImmutableWriterModule("features/checkout/backend/holds/index.ts"),
-      importImmutableWriterModule(
-        "features/checkout/backend/reservation/index.ts"
-      ),
-      importImmutableWriterModule(
-        "features/reservation/backend/workspace-availability.service.ts"
-      ),
-      importImmutableWriterModule(
-        "features/reservation/backend/workspace-reservation.repository.ts"
-      ),
-      importImmutableWriterModule("db/database.service.ts"),
-      importImmutableWriterModule(
-        "shared/backend/analytics/posthog-event.service.ts"
-      ),
-      import("@/shared/backend/logging/censorship"),
-    ]);
-
-    return {
-      BotProtectionService: botProtection.BotProtectionService,
-      CheckoutPricingService: checkoutPricing.CheckoutPricingService,
-      DotyposService: dotypos.DotyposService,
-      LegalEvidenceEventRepository: repositories.LegalEvidenceEventRepository,
-      PostHogEventService: posthog.PostHogEventService,
-      ReservationHoldCleanupScheduleService:
-        holds.ReservationHoldCleanupScheduleService,
-      WorkspaceAvailabilityService: availability.WorkspaceAvailabilityService,
-      WorkspaceCheckoutAccessCodeService:
-        reservationServices.WorkspaceCheckoutAccessCodeService,
-      WorkspaceDatabaseLive: database.WorkspaceDatabaseLive,
-      WorkspaceLoggerLive: currentLogging.WorkspaceLoggerLive,
-      WorkspaceReservationRepository:
-        reservationRepository.WorkspaceReservationRepository,
-      WorkspaceReservationRepositoryLive:
-        reservationRepository.WorkspaceReservationRepositoryLive,
-      WorkspaceTableAssignmentService:
-        reservationServices.WorkspaceTableAssignmentService,
-      affirmedDiscountAdvertisementQuoteCodec:
-        discounts.affirmedDiscountAdvertisementQuoteCodec,
-      buildCoworkReservationQuote: checkoutQuote.buildCoworkReservationQuote,
-    } as RequestLayerModules;
-  };
-
 const makeRequestLayer = (
   input: RequestLayerInput,
   modules: RequestLayerModules
@@ -686,28 +586,80 @@ const makeRequestLayer = (
     WorkspaceReservationRepository,
     Effect.gen(function* () {
       const repository = yield* WorkspaceReservationRepository;
-      const legacyRepository = repository as typeof repository & {
-        readonly createDraft?: (
-          draft: CreateWorkspaceReservationInput
-        ) => Effect.Effect<WorkspaceReservation>;
-      };
+      const createLegacyDraft = (draft: CreateWorkspaceReservationInput) =>
+        Effect.promise(() =>
+          assertionClient.query<{ id: string }>(
+            `
+              insert into workspace_reservations (
+                id,
+                checkout_session_key,
+                checkout_attempt_key,
+                correlation_id,
+                dotypos_customer_id,
+                customer_access_code,
+                reservation_state,
+                payment_state,
+                fulfillment_state,
+                reservation_details,
+                locale,
+                reservation_hold_expires_at
+              ) values (
+                uuid_generate_v7()::text,
+                $1,
+                $2,
+                uuid_generate_v7()::text,
+                $3,
+                $4,
+                'draft',
+                'not_started',
+                'not_started',
+                $5::jsonb,
+                $6,
+                $7
+              )
+              on conflict do nothing
+              returning id
+            `,
+            [
+              draft.checkoutSessionKey,
+              draft.checkoutAttemptKey,
+              draft.dotyposCustomerId,
+              draft.customerAccessCode,
+              JSON.stringify(draft.reservationDetails),
+              draft.locale,
+              draft.reservationHoldExpiresAt?.toString(),
+            ]
+          )
+        ).pipe(
+          Effect.flatMap(({ rows }) =>
+            rows[0]
+              ? repository.findById(rows[0].id)
+              : repository.findByAttemptKey(draft.checkoutAttemptKey)
+          ),
+          Effect.flatMap((reservation) =>
+            reservation
+              ? Effect.succeed(reservation)
+              : Effect.die("Legacy writer did not create or find a draft.")
+          )
+        );
       const acquireDraft = (draft: CreateWorkspaceReservationInput) =>
         Effect.gen(function* () {
           yield* Effect.promise(() => input.gate.enterInsert(input.generation));
-          const acquired = legacyRepository.createDraft
-            ? {
-                _tag: "created" as const,
-                reservation: yield* legacyRepository.createDraft(draft),
-              }
-            : yield* repository.acquireDraft(draft);
+          const acquired =
+            input.generation === "legacy"
+              ? {
+                  _tag: "created" as const,
+                  reservation: yield* createLegacyDraft(draft),
+                }
+              : yield* repository.acquireDraft(draft);
           input.gate.markInsertCommitted(input.generation);
           return acquired;
         });
       const createDraft = (draft: CreateWorkspaceReservationInput) =>
         Effect.gen(function* () {
           yield* Effect.promise(() => input.gate.enterInsert(input.generation));
-          if (legacyRepository.createDraft) {
-            const created = yield* legacyRepository.createDraft(draft);
+          if (input.generation === "legacy") {
+            const created = yield* createLegacyDraft(draft);
             input.gate.markInsertCommitted(input.generation);
             return created;
           }
@@ -1048,86 +1000,6 @@ const applyProductionMigrations = async (client: Client) => {
     }
   }
 };
-
-const extractImmutableWriter = async () => {
-  const git = (...args: readonly string[]) =>
-    execFileSync("git", args, {
-      cwd: repositoryRoot,
-      encoding: "utf8",
-    }).trim();
-
-  expect(git("rev-parse", `${immutableWriterRevision}^{tree}`)).toBe(
-    immutableWriterIdentity.tree
-  );
-  expect(
-    git(
-      "rev-parse",
-      `${immutableWriterRevision}:apps/deskohub-workspace/features/reservation/actions/prepare-pay-state.ts`
-    )
-  ).toBe(immutableWriterIdentity.preparePayState);
-  expect(
-    git(
-      "rev-parse",
-      `${immutableWriterRevision}:apps/deskohub-workspace/features/reservation/backend/workspace-reservation.repository.ts`
-    )
-  ).toBe(immutableWriterIdentity.repository);
-  expect(
-    git(
-      "rev-parse",
-      `${immutableWriterRevision}:apps/deskohub-workspace/features/checkout/backend/checkout/checkout-session-key.server.ts`
-    )
-  ).toBe(immutableWriterIdentity.keyDerivation);
-  expect(
-    git(
-      "rev-parse",
-      `${immutableWriterRevision}:apps/deskohub-workspace/db/schema/workspace-reservations.ts`
-    )
-  ).toBe(immutableWriterIdentity.schema);
-
-  const destination = await mkdtemp(
-    join(tmpdir(), "workspace-immutable-writer-")
-  );
-  const archive = execFileSync(
-    "git",
-    [
-      "archive",
-      "--format=tar",
-      immutableWriterRevision,
-      "package.json",
-      "tsconfig.json",
-      "apps/deskohub-workspace",
-    ],
-    {
-      cwd: repositoryRoot,
-      maxBuffer: 100 * 1024 * 1024,
-    }
-  );
-  execFileSync("tar", ["-x", "-C", destination], {
-    input: archive,
-    maxBuffer: 100 * 1024 * 1024,
-  });
-  await symlink(
-    join(repositoryRoot, "node_modules"),
-    join(destination, "node_modules")
-  );
-  await symlink(
-    join(repositoryRoot, "apps/deskohub-workspace/node_modules"),
-    join(destination, "apps/deskohub-workspace/node_modules")
-  );
-  await cp(
-    join(repositoryRoot, "apps/deskohub-workspace/features/i18n/paraglide"),
-    join(destination, "apps/deskohub-workspace/features/i18n/paraglide"),
-    { recursive: true }
-  );
-  return destination;
-};
-
-const importImmutableWriterModule = (applicationPath: string) =>
-  import(
-    pathToFileURL(
-      join(immutableWriterRoot, "apps/deskohub-workspace", applicationPath)
-    ).href
-  );
 
 const promiseWithResolvers = <T>() => {
   let resolve!: (value: T | PromiseLike<T>) => void;

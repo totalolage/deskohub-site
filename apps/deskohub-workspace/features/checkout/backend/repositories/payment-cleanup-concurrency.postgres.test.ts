@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -53,6 +54,13 @@ const requireTestDatabaseUrl = () => {
 
 const pools: Pool[] = [];
 const clients: Client[] = [];
+
+const closeTestConnections = async () => {
+  const testClients = clients.splice(0);
+  const testPools = pools.splice(0);
+  await Promise.all(testClients.map((client) => client.end()));
+  await Promise.all(testPools.map((pool) => pool.end()));
+};
 
 const connectClient = async (applicationName: string) => {
   const client = new Client({
@@ -221,24 +229,29 @@ beforeAll(async () => {
 });
 
 beforeEach(async () => {
-  await Promise.all(pools.splice(0).map((pool) => pool.end()));
-  await Promise.all(clients.splice(0).map((client) => client.end()));
-  const admin = await connectClient("concurrency-setup");
-  await admin.query(`
-    drop trigger if exists block_payment_winner on workspace_reservations;
-    drop function if exists block_payment_winner();
-    truncate table workspace_reservations cascade
-  `);
+  await closeTestConnections();
+  const admin = new Client({ connectionString: requireTestDatabaseUrl() });
+  try {
+    await admin.connect();
+    await admin.query(`
+      drop trigger if exists block_payment_winner on workspace_reservations;
+      drop function if exists block_payment_winner();
+      truncate table workspace_reservations cascade
+    `);
+  } finally {
+    await admin.end();
+  }
 });
 
+afterEach(closeTestConnections);
+
 afterAll(async () => {
-  await Promise.all(pools.splice(0).map((pool) => pool.end()));
-  await Promise.all(clients.splice(0).map((client) => client.end()));
+  await closeTestConnections();
   if (!testDatabaseName) return;
   const admin = new Client({ connectionString: requireRealPostgresUrl() });
   try {
     await admin.connect();
-    await admin.query(`drop database "${testDatabaseName}" with (force)`);
+    await admin.query(`drop database "${testDatabaseName}"`);
   } finally {
     await admin.end();
   }
