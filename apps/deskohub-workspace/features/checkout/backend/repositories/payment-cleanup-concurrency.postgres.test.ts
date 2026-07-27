@@ -52,14 +52,11 @@ const requireTestDatabaseUrl = () => {
   return testDatabaseUrl;
 };
 
-const pools: Pool[] = [];
 const clients: Client[] = [];
 
 const closeTestConnections = async () => {
   const testClients = clients.splice(0);
-  const testPools = pools.splice(0);
   await Promise.all(testClients.map((client) => client.end()));
-  await Promise.all(testPools.map((pool) => pool.end()));
 };
 
 const connectClient = async (applicationName: string) => {
@@ -72,14 +69,7 @@ const connectClient = async (applicationName: string) => {
   return client;
 };
 
-const repositoryLayer = (applicationName: string) => {
-  const pool = new Pool({
-    connectionString: requireTestDatabaseUrl(),
-    application_name: applicationName,
-    max: 1,
-    types: drizzleRawTypeParsers,
-  });
-  pools.push(pool);
+const repositoryLayer = (pool: Pool) => {
   const PgClientLive = PgClient.layerFrom(
     PgClient.fromPool({ acquire: Effect.succeed(pool) })
   ).pipe(Layer.orDie);
@@ -97,17 +87,29 @@ const repositoryLayer = (applicationName: string) => {
   );
 };
 
-const runRepositories = <A, E>(
+const runRepositories = async <A, E>(
   applicationName: string,
   effect: Effect.Effect<
     A,
     E,
     PaymentAttemptRepository | WorkspaceReservationRepository
   >
-) =>
-  Effect.runPromise(
-    Effect.scoped(effect.pipe(Effect.provide(repositoryLayer(applicationName))))
-  );
+) => {
+  const pool = new Pool({
+    connectionString: requireTestDatabaseUrl(),
+    application_name: applicationName,
+    max: 1,
+    types: drizzleRawTypeParsers,
+  });
+
+  try {
+    return await Effect.runPromise(
+      Effect.scoped(effect.pipe(Effect.provide(repositoryLayer(pool))))
+    );
+  } finally {
+    await pool.end();
+  }
+};
 
 const waitForRowLock = async (
   observer: Client,
