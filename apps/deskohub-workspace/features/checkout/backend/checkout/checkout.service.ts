@@ -11,13 +11,14 @@ import { env } from "@/env";
 import {
   type CheckoutSummary,
   getCheckoutSummaryChangedKeys,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
   type LegalEvidenceMap,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import {
@@ -844,7 +845,8 @@ export const CheckoutServiceLive = Layer.effect(
           const acceptedSummary = getSignedPayStateCheckoutSummary(state);
           const freshSummary = Match.value(prepared).pipe(
             Match.discriminatorsExhaustive("kind")({
-              cowork: ({ quote }) => quote.summary,
+              cowork: ({ quote, reservation }) =>
+                getCoworkCheckoutSummary(reservation, quote),
               "meeting-room": ({ quote }) =>
                 getMeetingRoomCheckoutSummary(quote),
             })
@@ -1052,7 +1054,8 @@ const refreshCheckoutAfterAdmissionChange = Effect.fn(
   });
   const refreshedSummary = Match.value(refreshed).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: ({ quote }) => quote.summary,
+      cowork: ({ quote, reservation }) =>
+        getCoworkCheckoutSummary(reservation, quote),
       "meeting-room": ({ quote }) => getMeetingRoomCheckoutSummary(quote),
     })
   );

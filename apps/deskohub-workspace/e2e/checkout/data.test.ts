@@ -1,10 +1,14 @@
 import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import isEmail from "validator/lib/isEmail";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { makeCoworkCheckoutData, selectAvailableCoworkDates } from "./data";
+import {
+  makeCoworkCheckoutData,
+  reuseCoworkCheckoutContact,
+  selectAvailableCoworkDates,
+} from "./data";
 
 afterEach(() => setSystemTime());
 
@@ -37,8 +41,78 @@ test("keeps generated emails valid for the longest checkout flow identifier", ()
     "cowork-reservation-replacement"
   );
 
-  expect(Schema.is(reservationCustomerEmailSchema)(data.email)).toBe(true);
+  expect(isEmail(data.email)).toBe(true);
   expect(data.email.split("@")[0]?.length).toBeLessThanOrEqual(64);
+});
+
+test("builds checkout data from the selected cowork product", () => {
+  const data = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "cowork-plus",
+    { entryTier: "plus" }
+  );
+
+  expect(new URL(data.checkoutUrl).searchParams.get("entryTier")).toBe("plus");
+  expect(data.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "plus",
+    kind: "cowork",
+  });
+});
+
+test("keeps its persistence oracle independent of application normalization", () => {
+  const basic = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "cowork-basic-coffee",
+    { coffee: true }
+  );
+  const profi = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-02",
+    "cowork-profi",
+    { entryTier: "profi", monitorOption: "2x32-4k" }
+  );
+
+  expect(basic.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "basic",
+    kind: "cowork",
+  });
+  expect(profi.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "profi",
+    kind: "cowork",
+    monitorOption: "2x32-4k",
+  });
+});
+
+test("reuses customer identity for a later reservation", () => {
+  const first = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "first"
+  );
+  const second = reuseCoworkCheckoutContact(
+    "https://workspace.example.com",
+    "2099-09-02",
+    first
+  );
+
+  expect({
+    email: second.email,
+    name: second.name,
+    phone: second.phone,
+  }).toEqual({
+    email: first.email,
+    name: first.name,
+    phone: first.phone,
+  });
+  expect(second.date).toBe("2099-09-02");
+  expect(new URL(second.checkoutUrl).searchParams.get("date")).toBe(
+    "2099-09-02"
+  );
 });
 
 test("loads availability through the provided HTTP client", async () => {
@@ -75,6 +149,39 @@ test("loads availability through the provided HTTP client", async () => {
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );
+});
+
+test("selects tier-specific dates without reusing excluded dates", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const requests: Request[] = [];
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      return Response.json({ unavailableDates: [] });
+    }
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const dates = await Effect.runPromise(
+    selectAvailableCoworkDates(makeConfig(), 1, {
+      entryTier: "profi",
+      excludedDates: new Set(["2099-07-31"]),
+      monitorOption: "2x27-qhd",
+    }).pipe(Effect.provide(httpClientLayer))
+  );
+
+  expect(dates).toEqual(["2099-08-03"]);
+  expect(requests[0]?.url).toContain("entryTier=profi");
+  expect(requests[0]?.url).toContain("monitorOption=2x27-qhd");
 });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

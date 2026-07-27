@@ -1213,6 +1213,64 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const getDiscountGroups = Effect.fn("DotyposService.getDiscountGroups")(() =>
+    loadAllDotyposPages({
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getDiscountGroups(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "getDiscountGroups"
+        ).pipe(
+          Effect.catchTag("ExternalAPIError", (error) =>
+            page === 1 && error.statusCode === 404
+              ? Effect.succeed({ data: [] as const })
+              : Effect.fail(error)
+          )
+        ),
+      operation: "getDiscountGroups",
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getDiscountGroups")
+    )
+  );
+
+  const setCustomerDiscountGroup = Effect.fn(
+    "DotyposService.setCustomerDiscountGroup"
+  )(function* (customerId: string, discountGroupId: string | null) {
+    const normalizedCustomerId = customerId.trim();
+    const normalizedDiscountGroupId = discountGroupId?.trim() || null;
+
+    if (!normalizedCustomerId) {
+      return yield* new ValidationError({
+        message: "Customer ID is required",
+      });
+    }
+
+    const [, response] = yield* runDotyposRequest(
+      client.getCustomer(config.cloudId, normalizedCustomerId, {
+        config: { includeResponse: true },
+      }),
+      "getCustomer"
+    ).pipe(Effect.retry(retryPolicy));
+    const etag = response.headers.etag ?? response.headers.ETag;
+    if (!etag) {
+      return yield* new ExternalAPIError({
+        service: "Dotypos",
+        operation: "getCustomer",
+        message: "Customer ETag header was missing.",
+      });
+    }
+
+    return yield* runDotyposRequest(
+      client.patchCustomer(config.cloudId, normalizedCustomerId, {
+        params: { "If-Match": etag },
+        payload: { _discountGroupId: normalizedDiscountGroupId },
+      }),
+      "patchCustomer"
+    ).pipe(Effect.retry(retryPolicy));
+  });
+
   const getTables = Effect.fn("getTables")(() =>
     loadAllDotyposPages({
       operation: "getTables",
@@ -1296,6 +1354,8 @@ const makeDotyposService = Effect.gen(function* () {
     getCustomer,
     getCustomerDiscountGroup,
     getCustomerDiscount,
+    getDiscountGroups,
+    setCustomerDiscountGroup,
     findCustomer,
     findOrCreateCustomer,
     getTables,

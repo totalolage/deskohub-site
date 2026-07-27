@@ -188,22 +188,6 @@ describe("Pay URL state", () => {
     expect(state).not.toHaveProperty("schema");
   });
 
-  test("preserves required-coffee normalization in signed Pay state", () => {
-    const state = runSync(
-      buildSignedPayState(
-        {
-          locale: "en-US",
-          reservation: { ...baseReservation, coffee: false } as never,
-          quote: buildCoworkReservationQuote(baseReservation),
-          orderId: "required-coffee-order-id",
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
-    );
-
-    expect(state.reservation.coffee).toBe(true);
-  });
-
   test("fails closed when no encryption key is configured", () => {
     expect(() =>
       runSync(
@@ -335,7 +319,7 @@ describe("Pay URL state", () => {
       quote: {
         ...state.quote,
         schemaVersion: 1,
-        summary: { ...state.quote.summary, schemaVersion: 1 },
+        summary: { schemaVersion: 1 },
       },
     };
     expect(() => decodeSignedPayState(oldSignedState)).toThrow();

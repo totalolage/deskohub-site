@@ -1333,6 +1333,45 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /clouds/{cloudId}/discount-groups:
+    get:
+      tags:
+        - Discount Groups
+      summary: Get discount groups
+      operationId: getDiscountGroups
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filter
+          in: query
+          description: Filter discount groups
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of discount groups
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedDiscountGroups'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Dotypos returns Not Found when the cloud has no discount groups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /clouds/{cloudId}/discount-groups/{discountGroupId}:
     get:
       tags:
@@ -1755,10 +1794,44 @@ components:
       required:
         - discountPercent
       properties:
+        id:
+          type: string
+          description: Discount group ID
+        _cloudId:
+          type: string
+          description: Cloud ID
         discountPercent:
           type: string
           nullable: true
           description: Percentage discount represented as a decimal string
+        deleted:
+          type: boolean
+          description: Whether the discount group is deleted
+        display:
+          type: boolean
+          description: Whether the discount group is displayed
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        name:
+          type: string
+          nullable: true
+          description: Discount group name
+        versionDate:
+          type: string
+          description: Last modification timestamp
+
+    PaginatedDiscountGroups:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiscountGroup'
+        nextPage:
+          type: string
+          nullable: true
 
     CreateCustomerRequest:
       type: object
@@ -1892,6 +1965,10 @@ components:
     UpdateCustomerRequest:
       type: object
       properties:
+        _discountGroupId:
+          type: string
+          nullable: true
+          description: Discount group ID
         firstName:
           type: string
           description: First name

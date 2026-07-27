@@ -59,8 +59,8 @@ test("runs checkout and terminal cases concurrently", async () => {
     }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
   );
 
-  expect(startedSessions).toContain("workspace-e2e-scheduling-payment-failed");
-  expect(startedSessions).toContain("workspace-e2e-scheduling-checkout-cowork");
+  expect(startedSessions).toContain("workspace-e2e-scheduling-0");
+  expect(startedSessions).toContain("workspace-e2e-scheduling-1");
   expect(telemetryEvents).toEqual(
     expect.arrayContaining([
       {
@@ -81,6 +81,32 @@ test("runs checkout and terminal cases concurrently", async () => {
       }),
     ])
   );
+});
+
+test("keeps browser session names independent of descriptive case ids", async () => {
+  const startedSessions: string[] = [];
+  const cases: readonly WorkspaceE2ECase[] = [
+    {
+      execute: ({ session }) =>
+        Effect.sync(() => {
+          startedSessions.push(session);
+        }),
+      id: "discount-code-expires-after-the-customer-reaches-the-payment-page",
+      timeoutMs: 10_000,
+    },
+  ];
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-session-name-test",
+      cases,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-30212233344-1",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+  );
+
+  expect(startedSessions).toEqual(["workspace-e2e-30212233344-1-0"]);
 });
 
 test("cancels sibling cases when the first case fails", async () => {

@@ -2,7 +2,7 @@ import { Data, Effect, Predicate, Schema } from "effect";
 import {
   type CoworkReservationQuote,
   coworkReservationQuoteSchema,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/reservation-quote-cowork";
 import {
   type MeetingRoomReservationQuote,
   meetingRoomReservationQuoteSchema,

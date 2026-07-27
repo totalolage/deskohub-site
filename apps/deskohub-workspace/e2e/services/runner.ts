@@ -1,7 +1,6 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { DatasourceConfig } from "../config";
 import type { E2EEnvironment } from "../e2e-env";
 import {
   toWorkspaceE2EError,
@@ -9,6 +8,7 @@ import {
   workspaceE2EError,
 } from "../errors";
 import type { CheckoutFlowState } from "../types";
+import { E2EDatabase } from "../integrations/database.service";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
@@ -52,58 +52,60 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               sessionPrefix
             );
             const flowStates: CheckoutFlowState[] = [];
-            let datasourceConfig: DatasourceConfig | undefined;
+            const datasourceConfig =
+              yield* configService.getDatasourceConfig;
+            yield* configService.assertDatasourceSafety(datasourceConfig);
+            yield* configService.assertNexiSandbox(
+              datasourceConfig.nexiApiOrigin
+            );
 
-            const workflow = Effect.gen(function* () {
-              datasourceConfig = yield* configService.getDatasourceConfig;
-              yield* configService.assertDatasourceSafety(datasourceConfig);
-              yield* configService.assertNexiSandbox(
-                datasourceConfig.nexiApiOrigin
-              );
-              yield* previewReadiness.assertEndpoints(config);
+            yield* Effect.gen(function* () {
+              const workflow = Effect.gen(function* () {
+                yield* previewReadiness.assertEndpoints(config);
 
-              const e2eCases = yield* cases.makeCases({
-                config,
+                const e2eCases = yield* cases.makeCases({
+                  config,
+                  datasourceConfig,
+                  flowStates,
+                  run,
+                });
+
+                yield* cases.runCases({
+                  artifactRoot,
+                  cases: e2eCases,
+                  run,
+                  sessionPrefix,
+                  timeouts: config.timeouts,
+                });
+              });
+
+              const workflowExit = yield* Effect.exit(workflow);
+              const workflowError = Exit.isFailure(workflowExit)
+                ? Cause.squash(workflowExit.cause)
+                : undefined;
+              const cleanupError = yield* cleanup.cleanupCheckoutStates({
                 datasourceConfig,
                 flowStates,
-                run,
+                workflowError,
               });
 
-              yield* cases.runCases({
-                artifactRoot,
-                cases: e2eCases,
-                run,
-                sessionPrefix,
-                timeouts: config.timeouts,
-              });
-            });
-
-            const workflowExit = yield* Effect.exit(workflow);
-            const workflowError = Exit.isFailure(workflowExit)
-              ? Cause.squash(workflowExit.cause)
-              : undefined;
-            const cleanupError = yield* cleanup.cleanupCheckoutStates({
-              datasourceConfig,
-              flowStates,
-              workflowError,
-            });
-
-            if (Exit.isFailure(workflowExit)) {
-              const workflowFailure = toWorkspaceE2EError(
-                "run workspace e2e workflow",
-                Cause.squash(workflowExit.cause)
-              );
-              return yield* cleanupError
-                ? workspaceE2EError(
-                    "Workspace e2e workflow and cleanup failed",
-                    {
-                      causes: [workflowFailure, cleanupError],
-                      operation: "run workspace e2e workflow",
-                    }
-                  )
-                : workflowFailure;
-            }
-            if (cleanupError) return yield* cleanupError;
+              if (Exit.isFailure(workflowExit)) {
+                const workflowFailure = toWorkspaceE2EError(
+                  "run workspace e2e workflow",
+                  Cause.squash(workflowExit.cause)
+                );
+                return yield* cleanupError
+                  ? workspaceE2EError(
+                      "Workspace e2e workflow and cleanup failed",
+                      {
+                        causes: [workflowFailure, cleanupError],
+                        operation: "run workspace e2e workflow",
+                      }
+                    )
+                  : workflowFailure;
+              }
+              if (cleanupError) return yield* cleanupError;
+            }).pipe(Effect.provide(E2EDatabase.layer(datasourceConfig)));
           })
         ),
       };

@@ -13,17 +13,21 @@ import {
 } from "../browser-scripts";
 import {
   completeNexiHostedPayment,
-  startCheckoutPaymentAttempt,
+  submitPaymentAndWaitForHostedPage,
+  submitReservationForPayPage,
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
+  type ExpectedDiscountApplication,
   markConsoleFulfillmentDeliveredForE2E,
   markFulfillmentFailedForE2E,
   replayNexiWebhook,
+  validateDiscountApplications,
   validatePostgres,
   waitForWebhookReplayRow,
 } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
@@ -31,6 +35,7 @@ import type {
   CheckoutData,
   CheckoutFlow,
   CheckoutFlowState,
+  WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
@@ -44,32 +49,56 @@ export const executeCheckoutFlow = ({
   runStep,
   session,
   state,
+  payPageStep,
+  expectedDiscounts,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
-  flow: CheckoutFlow;
+  flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
+  payPageStep?: (orderId: string) => WorkspaceE2EStep<void>;
+  expectedDiscounts?: readonly ExpectedDiscountApplication[];
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      execute: startCheckoutPaymentAttempt({
-        config,
-        data,
-        onOrderId: (startedOrderId) => {
-          state.orderId = startedOrderId;
-        },
+      execute: Effect.gen(function* () {
+        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+        return yield* submitReservationForPayPage({
+          onOrderId: (startedOrderId) => {
+            state.orderId = startedOrderId;
+          },
+          run,
+          session,
+          submitReservationScript: flow.submitReservationScript(data),
+          timeouts: config.timeouts,
+        });
+      }),
+      id: "prepare-checkout-pay-page",
+      timeoutMs: config.timeouts.checkoutStart,
+    });
+    if (payPageStep) {
+      yield* runStep(payPageStep(orderId));
+    }
+    yield* runStep({
+      execute: submitPaymentAndWaitForHostedPage({
         run,
         session,
-        submitReservationScript: flow.submitReservationScript(data),
-      }),
+        timeouts: config.timeouts,
+      }).pipe(Effect.asVoid),
       id: "start-checkout-payment",
-      timeoutMs: config.timeouts.checkoutStart,
+      timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
       execute: completeNexiHostedPayment({
@@ -117,6 +146,17 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.datasource,
     });
     state.checkoutRow = checkoutRow;
+    if (expectedDiscounts) {
+      yield* runStep({
+        execute: validateDiscountApplications(
+          datasourceConfig,
+          orderId,
+          expectedDiscounts
+        ),
+        id: "validate-discount-applications",
+        timeoutMs: config.timeouts.datasource,
+      });
+    }
     yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
@@ -174,7 +214,7 @@ export const assertFulfilledStatusPage = ({
   orderId: string;
   run: Runner;
   session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     yield* openBrowserPage(
       config,
@@ -218,9 +258,9 @@ const assertFulfillmentFailedSupportPath = ({
   orderId: string;
   run: Runner;
   session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
+    yield* markFulfillmentFailedForE2E(orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
       `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`

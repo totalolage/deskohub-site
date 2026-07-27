@@ -8,8 +8,10 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { locales } from "@/features/i18n";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import inlangSettings from "../../project.inlang/settings.json" with {
+  type: "json",
+};
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -158,7 +160,7 @@ export const workspaceReservations = pgTable(
     ),
     check(
       "workspace_reservations_locale_check",
-      sql`${t.locale} in (${quotedSqlList(locales)})`
+      sql`${t.locale} in (${quotedSqlList(inlangSettings.locales)})`
     ),
     check(
       "workspace_reservations_hold_id_check",

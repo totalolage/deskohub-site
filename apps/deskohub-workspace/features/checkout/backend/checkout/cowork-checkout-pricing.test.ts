@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
+import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
@@ -101,7 +101,7 @@ describe("cowork checkout pricing", () => {
       reservationDate: reservation.date,
       locale: "en-US",
     });
-    expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
   test("freshly affirms exactly the discounts in the advertisement", async () => {
@@ -109,7 +109,7 @@ describe("cowork checkout pricing", () => {
       Effect.succeed(affirmedAdvertisement)
     );
     const displayedQuote = await Effect.runPromise(
-      calculateCoworkReservationQuote(reservation, {
+      buildCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
@@ -134,7 +134,7 @@ describe("cowork checkout pricing", () => {
       advertisedDiscountIds: [advertisedDiscountId],
     });
     expect(result.discountQuote).toBe(affirmedAdvertisement);
-    expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
   test("applies customer discounts to the affirmed advertisement", async () => {
@@ -160,7 +160,7 @@ describe("cowork checkout pricing", () => {
       dotyposCustomerId,
       locale: "en-US",
     });
-    expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
@@ -169,7 +169,7 @@ describe("cowork checkout pricing", () => {
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
     const displayedQuote = await Effect.runPromise(
-      calculateCoworkReservationQuote(reservation, {
+      buildCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
@@ -197,7 +197,7 @@ describe("cowork checkout pricing", () => {
       displayedDiscountIds: [advertisedDiscountId],
     });
     expect(result.commitment).toBe(commitment);
-    expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(result.quote.payment.expectedPrice).toEqual(money(22_500));
   });
 
   test("affirms the displayed price before appending a submitted code", async () => {
@@ -230,7 +230,7 @@ describe("cowork checkout pricing", () => {
       Effect.succeed({ quote: codeQuote, application: codeApplication })
     );
     const displayedQuote = await Effect.runPromise(
-      calculateCoworkReservationQuote(reservation, {
+      buildCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
@@ -270,7 +270,7 @@ describe("cowork checkout pricing", () => {
     expect(result).toMatchObject({
       status: "applied",
       submittedCodeDiscountId: codeApplication.discount.id,
-      quote: { summary: { total: money(19_000) } },
+      quote: { payment: { expectedPrice: money(19_000) } },
     });
   });
 
@@ -290,7 +290,7 @@ describe("cowork checkout pricing", () => {
     );
     const applyDiscountCode = mock(() => Effect.die("must not resolve code"));
     const displayedQuote = await Effect.runPromise(
-      calculateCoworkReservationQuote(reservation, {
+      buildCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );

@@ -4,11 +4,10 @@ import {
   CheckoutPricingService,
   openSubmittedAdvertisedPriceState,
 } from "@/features/checkout/backend/checkout";
-import type {
-  CheckoutSummaryChangedKeys,
-  CoworkReservationQuote,
-} from "@/features/checkout/checkout-quote";
-import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import { getCheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
+import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";
@@ -16,7 +15,7 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   coworkAdvertisedPriceReservationEquals,
-  getCoworkReservationDetails,
+  getCoworkAdvertisedPriceReservation,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import type { PrepareCoworkPayStateInput } from "./prepare-cowork-pay-state.schema";
@@ -40,10 +39,9 @@ export const prepareCoworkAdvertisement = Effect.fn(
   const state = yield* openSubmittedAdvertisedPriceState(
     input.advertisedPriceToken
   );
-  const expectedReservation = {
-    kind: input.reservation.kind,
-    details: getCoworkReservationDetails(input.reservation),
-  } as const;
+  const expectedReservation = getCoworkAdvertisedPriceReservation(
+    input.reservation
+  );
 
   if (state.kind !== "cowork") {
     return yield* new AdvertisedPriceMismatchError({
@@ -86,8 +84,8 @@ export const prepareCoworkAdvertisement = Effect.fn(
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
-        state.quote.summary,
-        affirmed.quote.summary
+        getCoworkCheckoutSummary(state.reservation.details, state.quote),
+        getCoworkCheckoutSummary(affirmed.reservation.details, affirmed.quote)
       ),
     }),
   };

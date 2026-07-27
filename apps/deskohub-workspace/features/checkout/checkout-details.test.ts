@@ -2,7 +2,10 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote as buildCoworkPriceQuote,
+} from "@/features/checkout/checkout-quote.test-utils";
 import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
@@ -13,6 +16,13 @@ import {
   type DiscountQuote,
   discountIdSchema,
 } from "@/features/discounts/contracts";
+
+const buildCoworkReservationQuote = (
+  ...args: Parameters<typeof buildCoworkPriceQuote>
+) => ({
+  ...buildCoworkPriceQuote(...args),
+  summary: buildCoworkCheckoutSummary(...args),
+});
 
 const document = {
   path: "/en-US/terms-and-conditions",

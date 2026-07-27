@@ -1,10 +1,9 @@
 import {
   type CoworkReservationQuote,
   coworkReservationQuoteSchema,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/reservation-quote-cowork";
 import {
   type NormalizedCoworkReservationOrder,
-  normalizeCoworkReservationOrder,
   normalizedCoworkReservationOrderSchema,
 } from "@/features/reservation/cowork-reservation";
 import {
@@ -31,15 +30,10 @@ export const buildSignedCoworkPayState = (
   envelope: SignedPayStateClaims,
   input: BuildSignedCoworkPayStateInput
 ): CoworkSignedPayState => {
-  const reservation = normalizeCoworkReservationOrder({
-    ...input.reservation,
-    ...input.quote.order,
-  });
-
   return buildSignedReservationPayState(
     envelope,
     input,
-    input.quote.summary.total,
-    reservation
+    input.quote.payment.expectedPrice,
+    input.reservation
   );
 };

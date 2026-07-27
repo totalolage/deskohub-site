@@ -7,7 +7,7 @@ import { type ReactNode, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import { CheckoutAutoRefresh } from "@/features/checkout/components/checkout-auto-refresh";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
 import {

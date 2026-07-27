@@ -3,7 +3,7 @@ import type { RequireAllOrNone } from "type-fest";
 import {
   type CheckoutSummaryChangedKeys,
   checkoutSummaryChangedKeysSchema,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
   type CanonicalDiscountCode,

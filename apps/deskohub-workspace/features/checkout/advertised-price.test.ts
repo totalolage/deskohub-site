@@ -1,7 +1,10 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Option, Schema } from "effect";
-import { coworkAdvertisedPriceReservationEquals } from "@/features/reservation/cowork-reservation";
+import {
+  coworkAdvertisedPriceReservationEquals,
+  getCoworkAdvertisedPriceReservation,
+} from "@/features/reservation/cowork-reservation";
 import { advertisedPriceRequestSchema } from "./advertised-price";
 
 const decodeRequest = Schema.decodeUnknownOption(advertisedPriceRequestSchema, {
@@ -47,7 +50,7 @@ describe("advertised price contract", () => {
     expect(Option.isNone(decoded)).toBe(true);
   });
 
-  test("compares the full normalized PII-free reservation", () => {
+  test("compares every price-affecting reservation input", () => {
     expect(
       coworkAdvertisedPriceReservationEquals(reservation, reservation)
     ).toBe(true);
@@ -57,5 +60,60 @@ describe("advertised price contract", () => {
         details: { ...reservation.details, coffee: false },
       })
     ).toBe(false);
+  });
+
+  test("accepts only price-affecting cowork inputs", () => {
+    const profiReservation = {
+      kind: "cowork" as const,
+      details: {
+        kind: "cowork" as const,
+        entryTier: "profi" as const,
+        coffee: true as const,
+        date: "2026-07-20",
+      },
+    };
+
+    expect(
+      Option.isSome(
+        decodeRequest({
+          locale: "en-US",
+          reservation: profiReservation,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Option.isNone(
+        decodeRequest({
+          locale: "en-US",
+          reservation: {
+            ...profiReservation,
+            details: {
+              ...profiReservation.details,
+              monitorOption: "2x27-qhd",
+            },
+          },
+        })
+      )
+    ).toBe(true);
+  });
+
+  test("uses the same advertised-price snapshot for every Profi monitor", () => {
+    const reservation = {
+      entryTier: "profi" as const,
+      coffee: true,
+      date: "2026-07-20",
+    };
+
+    expect(
+      getCoworkAdvertisedPriceReservation({
+        ...reservation,
+        monitorOption: "2x27-qhd",
+      })
+    ).toEqual(
+      getCoworkAdvertisedPriceReservation({
+        ...reservation,
+        monitorOption: "2x32-4k",
+      })
+    );
   });
 });

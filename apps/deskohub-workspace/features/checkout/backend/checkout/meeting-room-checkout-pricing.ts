@@ -1,8 +1,8 @@
 import { Effect } from "effect";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import {
-  getMeetingRoomCheckoutSummary,
   getMeetingRoomReservationQuote,
   type MeetingRoomReservationQuote,
 } from "@/features/checkout/reservation-quote-meeting-room";
@@ -140,5 +140,5 @@ export const meetingRoomCheckoutPricing = reservationCheckoutPricing<
 >({
   getPricingContext: getMeetingRoomPricingContext,
   buildQuote: buildMeetingRoomQuote,
-  getCheckoutSummary: getMeetingRoomCheckoutSummary,
+  getCheckoutSummary: ({ quote }) => getMeetingRoomCheckoutSummary(quote),
 });

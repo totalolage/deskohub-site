@@ -465,7 +465,7 @@ const formatReservationStartDiagnostics = (
 const isCheckoutStatusUrl = (url: string | undefined) =>
   parseUrl(url ?? "")?.pathname.includes("/reservation/status/") ?? false;
 
-const submitPaymentAndWaitForHostedPage = ({
+export const submitPaymentAndWaitForHostedPage = ({
   run,
   session,
   timeouts,

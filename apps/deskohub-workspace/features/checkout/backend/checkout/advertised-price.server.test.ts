@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
+import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import {
   discountAdvertisementQuoteCodec,
   discountIdSchema,
@@ -40,7 +40,7 @@ describe("buildAdvertisedPrice", () => {
       discountedSubtotal: money(17_500),
     });
     const quoteAdvertisement = mock((request) =>
-      calculateCoworkReservationQuote(request.reservation.details, {
+      buildCoworkReservationQuote(request.reservation.details, {
         discountQuote,
       }).pipe(
         Effect.map((quote) => ({
@@ -79,7 +79,7 @@ describe("buildAdvertisedPrice", () => {
     if (result.kind !== "cowork") {
       throw new Error("Expected a cowork advertised price.");
     }
-    expect(result.quote.summary.total).toEqual(money(22_500));
+    expect(result.summary.total).toEqual(money(22_500));
     expect(state.kind).toBe("cowork");
     expect(state.reservation).toEqual(input.reservation);
     expect(state.quote).toEqual(result.quote);

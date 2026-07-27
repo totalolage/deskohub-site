@@ -34,6 +34,10 @@ Cancelled events and events without a description are ignored. Any non-empty des
 
 Reservation-page advertisement discovery may retain the resolved event and complete, locale-independent database definition for up to 60 seconds. Locale selection happens only after that cache lookup, so one checkout locale cannot leak into another. Quote generation and final payment affirmation perform the required fresh reads. Editing a shared `discounts` row changes new advertisement cycles for every calendar event and code that references it, while existing checkout and application snapshots retain the resolved label the customer saw.
 
+The provider also compares the current instant with the event's exclusive-end
+instant after every cache read. A cached resolution may avoid another Calendar
+request, but it can never keep a sale eligible after Prague midnight ends it.
+
 Discovery is best-effort, while an advertised or accepted price is explicit. A discovery failure before rendering logs at Error level, omits only the failed discount, and preserves every correctly resolved discount. After a discount has been advertised on the reservation page, failure to include it in the order-summary quote returns `pricing_changed` for the affected products. After it appears in the signed summary, failure to affirm it at order submission also returns `pricing_changed`. Neither boundary may silently replace a displayed price or introduce a newly available automatic discount retrospectively. Defects and interruption are not converted to empty results.
 
 The discount-code input is an independent form on the order-summary page. Invalid or unavailable codes produce a field-level error while the existing summary remains payable. A successful submission issues a new signed summary; it does not reserve usage. Applying application snapshots, admitting or releasing a code claim, and redeeming it are payment-lifecycle mutations. They run in the owning payment transaction, roll back that transition on failure, and never use best-effort resolution recovery. A failed final claim admission returns a refreshed `pricing_changed` summary before any Nexi session is created.

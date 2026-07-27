@@ -16,7 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "test:e2e": "bun scripts/workspace-e2e.ts",
     "lint": "bun run --parallel lint:biome lint:eslint",
-    "lint:biome": "cd ../.. && biome check apps/deskohub-workspace/app apps/deskohub-workspace/db apps/deskohub-workspace/features apps/deskohub-workspace/scripts apps/deskohub-workspace/shared apps/deskohub-workspace/*.ts --config-path biome.json --vcs-root .",
+    "lint:biome": "biome check app db features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\" --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
     "typecheck": "bun ../../node_modules/typescript/bin/tsc --noEmit",
