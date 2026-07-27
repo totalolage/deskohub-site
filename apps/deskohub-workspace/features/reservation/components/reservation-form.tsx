@@ -534,7 +534,12 @@ export function ReservationForm({
                                 "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
                               isSelected
                                 ? "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10"
-                                : "bg-white outline-navy-blue/10 hover:outline-burned-orange/45"
+                                : cn(
+                                    "bg-white outline-navy-blue/10",
+                                    hasAdvertisedDiscounts
+                                      ? "hover:outline-purple-500/60"
+                                      : "hover:outline-burned-orange/45"
+                                  )
                             )}
                           >
                             {hasAdvertisedDiscounts && (
@@ -554,7 +559,7 @@ export function ReservationForm({
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="halo"
                                   className={cn(
-                                    "fill-none stroke-purple-300/30 opacity-0 [filter:blur(2px)] [stroke-dasharray:34_66] [stroke-linecap:round] [stroke-width:7px] motion-reduce:animate-none",
+                                    "fill-none stroke-purple-500/45 opacity-0 [filter:blur(2.5px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:8px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
@@ -569,22 +574,7 @@ export function ReservationForm({
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="glow"
                                   className={cn(
-                                    "fill-none stroke-purple-400/45 opacity-0 [animation-delay:-250ms] [stroke-dasharray:24_76] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
-                                    tierCardsAreVisible &&
-                                      !shouldReduceMotion &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="ribbon"
-                                  className={cn(
-                                    "fill-none stroke-purple-500/75 opacity-0 [animation-delay:-500ms] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:3px] motion-reduce:animate-none",
+                                    "fill-none stroke-purple-400/80 opacity-0 [filter:blur(0.75px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:4.5px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
@@ -598,8 +588,9 @@ export function ReservationForm({
                                   rx="21"
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="core"
+                                  stroke="oklch(98% 0.035 124)"
                                   className={cn(
-                                    "fill-none stroke-white opacity-0 [animation-delay:-750ms] [stroke-dasharray:4_96] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
+                                    "fill-none opacity-0 [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:2px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"

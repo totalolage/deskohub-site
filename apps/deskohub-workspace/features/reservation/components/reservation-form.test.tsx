@@ -374,12 +374,12 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(basicGlimmer).not.toBeNull();
     expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
-    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(4);
+    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(3);
     expect(
       basicGlimmer
         ?.querySelector('[data-reservation-tier-sale-glimmer-layer="core"]')
-        ?.getAttribute("class")
-    ).toContain("stroke-white");
+        ?.getAttribute("stroke")
+    ).toBe("oklch(98% 0.035 124)");
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")
@@ -466,6 +466,11 @@ describe("ReservationForm advertised pricing", () => {
         '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
       )?.textContent
     ).toContain("Launch sale");
+    expect(
+      view.container.querySelector('[data-reservation-tier-option="plus"]')
+        ?.className
+    ).toContain("hover:outline-purple-500/60");
+    expect(profiCard?.className).toContain("hover:outline-burned-orange/45");
     expect(
       view.container
         .querySelector('[data-reservation-tier-price="plus"]')
