@@ -10,7 +10,7 @@ import {
   CalendarIcon,
   Coffee,
   Monitor,
-  Sparkles,
+  Percent,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -511,6 +511,38 @@ export function ReservationForm({
                                 : "border-navy-blue/10 bg-white hover:border-burned-orange/45"
                             )}
                           >
+                            <div
+                              className={cn(
+                                "pointer-events-none relative z-20 -mx-4 -mt-4 items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900",
+                                advertisedDiscounts
+                                  ? "flex"
+                                  : "invisible hidden lg:flex"
+                              )}
+                              data-reservation-tier-discount-banner={
+                                option.value
+                              }
+                            >
+                              {advertisedDiscounts && (
+                                <>
+                                  <Percent
+                                    aria-hidden="true"
+                                    className="size-4 shrink-0"
+                                  />
+                                  <span className="flex flex-wrap gap-x-2 gap-y-0.5">
+                                    {advertisedDiscounts.map(({ discount }) => (
+                                      <span
+                                        key={discount.id}
+                                        data-reservation-tier-discount={
+                                          discount.id
+                                        }
+                                      >
+                                        {discount.label}
+                                      </span>
+                                    ))}
+                                  </span>
+                                </>
+                              )}
+                            </div>
                             <label
                               htmlFor={inputId}
                               className={cn(
@@ -671,27 +703,6 @@ export function ReservationForm({
                                   );
                                 })}
                               </ul>
-                            </div>
-                            <div
-                              className={cn(
-                                "pointer-events-none relative z-20 space-y-2",
-                                !advertisedDiscounts && "hidden lg:block"
-                              )}
-                              data-reservation-tier-discounts={option.value}
-                            >
-                              {advertisedDiscounts?.map(({ discount }) => (
-                                <div
-                                  key={discount.id}
-                                  data-reservation-tier-discount={discount.id}
-                                  className="flex items-center gap-2 rounded-xl border border-aquamarine-green/35 bg-aquamarine-green/12 px-3 py-2 text-sm font-semibold leading-5 text-aquamarine-ink ring-1 ring-aquamarine-green/8"
-                                >
-                                  <Sparkles
-                                    aria-hidden="true"
-                                    className="size-4 shrink-0"
-                                  />
-                                  <span>{discount.label}</span>
-                                </div>
-                              ))}
                             </div>
                             <label
                               htmlFor={inputId}

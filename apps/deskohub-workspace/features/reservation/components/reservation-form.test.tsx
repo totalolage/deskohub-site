@@ -319,6 +319,17 @@ describe("ReservationForm advertised pricing", () => {
         '[data-reservation-tier-option="basic"] [data-reservation-tier-discount="summer-sale"]'
       )?.textContent
     ).toContain("Summer sale");
+    const basicCard = view.container.querySelector(
+      '[data-reservation-tier-option="basic"]'
+    );
+    const basicBanner = basicCard?.querySelector(
+      '[data-reservation-tier-discount-banner="basic"]'
+    );
+    expect(basicCard?.firstElementChild).toBe(basicBanner ?? null);
+    expect(basicBanner?.className).toContain("bg-purple-100");
+    expect(basicBanner?.querySelector("svg")?.getAttribute("class")).toContain(
+      "lucide-percent"
+    );
     expect(
       view.container.querySelector(
         '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
