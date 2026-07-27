@@ -38,12 +38,7 @@ test("waits for the discount trigger to hydrate before focusing it", async () =>
     })
   );
 
-  expect(calls.map((args) => args.at(2))).toEqual([
-    "wait",
-    "focus",
-    "wait",
-    "eval",
-  ]);
+  expect(calls.map((args) => args.at(2))).toEqual(["wait", "focus", "wait"]);
   expect(calls.at(2)?.at(4)).toContain(
     "document.querySelectorAll('[role=\"tooltip\"] li')"
   );

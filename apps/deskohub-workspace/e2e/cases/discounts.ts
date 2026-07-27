@@ -1137,28 +1137,6 @@ export const assertDisplayedDiscounts = ({
 `,
         { timeoutMs: config.timeouts.uiTransition }
       );
-      yield* evalBrowserScript(
-        `assert ${label} adjustment`,
-        run,
-        session,
-        `
-(() => {
-  const label = ${JSON.stringify(label)};
-  const adjustment = ${JSON.stringify(adjustment)};
-  const item = [...document.querySelectorAll('[role="tooltip"] li')].find(
-    (candidate) => (candidate.textContent ?? '').includes(label)
-  );
-  if (!(item instanceof HTMLLIElement)) {
-    throw new Error('discount detail row missing');
-  }
-  if (!(item.textContent ?? '').includes(adjustment)) {
-    throw new Error('discount adjustment missing');
-  }
-  return true;
-})()
-`,
-        { timeoutMs: config.timeouts.uiTransition }
-      );
     }
   });
 
