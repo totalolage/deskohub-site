@@ -386,6 +386,7 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicGlimmerBeam?.style.offsetPath).toBe(
       "rect(0 auto auto 0 round 10rem)"
     );
+    expect(basicGlimmerBeam?.style.width).toBe("2.5rem");
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")

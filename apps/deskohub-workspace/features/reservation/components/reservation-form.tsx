@@ -572,7 +572,7 @@ export function ReservationForm({
                                       "linear-gradient(to right, transparent 0%, var(--color-purple-900) 25%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 75%, transparent 100%)",
                                     offsetPath:
                                       "rect(0 auto auto 0 round 10rem)",
-                                    width: "10rem",
+                                    width: "2.5rem",
                                   }}
                                 />
                               </span>
