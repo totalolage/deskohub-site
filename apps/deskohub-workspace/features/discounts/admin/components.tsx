@@ -1,13 +1,11 @@
 import {
   AlertCircle,
   ArrowUpRight,
-  CalendarDays,
   CheckCircle2,
-  CircleDollarSign,
-  KeyRound,
   Plus,
   Save,
 } from "lucide-react";
+import Link from "next/link";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -37,44 +35,105 @@ type DiscountAdministrationProps = {
   };
 };
 
-export function DiscountAdministrationPage({
+export function DiscountsAdministrationPage({
   dashboard,
   notice,
 }: DiscountAdministrationProps) {
   return (
+    <AdminPageShell
+      activeSection="discounts"
+      count={dashboard.discounts.length}
+      notice={notice}
+      title="Discounts"
+    >
+      <DiscountsSection discounts={dashboard.discounts} />
+    </AdminPageShell>
+  );
+}
+
+export function CodesAdministrationPage({
+  dashboard,
+  notice,
+}: DiscountAdministrationProps) {
+  return (
+    <AdminPageShell
+      activeSection="codes"
+      count={dashboard.codes.length}
+      notice={notice}
+      title="Discount codes"
+    >
+      <CodesSection codes={dashboard.codes} discounts={dashboard.discounts} />
+    </AdminPageShell>
+  );
+}
+
+export function SalesAdministrationPage({
+  dashboard,
+  notice,
+}: DiscountAdministrationProps) {
+  return (
+    <AdminPageShell
+      activeSection="sales"
+      count={dashboard.calendar.events.length}
+      notice={notice}
+      title="Calendar sales"
+    >
+      <CalendarSection calendar={dashboard.calendar} />
+    </AdminPageShell>
+  );
+}
+
+function AdminPageShell({
+  activeSection,
+  children,
+  count,
+  notice,
+  title,
+}: {
+  readonly activeSection: "codes" | "discounts" | "sales";
+  readonly children: React.ReactNode;
+  readonly count: number;
+  readonly notice: DiscountAdministrationProps["notice"];
+  readonly title: string;
+}) {
+  return (
     <main className="min-h-screen bg-[#f4f5f8] text-navy-blue">
-      <header className="border-b border-navy-blue/10 bg-navy-blue px-5 py-10 text-white sm:px-8 lg:px-12">
-        <div className="mx-auto flex max-w-7xl flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl">
-            <p className="mb-3 text-sm font-semibold text-aquamarine-green">
-              Workspace operations
-            </p>
-            <h1 className="text-balance text-4xl leading-none sm:text-5xl">
-              Discount administration
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-white/72">
-              Maintain database discounts and codes, then connect scheduled
-              sales through the read-only Google Calendar.
-            </p>
+      <header className="border-b border-navy-blue/12 bg-white">
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl leading-none">{title}</h1>
+            <Badge variant="subtle">{count}</Badge>
           </div>
-          <nav
-            aria-label="Administration sections"
-            className="flex flex-wrap gap-2"
-          >
-            <AdminSectionLink href="#discounts">Discounts</AdminSectionLink>
-            <AdminSectionLink href="#codes">Codes</AdminSectionLink>
-            <AdminSectionLink href="#calendar">Calendar</AdminSectionLink>
+          <nav aria-label="Administration" className="flex gap-1">
+            <AdminSectionLink
+              active={activeSection === "discounts"}
+              href="/admin/discounts"
+            >
+              Discounts
+            </AdminSectionLink>
+            <AdminSectionLink
+              active={activeSection === "codes"}
+              href="/admin/codes"
+            >
+              Codes
+            </AdminSectionLink>
+            <AdminSectionLink
+              active={activeSection === "sales"}
+              href="/admin/sales"
+            >
+              Sales
+            </AdminSectionLink>
           </nav>
         </div>
       </header>
 
-      <div className="mx-auto max-w-7xl space-y-16 px-5 py-10 sm:px-8 lg:px-12 lg:py-14">
+      <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-12">
         {notice && (
           <div
             className={
               notice.status === "success"
-                ? "flex items-start gap-3 rounded-2xl bg-aquamarine-green/15 px-5 py-4 text-aquamarine-ink"
-                : "flex items-start gap-3 rounded-2xl bg-burned-orange/10 px-5 py-4 text-burned-orange-ink"
+                ? "mb-5 flex items-start gap-3 rounded-xl bg-aquamarine-green/15 px-4 py-3 text-aquamarine-ink"
+                : "mb-5 flex items-start gap-3 rounded-xl bg-burned-orange/10 px-4 py-3 text-burned-orange-ink"
             }
             role={notice.status === "error" ? "alert" : "status"}
           >
@@ -86,10 +145,7 @@ export function DiscountAdministrationPage({
             <p className="text-sm font-semibold leading-6">{notice.message}</p>
           </div>
         )}
-
-        <DiscountsSection discounts={dashboard.discounts} />
-        <CodesSection codes={dashboard.codes} discounts={dashboard.discounts} />
-        <CalendarSection calendar={dashboard.calendar} />
+        {children}
       </div>
     </main>
   );
@@ -101,23 +157,13 @@ function DiscountsSection({
   readonly discounts: readonly AdminDiscount[];
 }) {
   return (
-    <section className="scroll-mt-8" id="discounts">
-      <SectionHeading
-        count={discounts.length}
-        description="Each definition owns both customer-facing translations, its adjustment, and every eligible product."
-        icon={CircleDollarSign}
-        title="Discounts"
-      />
-
-      <details className="group mt-7 rounded-2xl bg-white shadow-[0_16px_36px_-28px_rgba(0,2,79,0.5)]">
+    <section>
+      <details className="group rounded-xl border border-navy-blue/10 bg-white">
         <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-          <span className="grid size-9 place-items-center rounded-full bg-burned-orange-ink text-white">
+          <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
             <Plus aria-hidden className="size-4" />
           </span>
           Create a discount
-          <span className="ml-auto text-sm font-normal text-navy-blue/70 group-open:hidden">
-            Open form
-          </span>
         </summary>
         <form action={createDiscountAdminForm} className="px-5 pb-6">
           <DiscountFields />
@@ -131,7 +177,7 @@ function DiscountsSection({
         </form>
       </details>
 
-      <div className="mt-5 divide-y divide-navy-blue/10 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_-28px_rgba(0,2,79,0.5)]">
+      <div className="mt-4 divide-y divide-navy-blue/10 overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
         {discounts.length === 0 ? (
           <EmptyState message="No discounts yet. Create the first definition above." />
         ) : (
@@ -175,9 +221,7 @@ function DiscountEditor({ discount }: { readonly discount: AdminDiscount }) {
       </summary>
       <div className="border-t border-navy-blue/10 bg-[#fafafd] px-5 py-6">
         <div className="mb-5 rounded-xl bg-navy-blue/[0.045] px-3 py-2">
-          <p className="text-xs font-semibold text-navy-blue/70">
-            Copy this ID into the Calendar event description
-          </p>
+          <p className="text-xs font-semibold text-navy-blue/70">Calendar ID</p>
           <code className="mt-1 block break-all text-xs">{discount.id}</code>
         </div>
         <form action={updateAction}>
@@ -190,14 +234,10 @@ function DiscountEditor({ discount }: { readonly discount: AdminDiscount }) {
             Save discount
           </Button>
         </form>
-        <div className="mt-7 flex flex-col gap-3 border-t border-navy-blue/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl text-sm leading-6 text-navy-blue/62">
-            Delete only when no code or active Calendar event references this
-            discount.
-          </p>
+        <div className="mt-7 flex justify-end border-t border-navy-blue/10 pt-5">
           <DeleteForm
             action={deleteAction}
-            confirmation={`Delete the discount “${discount.labels["en-US"]}”? This cannot be undone.`}
+            confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
           />
         </div>
       </div>
@@ -337,28 +377,18 @@ function CodesSection({
   readonly discounts: readonly AdminDiscount[];
 }) {
   return (
-    <section className="scroll-mt-8" id="codes">
-      <SectionHeading
-        count={codes.length}
-        description="Codes point at one discount definition and add their own availability window, enabled state, and optional capacity."
-        icon={KeyRound}
-        title="Discount codes"
-      />
-
+    <section>
       {discounts.length === 0 ? (
-        <div className="mt-7 rounded-2xl bg-white px-5 py-6 text-sm text-navy-blue/65">
+        <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-6 text-sm text-navy-blue/65">
           Create a discount before adding a code.
         </div>
       ) : (
-        <details className="group mt-7 rounded-2xl bg-white shadow-[0_16px_36px_-28px_rgba(0,2,79,0.5)]">
+        <details className="group rounded-xl border border-navy-blue/10 bg-white">
           <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-            <span className="grid size-9 place-items-center rounded-full bg-burned-orange-ink text-white">
+            <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
               <Plus aria-hidden className="size-4" />
             </span>
             Create a discount code
-            <span className="ml-auto text-sm font-normal text-navy-blue/70 group-open:hidden">
-              Open form
-            </span>
           </summary>
           <form action={createDiscountCodeAdminForm} className="px-5 pb-6">
             <DiscountCodeFields discounts={discounts} />
@@ -373,7 +403,7 @@ function CodesSection({
         </details>
       )}
 
-      <div className="mt-5 divide-y divide-navy-blue/10 overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_-28px_rgba(0,2,79,0.5)]">
+      <div className="mt-4 divide-y divide-navy-blue/10 overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
         {codes.length === 0 ? (
           <EmptyState message="No discount codes yet." />
         ) : (
@@ -438,14 +468,10 @@ function DiscountCodeEditor({
             Save code
           </Button>
         </form>
-        <div className="mt-7 flex flex-col gap-3 border-t border-navy-blue/10 pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="max-w-2xl text-sm leading-6 text-navy-blue/62">
-            Disable a code to preserve redemption history. Deletion succeeds
-            only when no historical redemption references it.
-          </p>
+        <div className="mt-7 flex justify-end border-t border-navy-blue/10 pt-5">
           <DeleteForm
             action={deleteAction}
-            confirmation={`Delete the code “${code.code}”? This cannot be undone.`}
+            confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
           />
         </div>
       </div>
@@ -541,16 +567,21 @@ function CalendarSection({
   readonly calendar: DiscountAdminDashboard["calendar"];
 }) {
   return (
-    <section className="scroll-mt-8 pb-6" id="calendar">
-      <SectionHeading
-        count={calendar.events.length}
-        description={`Read-only events from ${calendar.from} through ${calendar.to}. Timing stays in Google Calendar; the description links to Postgres.`}
-        icon={CalendarDays}
-        title="Calendar sales"
-      />
+    <section>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-navy-blue/65">
+          {calendar.from} — {calendar.to}
+        </p>
+        <Button asChild size="sm" variant="secondary">
+          <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
+            Open calendar
+            <ArrowUpRight aria-hidden className="size-3.5" />
+          </a>
+        </Button>
+      </div>
 
-      <div className="mt-7 grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <div className="overflow-hidden rounded-2xl bg-white shadow-[0_16px_36px_-28px_rgba(0,2,79,0.5)]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
           {calendar.unavailable ? (
             <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
           ) : calendar.events.length === 0 ? (
@@ -564,26 +595,14 @@ function CalendarSection({
           )}
         </div>
 
-        <aside className="h-fit rounded-2xl bg-sunset-yellow/20 p-5 lg:sticky lg:top-5">
-          <h3 className="text-xl">Associate an event</h3>
-          <ol className="mt-4 space-y-3 text-sm leading-6 text-navy-blue/78">
-            <li>1. Open the event in Google Calendar.</li>
-            <li>2. Make it an all-day event and give it a title.</li>
-            <li>
-              3. Replace the entire Description with the chosen discount UUID.
-              Do not add any other text.
-            </li>
-            <li>4. Save the event. Refresh this page to verify the match.</li>
+        <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-4 lg:sticky lg:top-4">
+          <h2 className="text-base font-semibold">Link a sale</h2>
+          <ol className="mt-3 space-y-2 text-sm leading-5 text-navy-blue/78">
+            <li>1. Open the Calendar event.</li>
+            <li>2. Set it as all-day.</li>
+            <li>3. Put only the discount UUID in the event description.</li>
+            <li>4. Save, then refresh this page.</li>
           </ol>
-          <Button
-            asChild
-            className="mt-5 w-full bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          >
-            <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
-              Open sales Calendar
-              <ArrowUpRight aria-hidden className="size-4" />
-            </a>
-          </Button>
         </aside>
       </div>
     </section>
@@ -663,35 +682,6 @@ function AssociationBadge({
   return <Badge variant="subtle">No discount ID</Badge>;
 }
 
-function SectionHeading({
-  count,
-  description,
-  icon: Icon,
-  title,
-}: {
-  readonly count: number;
-  readonly description: string;
-  readonly icon: typeof CircleDollarSign;
-  readonly title: string;
-}) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] sm:items-start">
-      <span className="grid size-11 place-items-center rounded-xl bg-navy-blue text-white">
-        <Icon aria-hidden className="size-5" />
-      </span>
-      <div>
-        <h2 className="text-3xl leading-tight">{title}</h2>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-navy-blue/65">
-          {description}
-        </p>
-      </div>
-      <Badge className="w-fit" variant="subtle">
-        {count} total
-      </Badge>
-    </div>
-  );
-}
-
 function FormField({
   children,
   label,
@@ -717,19 +707,26 @@ function EmptyState({ message }: { readonly message: string }) {
 }
 
 function AdminSectionLink({
+  active,
   children,
   href,
 }: {
+  readonly active: boolean;
   readonly children: React.ReactNode;
   readonly href: string;
 }) {
   return (
-    <a
-      className="inline-flex min-h-11 items-center rounded-full border border-white/18 px-4 py-2 text-sm font-semibold text-white/85 transition hover:border-white/45 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white"
+    <Link
+      aria-current={active ? "page" : undefined}
+      className={
+        active
+          ? "inline-flex min-h-10 items-center rounded-lg bg-navy-blue px-3 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
+          : "inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-semibold text-navy-blue/70 transition hover:bg-navy-blue/5 hover:text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
+      }
       href={href}
     >
       {children}
-    </a>
+    </Link>
   );
 }
 

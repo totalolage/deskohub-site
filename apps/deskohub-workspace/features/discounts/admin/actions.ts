@@ -17,8 +17,6 @@ import {
 import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
 
-const adminPath = "/admin/discounts";
-
 const executeDiscountAdminMutation = Effect.fn(
   "DiscountAdministration.executeMutation"
 )(function* (input: DiscountAdminMutation) {
@@ -82,7 +80,7 @@ export async function createDiscountAdminForm(formData: FormData) {
     kind: "create-discount",
     discount: readDiscountForm(formData),
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/discounts");
 }
 
 export async function updateDiscountAdminForm(
@@ -96,7 +94,7 @@ export async function updateDiscountAdminForm(
       ...readDiscountForm(formData),
     },
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/discounts");
 }
 
 export async function deleteDiscountAdminForm(
@@ -107,7 +105,7 @@ export async function deleteDiscountAdminForm(
     kind: "delete-discount",
     id,
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/discounts");
 }
 
 export async function createDiscountCodeAdminForm(formData: FormData) {
@@ -115,7 +113,7 @@ export async function createDiscountCodeAdminForm(formData: FormData) {
     kind: "create-code",
     code: readDiscountCodeForm(formData),
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/codes");
 }
 
 export async function updateDiscountCodeAdminForm(
@@ -129,7 +127,7 @@ export async function updateDiscountCodeAdminForm(
       ...readDiscountCodeForm(formData),
     },
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/codes");
 }
 
 export async function deleteDiscountCodeAdminForm(
@@ -140,7 +138,7 @@ export async function deleteDiscountCodeAdminForm(
     kind: "delete-code",
     id,
   });
-  redirectWithResult(result);
+  redirectWithResult(result, "/admin/codes");
 }
 
 const readDiscountForm = (formData: FormData) => {
@@ -201,7 +199,8 @@ const readOptionalNumber = (formData: FormData, field: string) => {
 };
 
 const redirectWithResult = (
-  result: Awaited<ReturnType<typeof mutateDiscountAdmin>>
+  result: Awaited<ReturnType<typeof mutateDiscountAdmin>>,
+  pathname: "/admin/codes" | "/admin/discounts"
 ): never => {
   const notice =
     result.data?.notice ??
@@ -211,7 +210,7 @@ const redirectWithResult = (
     notice,
     status: result.data ? "success" : "error",
   });
-  redirect(`${adminPath}?${params}`);
+  redirect(`${pathname}?${params}`);
 };
 
 const productIdentities: Readonly<
