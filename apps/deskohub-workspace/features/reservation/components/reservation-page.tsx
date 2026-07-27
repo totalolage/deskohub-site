@@ -1,18 +1,18 @@
 import { type ReactNode, Suspense } from "react";
+import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import type { Locale } from "@/features/i18n";
-import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
-type CheckoutOrderPageProps = {
+type ReservationPageProps = {
   readonly children: ReactNode;
   readonly fallback: ReactNode;
   readonly locale: Locale;
 };
 
-export function CheckoutOrderPage({
+export function ReservationPage({
   children,
   fallback,
   locale,
-}: CheckoutOrderPageProps) {
+}: ReservationPageProps) {
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
       {/* Suspense isolates useSearchParams() hydration, not data fetching or lazy loading. */}

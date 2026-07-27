@@ -48,7 +48,7 @@ mock.module("@/features/reservation/actions/get-advertised-price", () => ({
   getAdvertisedPrice,
 }));
 
-const { ReservationForm } = await import("./reservation-form");
+const { CoworkReservationForm } = await import("./cowork-reservation-form");
 
 const money = (value: number) => ({
   value,
@@ -184,7 +184,7 @@ const jsonResponse = (body: unknown, status = 200) =>
   });
 
 const renderForm = (
-  props: Partial<ComponentProps<typeof ReservationForm>> = {}
+  props: Partial<ComponentProps<typeof CoworkReservationForm>> = {}
 ) => {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -194,12 +194,12 @@ const renderForm = (
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <ReservationForm locale="en-US" {...props} />
+      <CoworkReservationForm locale="en-US" {...props} />
     </QueryClientProvider>
   );
 };
 
-describe("ReservationForm advertised pricing", () => {
+describe("CoworkReservationForm advertised pricing", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
   });
