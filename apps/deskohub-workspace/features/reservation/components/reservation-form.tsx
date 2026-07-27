@@ -532,14 +532,19 @@ export function ReservationForm({
                                 : "lg:row-start-2 lg:row-span-4",
                               isUnavailable &&
                                 "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
-                              isSelected
-                                ? "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10"
-                                : cn(
-                                    "bg-white outline-navy-blue/10",
-                                    hasAdvertisedDiscounts
-                                      ? "hover:outline-purple-500/60"
-                                      : "hover:outline-burned-orange/45"
-                                  )
+                              isSelected &&
+                                hasAdvertisedDiscounts &&
+                                "bg-purple-500/5 outline-purple-500 ring-4 ring-purple-500/10",
+                              isSelected &&
+                                !hasAdvertisedDiscounts &&
+                                "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10",
+                              !isSelected && "bg-white outline-navy-blue/10",
+                              !isSelected &&
+                                hasAdvertisedDiscounts &&
+                                "hover:outline-purple-500/60",
+                              !isSelected &&
+                                !hasAdvertisedDiscounts &&
+                                "hover:outline-burned-orange/45"
                             )}
                           >
                             {hasAdvertisedDiscounts && (

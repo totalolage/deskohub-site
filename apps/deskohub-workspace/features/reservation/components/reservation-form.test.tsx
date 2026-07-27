@@ -397,6 +397,8 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicCard?.className.split(" ")).not.toContain("gap-3");
     expect(basicCard?.className.split(" ")).not.toContain("border");
     expect(basicCard?.className.split(" ")).toContain("outline-1");
+    expect(basicCard?.className).toContain("outline-purple-500");
+    expect(basicCard?.className).not.toContain("outline-burned-orange");
     expect(basicCard?.parentElement?.className).toContain(
       "lg:grid-rows-[repeat(5,auto)]"
     );
