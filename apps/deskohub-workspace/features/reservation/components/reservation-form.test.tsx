@@ -369,7 +369,17 @@ describe("ReservationForm advertised pricing", () => {
     const basicBanner = basicCard?.querySelector(
       '[data-reservation-tier-discount-banner="basic"]'
     );
-    expect(basicCard?.firstElementChild).toBe(basicBanner ?? null);
+    const basicGlimmer = basicCard?.querySelector(
+      '[data-reservation-tier-sale-glimmer="basic"]'
+    );
+    expect(basicGlimmer).not.toBeNull();
+    expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
+    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(2);
+    expect(
+      Array.from(basicCard?.children ?? []).find(
+        (element) => !element.getAttribute("class")?.includes("absolute")
+      )
+    ).toBe(basicBanner ?? null);
     expect(basicBanner?.className).toContain("bg-purple-100");
     expect(basicBanner?.querySelector("svg")?.getAttribute("class")).toContain(
       "lucide-percent"
@@ -406,7 +416,9 @@ describe("ReservationForm advertised pricing", () => {
     ).toContain("mt-4");
     expect(
       Array.from(basicCard?.children ?? [])
-        .filter((element) => !element.className.includes("absolute"))
+        .filter(
+          (element) => !element.getAttribute("class")?.includes("absolute")
+        )
         .map((element) =>
           [
             "discount-banner",
@@ -435,6 +447,9 @@ describe("ReservationForm advertised pricing", () => {
     expect(profiCard?.className).toContain("lg:row-span-4");
     expect(
       profiCard?.querySelector("[data-reservation-tier-discount-banner]")
+    ).toBeNull();
+    expect(
+      profiCard?.querySelector("[data-reservation-tier-sale-glimmer]")
     ).toBeNull();
     expect(
       profiCard

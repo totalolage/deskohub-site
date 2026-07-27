@@ -21,6 +21,7 @@
   --radius-lg: var(--radius);
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-tier-sale-glimmer: tier-sale-glimmer 6s linear infinite;
   --container-8xl: 100rem;
 
   @keyframes accordion-down {
@@ -38,6 +39,25 @@
     }
     to {
       height: 0;
+    }
+  }
+
+  @keyframes tier-sale-glimmer {
+    0% {
+      opacity: 0;
+      stroke-dashoffset: 0;
+    }
+    6% {
+      opacity: 1;
+    }
+    44% {
+      opacity: 1;
+      stroke-dashoffset: -100;
+    }
+    52%,
+    100% {
+      opacity: 0;
+      stroke-dashoffset: -100;
     }
   }
 }

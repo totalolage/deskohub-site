@@ -12,6 +12,7 @@ import {
   Monitor,
   Percent,
 } from "lucide-react";
+import { useInView, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
@@ -192,6 +193,9 @@ export function ReservationForm({
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
+  const tierCardsRef = useRef<HTMLDivElement>(null);
+  const tierCardsAreVisible = useInView(tierCardsRef, { amount: 0.15 });
+  const shouldReduceMotion = useReducedMotion();
   const [checkoutSessionId] = useState(
     () => initialCheckoutSessionId ?? createCheckoutIdentifier()
   );
@@ -467,7 +471,10 @@ export function ReservationForm({
                     {m.reservationTierLabel({}, { locale })}
                   </FormLabel>
                   <FormControl>
-                    <div className="grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3">
+                    <div
+                      ref={tierCardsRef}
+                      className="grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3"
+                    >
                       {tierOptions.map((option) => {
                         const isSelected = field.value === option.value;
                         const bulletContent =
@@ -530,6 +537,44 @@ export function ReservationForm({
                                 : "bg-white outline-navy-blue/10 hover:outline-burned-orange/45"
                             )}
                           >
+                            {hasAdvertisedDiscounts && (
+                              <svg
+                                aria-hidden="true"
+                                className="pointer-events-none absolute inset-0 z-30 size-full overflow-visible"
+                                data-reservation-tier-sale-glimmer={
+                                  option.value
+                                }
+                              >
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  className={cn(
+                                    "fill-none stroke-purple-500/55 opacity-0 [stroke-dasharray:16_84] [stroke-linecap:round] [stroke-width:2px] motion-reduce:animate-none",
+                                    tierCardsAreVisible &&
+                                      !shouldReduceMotion &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  className={cn(
+                                    "fill-none stroke-white/95 opacity-0 [stroke-dasharray:3_97] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
+                                    tierCardsAreVisible &&
+                                      !shouldReduceMotion &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                              </svg>
+                            )}
                             {hasAdvertisedDiscounts && advertisedDiscounts && (
                               <div
                                 className="pointer-events-none relative z-20 -mx-4 flex items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900"
