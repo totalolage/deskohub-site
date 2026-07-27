@@ -92,6 +92,7 @@ export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
               </Link>
               <Link
                 href={reservationPath}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPricingLink({}, { locale })}
@@ -118,18 +119,21 @@ export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
             >
               <Link
                 href={`${localePath}`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerHomeLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/contact`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerContactLink({}, { locale })}
               </Link>
               <Link
                 href={reservationPath}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerReservationLink({}, { locale })}
