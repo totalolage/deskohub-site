@@ -373,7 +373,7 @@ export const selectAvailableMeetingRoomSlots = (
 
         if (
           availability.meetingRoomUnavailable ||
-          availability.unavailableDates.includes(slot.date)
+          availability.unavailableDates.length > 0
         ) {
           continue;
         }

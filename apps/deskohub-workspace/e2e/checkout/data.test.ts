@@ -325,6 +325,42 @@ test("selects non-overlapping meeting-room slots for every duration", async () =
   );
 });
 
+test("rejects meeting-room slots that touch an unavailable date", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const requests: Request[] = [];
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      const requestUrl = new URL(request.url);
+
+      return Response.json({
+        meetingRoomUnavailable: false,
+        unavailableDates:
+          requests.length === 1 ? [requestUrl.searchParams.get("to")] : [],
+      });
+    }
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const slots = await Effect.runPromise(
+    selectAvailableMeetingRoomSlots(makeConfig(), [1440]).pipe(
+      Effect.provide(httpClientLayer)
+    )
+  );
+
+  expect(requests).toHaveLength(2);
+  expect(slots[0]?.startDateTime).toBe("2099-08-03T10:00");
+});
+
 const makeConfig = (): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
   bypassSecret: "test-protection-bypass",
