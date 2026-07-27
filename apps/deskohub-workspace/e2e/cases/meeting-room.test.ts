@@ -1,5 +1,6 @@
 import "../../shared/polyfills/temporal";
 
+import { fileURLToPath } from "node:url";
 import { expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -8,6 +9,15 @@ import type { WorkspaceE2EConfig } from "../config";
 import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { assertMeetingRoomSlotUnavailable } from "./meeting-room";
+
+test("keeps the deployed E2E runner independent of generated translations", async () => {
+  const source = await Bun.file(
+    fileURLToPath(new URL("./meeting-room.ts", import.meta.url))
+  ).text();
+
+  expect(source).not.toContain("product-catalog.i18n");
+  expect(source).not.toContain("@/features/i18n");
+});
 
 test("treats an occupied interval as unavailable without requiring the whole date", async () => {
   const interval = getMeetingRoomReservationInterval(

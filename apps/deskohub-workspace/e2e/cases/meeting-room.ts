@@ -3,7 +3,6 @@ import { HttpClient } from "effect/unstable/http";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
 } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getPrepareMeetingRoomAdvertisedPriceScript,
@@ -307,10 +306,10 @@ const assertMeetingRoomPayPage = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const meetingRoom = yield* getMeetingRoomSlot(data);
-    const durationTitle = getWorkspaceMeetingRoomDurationTitle(
-      meetingRoom.durationMinutes,
-      data.locale
-    );
+    const durationHours = meetingRoom.durationMinutes / 60;
+    const durationTitle = `Meeting room - ${durationHours} ${
+      durationHours === 1 ? "hour" : "hours"
+    }`;
     const price = formatWorkspaceMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.durationMinutes),
       data.locale
