@@ -294,7 +294,10 @@ export function MeetingRoomReservationForm({
                         />
                       }
                       priceReady={Boolean(advertisedProductItem)}
-                      title={durationTitle}
+                      title={m.reservationMeetingRoomDurationHours(
+                        { count: duration / 60 },
+                        { locale }
+                      )}
                       value={duration}
                     />
                   );

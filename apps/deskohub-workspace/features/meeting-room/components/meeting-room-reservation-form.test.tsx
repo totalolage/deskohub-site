@@ -185,6 +185,11 @@ describe("MeetingRoomReservationForm", () => {
     ).toBe(3);
     expect(
       Array.from(
+        view.container.querySelectorAll("[data-reservation-type-title]")
+      ).map((title) => title.textContent)
+    ).toEqual(["1 hour", "4 hours", "24 hours"]);
+    expect(
+      Array.from(
         view.container.querySelectorAll("[data-reservation-type-option]")
       ).every((option) => option.className.includes("lg:grid-rows-subgrid"))
     ).toBe(true);
