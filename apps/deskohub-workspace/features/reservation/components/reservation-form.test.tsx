@@ -381,7 +381,7 @@ describe("ReservationForm advertised pricing", () => {
       "[data-reservation-tier-sale-glimmer-beam]"
     ) as HTMLElement | null;
     expect(basicGlimmerBeam?.style.backgroundImage).toBe(
-      "linear-gradient(to right, transparent 0%, var(--color-purple-900) 50%, transparent 100%)"
+      "linear-gradient(to right, transparent 0%, var(--color-purple-100) 50%, transparent 100%)"
     );
     expect(basicGlimmerBeam?.style.offsetPath).toBe(
       "rect(0 auto auto 0 round 1.4rem)"
