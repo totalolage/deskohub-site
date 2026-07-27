@@ -377,9 +377,14 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(3);
     expect(
       basicGlimmer
+        ?.querySelector('[data-reservation-tier-sale-glimmer-layer="halo"]')
+        ?.getAttribute("stroke")
+    ).toBe("var(--color-purple-900)");
+    expect(
+      basicGlimmer
         ?.querySelector('[data-reservation-tier-sale-glimmer-layer="core"]')
         ?.getAttribute("stroke")
-    ).toBe("oklch(98% 0.035 124)");
+    ).toBe("rgba(240, 249, 228, 1)");
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")

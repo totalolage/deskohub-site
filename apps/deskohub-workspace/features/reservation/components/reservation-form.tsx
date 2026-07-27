@@ -563,8 +563,9 @@ export function ReservationForm({
                                   rx="21"
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="halo"
+                                  stroke="var(--color-purple-900)"
                                   className={cn(
-                                    "fill-none stroke-purple-500/45 opacity-0 [filter:blur(2.5px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:8px] motion-reduce:animate-none",
+                                    "fill-none opacity-0 [filter:blur(3px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
@@ -578,8 +579,9 @@ export function ReservationForm({
                                   rx="21"
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="glow"
+                                  stroke="var(--color-purple-900)"
                                   className={cn(
-                                    "fill-none stroke-purple-400/80 opacity-0 [filter:blur(0.75px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:4.5px] motion-reduce:animate-none",
+                                    "fill-none opacity-0 [filter:blur(1px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
@@ -593,7 +595,7 @@ export function ReservationForm({
                                   rx="21"
                                   pathLength="100"
                                   data-reservation-tier-sale-glimmer-layer="core"
-                                  stroke="oklch(98% 0.035 124)"
+                                  stroke="rgba(240, 249, 228, 1)"
                                   className={cn(
                                     "fill-none opacity-0 [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:2px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
