@@ -52,9 +52,16 @@ export const advertisedPriceSchema = Schema.Union([
 });
 
 export type AdvertisedPriceRequest = typeof advertisedPriceRequestSchema.Type;
+export const advertisedPriceRequestEquals = Schema.toEquivalence(
+  advertisedPriceRequestSchema
+);
 export type AdvertisedPrice =
   | typeof coworkAdvertisedPriceSchema.Type
   | typeof meetingRoomAdvertisedPriceSchema.Type;
+export type PreloadedAdvertisedPrice = {
+  readonly request: AdvertisedPriceRequest;
+  readonly advertisedPrice: AdvertisedPrice;
+};
 
 export const isCoworkAdvertisedPrice = Schema.is(coworkAdvertisedPriceSchema);
 export const isMeetingRoomAdvertisedPrice = Schema.is(

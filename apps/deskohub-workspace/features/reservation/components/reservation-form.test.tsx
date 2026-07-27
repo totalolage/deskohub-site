@@ -17,12 +17,14 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
+import type { ComponentProps } from "react";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
+import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -158,6 +160,22 @@ const plusAdvertisedPriceResponse = {
   ),
   advertisedPriceToken: "sealed-plus-advertised-price",
 };
+const profiAdvertisedPriceResponse = {
+  kind: "cowork" as const,
+  quote: buildCoworkReservationQuote({
+    entryTier: "profi",
+    coffee: true,
+    date: "2099-07-30",
+    monitorOption: "2x27-qhd",
+  }),
+  summary: buildCoworkCheckoutSummary({
+    entryTier: "profi",
+    coffee: true,
+    date: "2099-07-30",
+    monitorOption: "2x27-qhd",
+  }),
+  advertisedPriceToken: "sealed-profi-advertised-price",
+};
 
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -165,7 +183,9 @@ const jsonResponse = (body: unknown, status = 200) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const renderForm = () => {
+const renderForm = (
+  props: Partial<ComponentProps<typeof ReservationForm>> = {}
+) => {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retryDelay: 0 },
@@ -174,7 +194,7 @@ const renderForm = () => {
 
   return render(
     <QueryClientProvider client={queryClient}>
-      <ReservationForm locale="en-US" />
+      <ReservationForm locale="en-US" {...props} />
     </QueryClientProvider>
   );
 };
@@ -206,6 +226,30 @@ describe("ReservationForm advertised pricing", () => {
 
   afterAll(() => {
     unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("renders server-loaded discounts on the first paint without refetching", () => {
+    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    const advertisedPrices = {
+      basic: advertisedPriceResponse,
+      plus: plusAdvertisedPriceResponse,
+      profi: profiAdvertisedPriceResponse,
+    } as const;
+
+    const view = renderForm({
+      initialAdvertisedPrices: getCoworkTierAdvertisedPriceRequests({
+        coffee: true,
+        date: "2099-07-30",
+        locale: "en-US",
+      }).map(({ request, tier }) => ({
+        request,
+        advertisedPrice: advertisedPrices[tier],
+      })),
+    });
+
+    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
+    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+    view.unmount();
   });
 
   test("renders discounts accessibly and blocks checkout while the selected tier price loads", async () => {
@@ -330,6 +374,42 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicBanner?.querySelector("svg")?.getAttribute("class")).toContain(
       "lucide-percent"
     );
+    expect(basicCard?.className).toContain("lg:row-start-1");
+    expect(basicCard?.className).toContain("lg:row-span-5");
+    expect(basicCard?.className).toContain("lg:grid-rows-subgrid");
+    expect(basicCard?.parentElement?.className).not.toContain("grid-rows-");
+    expect(
+      Array.from(basicCard?.children ?? [])
+        .filter((element) => !element.className.includes("absolute"))
+        .map((element) =>
+          [
+            "discount-banner",
+            "title",
+            "price-row",
+            "description",
+            "perks",
+          ].find((row) => element.hasAttribute(`data-reservation-tier-${row}`))
+        )
+    ).toEqual([
+      "discount-banner",
+      "title",
+      "price-row",
+      "description",
+      "perks",
+    ]);
+    const basicDescription = basicCard?.querySelector(
+      '[data-reservation-tier-description="basic"]'
+    );
+    expect(basicDescription?.textContent).toContain("Open-space desk");
+    expect(basicDescription?.querySelector("li")).toBeNull();
+    const profiCard = view.container.querySelector(
+      '[data-reservation-tier-option="profi"]'
+    );
+    expect(profiCard?.className).toContain("lg:row-start-2");
+    expect(profiCard?.className).toContain("lg:row-span-4");
+    expect(
+      profiCard?.querySelector("[data-reservation-tier-discount-banner]")
+    ).toBeNull();
     expect(
       view.container.querySelector(
         '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
