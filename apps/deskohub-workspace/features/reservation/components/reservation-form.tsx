@@ -10,12 +10,14 @@ import {
   CalendarIcon,
   Coffee,
   Monitor,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
+  type AdvertisedPrice,
   type AdvertisedPriceRequest,
   isCoworkAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -43,7 +45,7 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
-import { useAdvertisedPrice } from "@/features/reservation/components/use-advertised-price";
+import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import {
   type CoworkReservationData,
   type CoworkReservationInput,
@@ -256,29 +258,49 @@ export function ReservationForm({
     retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
   });
-  const advertisedPriceRequest = useMemo(() => {
+  const advertisedPriceRequests = useMemo(() => {
     if (!selectedDate) {
-      return undefined;
+      return [];
     }
 
-    return {
-      locale,
-      reservation: getCoworkAdvertisedPriceReservation({
-        entryTier: selectedTier,
-        coffee: Boolean(selectedCoffee),
-        date: selectedDate,
-      }),
-    } satisfies AdvertisedPriceRequest;
-  }, [locale, selectedCoffee, selectedDate, selectedTier]);
-  const advertisedPriceQueryResult = useAdvertisedPrice(advertisedPriceRequest);
-  const advertisedPriceData =
-    advertisedPriceRequest && !advertisedPriceQueryResult.isError
-      ? advertisedPriceQueryResult.data
-      : undefined;
-  const advertisedPrice =
-    advertisedPriceData && isCoworkAdvertisedPrice(advertisedPriceData)
-      ? advertisedPriceData
-      : null;
+    return tierOptions.map(({ value }) => ({
+      tier: value,
+      request: {
+        locale,
+        reservation: getCoworkAdvertisedPriceReservation({
+          entryTier: value,
+          coffee: Boolean(selectedCoffee),
+          date: selectedDate,
+        }),
+      } satisfies AdvertisedPriceRequest,
+    }));
+  }, [locale, selectedCoffee, selectedDate]);
+  const advertisedPriceQueryResults = useAdvertisedPrices(
+    advertisedPriceRequests.map(({ request }) => request)
+  );
+  const advertisedPricesByTier = new Map<
+    WorkspaceCoworkProductTier,
+    Extract<AdvertisedPrice, { readonly kind: "cowork" }>
+  >();
+
+  for (const [index, queryResult] of advertisedPriceQueryResults.entries()) {
+    const request = advertisedPriceRequests[index];
+    if (
+      request &&
+      !queryResult.isError &&
+      queryResult.data &&
+      isCoworkAdvertisedPrice(queryResult.data)
+    ) {
+      advertisedPricesByTier.set(request.tier, queryResult.data);
+    }
+  }
+
+  const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
+    ({ tier }) => tier === selectedTier
+  );
+  const advertisedPriceQueryResult =
+    advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
+  const advertisedPrice = advertisedPricesByTier.get(selectedTier) ?? null;
   const availability = availabilityQueryResult.isError
     ? null
     : (availabilityQueryResult.data ?? null);
@@ -461,16 +483,19 @@ export function ReservationForm({
                         const isUnavailable = unavailableCoworkTiers.has(
                           option.value
                         );
-                        const advertisedProductItem =
-                          option.value === selectedTier
-                            ? advertisedPrice?.summary.sections
-                                .find(({ key }) => key === "order")
-                                ?.items.find(
-                                  (item) =>
-                                    "product" in item &&
-                                    item.product.kind === "cowork" &&
-                                    item.product.tier === option.value
-                                )
+                        const advertisedProductItem = advertisedPricesByTier
+                          .get(option.value)
+                          ?.summary.sections.find(({ key }) => key === "order")
+                          ?.items.find(
+                            (item) =>
+                              "product" in item &&
+                              item.product.kind === "cowork" &&
+                              item.product.tier === option.value
+                          );
+                        const advertisedDiscounts =
+                          advertisedProductItem &&
+                          "discounts" in advertisedProductItem
+                            ? advertisedProductItem.discounts
                             : undefined;
 
                         return (
@@ -478,7 +503,7 @@ export function ReservationForm({
                             key={option.value}
                             data-reservation-tier-option={option.value}
                             className={cn(
-                              "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:row-span-4 lg:grid lg:grid-rows-subgrid",
+                              "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:row-span-5 lg:grid lg:grid-rows-subgrid",
                               isUnavailable &&
                                 "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
                               isSelected
@@ -508,7 +533,10 @@ export function ReservationForm({
                                 )}
                               />
                             </label>
-                            <div className="relative z-20 flex items-end gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange">
+                            <div
+                              className="relative z-20 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange"
+                              data-reservation-tier-price-row={option.value}
+                            >
                               <label
                                 className={cn(
                                   "flex cursor-pointer flex-col items-start gap-0.5",
@@ -523,7 +551,7 @@ export function ReservationForm({
                                 {advertisedProductItem &&
                                 "originalAmount" in advertisedProductItem &&
                                 advertisedProductItem.originalAmount &&
-                                advertisedProductItem.discounts ? (
+                                advertisedDiscounts ? (
                                   <>
                                     <span className="sr-only">
                                       {m.checkoutSummaryOriginalPrice(
@@ -585,9 +613,9 @@ export function ReservationForm({
                               {advertisedProductItem &&
                                 "originalAmount" in advertisedProductItem &&
                                 advertisedProductItem.originalAmount &&
-                                advertisedProductItem.discounts && (
+                                advertisedDiscounts && (
                                   <CheckoutSummaryDiscountDetails
-                                    discounts={advertisedProductItem.discounts}
+                                    discounts={advertisedDiscounts}
                                     locale={locale}
                                     productLabel={getWorkspaceProductTierTitle(
                                       option.value,
@@ -643,6 +671,27 @@ export function ReservationForm({
                                   );
                                 })}
                               </ul>
+                            </div>
+                            <div
+                              className={cn(
+                                "pointer-events-none relative z-20 space-y-2",
+                                !advertisedDiscounts && "hidden lg:block"
+                              )}
+                              data-reservation-tier-discounts={option.value}
+                            >
+                              {advertisedDiscounts?.map(({ discount }) => (
+                                <div
+                                  key={discount.id}
+                                  data-reservation-tier-discount={discount.id}
+                                  className="flex items-center gap-2 rounded-xl border border-aquamarine-green/35 bg-aquamarine-green/12 px-3 py-2 text-sm font-semibold leading-5 text-aquamarine-ink ring-1 ring-aquamarine-green/8"
+                                >
+                                  <Sparkles
+                                    aria-hidden="true"
+                                    className="size-4 shrink-0"
+                                  />
+                                  <span>{discount.label}</span>
+                                </div>
+                              ))}
                             </div>
                             <label
                               htmlFor={inputId}
@@ -924,7 +973,7 @@ export function ReservationForm({
                   hasPreparedPayRedirect ||
                   isSelectedReservationUnavailable ||
                   isAvailabilityLoading ||
-                  advertisedPriceQueryResult.isFetching ||
+                  advertisedPriceQueryResult?.isFetching ||
                   !advertisedPrice
                 }
               >
@@ -961,7 +1010,7 @@ export function ReservationForm({
                   {m.reservationAvailabilityLoading({}, { locale })}
                 </p>
               )}
-              {advertisedPriceQueryResult.isFetching &&
+              {advertisedPriceQueryResult?.isFetching &&
                 !advertisedPrice &&
                 !submissionMessage && (
                   <p
@@ -971,7 +1020,7 @@ export function ReservationForm({
                     {m.reservationAdvertisedPriceLoading({}, { locale })}
                   </p>
                 )}
-              {advertisedPriceQueryResult.isError && !submissionMessage && (
+              {advertisedPriceQueryResult?.isError && !submissionMessage && (
                 <div
                   role="alert"
                   className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-burned-orange-ink"

@@ -1,6 +1,6 @@
 "use client";
 
-import { skipToken, useQuery } from "@tanstack/react-query";
+import { skipToken, useQueries, useQuery } from "@tanstack/react-query";
 import {
   type AdvertisedPriceRequest,
   advertisedPriceKeys,
@@ -17,6 +17,14 @@ const loadAdvertisedPrice = async (request: AdvertisedPriceRequest) => {
   throw new Error(result.serverError ?? "Advertised price could not be loaded");
 };
 
+const advertisedPriceQuery = (request: AdvertisedPriceRequest) => ({
+  queryKey: advertisedPriceKeys.price(request),
+  queryFn: () => loadAdvertisedPrice(request),
+  retry: (failureCount: number) => failureCount < 3,
+  staleTime: 4 * 60 * 1000,
+  refetchInterval: 4 * 60 * 1000,
+});
+
 export const useAdvertisedPrice = (
   request: AdvertisedPriceRequest | undefined
 ) =>
@@ -28,4 +36,11 @@ export const useAdvertisedPrice = (
     retry: (failureCount) => failureCount < 3,
     staleTime: 4 * 60 * 1000,
     refetchInterval: 4 * 60 * 1000,
+  });
+
+export const useAdvertisedPrices = (
+  requests: ReadonlyArray<AdvertisedPriceRequest>
+) =>
+  useQueries({
+    queries: requests.map(advertisedPriceQuery),
   });

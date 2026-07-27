@@ -21,6 +21,7 @@ import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   workspaceRouterPush as push,
@@ -114,6 +115,50 @@ const advertisedPriceResponse = {
   advertisedPriceToken: "sealed-advertised-price",
 };
 
+const plusPrice = getWorkspaceProductByTier("plus").price;
+const plusDiscountAmount = money(Math.round(plusPrice.value * 0.2));
+const plusDiscountedSubtotal = money(
+  plusPrice.value - plusDiscountAmount.value
+);
+const plusDiscountQuote = {
+  product: { kind: "cowork" as const, tier: "plus" as const },
+  discountableSubtotal: plusPrice,
+  discounts: [
+    {
+      discount: {
+        id: Schema.decodeUnknownSync(discountIdSchema)("launch-sale"),
+        label: "Launch sale",
+        adjustment: { kind: "percentage" as const, basisPoints: 2000 },
+      },
+      subtotalBefore: plusPrice,
+      amount: plusDiscountAmount,
+      subtotalAfter: plusDiscountedSubtotal,
+    },
+  ],
+  totalDiscount: plusDiscountAmount,
+  discountedSubtotal: plusDiscountedSubtotal,
+};
+const plusAdvertisedPriceResponse = {
+  kind: "cowork" as const,
+  quote: buildCoworkReservationQuote(
+    {
+      entryTier: "plus",
+      coffee: true,
+      date: "2099-07-30",
+    },
+    { discountQuote: plusDiscountQuote }
+  ),
+  summary: buildCoworkCheckoutSummary(
+    {
+      entryTier: "plus",
+      coffee: true,
+      date: "2099-07-30",
+    },
+    { discountQuote: plusDiscountQuote }
+  ),
+  advertisedPriceToken: "sealed-plus-advertised-price",
+};
+
 const jsonResponse = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
     status,
@@ -163,7 +208,7 @@ describe("ReservationForm advertised pricing", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("renders the discount accessibly and clears the prior price while selection refreshes", async () => {
+  test("renders discounts accessibly and blocks checkout while the selected tier price loads", async () => {
     const advertisedRequests: unknown[] = [];
     let resolvePlusRequest:
       | ((response: { data: typeof advertisedPriceResponse }) => void)
@@ -223,23 +268,72 @@ describe("ReservationForm advertised pricing", () => {
           ) as HTMLInputElement
         ).checked
       ).toBe(true);
-      expect(advertisedRequests.at(-1)).toMatchObject({
-        reservation: { details: { entryTier: "plus" } },
-      });
+      expect(advertisedRequests).toContainEqual(
+        expect.objectContaining({
+          reservation: expect.objectContaining({
+            details: expect.objectContaining({ entryTier: "plus" }),
+          }),
+        })
+      );
     });
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
     ).toBe(true);
-    expect(view.queryByText(/discounted price.*175/i)).toBeNull();
+    expect(view.getByText(/discounted price.*175/i)).toBeDefined();
 
     await act(async () => {
-      resolvePlusRequest?.({ data: advertisedPriceResponse });
+      resolvePlusRequest?.({ data: plusAdvertisedPriceResponse });
     });
     await waitFor(() => {
       expect(
         view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
       ).toBe(false);
     });
+    expect(view.getByText(/discounted price.*392/i)).toBeDefined();
+  });
+
+  test("advertises discounts on every applicable tier and top-aligns price rows", async () => {
+    getAdvertisedPrice.mockImplementation((input) =>
+      Promise.resolve({
+        data:
+          input.reservation.details.entryTier === "plus"
+            ? plusAdvertisedPriceResponse
+            : advertisedPriceResponse,
+      })
+    );
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = String(request);
+      if (url.startsWith("/api/workspace/availability")) {
+        return Promise.resolve(jsonResponse(availabilityResponse));
+      }
+      return Promise.reject(new Error(`Unexpected fetch: ${url}`));
+    }) as typeof fetch;
+
+    const view = renderForm();
+
+    await waitFor(() => {
+      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+    });
+    expect(
+      view.container.querySelector(
+        '[data-reservation-tier-option="basic"] [data-reservation-tier-discount="summer-sale"]'
+      )?.textContent
+    ).toContain("Summer sale");
+    expect(
+      view.container.querySelector(
+        '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
+      )?.textContent
+    ).toContain("Launch sale");
+    expect(
+      view.container
+        .querySelector('[data-reservation-tier-price="plus"]')
+        ?.querySelector("del")
+    ).not.toBeNull();
+    expect(
+      Array.from(
+        view.container.querySelectorAll("[data-reservation-tier-price-row]")
+      ).every((element) => element.className.includes("items-start"))
+    ).toBe(true);
   });
 
   test("shows a retryable error instead of enabling checkout with failed price data", async () => {
