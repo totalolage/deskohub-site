@@ -550,9 +550,9 @@ export function ReservationForm({
                             )}
                           >
                             {hasAdvertisedDiscounts && (
-                              <svg
+                              <span
                                 aria-hidden="true"
-                                className="pointer-events-none absolute inset-0 z-30 size-full overflow-visible"
+                                className="pointer-events-none absolute inset-0 z-30 rounded-[inherit] border-2 border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
                                 data-reservation-tier-sale-glimmer={
                                   option.value
                                 }
@@ -560,52 +560,22 @@ export function ReservationForm({
                                   opacity: shouldAnimateSaleGlimmer ? 1 : 0,
                                 }}
                               >
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="halo"
-                                  stroke="var(--color-purple-900)"
+                                <span
+                                  data-reservation-tier-sale-glimmer-beam=""
                                   className={cn(
-                                    "fill-none [filter:blur(4px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
+                                    "absolute aspect-square [offset-anchor:90%_50%] motion-reduce:animate-none",
                                     shouldAnimateSaleGlimmer &&
                                       "animate-tier-sale-glimmer"
                                   )}
+                                  style={{
+                                    backgroundImage:
+                                      "linear-gradient(to right, transparent 0%, var(--color-purple-900) 25%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 75%, transparent 100%)",
+                                    offsetPath:
+                                      "rect(0 auto auto 0 round 10rem)",
+                                    width: "10rem",
+                                  }}
                                 />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="shoulder"
-                                  stroke="var(--color-purple-900)"
-                                  className={cn(
-                                    "fill-none [animation-delay:-100ms] [filter:blur(2px)] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
-                                    shouldAnimateSaleGlimmer &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="center"
-                                  stroke="rgba(240, 249, 228, 1)"
-                                  className={cn(
-                                    "fill-none [animation-delay:-350ms] [filter:blur(1.25px)] [stroke-dasharray:4_96] [stroke-linecap:round] [stroke-width:4px] motion-reduce:animate-none",
-                                    shouldAnimateSaleGlimmer &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                              </svg>
+                              </span>
                             )}
                             {hasAdvertisedDiscounts && advertisedDiscounts && (
                               <div

@@ -44,10 +44,10 @@
 
   @keyframes tier-sale-glimmer {
     from {
-      stroke-dashoffset: 0;
+      offset-distance: 0%;
     }
     to {
-      stroke-dashoffset: -100;
+      offset-distance: 100%;
     }
   }
 }
