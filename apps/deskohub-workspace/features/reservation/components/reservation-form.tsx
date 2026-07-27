@@ -563,7 +563,7 @@ export function ReservationForm({
                                 <span
                                   data-reservation-tier-sale-glimmer-beam=""
                                   className={cn(
-                                    "absolute aspect-square [offset-anchor:90%_50%] motion-reduce:animate-none",
+                                    "absolute aspect-square motion-reduce:animate-none",
                                     shouldAnimateSaleGlimmer &&
                                       "animate-tier-sale-glimmer"
                                   )}
@@ -571,7 +571,7 @@ export function ReservationForm({
                                     backgroundImage:
                                       "linear-gradient(to right, transparent 0%, var(--color-purple-900) 25%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 75%, transparent 100%)",
                                     offsetPath:
-                                      "rect(0 auto auto 0 round 10rem)",
+                                      "rect(0 auto auto 0 round 2.5rem)",
                                     width: "2.5rem",
                                   }}
                                 />
