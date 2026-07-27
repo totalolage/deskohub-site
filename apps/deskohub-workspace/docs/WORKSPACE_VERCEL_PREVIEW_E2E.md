@@ -204,6 +204,11 @@ configuration and must not read ambient environment variables. Application-only
 variables are not projected into the E2E configuration, and E2E telemetry uses
 only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
 
+Invoke a real run from the repository root with
+`bun turbo test:e2e --filter=deskohub-workspace`. Turbo invokes the Workspace
+package's E2E script directly. The runner does not import generated translations,
+so the real E2E task does not depend on `i18n:compile`.
+
 All case, step, provider, browser, datasource, artifact, and cleanup timeouts
 are static checked-in values in `e2e/timeouts.ts`. The runner does not accept
 environment-variable timeout overrides.

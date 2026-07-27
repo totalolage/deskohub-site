@@ -1,7 +1,7 @@
 import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { reservationCustomerEmailSchema } from "@/features/reservation/reservation-contact";
+import isEmail from "validator/lib/isEmail";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -41,7 +41,7 @@ test("keeps generated emails valid for the longest checkout flow identifier", ()
     "cowork-reservation-replacement"
   );
 
-  expect(Schema.is(reservationCustomerEmailSchema)(data.email)).toBe(true);
+  expect(isEmail(data.email)).toBe(true);
   expect(data.email.split("@")[0]?.length).toBeLessThanOrEqual(64);
 });
 
@@ -58,6 +58,33 @@ test("builds checkout data from the selected cowork product", () => {
     coffee: true,
     entryTier: "plus",
     kind: "cowork",
+  });
+});
+
+test("keeps its persistence oracle independent of application normalization", () => {
+  const basic = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-01",
+    "cowork-basic-coffee",
+    { coffee: true }
+  );
+  const profi = makeCoworkCheckoutData(
+    "https://workspace.example.com",
+    "2099-09-02",
+    "cowork-profi",
+    { entryTier: "profi", monitorOption: "2x32-4k" }
+  );
+
+  expect(basic.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "basic",
+    kind: "cowork",
+  });
+  expect(profi.expectedReservationDetails).toEqual({
+    coffee: true,
+    entryTier: "profi",
+    kind: "cowork",
+    monitorOption: "2x32-4k",
   });
 });
 

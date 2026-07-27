@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import {
-  getStoredCoworkReservationDetails,
-  normalizeCoworkReservationProduct,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
-} from "@/features/reservation/cowork-reservation-product";
+import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
@@ -108,12 +106,7 @@ const makeCoworkCheckoutDataWithContact = (
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
   const entryTier = product.entryTier ?? "basic";
-  const normalizedProduct = normalizeCoworkReservationProduct({
-    coffee: product.coffee ?? false,
-    entryTier,
-    monitorOption:
-      product.monitorOption ?? (entryTier === "profi" ? "2x27-qhd" : undefined),
-  });
+  const normalizedProduct = makeExpectedCoworkProduct(entryTier, product);
   const params = new URLSearchParams({
     coffee: String(normalizedProduct.coffee),
     date,
@@ -131,14 +124,43 @@ const makeCoworkCheckoutDataWithContact = (
     checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/cowork?${params}`,
     date,
     email: contact.email,
-    expectedReservationDetails:
-      getStoredCoworkReservationDetails(normalizedProduct),
+    expectedReservationDetails: {
+      kind: "cowork",
+      ...normalizedProduct,
+    },
     locale,
     message: contact.message,
     name: contact.name,
     orderIdHint: "",
     phone: contact.phone,
   };
+};
+
+const makeExpectedCoworkProduct = (
+  entryTier: WorkspaceCoworkProductTier,
+  product: {
+    readonly coffee?: boolean;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  }
+) => {
+  switch (entryTier) {
+    case "basic":
+      return {
+        coffee: product.coffee ?? false,
+        entryTier,
+      } as const;
+    case "plus":
+      return {
+        coffee: true,
+        entryTier,
+      } as const;
+    case "profi":
+      return {
+        coffee: true,
+        entryTier,
+        monitorOption: product.monitorOption ?? "2x27-qhd",
+      } as const;
+  }
 };
 
 export const requireCheckoutDate = (
