@@ -384,7 +384,7 @@ describe("ReservationForm advertised pricing", () => {
       "linear-gradient(to right, transparent 0%, var(--color-purple-900) 25%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 75%, transparent 100%)"
     );
     expect(basicGlimmerBeam?.style.offsetPath).toBe(
-      "rect(0 auto auto 0 round 2.5rem)"
+      "rect(0 auto auto 0 round 1.4rem)"
     );
     expect(basicGlimmerBeam?.style.width).toBe("2.5rem");
     expect(
