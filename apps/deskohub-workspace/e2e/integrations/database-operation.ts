@@ -1,4 +1,4 @@
-import { Effect, Schedule } from "effect";
+import { Cause, Effect, Schedule } from "effect";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
@@ -30,27 +30,37 @@ const transientDatabaseConnectionMessages = new Set([
   "Connection terminated unexpectedly",
 ]);
 
-const isTransientDatabaseConnectionFailure = (cause: unknown): boolean => {
-  let current = cause;
-  const visited = new Set<unknown>();
-
-  while (
-    current &&
-    !visited.has(current) &&
-    (current instanceof Error || typeof current === "object")
+const isTransientDatabaseConnectionFailure = (
+  cause: unknown,
+  visited: Set<unknown> = new Set()
+): boolean => {
+  if (
+    !cause ||
+    visited.has(cause) ||
+    (typeof cause !== "object" && typeof cause !== "function")
   ) {
-    visited.add(current);
-    if (
-      current instanceof Error &&
-      transientDatabaseConnectionMessages.has(current.message)
-    ) {
-      return true;
-    }
-    current =
-      "cause" in current
-        ? (current as { readonly cause?: unknown }).cause
-        : undefined;
+    return false;
+  }
+  visited.add(cause);
+
+  if (Cause.isCause(cause)) {
+    return Cause.prettyErrors(cause).some((error) =>
+      isTransientDatabaseConnectionFailure(error, visited)
+    );
   }
 
-  return false;
+  if (
+    cause instanceof Error &&
+    transientDatabaseConnectionMessages.has(cause.message)
+  ) {
+    return true;
+  }
+
+  return (
+    "cause" in cause &&
+    isTransientDatabaseConnectionFailure(
+      (cause as { readonly cause?: unknown }).cause,
+      visited
+    )
+  );
 };
