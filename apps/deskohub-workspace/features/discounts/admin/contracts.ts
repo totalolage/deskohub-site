@@ -3,6 +3,7 @@ import {
   getWorkspaceProductKey,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";
+import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { instantStringSchema } from "@/shared/utils";
 import {
   canonicalDiscountCodeSchema,
@@ -15,6 +16,18 @@ import {
 
 const discountLabelSchema = Schema.Trim.check(Schema.isNonEmpty());
 
+const adminDiscountAdjustmentSchema = discountAdjustmentSchema.check(
+  Schema.makeFilter(
+    (adjustment) =>
+      adjustment.kind === "percentage" ||
+      findWorkspaceCurrencyDefinition(adjustment.amount.currency)?.exponent ===
+        adjustment.amount.exponent || {
+        path: ["amount", "currency"],
+        issue: "currency must be supported by Workspace",
+      }
+  )
+);
+
 export const discountAdminLabelsSchema = Schema.Struct({
   "cs-CZ": discountLabelSchema,
   "en-US": discountLabelSchema,
@@ -22,7 +35,7 @@ export const discountAdminLabelsSchema = Schema.Struct({
 
 const discountFields = {
   labels: discountAdminLabelsSchema,
-  adjustment: discountAdjustmentSchema,
+  adjustment: adminDiscountAdjustmentSchema,
   products: Schema.NonEmptyArray(workspaceProductIdentitySchema).check(
     Schema.makeFilter(
       (products) =>

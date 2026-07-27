@@ -63,6 +63,36 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
+  test("accepts only catalog currencies with their defined exponent", () => {
+    expect(() =>
+      decodeDiscount({
+        ...validDiscount,
+        adjustment: {
+          kind: "fixed",
+          amount: { value: 10_000, currency: "CZK", exponent: 2 },
+        },
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeDiscount({
+        ...validDiscount,
+        adjustment: {
+          kind: "fixed",
+          amount: { value: 10_000, currency: "USD", exponent: 2 },
+        },
+      })
+    ).toThrow();
+    expect(() =>
+      decodeDiscount({
+        ...validDiscount,
+        adjustment: {
+          kind: "fixed",
+          amount: { value: 10_000, currency: "CZK", exponent: 0 },
+        },
+      })
+    ).toThrow();
+  });
+
   test("rejects noncanonical codes, invalid windows, and invalid capacity", () => {
     expect(() => decodeCode({ ...validCode, code: "summer10" })).toThrow();
     expect(() =>

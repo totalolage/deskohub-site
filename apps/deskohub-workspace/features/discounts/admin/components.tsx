@@ -12,6 +12,11 @@ import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
+  defaultWorkspaceCurrency,
+  findWorkspaceCurrencyDefinition,
+  workspaceCurrencyDefinitions,
+} from "@/shared/money/currencies";
+import {
   createDiscountAdminForm,
   createDiscountCodeAdminForm,
   deleteDiscountAdminForm,
@@ -250,6 +255,8 @@ function DiscountFields({ discount }: { readonly discount?: AdminDiscount }) {
     discount?.products.map(getWorkspaceProductKey)
   );
   const adjustment = discount?.adjustment;
+  const existingFixedCurrency =
+    adjustment?.kind === "fixed" ? adjustment.amount.currency : undefined;
 
   return (
     <div className="grid gap-7">
@@ -275,7 +282,7 @@ function DiscountFields({ discount }: { readonly discount?: AdminDiscount }) {
 
       <fieldset>
         <legend className="mb-3 text-sm font-semibold">Adjustment</legend>
-        <div className="grid gap-4 lg:grid-cols-[0.8fr_1fr_1fr_0.8fr_0.8fr]">
+        <div className="grid gap-4 lg:grid-cols-4">
           <FormField label="Type" name="adjustmentKind">
             <select
               className="min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10"
@@ -312,34 +319,34 @@ function DiscountFields({ discount }: { readonly discount?: AdminDiscount }) {
               type="number"
             />
           </FormField>
-          <FormField label="Exponent" name="fixedAmountExponent">
-            <Input
-              defaultValue={
-                adjustment?.kind === "fixed" ? adjustment.amount.exponent : 2
-              }
-              id={fieldId("fixedAmountExponent", discount?.id)}
-              min={0}
-              name="fixedAmountExponent"
-              type="number"
-            />
-          </FormField>
           <FormField label="Currency" name="fixedAmountCurrency">
-            <Input
+            <select
+              className="min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10"
               defaultValue={
                 adjustment?.kind === "fixed"
                   ? adjustment.amount.currency
-                  : "CZK"
+                  : defaultWorkspaceCurrency.code
               }
               id={fieldId("fixedAmountCurrency", discount?.id)}
-              maxLength={3}
-              minLength={3}
               name="fixedAmountCurrency"
-            />
+            >
+              {existingFixedCurrency &&
+                !findWorkspaceCurrencyDefinition(existingFixedCurrency) && (
+                  <option value={existingFixedCurrency}>
+                    {existingFixedCurrency} — unsupported
+                  </option>
+                )}
+              {workspaceCurrencyDefinitions.map((currency) => (
+                <option key={currency.code} value={currency.code}>
+                  {currency.code} — {currency.name}
+                </option>
+              ))}
+            </select>
           </FormField>
         </div>
         <p className="mt-3 text-xs leading-5 text-navy-blue/70">
-          100 basis points = 1%. Fixed value 10000 with exponent 2 = 100.00 in
-          the selected currency. Only the selected type is saved.
+          100 basis points = 1%. Fixed value uses minor units: 10000 = 100.00.
+          Only the selected type is saved.
         </p>
       </fieldset>
 

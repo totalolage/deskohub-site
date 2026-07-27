@@ -4,6 +4,7 @@ import { Effect, Match } from "effect";
 import { redirect } from "next/navigation";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
+import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import type {
   DiscountCodeId,
@@ -143,6 +144,9 @@ export async function deleteDiscountCodeAdminForm(
 
 const readDiscountForm = (formData: FormData) => {
   const kind = readString(formData, "adjustmentKind");
+  const fixedCurrency = findWorkspaceCurrencyDefinition(
+    readString(formData, "fixedAmountCurrency").toUpperCase()
+  );
 
   return {
     labels: {
@@ -155,11 +159,8 @@ const readDiscountForm = (formData: FormData) => {
             kind: "fixed",
             amount: {
               value: Number(readString(formData, "fixedAmountValue")),
-              exponent: Number(readString(formData, "fixedAmountExponent")),
-              currency: readString(
-                formData,
-                "fixedAmountCurrency"
-              ).toUpperCase(),
+              exponent: fixedCurrency?.exponent ?? -1,
+              currency: fixedCurrency?.code ?? "",
             },
           } as const)
         : ({
