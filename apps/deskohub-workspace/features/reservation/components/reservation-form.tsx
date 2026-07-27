@@ -570,7 +570,7 @@ export function ReservationForm({
                                   data-reservation-tier-sale-glimmer-layer="halo"
                                   stroke="var(--color-purple-900)"
                                   className={cn(
-                                    "fill-none [filter:blur(3.5px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
+                                    "fill-none [filter:blur(4px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
                                     shouldAnimateSaleGlimmer &&
                                       "animate-tier-sale-glimmer"
                                   )}
@@ -585,7 +585,7 @@ export function ReservationForm({
                                   data-reservation-tier-sale-glimmer-layer="shoulder"
                                   stroke="var(--color-purple-900)"
                                   className={cn(
-                                    "fill-none [animation-delay:-100ms] [filter:blur(1px)] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
+                                    "fill-none [animation-delay:-100ms] [filter:blur(2px)] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
                                     shouldAnimateSaleGlimmer &&
                                       "animate-tier-sale-glimmer"
                                   )}
@@ -597,25 +597,10 @@ export function ReservationForm({
                                   height="calc(100% - 2px)"
                                   rx="21"
                                   pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="center-glow"
+                                  data-reservation-tier-sale-glimmer-layer="center"
                                   stroke="rgba(240, 249, 228, 1)"
                                   className={cn(
-                                    "fill-none [animation-delay:-250ms] [filter:blur(2px)] [stroke-dasharray:8_92] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
-                                    shouldAnimateSaleGlimmer &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="core"
-                                  stroke="rgba(240, 249, 228, 1)"
-                                  className={cn(
-                                    "fill-none [animation-delay:-375ms] [stroke-dasharray:3_97] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
+                                    "fill-none [animation-delay:-350ms] [filter:blur(1.25px)] [stroke-dasharray:4_96] [stroke-linecap:round] [stroke-width:4px] motion-reduce:animate-none",
                                     shouldAnimateSaleGlimmer &&
                                       "animate-tier-sale-glimmer"
                                   )}
