@@ -515,6 +515,8 @@ export function ReservationForm({
                             ]?.isFetching &&
                             !advertisedProductItem
                         );
+                        const shouldAnimateSaleGlimmer =
+                          tierCardsAreVisible && !shouldReduceMotion;
 
                         return (
                           <div
@@ -548,24 +550,77 @@ export function ReservationForm({
                             )}
                           >
                             {hasAdvertisedDiscounts && (
-                              <span
+                              <svg
                                 aria-hidden="true"
-                                className={cn(
-                                  "pointer-events-none absolute left-0 top-0 z-30 h-1 w-12 rounded-full opacity-0 [offset-anchor:center] [offset-path:inset(1px_round_21px)] [offset-position:left_top] [offset-rotate:auto] [will-change:offset-distance] motion-reduce:animate-none",
-                                  tierCardsAreVisible &&
-                                    !shouldReduceMotion &&
-                                    "animate-tier-sale-glimmer"
-                                )}
+                                className="pointer-events-none absolute inset-0 z-30 size-full overflow-visible"
                                 data-reservation-tier-sale-glimmer={
                                   option.value
                                 }
                                 style={{
-                                  backgroundImage:
-                                    "linear-gradient(90deg, var(--color-purple-900) 0%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 100%)",
-                                  boxShadow:
-                                    "0 0 3px rgba(240, 249, 228, 0.9), 0 0 8px var(--color-purple-900)",
+                                  opacity: shouldAnimateSaleGlimmer ? 1 : 0,
                                 }}
-                              />
+                              >
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="halo"
+                                  stroke="var(--color-purple-900)"
+                                  className={cn(
+                                    "fill-none [filter:blur(3.5px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
+                                    shouldAnimateSaleGlimmer &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="shoulder"
+                                  stroke="var(--color-purple-900)"
+                                  className={cn(
+                                    "fill-none [animation-delay:-100ms] [filter:blur(1px)] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
+                                    shouldAnimateSaleGlimmer &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="center-glow"
+                                  stroke="rgba(240, 249, 228, 1)"
+                                  className={cn(
+                                    "fill-none [animation-delay:-250ms] [filter:blur(2px)] [stroke-dasharray:8_92] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
+                                    shouldAnimateSaleGlimmer &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="core"
+                                  stroke="rgba(240, 249, 228, 1)"
+                                  className={cn(
+                                    "fill-none [animation-delay:-375ms] [stroke-dasharray:3_97] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
+                                    shouldAnimateSaleGlimmer &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                              </svg>
                             )}
                             {hasAdvertisedDiscounts && advertisedDiscounts && (
                               <div
