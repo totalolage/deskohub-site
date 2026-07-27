@@ -514,7 +514,7 @@ export function ReservationForm({
                             key={option.value}
                             data-reservation-tier-option={option.value}
                             className={cn(
-                              "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border px-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid lg:grid-rows-subgrid",
+                              "group relative grid cursor-pointer gap-3 rounded-[1.4rem] border px-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
                               {
                                 basic: "lg:col-start-1",
                                 plus: "lg:col-start-2",
@@ -558,7 +558,8 @@ export function ReservationForm({
                             <label
                               htmlFor={inputId}
                               className={cn(
-                                "relative z-10 flex cursor-pointer items-start justify-between gap-2 pt-4",
+                                "relative z-10 flex cursor-pointer items-start justify-between gap-2",
+                                !hasAdvertisedDiscounts && "pt-4",
                                 isUnavailable && "cursor-not-allowed"
                               )}
                               data-reservation-tier-title={option.value}

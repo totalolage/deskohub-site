@@ -377,9 +377,16 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicCard?.className).toContain("lg:row-start-1");
     expect(basicCard?.className).toContain("lg:row-span-5");
     expect(basicCard?.className).toContain("lg:grid-rows-subgrid");
+    expect(basicCard?.className.split(" ")).toContain("grid");
+    expect(basicCard?.className.split(" ")).not.toContain("flex");
     expect(basicCard?.parentElement?.className).toContain(
       "lg:grid-rows-[repeat(5,auto)]"
     );
+    expect(
+      basicCard
+        ?.querySelector('[data-reservation-tier-title="basic"]')
+        ?.className.split(" ")
+    ).not.toContain("pt-4");
     expect(
       Array.from(basicCard?.children ?? [])
         .filter((element) => !element.className.includes("absolute"))
