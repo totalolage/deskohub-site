@@ -548,62 +548,24 @@ export function ReservationForm({
                             )}
                           >
                             {hasAdvertisedDiscounts && (
-                              <svg
+                              <span
                                 aria-hidden="true"
-                                className="pointer-events-none absolute inset-0 z-30 size-full overflow-visible"
+                                className={cn(
+                                  "pointer-events-none absolute left-0 top-0 z-30 h-1 w-20 rounded-full opacity-0 [offset-path:inset(1px_round_21px)] [offset-rotate:auto] [transform:translate(-50%,-50%)] [will-change:offset-distance] motion-reduce:animate-none",
+                                  tierCardsAreVisible &&
+                                    !shouldReduceMotion &&
+                                    "animate-tier-sale-glimmer"
+                                )}
                                 data-reservation-tier-sale-glimmer={
                                   option.value
                                 }
-                              >
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="halo"
-                                  stroke="var(--color-purple-900)"
-                                  className={cn(
-                                    "fill-none opacity-0 [filter:blur(3px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:9px] motion-reduce:animate-none",
-                                    tierCardsAreVisible &&
-                                      !shouldReduceMotion &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="glow"
-                                  stroke="var(--color-purple-900)"
-                                  className={cn(
-                                    "fill-none opacity-0 [filter:blur(1px)] [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
-                                    tierCardsAreVisible &&
-                                      !shouldReduceMotion &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                                <rect
-                                  x="1"
-                                  y="1"
-                                  width="calc(100% - 2px)"
-                                  height="calc(100% - 2px)"
-                                  rx="21"
-                                  pathLength="100"
-                                  data-reservation-tier-sale-glimmer-layer="core"
-                                  stroke="rgba(240, 249, 228, 1)"
-                                  className={cn(
-                                    "fill-none opacity-0 [stroke-dasharray:18_82] [stroke-linecap:round] [stroke-width:2px] motion-reduce:animate-none",
-                                    tierCardsAreVisible &&
-                                      !shouldReduceMotion &&
-                                      "animate-tier-sale-glimmer"
-                                  )}
-                                />
-                              </svg>
+                                style={{
+                                  backgroundImage:
+                                    "linear-gradient(90deg, var(--color-purple-900) 0%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 100%)",
+                                  boxShadow:
+                                    "0 0 3px rgba(240, 249, 228, 0.9), 0 0 8px var(--color-purple-900)",
+                                }}
+                              />
                             )}
                             {hasAdvertisedDiscounts && advertisedDiscounts && (
                               <div

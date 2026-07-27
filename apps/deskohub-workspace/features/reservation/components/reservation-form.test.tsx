@@ -374,17 +374,12 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(basicGlimmer).not.toBeNull();
     expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
-    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(3);
-    expect(
-      basicGlimmer
-        ?.querySelector('[data-reservation-tier-sale-glimmer-layer="halo"]')
-        ?.getAttribute("stroke")
-    ).toBe("var(--color-purple-900)");
-    expect(
-      basicGlimmer
-        ?.querySelector('[data-reservation-tier-sale-glimmer-layer="core"]')
-        ?.getAttribute("stroke")
-    ).toBe("rgba(240, 249, 228, 1)");
+    expect((basicGlimmer as HTMLElement | null)?.style.backgroundImage).toBe(
+      "linear-gradient(90deg, var(--color-purple-900) 0%, rgba(240, 249, 228, 1) 50%, var(--color-purple-900) 100%)"
+    );
+    expect(basicGlimmer?.className).toContain(
+      "[offset-path:inset(1px_round_21px)]"
+    );
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")
