@@ -45,6 +45,8 @@ test("waits for the discount trigger to hydrate before focusing it", async () =>
     "eval",
   ]);
   expect(calls.at(2)?.at(4)).toContain(
-    'innerText.toLocaleLowerCase().includes("e2e calendar sale")'
+    "document.querySelectorAll('[role=\"tooltip\"] li')"
   );
+  expect(calls.at(2)?.at(4)).toContain('"e2e calendar sale"');
+  expect(calls.at(2)?.at(4)).toContain('"20%"');
 });

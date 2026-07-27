@@ -5,6 +5,7 @@ import {
   evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
+  waitForBrowserCondition,
   waitForBrowserReactHydration,
   waitForBrowserTextContent,
 } from "../browser";
@@ -1117,14 +1118,25 @@ export const assertDisplayedDiscounts = ({
       timeoutMs: config.timeouts.browserAction,
     });
     for (const { basisPoints, label } of discounts) {
-      yield* waitForBrowserTextContent(run, session, label, {
-        caseSensitive: false,
-        timeoutMs: config.timeouts.uiTransition,
-      });
       const adjustment = new Intl.NumberFormat("en-US", {
         style: "percent",
         maximumFractionDigits: 2,
       }).format(basisPoints / 10_000);
+      const labelLiteral = JSON.stringify(label.toLocaleLowerCase());
+      const adjustmentLiteral = JSON.stringify(adjustment);
+      yield* waitForBrowserCondition(
+        run,
+        session,
+        `${label} discount detail`,
+        `
+(() => [...document.querySelectorAll('[role="tooltip"] li')].some((item) => {
+  const content = item.textContent ?? '';
+  return content.toLocaleLowerCase().includes(${labelLiteral})
+    && content.includes(${adjustmentLiteral});
+}))()
+`,
+        { timeoutMs: config.timeouts.uiTransition }
+      );
       yield* evalBrowserScript(
         `assert ${label} adjustment`,
         run,
