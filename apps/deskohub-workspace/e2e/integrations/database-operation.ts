@@ -19,7 +19,7 @@ export const runRetrySafeDatabaseOperation = <A, E, R>(
   effect.pipe(
     Effect.retry({
       schedule: Schedule.spaced("250 millis"),
-      times: 3,
+      times: 20,
       while: isTransientDatabaseConnectionFailure,
     }),
     Effect.mapError((cause) => toWorkspaceE2EError(operation, cause))
