@@ -248,7 +248,7 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(
       Array.from(basicPrice?.querySelectorAll("span") ?? []).some((element) =>
-        element.className.includes("text-aquamarine-ink")
+        element.className.includes("text-burned-orange")
       )
     ).toBe(true);
 
@@ -333,6 +333,11 @@ describe("ReservationForm advertised pricing", () => {
       Array.from(
         view.container.querySelectorAll("[data-reservation-tier-price-row]")
       ).every((element) => element.className.includes("items-start"))
+    ).toBe(true);
+    expect(
+      view.container
+        .querySelector('[data-reservation-tier-price-row="profi"]')
+        ?.className.includes("text-aquamarine-ink")
     ).toBe(true);
   });
 

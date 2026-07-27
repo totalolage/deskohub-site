@@ -534,7 +534,7 @@ export function ReservationForm({
                               />
                             </label>
                             <div
-                              className="relative z-20 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange"
+                              className="relative z-20 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-aquamarine-ink"
                               data-reservation-tier-price-row={option.value}
                             >
                               <label
@@ -584,7 +584,7 @@ export function ReservationForm({
                                         { locale }
                                       )}
                                     </span>
-                                    <span className="text-aquamarine-ink">
+                                    <span className="text-burned-orange">
                                       <span aria-hidden="true">
                                         {formatWorkspaceMoney(
                                           advertisedProductItem.amount,
