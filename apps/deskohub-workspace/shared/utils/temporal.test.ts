@@ -5,8 +5,10 @@ import {
   instantStringSchema,
   isFuturePlainDateTime,
   isPlainDateString,
+  localDateTimeToTemporalInstantString,
   makeWholeHourInstantStringSchema,
   temporalInstantToIsoString,
+  temporalInstantToLocalDateTimeString,
 } from "./temporal";
 
 describe("instantStringSchema", () => {
@@ -72,5 +74,24 @@ describe("temporalInstantToIsoString", () => {
     expect(
       temporalInstantToIsoString(Temporal.Instant.from("2026-07-10T08:00:00Z"))
     ).toBe("2026-07-10T08:00:00.000Z");
+  });
+});
+
+describe("local date-time input conversion", () => {
+  test("formats and parses values in the supplied time zone", () => {
+    const instant = Temporal.Instant.from("2026-08-01T08:00:00Z");
+
+    expect(
+      temporalInstantToLocalDateTimeString({
+        instant,
+        timeZone: "Europe/Prague",
+      })
+    ).toBe("2026-08-01T10:00");
+    expect(
+      localDateTimeToTemporalInstantString({
+        dateTime: "2026-08-01T10:00",
+        timeZone: "Europe/Prague",
+      })
+    ).toBe("2026-08-01T08:00:00Z");
   });
 });

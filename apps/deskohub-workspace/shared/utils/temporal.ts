@@ -120,6 +120,30 @@ export const temporalInstantToDate = (instant: Temporal.Instant) =>
 export const temporalInstantToIsoString = (instant: Temporal.Instant) =>
   temporalInstantToDate(instant).toISOString();
 
+export const temporalInstantToLocalDateTimeString = ({
+  instant,
+  timeZone,
+}: {
+  readonly instant: Temporal.Instant;
+  readonly timeZone: string;
+}) =>
+  instant
+    .toZonedDateTimeISO(timeZone)
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
+export const localDateTimeToTemporalInstantString = ({
+  dateTime,
+  timeZone,
+}: {
+  readonly dateTime: string;
+  readonly timeZone: string;
+}) =>
+  Temporal.PlainDateTime.from(dateTime)
+    .toZonedDateTime(timeZone)
+    .toInstant()
+    .toString();
+
 export const dateToTemporalInstant = (date: Date) =>
   isValidDate(date)
     ? Temporal.Instant.fromEpochMilliseconds(date.getTime())
