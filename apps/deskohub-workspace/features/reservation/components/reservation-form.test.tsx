@@ -194,6 +194,18 @@ describe("ReservationForm advertised pricing", () => {
     expect(
       view.getByRole("button", { name: /discount.*basic/i })
     ).toBeDefined();
+    const basicPrice = view.container.querySelector(
+      '[data-reservation-tier-price="basic"]'
+    );
+    expect(basicPrice?.className).toContain("flex-col");
+    expect(basicPrice?.querySelector("del")?.className).toContain(
+      "text-navy-blue/45"
+    );
+    expect(
+      Array.from(basicPrice?.querySelectorAll("span") ?? []).some((element) =>
+        element.className.includes("text-aquamarine-ink")
+      )
+    ).toBe(true);
 
     await act(async () => {
       fireEvent.click(

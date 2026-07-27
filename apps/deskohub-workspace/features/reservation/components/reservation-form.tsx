@@ -508,10 +508,10 @@ export function ReservationForm({
                                 )}
                               />
                             </label>
-                            <div className="relative z-20 flex flex-wrap items-center gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange">
+                            <div className="relative z-20 flex items-end gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange">
                               <label
                                 className={cn(
-                                  "flex cursor-pointer flex-wrap items-center gap-2",
+                                  "flex cursor-pointer flex-col items-start gap-0.5",
                                   isUnavailable && "cursor-not-allowed"
                                 )}
                                 data-reservation-tier-price={option.value}
@@ -556,22 +556,30 @@ export function ReservationForm({
                                         { locale }
                                       )}
                                     </span>
-                                    <span aria-hidden="true">
-                                      {formatWorkspaceMoney(
-                                        advertisedProductItem.amount,
-                                        locale
+                                    <span className="text-aquamarine-ink">
+                                      <span aria-hidden="true">
+                                        {formatWorkspaceMoney(
+                                          advertisedProductItem.amount,
+                                          locale
+                                        )}
+                                      </span>
+                                      {m.pricingTariffPricePeriodSuffix(
+                                        {},
+                                        { locale }
                                       )}
                                     </span>
                                   </>
                                 ) : (
-                                  formatWorkspaceProductCurrencyAmount(
-                                    option.product,
-                                    locale
-                                  )
-                                )}
-                                {m.pricingTariffPricePeriodSuffix(
-                                  {},
-                                  { locale }
+                                  <span>
+                                    {formatWorkspaceProductCurrencyAmount(
+                                      option.product,
+                                      locale
+                                    )}
+                                    {m.pricingTariffPricePeriodSuffix(
+                                      {},
+                                      { locale }
+                                    )}
+                                  </span>
                                 )}
                               </label>
                               {advertisedProductItem &&
