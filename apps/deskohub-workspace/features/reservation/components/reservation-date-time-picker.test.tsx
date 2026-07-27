@@ -85,6 +85,49 @@ describe("ReservationDateTimePicker", () => {
     expect((timeInput as HTMLInputElement).value).toBe("16:00");
   });
 
+  test("shows only the selected date in the date control", () => {
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        locale="en-US"
+        timeLabel="Start time"
+        value="2099-06-10T16:00"
+      />
+    );
+
+    const dateButton = view.getByRole("button", { name: "Start date" });
+    expect(dateButton.textContent).toContain("June 10, 2099");
+    expect(dateButton.textContent).not.toContain("16:00");
+  });
+
+  test("accepts a time before the date and keeps it pending", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        onChange={onChange}
+        timeLabel="Start time"
+      />
+    );
+    const timeInput = view.getByLabelText("Start time") as HTMLInputElement;
+
+    expect(timeInput.disabled).toBe(false);
+    fireEvent.input(timeInput, { target: { value: "17:00" } });
+    expect(timeInput.value).toBe("17:00");
+    expect(onChange).not.toHaveBeenCalled();
+
+    view.rerender(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        onChange={onChange}
+        timeLabel="Start time"
+      />
+    );
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      "17:00"
+    );
+  });
+
   test("accepts minute-level values by default", () => {
     const onChange = mock(() => undefined);
     const view = render(

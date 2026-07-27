@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -76,10 +76,11 @@ export function ReservationDateTimePicker({
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
+  const [pendingTime, setPendingTime] = useState<string>(defaultTime);
   const minimumDateTime = resolveMinimumDateTime(minimum);
   const selectedDate = dateTime?.toPlainDate();
   const selectedTime =
-    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? defaultTime;
+    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? pendingTime;
   const resolvedTimeStepMinutes = Math.max(1, Math.trunc(timeStepMinutes));
   const selectedDateMinimumTime = getMinimumTimeForDate(
     selectedDate,
@@ -96,7 +97,7 @@ export function ReservationDateTimePicker({
     [locale]
   );
   const displayValue = selectedDate
-    ? `${dateFormatter.format(getFormatterDate(selectedDate))} ${selectedTime}`
+    ? dateFormatter.format(getFormatterDate(selectedDate))
     : placeholder;
 
   useEffect(() => {
@@ -142,10 +143,8 @@ export function ReservationDateTimePicker({
         <Input
           aria-label={timeLabel}
           className="pl-11"
-          disabled={!selectedDate}
           onBlur={onBlur}
           onInput={(event) => {
-            if (!selectedDate) return;
             const input = event.currentTarget;
             const restoreSelectedTime = () => {
               input.value = selectedTime;
@@ -171,7 +170,10 @@ export function ReservationDateTimePicker({
                 return;
               }
 
-              onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+              setPendingTime(time);
+              if (selectedDate) {
+                onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+              }
             } catch {
               restoreSelectedTime();
             }

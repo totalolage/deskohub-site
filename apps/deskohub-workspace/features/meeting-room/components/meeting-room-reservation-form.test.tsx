@@ -18,6 +18,10 @@ import {
 } from "@testing-library/react";
 import { Schema } from "effect";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import {
+  getWorkspaceMeetingRoomPriceForDuration,
+  type WorkspaceMeetingRoomDurationMinutes,
+} from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import {
@@ -84,6 +88,50 @@ const advertisedPriceResponse = {
   quote: meetingRoomQuote,
   summary: getMeetingRoomCheckoutSummary(meetingRoomQuote),
   advertisedPriceToken: "sealed-advertised-price",
+};
+
+const getDiscountedAdvertisedPriceResponse = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes
+) => {
+  const originalPrice =
+    getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+  const discountedPrice = money(originalPrice.value / 2);
+  const quote = {
+    fingerprint: `meeting-room-${durationMinutes}-sale`,
+    items: [
+      {
+        type: "meeting-room" as const,
+        durationMinutes,
+        amount: originalPrice,
+      },
+    ] as const,
+    payment: {
+      expectedPrice: discountedPrice,
+      undiscountedPrice: originalPrice,
+      discounts: [
+        {
+          discount: {
+            id: Schema.decodeUnknownSync(discountIdSchema)("meeting-room-sale"),
+            label: "Meeting room sale",
+            adjustment: {
+              kind: "percentage" as const,
+              basisPoints: 5000,
+            },
+          },
+          subtotalBefore: originalPrice,
+          amount: discountedPrice,
+          subtotalAfter: discountedPrice,
+        },
+      ],
+    },
+  };
+
+  return {
+    kind: "meeting-room" as const,
+    quote,
+    summary: getMeetingRoomCheckoutSummary(quote),
+    advertisedPriceToken: `sealed-advertised-price-${durationMinutes}`,
+  };
 };
 
 const availabilityResponse = {
@@ -241,10 +289,10 @@ describe("MeetingRoomReservationForm", () => {
       ) as HTMLInputElement
     );
     await waitFor(() => {
-      expect(getAdvertisedPrice).toHaveBeenCalledTimes(2);
+      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
       expect(continueButton.hasAttribute("disabled")).toBe(false);
       expect(durationInputs[1]?.checked).toBe(true);
-      expect(getAdvertisedPrice).toHaveBeenLastCalledWith({
+      expect(getAdvertisedPrice).toHaveBeenCalledWith({
         locale: "en-US",
         reservation: {
           kind: "meeting-room",
@@ -323,6 +371,37 @@ describe("MeetingRoomReservationForm", () => {
       discountedOption?.querySelector("[data-reservation-type-sale-glimmer]")
     ).not.toBeNull();
     expect(view.queryByText(/selected price/i)).toBeNull();
+  });
+
+  test("advertises a sale on every duration before it is selected", async () => {
+    getAdvertisedPrice.mockImplementation((input) => {
+      const endsAt = input.reservation.details.endsAt;
+      const durationMinutes = endsAt.endsWith("09:00:00Z")
+        ? 60
+        : endsAt.endsWith("12:00:00Z")
+          ? 240
+          : 1440;
+
+      return Promise.resolve({
+        data: getDiscountedAdvertisedPriceResponse(durationMinutes),
+      });
+    });
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+
+    const view = renderForm();
+
+    await waitFor(() => {
+      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+    });
+    for (const duration of [60, 240, 1440]) {
+      expect(
+        view.container.querySelector(
+          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+        )
+      ).not.toBeNull();
+    }
   });
 
   test("disables checkout when Dotypos reports the interval unavailable", async () => {

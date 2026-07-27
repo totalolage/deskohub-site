@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
+  type AdvertisedPrice,
   type AdvertisedPriceRequest,
   isMeetingRoomAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -29,7 +30,7 @@ import {
   ReservationTypeInput,
   ReservationTypeOption,
 } from "@/features/reservation/components/reservation-type-input";
-import { useAdvertisedPrice } from "@/features/reservation/components/use-advertised-price";
+import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import {
   getMeetingRoomReservationDefaultValues,
@@ -126,39 +127,68 @@ export function MeetingRoomReservationForm({
       ((availability?.unavailableDates.length ?? 0) > 0 ||
         availability?.meetingRoomUnavailable)
   );
-  const advertisedPriceRequest = useMemo(
+  const advertisedPriceRequests = useMemo(
     () =>
-      selectedInterval
-        ? ({
-            locale,
-            reservation: {
-              kind: "meeting-room",
-              details: {
+      workspaceMeetingRoomDurationOptions.flatMap((duration) => {
+        const interval = getMeetingRoomReservationInterval(
+          selectedStartDateTime,
+          duration
+        );
+        if (!interval) return [];
+
+        return [
+          {
+            duration,
+            request: {
+              locale,
+              reservation: {
                 kind: "meeting-room",
-                ...selectedInterval,
+                details: {
+                  kind: "meeting-room",
+                  ...interval,
+                },
               },
-            },
-          } satisfies AdvertisedPriceRequest)
-        : undefined,
-    [locale, selectedInterval]
+            } satisfies AdvertisedPriceRequest,
+          },
+        ];
+      }),
+    [locale, selectedStartDateTime]
   );
-  const advertisedPriceQueryResult = useAdvertisedPrice(advertisedPriceRequest);
-  const advertisedPriceData =
-    advertisedPriceRequest && !advertisedPriceQueryResult.isError
-      ? advertisedPriceQueryResult.data
-      : undefined;
+  const advertisedPriceQueryResults = useAdvertisedPrices(
+    advertisedPriceRequests.map(({ request }) => request)
+  );
+  const advertisedPricesByDuration = new Map<
+    (typeof workspaceMeetingRoomDurationOptions)[number],
+    Extract<AdvertisedPrice, { readonly kind: "meeting-room" }>
+  >();
+
+  for (const [index, queryResult] of advertisedPriceQueryResults.entries()) {
+    const request = advertisedPriceRequests[index];
+    if (
+      request &&
+      !queryResult.isError &&
+      queryResult.data &&
+      isMeetingRoomAdvertisedPrice(queryResult.data)
+    ) {
+      advertisedPricesByDuration.set(request.duration, queryResult.data);
+    }
+  }
+
+  const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
+    ({ duration }) => duration === selectedDurationMinutes
+  );
+  const advertisedPriceQueryResult =
+    advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
   const advertisedPrice =
-    advertisedPriceData && isMeetingRoomAdvertisedPrice(advertisedPriceData)
-      ? advertisedPriceData
-      : null;
+    advertisedPricesByDuration.get(selectedDurationMinutes) ?? null;
 
   return (
     <ReservationCheckoutForm
       advertisedPrice={{
         token: advertisedPrice?.advertisedPriceToken,
-        isFetching: advertisedPriceQueryResult.isFetching,
-        isError: advertisedPriceQueryResult.isError,
-        retry: () => void advertisedPriceQueryResult.refetch(),
+        isFetching: advertisedPriceQueryResult?.isFetching ?? false,
+        isError: advertisedPriceQueryResult?.isError ?? false,
+        retry: () => void advertisedPriceQueryResult?.refetch(),
       }}
       availability={{
         isFetching: availabilityQueryResult.isFetching,
@@ -222,21 +252,19 @@ export function MeetingRoomReservationForm({
                 value={field.value}
               >
                 {workspaceMeetingRoomDurationOptions.map((duration) => {
-                  const isSelected = field.value === duration;
                   const durationTitle = getWorkspaceMeetingRoomDurationTitle(
                     duration,
                     locale
                   );
-                  const advertisedProductItem = isSelected
-                    ? advertisedPrice?.summary.sections
-                        .find(({ key }) => key === "order")
-                        ?.items.find(
-                          (item) =>
-                            "product" in item &&
-                            item.product.kind === "meeting-room" &&
-                            item.product.durationMinutes === duration
-                        )
-                    : undefined;
+                  const advertisedProductItem = advertisedPricesByDuration
+                    .get(duration)
+                    ?.summary.sections.find(({ key }) => key === "order")
+                    ?.items.find(
+                      (item) =>
+                        "product" in item &&
+                        item.product.kind === "meeting-room" &&
+                        item.product.durationMinutes === duration
+                    );
                   const advertisedDiscounts =
                     advertisedProductItem &&
                     "discounts" in advertisedProductItem
