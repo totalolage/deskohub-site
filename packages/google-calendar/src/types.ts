@@ -16,6 +16,7 @@ export type GoogleCalendarEventDateTime = {
 export type GoogleCalendarEvent = {
   readonly id?: string;
   readonly iCalUID?: string;
+  readonly htmlLink?: string;
   readonly recurringEventId?: string;
   readonly status?: string;
   readonly summary?: string;

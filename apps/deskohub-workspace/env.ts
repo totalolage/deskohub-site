@@ -13,6 +13,8 @@ export const env = createEnv({
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+    DISCOUNT_ADMIN_BASIC_AUTH_SHA256:
+      process.env.DISCOUNT_ADMIN_BASIC_AUTH_SHA256,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -57,18 +59,28 @@ export const env = createEnv({
   createFinalSchema: createEnvironmentSchema,
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
-    const sanitizedError = error.map((issue) =>
-      issue.path?.some((segment) =>
-        typeof segment === "object"
-          ? segment.key === "POSTHOG_FEATURE_FLAG_OVERRIDES"
-          : segment === "POSTHOG_FEATURE_FLAG_OVERRIDES"
-      )
-        ? {
-            ...issue,
-            message: "Invalid PostHog feature flag override configuration.",
-          }
-        : issue
-    );
+    const sanitizedError = error.map((issue) => {
+      const hasPath = (key: string) =>
+        issue.path?.some((segment) =>
+          typeof segment === "object" ? segment.key === key : segment === key
+        );
+
+      if (hasPath("POSTHOG_FEATURE_FLAG_OVERRIDES")) {
+        return {
+          ...issue,
+          message: "Invalid PostHog feature flag override configuration.",
+        };
+      }
+
+      if (hasPath("DISCOUNT_ADMIN_BASIC_AUTH_SHA256")) {
+        return {
+          ...issue,
+          message: "Invalid discount administration authentication hash.",
+        };
+      }
+
+      return issue;
+    });
 
     throw new Error(
       `Invalid workspace environment variables: ${JSON.stringify(sanitizedError, null, 2)}`

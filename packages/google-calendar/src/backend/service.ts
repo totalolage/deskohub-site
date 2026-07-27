@@ -142,6 +142,7 @@ const toGoogleCalendarEvent = (
 ): GoogleCalendarEvent => ({
   ...(event.id && { id: event.id }),
   ...(event.iCalUID && { iCalUID: event.iCalUID }),
+  ...(event.htmlLink && { htmlLink: event.htmlLink }),
   ...(event.recurringEventId && { recurringEventId: event.recurringEventId }),
   ...(event.status && { status: event.status }),
   ...(event.summary && { summary: event.summary }),
