@@ -292,7 +292,7 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(
       Array.from(basicPrice?.querySelectorAll("span") ?? []).some((element) =>
-        element.className.includes("text-purple-900")
+        element.className.includes("text-aquamarine-ink")
       )
     ).toBe(true);
 
@@ -379,14 +379,29 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicCard?.className).toContain("lg:grid-rows-subgrid");
     expect(basicCard?.className.split(" ")).toContain("grid");
     expect(basicCard?.className.split(" ")).not.toContain("flex");
+    expect(basicCard?.className.split(" ")).not.toContain("gap-3");
     expect(basicCard?.parentElement?.className).toContain(
       "lg:grid-rows-[repeat(5,auto)]"
+    );
+    expect(basicCard?.parentElement?.className.split(" ")).toContain(
+      "space-y-3"
+    );
+    expect(basicCard?.parentElement?.className.split(" ")).not.toContain(
+      "gap-3"
+    );
+    expect(basicCard?.parentElement?.className.split(" ")).not.toContain(
+      "lg:gap-y-3"
     );
     expect(
       basicCard
         ?.querySelector('[data-reservation-tier-title="basic"]')
         ?.className.split(" ")
     ).not.toContain("pt-4");
+    expect(
+      basicCard
+        ?.querySelector('[data-reservation-tier-title="basic"]')
+        ?.className.split(" ")
+    ).toContain("mt-4");
     expect(
       Array.from(basicCard?.children ?? [])
         .filter((element) => !element.className.includes("absolute"))
@@ -420,6 +435,11 @@ describe("ReservationForm advertised pricing", () => {
       profiCard?.querySelector("[data-reservation-tier-discount-banner]")
     ).toBeNull();
     expect(
+      profiCard
+        ?.querySelector('[data-reservation-tier-title="profi"]')
+        ?.className.split(" ")
+    ).toContain("mt-4");
+    expect(
       view.container.querySelector(
         '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
       )?.textContent
@@ -437,7 +457,7 @@ describe("ReservationForm advertised pricing", () => {
     expect(
       view.container
         .querySelector('[data-reservation-tier-price-row="profi"]')
-        ?.className.includes("text-aquamarine-ink")
+        ?.className.includes("text-navy-blue")
     ).toBe(true);
   });
 

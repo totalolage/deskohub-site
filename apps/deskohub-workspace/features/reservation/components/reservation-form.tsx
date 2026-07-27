@@ -467,7 +467,7 @@ export function ReservationForm({
                     {m.reservationTierLabel({}, { locale })}
                   </FormLabel>
                   <FormControl>
-                    <div className="grid gap-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:gap-x-3 lg:gap-y-3">
+                    <div className="grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3">
                       {tierOptions.map((option) => {
                         const isSelected = field.value === option.value;
                         const bulletContent =
@@ -514,7 +514,7 @@ export function ReservationForm({
                             key={option.value}
                             data-reservation-tier-option={option.value}
                             className={cn(
-                              "group relative grid cursor-pointer gap-3 rounded-[1.4rem] border px-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
+                              "group relative grid cursor-pointer rounded-[1.4rem] border px-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
                               {
                                 basic: "lg:col-start-1",
                                 plus: "lg:col-start-2",
@@ -558,8 +558,7 @@ export function ReservationForm({
                             <label
                               htmlFor={inputId}
                               className={cn(
-                                "relative z-10 flex cursor-pointer items-start justify-between gap-2",
-                                !hasAdvertisedDiscounts && "pt-4",
+                                "relative z-10 mt-4 mb-3 flex cursor-pointer items-start justify-between gap-2",
                                 isUnavailable && "cursor-not-allowed"
                               )}
                               data-reservation-tier-title={option.value}
@@ -580,7 +579,7 @@ export function ReservationForm({
                               />
                             </label>
                             <div
-                              className="relative z-20 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-aquamarine-ink"
+                              className="relative z-20 mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
                               data-reservation-tier-price-row={option.value}
                             >
                               <label
@@ -632,7 +631,7 @@ export function ReservationForm({
                                         { locale }
                                       )}
                                     </span>
-                                    <span className="text-purple-900">
+                                    <span className="text-aquamarine-ink">
                                       <span aria-hidden="true">
                                         {formatWorkspaceMoney(
                                           advertisedProductItem.amount,
@@ -673,7 +672,7 @@ export function ReservationForm({
                                 )}
                             </div>
                             <div
-                              className="text-sm leading-5 text-navy-blue/62"
+                              className="mb-3 text-sm leading-5 text-navy-blue/62"
                               data-reservation-tier-description={option.value}
                             >
                               {getWorkspaceProductMessage(
