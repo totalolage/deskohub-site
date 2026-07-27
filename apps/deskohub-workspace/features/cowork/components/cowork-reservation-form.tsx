@@ -300,14 +300,14 @@ export function CoworkReservationForm({
         retry: () => void advertisedPriceQueryResult?.refetch(),
       }}
       afterCustomerFields={
-        shouldShowMonitors ? (
+        shouldShowMonitors && (
           <CoworkMonitorField
             allowedMonitorOptions={allowedMonitorOptions}
             control={form.control}
             locale={locale}
             unavailableMonitorOptions={unavailableMonitorOptions}
           />
-        ) : undefined
+        )
       }
       availability={{
         isFetching: availabilityQueryResult.isFetching,
