@@ -1108,7 +1108,7 @@ export const assertDisplayedDiscounts = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const triggerSelector = tier
-      ? `[data-reservation-tier-option="${tier}"] button[aria-label^="Show discounts applied to"]`
+      ? `[data-reservation-type-option="${tier}"] button[aria-label^="Show discounts applied to"]`
       : 'button[aria-label^="Show discounts applied to"]';
     yield* waitForBrowserReactHydration(run, session, triggerSelector, {
       timeoutMs: config.timeouts.uiTransition,

@@ -25,6 +25,10 @@ import {
   ReservationSubmitFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import {
+  ReservationTypeInput,
+  ReservationTypeOption,
+} from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrice } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import {
@@ -49,7 +53,6 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { cn } from "@/shared/utils";
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: string;
@@ -209,7 +212,15 @@ export function MeetingRoomReservationForm({
               {m.reservationMeetingRoomDurationLabel({}, { locale })}
             </ReservationFormLabel>
             <FormControl>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <ReservationTypeInput
+                className="sm:grid-cols-3 sm:space-y-0 sm:gap-x-3"
+                idPrefix="meeting-room-duration"
+                inputRef={field.ref}
+                name={field.name}
+                onBlur={field.onBlur}
+                onChange={field.onChange}
+                value={field.value}
+              >
                 {workspaceMeetingRoomDurationOptions.map((duration) => {
                   const isSelected = field.value === duration;
                   const durationTitle = getWorkspaceMeetingRoomDurationTitle(
@@ -226,65 +237,69 @@ export function MeetingRoomReservationForm({
                             item.product.durationMinutes === duration
                         )
                     : undefined;
-                  const hasAdvertisedDiscount =
+                  const advertisedDiscounts =
+                    advertisedProductItem &&
+                    "discounts" in advertisedProductItem
+                      ? advertisedProductItem.discounts
+                      : undefined;
+                  const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem &&
-                    advertisedProductItem.originalAmount &&
-                    advertisedProductItem.discounts;
-                  const inputId = `meeting-room-duration-${duration}`;
+                    advertisedProductItem.originalAmount
+                      ? advertisedProductItem.originalAmount
+                      : undefined;
+                  const hasAdvertisedDiscounts = Boolean(
+                    originalAmount && advertisedDiscounts?.length
+                  );
 
                   return (
-                    <div
+                    <ReservationTypeOption
                       key={duration}
-                      className={cn(
-                        "relative rounded-[1.1rem] border bg-white p-4 transition hover:-translate-y-0.5 hover:border-burned-orange/45",
-                        isSelected
-                          ? "border-burned-orange ring-4 ring-burned-orange/10"
-                          : "border-navy-blue/10"
-                      )}
-                    >
-                      <label className="block cursor-pointer" htmlFor={inputId}>
-                        <input
-                          id={inputId}
-                          type="radio"
-                          className="sr-only"
-                          checked={isSelected}
-                          value={duration}
-                          onChange={() => field.onChange(duration)}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
+                      className={`pb-4 ${
+                        {
+                          60: "sm:col-start-1 lg:col-start-1",
+                          240: "sm:col-start-2 lg:col-start-2",
+                          1440: "sm:col-start-3 lg:col-start-3",
+                        }[duration]
+                      }`}
+                      discount={
+                        hasAdvertisedDiscounts && advertisedDiscounts
+                          ? {
+                              labels: advertisedDiscounts.map(
+                                ({ discount }) => ({
+                                  id: discount.id,
+                                  label: discount.label,
+                                })
+                              ),
+                              details: (
+                                <CheckoutSummaryDiscountDetails
+                                  discounts={advertisedDiscounts}
+                                  locale={locale}
+                                  productLabel={durationTitle}
+                                />
+                              ),
+                            }
+                          : undefined
+                      }
+                      price={
+                        <ReservationAdvertisedPrice
+                          amount={
+                            advertisedProductItem?.amount ??
+                            getWorkspaceMeetingRoomPriceForDuration(duration)
+                          }
+                          locale={locale}
+                          originalAmount={
+                            hasAdvertisedDiscounts ? originalAmount : undefined
+                          }
                         />
-                        <span className="block font-semibold text-navy-blue">
-                          {durationTitle}
-                        </span>
-                        <span className="mt-2 flex flex-wrap items-center gap-1 text-sm font-semibold text-burned-orange">
-                          <ReservationAdvertisedPrice
-                            amount={
-                              advertisedProductItem?.amount ??
-                              getWorkspaceMeetingRoomPriceForDuration(duration)
-                            }
-                            locale={locale}
-                            originalAmount={
-                              hasAdvertisedDiscount
-                                ? advertisedProductItem.originalAmount
-                                : undefined
-                            }
-                          />
-                        </span>
-                      </label>
-                      {hasAdvertisedDiscount && (
-                        <div className="absolute bottom-2 right-2">
-                          <CheckoutSummaryDiscountDetails
-                            discounts={advertisedProductItem.discounts}
-                            locale={locale}
-                            productLabel={durationTitle}
-                          />
-                        </div>
-                      )}
-                    </div>
+                      }
+                      priceReady={Boolean(advertisedProductItem)}
+                      title={durationTitle}
+                      value={duration}
+                    />
                   );
                 })}
-              </div>
+              </ReservationTypeInput>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -309,9 +324,9 @@ export function MeetingRoomReservationFormFallback({
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-3">
-        <ReservationSkeletonBlock className="h-24 rounded-[1.1rem]" />
-        <ReservationSkeletonBlock className="h-24 rounded-[1.1rem]" />
-        <ReservationSkeletonBlock className="h-24 rounded-[1.1rem]" />
+        <ReservationSkeletonBlock className="h-31 rounded-[1.4rem]" />
+        <ReservationSkeletonBlock className="h-31 rounded-[1.4rem]" />
+        <ReservationSkeletonBlock className="h-31 rounded-[1.4rem]" />
       </div>
       <ReservationCustomerFieldsFallback />
       <ReservationSubmitFallback />

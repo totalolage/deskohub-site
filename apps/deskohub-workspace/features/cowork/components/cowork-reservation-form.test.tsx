@@ -284,7 +284,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       view.getByRole("button", { name: /discount.*basic/i })
     ).toBeDefined();
     const basicPrice = view.container.querySelector(
-      '[data-reservation-tier-price="basic"]'
+      '[data-reservation-type-price="basic"]'
     );
     expect(basicPrice?.className).toContain("flex-col");
     expect(basicPrice?.querySelector("del")?.className).toContain(
@@ -299,7 +299,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-tier-price="plus"]'
+          '[data-reservation-type-price="plus"]'
         ) as HTMLElement
       );
     });
@@ -360,17 +360,17 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
     expect(
       view.container.querySelector(
-        '[data-reservation-tier-option="basic"] [data-reservation-tier-discount="summer-sale"]'
+        '[data-reservation-type-option="basic"] [data-reservation-type-discount="summer-sale"]'
       )?.textContent
     ).toContain("Summer sale");
     const basicCard = view.container.querySelector(
-      '[data-reservation-tier-option="basic"]'
+      '[data-reservation-type-option="basic"]'
     );
     const basicBanner = basicCard?.querySelector(
-      '[data-reservation-tier-discount-banner="basic"]'
+      '[data-reservation-type-discount-banner="basic"]'
     );
     const basicGlimmer = basicCard?.querySelector(
-      '[data-reservation-tier-sale-glimmer="basic"]'
+      '[data-reservation-type-sale-glimmer="basic"]'
     );
     expect(basicGlimmer).not.toBeNull();
     expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
@@ -378,7 +378,7 @@ describe("CoworkReservationForm advertised pricing", () => {
       "[mask-clip:padding-box,border-box]"
     );
     const basicGlimmerBeam = basicGlimmer?.querySelector(
-      "[data-reservation-tier-sale-glimmer-beam]"
+      "[data-reservation-type-sale-glimmer-beam]"
     ) as HTMLElement | null;
     expect(basicGlimmerBeam?.style.backgroundImage).toBe(
       "linear-gradient(to right, transparent 0%, var(--color-purple-300) 50%, transparent 100%)"
@@ -420,12 +420,12 @@ describe("CoworkReservationForm advertised pricing", () => {
     );
     expect(
       basicCard
-        ?.querySelector('[data-reservation-tier-title="basic"]')
+        ?.querySelector('[data-reservation-type-title="basic"]')
         ?.className.split(" ")
     ).not.toContain("pt-4");
     expect(
       basicCard
-        ?.querySelector('[data-reservation-tier-title="basic"]')
+        ?.querySelector('[data-reservation-type-title="basic"]')
         ?.className.split(" ")
     ).toContain("mt-4");
     expect(
@@ -440,7 +440,7 @@ describe("CoworkReservationForm advertised pricing", () => {
             "price-row",
             "description",
             "perks",
-          ].find((row) => element.hasAttribute(`data-reservation-tier-${row}`))
+          ].find((row) => element.hasAttribute(`data-reservation-type-${row}`))
         )
     ).toEqual([
       "discount-banner",
@@ -450,49 +450,49 @@ describe("CoworkReservationForm advertised pricing", () => {
       "perks",
     ]);
     const basicDescription = basicCard?.querySelector(
-      '[data-reservation-tier-description="basic"]'
+      '[data-reservation-type-description="basic"]'
     );
     expect(basicDescription?.textContent).toContain("Open-space desk");
     expect(basicDescription?.querySelector("li")).toBeNull();
     const profiCard = view.container.querySelector(
-      '[data-reservation-tier-option="profi"]'
+      '[data-reservation-type-option="profi"]'
     );
     expect(profiCard?.className).toContain("lg:row-start-2");
     expect(profiCard?.className).toContain("lg:row-span-4");
     expect(
-      profiCard?.querySelector("[data-reservation-tier-discount-banner]")
+      profiCard?.querySelector("[data-reservation-type-discount-banner]")
     ).toBeNull();
     expect(
-      profiCard?.querySelector("[data-reservation-tier-sale-glimmer]")
+      profiCard?.querySelector("[data-reservation-type-sale-glimmer]")
     ).toBeNull();
     expect(
       profiCard
-        ?.querySelector('[data-reservation-tier-title="profi"]')
+        ?.querySelector('[data-reservation-type-title="profi"]')
         ?.className.split(" ")
     ).toContain("mt-4");
     expect(
       view.container.querySelector(
-        '[data-reservation-tier-option="plus"] [data-reservation-tier-discount="launch-sale"]'
+        '[data-reservation-type-option="plus"] [data-reservation-type-discount="launch-sale"]'
       )?.textContent
     ).toContain("Launch sale");
     expect(
-      view.container.querySelector('[data-reservation-tier-option="plus"]')
+      view.container.querySelector('[data-reservation-type-option="plus"]')
         ?.className
     ).toContain("hover:outline-purple-500/60");
     expect(profiCard?.className).toContain("hover:outline-burned-orange/45");
     expect(
       view.container
-        .querySelector('[data-reservation-tier-price="plus"]')
+        .querySelector('[data-reservation-type-price="plus"]')
         ?.querySelector("del")
     ).not.toBeNull();
     expect(
       Array.from(
-        view.container.querySelectorAll("[data-reservation-tier-price-row]")
+        view.container.querySelectorAll("[data-reservation-type-price-row]")
       ).every((element) => element.className.includes("items-start"))
     ).toBe(true);
     expect(
       view.container
-        .querySelector('[data-reservation-tier-price-row="profi"]')
+        .querySelector('[data-reservation-type-price-row="profi"]')
         ?.className.includes("text-navy-blue")
     ).toBe(true);
   });
@@ -556,7 +556,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-tier-price="profi"]'
+          '[data-reservation-type-price="profi"]'
         ) as HTMLElement
       );
     });

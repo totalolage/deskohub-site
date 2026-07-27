@@ -165,10 +165,29 @@ describe("MeetingRoomReservationForm", () => {
 
     const view = renderForm();
     const continueButton = view.getByRole("button", { name: "Continue" });
+    const durationInputs = [60, 240, 1440].map(
+      (duration) =>
+        view.container.querySelector(
+          `#meeting-room-duration-${duration}`
+        ) as HTMLInputElement
+    );
 
     await waitFor(() => {
       expect(continueButton.hasAttribute("disabled")).toBe(false);
     });
+    expect(durationInputs.map(({ checked }) => checked)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(
+      view.container.querySelectorAll("[data-reservation-type-option]").length
+    ).toBe(3);
+    expect(
+      Array.from(
+        view.container.querySelectorAll("[data-reservation-type-option]")
+      ).every((option) => option.className.includes("lg:grid-rows-subgrid"))
+    ).toBe(true);
     expect(availabilityRequest?.url).toContain(
       "kind=meeting-room&from=2099-07-30&to=2099-07-30"
     );
@@ -219,6 +238,18 @@ describe("MeetingRoomReservationForm", () => {
     await waitFor(() => {
       expect(getAdvertisedPrice).toHaveBeenCalledTimes(2);
       expect(continueButton.hasAttribute("disabled")).toBe(false);
+      expect(durationInputs[1]?.checked).toBe(true);
+      expect(getAdvertisedPrice).toHaveBeenLastCalledWith({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            startsAt: "2099-07-30T08:00:00Z",
+            endsAt: "2099-07-30T12:00:00Z",
+          },
+        },
+      });
     });
     fireEvent.click(continueButton);
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
@@ -274,6 +305,18 @@ describe("MeetingRoomReservationForm", () => {
     expect(
       view.getByRole("button", { name: /discount.*meeting room.*1 hour/i })
     ).toBeDefined();
+    const discountedOption = view.container.querySelector(
+      '[data-reservation-type-option="60"]'
+    );
+    expect(discountedOption?.className).toContain("outline-purple-500");
+    expect(
+      discountedOption?.querySelector(
+        '[data-reservation-type-discount="meeting-room-sale"]'
+      )?.textContent
+    ).toBe("Meeting room sale");
+    expect(
+      discountedOption?.querySelector("[data-reservation-type-sale-glimmer]")
+    ).not.toBeNull();
     expect(view.queryByText(/selected price/i)).toBeNull();
   });
 

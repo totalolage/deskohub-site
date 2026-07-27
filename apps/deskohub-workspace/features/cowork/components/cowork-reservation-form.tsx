@@ -2,10 +2,9 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Schema } from "effect";
-import { AlertTriangle, Coffee, Monitor, Percent } from "lucide-react";
-import { useInView, useReducedMotion } from "motion/react";
+import { AlertTriangle, Coffee, Monitor } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -43,6 +42,10 @@ import {
   ReservationFormFallback as SharedReservationFormFallback,
 } from "@/features/reservation/components/reservation-form-fallback";
 import { ReservationFormLabel } from "@/features/reservation/components/reservation-form-label";
+import {
+  ReservationTypeInput,
+  ReservationTypeOption,
+} from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
@@ -151,9 +154,6 @@ export function CoworkReservationForm({
   checkoutSessionId,
 }: CoworkReservationFormProps) {
   const searchParams = useSearchParams();
-  const tierCardsRef = useRef<HTMLDivElement>(null);
-  const tierCardsAreVisible = useInView(tierCardsRef, { amount: 0.15 });
-  const shouldReduceMotion = useReducedMotion();
   const defaultValues = useMemo(
     () =>
       initialReservation
@@ -330,15 +330,15 @@ export function CoworkReservationForm({
               {m.reservationTierLabel({}, { locale })}
             </ReservationFormLabel>
             <FormControl>
-              <div
-                ref={tierCardsRef}
-                className="grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3"
+              <ReservationTypeInput
+                idPrefix="reservation-entry-tier"
+                inputRef={field.ref}
+                name={field.name}
+                onBlur={field.onBlur}
+                onChange={field.onChange}
+                value={field.value}
               >
                 {tierOptions.map((option) => {
-                  const isSelected = field.value === option.value;
-                  const bulletContent =
-                    workspaceProductTierCardMessages[option.value];
-                  const inputId = `reservation-entry-tier-${option.value}`;
                   const optionTitle = getWorkspaceProductMessage(
                     option.title,
                     locale
@@ -373,233 +373,84 @@ export function CoworkReservationForm({
                         ?.isFetching &&
                       !advertisedProductItem
                   );
-                  const shouldAnimateSaleGlimmer =
-                    tierCardsAreVisible && !shouldReduceMotion;
 
                   return (
-                    <div
+                    <ReservationTypeOption
                       key={option.value}
-                      data-reservation-tier-option={option.value}
-                      className={cn(
-                        "group relative grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
+                      className={
                         {
                           basic: "lg:col-start-1",
                           plus: "lg:col-start-2",
                           profi: "lg:col-start-3",
-                        }[option.value],
-                        hasAdvertisedDiscounts
-                          ? "lg:row-start-1 lg:row-span-5"
-                          : "lg:row-start-2 lg:row-span-4",
-                        isUnavailable &&
-                          "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
-                        isSelected &&
-                          hasAdvertisedDiscounts &&
-                          "bg-purple-500/5 outline-purple-500 ring-4 ring-purple-500/10",
-                        isSelected &&
-                          !hasAdvertisedDiscounts &&
-                          "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10",
-                        !isSelected && "bg-white outline-navy-blue/10",
-                        !isSelected &&
-                          hasAdvertisedDiscounts &&
-                          "hover:outline-purple-500/60",
-                        !isSelected &&
-                          !hasAdvertisedDiscounts &&
-                          "hover:outline-burned-orange/45"
-                      )}
-                    >
-                      {hasAdvertisedDiscounts && (
-                        <span
-                          aria-hidden="true"
-                          className="pointer-events-none absolute inset-0 z-30 rounded-[inherit] border-2 border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
-                          data-reservation-tier-sale-glimmer={option.value}
-                          style={{
-                            opacity: shouldAnimateSaleGlimmer ? 1 : 0,
-                          }}
-                        >
-                          <span
-                            data-reservation-tier-sale-glimmer-beam=""
-                            className={cn(
-                              "absolute aspect-square motion-reduce:animate-none",
-                              shouldAnimateSaleGlimmer &&
-                                "animate-tier-sale-glimmer"
+                        }[option.value]
+                      }
+                      disabled={isUnavailable}
+                      discount={
+                        hasAdvertisedDiscounts && advertisedDiscounts
+                          ? {
+                              labels: advertisedDiscounts.map(
+                                ({ discount }) => ({
+                                  id: discount.id,
+                                  label: discount.label,
+                                })
+                              ),
+                              details:
+                                advertisedProductItem &&
+                                "originalAmount" in advertisedProductItem &&
+                                advertisedProductItem.originalAmount ? (
+                                  <CheckoutSummaryDiscountDetails
+                                    discounts={advertisedDiscounts}
+                                    locale={locale}
+                                    productLabel={getWorkspaceProductTierTitle(
+                                      option.value,
+                                      locale
+                                    )}
+                                  />
+                                ) : undefined,
+                            }
+                          : undefined
+                      }
+                      price={
+                        isAdvertisedPricePending ? (
+                          <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
+                        ) : advertisedProductItem ? (
+                          <ReservationAdvertisedPrice
+                            amount={advertisedProductItem.amount}
+                            locale={locale}
+                            originalAmount={
+                              advertisedDiscounts &&
+                              "originalAmount" in advertisedProductItem
+                                ? advertisedProductItem.originalAmount
+                                : undefined
+                            }
+                            suffix={m.pricingTariffPricePeriodSuffix(
+                              {},
+                              { locale }
                             )}
-                            style={{
-                              backgroundImage:
-                                "linear-gradient(to right, transparent 0%, var(--color-purple-300) 50%, transparent 100%)",
-                              offsetPath: "rect(0 auto auto 0 round 1.4rem)",
-                              width: "5rem",
-                            }}
                           />
-                        </span>
-                      )}
-                      {hasAdvertisedDiscounts && advertisedDiscounts && (
-                        <div
-                          className="pointer-events-none relative z-20 -mx-4 flex items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900"
-                          data-reservation-tier-discount-banner={option.value}
-                        >
-                          <Percent
-                            aria-hidden="true"
-                            className="size-4 shrink-0"
-                          />
-                          <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-                            {advertisedDiscounts.map(({ discount }) => (
-                              <span
-                                key={discount.id}
-                                data-reservation-tier-discount={discount.id}
-                              >
-                                {discount.label}
-                              </span>
-                            ))}
-                          </span>
-                        </div>
-                      )}
-                      <label
-                        htmlFor={inputId}
-                        className={cn(
-                          "relative z-10 mt-4 mb-3 flex cursor-pointer items-start justify-between gap-2",
-                          isUnavailable && "cursor-not-allowed"
-                        )}
-                        data-reservation-tier-title={option.value}
-                      >
-                        <span className="text-lg leading-6">{optionTitle}</span>
-                        <span
-                          data-reservation-tier-radio-visual={option.value}
-                          className={cn(
-                            "mt-1 h-4 w-4 shrink-0 rounded-full border transition",
-                            isSelected
-                              ? "border-burned-orange bg-burned-orange shadow-[inset_0_0_0_4px_white]"
-                              : "border-navy-blue/25"
-                          )}
-                        />
-                      </label>
-                      <div
-                        className="relative z-20 mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
-                        data-reservation-tier-price-row={option.value}
-                      >
-                        <label
-                          className={cn(
-                            "flex cursor-pointer flex-col items-start gap-0.5",
-                            isUnavailable && "cursor-not-allowed"
-                          )}
-                          data-reservation-tier-price={option.value}
-                          data-reservation-tier-price-ready={Boolean(
-                            advertisedProductItem
-                          )}
-                          htmlFor={inputId}
-                        >
-                          {isAdvertisedPricePending ? (
-                            <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
-                          ) : advertisedProductItem ? (
-                            <ReservationAdvertisedPrice
-                              amount={advertisedProductItem.amount}
-                              locale={locale}
-                              originalAmount={
-                                advertisedDiscounts &&
-                                "originalAmount" in advertisedProductItem
-                                  ? advertisedProductItem.originalAmount
-                                  : undefined
-                              }
-                              suffix={m.pricingTariffPricePeriodSuffix(
-                                {},
-                                { locale }
-                              )}
-                            />
-                          ) : (
-                            <span>
-                              {formatWorkspaceProductCurrencyAmount(
-                                option.product,
-                                locale
-                              )}
-                              {m.pricingTariffPricePeriodSuffix({}, { locale })}
-                            </span>
-                          )}
-                        </label>
-                        {advertisedProductItem &&
-                          "originalAmount" in advertisedProductItem &&
-                          advertisedProductItem.originalAmount &&
-                          advertisedDiscounts && (
-                            <CheckoutSummaryDiscountDetails
-                              discounts={advertisedDiscounts}
-                              locale={locale}
-                              productLabel={getWorkspaceProductTierTitle(
-                                option.value,
-                                locale
-                              )}
-                            />
-                          )}
-                      </div>
-                      <div
-                        className="mb-3 text-sm leading-5 text-navy-blue/62"
-                        data-reservation-tier-description={option.value}
-                      >
-                        {getWorkspaceProductMessage(
-                          bulletContent.description,
-                          locale
-                        )}
-                      </div>
-                      <div
-                        className="space-y-1 pb-4 text-sm leading-5 text-navy-blue/62"
-                        data-reservation-tier-perks={option.value}
-                      >
-                        <span className="block font-semibold leading-5 text-navy-blue/72">
-                          {getWorkspaceProductMessage(
-                            bulletContent.perksLabel,
-                            locale
-                          )}
-                        </span>
-                        <ul className="space-y-0.5">
-                          {bulletContent.perks.map((perk) => {
-                            const text = getWorkspaceProductMessage(
-                              perk.message,
+                        ) : (
+                          <span>
+                            {formatWorkspaceProductCurrencyAmount(
+                              option.product,
                               locale
-                            );
-
-                            return (
-                              <li
-                                key={`${perk.marker ?? "bullet"}-${text}`}
-                                className={cn(
-                                  "flex gap-1.5 leading-5",
-                                  perk.highlighted && "text-burned-orange"
-                                )}
-                              >
-                                <span
-                                  aria-hidden="true"
-                                  className="w-3 shrink-0 text-center"
-                                >
-                                  {perk.marker === "plus" ? "+" : "\u2022"}
-                                </span>
-                                <span>{text}</span>
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                      <label
-                        htmlFor={inputId}
-                        className={cn(
-                          "absolute inset-0 cursor-pointer rounded-[1.4rem]",
-                          isUnavailable && "cursor-not-allowed"
-                        )}
-                      >
-                        <input
-                          id={inputId}
-                          name={field.name}
-                          type="radio"
-                          className="sr-only"
-                          checked={isSelected}
-                          value={option.value}
-                          disabled={isUnavailable}
-                          onChange={() => {
-                            if (!isUnavailable) field.onChange(option.value);
-                          }}
-                          onBlur={field.onBlur}
-                          ref={field.ref}
-                        />
-                      </label>
-                    </div>
+                            )}
+                            {m.pricingTariffPricePeriodSuffix({}, { locale })}
+                          </span>
+                        )
+                      }
+                      priceReady={Boolean(advertisedProductItem)}
+                      title={optionTitle}
+                      value={option.value}
+                    >
+                      <CoworkTierDescription
+                        locale={locale}
+                        tier={option.value}
+                      />
+                      <CoworkTierPerks locale={locale} tier={option.value} />
+                    </ReservationTypeOption>
                   );
                 })}
-              </div>
+              </ReservationTypeInput>
             </FormControl>
             <FormMessage />
           </FormItem>
@@ -679,6 +530,67 @@ export function CoworkReservationForm({
         </div>
       </div>
     </ReservationCheckoutForm>
+  );
+}
+
+function CoworkTierDescription({
+  locale,
+  tier,
+}: {
+  readonly locale: Locale;
+  readonly tier: WorkspaceCoworkProductTier;
+}) {
+  return (
+    <div
+      className="mb-3 text-sm leading-5 text-navy-blue/62"
+      data-reservation-type-description={tier}
+    >
+      {getWorkspaceProductMessage(
+        workspaceProductTierCardMessages[tier].description,
+        locale
+      )}
+    </div>
+  );
+}
+
+function CoworkTierPerks({
+  locale,
+  tier,
+}: {
+  readonly locale: Locale;
+  readonly tier: WorkspaceCoworkProductTier;
+}) {
+  const content = workspaceProductTierCardMessages[tier];
+
+  return (
+    <div
+      className="space-y-1 pb-4 text-sm leading-5 text-navy-blue/62"
+      data-reservation-type-perks={tier}
+    >
+      <span className="block font-semibold leading-5 text-navy-blue/72">
+        {getWorkspaceProductMessage(content.perksLabel, locale)}
+      </span>
+      <ul className="space-y-0.5">
+        {content.perks.map((perk) => {
+          const text = getWorkspaceProductMessage(perk.message, locale);
+
+          return (
+            <li
+              key={`${perk.marker ?? "bullet"}-${text}`}
+              className={cn(
+                "flex gap-1.5 leading-5",
+                perk.highlighted && "text-burned-orange"
+              )}
+            >
+              <span aria-hidden="true" className="w-3 shrink-0 text-center">
+                {perk.marker === "plus" ? "+" : "\u2022"}
+              </span>
+              <span>{text}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }
 
