@@ -292,7 +292,7 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(
       Array.from(basicPrice?.querySelectorAll("span") ?? []).some((element) =>
-        element.className.includes("text-burned-orange")
+        element.className.includes("text-purple-900")
       )
     ).toBe(true);
 
@@ -377,7 +377,9 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicCard?.className).toContain("lg:row-start-1");
     expect(basicCard?.className).toContain("lg:row-span-5");
     expect(basicCard?.className).toContain("lg:grid-rows-subgrid");
-    expect(basicCard?.parentElement?.className).not.toContain("grid-rows-");
+    expect(basicCard?.parentElement?.className).toContain(
+      "lg:grid-rows-[repeat(5,auto)]"
+    );
     expect(
       Array.from(basicCard?.children ?? [])
         .filter((element) => !element.className.includes("absolute"))
