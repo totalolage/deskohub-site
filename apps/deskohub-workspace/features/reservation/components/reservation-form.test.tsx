@@ -374,7 +374,12 @@ describe("ReservationForm advertised pricing", () => {
     );
     expect(basicGlimmer).not.toBeNull();
     expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
-    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(2);
+    expect(basicGlimmer?.querySelectorAll("rect")).toHaveLength(4);
+    expect(
+      basicGlimmer
+        ?.querySelector('[data-reservation-tier-sale-glimmer-layer="core"]')
+        ?.getAttribute("class")
+    ).toContain("stroke-white");
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")

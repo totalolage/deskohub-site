@@ -552,8 +552,9 @@ export function ReservationForm({
                                   height="calc(100% - 2px)"
                                   rx="21"
                                   pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="halo"
                                   className={cn(
-                                    "fill-none stroke-purple-500/55 opacity-0 [stroke-dasharray:16_84] [stroke-linecap:round] [stroke-width:2px] motion-reduce:animate-none",
+                                    "fill-none stroke-purple-300/30 opacity-0 [filter:blur(2px)] [stroke-dasharray:34_66] [stroke-linecap:round] [stroke-width:7px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
@@ -566,8 +567,39 @@ export function ReservationForm({
                                   height="calc(100% - 2px)"
                                   rx="21"
                                   pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="glow"
                                   className={cn(
-                                    "fill-none stroke-white/95 opacity-0 [stroke-dasharray:3_97] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
+                                    "fill-none stroke-purple-400/45 opacity-0 [animation-delay:-250ms] [stroke-dasharray:24_76] [stroke-linecap:round] [stroke-width:5px] motion-reduce:animate-none",
+                                    tierCardsAreVisible &&
+                                      !shouldReduceMotion &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="ribbon"
+                                  className={cn(
+                                    "fill-none stroke-purple-500/75 opacity-0 [animation-delay:-500ms] [stroke-dasharray:14_86] [stroke-linecap:round] [stroke-width:3px] motion-reduce:animate-none",
+                                    tierCardsAreVisible &&
+                                      !shouldReduceMotion &&
+                                      "animate-tier-sale-glimmer"
+                                  )}
+                                />
+                                <rect
+                                  x="1"
+                                  y="1"
+                                  width="calc(100% - 2px)"
+                                  height="calc(100% - 2px)"
+                                  rx="21"
+                                  pathLength="100"
+                                  data-reservation-tier-sale-glimmer-layer="core"
+                                  className={cn(
+                                    "fill-none stroke-white opacity-0 [animation-delay:-750ms] [stroke-dasharray:4_96] [stroke-linecap:round] [stroke-width:2.5px] motion-reduce:animate-none",
                                     tierCardsAreVisible &&
                                       !shouldReduceMotion &&
                                       "animate-tier-sale-glimmer"
