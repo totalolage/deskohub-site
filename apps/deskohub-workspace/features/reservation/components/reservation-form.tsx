@@ -551,7 +551,7 @@ export function ReservationForm({
                               <span
                                 aria-hidden="true"
                                 className={cn(
-                                  "pointer-events-none absolute left-0 top-0 z-30 h-1 w-20 rounded-full opacity-0 [offset-path:inset(1px_round_21px)] [offset-rotate:auto] [transform:translate(-50%,-50%)] [will-change:offset-distance] motion-reduce:animate-none",
+                                  "pointer-events-none absolute left-0 top-0 z-30 h-1 w-12 rounded-full opacity-0 [offset-anchor:center] [offset-path:inset(1px_round_21px)] [offset-position:left_top] [offset-rotate:auto] [will-change:offset-distance] motion-reduce:animate-none",
                                   tierCardsAreVisible &&
                                     !shouldReduceMotion &&
                                     "animate-tier-sale-glimmer"

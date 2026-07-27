@@ -380,6 +380,7 @@ describe("ReservationForm advertised pricing", () => {
     expect(basicGlimmer?.className).toContain(
       "[offset-path:inset(1px_round_21px)]"
     );
+    expect(basicGlimmer?.className).toContain("[offset-position:left_top]");
     expect(
       Array.from(basicCard?.children ?? []).find(
         (element) => !element.getAttribute("class")?.includes("absolute")
