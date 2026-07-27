@@ -46,7 +46,7 @@ type WorkspaceE2ECaseRuntime = {
   readonly testCase: WorkspaceE2ECase;
 };
 
-export const WORKSPACE_E2E_CASE_CONCURRENCY = 4;
+export const WORKSPACE_E2E_CASE_CONCURRENCY = 2;
 
 export const runWorkspaceE2ECases = ({
   artifactRoot,
