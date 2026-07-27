@@ -76,6 +76,8 @@ export const executeCheckoutFlow = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          config,
+          locale: data.locale,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },

@@ -661,13 +661,13 @@ describe("CalendarDiscountProvider", () => {
           Temporal.Instant.from("2026-08-01T21:59:59.500Z").epochMilliseconds
         );
         const provider = yield* CalendarDiscountProvider;
-        const beforeExpiry = yield* provider.quote({
+        const beforeExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
         yield* TestClock.adjust("1 second");
-        const cachedAfterExpiry = yield* provider.quote({
+        const cachedAfterExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",

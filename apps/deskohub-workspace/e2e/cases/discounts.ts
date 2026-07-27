@@ -607,6 +607,8 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
     });
     const orderId = yield* runStep({
       execute: submitReservationForPayPage({
+        config,
+        locale: data.locale,
         onOrderId: (startedOrderId) => {
           state.orderId = startedOrderId;
         },
@@ -652,6 +654,8 @@ const executeCalendarSaleDisappearsBeforePayment = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          config,
+          locale: data.locale,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
@@ -729,6 +733,8 @@ const executeCustomerDiscountChangesBeforePayment = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          config,
+          locale: data.locale,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
@@ -941,6 +947,8 @@ export const executeUnavailableDiscountCode = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          config,
+          locale: data.locale,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },
@@ -1025,6 +1033,8 @@ export const executeDiscountCodeExpiresBeforePayment = ({
           timeoutMs: config.timeouts.browserNavigation,
         });
         return yield* submitReservationForPayPage({
+          config,
+          locale: data.locale,
           onOrderId: (startedOrderId) => {
             state.orderId = startedOrderId;
           },

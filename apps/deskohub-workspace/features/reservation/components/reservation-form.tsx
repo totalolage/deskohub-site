@@ -45,7 +45,7 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import { preparePayState } from "@/features/reservation/actions/prepare-pay-state.action";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
 import {
