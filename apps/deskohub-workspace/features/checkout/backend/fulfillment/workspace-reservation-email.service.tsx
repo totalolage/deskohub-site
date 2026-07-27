@@ -66,6 +66,16 @@ const workspaceRecipient: EmailRecipient = {
   name: workspaceSiteConstants.brand.name,
 };
 
+const nonProductionInternalRecipient: EmailRecipient = {
+  email: "delivered+workspace-internal@resend.dev",
+  name: workspaceSiteConstants.brand.name,
+};
+
+const internalReservationRecipient =
+  env.VERCEL_ENV === "production"
+    ? workspaceRecipient
+    : nonProductionInternalRecipient;
+
 const getReservationLocale = (locale: string): Locale =>
   isLocale(locale) ? locale : "cs-CZ";
 
@@ -1053,7 +1063,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           );
           const internalMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
-            to: workspaceRecipient,
+            to: internalReservationRecipient,
             replyTo: customerEmail
               ? { email: customerEmail, name: customerName }
               : undefined,

@@ -9,7 +9,7 @@ import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
-import { runWorkspaceE2ECases } from "./suite";
+import { runWorkspaceE2ECases, WORKSPACE_E2E_CASE_CONCURRENCY } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 
@@ -81,6 +81,48 @@ test("runs checkout and terminal cases concurrently", async () => {
       }),
     ])
   );
+});
+
+test("bounds preview case concurrency", async () => {
+  let activeCaseCount = 0;
+  let maximumActiveCaseCount = 0;
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: WORKSPACE_E2E_CASE_CONCURRENCY + 2 },
+    (_, index) => ({
+      execute: () =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            activeCaseCount += 1;
+            maximumActiveCaseCount = Math.max(
+              maximumActiveCaseCount,
+              activeCaseCount
+            );
+          }),
+          () =>
+            Effect.promise(
+              () => new Promise<void>((resolve) => setTimeout(resolve, 10))
+            ),
+          () =>
+            Effect.sync(() => {
+              activeCaseCount -= 1;
+            })
+        ),
+      id: `bounded-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-concurrency-test",
+      cases,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-concurrency",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+  );
+
+  expect(maximumActiveCaseCount).toBe(WORKSPACE_E2E_CASE_CONCURRENCY);
 });
 
 test("keeps browser session names independent of descriptive case ids", async () => {

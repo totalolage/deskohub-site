@@ -20,8 +20,8 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
   type ExpectedDiscountApplication,
-  markConsoleFulfillmentDeliveredForE2E,
   markFulfillmentFailedForE2E,
+  markPreviewFulfillmentDeliveredForE2E,
   replayNexiWebhook,
   validateDiscountApplications,
   validatePostgres,
@@ -134,7 +134,7 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
-      execute: markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId),
+      execute: markPreviewFulfillmentDeliveredForE2E(datasourceConfig, orderId),
       id: "complete-test-fulfillment",
       timeoutMs: config.timeouts.datasource,
     });

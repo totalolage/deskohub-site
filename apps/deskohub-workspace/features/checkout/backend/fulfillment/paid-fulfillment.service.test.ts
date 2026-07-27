@@ -8,7 +8,7 @@ import type { IWorkspaceReservationService } from "@/features/reservation/backen
 import type { IWorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
 describe("WorkspacePaidFulfillmentService", () => {
-  test("retries stale processing paid orders and waits for delivery before fulfillment", async () => {
+  test("retries stale processing paid orders and completes non-production fulfillment after send acceptance", async () => {
     const {
       PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
       WorkspacePaidFulfillmentService,
@@ -62,7 +62,7 @@ describe("WorkspacePaidFulfillmentService", () => {
       Effect.die("already confirmed reservations do not update confirmation")
     );
     const sendPaidReservationEmails = mock(() => Effect.void);
-    const markFulfilled = mock(() => Effect.die("Resend webhook fulfills"));
+    const markFulfilled = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const service = yield* WorkspacePaidFulfillmentService;
@@ -111,10 +111,12 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
-    expect(markFulfilled).not.toHaveBeenCalled();
+    expect(markFulfilled).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "reservation-id" })
+    );
   });
 
-  test("confirms held paid orders, sends emails, and waits for delivery before fulfillment", async () => {
+  test("confirms held paid orders, sends emails, and completes non-production fulfillment", async () => {
     const {
       WorkspacePaidFulfillmentService,
       WorkspacePaidFulfillmentServiceLive,
@@ -159,7 +161,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     const confirmReservation = mock(() => Effect.void);
     const markReservationConfirmed = mock(() => Effect.void);
     const sendPaidReservationEmails = mock(() => Effect.void);
-    const markFulfilled = mock(() => Effect.die("Resend webhook fulfills"));
+    const markFulfilled = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const service = yield* WorkspacePaidFulfillmentService;
@@ -206,6 +208,101 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
-    expect(markFulfilled).not.toHaveBeenCalled();
+    expect(markFulfilled).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "reservation-id" })
+    );
+  });
+
+  test("releases the fulfillment claim after an unexpected infrastructure failure", async () => {
+    const {
+      WorkspacePaidFulfillmentService,
+      WorkspacePaidFulfillmentServiceLive,
+    } = await import("./paid-fulfillment.service");
+    const { WorkspaceReservationEmailService } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { WorkspaceReservationService } = await import(
+      "@/features/reservation/backend/workspace-reservation.service"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+
+    const order = {
+      id: "reservation-id",
+      paymentState: "paid",
+      fulfillmentState: "not_started",
+    };
+    const claimed = {
+      ...order,
+      reservationState: "held",
+      fulfillmentState: "processing",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+    };
+    const connectionFailure = new Error("database connection unavailable");
+    const markFulfillmentFailed = mock(() => Effect.void);
+
+    const result = await Effect.gen(function* () {
+      const service = yield* WorkspacePaidFulfillmentService;
+      return yield* service
+        .fulfillPaidOrder({ orderId: "reservation-id" })
+        .pipe(Effect.result);
+    }).pipe(
+      Effect.provide(
+        WorkspacePaidFulfillmentServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(order as never)),
+                claimPaidFulfillment: mock(() =>
+                  Effect.succeed(claimed as never)
+                ),
+                markReservationConfirmed: mock(() =>
+                  Effect.fail(connectionFailure)
+                ),
+                markFulfilled: mock(() => Effect.void),
+                markFulfillmentFailed,
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(DotyposService, {
+                confirmReservation: mock(() => Effect.void),
+              } as unknown as typeof DotyposService.Service),
+              Layer.succeed(WorkspaceReservationService, {
+                getReservation: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationService),
+              Layer.succeed(WorkspaceReservationEmailService, {
+                sendPaidReservationEmails: mock(() =>
+                  Effect.die("email flow should not start")
+                ),
+              } satisfies IWorkspaceReservationEmailService),
+              Layer.succeed(PostHogEventService, {
+                capture: mock(() => Effect.void),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "WorkspacePaidFulfillmentError",
+        failureCode: "fulfillment_completion_failed",
+        cause: connectionFailure,
+      });
+    }
+    expect(markFulfillmentFailed).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "reservation-id",
+        failureCode: "fulfillment_completion_failed",
+      })
+    );
   });
 });

@@ -72,22 +72,27 @@ const createResendProvider = (apiKey: string): EmailProvider => {
               ? message.to.map((r) => r.email)
               : [message.to.email];
 
-            const response = await resend.emails.send({
-              from: fromAddress,
-              to: toAddresses,
-              subject: message.subject,
-              html: message.html,
-              text: message.text || "",
-              attachments: message.attachments?.map((attachment) => ({
-                content: attachment.content,
-                contentId: attachment.contentId,
-                contentType: attachment.contentType,
-                filename: attachment.filename,
-              })),
-              replyTo: message.replyTo?.email,
-              headers: message.headers,
-              tags: toResendTags(message),
-            });
+            const response = await resend.emails.send(
+              {
+                from: fromAddress,
+                to: toAddresses,
+                subject: message.subject,
+                html: message.html,
+                text: message.text || "",
+                attachments: message.attachments?.map((attachment) => ({
+                  content: attachment.content,
+                  contentId: attachment.contentId,
+                  contentType: attachment.contentType,
+                  filename: attachment.filename,
+                })),
+                replyTo: message.replyTo?.email,
+                headers: message.headers,
+                tags: toResendTags(message),
+              },
+              {
+                idempotencyKey: getResendIdempotencyKey(message),
+              }
+            );
 
             const resendError = response.error;
             if (resendError) {
@@ -248,6 +253,20 @@ const createResendProvider = (apiKey: string): EmailProvider => {
       Effect.withSpan("resend.verify")
     ),
   };
+};
+
+const getResendIdempotencyKey = (message: EmailMessage) => {
+  const workspaceReservationId = message.metadata?.workspaceReservationId;
+  const category = message.tags?.[0];
+
+  if (
+    typeof workspaceReservationId !== "string" ||
+    typeof category !== "string"
+  ) {
+    return undefined;
+  }
+
+  return `${category}-${workspaceReservationId}`.slice(0, 256);
 };
 
 export const ResendEmailProviderLive = Layer.effect(
