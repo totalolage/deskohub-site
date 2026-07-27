@@ -181,7 +181,7 @@ export const submitPreparedCoworkReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);

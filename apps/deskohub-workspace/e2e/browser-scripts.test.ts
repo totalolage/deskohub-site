@@ -27,6 +27,9 @@ test("keeps advertised-price preparation separable from form submission", () => 
   expect(submitPreparedCoworkReservationScript).toContain(
     "reservation-privacy-consent"
   );
+  expect(submitPreparedCoworkReservationScript).toContain(
+    "Date.now() + 60000"
+  );
   expect(combined).toContain(prepare.trim());
 
   expect(() => new Function(`return ${combined}`)).not.toThrow();
