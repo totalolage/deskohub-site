@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import {
   evalBrowserScript,
   focusBrowserElement,
@@ -593,6 +594,7 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
           discounts: [calendarDiscountExpectation],
           run,
           session,
+          tier: "profi",
         });
       }),
       id: "advertise-calendar-sale",
@@ -1096,14 +1098,18 @@ export const assertDisplayedDiscounts = ({
   discounts,
   run,
   session,
+  tier,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly discounts: readonly ExpectedDiscountApplication[];
   readonly run: Runner;
   readonly session: string;
+  readonly tier?: WorkspaceCoworkProductTier;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const triggerSelector = 'button[aria-label^="Show discounts applied to"]';
+    const triggerSelector = tier
+      ? `[data-reservation-tier-option="${tier}"] button[aria-label^="Show discounts applied to"]`
+      : 'button[aria-label^="Show discounts applied to"]';
     yield* waitForBrowserReactHydration(run, session, triggerSelector, {
       timeoutMs: config.timeouts.uiTransition,
     });
