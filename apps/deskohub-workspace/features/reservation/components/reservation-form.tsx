@@ -514,7 +514,7 @@ export function ReservationForm({
                             key={option.value}
                             data-reservation-tier-option={option.value}
                             className={cn(
-                              "group relative grid cursor-pointer rounded-[1.4rem] border px-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
+                              "group relative grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
                               {
                                 basic: "lg:col-start-1",
                                 plus: "lg:col-start-2",
@@ -526,8 +526,8 @@ export function ReservationForm({
                               isUnavailable &&
                                 "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
                               isSelected
-                                ? "border-burned-orange bg-burned-orange/8 ring-4 ring-burned-orange/10"
-                                : "border-navy-blue/10 bg-white hover:border-burned-orange/45"
+                                ? "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10"
+                                : "bg-white outline-navy-blue/10 hover:outline-burned-orange/45"
                             )}
                           >
                             {hasAdvertisedDiscounts && advertisedDiscounts && (
