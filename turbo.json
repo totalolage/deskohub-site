@@ -88,7 +88,7 @@
       "cache": false,
       "persistent": true
     },
-    "test:e2e:run": {
+    "test:e2e": {
       "cache": false,
       "dependsOn": ["i18n:compile"],
       "passThroughEnv": [

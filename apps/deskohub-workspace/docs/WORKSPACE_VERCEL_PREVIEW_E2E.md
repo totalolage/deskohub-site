@@ -288,7 +288,8 @@ In the Workspace PostHog project:
 
 ### Investigating a failed run
 
-For any failure that reached `bun run test:e2e`, start with the exported trace:
+For any failure that reached the Workspace E2E runner, start with the exported
+trace:
 
 1. Record the exact GitHub run ID and run attempt, then query
    `e2e.run.id = <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`.
@@ -362,10 +363,10 @@ not replace the E2E result. Without a project ingest token, local execution
 remains usable without remote traces; the existing console progress output
 remains available but is not the telemetry source of truth.
 
-These spans cover every invocation that reaches `bun run test:e2e`. Failures
-in earlier workflow setup such as target resolution, dependency installation,
-or preview database migration remain represented by GitHub Actions rather than
-the in-process suite telemetry.
+These spans cover every invocation that reaches the Workspace E2E runner.
+Failures in earlier workflow setup such as target resolution, dependency
+installation, or preview database migration remain represented by GitHub
+Actions rather than the in-process suite telemetry.
 
 For Nexi sandbox facts and cards, see
 [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
