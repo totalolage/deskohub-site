@@ -51,11 +51,10 @@ names. Inspect settings and deployment metadata without printing their values.
   using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
   `workspace-checkout-e2e` environment. The token is the public project ingest
   token, never a management API key or secret.
-- `EMAIL_PROVIDER=resend` with `EMAIL_API_KEY` enabled for Preview. Browser
-  cases use Resend's labeled `delivered+...@resend.dev` test addresses, and
-  non-production internal notifications use a fixed labeled Resend test
-  address. Interactive Preview reservations may therefore deliver to the
-  customer address without sending test notifications to the Workspace inbox.
+- `EMAIL_PROVIDER=console` for Preview. Browser cases exercise the complete
+  email workflow without making external delivery attempts or consuming the
+  Resend plan. Keep `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` scoped to
+  Production.
 - The non-sensitive Preview-only
   `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true}`.
   Set this before the immutable Git preview is built; the runner never mutates
