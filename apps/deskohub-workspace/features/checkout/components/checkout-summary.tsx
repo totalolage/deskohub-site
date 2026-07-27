@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-summary";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationTitle,

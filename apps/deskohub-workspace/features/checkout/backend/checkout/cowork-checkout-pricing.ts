@@ -1,16 +1,18 @@
 import { Effect } from "effect";
-import {
-  type CheckoutQuoteError,
-  type CoworkReservationQuote,
-  calculateCoworkReservationQuote,
-  normalizeCoworkReservationQuoteOrder,
-} from "@/features/checkout/checkout-quote";
+import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import {
+  buildCoworkReservationQuote,
+  type CoworkReservationQuote,
+} from "@/features/checkout/reservation-quote-cowork";
 import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
-import type { DiscountResolutionError } from "@/features/discounts";
 import type {
+  DiscountQuote,
+  DiscountResolutionError,
+} from "@/features/discounts";
+import type {
+  CoworkAdvertisedPriceDetails,
   CoworkAdvertisedPriceReservation,
-  CoworkReservationDetails,
   NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import {
@@ -28,7 +30,6 @@ import {
 } from "./reservation-checkout-pricing";
 
 export type CoworkCheckoutPricingError =
-  | CheckoutQuoteError
   | WorkspaceMoneyError
   | DiscountResolutionError;
 
@@ -83,35 +84,44 @@ export type CoworkDiscountCodePriceResult = ReservationDiscountCodePriceResult<
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
-)(function* (reservation: CoworkReservationDetails) {
-  const order = yield* normalizeCoworkReservationQuoteOrder(reservation);
-  const product = getWorkspaceProductByTier(order.entryTier);
+)((reservation: CoworkAdvertisedPriceDetails) => {
+  const product = getWorkspaceProductByTier(reservation.entryTier);
 
-  return {
-    order,
+  return Effect.succeed({
+    reservation,
     discountInput: {
-      product: { kind: "cowork" as const, tier: order.entryTier },
+      product: { kind: "cowork" as const, tier: reservation.entryTier },
       discountableSubtotal: product.price,
       reservationDate: reservation.date,
     },
-  };
+  });
 });
 
 type CoworkPricingContext = Effect.Success<
   ReturnType<typeof getCoworkPricingContext>
 >;
 
+const buildCoworkQuote = Effect.fn("CoworkCheckoutPricing.buildQuote")(
+  (input: {
+    readonly pricing: CoworkPricingContext;
+    readonly discountQuote: DiscountQuote;
+  }) =>
+    buildCoworkReservationQuote(input.pricing.reservation, {
+      discountQuote: input.discountQuote,
+    })
+);
+
 export const coworkCheckoutPricing = reservationCheckoutPricing<
-  CoworkReservationDetails,
+  CoworkAdvertisedPriceDetails,
   CoworkAdvertisedPriceReservation,
   NormalizedCoworkReservationOrder,
   CoworkPricingContext,
   CoworkReservationQuote,
-  CheckoutQuoteError,
-  CheckoutQuoteError | WorkspaceMoneyError
+  never,
+  WorkspaceMoneyError
 >({
   getPricingContext: getCoworkPricingContext,
-  buildQuote: ({ discountQuote, pricing }) =>
-    calculateCoworkReservationQuote(pricing.order, { discountQuote }),
-  getCheckoutSummary: (quote) => quote.summary,
+  buildQuote: buildCoworkQuote,
+  getCheckoutSummary: ({ quote, reservation }) =>
+    getCoworkCheckoutSummary(reservation, quote),
 });

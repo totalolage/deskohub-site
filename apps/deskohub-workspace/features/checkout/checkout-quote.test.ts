@@ -1,15 +1,25 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote as buildCoworkPriceQuote,
   type CoworkReservationQuoteOrder,
-  getCheckoutSummaryChangedKeys,
-} from "./checkout-quote";
-import { buildCoworkReservationQuote } from "./checkout-quote.test-utils";
+} from "./checkout-quote.test-utils";
+import { getCheckoutSummaryChangedKeys } from "./checkout-summary";
+import { buildCoworkReservationQuote as buildCoworkReservationQuoteEffect } from "./reservation-quote-cowork";
+
+const buildCoworkReservationQuote = (
+  order: CoworkReservationQuoteOrder,
+  options: Parameters<typeof buildCoworkPriceQuote>[1] = {}
+) => ({
+  ...buildCoworkPriceQuote(order, options),
+  summary: buildCoworkCheckoutSummary(order, options),
+});
 
 const money = (value: number) => ({
   value,
@@ -115,7 +125,6 @@ describe("cowork reservation quotes", () => {
       coffee: false,
     });
 
-    expect(quote.order.coffee).toBe(true);
     expect(quote.summary.sections[0]?.items).toEqual([
       {
         key: "product:cowork:plus",
@@ -145,6 +154,36 @@ describe("cowork reservation quotes", () => {
         coffee: true,
       })
     ).toThrow("monitorOption");
+  });
+
+  test("calculates Profi advertised pricing without a monitor selection", () => {
+    const quote = Effect.runSync(
+      buildCoworkReservationQuoteEffect({
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+      })
+    );
+
+    expect(quote).not.toHaveProperty("summary");
+    expect(quote).not.toHaveProperty("order");
+    expect(quote.payment.expectedPrice.value).toBe(55_000);
+  });
+
+  test("keeps monitor composition in the summary but not the price quote", () => {
+    const firstMonitor = buildCoworkReservationQuote({
+      entryTier: "profi",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+    });
+    const secondMonitor = buildCoworkReservationQuote({
+      entryTier: "profi",
+      coffee: true,
+      monitorOption: "2x32-4k",
+    });
+
+    expect(firstMonitor.fingerprint).toBe(secondMonitor.fingerprint);
+    expect(firstMonitor.summary).not.toEqual(secondMonitor.summary);
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
@@ -317,16 +356,13 @@ describe("cowork reservation quotes", () => {
 
     const quote = buildCoworkReservationQuote(orderWithRuntimeExtras);
 
-    expect(quote.order).toEqual({
-      entryTier: "basic",
-      coffee: false,
-    });
-    expect(quote.order).not.toHaveProperty("date");
-    expect(quote.order).not.toHaveProperty("legalConsent");
-    expect(quote.order).not.toHaveProperty("name");
-    expect(quote.order).not.toHaveProperty("email");
-    expect(quote.order).not.toHaveProperty("phone");
-    expect(quote.order).not.toHaveProperty("message");
+    expect(quote).not.toHaveProperty("order");
+    expect(quote).not.toHaveProperty("date");
+    expect(quote).not.toHaveProperty("legalConsent");
+    expect(quote).not.toHaveProperty("name");
+    expect(quote).not.toHaveProperty("email");
+    expect(quote).not.toHaveProperty("phone");
+    expect(quote).not.toHaveProperty("message");
   });
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {

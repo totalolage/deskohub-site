@@ -1,6 +1,7 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import {
   Cache,
+  Clock,
   Context,
   Data,
   Duration,
@@ -163,6 +164,11 @@ export class CalendarDiscountProvider extends Context.Service<
             Effect.bind("resolvedSales", ({ cacheKey }) =>
               Cache.get(salesCache, cacheKey)
             ),
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
             Effect.map(({ candidates }) => candidates)
@@ -184,6 +190,11 @@ export class CalendarDiscountProvider extends Context.Service<
             Effect.bind("resolvedSales", ({ cacheKey }) =>
               loadCalendarSales(cacheKey)
             ),
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
             Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
             Effect.map(({ candidates }) => candidates)
@@ -202,11 +213,15 @@ class CalendarSalesCacheKey extends Data.Class<{
 }> {}
 
 const toEligibleCalendarCandidates = (input: {
+  readonly at: Temporal.Instant;
   readonly locale: CalendarDiscountProviderInput["locale"];
   readonly product: WorkspaceProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
+    .filter(
+      ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
+    )
     .filter(({ definition }) =>
       definition.products.some((product) =>
         isSameProduct(product, input.product)

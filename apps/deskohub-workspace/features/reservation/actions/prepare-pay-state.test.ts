@@ -9,11 +9,11 @@ import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
-import {
-  type CoworkReservationQuote,
-  calculateCoworkReservationQuote,
-} from "@/features/checkout/checkout-quote";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
+  type CoworkReservationQuote,
+} from "@/features/checkout/reservation-quote-cowork";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import {
@@ -168,7 +168,7 @@ const makeAdvertisementQuote = (
 
 const buildQuoteFromAdvertisement = (quote: DiscountAdvertisementQuote) =>
   Effect.runSync(
-    calculateCoworkReservationQuote(reservation, { discountQuote: quote })
+    buildCoworkReservationQuoteEffect(reservation, { discountQuote: quote })
   );
 
 const affirmAdvertisementQuote = (

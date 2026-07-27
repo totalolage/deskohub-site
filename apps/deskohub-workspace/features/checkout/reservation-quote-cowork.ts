@@ -3,18 +3,16 @@ import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   workspaceCoworkProductTiers,
-  workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
+import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
 import {
   addWorkspaceMoney,
   workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts";
-import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
-import {
-  getReservationProductCoffee,
-  getReservationProductMonitorOption,
-} from "@/features/reservation/reservation-order";
+import type { CoworkAdvertisedPriceDetails } from "@/features/reservation/cowork-reservation";
+import { getCoworkReservationProductCoffee } from "@/features/reservation/cowork-reservation-product";
 
 const coworkProductQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("cowork"),
@@ -27,25 +25,30 @@ const coworkCoffeeQuoteItemSchema = Schema.Struct({
   amount: workspaceMoneyCodec,
 });
 
-const coworkMonitorQuoteItemSchema = Schema.Struct({
-  type: Schema.Literal("monitor"),
-  monitorOption: Schema.Literals(workspaceProductMonitorOptions),
-  amount: workspaceMoneyCodec,
-});
-
 export const coworkReservationQuoteItemSchema = Schema.Union([
   coworkProductQuoteItemSchema,
   coworkCoffeeQuoteItemSchema,
-  coworkMonitorQuoteItemSchema,
 ]);
 
 type CoworkProductQuoteItem = typeof coworkProductQuoteItemSchema.Type;
 type CoworkCoffeeQuoteItem = typeof coworkCoffeeQuoteItemSchema.Type;
-type CoworkMonitorQuoteItem = typeof coworkMonitorQuoteItemSchema.Type;
-type CoworkAddonQuoteItem = CoworkCoffeeQuoteItem | CoworkMonitorQuoteItem;
 
 export type CoworkReservationQuoteItem =
   typeof coworkReservationQuoteItemSchema.Type;
+
+export const coworkReservationQuoteSchema = makeReservationQuoteSchema(
+  Schema.Union([
+    Schema.Tuple([coworkProductQuoteItemSchema]),
+    Schema.Tuple([coworkProductQuoteItemSchema, coworkCoffeeQuoteItemSchema]),
+  ])
+).annotate({
+  identifier: "CoworkReservationQuote",
+  description: "Authoritative cowork reservation price quote.",
+});
+
+export type CoworkReservationQuote = typeof coworkReservationQuoteSchema.Type;
+
+export type CoworkReservationPricingInput = CoworkAdvertisedPriceDetails;
 
 export type CanonicalCoworkReservation = {
   readonly kind: "cowork";
@@ -53,7 +56,7 @@ export type CanonicalCoworkReservation = {
 
 export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   function* (
-    reservation: CoworkReservationDetails,
+    reservation: CoworkReservationPricingInput,
     options: {
       readonly discountQuote?: DiscountQuote;
     } = {}
@@ -64,9 +67,9 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
       tier: reservation.entryTier,
       amount: productPrice,
     };
-    const addonItems: CoworkAddonQuoteItem[] = [];
+    const addonItems: CoworkCoffeeQuoteItem[] = [];
 
-    if (getReservationProductCoffee(reservation)) {
+    if (getCoworkReservationProductCoffee(reservation)) {
       addonItems.push({
         type: "coffee",
         amount: getWorkspaceProductCoffeeLinePriceForTier(
@@ -75,16 +78,10 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
       });
     }
 
-    const monitorOption = getReservationProductMonitorOption(reservation);
-    if (monitorOption) {
-      addonItems.push({
-        type: "monitor",
-        monitorOption,
-        amount: { ...productPrice, value: 0 },
-      });
-    }
-
-    const items: CoworkReservationQuoteItem[] = [productItem, ...addonItems];
+    const items:
+      | readonly [CoworkProductQuoteItem]
+      | readonly [CoworkProductQuoteItem, CoworkCoffeeQuoteItem] =
+      addonItems.length === 0 ? [productItem] : [productItem, addonItems[0]!];
     const undiscountedPrice = yield* addWorkspaceMoney(
       items.map((item) => item.amount)
     );
@@ -107,8 +104,24 @@ export const getCoworkReservationQuote = Effect.fn("getCoworkReservationQuote")(
   }
 );
 
-export const getCanonicalCoworkReservation = (
-  reservation: CoworkReservationDetails
-): CanonicalCoworkReservation => ({
-  kind: reservation.kind,
+export const buildCoworkReservationQuote = Effect.fn(
+  "buildCoworkReservationQuote"
+)(function* (
+  reservation: CoworkReservationPricingInput,
+  options: {
+    readonly discountQuote?: DiscountQuote;
+  } = {}
+) {
+  const quoteWithoutFingerprint = yield* getCoworkReservationQuote(
+    reservation,
+    options
+  );
+
+  return {
+    ...quoteWithoutFingerprint,
+    fingerprint: getReservationQuoteFingerprint(
+      reservation,
+      quoteWithoutFingerprint
+    ),
+  };
 });

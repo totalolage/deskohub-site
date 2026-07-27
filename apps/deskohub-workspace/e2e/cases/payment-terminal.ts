@@ -6,7 +6,7 @@ import {
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import { submitCoworkReservationScript } from "../browser-scripts";
+import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import { startCheckoutPaymentAttempt } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -15,6 +15,7 @@ import {
   markPaymentTerminalForE2E,
   waitForWebhookReplayRow,
 } from "../integrations/database";
+import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
@@ -58,7 +59,7 @@ export const assertPaymentTerminalPath = ({
   scenario: PaymentTerminalScenario;
   session: string;
   state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
@@ -70,7 +71,7 @@ export const assertPaymentTerminalPath = ({
         },
         run,
         session,
-        submitReservationScript: submitCoworkReservationScript,
+        submitReservationScript: getSubmitCoworkReservationScript(data),
       }),
       id: "start-checkout-payment",
       timeoutMs: config.timeouts.checkoutStart,
@@ -125,11 +126,7 @@ const preparePaymentTerminalState = ({
         state.checkoutRow = row;
       }
     );
-    const checkoutRow = yield* markPaymentTerminalForE2E(
-      datasourceConfig,
-      orderId,
-      scenario
-    );
+    const checkoutRow = yield* markPaymentTerminalForE2E(orderId, scenario);
     state.checkoutRow = checkoutRow;
     yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });

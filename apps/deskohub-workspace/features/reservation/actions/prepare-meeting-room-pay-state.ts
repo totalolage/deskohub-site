@@ -7,11 +7,9 @@ import {
 import {
   type CheckoutSummaryChangedKeys,
   getCheckoutSummaryChangedKeys,
-} from "@/features/checkout/checkout-quote";
-import {
-  getMeetingRoomCheckoutSummary,
-  type MeetingRoomReservationQuote,
-} from "@/features/checkout/reservation-quote-meeting-room";
+} from "@/features/checkout/checkout-summary";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import type { MeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
 import type { AffirmedDiscountAdvertisementQuote } from "@/features/discounts";

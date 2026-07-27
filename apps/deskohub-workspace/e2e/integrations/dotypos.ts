@@ -1,13 +1,90 @@
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
+import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
+import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
+import { workspaceE2EPollIntervalMs } from "../timeouts";
 import type { CheckoutData, CheckoutRow } from "../types";
+
+export interface E2EDotyposDiscountGroup {
+  readonly basisPoints: number;
+  readonly id: string;
+}
+
+const maximumE2ECustomerDiscountBasisPoints = 9000;
+
+export const resolveE2EDotyposDiscountGroup = (
+  config: DatasourceConfig
+): Effect.Effect<E2EDotyposDiscountGroup, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    const groups = yield* dotypos.getDiscountGroups();
+    const group = yield* tryWorkspaceE2ESync(
+      "resolve Dotypos discount group",
+      () => selectE2EDotyposDiscountGroup(groups)
+    );
+    log("Dotypos customer-discount fixtures resolved");
+    return group;
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("resolve Dotypos discount fixtures", cause)
+    )
+  );
+
+export const selectE2EDotyposDiscountGroup = (
+  groups: readonly DiscountGroup[]
+): E2EDotyposDiscountGroup => {
+  const selected = groups
+    .flatMap((group) => {
+      const id = group.id?.trim();
+      const basisPoints = toPartialDiscountBasisPoints(group.discountPercent);
+
+      return id &&
+        !group.deleted &&
+        basisPoints &&
+        basisPoints <= maximumE2ECustomerDiscountBasisPoints
+        ? [{ basisPoints, id }]
+        : [];
+    })
+    .toSorted(
+      (left, right) =>
+        left.basisPoints - right.basisPoints || left.id.localeCompare(right.id)
+    )[0];
+
+  assert(
+    selected,
+    "the E2E Dotypos cloud must contain an active percentage discount group from 0.01% through 90%"
+  );
+  return selected;
+};
+
+const toPartialDiscountBasisPoints = (
+  discountPercent: DiscountGroup["discountPercent"]
+) => {
+  const normalized = discountPercent?.trim();
+  if (!normalized || !/^\d+(?:\.\d+)?$/.test(normalized)) return undefined;
+
+  const [whole = "", decimal = ""] = normalized.split(".");
+  const significantDecimal = decimal.replace(/0+$/, "");
+  if (significantDecimal.length > 2) return undefined;
+
+  const wholePercentage = Number(whole);
+  const fractionalBasisPoints = Number(significantDecimal.padEnd(2, "0"));
+  const basisPoints = wholePercentage * 100 + fractionalBasisPoints;
+  return Number.isSafeInteger(basisPoints) &&
+    basisPoints >= 1 &&
+    basisPoints < 10_000
+    ? basisPoints
+    : undefined;
+};
 
 export const validateDotypos = (
   config: DatasourceConfig,
@@ -30,14 +107,20 @@ export const validateDotypos = (
       }
     );
 
-    const result = yield* Effect.gen(function* () {
-      const dotypos = yield* DotyposService;
-      return yield* dotypos.getReservation(dotyposReservationId);
-    }).pipe(
-      Effect.provide(getDotyposLayer(config)),
-      Effect.mapError((cause) =>
-        toWorkspaceE2EError("validate Dotypos reservation", cause)
-      )
+    const result = yield* waitForConfirmedDotyposReservation(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getReservation(dotyposReservationId);
+      }).pipe(
+        Effect.provide(getDotyposLayer(config)),
+        Effect.mapError((cause) =>
+          toWorkspaceE2EError("validate Dotypos reservation", cause)
+        )
+      ),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: config.timeouts.datasource,
+      }
     );
 
     yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
@@ -70,6 +153,34 @@ export const validateDotypos = (
     log("Dotypos reservation state validated");
   });
 
+export const waitForConfirmedDotyposReservation = <
+  A extends {
+    readonly reservation: {
+      readonly status?: string | null;
+    };
+  },
+  E,
+  R,
+>(
+  readReservation: Effect.Effect<A, E, R>,
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<A, E | WorkspaceE2EError, R> =>
+  pollUntil(
+    readReservation.pipe(
+      Effect.map((result) =>
+        result.reservation.status === "CONFIRMED" ? result : undefined
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "confirmed Dotypos reservation",
+      timeoutMs: options.timeoutMs,
+    }
+  );
+
 export const cancelDotyposReservation = (
   config: DatasourceConfig,
   dotyposReservationId: string
@@ -96,6 +207,54 @@ export const readDotyposReservationStatus = (
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("read Dotypos reservation status", cause)
+    )
+  );
+
+export const prepareDotyposCustomerDiscount = (
+  config: DatasourceConfig,
+  data: CheckoutData,
+  discountGroupId: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    const customerName = splitCustomerName(data.name);
+    const customer = yield* dotypos.findOrCreateCustomer(
+      {
+        ...customerName,
+        email: data.email,
+        phone: data.phone,
+      },
+      { lookupFields: ["email"] }
+    );
+    const customerId = yield* tryWorkspaceE2ESync(
+      "assert prepared Dotypos customer",
+      () => {
+        assert(customer.id, "prepared Dotypos customer ID missing");
+        return customer.id;
+      }
+    );
+    yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    log("Dotypos customer discount fixture prepared");
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("prepare Dotypos customer discount", cause)
+    )
+  );
+
+export const changeDotyposCustomerDiscount = (
+  config: DatasourceConfig,
+  customerId: string,
+  discountGroupId: string | null
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    log("Dotypos customer discount fixture changed");
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("change Dotypos customer discount", cause)
     )
   );
 

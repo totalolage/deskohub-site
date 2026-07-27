@@ -1,8 +1,8 @@
 import { Match } from "effect";
 import type { ReservationQuote } from "@/features/checkout/reservation-quote";
-import {
-  type CanonicalCoworkReservation,
-  getCanonicalCoworkReservation,
+import type {
+  CanonicalCoworkReservation,
+  CoworkReservationPricingInput,
 } from "@/features/checkout/reservation-quote-cowork";
 import {
   type CanonicalMeetingRoomReservation,
@@ -29,6 +29,7 @@ type CanonicalReservation =
   | CanonicalMeetingRoomReservation;
 type ReservationQuoteFingerprintReservation =
   | CoworkReservationDetails
+  | CoworkReservationPricingInput
   | MeetingRoomReservationDetails;
 
 const getCanonicalAppliedDiscount = (
@@ -62,7 +63,7 @@ const getCanonicalReservation = (
 ): CanonicalReservation =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: getCanonicalCoworkReservation,
+      cowork: () => ({ kind: "cowork" as const }),
       "meeting-room": getCanonicalMeetingRoomReservation,
     })
   );

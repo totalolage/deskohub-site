@@ -9,13 +9,23 @@ import {
   test,
 } from "bun:test";
 import { cleanup, fireEvent, render } from "@testing-library/react";
-import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote as buildCoworkPriceQuote,
+} from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+
+const buildCoworkReservationQuote = (
+  ...args: Parameters<typeof buildCoworkPriceQuote>
+) => ({
+  ...buildCoworkPriceQuote(...args),
+  summary: buildCoworkCheckoutSummary(...args),
+});
 
 const applyDiscountCodeForm = mock();
 

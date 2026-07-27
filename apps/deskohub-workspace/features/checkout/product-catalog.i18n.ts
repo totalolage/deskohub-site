@@ -11,8 +11,8 @@ type WorkspaceProductMessage = (
 ) => string;
 type WorkspaceProductTierPerkMarker = "bullet" | "plus";
 
-type WorkspaceProductTierBulletMessages = {
-  readonly main: readonly WorkspaceProductMessage[];
+type WorkspaceProductTierCardMessages = {
+  readonly description: WorkspaceProductMessage;
   readonly perksLabel: WorkspaceProductMessage;
   readonly perks: readonly {
     readonly message: WorkspaceProductMessage;
@@ -42,12 +42,12 @@ export const workspaceProductTierMessages: Record<
   },
 };
 
-export const workspaceProductTierBulletMessages: Record<
+export const workspaceProductTierCardMessages: Record<
   WorkspaceCoworkProductTier,
-  WorkspaceProductTierBulletMessages
+  WorkspaceProductTierCardMessages
 > = {
   basic: {
-    main: [m.reservationTierBasicBulletDesk],
+    description: m.reservationTierBasicBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
     perks: [
       { message: m.reservationTierBasicPerkWifi },
@@ -55,7 +55,7 @@ export const workspaceProductTierBulletMessages: Record<
     ],
   },
   plus: {
-    main: [m.reservationTierCoworkBulletDesk],
+    description: m.reservationTierCoworkBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
     perks: [
       { message: m.reservationTierPerkAllBasic, highlighted: true },
@@ -63,7 +63,7 @@ export const workspaceProductTierBulletMessages: Record<
     ],
   },
   profi: {
-    main: [m.reservationTierProfiBulletDesk],
+    description: m.reservationTierProfiBulletDesk,
     perksLabel: m.reservationTierPerksLabel,
     perks: [
       { message: m.reservationTierPerkAllCowork, highlighted: true },

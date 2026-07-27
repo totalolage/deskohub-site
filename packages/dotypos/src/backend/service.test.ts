@@ -883,6 +883,145 @@ describe("DotyposService categories", () => {
 });
 
 describe("DotyposService customer discounts", () => {
+  test("loads every discount group page", async () => {
+    const requestedPages: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/discount-groups") {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(page);
+        return Response.json(
+          page === "1"
+            ? {
+                data: [
+                  {
+                    id: "ten",
+                    discountPercent: "10",
+                    deleted: false,
+                    name: "Ten percent",
+                  },
+                ],
+                nextPage: "2",
+              }
+            : {
+                data: [
+                  {
+                    id: "twenty",
+                    discountPercent: "20",
+                    deleted: false,
+                    name: "Twenty percent",
+                  },
+                ],
+                nextPage: null,
+              }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getDiscountGroups();
+      }),
+      fetchMock
+    );
+
+    expect(
+      result.map(({ id, discountPercent }) => ({ id, discountPercent }))
+    ).toEqual([
+      { id: "ten", discountPercent: "10" },
+      { id: "twenty", discountPercent: "20" },
+    ]);
+    expect(requestedPages).toEqual(["1", "2"]);
+  });
+
+  test("preserves a later-page discount group failure", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/discount-groups") {
+        const page = url.searchParams.get("page") ?? "1";
+        if (page === "1") {
+          return Response.json({
+            data: [
+              {
+                id: "ten",
+                discountPercent: "10",
+                deleted: false,
+                name: "Ten percent",
+              },
+            ],
+            nextPage: "2",
+          });
+        }
+        return Response.json(
+          { error: "not_found", error_description: "Not found" },
+          { status: 404 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getDiscountGroups().pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      operation: "getDiscountGroups",
+      statusCode: 404,
+    });
+  });
+
+  test("assigns a customer discount group with the current ETag", async () => {
+    const requests: Request[] = [];
+    const fetchMock = mockDotyposFetch(async (request) => {
+      requests.push(request.clone());
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(customer(), {
+          headers: { ETag: '"customer-version"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/customers/customer-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(customer({ _discountGroupId: "group-id" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.setCustomerDiscountGroup(
+          "customer-id",
+          "group-id"
+        );
+      }),
+      fetchMock
+    );
+
+    const patchRequest = requests.find(({ method }) => method === "PATCH");
+    expect(patchRequest).toBeDefined();
+    expect(patchRequest?.headers.get("if-match")).toBe('"customer-version"');
+    expect(await patchRequest?.json()).toEqual({
+      _discountGroupId: "group-id",
+    });
+    expect(result._discountGroupId).toBe("group-id");
+  });
+
   test("loads a customer's generated discount group by customer ID", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);

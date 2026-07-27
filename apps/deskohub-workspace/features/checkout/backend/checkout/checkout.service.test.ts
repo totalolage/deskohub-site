@@ -6,11 +6,9 @@ import { DotyposService } from "@deskohub/dotypos";
 import { ExternalAPIError, NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
-import type {
-  CheckoutSummaryChangedKeys,
-  CoworkReservationQuote,
-} from "@/features/checkout/checkout-quote";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
+import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";

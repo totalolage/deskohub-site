@@ -42,6 +42,11 @@ names. Inspect settings and deployment metadata without printing their values.
 - Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
 - Workspace E2E Dotypos URL, credentials, and tenant IDs.
+  The dedicated E2E cloud must contain at least one active percentage discount
+  from 0.01% through 90%. The upper bound keeps enough payable subtotal for
+  stacked-discount and external-payment cases. The runner selects a usable
+  group deterministically through the Dotypos API and fails closed when none
+  exists.
 - GitHub Actions variables `WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN` and, when
   using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
   `workspace-checkout-e2e` environment. The token is the public project ingest
@@ -49,11 +54,13 @@ names. Inspect settings and deployment metadata without printing their values.
 - `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
   after the deployed payment/webhook path has completed.
 - The non-sensitive Preview-only
-  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":false,"customer_discounts":false,"discount_codes":true}`.
-  The zero-total case requires code entry and deliberately disables automatic
-  sources so its seeded code is the only discount source. Set this before the
-  immutable Git preview is built; the runner never mutates deployment
-  configuration.
+  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true}`.
+  Set this before the immutable Git preview is built; the runner never mutates
+  deployment configuration or the real PostHog rollout state.
+- `GOOGLE_CALENDAR_SALES_ID` must identify the dedicated Preview E2E sales
+  calendar. Its long-lived all-day sale references discount UUID
+  `454784dd-380b-43a1-bae7-cc070bf1aec2`. Keep that event immutable so parallel
+  happy-path cases cannot interfere with one another.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
 Do not use production Nexi, Dotypos, email, or database credentials in Preview.
@@ -94,6 +101,83 @@ pre-runtime migration mechanism. Do not add migrations to the Vercel build.
 Production remains unchanged: build a staged production deployment, migrate the
 production Neon branch, then promote the ready deployment.
 
+## Discount fixtures
+
+Before browser cases start, the runner upserts source-neutral discount
+definitions, targets, and code configurations into the exact preview database.
+It does not insert application or redemption history: those records must be
+created only by the deployed checkout lifecycle.
+
+The stable Calendar event and its database definition cover Calendar-only and
+Calendar-plus-code checkout. Dedicated immutable code rows cover valid,
+inactive, not-started, expired, customer-ineligible, and product-ineligible
+submission. A separate case-owned code is moved past its exclusive
+`valid_until` after it is shown on the summary and before payment; the browser
+must receive `pricing_changed`, and the database must contain no payment
+attempt, application, or claim.
+
+Customer fixtures are created through the normal Dotypos customer API. The
+runner discovers a deterministic active partial-percentage group in the E2E
+cloud, derives the expected application from its actual percentage, then
+assigns customers through an ETag-protected customer patch. The browser matrix
+covers customer-only, customer-plus-code, Calendar-plus-customer, and all three
+sources together. A separate customer's group is cleared after summary
+creation; payment must return `pricing_changed`.
+
+The stable Calendar definition targets Plus and Profi. Calendar pricing-change
+edge cases use Profi while all Calendar happy paths use Plus. In one serialized
+top-level case, the runner removes only the Profi target after reservation-page
+advertisement and again after signed-summary creation. Each scenario restores
+the Profi target in an interruption-safe finalizer. Both must show the normal
+pricing-change state with no payment attempt. The Calendar event itself remains
+immutable, and Plus eligibility is never mutated, so every other top-level case
+continues to run in parallel.
+
+Calendar all-day expiry is tied to the selected reservation date, so a browser
+case cannot safely wait across its real Prague-midnight boundary. Deterministic
+browser coverage removes the selected product from the event's stored
+definition at the same provider boundary.
+Provider tests use Effect's test clock for the literal exclusive-end instant,
+including the rule that a cached discovery cannot outlive that instant.
+
+Capacity and one-redemption-per-customer cases first complete a real internal
+zero-total checkout, then exercise a second customer or reservation against
+the consumed code. Capacity limits advance from retained active audit history
+on reruns; the suite never deletes application or redemption records.
+
+Every case uses a unique customer and reservation date. Basic and Plus date
+sets are selected independently and made disjoint. The suite then runs the
+cases in parallel. Do not make an edge case mutate a fixture consumed by
+another case.
+
+### Discount coverage matrix
+
+Keep the discount suite split by the boundary that needs evidence. Browser E2E
+proves customer-visible behavior and the resulting persisted lifecycle state.
+Deterministic provider and transaction tests retain exhaustive malformed-input,
+provider-failure, clock-boundary, and write-race coverage that would be unsafe
+or unreliable to manufacture through shared external systems.
+
+| Scenario | Browser E2E evidence |
+| --- | --- |
+| Calendar, customer, or code individually | Completed payment, displayed generic label, persisted application |
+| Calendar + customer, Calendar + code, or customer + code | Completed payment and applications persisted in source-neutral order |
+| Calendar + customer + code | Completed payment and all three applications persisted in order |
+| Code reduces total to zero | Internal paid attempt, redeemed claim, fulfillment, no Nexi page |
+| Invalid syntax, unknown, inactive, not started, or already expired code | One generic field error; existing summary remains usable; no payment state |
+| Customer-ineligible or product-ineligible code | One generic field error; no application or claim |
+| Capacity exhausted or already redeemed by the same customer | A real first redemption followed by the rejected customer attempt |
+| Code expires after summary but before Pay | `pricing_changed`; no payment attempt, application, or claim |
+| Calendar sale disappears after advertisement but before quote | Refreshed summary with `pricing_changed`; no payment state |
+| Calendar sale disappears after summary but before Pay | `pricing_changed`; no payment state |
+| Customer discount changes after summary but before Pay | `pricing_changed`; no payment state |
+
+Provider tests cover malformed Calendar events and definitions, partial
+resolution, Calendar and database failures, half-open Calendar/code expiry,
+and cache expiry. Checkout lifecycle tests cover atomic claim-admission races,
+terminal-state races, provider failures, and rollback. Do not replace those
+deterministic tests with external E2E mutations.
+
 ## Runner target and safety
 
 `WORKSPACE_E2E_BASE_URL` is the single required target origin. The runner
@@ -119,6 +203,11 @@ Effect Layers are constructed. Other E2E modules receive that immutable typed
 configuration and must not read ambient environment variables. Application-only
 variables are not projected into the E2E configuration, and E2E telemetry uses
 only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
+
+Invoke a real run from the repository root with
+`bun turbo test:e2e --filter=deskohub-workspace`. Turbo invokes the Workspace
+package's E2E script directly. The runner does not import generated translations,
+so the real E2E task does not depend on `i18n:compile`.
 
 All case, step, provider, browser, datasource, artifact, and cleanup timeouts
 are static checked-in values in `e2e/timeouts.ts`. The runner does not accept
@@ -204,7 +293,8 @@ In the Workspace PostHog project:
 
 ### Investigating a failed run
 
-For any failure that reached `bun run test:e2e`, start with the exported trace:
+For any failure that reached the Workspace E2E runner, start with the exported
+trace:
 
 1. Record the exact GitHub run ID and run attempt, then query
    `e2e.run.id = <GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`.
@@ -278,10 +368,10 @@ not replace the E2E result. Without a project ingest token, local execution
 remains usable without remote traces; the existing console progress output
 remains available but is not the telemetry source of truth.
 
-These spans cover every invocation that reaches `bun run test:e2e`. Failures
-in earlier workflow setup such as target resolution, dependency installation,
-or preview database migration remain represented by GitHub Actions rather than
-the in-process suite telemetry.
+These spans cover every invocation that reaches the Workspace E2E runner.
+Failures in earlier workflow setup such as target resolution, dependency
+installation, or preview database migration remain represented by GitHub
+Actions rather than the in-process suite telemetry.
 
 For Nexi sandbox facts and cards, see
 [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).

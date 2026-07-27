@@ -250,7 +250,6 @@ jobs:
       - run: agent-browser install --with-deps
 
       - name: Run checkout E2E
-        working-directory: apps/deskohub-workspace
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -266,7 +265,7 @@ jobs:
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
-        run: bun run test:e2e
+        run: bun turbo test:e2e --filter=deskohub-workspace
 
       - uses: actions/upload-artifact@v4
         if: failure()

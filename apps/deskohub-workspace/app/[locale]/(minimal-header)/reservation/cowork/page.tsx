@@ -1,10 +1,13 @@
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import type { PreloadedAdvertisedPrice } from "@/features/checkout/advertised-price";
 import {
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
+import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
+import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -13,9 +16,17 @@ import {
   ReservationFormFallback,
 } from "@/features/reservation/components/reservation-form";
 import {
+  type CoworkTierAdvertisedPriceRequest,
+  getCoworkTierAdvertisedPriceRequests,
+} from "@/features/reservation/cowork-advertised-price";
+import {
   coworkReservationDefaultValues,
   getCoworkTierRequiresMonitorOption,
 } from "@/features/reservation/cowork-reservation";
+import {
+  getReservationDefaultValuesFromPayState,
+  getReservationDefaultValuesFromSearchParams,
+} from "@/features/reservation/reservation-checkout-query";
 import { coworkReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -40,6 +51,34 @@ const getOrderPayState = Effect.fn("checkoutOrder.getPayState")(function* (
   return Option.getOrUndefined(
     Option.filter(state, (payState) => payState.locale === locale)
   );
+});
+
+const loadInitialAdvertisedPrices = Effect.fn(
+  "checkoutOrder.loadInitialAdvertisedPrices"
+)(function* (requests: ReadonlyArray<CoworkTierAdvertisedPriceRequest>) {
+  const results = yield* Effect.all(
+    requests.map(({ request, tier }) =>
+      buildAdvertisedPrice(request).pipe(
+        Effect.tapError(() =>
+          Effect.logError("Initial advertised price load failed", {
+            productIdentity: { kind: "cowork", tier },
+          })
+        ),
+        Effect.option,
+        Effect.map(
+          Option.map(
+            (advertisedPrice): PreloadedAdvertisedPrice => ({
+              request,
+              advertisedPrice,
+            })
+          )
+        )
+      )
+    ),
+    { concurrency: "unbounded" }
+  );
+
+  return results.filter(Option.isSome).map(({ value }) => value);
 });
 
 export async function generateMetadata({
@@ -89,12 +128,30 @@ export default async function LocalizedCoworkReservationPage({
 }: LocalizedCoworkReservationPageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
+  const resolvedSearchParams = await searchParams;
   const payState = await getOrderPayState(
-    getSearchParam(await searchParams, payStateTokenQueryParam),
+    getSearchParam(resolvedSearchParams, payStateTokenQueryParam),
     locale
   ).pipe(runWorkspaceEffect("reservation.cowork.load-state"));
   const initialReservation =
     payState?.reservation.kind === "cowork" ? payState.reservation : undefined;
+  const initialValues = initialReservation
+    ? getReservationDefaultValuesFromPayState(initialReservation)
+    : getReservationDefaultValuesFromSearchParams(resolvedSearchParams);
+  const initialAdvertisedPriceRequests = initialValues.date
+    ? getCoworkTierAdvertisedPriceRequests({
+        coffee: Boolean(initialValues.coffee),
+        date: initialValues.date,
+        locale,
+      })
+    : [];
+  const initialAdvertisedPrices = await runWithRequestLocale(locale, () =>
+    loadInitialAdvertisedPrices(initialAdvertisedPriceRequests).pipe(
+      Effect.provide(CheckoutPricingServiceLiveWithDependencies),
+      Effect.scoped,
+      runWorkspaceEffect("reservation.cowork.load-advertised-prices")
+    )
+  );
   const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
     initialReservation?.entryTier ?? coworkReservationDefaultValues.entryTier
   );
@@ -110,6 +167,7 @@ export default async function LocalizedCoworkReservationPage({
       locale={locale}
     >
       <ReservationForm
+        initialAdvertisedPrices={initialAdvertisedPrices}
         initialReservation={initialReservation}
         locale={locale}
         checkoutSessionId={payState?.checkoutSessionId}

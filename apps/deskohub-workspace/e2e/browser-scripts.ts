@@ -76,7 +76,108 @@ export const getPrefilledReservationConditionScript = (data: CheckoutData) => {
 `;
 };
 
-export const submitCoworkReservationScript = `
+export const getSubmitCoworkReservationScript = (data: CheckoutData) => {
+  const prepare = getPrepareCoworkAdvertisedPriceScript(data).trim();
+
+  return `
+(async () => {
+  await (${prepare});
+  return await (${submitPreparedCoworkReservationScript.trim()});
+})()
+`;
+};
+
+export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
+  if (data.expectedReservationDetails.kind !== "cowork") {
+    throw new Error("Cowork reservation submission requires cowork data");
+  }
+
+  const desiredTier = data.expectedReservationDetails.entryTier;
+  const desiredMonitorOption =
+    data.expectedReservationDetails.monitorOption ?? null;
+
+  return `
+(async () => {
+  const desiredTier = ${JSON.stringify(desiredTier)};
+  const desiredMonitorOption = ${JSON.stringify(desiredMonitorOption)};
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
+  const selectTierThroughPrice = async (tier, waitForAdvertisedPrice = true) => {
+    const price = document.querySelector('[data-reservation-tier-price="' + tier + '"]');
+    const input = document.querySelector('#reservation-entry-tier-' + tier);
+    if (!(price instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
+      throw new Error(tier + ' tier price control not found');
+    }
+    price.click();
+    await waitUntil(() => input.checked, tier + ' tier was not selected through its price');
+    if (waitForAdvertisedPrice) {
+      await waitUntil(
+        () => price.dataset.reservationTierPriceReady === 'true',
+        tier + ' advertised price did not become ready'
+      );
+    }
+  };
+  await selectTierThroughPrice(desiredTier, desiredMonitorOption === null);
+  if (desiredMonitorOption !== null) {
+    let monitorInput;
+    await waitUntil(() => {
+      monitorInput = [...document.querySelectorAll('input[type="radio"]')]
+        .find((candidate) =>
+          candidate instanceof HTMLInputElement &&
+          candidate.value === desiredMonitorOption
+        );
+      return monitorInput instanceof HTMLInputElement && !monitorInput.disabled;
+    }, desiredMonitorOption + ' monitor option was not available');
+    const price = document.querySelector(
+      '[data-reservation-tier-price="' + desiredTier + '"]'
+    );
+    if (!(price instanceof HTMLElement)) {
+      throw new Error(desiredTier + ' advertised price not found');
+    }
+    if (
+      !monitorInput.checked ||
+      price.dataset.reservationTierPriceReady !== 'true'
+    ) {
+      let sawPendingPrice = price.dataset.reservationTierPriceReady === 'false';
+      const priceObserver = new MutationObserver((records) => {
+        if (records.some((record) => record.oldValue === 'true')) {
+          sawPendingPrice = true;
+        }
+      });
+      priceObserver.observe(price, {
+        attributeFilter: ['data-reservation-tier-price-ready'],
+        attributeOldValue: true,
+      });
+      try {
+        (monitorInput.closest('label') ?? monitorInput).click();
+        await waitUntil(
+          () => monitorInput.checked,
+          desiredMonitorOption + ' monitor option was not selected'
+        );
+        await waitUntil(
+          () =>
+            sawPendingPrice &&
+            price.dataset.reservationTierPriceReady === 'true',
+          desiredTier + ' advertised price did not refresh after monitor selection'
+        );
+      } finally {
+        priceObserver.disconnect();
+      }
+    }
+  }
+  return location.href;
+})()
+`;
+};
+
+export const submitPreparedCoworkReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
@@ -87,21 +188,6 @@ export const submitCoworkReservationScript = `
     }
     throw new Error(label);
   };
-  const selectTierThroughPrice = async (tier) => {
-    const price = document.querySelector('[data-reservation-tier-price="' + tier + '"]');
-    const input = document.querySelector('#reservation-entry-tier-' + tier);
-    if (!(price instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
-      throw new Error(tier + ' tier price control not found');
-    }
-    price.click();
-    await waitUntil(() => input.checked, tier + ' tier was not selected through its price');
-    await waitUntil(
-      () => price.dataset.reservationTierPriceReady === 'true',
-      tier + ' advertised price did not become ready'
-    );
-  };
-  await selectTierThroughPrice('plus');
-  await selectTierThroughPrice('basic');
   let checkbox;
   await waitUntil(() => {
     const candidate = document.querySelector('#reservation-privacy-consent');

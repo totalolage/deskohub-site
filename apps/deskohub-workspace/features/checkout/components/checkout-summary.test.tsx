@@ -10,7 +10,10 @@ import {
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
 import { Schema } from "effect";
-import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  buildCoworkCheckoutSummary,
+  buildCoworkReservationQuote as buildCoworkPriceQuote,
+} from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
@@ -19,6 +22,13 @@ import {
 import { CheckoutSummary } from "./checkout-summary";
 import { CheckoutSummaryDiscountCountdown } from "./checkout-summary-discount-countdown";
 import { CheckoutSummaryDiscountDetailsContent } from "./checkout-summary-discount-details";
+
+const buildCoworkReservationQuote = (
+  ...args: Parameters<typeof buildCoworkPriceQuote>
+) => ({
+  ...buildCoworkPriceQuote(...args),
+  summary: buildCoworkCheckoutSummary(...args),
+});
 
 describe("CheckoutSummary", () => {
   beforeAll(() => {

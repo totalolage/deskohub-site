@@ -113,10 +113,19 @@ export const waitForBrowserTextContent = (
   run: Runner,
   session: string,
   text: string,
-  options: { readonly timeoutMs?: number } = {}
+  options: {
+    readonly caseSensitive?: boolean;
+    readonly timeoutMs?: number;
+  } = {}
 ): Effect.Effect<void, WorkspaceE2EError> => {
-  const textLiteral = JSON.stringify(text);
-  const textCheck = `(() => document.body?.innerText.includes(${textLiteral}) ?? false)()`;
+  const caseSensitive = options.caseSensitive !== false;
+  const textLiteral = JSON.stringify(
+    caseSensitive ? text : text.toLocaleLowerCase()
+  );
+  const bodyText = caseSensitive
+    ? "document.body?.innerText"
+    : "document.body?.innerText.toLocaleLowerCase()";
+  const textCheck = `(() => ${bodyText}.includes(${textLiteral}) ?? false)()`;
 
   return runBrowserCommand(
     "wait for browser text content",

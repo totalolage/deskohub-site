@@ -16,12 +16,16 @@ Inspect the [checkout lifecycle](../../../apps/deskohub-workspace/docs/checkout-
 Preserve the three price boundaries documented in the checkout lifecycle:
 
 - reservation-page advertisement;
-- signed order-summary quote;
+- signed order-summary state containing the authoritative quote;
 - freshly affirmed payment amount.
 
 Any change to price facts accepted at the immediately preceding boundary returns `pricing_changed` with the affected product keys. Never introduce a newly available anonymously discoverable automatic discount retrospectively. Discount-code entry is a separate order-summary form whose field errors leave the existing summary payable. Never create a durable payment attempt or external provider session unless the freshly affirmed fingerprint and total exactly match the signed summary and all application/claim mutations commit atomically.
 
 Reservation-page advertisement evaluates only anonymously discoverable automatic discounts, currently Calendar sales. Customer-specific pricing is outside that boundary by contract; do not add an inert snapshot field merely to restate that it was not evaluated. After advertised discounts are affirmed on reservation submission, the customer discount may first appear in the signed summary following Dotypos identity resolution without `pricing_changed`. This is the only automatic-discount exception at that boundary. Once shown, the customer discount follows the normal affirmation and `pricing_changed` rules.
+
+Advertised-price requests and protected snapshots contain only inputs that determine the advertised amount. In cowork checkout, monitor selection affects availability and final zero-priced product composition, not price; keep it out of advertisement requests, quote items, quote fingerprints, query keys, and snapshot comparison while preserving it in reservation validation, availability, table assignment, and the signed reservation state.
+
+Keep price quotes and checkout summaries as separate domain values. A quote owns authoritative priced items, payment facts, generic discount applications, and its fingerprint. It must not embed a summary or duplicate reservation selection. Derive the family-specific checkout summary from the signed reservation plus its quote; zero-priced product composition belongs in that summary projection, not in the monetary quote.
 
 Inside `apps/deskohub-workspace`, do not prefix new app-owned services, operations, or supporting types with `Workspace`; the app boundary already supplies that context. Keep the prefix only when it distinguishes a real alternative or belongs to an established contract whose broad rename is outside the current change.
 

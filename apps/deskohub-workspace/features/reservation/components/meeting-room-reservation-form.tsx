@@ -359,12 +359,21 @@ export function MeetingRoomReservationForm({
                             duration,
                             locale
                           );
-                        const advertisedQuote = isSelected
-                          ? advertisedPrice?.quote
+                        const advertisedProductItem = isSelected
+                          ? advertisedPrice?.summary.sections
+                              .find(({ key }) => key === "order")
+                              ?.items.find(
+                                (item) =>
+                                  "product" in item &&
+                                  item.product.kind === "meeting-room" &&
+                                  item.product.durationMinutes === duration
+                              )
                           : undefined;
-                        const hasAdvertisedDiscount = Boolean(
-                          advertisedQuote?.payment.discounts.length
-                        );
+                        const hasAdvertisedDiscount =
+                          advertisedProductItem &&
+                          "originalAmount" in advertisedProductItem &&
+                          advertisedProductItem.originalAmount &&
+                          advertisedProductItem.discounts;
                         const inputId = `meeting-room-duration-${duration}`;
 
                         return (
@@ -395,14 +404,13 @@ export function MeetingRoomReservationForm({
                                 {durationTitle}
                               </span>
                               <span className="mt-2 flex flex-wrap items-center gap-1 text-sm font-semibold text-burned-orange">
-                                {advertisedQuote && hasAdvertisedDiscount ? (
+                                {hasAdvertisedDiscount ? (
                                   <>
                                     <span className="sr-only">
                                       {m.checkoutSummaryOriginalPrice(
                                         {
                                           price: formatWorkspaceMoney(
-                                            advertisedQuote.payment
-                                              .undiscountedPrice,
+                                            advertisedProductItem.originalAmount,
                                             locale
                                           ),
                                         },
@@ -414,8 +422,7 @@ export function MeetingRoomReservationForm({
                                       className="text-navy-blue/45 decoration-navy-blue/40"
                                     >
                                       {formatWorkspaceMoney(
-                                        advertisedQuote.payment
-                                          .undiscountedPrice,
+                                        advertisedProductItem.originalAmount,
                                         locale
                                       )}
                                     </del>
@@ -423,8 +430,7 @@ export function MeetingRoomReservationForm({
                                       {m.checkoutSummaryDiscountedPrice(
                                         {
                                           price: formatWorkspaceMoney(
-                                            advertisedQuote.payment
-                                              .expectedPrice,
+                                            advertisedProductItem.amount,
                                             locale
                                           ),
                                         },
@@ -433,25 +439,26 @@ export function MeetingRoomReservationForm({
                                     </span>
                                     <span aria-hidden="true">
                                       {formatWorkspaceMoney(
-                                        advertisedQuote.payment.expectedPrice,
+                                        advertisedProductItem.amount,
                                         locale
                                       )}
                                     </span>
                                   </>
                                 ) : (
                                   formatWorkspaceMoney(
-                                    getWorkspaceMeetingRoomPriceForDuration(
-                                      duration
-                                    ),
+                                    advertisedProductItem?.amount ??
+                                      getWorkspaceMeetingRoomPriceForDuration(
+                                        duration
+                                      ),
                                     locale
                                   )
                                 )}
                               </span>
                             </label>
-                            {advertisedQuote && hasAdvertisedDiscount && (
+                            {hasAdvertisedDiscount && (
                               <div className="absolute bottom-2 right-2">
                                 <CheckoutSummaryDiscountDetails
-                                  discounts={advertisedQuote.payment.discounts}
+                                  discounts={advertisedProductItem.discounts}
                                   locale={locale}
                                   productLabel={durationTitle}
                                 />

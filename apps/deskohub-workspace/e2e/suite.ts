@@ -26,6 +26,7 @@ import type {
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "./types";
+import type { E2EDatabase } from "./integrations/database.service";
 
 const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   cancelled: "CANCEL",
@@ -57,7 +58,11 @@ export const runWorkspaceE2ECases = ({
   run: Runner;
   sessionPrefix: string;
   timeouts: WorkspaceE2ETimeouts;
-}): Effect.Effect<void, WorkspaceE2EError, E2ETelemetryService> =>
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | E2ETelemetryService
+> =>
   Effect.scoped(
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
@@ -66,7 +71,7 @@ export const runWorkspaceE2ECases = ({
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
-      yield* Effect.forEach(cases, (testCase) =>
+      yield* Effect.forEach(cases.entries(), ([caseIndex, testCase]) =>
         telemetry
           .traceCase({
             caseId: testCase.id,
@@ -76,7 +81,7 @@ export const runWorkspaceE2ECases = ({
                   artifactDir: resolve(artifactRoot, testCase.id),
                   browserHarStarted: false,
                   browserHarStopped: false,
-                  session: `${sessionPrefix}-${testCase.id}`,
+                  session: `${sessionPrefix}-${caseIndex}`,
                   testCase,
                 })
               ),
@@ -102,7 +107,7 @@ const runCase = (
   run: Runner,
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts
-): Effect.Effect<void, WorkspaceE2EError> => {
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(runtime.testCase.id, telemetry);
 
@@ -151,7 +156,7 @@ const runCase = (
 
 const makeStepRunner =
   (caseId: string, telemetry: E2ETelemetry): WorkspaceE2EStepRunner =>
-  <A>({ execute, id, timeoutMs }: WorkspaceE2EStep<A>) => {
+  <A, R>({ execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
     const startedAt = Date.now();
     const operation = `${caseId}/${id}`;
 

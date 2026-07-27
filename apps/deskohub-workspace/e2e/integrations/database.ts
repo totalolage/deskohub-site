@@ -1,12 +1,32 @@
 import { deepStrictEqual } from "node:assert/strict";
+import {
+  and,
+  asc,
+  count,
+  desc,
+  eq,
+  gte,
+  ilike,
+  inArray,
+  isNotNull,
+  ne,
+  or,
+  sql,
+} from "drizzle-orm";
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
-import { Pool, type QueryResultRow } from "pg";
-import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
+import {
+  discountApplications,
+  discountCodeRedemptions,
+  legalEvidenceEvents,
+  paymentAttempts,
+  webhookEvents,
+  workspaceReservations,
+} from "@/db/schema";
+import type { DatabaseClient } from "@/db/database-client";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   toWorkspaceE2EError,
-  tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -20,15 +40,21 @@ import type {
   PaymentTerminalScenario,
 } from "../types";
 import { makeUrl } from "../urls";
+import {
+  runDatabaseOperation,
+  runRetrySafeDatabaseOperation,
+} from "./database-operation";
+import { E2EDatabase } from "./database.service";
 
 export const waitForWebhookReplayRow = (
   config: DatasourceConfig,
   orderId: string,
   onRow?: (row: CheckoutRow) => void
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    pollUntil(
-      queryCheckoutRow(pool, orderId).pipe(
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    return yield* pollUntil(
+      readCheckoutRowFromDatabase(db, orderId).pipe(
         Effect.tap((row) =>
           row ? Effect.sync(() => onRow?.(row)) : Effect.void
         ),
@@ -41,8 +67,8 @@ export const waitForWebhookReplayRow = (
         label: `webhook replay checkout row for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
       }
-    )
-  );
+    );
+  });
 
 const isWebhookReplayReady = (row: CheckoutRow) =>
   !!row.provider_order_id &&
@@ -116,262 +142,424 @@ export const validatePostgres = (
   data: CheckoutData,
   orderId: string,
   onRow?: (row: CheckoutRow) => void
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const row = yield* pollUntil(
-        queryCheckoutRow(pool, orderId).pipe(
-          Effect.tap((row) =>
-            row ? Effect.sync(() => onRow?.(row)) : Effect.void
-          ),
-          Effect.map((row) =>
-            row && isPostgresComplete(row, config) ? row : undefined
-          )
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const row = yield* pollUntil(
+      readCheckoutRowFromDatabase(db, orderId).pipe(
+        Effect.tap((row) =>
+          row ? Effect.sync(() => onRow?.(row)) : Effect.void
         ),
-        {
-          intervalMs: workspaceE2EPollIntervalMs.datasource,
-          label: `Postgres checkout rows for ${orderId}`,
-          timeoutMs: config.timeouts.datasource,
-        }
-      );
+        Effect.map((row) =>
+          row && isPostgresComplete(row, config) ? row : undefined
+        )
+      ),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `Postgres checkout rows for ${orderId}`,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
 
-      yield* assertPostgresRow(row, data, config);
-      yield* assertLegalEvidence(pool, orderId, data.locale);
-      yield* assertNoLocalPii(
-        pool,
-        orderId,
-        row.payment_attempt_id,
-        row.webhook_id,
-        data
-      );
-      log("Postgres checkout tables validated");
-      return row;
-    })
+    yield* assertPostgresRow(row, data, config);
+    yield* assertLegalEvidence(db, orderId, data.locale);
+    yield* assertNoLocalPii(
+      db,
+      orderId,
+      row.payment_attempt_id,
+      row.webhook_id,
+      data
+    );
+    log("Postgres checkout tables validated");
+    return row;
+  });
+
+export interface ExpectedDiscountApplication {
+  readonly basisPoints: number;
+  readonly hasExpiration?: boolean;
+  readonly label: string;
+  readonly redemptionState?: "redeemed";
+}
+
+export const validateDiscountApplications = (
+  config: DatasourceConfig,
+  orderId: string,
+  expected: readonly ExpectedDiscountApplication[]
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runRetrySafeDatabaseOperation(
+      "read checkout discount applications",
+      db
+        .select({
+          sequence: discountApplications.sequence,
+          label: discountApplications.label,
+          adjustment: sql<DiscountApplicationRow["adjustment"]>`${discountApplications.adjustment}`,
+          subtotal_before_value: discountApplications.subtotalBeforeValue,
+          subtotal_before_exponent: discountApplications.subtotalBeforeExponent,
+          subtotal_before_currency: discountApplications.subtotalBeforeCurrency,
+          applied_amount_value: discountApplications.appliedAmountValue,
+          applied_amount_exponent: discountApplications.appliedAmountExponent,
+          applied_amount_currency: discountApplications.appliedAmountCurrency,
+          subtotal_after_value: discountApplications.subtotalAfterValue,
+          subtotal_after_exponent: discountApplications.subtotalAfterExponent,
+          subtotal_after_currency: discountApplications.subtotalAfterCurrency,
+          expires_at: discountApplications.expiresAt,
+          countdown_starts_at: discountApplications.countdownStartsAt,
+          redemption_state: discountCodeRedemptions.state,
+          redeemed_at: discountCodeRedemptions.redeemedAt,
+        })
+        .from(discountApplications)
+        .leftJoin(
+          discountCodeRedemptions,
+          eq(
+            discountCodeRedemptions.applicationId,
+            discountApplications.id
+          )
+        )
+        .where(eq(discountApplications.workspaceReservationId, orderId))
+        .orderBy(asc(discountApplications.sequence))
+    );
+
+    yield* tryWorkspaceE2ESync("assert checkout discount applications", () =>
+      assertDiscountApplications(rows, expected, config.expectedCurrency)
+    );
+    log("Discount applications validated");
+  });
+
+export interface DiscountApplicationRow {
+  readonly adjustment: {
+    readonly basisPoints?: number;
+    readonly kind?: string;
+  };
+  readonly applied_amount_currency: string;
+  readonly applied_amount_exponent: number;
+  readonly applied_amount_value: number;
+  readonly countdown_starts_at: Date | Temporal.Instant | null;
+  readonly expires_at: Date | Temporal.Instant | null;
+  readonly label: string;
+  readonly redeemed_at: Date | Temporal.Instant | null;
+  readonly redemption_state: string | null;
+  readonly sequence: number;
+  readonly subtotal_after_currency: string;
+  readonly subtotal_after_exponent: number;
+  readonly subtotal_after_value: number;
+  readonly subtotal_before_currency: string;
+  readonly subtotal_before_exponent: number;
+  readonly subtotal_before_value: number;
+}
+
+export const assertDiscountApplications = (
+  rows: readonly DiscountApplicationRow[],
+  expected: readonly ExpectedDiscountApplication[],
+  expectedCurrency: string
+) => {
+  assert(
+    rows.length === expected.length,
+    `expected ${expected.length} discount applications`
   );
-
-export const ZERO_TOTAL_DISCOUNT_CODE = "E2E_ZERO_TOTAL";
-
-const zeroTotalDiscountId = "019c91dd-c560-7e55-b9d8-c95065efd51d";
-const zeroTotalDiscountCodeId = "019c91de-61d7-7ccb-adb8-f4de2a5a32b8";
-
-export const seedZeroTotalDiscountCode = (
-  config: DatasourceConfig
-): Effect.Effect<void, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      yield* query(
-        pool,
-        "seed zero-total discount definition",
-        `insert into discounts (
-          id,
-          labels,
-          percentage_basis_points,
-          created_at,
-          updated_at
-        ) values ($1, $2::jsonb, 10000, now(), now())
-        on conflict (id) do update
-        set labels = excluded.labels,
-          percentage_basis_points = excluded.percentage_basis_points,
-          fixed_amount_value = null,
-          fixed_amount_exponent = null,
-          fixed_amount_currency = null,
-          updated_at = now()`,
-        [
-          zeroTotalDiscountId,
-          JSON.stringify({
-            "cs-CZ": "E2E sleva 100 %",
-            "en-US": "E2E 100% discount",
-          }),
-        ]
+  expected.forEach((expectation, index) => {
+    const row = rows[index];
+    assert(row, `discount application ${index} missing`);
+    assert(row.sequence === index, `unexpected discount sequence ${index}`);
+    assert(
+      row.label === expectation.label,
+      `unexpected discount label at sequence ${index}`
+    );
+    assert(
+      row.adjustment.kind === "percentage" &&
+        row.adjustment.basisPoints === expectation.basisPoints,
+      `unexpected discount adjustment at sequence ${index}`
+    );
+    assert(
+      row.applied_amount_value ===
+        Math.round(
+          (row.subtotal_before_value * expectation.basisPoints) / 10_000
+        ),
+      `unexpected discount benefit at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_value - row.applied_amount_value ===
+        row.subtotal_after_value,
+      `discount money mismatch at sequence ${index}`
+    );
+    assert(
+      row.applied_amount_value > 0,
+      `discount amount must be positive at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_currency === expectedCurrency &&
+        row.applied_amount_currency === expectedCurrency &&
+        row.subtotal_after_currency === expectedCurrency,
+      `unexpected discount currency at sequence ${index}`
+    );
+    assert(
+      row.subtotal_before_exponent === row.applied_amount_exponent &&
+        row.applied_amount_exponent === row.subtotal_after_exponent,
+      `unexpected discount exponent at sequence ${index}`
+    );
+    if (index > 0) {
+      assert(
+        row.subtotal_before_value === rows[index - 1]?.subtotal_after_value,
+        `discount subtotal chain broke at sequence ${index}`
       );
-      yield* query(
-        pool,
-        "seed zero-total discount target",
-        `insert into discount_product_targets (discount_id, product_identity)
-        values ($1, $2::jsonb)
-        on conflict do nothing`,
-        [zeroTotalDiscountId, JSON.stringify({ kind: "cowork", tier: "basic" })]
+    }
+    if (expectation.hasExpiration) {
+      assert(row.expires_at, `discount expiration ${index} missing`);
+      assert(
+        row.countdown_starts_at,
+        `discount countdown start ${index} missing`
       );
-      yield* query(
-        pool,
-        "seed zero-total discount code",
-        `insert into discount_codes (
-          id,
-          discount_id,
-          code,
-          enabled,
-          max_uses,
-          created_at,
-          updated_at
-        ) values ($1, $2, $3, true, null, now(), now())
-        on conflict (code) do update
-        set discount_id = excluded.discount_id,
-          enabled = true,
-          valid_from = null,
-          valid_until = null,
-          max_uses = null,
-          updated_at = now()`,
-        [zeroTotalDiscountCodeId, zeroTotalDiscountId, ZERO_TOTAL_DISCOUNT_CODE]
+    } else {
+      assert(
+        row.expires_at === null,
+        `unexpected discount expiration at sequence ${index}`
       );
-      log("Zero-total checkout discount fixture seeded");
-    })
-  );
+      assert(
+        row.countdown_starts_at === null,
+        `unexpected discount countdown at sequence ${index}`
+      );
+    }
+    assert(
+      row.redemption_state === (expectation.redemptionState ?? null),
+      `unexpected discount redemption state at sequence ${index}`
+    );
+    if (expectation.redemptionState === "redeemed") {
+      assert(row.redeemed_at, `discount redemption timestamp ${index} missing`);
+    }
+  });
+};
+
+export const assertNoDiscountPaymentState = (
+  orderId: string
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const [[attempts], [applications], [redemptions]] =
+      yield* runRetrySafeDatabaseOperation(
+        "read unavailable-code payment state",
+        Effect.all(
+          [
+            db
+              .select({ count: count() })
+              .from(paymentAttempts)
+              .where(eq(paymentAttempts.workspaceReservationId, orderId)),
+            db
+              .select({ count: count() })
+              .from(discountApplications)
+              .where(
+                eq(discountApplications.workspaceReservationId, orderId)
+              ),
+            db
+              .select({ count: count() })
+              .from(discountCodeRedemptions)
+              .innerJoin(
+                discountApplications,
+                eq(
+                  discountApplications.id,
+                  discountCodeRedemptions.applicationId
+                )
+              )
+              .where(
+                eq(discountApplications.workspaceReservationId, orderId)
+              ),
+          ],
+          { concurrency: "inherit" }
+        )
+      );
+
+    yield* tryWorkspaceE2ESync("assert unavailable-code payment state", () => {
+      assert(attempts, "unavailable-code attempt count missing");
+      assert(applications, "unavailable-code application count missing");
+      assert(redemptions, "unavailable-code redemption count missing");
+      assert(attempts.count === 0, "unavailable code created payment attempt");
+      assert(
+        applications.count === 0,
+        "unavailable code created discount application"
+      );
+      assert(
+        redemptions.count === 0,
+        "unavailable code created discount redemption"
+      );
+    });
+    log("Unavailable discount code created no payment state");
+  });
 
 export const validateInternalPostgres = (
   config: DatasourceConfig,
   data: CheckoutData,
   orderId: string,
   onRow?: (row: CheckoutRow) => void
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const row = yield* pollUntil(
-        queryCheckoutRow(pool, orderId).pipe(
-          Effect.tap((checkoutRow) =>
-            checkoutRow ? Effect.sync(() => onRow?.(checkoutRow)) : Effect.void
-          ),
-          Effect.map((checkoutRow) =>
-            checkoutRow && isInternalPostgresComplete(checkoutRow, config)
-              ? checkoutRow
-              : undefined
-          )
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const row = yield* pollUntil(
+      readCheckoutRowFromDatabase(db, orderId).pipe(
+        Effect.tap((checkoutRow) =>
+          checkoutRow ? Effect.sync(() => onRow?.(checkoutRow)) : Effect.void
         ),
-        {
-          intervalMs: workspaceE2EPollIntervalMs.datasource,
-          label: `internal Postgres checkout rows for ${orderId}`,
-          timeoutMs: config.timeouts.datasource,
-        }
-      );
+        Effect.map((checkoutRow) =>
+          checkoutRow && isInternalPostgresComplete(checkoutRow, config)
+            ? checkoutRow
+            : undefined
+        )
+      ),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `internal Postgres checkout rows for ${orderId}`,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
 
-      yield* assertInternalPostgresRow(row, data, config);
-      yield* assertInternalDiscountState(pool, row);
-      yield* assertLegalEvidence(pool, orderId, data.locale);
-      yield* assertNoLocalPii(
-        pool,
-        orderId,
-        row.payment_attempt_id,
-        row.webhook_id,
-        data
-      );
-      log("Internal Postgres checkout tables validated");
-      return row;
-    })
-  );
+    yield* assertInternalPostgresRow(row, data, config);
+    yield* assertInternalDiscountState(db, row);
+    yield* assertLegalEvidence(db, orderId, data.locale);
+    yield* assertNoLocalPii(
+      db,
+      orderId,
+      row.payment_attempt_id,
+      row.webhook_id,
+      data
+    );
+    log("Internal Postgres checkout tables validated");
+    return row;
+  });
 
-const queryCheckoutRow = (
-  pool: Pool,
+const checkoutRowSelection = {
+  reservation_id: workspaceReservations.id,
+  checkout_session_key: workspaceReservations.checkoutSessionKey,
+  checkout_attempt_key: workspaceReservations.checkoutAttemptKey,
+  correlation_id: workspaceReservations.correlationId,
+  dotypos_customer_id: workspaceReservations.dotyposCustomerId,
+  dotypos_reservation_id: workspaceReservations.dotyposReservationId,
+  reservation_state: workspaceReservations.reservationState,
+  payment_state: workspaceReservations.paymentState,
+  fulfillment_state: workspaceReservations.fulfillmentState,
+  active_payment_attempt_id: workspaceReservations.activePaymentAttemptId,
+  reservation_details: workspaceReservations.reservationDetails,
+  locale: workspaceReservations.locale,
+  reservation_created_at: workspaceReservations.reservationCreatedAt,
+  reservation_hold_expires_at: workspaceReservations.reservationHoldExpiresAt,
+  reservation_confirmed_at: workspaceReservations.reservationConfirmedAt,
+  reservation_cancelled_at: workspaceReservations.reservationCancelledAt,
+  reservation_hold_expired_at:
+    workspaceReservations.reservationHoldExpiredAt,
+  paid_at: workspaceReservations.paidAt,
+  fulfilled_at: workspaceReservations.fulfilledAt,
+  fulfillment_failed_at: workspaceReservations.fulfillmentFailedAt,
+  failure_code: workspaceReservations.failureCode,
+  fulfillment_failure_code: workspaceReservations.fulfillmentFailureCode,
+  payment_attempt_id: paymentAttempts.id,
+  provider: paymentAttempts.provider,
+  provider_order_id: paymentAttempts.providerOrderId,
+  security_token: paymentAttempts.securityToken,
+  payment_attempt_state: paymentAttempts.state,
+  amount_value: paymentAttempts.amountValue,
+  amount_exponent: paymentAttempts.amountExponent,
+  currency: paymentAttempts.currency,
+  provider_redirect_url: paymentAttempts.providerRedirectUrl,
+  last_webhook_event_id: paymentAttempts.lastWebhookEventId,
+  last_provider_operation_id: paymentAttempts.lastProviderOperationId,
+  last_provider_status: paymentAttempts.lastProviderStatus,
+  payment_failure_code: paymentAttempts.failureCode,
+  webhook_id: webhookEvents.id,
+  webhook_provider: webhookEvents.provider,
+  webhook_event_id: webhookEvents.eventId,
+  webhook_provider_order_id: webhookEvents.providerOrderId,
+  webhook_processed_at: webhookEvents.processedAt,
+  webhook_state: webhookEvents.state,
+  webhook_error_code: webhookEvents.errorCode,
+} satisfies Record<keyof CheckoutRow, unknown>;
+
+const readCheckoutRowFromDatabase = (
+  db: DatabaseClient,
   orderId: string
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  query<CheckoutRow>(
-    pool,
+  runRetrySafeDatabaseOperation(
     "read checkout row",
-    `select
-      wr.id as reservation_id,
-      wr.checkout_session_key,
-      wr.checkout_attempt_key,
-      wr.correlation_id,
-      wr.dotypos_customer_id,
-      wr.dotypos_reservation_id,
-      wr.reservation_state,
-      wr.payment_state,
-      wr.fulfillment_state,
-      wr.active_payment_attempt_id,
-      wr.reservation_details,
-      wr.locale,
-      wr.reservation_created_at,
-      wr.reservation_hold_expires_at,
-      wr.reservation_confirmed_at,
-      wr.reservation_cancelled_at,
-      wr.reservation_hold_expired_at,
-      wr.paid_at,
-      wr.fulfilled_at,
-      wr.fulfillment_failed_at,
-      wr.failure_code,
-      wr.fulfillment_failure_code,
-      pa.id as payment_attempt_id,
-      pa.provider,
-      pa.provider_order_id,
-      pa.security_token,
-      pa.state as payment_attempt_state,
-      pa.amount_value,
-      pa.amount_exponent,
-      pa.currency,
-      pa.provider_redirect_url,
-      pa.last_webhook_event_id,
-      pa.last_provider_operation_id,
-      pa.last_provider_status,
-      pa.failure_code as payment_failure_code,
-      wh.id as webhook_id,
-      wh.provider as webhook_provider,
-      wh.event_id as webhook_event_id,
-      wh.provider_order_id as webhook_provider_order_id,
-      wh.processed_at as webhook_processed_at,
-      wh.state as webhook_state,
-      wh.error_code as webhook_error_code
-    from workspace_reservations wr
-    left join payment_attempts pa on pa.id = wr.active_payment_attempt_id
-    left join webhook_events wh on wh.event_id = pa.last_webhook_event_id
-    where wr.id = $1`,
-    [orderId]
-  ).pipe(Effect.map((result) => result.rows[0]));
+    db
+      .select(checkoutRowSelection)
+      .from(workspaceReservations)
+      .leftJoin(
+        paymentAttempts,
+        eq(paymentAttempts.id, workspaceReservations.activePaymentAttemptId)
+      )
+      .leftJoin(
+        webhookEvents,
+        eq(webhookEvents.eventId, paymentAttempts.lastWebhookEventId)
+      )
+      .where(eq(workspaceReservations.id, orderId))
+      .limit(1)
+  ).pipe(Effect.map((rows) => rows[0]));
 
 export const readCheckoutRow = (
-  config: DatasourceConfig,
   orderId: string
-): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  withPool(config, (pool) => queryCheckoutRow(pool, orderId));
+): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    return yield* readCheckoutRowFromDatabase(db, orderId);
+  });
 
 export const waitForCheckoutRow = (
   config: DatasourceConfig,
   orderId: string
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    pollUntil(queryCheckoutRow(pool, orderId), {
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    return yield* pollUntil(readCheckoutRowFromDatabase(db, orderId), {
       intervalMs: workspaceE2EPollIntervalMs.datasource,
       label: "checkout row",
       timeoutMs: config.timeouts.datasource,
-    })
-  );
+    });
+  });
 
-export const readLatestCleanupCheckoutRow = (
-  config: DatasourceConfig,
+export const readCleanupCheckoutRows = (
   createdAfter: Date,
   data: CheckoutData
-): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const result = yield* query<{ id: string }>(
-        pool,
-        "read latest checkout cleanup row",
-        `select wr.id
-      from workspace_reservations wr
-      where wr.reservation_created_at >= $1
-        and wr.dotypos_reservation_id is not null
-        and wr.payment_state <> 'paid'
-        and wr.reservation_details = $2::jsonb
-        and wr.locale = $3
-      order by wr.reservation_created_at desc
-      limit 1`,
-        [
-          createdAfter,
-          JSON.stringify(data.expectedReservationDetails),
-          data.locale,
-        ]
-      );
+): Effect.Effect<readonly CheckoutRow[], WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const reservations = yield* runRetrySafeDatabaseOperation(
+      "read checkout cleanup rows",
+      db
+        .select({ id: workspaceReservations.id })
+        .from(workspaceReservations)
+        .where(
+          and(
+            gte(
+              workspaceReservations.reservationCreatedAt,
+              Temporal.Instant.fromEpochMilliseconds(createdAfter.getTime())
+            ),
+            isNotNull(workspaceReservations.dotyposReservationId),
+            ne(workspaceReservations.paymentState, "paid"),
+            eq(
+              workspaceReservations.reservationDetails,
+              data.expectedReservationDetails
+            ),
+            eq(workspaceReservations.locale, data.locale)
+          )
+        )
+        .orderBy(desc(workspaceReservations.reservationCreatedAt))
+    );
 
-      const orderId = result.rows[0]?.id;
-      return orderId ? yield* queryCheckoutRow(pool, orderId) : undefined;
-    })
-  );
+    return yield* Effect.forEach(
+      reservations,
+      ({ id }) => readCheckoutRowFromDatabase(db, id),
+      { concurrency: "inherit" }
+    ).pipe(
+      Effect.map((rows) =>
+        rows.filter((row): row is CheckoutRow => row !== undefined)
+      )
+    );
+  });
 
 export const markPaymentTerminalForE2E = (
-  config: DatasourceConfig,
   orderId: string,
   scenario: PaymentTerminalScenario
-): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const current = yield* queryCheckoutRow(pool, orderId);
+): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const current = yield* readCheckoutRowFromDatabase(db, orderId);
       const paymentAttemptId = yield* tryWorkspaceE2ESync(
         "assert payment terminal checkout row",
         () => {
@@ -382,131 +570,152 @@ export const markPaymentTerminalForE2E = (
 
       const failureCode = `workspace_e2e_nexi_${scenario.state}`;
       const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
+    const now = Temporal.Now.instant();
 
-      yield* query(
-        pool,
+    yield* runDatabaseOperation(
         "mark payment attempt terminal state",
-        `update payment_attempts
-      set state = $3,
-        failure_code = $4,
-        last_provider_operation_id = $5,
-        last_provider_status = $6,
-        updated_at = now()
-      where id = $1
-        and workspace_reservation_id = $2
-        and state in ('created', 'pending', $3)`,
-        [
-          paymentAttemptId,
-          orderId,
-          scenario.state,
-          failureCode,
-          providerOperationId,
-          scenario.providerStatus,
-        ]
-      );
+      db.transaction((tx) =>
+        Effect.gen(function* () {
+          yield* tx
+            .update(paymentAttempts)
+            .set({
+              state: scenario.state,
+              failureCode,
+              lastProviderOperationId: providerOperationId,
+              lastProviderStatus: scenario.providerStatus,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(paymentAttempts.id, paymentAttemptId),
+                eq(paymentAttempts.workspaceReservationId, orderId),
+                inArray(paymentAttempts.state, [
+                  "created",
+                  "pending",
+                  scenario.state,
+                ])
+              )
+            );
 
-      yield* query(
-        pool,
-        "mark reservation terminal payment state",
-        `update workspace_reservations
-      set payment_state = $3,
-        failure_code = $4,
-        updated_at = now()
-      where id = $1
-        and active_payment_attempt_id = $2
-        and reservation_state = 'held'
-        and payment_state in ('pending', $3)`,
-        [orderId, paymentAttemptId, scenario.state, failureCode]
-      );
+          yield* tx
+            .update(workspaceReservations)
+            .set({
+              paymentState: scenario.state,
+              failureCode,
+              updatedAt: now,
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                eq(
+                  workspaceReservations.activePaymentAttemptId,
+                  paymentAttemptId
+                ),
+                eq(workspaceReservations.reservationState, "held"),
+                inArray(workspaceReservations.paymentState, [
+                  "pending",
+                  scenario.state,
+                ])
+              )
+            );
+        })
+      )
+    );
 
-      const row = yield* queryCheckoutRow(pool, orderId);
-      return yield* tryWorkspaceE2ESync(
-        "assert terminal checkout row exists",
-        () => {
-          assert(row, "terminal checkout row missing");
-          return row;
-        }
-      );
-    })
-  );
+    const row = yield* readCheckoutRowFromDatabase(db, orderId);
+    return yield* tryWorkspaceE2ESync(
+      "assert terminal checkout row exists",
+      () => {
+        assert(row, "terminal checkout row missing");
+        return row;
+      }
+    );
+  });
 
 export const markFulfillmentFailedForE2E = (
-  config: DatasourceConfig,
   orderId: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const result = yield* query<{ id: string }>(
-        pool,
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const rows = yield* runDatabaseOperation(
         "mark checkout fulfillment failed",
-        `update workspace_reservations
-      set fulfillment_state = 'failed',
-        fulfilled_at = null,
-        fulfillment_failed_at = now(),
-        fulfillment_failure_code = 'workspace_e2e_delivery_failed',
-        updated_at = now()
-      where id = $1
-        and payment_state = 'paid'
-        and fulfillment_state = 'fulfilled'
-      returning id`,
-        [orderId]
-      );
-
-      yield* tryWorkspaceE2ESync("assert fulfillment failed marker", () =>
-        assert(
-          result.rows[0]?.id === orderId,
-          "fulfilled checkout row could not be marked fulfillment_failed"
+      db
+        .update(workspaceReservations)
+        .set({
+          fulfillmentState: "failed",
+          fulfilledAt: null,
+          fulfillmentFailedAt: Temporal.Now.instant(),
+          fulfillmentFailureCode: "workspace_e2e_delivery_failed",
+          updatedAt: Temporal.Now.instant(),
+        })
+        .where(
+          and(
+            eq(workspaceReservations.id, orderId),
+            eq(workspaceReservations.paymentState, "paid"),
+            eq(workspaceReservations.fulfillmentState, "fulfilled")
+          )
         )
-      );
-    })
-  );
+        .returning({ id: workspaceReservations.id })
+    );
+
+    yield* tryWorkspaceE2ESync("assert fulfillment failed marker", () =>
+      assert(
+        rows[0]?.id === orderId,
+        "fulfilled checkout row could not be marked fulfillment_failed"
+      )
+    );
+  });
 
 export const markConsoleFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
   orderId: string
-): Effect.Effect<void, WorkspaceE2EError> =>
-  withPool(config, (pool) =>
-    Effect.gen(function* () {
-      const row = yield* pollUntil(
-        Effect.gen(function* () {
-          const result = yield* query<{ id: string }>(
-            pool,
+): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
+  Effect.gen(function* () {
+    const { db } = yield* E2EDatabase;
+    const row = yield* pollUntil(
+      Effect.gen(function* () {
+        const rows = yield* runRetrySafeDatabaseOperation(
             "mark console fulfillment delivered",
-            `update workspace_reservations
-          set fulfillment_state = 'fulfilled',
-            fulfilled_at = coalesce(fulfilled_at, now()),
-            updated_at = now()
-          where id = $1
-            and payment_state = 'paid'
-            and fulfillment_state = 'processing'
-            and reservation_confirmed_at is not null
-            and dotypos_reservation_id is not null
-          returning id`,
-            [orderId]
-          );
+          db
+            .update(workspaceReservations)
+            .set({
+              fulfillmentState: "fulfilled",
+              fulfilledAt: sql`coalesce(${workspaceReservations.fulfilledAt}, now())`,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                eq(workspaceReservations.paymentState, "paid"),
+                eq(workspaceReservations.fulfillmentState, "processing"),
+                isNotNull(workspaceReservations.reservationConfirmedAt),
+                isNotNull(workspaceReservations.dotyposReservationId)
+              )
+            )
+            .returning({ id: workspaceReservations.id })
+        );
 
-          if (result.rows[0]?.id !== orderId) {
-            const current = yield* queryCheckoutRow(pool, orderId);
-            return current?.fulfillment_state === "fulfilled"
-              ? current
-              : undefined;
-          }
-
-          return yield* queryCheckoutRow(pool, orderId);
-        }),
-        {
-          intervalMs: workspaceE2EPollIntervalMs.datasource,
-          label: `console fulfillment marker for ${orderId}`,
-          timeoutMs: config.timeouts.datasource,
+        if (rows[0]?.id !== orderId) {
+          const current = yield* readCheckoutRowFromDatabase(db, orderId);
+          return current?.fulfillment_state === "fulfilled"
+            ? current
+            : undefined;
         }
-      );
 
-      yield* tryWorkspaceE2ESync("assert console fulfillment marker row", () =>
-        assert(row, "console fulfillment marker row missing")
-      );
-      log("Console fulfillment delivery marker applied");
-    })
-  );
+        return yield* readCheckoutRowFromDatabase(db, orderId);
+      }),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `console fulfillment marker for ${orderId}`,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
+
+    yield* tryWorkspaceE2ESync("assert console fulfillment marker row", () =>
+      assert(row, "console fulfillment marker row missing")
+    );
+    log("Console fulfillment delivery marker applied");
+  });
 
 const isPostgresComplete = (row: CheckoutRow, config: DatasourceConfig) =>
   row.reservation_state === "confirmed" &&
@@ -715,36 +924,46 @@ const assertInternalPostgresRow = (
   });
 
 const assertInternalDiscountState = (
-  pool: Pool,
+  db: DatabaseClient,
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<InternalDiscountApplicationRow>(
-      pool,
+    const rows = yield* runRetrySafeDatabaseOperation(
       "read internal discount application and claim",
-      `select
-        da.subtotal_before_value,
-        da.applied_amount_value,
-        da.subtotal_after_value,
-        dcr.state as redemption_state,
-        dcr.redeemed_at
-      from discount_applications da
-      left join discount_code_redemptions dcr
-        on dcr.application_id = da.id
-      where da.payment_attempt_id = $1`,
-      [row.payment_attempt_id]
+      db
+        .select({
+          subtotal_before_value: discountApplications.subtotalBeforeValue,
+          applied_amount_value: discountApplications.appliedAmountValue,
+          subtotal_after_value: discountApplications.subtotalAfterValue,
+          redemption_state: discountCodeRedemptions.state,
+          redeemed_at: discountCodeRedemptions.redeemedAt,
+        })
+        .from(discountApplications)
+        .leftJoin(
+          discountCodeRedemptions,
+          eq(
+            discountCodeRedemptions.applicationId,
+            discountApplications.id
+          )
+        )
+        .where(
+          eq(
+            discountApplications.paymentAttemptId,
+            row.payment_attempt_id ?? ""
+          )
+        )
     );
 
     yield* tryWorkspaceE2ESync(
       "assert internal discount application and claim",
-      () => assertInternalDiscountApplications(result.rows)
+      () => assertInternalDiscountApplications(rows)
     );
   });
 
 interface InternalDiscountApplicationRow {
   readonly applied_amount_value: number;
   readonly redemption_state: string | null;
-  readonly redeemed_at: Date | null;
+  readonly redeemed_at: Date | Temporal.Instant | null;
   readonly subtotal_after_value: number;
   readonly subtotal_before_value: number;
 }
@@ -777,24 +996,23 @@ export const assertInternalDiscountApplications = (
 };
 
 const assertLegalEvidence = (
-  pool: Pool,
+  db: DatabaseClient,
   orderId: string,
   locale: CheckoutData["locale"]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<{
-      accepted: boolean;
-      document_key: string;
-      hash_algorithm: string;
-      locale: string;
-      source: string;
-    }>(
-      pool,
+    const rows = yield* runRetrySafeDatabaseOperation(
       "read legal evidence rows",
-      `select document_key, source, accepted, hash_algorithm, locale
-    from legal_evidence_events
-    where workspace_reservation_id = $1`,
-      [orderId]
+      db
+        .select({
+          accepted: legalEvidenceEvents.accepted,
+          document_key: legalEvidenceEvents.documentKey,
+          hash_algorithm: legalEvidenceEvents.hashAlgorithm,
+          locale: legalEvidenceEvents.locale,
+          source: legalEvidenceEvents.source,
+        })
+        .from(legalEvidenceEvents)
+        .where(eq(legalEvidenceEvents.workspaceReservationId, orderId))
     );
 
     yield* tryWorkspaceE2ESync("assert legal evidence rows", () => {
@@ -804,7 +1022,7 @@ const assertLegalEvidence = (
         "operatingRules:payment_submit",
       ]);
 
-      for (const row of result.rows) {
+      for (const row of rows) {
         assert(
           row.accepted,
           `legal evidence ${row.document_key} was not accepted`
@@ -825,84 +1043,95 @@ const assertLegalEvidence = (
   });
 
 const assertNoLocalPii = (
-  pool: Pool,
+  db: DatabaseClient,
   orderId: string,
   paymentAttemptId: string | null,
   webhookEventId: string | null,
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* query<{ count: string }>(
-      pool,
+    const patterns = [data.email, data.phone, data.name, data.message].map(
+      (value) => `%${value}%`
+    );
+    const [
+      [reservationCount],
+      [attemptCount],
+      [webhookCount],
+      [legalEvidenceCount],
+    ] = yield* runRetrySafeDatabaseOperation(
       "scan checkout tables for local PII",
-      `with payloads as (
-      select to_jsonb(wr)::text as payload
-      from workspace_reservations wr
-      where wr.id = $1
-      union all
-      select to_jsonb(pa)::text
-      from payment_attempts pa
-      where pa.id = $2
-      union all
-      select to_jsonb(wh)::text
-      from webhook_events wh
-      where wh.id = $3
-      union all
-      select to_jsonb(le)::text
-      from legal_evidence_events le
-      where le.workspace_reservation_id = $1
-    )
-    select count(*)
-      from payloads
-      where payload ilike $4 or payload ilike $5 or payload ilike $6 or payload ilike $7`,
-      [
-        orderId,
-        paymentAttemptId,
-        webhookEventId,
-        `%${data.email}%`,
-        `%${data.phone}%`,
-        `%${data.name}%`,
-        `%${data.message}%`,
-      ]
+      Effect.all(
+        [
+          db
+            .select({ count: count() })
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(workspaceReservations.id, orderId),
+                or(
+                  ...patterns.map((pattern) =>
+                    ilike(
+                      sql`to_jsonb(${workspaceReservations})::text`,
+                      pattern
+                    )
+                  )
+                )
+              )
+            ),
+          db
+            .select({ count: count() })
+            .from(paymentAttempts)
+            .where(
+              and(
+                eq(paymentAttempts.id, paymentAttemptId ?? ""),
+                or(
+                  ...patterns.map((pattern) =>
+                    ilike(sql`to_jsonb(${paymentAttempts})::text`, pattern)
+                  )
+                )
+              )
+            ),
+          db
+            .select({ count: count() })
+            .from(webhookEvents)
+            .where(
+              and(
+                eq(webhookEvents.id, webhookEventId ?? ""),
+                or(
+                  ...patterns.map((pattern) =>
+                    ilike(sql`to_jsonb(${webhookEvents})::text`, pattern)
+                  )
+                )
+              )
+            ),
+          db
+            .select({ count: count() })
+            .from(legalEvidenceEvents)
+            .where(
+              and(
+                eq(legalEvidenceEvents.workspaceReservationId, orderId),
+                or(
+                  ...patterns.map((pattern) =>
+                    ilike(sql`to_jsonb(${legalEvidenceEvents})::text`, pattern)
+                  )
+                )
+              )
+            ),
+        ],
+        { concurrency: "inherit" }
+      )
     );
 
     yield* tryWorkspaceE2ESync(
       "assert checkout tables do not contain local PII",
       () =>
         assert(
-          Number(result.rows[0]?.count ?? 0) === 0,
+          (reservationCount?.count ?? 0) +
+            (attemptCount?.count ?? 0) +
+            (webhookCount?.count ?? 0) +
+            (legalEvidenceCount?.count ?? 0) ===
+            0,
           "local checkout tables contain test PII"
         )
     );
   });
-
-const makePool = (config: DatasourceConfig) =>
-  new Pool({
-    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
-    connectionTimeoutMillis: config.timeouts.datasource,
-    query_timeout: config.timeouts.datasource,
-    statement_timeout: config.timeouts.datasource,
-  });
-
-const withPool = <A>(
-  config: DatasourceConfig,
-  use: (pool: Pool) => Effect.Effect<A, WorkspaceE2EError>
-): Effect.Effect<A, WorkspaceE2EError> =>
-  tryWorkspaceE2ESync("create Postgres pool", () => makePool(config)).pipe(
-    Effect.flatMap((pool) =>
-      use(pool).pipe(
-        Effect.ensuring(
-          tryWorkspaceE2EPromise("close Postgres pool", () => pool.end()).pipe(
-            Effect.ignore
-          )
-        )
-      )
-    )
-  );
-
-const query = <T extends QueryResultRow>(
-  pool: Pool,
-  operation: string,
-  text: string,
-  values: readonly unknown[] = []
-) => tryWorkspaceE2EPromise(operation, () => pool.query<T>(text, [...values]));

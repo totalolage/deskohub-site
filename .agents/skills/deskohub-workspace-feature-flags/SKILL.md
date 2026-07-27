@@ -22,3 +22,9 @@ Use overrides only for isolated development or protected-preview validation, nev
 ```env
 POSTHOG_FEATURE_FLAG_OVERRIDES={"discount_codes":true}
 ```
+
+When auditing rollout state, read PostHog's explicit flag status independently
+from its release conditions. A disabled flag may still display a configured
+condition such as `100% of all users`; that percentage describes the rollout
+that would apply if the flag were enabled and is not evidence that the flag is
+active.

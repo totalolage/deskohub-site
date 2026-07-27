@@ -198,9 +198,32 @@ describe("reservation quotes", () => {
 
     expect(quote).not.toHaveProperty("order");
     expect(quote).not.toHaveProperty("reservation");
+    expect(quote).not.toHaveProperty("summary");
     expect(quote).not.toHaveProperty("name");
     expect(quote).not.toHaveProperty("email");
     expect(quote).not.toHaveProperty("phone");
+  });
+
+  test("monitor composition does not alter the cowork price quote", () => {
+    const firstMonitor = buildQuote(
+      coworkReservation({
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x32-qhd",
+      })
+    );
+    const secondMonitor = buildQuote(
+      coworkReservation({
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      })
+    );
+
+    expect(firstMonitor).toEqual(secondMonitor);
+    expect(firstMonitor.items).not.toContainEqual(
+      expect.objectContaining({ type: "monitor" })
+    );
   });
 
   test("ignores customer fields when fingerprinting", () => {

@@ -1,7 +1,7 @@
 "use client";
 
 import { Info } from "lucide-react";
-import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import {
   formatWorkspaceMoney,

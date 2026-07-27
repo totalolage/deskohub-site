@@ -40,7 +40,7 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
-import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-quote";
+import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
