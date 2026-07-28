@@ -58,7 +58,7 @@ describe("workspace environment schemas", () => {
 
   test("accepts an absent or lowercase SHA-256 administration hash", () => {
     const decodeHash = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.DISCOUNT_ADMIN_BASIC_AUTH_SHA256
+      workspaceServerEnvSchema.fields.ADMIN_BASIC_AUTH_SHA256
     );
 
     expect(decodeHash(undefined)).toBeUndefined();

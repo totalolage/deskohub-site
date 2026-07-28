@@ -13,8 +13,7 @@ export const env = createEnv({
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
-    DISCOUNT_ADMIN_BASIC_AUTH_SHA256:
-      process.env.DISCOUNT_ADMIN_BASIC_AUTH_SHA256,
+    ADMIN_BASIC_AUTH_SHA256: process.env.ADMIN_BASIC_AUTH_SHA256,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -72,10 +71,10 @@ export const env = createEnv({
         };
       }
 
-      if (hasPath("DISCOUNT_ADMIN_BASIC_AUTH_SHA256")) {
+      if (hasPath("ADMIN_BASIC_AUTH_SHA256")) {
         return {
           ...issue,
-          message: "Invalid discount administration authentication hash.",
+          message: "Invalid administration authentication hash.",
         };
       }
 

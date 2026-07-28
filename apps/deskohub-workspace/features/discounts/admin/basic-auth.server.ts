@@ -25,7 +25,7 @@ export const requireDiscountAdminAuthorization = Effect.fn(
       (requestHeaders) =>
         isDiscountAdminAuthorizationValid(
           requestHeaders.get("authorization"),
-          env.DISCOUNT_ADMIN_BASIC_AUTH_SHA256
+          env.ADMIN_BASIC_AUTH_SHA256
         ),
       () =>
         new DiscountAdminUnauthorizedError({

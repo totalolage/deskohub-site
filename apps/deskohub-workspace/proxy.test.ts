@@ -91,6 +91,6 @@ test("checks administration Server Action posts before the general pass-through"
 
 test("test authentication fixture matches the configured hash contract", () => {
   expect(createHash("sha256").update("admin:test-password").digest("hex")).toBe(
-    process.env.DISCOUNT_ADMIN_BASIC_AUTH_SHA256
+    process.env.ADMIN_BASIC_AUTH_SHA256
   );
 });

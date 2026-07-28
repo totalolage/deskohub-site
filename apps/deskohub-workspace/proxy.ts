@@ -22,7 +22,7 @@ export function proxy(request: NextRequest) {
     if (
       !isDiscountAdminAuthorizationValid(
         request.headers.get("authorization"),
-        env.DISCOUNT_ADMIN_BASIC_AUTH_SHA256
+        env.ADMIN_BASIC_AUTH_SHA256
       )
     ) {
       return new NextResponse(null, {
