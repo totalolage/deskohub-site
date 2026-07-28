@@ -27,6 +27,8 @@ describe("discount administration Basic authentication", () => {
       `Basic ${Buffer.from("operator:").toString("base64")}`,
       `Basic ${Buffer.from(":password").toString("base64")}`,
       `Basic ${Buffer.from("operator:wrong").toString("base64")}`,
+      `${authorization}%%%`,
+      `${authorization}===`,
     ];
 
     for (const candidate of cases) {

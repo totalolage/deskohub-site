@@ -20,9 +20,7 @@ export const isDiscountAdminAuthorizationValid = (
     if (
       separatorIndex <= 0 ||
       separatorIndex === credentials.length - 1 ||
-      Buffer.from(credentials.toString("base64"), "base64").compare(
-        credentials
-      ) !== 0
+      credentials.toString("base64") !== encodedCredentials
     ) {
       return false;
     }
