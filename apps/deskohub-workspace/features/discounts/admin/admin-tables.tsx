@@ -293,12 +293,14 @@ function AdminDataTable<T>({
   readonly renderEditor: (item: T) => ReactNode;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
+  const tableColumns = useMemo(() => [...columns], [columns]);
+  const tableData = useMemo(() => [...data], [data]);
   // TanStack Table intentionally returns dynamic accessors; this component is
   // kept outside memoized boundaries.
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
-    columns: [...columns],
-    data: [...data],
+    columns: tableColumns,
+    data: tableData,
     getCoreRowModel: getCoreRowModel(),
     getRowId: (item) => getId(item),
     getSortedRowModel: getSortedRowModel(),

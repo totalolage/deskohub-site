@@ -14,7 +14,9 @@ import {
   fireEvent,
   render,
   waitFor,
+  within,
 } from "@testing-library/react";
+import { Profiler, StrictMode } from "react";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -146,6 +148,59 @@ describe("discount administration pages", () => {
       { target: { value: "Updated summer discount" } }
     );
     expect(save).toHaveProperty("disabled", false);
+  });
+
+  test("sorts discount rows without entering a render loop", async () => {
+    const sortableDashboard: DiscountAdminDashboard = {
+      ...dashboard,
+      discounts: [
+        ...dashboard.discounts,
+        {
+          ...dashboard.discounts[0],
+          id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
+          labels: {
+            "cs-CZ": "Podzimní sleva",
+            "en-US": "Autumn discount",
+          },
+          codeCount: 0,
+        },
+      ],
+    };
+    const { DiscountsAdministrationPage } = await import("./components");
+    let renderCount = 0;
+    const view = render(
+      <StrictMode>
+        <Profiler
+          id="discounts-administration"
+          onRender={() => {
+            renderCount += 1;
+            if (renderCount > 20) {
+              throw new Error("Discount sorting entered a render loop.");
+            }
+          }}
+        >
+          <DiscountsAdministrationPage dashboard={sortableDashboard} />
+        </Profiler>
+      </StrictMode>
+    );
+    const table = view.getByRole("table", { name: "Discounts" });
+    const labelHeader = within(table).getByRole("button", {
+      name: "English label",
+    });
+
+    await act(() => new Promise<void>((resolve) => queueMicrotask(resolve)));
+    fireEvent.click(labelHeader);
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 50)));
+
+    await waitFor(() => {
+      expect(labelHeader.closest("th")?.getAttribute("aria-sort")).toBe(
+        "ascending"
+      );
+      expect(within(table).getAllByRole("row")[1]?.textContent).toContain(
+        "Autumn discount"
+      );
+      expect(renderCount).toBeLessThan(20);
+    });
   });
 
   test("uses local datetime controls and renders server errors inline", async () => {
