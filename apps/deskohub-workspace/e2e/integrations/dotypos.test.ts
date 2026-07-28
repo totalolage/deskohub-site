@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
 import {
+  dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
   waitForConfirmedDotyposReservation,
 } from "./dotypos";
@@ -59,4 +60,27 @@ test("waits for Dotypos to expose the confirmed reservation state", async () => 
 
   expect(result.reservation.status).toBe("CONFIRMED");
   expect(reads).toBe(3);
+});
+
+test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {
+  expect(
+    dotyposTimestampMatches(
+      "2099-09-01T08:00:00.000Z",
+      "2099-09-01T08:00:00Z"
+    )
+  ).toBe(true);
+  expect(
+    dotyposTimestampMatches(
+      "2099-09-01T09:00:00.000Z",
+      "2099-09-01T08:00:00Z"
+    )
+  ).toBe(false);
+});
+
+test("matches epoch-millisecond Dotypos timestamps", () => {
+  const expected = "2099-09-01T08:00:00Z";
+
+  expect(
+    dotyposTimestampMatches(String(new Date(expected).getTime()), expected)
+  ).toBe(true);
 });

@@ -6,7 +6,6 @@ import {
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import { startCheckoutPaymentAttempt } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -45,20 +44,24 @@ export const assertPaymentTerminalPath = ({
   config,
   data,
   datasourceConfig,
+  reservationPath,
   run,
   runStep,
   scenario,
   session,
   state,
+  submitReservationScript,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
+  reservationPath: string;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   scenario: PaymentTerminalScenario;
   session: string;
   state: CheckoutFlowState;
+  submitReservationScript: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
@@ -71,7 +74,7 @@ export const assertPaymentTerminalPath = ({
         },
         run,
         session,
-        submitReservationScript: getSubmitCoworkReservationScript(data),
+        submitReservationScript,
       }),
       id: "start-checkout-payment",
       timeoutMs: config.timeouts.checkoutStart,
@@ -99,7 +102,13 @@ export const assertPaymentTerminalPath = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: restartReservation(run, session, scenario, config.timeouts),
+      execute: restartReservation(
+        run,
+        session,
+        scenario,
+        reservationPath,
+        config.timeouts
+      ),
       id: "restart-reservation",
       timeoutMs: config.timeouts.uiTransition,
     });
@@ -135,14 +144,20 @@ const restartReservation = (
   run: Runner,
   session: string,
   scenario: PaymentTerminalScenario,
+  reservationPath: string,
   timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    yield* activateStatusReserveAgain(run, session, timeouts);
+    yield* activateStatusReserveAgain(
+      run,
+      session,
+      reservationPath,
+      timeouts
+    );
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === "/en-US/reservation/cowork",
+        (parseUrl(url)?.pathname ?? "") === reservationPath,
       run,
       session,
       timeoutMs: timeouts.uiTransition,
@@ -189,9 +204,10 @@ const assertTerminalStatusPage = ({
 export const activateStatusReserveAgain = (
   run: Runner,
   session: string,
+  reservationPath: string,
   timeouts: WorkspaceE2ETimeouts
 ) => {
-  const selector = 'a[href="/en-US/reservation/cowork"]';
+  const selector = `a[href="${reservationPath}"]`;
 
   return activateHydratedBrowserElement(run, session, selector, {
     timeoutMs: timeouts.uiTransition,

@@ -116,7 +116,10 @@ const definitions: readonly DiscountDefinitionFixture[] = [
       "cs-CZ": "E2E sleva 100 %",
       "en-US": "E2E 100% discount",
     },
-    products: [{ kind: "cowork", tier: "basic" }],
+    products: [
+      { kind: "cowork", tier: "basic" },
+      { kind: "meeting-room", durationMinutes: 240 },
+    ],
   },
 ];
 
