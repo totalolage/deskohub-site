@@ -8,6 +8,7 @@ import { RoomImageCarousel } from "@/features/gallery/components/room-image-caro
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -73,7 +74,7 @@ export async function generateMetadata({
   });
 }
 
-function TtrpgRoomPage({
+export function TtrpgRoomPage({
   locale,
   barImages,
   workspaceImages,
@@ -82,7 +83,6 @@ function TtrpgRoomPage({
   barImages: readonly CloudinaryAsset[];
   workspaceImages: readonly CloudinaryAsset[];
 }) {
-  const localePath = `/${locale}`;
   const rooms = [
     {
       eyebrow: m.ttrpgRoomBarRoomLabel({}, { locale }),
@@ -100,10 +100,7 @@ function TtrpgRoomPage({
       title: m.ttrpgRoomWorkspaceChoiceTitle({}, { locale }),
       seats: m.ttrpgRoomWorkspaceCapacity({}, { locale }),
       images: workspaceImages,
-      href: getContactHref(
-        `${localePath}/contact`,
-        m.ttrpgRoomWorkspacePrefillMessage({}, { locale })
-      ),
+      href: getMeetingRoomReservationPath(locale),
       cta: m.ttrpgRoomWorkspaceCta({}, { locale }),
     },
   ];
