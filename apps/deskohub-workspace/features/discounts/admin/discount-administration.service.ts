@@ -280,6 +280,34 @@ export class DiscountAdministration extends Context.Service<
       const dotypos = yield* DotyposService;
       const { salesCalendarId } = yield* CalendarResourceConfig;
 
+      const loadActiveCustomer = Effect.fn(
+        "DiscountAdministration.loadActiveCustomer"
+      )((customerId: DotyposCustomerId) =>
+        dotypos.getCustomer(customerId).pipe(
+          Effect.catchTag("ExternalAPIError", (error) =>
+            Effect.fail(
+              error.statusCode === 404
+                ? new DiscountAdminNotFoundError({
+                    resource: "Dotypos customer",
+                    id: customerId,
+                    message:
+                      "The Dotypos customer does not exist or is deleted.",
+                  })
+                : error
+            )
+          ),
+          Effect.filterOrFail(
+            (customer) => Boolean(customer.id) && !customer.deleted,
+            () =>
+              new DiscountAdminNotFoundError({
+                resource: "Dotypos customer",
+                id: customerId,
+                message: "The Dotypos customer does not exist or is deleted.",
+              })
+          )
+        )
+      );
+
       const loadDashboard = Effect.fn("DiscountAdministration.loadDashboard")(
         () =>
           Effect.Do.pipe(
@@ -547,7 +575,7 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.loadCustomerProfile"
       )((input: { readonly customerId: DotyposCustomerId }) =>
         Effect.all({
-          customer: dotypos.getCustomer(input.customerId),
+          customer: loadActiveCustomer(input.customerId),
           discountGroups: dotypos.getDiscountGroups(),
           codeRows: db.query.discountCodes.findMany({
             with: {
@@ -561,15 +589,6 @@ export class DiscountAdministration extends Context.Service<
             },
           }),
         }).pipe(
-          Effect.filterOrFail(
-            ({ customer }) => Boolean(customer.id) && !customer.deleted,
-            () =>
-              new DiscountAdminNotFoundError({
-                resource: "Dotypos customer",
-                id: input.customerId,
-                message: "The Dotypos customer does not exist or is deleted.",
-              })
-          ),
           Effect.map(({ codeRows, customer, discountGroups }) => ({
             customer: toAdminDotyposCustomer(customer),
             discountGroups: discountGroups
@@ -607,14 +626,7 @@ export class DiscountAdministration extends Context.Service<
         readonly codeId: DiscountCodeId;
         readonly customerId: DotyposCustomerId;
       }) {
-        const customer = yield* dotypos.getCustomer(input.customerId);
-        if (!customer.id || customer.deleted) {
-          return yield* new DiscountAdminNotFoundError({
-            resource: "Dotypos customer",
-            id: input.customerId,
-            message: "The Dotypos customer does not exist or is deleted.",
-          });
-        }
+        yield* loadActiveCustomer(input.customerId);
 
         yield* db.transaction((tx) =>
           Effect.gen(function* () {
@@ -712,14 +724,7 @@ export class DiscountAdministration extends Context.Service<
         readonly customerId: DotyposCustomerId;
         readonly discountGroupId: string | null;
       }) {
-        const customer = yield* dotypos.getCustomer(input.customerId);
-        if (!customer.id || customer.deleted) {
-          return yield* new DiscountAdminNotFoundError({
-            resource: "Dotypos customer",
-            id: input.customerId,
-            message: "The Dotypos customer does not exist or is deleted.",
-          });
-        }
+        const customer = yield* loadActiveCustomer(input.customerId);
         if (input.discountGroupId !== null) {
           if (customer._discountGroupId === input.discountGroupId) {
             return;
