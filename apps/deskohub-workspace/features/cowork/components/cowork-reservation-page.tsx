@@ -7,14 +7,12 @@ import {
   getCoworkCoffeeAdvertisedPriceRequest,
   getCoworkTierAdvertisedPriceRequests,
 } from "@/features/reservation/cowork-advertised-price";
-import {
-  coworkReservationDefaultValues,
-  getCoworkTierRequiresMonitorOption,
-} from "@/features/reservation/cowork-reservation";
+import { getCoworkTierRequiresMonitorOption } from "@/features/reservation/cowork-reservation";
 import {
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
+import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
 import { coworkReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -35,9 +33,12 @@ export const coworkReservationPage = createReservationPage({
     locale,
     searchParams,
   }) => {
-    const initialValues = initialReservation
+    const restoredOrQueryValues = initialReservation
       ? getReservationDefaultValuesFromPayState(initialReservation)
       : getReservationDefaultValuesFromSearchParams(searchParams);
+    const initialValues = restoredOrQueryValues.date
+      ? restoredOrQueryValues
+      : { ...restoredOrQueryValues, date: getCurrentPragueDate() };
     const initialAdvertisedPriceRequests = initialValues.date
       ? [
           ...getCoworkTierAdvertisedPriceRequests({
@@ -65,8 +66,7 @@ export const coworkReservationPage = createReservationPage({
         <CoworkReservationFormFallback
           locale={locale}
           showMonitorOption={getCoworkTierRequiresMonitorOption(
-            initialReservation?.entryTier ??
-              coworkReservationDefaultValues.entryTier
+            initialValues.entryTier
           )}
         />
       ),
@@ -75,6 +75,7 @@ export const coworkReservationPage = createReservationPage({
           checkoutSessionId={checkoutSessionId}
           initialAdvertisedPrices={initialAdvertisedPrices}
           initialReservation={initialReservation}
+          initialValues={initialValues}
           locale={locale}
         />
       ),

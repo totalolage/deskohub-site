@@ -25,6 +25,7 @@ import {
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
+import { coworkReservationDefaultValues } from "@/features/reservation/cowork-reservation";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -229,6 +230,7 @@ describe("CoworkReservationForm advertised pricing", () => {
   });
 
   test("renders server-loaded discounts on the first paint without refetching", () => {
+    workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
     getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
     const advertisedPrices = {
       basic: advertisedPriceResponse,
@@ -237,6 +239,11 @@ describe("CoworkReservationForm advertised pricing", () => {
     } as const;
 
     const view = renderForm({
+      initialValues: {
+        ...coworkReservationDefaultValues,
+        coffee: true,
+        date: "2099-07-30",
+      },
       initialAdvertisedPrices: getCoworkTierAdvertisedPriceRequests({
         coffee: true,
         date: "2099-07-30",

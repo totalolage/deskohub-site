@@ -80,6 +80,7 @@ import { cn } from "@/shared/utils";
 type CoworkReservationFormProps = {
   initialReservation?: NormalizedCoworkReservationOrder;
   initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
+  initialValues?: CoworkReservationInput;
   locale: Locale;
   checkoutSessionId?: string;
 };
@@ -148,16 +149,18 @@ const formatDisplayDate = (date: string, locale: Locale) =>
 export function CoworkReservationForm({
   initialReservation,
   initialAdvertisedPrices = [],
+  initialValues,
   locale,
   checkoutSessionId,
 }: CoworkReservationFormProps) {
   const searchParams = useSearchParams();
   const defaultValues = useMemo(
     () =>
-      initialReservation
+      initialValues ??
+      (initialReservation
         ? getReservationDefaultValuesFromPayState(initialReservation)
-        : getReservationDefaultValuesFromSearchParams(searchParams),
-    [initialReservation, searchParams]
+        : getReservationDefaultValuesFromSearchParams(searchParams)),
+    [initialReservation, initialValues, searchParams]
   );
   const initialAvailabilityQuery = useMemo(
     () =>

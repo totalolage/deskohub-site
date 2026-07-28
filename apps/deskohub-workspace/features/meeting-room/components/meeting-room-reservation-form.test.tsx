@@ -24,7 +24,10 @@ import {
   type WorkspaceMeetingRoomDurationMinutes,
 } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
+import {
+  meetingRoomReservationDefaultValues,
+  normalizedMeetingRoomReservationOrderSchema,
+} from "@/features/reservation/meeting-room-reservation";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -221,7 +224,14 @@ describe("MeetingRoomReservationForm", () => {
       })
     );
 
-    const view = renderForm({ initialAdvertisedPrices });
+    const view = renderForm({
+      initialAdvertisedPrices,
+      initialReservation: undefined,
+      initialValues: {
+        ...meetingRoomReservationDefaultValues,
+        startDateTime: "2099-07-30T10:00",
+      },
+    });
 
     for (const duration of [60, 240, 1440]) {
       expect(

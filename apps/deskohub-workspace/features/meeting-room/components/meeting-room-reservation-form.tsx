@@ -57,6 +57,7 @@ type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: string;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
+  readonly initialValues?: MeetingRoomReservationInput;
   readonly locale: Locale;
 };
 
@@ -72,14 +73,16 @@ export function MeetingRoomReservationForm({
   checkoutSessionId,
   initialAdvertisedPrices = [],
   initialReservation,
+  initialValues,
   locale,
 }: MeetingRoomReservationFormProps) {
   const defaultValues = useMemo(
     () =>
-      initialReservation
+      initialValues ??
+      (initialReservation
         ? getMeetingRoomReservationDefaultValues(initialReservation)
-        : { ...meetingRoomReservationDefaultValues },
-    [initialReservation]
+        : { ...meetingRoomReservationDefaultValues }),
+    [initialReservation, initialValues]
   );
   const form = useForm<
     MeetingRoomReservationInput,
