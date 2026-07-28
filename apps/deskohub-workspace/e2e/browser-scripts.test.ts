@@ -306,6 +306,98 @@ test("waits for the meeting-room calendar to render the next month", async () =>
   }
 });
 
+test("waits for a prefilled meeting-room date change before editing time", async () => {
+  const interval = getMeetingRoomReservationInterval("2099-10-02T10:00", 240);
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-10-02",
+      durationMinutes: 240,
+      startDateTime: "2099-10-02T10:00",
+      ...interval!,
+    },
+    "meeting-room-prefilled-date-change"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Meeting room start date"></button>
+      <div data-day="2099-10-02"><button type="button"></button></div>
+      <input aria-label="Meeting room start time" value="10:00" />
+      <input id="meeting-room-duration-240" type="radio" checked />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <input name="startDateTime" value="2099-10-01T10:00" />
+      <button type="submit"></button>
+    `;
+
+    const hiddenStart = document.querySelector<HTMLInputElement>(
+      'input[name="startDateTime"]'
+    )!;
+    let dateUpdatePending = false;
+    document
+      .querySelector('[data-day="2099-10-02"] button')!
+      .addEventListener("click", () => {
+        dateUpdatePending = true;
+        queueMicrotask(() => {
+          if (dateUpdatePending) hiddenStart.value = "2099-10-02T10:00";
+        });
+      });
+    document
+      .querySelector('input[aria-label="Meeting room start time"]')!
+      .addEventListener("change", () => {
+        if (hiddenStart.value !== "2099-10-02T10:00") {
+          dateUpdatePending = false;
+        }
+      });
+
+    let now = 0;
+    class FastDate extends Date {
+      static override now() {
+        now += 1_000;
+        return now;
+      }
+    }
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareMeetingRoomAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        FastDate,
+        (callback: () => void) => {
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).resolves.toBe(location.href);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
 test("asserts restored meeting-room state and reset legal consent", () => {
   const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 1440);
   expect(interval).toBeDefined();

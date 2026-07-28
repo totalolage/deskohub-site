@@ -326,6 +326,13 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     throw new Error('meeting-room date was not found in the calendar');
   }
   dateButton.click();
+  await waitUntil(() => {
+    const hiddenStart = document.querySelector('input[name="startDateTime"]');
+    return (
+      hiddenStart instanceof HTMLInputElement &&
+      hiddenStart.value.startsWith(expected.date + 'T')
+    );
+  }, 'meeting-room date did not update');
 
   setField('input[aria-label="Meeting room start time"]', expected.time);
   const duration = document.querySelector('#meeting-room-duration-' + expected.durationMinutes);
