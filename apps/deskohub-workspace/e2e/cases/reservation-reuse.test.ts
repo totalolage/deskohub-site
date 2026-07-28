@@ -50,5 +50,5 @@ test("waits for the meeting-room consent control before checking restored state"
     .map((args) => args.at(-1))
     .filter((script) => script?.includes("__reactProps$"));
   expect(hydrationScripts).toHaveLength(2);
-  expect(hydrationScripts[1]).toContain("#meeting-room-privacy-consent");
+  expect(hydrationScripts[1]).toContain("#reservation-privacy-consent");
 });

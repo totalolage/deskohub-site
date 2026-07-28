@@ -219,11 +219,15 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
     'input[aria-label="Meeting room start time"]'
   );
   expect(prepare).toContain("meeting-room-duration-");
-  expect(prepare).toContain("2099-09-01T10:00");
+  expect(prepare).toContain('"date":"2099-09-01"');
+  expect(prepare).toContain('"time":"10:00"');
   expect(prepare).not.toContain(
     "setField('input[name=\"startDateTime\"]'"
   );
   expect(submitPreparedMeetingRoomReservationScript).toContain(
+    "reservation-privacy-consent"
+  );
+  expect(submitPreparedMeetingRoomReservationScript).not.toContain(
     "meeting-room-privacy-consent"
   );
   expect(combined).toContain(prepare.trim());
@@ -258,7 +262,7 @@ test("waits for the meeting-room calendar to render the next month", async () =>
       <input name="phone" />
       <input name="name" />
       <textarea name="message"></textarea>
-      <input name="startDateTime" value="2099-10-01T10:00" />
+      <input name="startDateTime" value="2099-10-01" />
       <button type="submit"></button>
     `;
 
@@ -309,7 +313,7 @@ test("waits for the meeting-room calendar to render the next month", async () =>
   }
 });
 
-test("waits for a prefilled meeting-room date change before editing time", async () => {
+test("waits for the date-only meeting-room state before editing time", async () => {
   const interval = getMeetingRoomReservationInterval("2099-10-02T10:00", 240);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
@@ -335,7 +339,7 @@ test("waits for a prefilled meeting-room date change before editing time", async
       <input name="phone" />
       <input name="name" />
       <textarea name="message"></textarea>
-      <input name="startDateTime" value="2099-10-01T10:00" />
+      <input name="startDateTime" value="2099-10-01" />
       <button type="submit"></button>
     `;
 
@@ -348,13 +352,13 @@ test("waits for a prefilled meeting-room date change before editing time", async
       .addEventListener("click", () => {
         dateUpdatePending = true;
         queueMicrotask(() => {
-          if (dateUpdatePending) hiddenStart.value = "2099-10-02T10:00";
+          if (dateUpdatePending) hiddenStart.value = "2099-10-02";
         });
       });
     document
       .querySelector('input[aria-label="Meeting room start time"]')!
       .addEventListener("change", () => {
-        if (hiddenStart.value !== "2099-10-02T10:00") {
+        if (hiddenStart.value !== "2099-10-02") {
           dateUpdatePending = false;
         }
       });
@@ -401,7 +405,7 @@ test("waits for a prefilled meeting-room date change before editing time", async
   }
 });
 
-test("asserts restored meeting-room state and reset legal consent", () => {
+test("asserts restored date-only meeting-room state and reset legal consent", async () => {
   const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 1440);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
@@ -416,9 +420,38 @@ test("asserts restored meeting-room state and reset legal consent", () => {
   );
   const assertion = getAssertPrefilledReservationScript(data);
 
-  expect(assertion).toContain("meeting-room-duration-");
-  expect(assertion).toContain("2099-09-01T10:00");
-  expect(assertion).toContain("meeting-room-privacy-consent");
-  expect(assertion).toContain("privacy consent reset");
-  expect(() => new Function(`return ${assertion}`)).not.toThrow();
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <input name="startDateTime" value="2099-09-01" />
+      <input aria-label="Meeting room start time" value="10:00" />
+      <input id="meeting-room-duration-1440" type="radio" value="1440" checked />
+      <input name="email" value="${data.email}" />
+      <input name="phone" value="${data.phone}" />
+      <input name="name" value="${data.name}" />
+      <textarea name="message">${data.message}</textarea>
+      <button id="reservation-privacy-consent" aria-checked="false"></button>
+    `;
+    const run = new Function(
+      "document",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      `return (${assertion})`
+    );
+
+    expect(
+      run(
+        document,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement
+      )
+    ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
 });

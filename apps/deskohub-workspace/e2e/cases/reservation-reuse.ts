@@ -188,10 +188,7 @@ export const returnToPrefilledReservation = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
-    const consentSelector =
-      data.expectedReservationDetails.kind === "meeting-room"
-        ? "#meeting-room-privacy-consent"
-        : "#reservation-privacy-consent";
+    const consentSelector = "#reservation-privacy-consent";
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
