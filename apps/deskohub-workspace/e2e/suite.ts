@@ -46,8 +46,6 @@ type WorkspaceE2ECaseRuntime = {
   readonly testCase: WorkspaceE2ECase;
 };
 
-export const WORKSPACE_E2E_CASE_CONCURRENCY = 1;
-
 export const runWorkspaceE2ECases = ({
   artifactRoot,
   cases,
@@ -65,7 +63,7 @@ export const runWorkspaceE2ECases = ({
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
       log(
-        `Running ${cases.length} workspace e2e cases with concurrency ${WORKSPACE_E2E_CASE_CONCURRENCY}: ${cases
+        `Running ${cases.length} workspace e2e cases in parallel: ${cases
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
@@ -97,7 +95,7 @@ export const runWorkspaceE2ECases = ({
             timeoutMs: testCase.timeoutMs,
           }),
         {
-          concurrency: WORKSPACE_E2E_CASE_CONCURRENCY,
+          concurrency: "unbounded",
           discard: true,
         }
       );

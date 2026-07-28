@@ -149,10 +149,10 @@ the consumed code. Capacity limits advance from retained active audit history
 on reruns; the suite never deletes application or redemption records.
 
 Every case uses a unique customer and reservation date. Basic and Plus date
-sets are selected independently and made disjoint. The suite runs cases
-serially so automation cannot exhaust the Preview database while interactive
-review traffic is using it. Do not make an edge case mutate a fixture consumed
-by another case.
+sets are selected independently and made disjoint. The suite runs independent
+cases with uncapped fail-fast Effect concurrency. Direct database assertions
+share one runner-owned pool capped at ten connections. Do not make an edge case
+mutate a fixture consumed by another case.
 
 ### Discount coverage matrix
 
