@@ -227,6 +227,85 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   expect(() => new Function(`return ${combined}`)).not.toThrow();
 });
 
+test("waits for the meeting-room calendar to render the next month", async () => {
+  const interval = getMeetingRoomReservationInterval("2099-10-01T10:00", 60);
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-10-01",
+      durationMinutes: 60,
+      startDateTime: "2099-10-01T10:00",
+      ...interval!,
+    },
+    "meeting-room-next-month"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  let calendarRender: ReturnType<typeof setTimeout> | undefined;
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Meeting room start date"></button>
+      <button aria-label="Go to the Next Month"></button>
+      <div data-day="2099-09-30"><button type="button"></button></div>
+      <input aria-label="Meeting room start time" />
+      <input id="meeting-room-duration-60" type="radio" checked />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <input name="startDateTime" value="2099-10-01T10:00" />
+      <button type="submit"></button>
+    `;
+
+    document
+      .querySelector('button[aria-label="Go to the Next Month"]')!
+      .addEventListener("click", (event) => {
+        (event.currentTarget as HTMLButtonElement).remove();
+        calendarRender = setTimeout(() => {
+          const day = document.createElement("div");
+          day.dataset.day = "2099-10-01";
+          const button = document.createElement("button");
+          button.type = "button";
+          day.append(button);
+          document.body.append(day);
+        }, 150);
+      });
+
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareMeetingRoomAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        Date,
+        setTimeout,
+        location
+      )
+    ).resolves.toBe(location.href);
+  } finally {
+    if (calendarRender !== undefined) clearTimeout(calendarRender);
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
 test("asserts restored meeting-room state and reset legal consent", () => {
   const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 1440);
   expect(interval).toBeDefined();

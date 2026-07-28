@@ -283,18 +283,44 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   }, 'meeting-room date control not found');
   dateTrigger.click();
 
+  const findSelectableDateButton = () => {
+    const candidate = document.querySelector(
+      '[data-day="' + expected.date + '"] button:not(:disabled)'
+    );
+    return candidate instanceof HTMLButtonElement ? candidate : undefined;
+  };
+  const visibleCalendarDates = () =>
+    [...document.querySelectorAll('[data-day]')]
+      .map((day) => day.getAttribute('data-day') ?? '')
+      .join('|');
+
   let dateButton;
   for (let month = 0; month < 5; month += 1) {
-    dateButton = document.querySelector('[data-day="' + expected.date + '"] button:not(:disabled)');
+    let nextMonth;
+    await waitUntil(() => {
+      dateButton = findSelectableDateButton();
+      if (dateButton instanceof HTMLButtonElement) return true;
+      const candidate = document.querySelector(
+        'button[aria-label="Go to the Next Month"]'
+      );
+      if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
+        nextMonth = candidate;
+        return true;
+      }
+      return false;
+    }, 'meeting-room date is outside the selectable calendar');
     if (dateButton instanceof HTMLButtonElement) break;
-    const nextMonth = document.querySelector(
-      'button[aria-label="Go to the Next Month"]'
-    );
-    if (!(nextMonth instanceof HTMLButtonElement) || nextMonth.disabled) {
-      throw new Error('meeting-room date is outside the selectable calendar');
-    }
+
+    const previousDates = visibleCalendarDates();
     nextMonth.click();
-    await wait(100);
+    await waitUntil(() => {
+      dateButton = findSelectableDateButton();
+      const renderedDates = visibleCalendarDates();
+      return (
+        dateButton instanceof HTMLButtonElement ||
+        (renderedDates.length > 0 && renderedDates !== previousDates)
+      );
+    }, 'meeting-room calendar did not advance');
   }
   if (!(dateButton instanceof HTMLButtonElement)) {
     throw new Error('meeting-room date was not found in the calendar');
