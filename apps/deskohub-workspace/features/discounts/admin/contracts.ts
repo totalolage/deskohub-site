@@ -3,6 +3,7 @@ import {
   getWorkspaceProductKey,
   workspaceProductIdentitySchema,
 } from "@/features/checkout/product-identity";
+import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { instantStringSchema } from "@/shared/utils";
 import {
@@ -113,6 +114,25 @@ export const discountAdminMutationSchema = Schema.Union([
     kind: Schema.Literal("delete-code"),
     id: discountCodeIdSchema,
   }),
+  Schema.Struct({
+    kind: Schema.Literal("add-code-customer"),
+    codeId: discountCodeIdSchema,
+    customerId: dotyposCustomerIdSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("remove-code-customer"),
+    codeId: discountCodeIdSchema,
+    customerId: dotyposCustomerIdSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("make-code-unrestricted"),
+    codeId: discountCodeIdSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("set-customer-discount-group"),
+    customerId: dotyposCustomerIdSchema,
+    discountGroupId: Schema.NullOr(Schema.Trim.check(Schema.isNonEmpty())),
+  }),
 ]);
 
 export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
@@ -125,6 +145,29 @@ export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
   }
 );
 
+export const discountAdminCustomerSearchSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("id"),
+    customerId: dotyposCustomerIdSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("email"),
+    email: Schema.Trim.check(Schema.isNonEmpty()),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("phone"),
+    phone: Schema.Trim.check(Schema.isNonEmpty()),
+  }),
+]);
+
+export const discountAdminCustomerSearchStandardSchema =
+  Schema.toStandardSchemaV1(discountAdminCustomerSearchSchema, {
+    parseOptions: {
+      errors: "all",
+      onExcessProperty: "error",
+    },
+  });
+
 export type CreateDiscountAdminInput =
   typeof createDiscountAdminInputSchema.Type;
 export type UpdateDiscountAdminInput =
@@ -134,3 +177,5 @@ export type CreateDiscountCodeAdminInput =
 export type UpdateDiscountCodeAdminInput =
   typeof updateDiscountCodeAdminInputSchema.Type;
 export type DiscountAdminMutation = typeof discountAdminMutationSchema.Type;
+export type DiscountAdminCustomerSearch =
+  typeof discountAdminCustomerSearchSchema.Type;

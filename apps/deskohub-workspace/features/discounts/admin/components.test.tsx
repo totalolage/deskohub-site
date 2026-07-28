@@ -38,6 +38,7 @@ mock.module("./actions", () => ({
   deleteDiscountAdminForm: mock(),
   deleteDiscountCodeAdminForm: mock(),
   mutateDiscountAdmin: mock(),
+  searchDiscountAdminCustomers: mock(),
   updateDiscountAdminForm: mock(),
   updateDiscountCodeAdminForm: mock(),
 }));
@@ -66,6 +67,11 @@ const dashboard: DiscountAdminDashboard = {
       validFrom: Temporal.Instant.from("2026-08-01T08:00:00Z"),
       validUntil: Temporal.Instant.from("2026-09-01T08:00:00Z"),
       maxUses: 100,
+      audienceSize: 2,
+      reservedUses: 1,
+      redeemedUses: 3,
+      releasedUses: 1,
+      remainingUses: 96,
       createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
       updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
     },
@@ -254,6 +260,69 @@ describe("discount administration pages", () => {
       )
     );
     expect(validFrom).toHaveProperty("value", "2026-08-01T10:00");
+  });
+
+  test("links codes to audience management and shows live capacity", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const table = view.getByRole("table", { name: "Discount codes" });
+
+    expect(
+      within(table).getByRole("link", { name: "SUMMER10" }).getAttribute("href")
+    ).toBe("/admin/codes/019c91dd-c560-7e55-b9d8-c95065efd52d");
+    expect(within(table).getByText("2 customers")).toBeDefined();
+    expect(within(table).getByText("96")).toBeDefined();
+  });
+
+  test("manages code audiences while keeping claim history read-only", async () => {
+    const { CodeAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const code = dashboard.codes[0];
+    const view = render(
+      <CodeAdministrationDetailPage
+        detail={{
+          code,
+          discountLabel: "Summer discount",
+          customers: [
+            {
+              customerId: "dotypos-customer",
+              customer: {
+                id: "dotypos-customer",
+                displayName: "Test Customer",
+                email: "test@example.com",
+                phone: null,
+                discountGroupId: null,
+              },
+            },
+          ],
+          claims: [
+            {
+              id: "claim-id",
+              codeId: code.id,
+              dotyposCustomerId: "dotypos-customer",
+              state: "redeemed",
+              paymentAttemptId: "payment-id",
+              workspaceReservationId: "reservation-id",
+              reservationExpiresAt: Temporal.Instant.from(
+                "2026-08-01T09:00:00Z"
+              ),
+              reservedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+              redeemedAt: Temporal.Instant.from("2026-08-01T08:10:00Z"),
+              releasedAt: null,
+              releaseReason: null,
+            },
+          ],
+        }}
+      />
+    );
+
+    expect(view.getByText("Use Make unrestricted")).toBeDefined();
+    expect(
+      view.getByRole("table", { name: "Discount code claim history" })
+    ).toBeDefined();
+    expect(view.queryByRole("button", { name: /release/i })).toBeNull();
+    expect(view.queryByRole("button", { name: /redeem/i })).toBeNull();
   });
 
   test("shows calendar sales in a table with readable status badges", async () => {

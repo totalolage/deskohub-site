@@ -3,6 +3,8 @@ import { Schema } from "effect";
 import {
   createDiscountAdminInputSchema,
   createDiscountCodeAdminInputSchema,
+  discountAdminCustomerSearchSchema,
+  discountAdminMutationSchema,
 } from "./contracts";
 
 const decodeDiscount = Schema.decodeUnknownSync(
@@ -11,6 +13,17 @@ const decodeDiscount = Schema.decodeUnknownSync(
 );
 const decodeCode = Schema.decodeUnknownSync(
   createDiscountCodeAdminInputSchema,
+  {
+    errors: "all",
+    onExcessProperty: "error",
+  }
+);
+const decodeMutation = Schema.decodeUnknownSync(discountAdminMutationSchema, {
+  errors: "all",
+  onExcessProperty: "error",
+});
+const decodeCustomerSearch = Schema.decodeUnknownSync(
+  discountAdminCustomerSearchSchema,
   {
     errors: "all",
     onExcessProperty: "error",
@@ -102,5 +115,52 @@ describe("discount administration inputs", () => {
       })
     ).toThrow();
     expect(() => decodeCode({ ...validCode, maxUses: 0 })).toThrow();
+  });
+
+  test("accepts audience and Dotypos group operations but no claim mutations", () => {
+    expect(() =>
+      decodeMutation({
+        kind: "add-code-customer",
+        codeId: "code-id",
+        customerId: "customer-id",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "make-code-unrestricted",
+        codeId: "code-id",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "set-customer-discount-group",
+        customerId: "customer-id",
+        discountGroupId: null,
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "release-code-claim",
+        claimId: "claim-id",
+      })
+    ).toThrow();
+  });
+
+  test("keeps customer search fields explicit for PII censorship", () => {
+    expect(() =>
+      decodeCustomerSearch({ kind: "id", customerId: "customer-id" })
+    ).not.toThrow();
+    expect(() =>
+      decodeCustomerSearch({
+        kind: "email",
+        email: "customer@example.com",
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeCustomerSearch({ kind: "phone", phone: "+420123456789" })
+    ).not.toThrow();
+    expect(() =>
+      decodeCustomerSearch({ kind: "email", value: "customer@example.com" })
+    ).toThrow();
   });
 });

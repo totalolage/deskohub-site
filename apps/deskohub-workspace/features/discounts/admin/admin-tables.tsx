@@ -17,6 +17,7 @@ import {
   Save,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   type FormEvent,
@@ -78,6 +79,10 @@ export type DiscountCodeTableItem = {
   readonly validFrom: string | null;
   readonly validUntil: string | null;
   readonly maxUses: number | null;
+  readonly audienceSize: number;
+  readonly reservedUses: number;
+  readonly redeemedUses: number;
+  readonly remainingUses: number | null;
 };
 
 export function DiscountsAdminTable({
@@ -170,7 +175,12 @@ export function DiscountCodesAdminTable({
         accessorKey: "code",
         header: "Code",
         cell: ({ row }) => (
-          <span className="font-mono font-semibold">{row.original.code}</span>
+          <Link
+            className="font-mono font-semibold underline decoration-navy-blue/25 underline-offset-4 hover:decoration-navy-blue"
+            href={`/admin/codes/${row.original.id}`}
+          >
+            {row.original.code}
+          </Link>
         ),
       },
       {
@@ -190,22 +200,26 @@ export function DiscountCodesAdminTable({
         ),
       },
       {
-        accessorFn: (code) => code.validFrom ?? "",
-        id: "validFrom",
-        header: "Valid from",
-        cell: ({ row }) => formatOptionalDateTime(row.original.validFrom),
+        accessorKey: "audienceSize",
+        header: "Audience",
+        cell: ({ row }) =>
+          row.original.audienceSize === 0
+            ? "Unrestricted"
+            : `${row.original.audienceSize} customers`,
       },
       {
-        accessorFn: (code) => code.validUntil ?? "",
-        id: "validUntil",
-        header: "Valid until",
-        cell: ({ row }) => formatOptionalDateTime(row.original.validUntil),
+        accessorKey: "reservedUses",
+        header: "Reserved",
       },
       {
-        accessorFn: (code) => code.maxUses ?? Number.POSITIVE_INFINITY,
-        id: "maxUses",
-        header: "Max uses",
-        cell: ({ row }) => row.original.maxUses ?? "Unlimited",
+        accessorKey: "redeemedUses",
+        header: "Redeemed",
+      },
+      {
+        accessorFn: (code) => code.remainingUses ?? Number.POSITIVE_INFINITY,
+        id: "remaining",
+        header: "Remaining",
+        cell: ({ row }) => row.original.remainingUses ?? "Unlimited",
       },
     ],
     [discountLabels]
@@ -964,9 +978,6 @@ const toDateTimeInputValue = (value: string | null | undefined) =>
         timeZone: workspaceSiteConstants.location.timeZone,
       })
     : "";
-
-const formatOptionalDateTime = (value: string | null) =>
-  value ? toDateTimeInputValue(value).replace("T", " ") : "—";
 
 const fieldId = (name: string, id?: string) => (id ? `${name}-${id}` : name);
 

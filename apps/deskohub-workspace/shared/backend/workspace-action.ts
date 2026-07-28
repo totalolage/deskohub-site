@@ -33,6 +33,11 @@ type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
   FlattenedValidationErrors<ValidationErrors<S>>;
 
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
+  /**
+   * Set to false for inputs containing data that must not be persisted in
+   * telemetry, such as customer contact details.
+   */
+  readonly logInput?: boolean;
   /** Stable, low-cardinality name without IDs or payload data. */
   readonly operation: string;
   readonly schema: S;
@@ -55,7 +60,7 @@ export const defineWorkspaceAction = <S extends StandardSchemaV1, A, E>(
   })
     .inputSchema(options.schema)
     .action((args) =>
-      prepareWorkspaceAction(args, () =>
+      prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args))
       )
     );
@@ -73,20 +78,21 @@ export const defineWorkspaceStateAction = <S extends StandardSchemaV1, A, E>(
   })
     .inputSchema(options.schema)
     .stateAction<A, Error | PublicSafeActionError>((args, state) =>
-      prepareWorkspaceAction(args, () =>
+      prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args), state)
       )
     );
 
 const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
   args: WorkspaceActionArgs<S>,
+  options: Pick<WorkspaceActionOptions<S>, "logInput">,
   handler: () => Effect.Effect<A, E, BotProtectionService>
 ) => {
   const logged = Effect.gen(function* () {
     yield* Effect.logDebug("Safe action executed").pipe(
       Effect.annotateLogs({
         locale: args.ctx.locale,
-        input: args.parsedInput,
+        ...(options.logInput === false ? {} : { input: args.parsedInput }),
       })
     );
     const result = yield* Effect.suspend(handler).pipe(

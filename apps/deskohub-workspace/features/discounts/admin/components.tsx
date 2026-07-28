@@ -79,6 +79,10 @@ export function CodesAdministrationPage({
     enabled: code.enabled,
     id: code.id,
     maxUses: code.maxUses,
+    audienceSize: code.audienceSize,
+    reservedUses: code.reservedUses,
+    redeemedUses: code.redeemedUses,
+    remainingUses: code.remainingUses,
     validFrom: code.validFrom?.toString() ?? null,
     validUntil: code.validUntil?.toString() ?? null,
   }));
@@ -137,14 +141,14 @@ export function SalesAdministrationPage({
   );
 }
 
-function AdminPageShell({
+export function AdminPageShell({
   activeSection,
   children,
   count,
   notice,
   title,
 }: {
-  readonly activeSection: "codes" | "discounts" | "sales";
+  readonly activeSection: "codes" | "customers" | "discounts" | "sales";
   readonly children: React.ReactNode;
   readonly count: number;
   readonly notice: DiscountAdministrationProps["notice"];
@@ -176,6 +180,12 @@ function AdminPageShell({
               href="/admin/sales"
             >
               Sales
+            </AdminSectionLink>
+            <AdminSectionLink
+              active={activeSection === "customers"}
+              href="/admin/customers"
+            >
+              Customers
             </AdminSectionLink>
           </nav>
         </div>
@@ -320,7 +330,7 @@ function AssociationBadge({
   return <Badge variant="subtle">No discount ID</Badge>;
 }
 
-function EmptyState({ message }: { readonly message: string }) {
+export function EmptyState({ message }: { readonly message: string }) {
   return (
     <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-10 text-center text-sm text-navy-blue/62">
       {message}
