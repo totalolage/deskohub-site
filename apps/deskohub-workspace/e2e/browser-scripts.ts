@@ -72,12 +72,13 @@ const getAssertPrefilledMeetingRoomReservationScript = (
   return `
 (() => {
   const expected = ${JSON.stringify({
+    date: data.date,
     durationMinutes: data.meetingRoom.durationMinutes,
     email: data.email,
     message: data.message,
     name: data.name,
     phone: data.phone,
-    startDateTime: data.meetingRoom.startDateTime,
+    time: data.meetingRoom.startDateTime.slice(11),
   })};
   const fail = (field) => {
     throw new Error('restored meeting-room ' + field + ' did not match');
@@ -88,7 +89,8 @@ const getAssertPrefilledMeetingRoomReservationScript = (
     return element.value;
   };
 
-  if (value('input[name="startDateTime"]', 'start date-time') !== expected.startDateTime) fail('start date-time');
+  if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
+  if (value('input[aria-label="Meeting room start time"]', 'start time') !== expected.time) fail('start time');
   const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
   if (!(duration instanceof HTMLInputElement) || duration.value !== String(expected.durationMinutes)) fail('duration');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
@@ -96,7 +98,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
   if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
 
-  const consent = document.querySelector('#meeting-room-privacy-consent');
+  const consent = document.querySelector('#reservation-privacy-consent');
   if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
   return true;
 })()
@@ -248,7 +250,6 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     message: data.message,
     name: data.name,
     phone: data.phone,
-    startDateTime: data.meetingRoom.startDateTime,
     time: data.meetingRoom.startDateTime.slice(11),
   })};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -330,7 +331,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     return (
       hiddenStart instanceof HTMLInputElement &&
-      hiddenStart.value.startsWith(expected.date + 'T')
+      hiddenStart.value === expected.date
     );
   }, 'meeting-room date did not update');
 
@@ -347,10 +348,13 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
+    const time = document.querySelector('input[aria-label="Meeting room start time"]');
     const submit = document.querySelector('button[type="submit"]');
     return (
       hiddenStart instanceof HTMLInputElement &&
-      hiddenStart.value === expected.startDateTime &&
+      hiddenStart.value === expected.date &&
+      time instanceof HTMLInputElement &&
+      time.value === expected.time &&
       duration.checked &&
       submit instanceof HTMLButtonElement &&
       !submit.disabled
@@ -398,7 +402,7 @@ export const submitPreparedCoworkReservationScript =
   getSubmitPreparedReservationScript("#reservation-privacy-consent");
 
 export const submitPreparedMeetingRoomReservationScript =
-  getSubmitPreparedReservationScript("#meeting-room-privacy-consent");
+  getSubmitPreparedReservationScript("#reservation-privacy-consent");
 
 export const getSubmitContactFormScript = (data: {
   readonly email: string;
