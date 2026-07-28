@@ -57,6 +57,7 @@ const sensitiveLogUrlSearchParams = new Set([
   "secret",
   "name",
   "message",
+  "filter",
 ]);
 
 const isSensitiveLogUrlSearchParam = (key: string): boolean =>

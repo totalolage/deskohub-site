@@ -336,6 +336,7 @@ describe("censorLogValue", () => {
       ["payState", "dhp1.secret"],
       ["PayStateRef", "opaque-secret"],
       ["checkoutToken", "checkout-secret"],
+      ["filter", "email|like|customer@example.com"],
       ["sessionDuration", "123"],
     ]);
     const input = {
@@ -365,6 +366,7 @@ describe("censorLogValue", () => {
     expect(censored.searchParams.get("payState")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("PayStateRef")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.searchParams.get("filter")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("sessionDuration")).toBe("123");
     expect(searchParams.get("client_secret")).toBe("secret-client");
     expect(censored.plain.payStateRef).toBe(CENSORED_LOG_VALUE);

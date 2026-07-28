@@ -21,6 +21,9 @@ export const workspaceServerEnvSchema = Schema.Struct({
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
   DATABASE_URL: urlEnvSchema,
   DATABASE_URL_UNPOOLED: optionalUrlEnvSchema,
+  ADMIN_BASIC_AUTH_SHA256: toEnvSchema(
+    Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)))
+  ),
   DOTYPOS_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))

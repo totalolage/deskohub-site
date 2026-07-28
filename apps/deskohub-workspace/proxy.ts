@@ -14,8 +14,34 @@ import {
   localeCookieName,
   locales,
 } from "@/features/i18n/routing";
+import { env } from "./env";
+import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/basic-auth";
 
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/admin")) {
+    if (
+      !isDiscountAdminAuthorizationValid(
+        request.headers.get("authorization"),
+        env.ADMIN_BASIC_AUTH_SHA256
+      )
+    ) {
+      return new NextResponse(null, {
+        status: 401,
+        headers: {
+          "Cache-Control": "private, no-store",
+          Vary: "Authorization",
+          "WWW-Authenticate":
+            'Basic realm="Deskohub discount administration", charset="UTF-8"',
+        },
+      });
+    }
+
+    const response = NextResponse.next();
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Vary", "Authorization");
+    return response;
+  }
+
   if (request.method === "POST" && request.headers.has("next-action")) {
     return NextResponse.next();
   }

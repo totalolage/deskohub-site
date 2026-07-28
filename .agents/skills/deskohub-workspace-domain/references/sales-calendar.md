@@ -8,6 +8,9 @@ Model Workspace sales calendar events as references to stored discount definitio
   public label.
 - Let Postgres own the complete locale-indexed public label map, adjustment,
   and product targets.
+- Select fixed-discount currencies from the shared Workspace currency catalog
+  in `shared/money/currencies.ts`, and derive the stored exponent from that
+  definition rather than accepting an independently entered exponent.
 - Keep that locale-indexed map as the sole definition-label source. Do not add
   a second scalar operator or fallback label to stored discount definitions.
 - Log malformed events and missing, malformed, or unavailable definitions at

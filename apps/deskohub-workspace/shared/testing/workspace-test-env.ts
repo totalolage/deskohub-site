@@ -1,6 +1,7 @@
 import "@/shared/polyfills/temporal";
 
 import { mock } from "bun:test";
+import { createHash } from "node:crypto";
 
 mock.module("server-only", () => ({}));
 
@@ -10,6 +11,9 @@ process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${key}`;
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";
+process.env.ADMIN_BASIC_AUTH_SHA256 ??= createHash("sha256")
+  .update("admin:test-password")
+  .digest("hex");
 process.env.DOTYPOS_API_URL ??= "https://dotypos.example";
 process.env.DOTYPOS_BRANCH_ID ??= "branch";
 process.env.DOTYPOS_CLIENT_ID ??= "client";

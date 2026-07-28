@@ -91,6 +91,7 @@ describe("GoogleCalendarService", () => {
               items: [
                 {
                   id: "event-1",
+                  htmlLink: "https://calendar.google.com/event?eid=event-1",
                   iCalUID: "ical-1",
                   recurringEventId: "recurring-event-1",
                   status: "confirmed",
@@ -144,6 +145,7 @@ describe("GoogleCalendarService", () => {
     expect(result).toEqual([
       {
         id: "event-1",
+        htmlLink: "https://calendar.google.com/event?eid=event-1",
         iCalUID: "ical-1",
         recurringEventId: "recurring-event-1",
         status: "confirmed",
