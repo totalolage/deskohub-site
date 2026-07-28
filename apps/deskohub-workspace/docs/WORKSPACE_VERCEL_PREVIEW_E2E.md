@@ -51,8 +51,10 @@ names. Inspect settings and deployment metadata without printing their values.
   using a non-default ingest region, `WORKSPACE_E2E_POSTHOG_HOST` in the
   `workspace-checkout-e2e` environment. The token is the public project ingest
   token, never a management API key or secret.
-- `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
-  after the deployed payment/webhook path has completed.
+- `EMAIL_PROVIDER=console` for Preview. Browser cases exercise the complete
+  email workflow without making external delivery attempts or consuming the
+  Resend plan. Keep `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` scoped to
+  Production.
 - The non-sensitive Preview-only
   `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true}`.
   Set this before the immutable Git preview is built; the runner never mutates
@@ -63,7 +65,7 @@ names. Inspect settings and deployment metadata without printing their values.
   happy-path cases cannot interfere with one another.
 - `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
 
-Do not use production Nexi, Dotypos, email, or database credentials in Preview.
+Do not use production Nexi, Dotypos, or database credentials in Preview.
 Do not add callback-origin or BotID test-bypass overrides. Non-production
 callback origins derive from the deployment's `VERCEL_URL`; production derives
 from `VERCEL_PROJECT_PRODUCTION_URL`.
@@ -124,13 +126,14 @@ covers customer-only, customer-plus-code, Calendar-plus-customer, and all three
 sources together. A separate customer's group is cleared after summary
 creation; payment must return `pricing_changed`.
 
-The stable Calendar definition targets Plus and Profi. Calendar pricing-change
-edge cases use Profi while all Calendar happy paths use Plus. In one serialized
-top-level case, the runner removes only the Profi target after reservation-page
-advertisement and again after signed-summary creation. Each scenario restores
-the Profi target in an interruption-safe finalizer. Both must show the normal
-pricing-change state with no payment attempt. The Calendar event itself remains
-immutable, and Plus eligibility is never mutated, so every other top-level case
+The stable Calendar definition targets Plus, Profi, and the one-hour meeting
+room. Calendar pricing-change edge cases use Profi while all Calendar happy
+paths use Plus. In one serialized top-level case, the runner removes only the
+Profi target after reservation-page advertisement and again after
+signed-summary creation. Each scenario restores the Profi target in an
+interruption-safe finalizer. Both must show the normal pricing-change state with
+no payment attempt. The Calendar event itself remains immutable, and Plus and
+meeting-room eligibility are never mutated, so every other top-level case
 continues to run in parallel.
 
 Calendar all-day expiry is tied to the selected reservation date, so a browser
@@ -146,9 +149,10 @@ the consumed code. Capacity limits advance from retained active audit history
 on reruns; the suite never deletes application or redemption records.
 
 Every case uses a unique customer and reservation date. Basic and Plus date
-sets are selected independently and made disjoint. The suite then runs the
-cases in parallel. Do not make an edge case mutate a fixture consumed by
-another case.
+sets are selected independently and made disjoint. The suite runs cases
+serially so automation cannot exhaust the Preview database while interactive
+review traffic is using it. Do not make an edge case mutate a fixture consumed
+by another case.
 
 ### Discount coverage matrix
 
@@ -246,9 +250,9 @@ For a real run, record only non-secret evidence:
     its obsolete preview branch without a repository cleanup workflow.
 
 Failure artifacts remain available for seven days. The suite must retain
-fail-fast parallel aggregation, scoped browser sessions, cancellation
-propagation, bounded finalizers, case watchdogs, and discrete semantic-step
-timeouts.
+fail-fast bounded-concurrency aggregation, scoped browser sessions,
+cancellation propagation, bounded finalizers, case watchdogs, and discrete
+semantic-step timeouts.
 
 ## Suite telemetry
 

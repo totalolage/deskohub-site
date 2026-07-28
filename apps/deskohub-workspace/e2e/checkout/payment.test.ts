@@ -120,9 +120,10 @@ test("retries a transient reservation preparation failure with the same checkout
   expect(activatedRefs).toEqual(["@e2", "@e3"]);
 });
 
-test("retries a hosted payment field when its first fill does not stick", async () => {
+test("types into a hosted payment field when fill does not stick", async () => {
   const values = new Map<string, string>();
   let cardFillAttempts = 0;
+  let cardTypeAttempts = 0;
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
   const run = mock(async (_command, args) => {
@@ -152,8 +153,16 @@ test("retries a hosted payment field when its first fill does not stick", async 
       const value = commandArgs[2] ?? "";
       if (ref === "@e1") {
         cardFillAttempts += 1;
-        if (cardFillAttempts === 1) return success();
+        return success();
       }
+      values.set(ref, value);
+      return success();
+    }
+
+    if (commandArgs[0] === "type") {
+      const ref = commandArgs[1] ?? "";
+      const value = commandArgs[2] ?? "";
+      if (ref === "@e1") cardTypeAttempts += 1;
       values.set(ref, value);
       return success();
     }
@@ -199,7 +208,8 @@ test("retries a hosted payment field when its first fill does not stick", async 
     })
   );
 
-  expect(cardFillAttempts).toBe(2);
+  expect(cardFillAttempts).toBe(1);
+  expect(cardTypeAttempts).toBe(1);
 });
 
 test("activates hosted-payment targets and recognizes the reservation status return", async () => {

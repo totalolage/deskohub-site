@@ -17,9 +17,17 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
+import type { ComponentProps } from "react";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import {
+  getWorkspaceMeetingRoomPriceForDuration,
+  type WorkspaceMeetingRoomDurationMinutes,
+} from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
+import {
+  meetingRoomReservationDefaultValues,
+  normalizedMeetingRoomReservationOrderSchema,
+} from "@/features/reservation/meeting-room-reservation";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -86,6 +94,50 @@ const advertisedPriceResponse = {
   advertisedPriceToken: "sealed-advertised-price",
 };
 
+const getDiscountedAdvertisedPriceResponse = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes
+) => {
+  const originalPrice =
+    getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+  const discountedPrice = money(originalPrice.value / 2);
+  const quote = {
+    fingerprint: `meeting-room-${durationMinutes}-sale`,
+    items: [
+      {
+        type: "meeting-room" as const,
+        durationMinutes,
+        amount: originalPrice,
+      },
+    ] as const,
+    payment: {
+      expectedPrice: discountedPrice,
+      undiscountedPrice: originalPrice,
+      discounts: [
+        {
+          discount: {
+            id: Schema.decodeUnknownSync(discountIdSchema)("meeting-room-sale"),
+            label: "Meeting room sale",
+            adjustment: {
+              kind: "percentage" as const,
+              basisPoints: 5000,
+            },
+          },
+          subtotalBefore: originalPrice,
+          amount: discountedPrice,
+          subtotalAfter: discountedPrice,
+        },
+      ],
+    },
+  };
+
+  return {
+    kind: "meeting-room" as const,
+    quote,
+    summary: getMeetingRoomCheckoutSummary(quote),
+    advertisedPriceToken: `sealed-advertised-price-${durationMinutes}`,
+  };
+};
+
 const availabilityResponse = {
   from: "2099-07-30",
   to: "2099-07-30",
@@ -102,7 +154,9 @@ const jsonResponse = (body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const renderForm = () => {
+const renderForm = (
+  props: Partial<ComponentProps<typeof MeetingRoomReservationForm>> = {}
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retryDelay: 0 } },
   });
@@ -113,6 +167,7 @@ const renderForm = () => {
         checkoutSessionId="restored-checkout-session"
         initialReservation={initialReservation}
         locale="en-US"
+        {...props}
       />
     </QueryClientProvider>
   );
@@ -148,6 +203,46 @@ describe("MeetingRoomReservationForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
+  test("renders every server-loaded duration quote on the first paint without refetching", () => {
+    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    const initialAdvertisedPrices = ([60, 240, 1440] as const).map(
+      (durationMinutes) => ({
+        request: {
+          locale: "en-US" as const,
+          reservation: {
+            kind: "meeting-room" as const,
+            details: {
+              kind: "meeting-room" as const,
+              startsAt: "2099-07-30T08:00:00Z",
+              endsAt: Temporal.Instant.from("2099-07-30T08:00:00Z")
+                .add({ minutes: durationMinutes })
+                .toString(),
+            },
+          },
+        },
+        advertisedPrice: getDiscountedAdvertisedPriceResponse(durationMinutes),
+      })
+    );
+
+    const view = renderForm({
+      initialAdvertisedPrices,
+      initialReservation: undefined,
+      initialValues: {
+        ...meetingRoomReservationDefaultValues,
+        startDateTime: "2099-07-30T10:00",
+      },
+    });
+
+    for (const duration of [60, 240, 1440]) {
+      expect(
+        view.container.querySelector(
+          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+        )
+      ).not.toBeNull();
+    }
+    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+  });
+
   test("loads cancellable availability and submits the current advertised reservation", async () => {
     let availabilityRequest: {
       readonly url: string;
@@ -165,10 +260,34 @@ describe("MeetingRoomReservationForm", () => {
 
     const view = renderForm();
     const continueButton = view.getByRole("button", { name: "Continue" });
+    const durationInputs = [60, 240, 1440].map(
+      (duration) =>
+        view.container.querySelector(
+          `#meeting-room-duration-${duration}`
+        ) as HTMLInputElement
+    );
 
     await waitFor(() => {
       expect(continueButton.hasAttribute("disabled")).toBe(false);
     });
+    expect(durationInputs.map(({ checked }) => checked)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+    expect(
+      view.container.querySelectorAll("[data-reservation-type-option]").length
+    ).toBe(3);
+    expect(
+      Array.from(
+        view.container.querySelectorAll("[data-reservation-type-title]")
+      ).map((title) => title.textContent)
+    ).toEqual(["1 hour", "4 hours", "24 hours"]);
+    expect(
+      Array.from(
+        view.container.querySelectorAll("[data-reservation-type-option]")
+      ).every((option) => option.className.includes("lg:grid-rows-subgrid"))
+    ).toBe(true);
     expect(availabilityRequest?.url).toContain(
       "kind=meeting-room&from=2099-07-30&to=2099-07-30"
     );
@@ -217,8 +336,20 @@ describe("MeetingRoomReservationForm", () => {
       ) as HTMLInputElement
     );
     await waitFor(() => {
-      expect(getAdvertisedPrice).toHaveBeenCalledTimes(2);
+      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
       expect(continueButton.hasAttribute("disabled")).toBe(false);
+      expect(durationInputs[1]?.checked).toBe(true);
+      expect(getAdvertisedPrice).toHaveBeenCalledWith({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            startsAt: "2099-07-30T08:00:00Z",
+            endsAt: "2099-07-30T12:00:00Z",
+          },
+        },
+      });
     });
     fireEvent.click(continueButton);
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
@@ -274,7 +405,50 @@ describe("MeetingRoomReservationForm", () => {
     expect(
       view.getByRole("button", { name: /discount.*meeting room.*1 hour/i })
     ).toBeDefined();
+    const discountedOption = view.container.querySelector(
+      '[data-reservation-type-option="60"]'
+    );
+    expect(discountedOption?.className).toContain("outline-purple-500");
+    expect(
+      discountedOption?.querySelector(
+        '[data-reservation-type-discount="meeting-room-sale"]'
+      )?.textContent
+    ).toBe("Meeting room sale");
+    expect(
+      discountedOption?.querySelector("[data-reservation-type-sale-glimmer]")
+    ).not.toBeNull();
     expect(view.queryByText(/selected price/i)).toBeNull();
+  });
+
+  test("advertises a sale on every duration before it is selected", async () => {
+    getAdvertisedPrice.mockImplementation((input) => {
+      const endsAt = input.reservation.details.endsAt;
+      const durationMinutes = endsAt.endsWith("09:00:00Z")
+        ? 60
+        : endsAt.endsWith("12:00:00Z")
+          ? 240
+          : 1440;
+
+      return Promise.resolve({
+        data: getDiscountedAdvertisedPriceResponse(durationMinutes),
+      });
+    });
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+
+    const view = renderForm();
+
+    await waitFor(() => {
+      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+    });
+    for (const duration of [60, 240, 1440]) {
+      expect(
+        view.container.querySelector(
+          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+        )
+      ).not.toBeNull();
+    }
   });
 
   test("disables checkout when Dotypos reports the interval unavailable", async () => {

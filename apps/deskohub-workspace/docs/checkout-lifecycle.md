@@ -300,6 +300,14 @@ Allowed fulfillment transitions:
 
 Fulfillment is allowed only when `payment_state = 'paid'`.
 
+Production reaches `fulfilled` only after the Resend delivery webhook confirms
+the customer access email. Preview and Development reach `fulfilled` after the
+configured email provider accepts the required customer send; the internal
+notification remains best effort. Protected Preview deployments cannot receive
+provider callbacks reliably. Recovery sends use deterministic
+reservation-and-category idempotency keys, and an abandoned `processing` claim
+becomes retryable after one minute.
+
 ## Checkout Session And Attempt HMACs
 
 `checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed form value or a new form mount creates a new attempt.

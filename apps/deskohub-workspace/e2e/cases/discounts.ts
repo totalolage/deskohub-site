@@ -5,6 +5,7 @@ import {
   evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
+  waitForBrowserCondition,
   waitForBrowserReactHydration,
   waitForBrowserTextContent,
 } from "../browser";
@@ -1108,7 +1109,7 @@ export const assertDisplayedDiscounts = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const triggerSelector = tier
-      ? `[data-reservation-tier-option="${tier}"] button[aria-label^="Show discounts applied to"]`
+      ? `[data-reservation-type-option="${tier}"] button[aria-label^="Show discounts applied to"]`
       : 'button[aria-label^="Show discounts applied to"]';
     yield* waitForBrowserReactHydration(run, session, triggerSelector, {
       timeoutMs: config.timeouts.uiTransition,
@@ -1117,33 +1118,22 @@ export const assertDisplayedDiscounts = ({
       timeoutMs: config.timeouts.browserAction,
     });
     for (const { basisPoints, label } of discounts) {
-      yield* waitForBrowserTextContent(run, session, label, {
-        caseSensitive: false,
-        timeoutMs: config.timeouts.uiTransition,
-      });
       const adjustment = new Intl.NumberFormat("en-US", {
         style: "percent",
         maximumFractionDigits: 2,
       }).format(basisPoints / 10_000);
-      yield* evalBrowserScript(
-        `assert ${label} adjustment`,
+      const labelLiteral = JSON.stringify(label.toLocaleLowerCase());
+      const adjustmentLiteral = JSON.stringify(adjustment);
+      yield* waitForBrowserCondition(
         run,
         session,
+        `${label} discount detail`,
         `
-(() => {
-  const label = ${JSON.stringify(label)};
-  const adjustment = ${JSON.stringify(adjustment)};
-  const item = [...document.querySelectorAll('[role="tooltip"] li')].find(
-    (candidate) => (candidate.textContent ?? '').includes(label)
-  );
-  if (!(item instanceof HTMLLIElement)) {
-    throw new Error('discount detail row missing');
-  }
-  if (!(item.textContent ?? '').includes(adjustment)) {
-    throw new Error('discount adjustment missing');
-  }
-  return true;
-})()
+(() => [...document.querySelectorAll('[role="tooltip"] li')].some((item) => {
+  const content = item.textContent ?? '';
+  return content.toLocaleLowerCase().includes(${labelLiteral})
+    && content.includes(${adjustmentLiteral});
+}))()
 `,
         { timeoutMs: config.timeouts.uiTransition }
       );

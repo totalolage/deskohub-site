@@ -7,8 +7,9 @@ import {
   temporalPlainDateToDate,
 } from "@/shared/utils/temporal";
 
-const getCurrentPragueDate = () =>
-  Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+export const getCurrentPragueDate = (now = Temporal.Now.instant()) =>
+  now
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
 

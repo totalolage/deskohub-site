@@ -162,7 +162,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
     throw new Error(label);
   };
   const selectTierThroughPrice = async (tier, waitForAdvertisedPrice = true) => {
-    const price = document.querySelector('[data-reservation-tier-price="' + tier + '"]');
+    const price = document.querySelector('[data-reservation-type-price="' + tier + '"]');
     const input = document.querySelector('#reservation-entry-tier-' + tier);
     if (!(price instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
       throw new Error(tier + ' tier price control not found');
@@ -171,7 +171,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
     await waitUntil(() => input.checked, tier + ' tier was not selected through its price');
     if (waitForAdvertisedPrice) {
       await waitUntil(
-        () => price.dataset.reservationTierPriceReady === 'true',
+        () => price.dataset.reservationTypePriceReady === 'true',
         tier + ' advertised price did not become ready'
       );
     }
@@ -188,23 +188,23 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
       return monitorInput instanceof HTMLInputElement && !monitorInput.disabled;
     }, desiredMonitorOption + ' monitor option was not available');
     const price = document.querySelector(
-      '[data-reservation-tier-price="' + desiredTier + '"]'
+      '[data-reservation-type-price="' + desiredTier + '"]'
     );
     if (!(price instanceof HTMLElement)) {
       throw new Error(desiredTier + ' advertised price not found');
     }
     if (
       !monitorInput.checked ||
-      price.dataset.reservationTierPriceReady !== 'true'
+      price.dataset.reservationTypePriceReady !== 'true'
     ) {
-      let sawPendingPrice = price.dataset.reservationTierPriceReady === 'false';
+      let sawPendingPrice = price.dataset.reservationTypePriceReady === 'false';
       const priceObserver = new MutationObserver((records) => {
         if (records.some((record) => record.oldValue === 'true')) {
           sawPendingPrice = true;
         }
       });
       priceObserver.observe(price, {
-        attributeFilter: ['data-reservation-tier-price-ready'],
+        attributeFilter: ['data-reservation-type-price-ready'],
         attributeOldValue: true,
       });
       try {
@@ -216,7 +216,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
         await waitUntil(
           () =>
             sawPendingPrice &&
-            price.dataset.reservationTierPriceReady === 'true',
+            price.dataset.reservationTypePriceReady === 'true',
           desiredTier + ' advertised price did not refresh after monitor selection'
         );
       } finally {
@@ -366,7 +366,7 @@ const getSubmitPreparedReservationScript = (consentSelector: string) => `
   const consentSelector = ${JSON.stringify(consentSelector)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + 60000;
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);

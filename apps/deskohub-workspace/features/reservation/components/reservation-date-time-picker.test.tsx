@@ -13,9 +13,9 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { MeetingRoomDateTimePicker } from "./meeting-room-date-time-picker";
+import { ReservationDateTimePicker } from "./reservation-date-time-picker";
 
-describe("MeetingRoomDateTimePicker", () => {
+describe("ReservationDateTimePicker", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
   });
@@ -33,7 +33,7 @@ describe("MeetingRoomDateTimePicker", () => {
     let minimum = "2099-06-10T15:00";
     const minimumProps = { minimum: () => minimum };
     const view = render(
-      <MeetingRoomDateTimePicker
+      <ReservationDateTimePicker
         dateLabel="Start date"
         {...minimumProps}
         onChange={onChange}
@@ -57,9 +57,10 @@ describe("MeetingRoomDateTimePicker", () => {
   test("labels both interactive controls and rejects partial hours", () => {
     const onChange = mock(() => undefined);
     const view = render(
-      <MeetingRoomDateTimePicker
+      <ReservationDateTimePicker
         dateLabel="Meeting room start date"
         onChange={onChange}
+        timeStepMinutes={60}
         timeLabel="Meeting room start time"
         value="2099-06-10T16:00"
       />
@@ -69,6 +70,7 @@ describe("MeetingRoomDateTimePicker", () => {
       view.getByRole("button", { name: "Meeting room start date" })
     ).toBeDefined();
     const timeInput = view.getByLabelText("Meeting room start time");
+    expect(timeInput.getAttribute("step")).toBe("3600");
 
     fireEvent.input(timeInput, { target: { value: "17:00" } });
     expect(onChange).toHaveBeenCalledWith("2099-06-10T17:00");
@@ -83,10 +85,70 @@ describe("MeetingRoomDateTimePicker", () => {
     expect((timeInput as HTMLInputElement).value).toBe("16:00");
   });
 
+  test("shows only the selected date in the date control", () => {
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        locale="en-US"
+        timeLabel="Start time"
+        value="2099-06-10T16:00"
+      />
+    );
+
+    const dateButton = view.getByRole("button", { name: "Start date" });
+    expect(dateButton.textContent).toContain("June 10, 2099");
+    expect(dateButton.textContent).not.toContain("16:00");
+  });
+
+  test("accepts a time before the date and keeps it pending", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        onChange={onChange}
+        timeLabel="Start time"
+      />
+    );
+    const timeInput = view.getByLabelText("Start time") as HTMLInputElement;
+
+    expect(timeInput.disabled).toBe(false);
+    fireEvent.input(timeInput, { target: { value: "17:00" } });
+    expect(timeInput.value).toBe("17:00");
+    expect(onChange).not.toHaveBeenCalled();
+
+    view.rerender(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        onChange={onChange}
+        timeLabel="Start time"
+      />
+    );
+    expect((view.getByLabelText("Start time") as HTMLInputElement).value).toBe(
+      "17:00"
+    );
+  });
+
+  test("accepts minute-level values by default", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Start date"
+        onChange={onChange}
+        timeLabel="Start time"
+        value="2099-06-10T16:00"
+      />
+    );
+    const timeInput = view.getByLabelText("Start time");
+
+    expect(timeInput.getAttribute("step")).toBe("60");
+    fireEvent.input(timeInput, { target: { value: "17:30" } });
+    expect(onChange).toHaveBeenCalledWith("2099-06-10T17:30");
+  });
+
   test("clamps an existing value when the minimum moves forward", () => {
     const onChange = mock(() => undefined);
     const view = render(
-      <MeetingRoomDateTimePicker
+      <ReservationDateTimePicker
         dateLabel="Start date"
         minimum="2099-06-10T15:00"
         onChange={onChange}
@@ -96,7 +158,7 @@ describe("MeetingRoomDateTimePicker", () => {
     );
 
     view.rerender(
-      <MeetingRoomDateTimePicker
+      <ReservationDateTimePicker
         dateLabel="Start date"
         minimum="2099-06-10T17:00"
         onChange={onChange}

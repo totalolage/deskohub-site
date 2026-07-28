@@ -2,6 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { env } from "@/env";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
@@ -37,7 +38,7 @@ export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 15 * 60 * 1000;
+export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 60 * 1000;
 
 export interface WorkspacePaidFulfillmentService {
   readonly fulfillPaidOrder: (input: {
@@ -304,24 +305,34 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             )
           );
           yield* Effect.logInfo("Paid reservation email flow succeeded");
+
+          if (env.VERCEL_ENV !== "production") {
+            yield* reservations.markFulfilled({
+              id: claimed.id,
+              fulfilledAt: Temporal.Now.instant(),
+            });
+            yield* Effect.logInfo(
+              "Non-production paid fulfillment completed after email provider acceptance"
+            );
+            return;
+          }
+
           yield* Effect.logInfo(
             "Paid fulfillment is awaiting Resend delivery webhook"
           );
         },
         (effect, input) =>
           effect.pipe(
-            Effect.scoped,
-            Effect.mapError((cause) =>
-              Predicate.isTagged(cause, "WorkspacePaidFulfillmentError") ||
-              Predicate.isTagged(cause, "WorkspaceReservationStateError")
-                ? cause
-                : new WorkspacePaidFulfillmentError({
+            Effect.catch((cause) =>
+              Predicate.isTagged(cause, "WorkspacePaidFulfillmentError")
+                ? Effect.fail(cause)
+                : failFulfillment({
                     orderId: input.orderId,
                     failureCode: "fulfillment_completion_failed",
-                    message: "Paid reservation fulfillment failed.",
                     cause,
                   })
             ),
+            Effect.scoped,
             Effect.annotateLogs({ ...input })
           )
       ),

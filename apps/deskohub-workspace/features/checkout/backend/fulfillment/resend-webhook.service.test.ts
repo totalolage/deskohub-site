@@ -687,6 +687,10 @@ describe("ResendWebhookService", () => {
       throw new Error("Internal email was not sent.");
     }
     const internalLocale = "cs-CZ";
+    expect(internalEmail.to).toEqual({
+      email: "delivered+workspace-internal@resend.dev",
+      name: workspaceSiteConstants.brand.name,
+    });
     expect(internalEmail.subject).toBe(
       `[TESTING] ${m.checkoutEmailInternalPaidReservationSubject(
         { orderId: "reservation-id" },
@@ -717,7 +721,7 @@ describe("ResendWebhookService", () => {
     );
   });
 
-  test("leaves paid fulfillment processing until Resend confirms delivery", async () => {
+  test("completes non-production fulfillment after the email provider accepts delivery", async () => {
     const { DotyposService } = await import("@deskohub/dotypos");
     const {
       WorkspacePaidFulfillmentService,
@@ -766,9 +770,7 @@ describe("ResendWebhookService", () => {
     const workspaceReservations = {
       getReservation,
     };
-    const markFulfilled = mock(() =>
-      Effect.die("delivery webhook should mark fulfilled")
-    );
+    const markFulfilled = mock(() => Effect.void);
     const reservations = {
       findById: mock(() => Effect.succeed(existingReservation as never)),
       claimPaidFulfillment: mock(() =>
@@ -817,7 +819,9 @@ describe("ResendWebhookService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: emailReservation,
     });
-    expect(markFulfilled).not.toHaveBeenCalled();
+    expect(markFulfilled).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "reservation-id" })
+    );
   });
 
   test("Resend provider forwards webhook correlation tags", async () => {

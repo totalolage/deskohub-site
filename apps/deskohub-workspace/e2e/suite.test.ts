@@ -9,39 +9,26 @@ import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
-import { runWorkspaceE2ECases } from "./suite";
+import { runWorkspaceE2ECases, WORKSPACE_E2E_CASE_CONCURRENCY } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 
-test("runs checkout and terminal cases concurrently", async () => {
+test("runs checkout and terminal cases", async () => {
   const telemetryEvents: E2ETelemetryObservation[] = [];
   const startedSessions: string[] = [];
-  let startedCaseCount = 0;
-  let releaseCases: () => void = () => undefined;
-  const bothCasesStarted = new Promise<void>((resolve) => {
-    releaseCases = resolve;
-  });
-  const waitForBothCases = () =>
-    Effect.promise(async () => {
-      startedCaseCount += 1;
-      if (startedCaseCount === 2) releaseCases();
-      await bothCasesStarted;
-    });
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: ({ session }) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           startedSessions.push(session);
-          yield* waitForBothCases();
         }),
       id: "payment-failed",
       timeoutMs: 10_000,
     },
     {
       execute: ({ session }) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           startedSessions.push(session);
-          yield* waitForBothCases();
         }),
       id: "checkout-cowork",
       timeoutMs: 10_000,
@@ -83,6 +70,48 @@ test("runs checkout and terminal cases concurrently", async () => {
   );
 });
 
+test("bounds preview case concurrency", async () => {
+  let activeCaseCount = 0;
+  let maximumActiveCaseCount = 0;
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: WORKSPACE_E2E_CASE_CONCURRENCY + 2 },
+    (_, index) => ({
+      execute: () =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            activeCaseCount += 1;
+            maximumActiveCaseCount = Math.max(
+              maximumActiveCaseCount,
+              activeCaseCount
+            );
+          }),
+          () =>
+            Effect.promise(
+              () => new Promise<void>((resolve) => setTimeout(resolve, 10))
+            ),
+          () =>
+            Effect.sync(() => {
+              activeCaseCount -= 1;
+            })
+        ),
+      id: `bounded-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-concurrency-test",
+      cases,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-concurrency",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+  );
+
+  expect(maximumActiveCaseCount).toBe(WORKSPACE_E2E_CASE_CONCURRENCY);
+});
+
 test("keeps browser session names independent of descriptive case ids", async () => {
   const startedSessions: string[] = [];
   const cases: readonly WorkspaceE2ECase[] = [
@@ -109,43 +138,24 @@ test("keeps browser session names independent of descriptive case ids", async ()
   expect(startedSessions).toEqual(["workspace-e2e-30212233344-1-0"]);
 });
 
-test("cancels sibling cases when the first case fails", async () => {
+test("stops before starting later cases when the first case fails", async () => {
   const artifactRoot = await mkdtemp(
     resolve(tmpdir(), "workspace-e2e-fail-fast-")
   );
-  let startedCaseCount = 0;
-  let releaseCases: () => void = () => undefined;
-  let siblingInterrupted = false;
-  const bothCasesStarted = new Promise<void>((resolveStarted) => {
-    releaseCases = resolveStarted;
-  });
-  const reachStartGate = Effect.promise(async () => {
-    startedCaseCount += 1;
-    if (startedCaseCount === 2) releaseCases();
-    await bothCasesStarted;
-  });
+  let laterCaseStarted = false;
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: () =>
-        reachStartGate.pipe(
-          Effect.andThen(
-            Effect.fail(workspaceE2EError("intentional case failure"))
-          )
-        ),
+        Effect.fail(workspaceE2EError("intentional case failure")),
       id: "first-failure",
       timeoutMs: 10_000,
     },
     {
       execute: () =>
-        reachStartGate.pipe(
-          Effect.andThen(Effect.never),
-          Effect.onInterrupt(() =>
-            Effect.sync(() => {
-              siblingInterrupted = true;
-            })
-          )
-        ),
-      id: "cancelled-sibling",
+        Effect.sync(() => {
+          laterCaseStarted = true;
+        }),
+      id: "later-case",
       timeoutMs: 10_000,
     },
   ];
@@ -163,7 +173,7 @@ test("cancels sibling cases when the first case fails", async () => {
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
-    expect(siblingInterrupted).toBe(true);
+    expect(laterCaseStarted).toBe(false);
     expect(telemetryEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -171,13 +181,11 @@ test("cancels sibling cases when the first case fails", async () => {
           outcome: "failed",
           scope: "case",
         }),
-        expect.objectContaining({
-          caseId: "cancelled-sibling",
-          outcome: "cancelled",
-          scope: "case",
-        }),
       ])
     );
+    expect(
+      telemetryEvents.some((event) => event.caseId === "later-case")
+    ).toBe(false);
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
   }

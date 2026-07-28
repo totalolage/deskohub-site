@@ -1,0 +1,135 @@
+"use client";
+
+import { CalendarIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Button } from "@/shared/components/ui/button";
+import { Calendar } from "@/shared/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/components/ui/popover";
+import { cn } from "@/shared/utils";
+
+type ReservationDatePickerProps = {
+  readonly ariaLabel: string;
+  readonly className?: string;
+  readonly displayValue?: string;
+  readonly isDateDisabled?: (date: Temporal.PlainDate) => boolean;
+  readonly locale?: string;
+  readonly minimum?: string | (() => string);
+  readonly name?: string;
+  readonly onChange?: (value: string) => void;
+  readonly placeholder?: string;
+  readonly value?: string;
+  readonly variant?: "default" | "error";
+};
+
+const parsePlainDate = (value: string | undefined) => {
+  if (!value) return undefined;
+
+  try {
+    return Temporal.PlainDate.from(value);
+  } catch {
+    return undefined;
+  }
+};
+
+const getCalendarDate = (date: Temporal.PlainDate) =>
+  new Date(date.year, date.month - 1, date.day, 12);
+
+const getFormatterDate = (date: Temporal.PlainDate) =>
+  new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
+
+const getPlainDateFromCalendar = (date: Date) =>
+  Temporal.PlainDate.from({
+    year: date.getFullYear(),
+    month: date.getMonth() + 1,
+    day: date.getDate(),
+  });
+
+export function ReservationDatePicker({
+  ariaLabel,
+  className,
+  displayValue,
+  isDateDisabled,
+  locale,
+  minimum,
+  name,
+  onChange,
+  placeholder = "Pick a date",
+  value,
+  variant = "default",
+}: ReservationDatePickerProps) {
+  const [open, setOpen] = useState(false);
+  const selectedDate = parsePlainDate(value);
+  const minimumDate = parsePlainDate(
+    typeof minimum === "function" ? minimum() : minimum
+  );
+  const dateFormatter = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+        year: "numeric",
+      }),
+    [locale]
+  );
+
+  return (
+    <>
+      {name && <input name={name} type="hidden" value={value ?? ""} />}
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            aria-label={ariaLabel}
+            className={cn(
+              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+              !selectedDate && "text-navy-blue/44",
+              variant === "error" && "border-burned-orange",
+              className
+            )}
+            type="button"
+            variant="secondary"
+          >
+            <CalendarIcon className="h-5 w-5 text-burned-orange" />
+            {selectedDate
+              ? (displayValue ??
+                dateFormatter.format(getFormatterDate(selectedDate)))
+              : placeholder}
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent align="start" className="w-auto p-3">
+          <Calendar
+            disabled={(date) => {
+              const plainDate = getPlainDateFromCalendar(date);
+              return Boolean(
+                (minimumDate &&
+                  Temporal.PlainDate.compare(plainDate, minimumDate) < 0) ||
+                  isDateDisabled?.(plainDate)
+              );
+            }}
+            mode="single"
+            onSelect={(date) => {
+              if (!date) return;
+
+              const plainDate = getPlainDateFromCalendar(date);
+              if (
+                (minimumDate &&
+                  Temporal.PlainDate.compare(plainDate, minimumDate) < 0) ||
+                isDateDisabled?.(plainDate)
+              ) {
+                return;
+              }
+
+              onChange?.(plainDate.toString());
+              setOpen(false);
+            }}
+            selected={selectedDate ? getCalendarDate(selectedDate) : undefined}
+          />
+        </PopoverContent>
+      </Popover>
+    </>
+  );
+}

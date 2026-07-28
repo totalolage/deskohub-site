@@ -37,6 +37,9 @@ test("keeps advertised-price preparation separable from form submission", () => 
   expect(submitPreparedCoworkReservationScript).toContain(
     "reservation-privacy-consent"
   );
+  expect(submitPreparedCoworkReservationScript).toContain(
+    "Date.now() + 60000"
+  );
   expect(combined).toContain(prepare.trim());
 
   expect(() => new Function(`return ${combined}`)).not.toThrow();
@@ -57,18 +60,18 @@ test("prepares the Profi advertised price without requiring another tier", async
   });
   try {
     document.body.innerHTML = `
-    <button data-reservation-tier-price="basic" data-reservation-tier-price-ready="true"></button>
-    <button data-reservation-tier-price="profi" data-reservation-tier-price-ready="false"></button>
+    <button data-reservation-type-price="basic" data-reservation-type-price-ready="true"></button>
+    <button data-reservation-type-price="profi" data-reservation-type-price-ready="false"></button>
     <input id="reservation-entry-tier-basic" type="radio" disabled />
     <input id="reservation-entry-tier-profi" type="radio" checked />
     <label><input type="radio" value="2x27-qhd" /></label>
   `;
 
     const basicPrice = document.querySelector<HTMLElement>(
-      '[data-reservation-tier-price="basic"]'
+      '[data-reservation-type-price="basic"]'
     )!;
     const profiPrice = document.querySelector<HTMLElement>(
-      '[data-reservation-tier-price="profi"]'
+      '[data-reservation-type-price="profi"]'
     )!;
     const basicInput = document.querySelector<HTMLInputElement>(
       "#reservation-entry-tier-basic"
@@ -85,17 +88,17 @@ test("prepares the Profi advertised price without requiring another tier", async
       basicInput.checked = true;
       profiInput.checked = false;
       monitorInput.checked = false;
-      basicPrice.dataset.reservationTierPriceReady = "true";
+      basicPrice.dataset.reservationTypePriceReady = "true";
     });
     profiPrice.addEventListener("click", () => {
       basicInput.checked = false;
       profiInput.checked = true;
       monitorInput.checked = false;
-      profiPrice.dataset.reservationTierPriceReady = "false";
+      profiPrice.dataset.reservationTypePriceReady = "false";
     });
     monitorInput.closest("label")!.addEventListener("click", () => {
       monitorInput.checked = true;
-      profiPrice.dataset.reservationTierPriceReady = "true";
+      profiPrice.dataset.reservationTypePriceReady = "true";
     });
 
     let now = 0;
@@ -132,7 +135,7 @@ test("prepares the Profi advertised price without requiring another tier", async
     ).resolves.toBe(location.href);
     expect(profiInput.checked).toBe(true);
     expect(monitorInput.checked).toBe(true);
-    expect(profiPrice.dataset.reservationTierPriceReady).toBe("true");
+    expect(profiPrice.dataset.reservationTypePriceReady).toBe("true");
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;
@@ -151,7 +154,7 @@ test("accepts an already-prepared prefilled Profi price", async () => {
   });
   try {
     document.body.innerHTML = `
-      <button data-reservation-tier-price="profi" data-reservation-tier-price-ready="true"></button>
+      <button data-reservation-type-price="profi" data-reservation-type-price-ready="true"></button>
       <input id="reservation-entry-tier-profi" type="radio" checked />
       <label><input type="radio" value="2x27-qhd" checked /></label>
     `;

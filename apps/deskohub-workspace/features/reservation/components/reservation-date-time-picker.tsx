@@ -1,19 +1,13 @@
 "use client";
 
-import { CalendarIcon, Clock } from "lucide-react";
+import { Clock } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Button } from "@/shared/components/ui/button";
-import { Calendar } from "@/shared/components/ui/calendar";
 import { Input } from "@/shared/components/ui/input";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { ReservationDatePicker } from "./reservation-date-picker";
 
-type MeetingRoomDateTimePickerProps = {
+type ReservationDateTimePickerProps = {
   readonly dateLabel: string;
   readonly className?: string;
   readonly locale?: string;
@@ -23,6 +17,7 @@ type MeetingRoomDateTimePickerProps = {
   readonly onChange?: (value: string) => void;
   readonly placeholder?: string;
   readonly preserveValueBeforeMinimum?: boolean;
+  readonly timeStepMinutes?: number;
   readonly timeLabel: string;
   readonly value?: string;
   readonly variant?: "default" | "error";
@@ -41,7 +36,7 @@ const parsePlainDateTime = (value: string | undefined) => {
 };
 
 const resolveMinimumDateTime = (
-  minimum: MeetingRoomDateTimePickerProps["minimum"]
+  minimum: ReservationDateTimePickerProps["minimum"]
 ) => parsePlainDateTime(typeof minimum === "function" ? minimum() : minimum);
 
 const getMinimumTimeForDate = (
@@ -62,20 +57,10 @@ const formatDateTimeValue = ({
   readonly time: string;
 }) => `${date.toString()}T${time}`;
 
-const getCalendarDate = (date: Temporal.PlainDate) =>
-  new Date(date.year, date.month - 1, date.day, 12);
-
 const getFormatterDate = (date: Temporal.PlainDate) =>
   new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
 
-const getPlainDateFromCalendar = (date: Date) =>
-  Temporal.PlainDate.from({
-    year: date.getFullYear(),
-    month: date.getMonth() + 1,
-    day: date.getDate(),
-  });
-
-export function MeetingRoomDateTimePicker({
+export function ReservationDateTimePicker({
   className,
   dateLabel,
   locale,
@@ -85,24 +70,22 @@ export function MeetingRoomDateTimePicker({
   onChange,
   placeholder = "Pick date and time",
   preserveValueBeforeMinimum = false,
+  timeStepMinutes = 1,
   timeLabel,
   value,
   variant = "default",
-}: MeetingRoomDateTimePickerProps) {
-  const [open, setOpen] = useState(false);
-  const dateTime = parsePlainDateTime(value);
+}: ReservationDateTimePickerProps) {
+  const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
+  const [pendingTime, setPendingTime] = useState<string>(defaultTime);
   const minimumDateTime = resolveMinimumDateTime(minimum);
-  const minimumDate = minimumDateTime?.toPlainDate();
   const selectedDate = dateTime?.toPlainDate();
   const selectedTime =
-    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? defaultTime;
+    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? pendingTime;
+  const resolvedTimeStepMinutes = Math.max(1, Math.trunc(timeStepMinutes));
   const selectedDateMinimumTime = getMinimumTimeForDate(
     selectedDate,
     minimumDateTime
   );
-  const selectedCalendarDate = selectedDate
-    ? getCalendarDate(selectedDate)
-    : undefined;
   const dateFormatter = useMemo(
     () =>
       new Intl.DateTimeFormat(locale, {
@@ -114,14 +97,8 @@ export function MeetingRoomDateTimePicker({
     [locale]
   );
   const displayValue = selectedDate
-    ? `${dateFormatter.format(getFormatterDate(selectedDate))} ${selectedTime}`
+    ? dateFormatter.format(getFormatterDate(selectedDate))
     : placeholder;
-  const minimumCalendarDate = minimumDate
-    ? getCalendarDate(minimumDate)
-    : undefined;
-  const calendarDisabled = minimumCalendarDate
-    ? { before: minimumCalendarDate }
-    : undefined;
 
   useEffect(() => {
     const currentMinimum = resolveMinimumDateTime(minimum);
@@ -137,77 +114,37 @@ export function MeetingRoomDateTimePicker({
 
   return (
     <div className={cn("grid gap-3", className)}>
-      {name && (
-        <input
-          name={name}
-          onChange={(event) => onChange?.(event.currentTarget.value)}
-          type="hidden"
-          value={value ?? ""}
-        />
-      )}
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            aria-label={dateLabel}
-            className={cn(
-              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-              !selectedDate && "text-navy-blue/44",
-              variant === "error" && "border-burned-orange"
-            )}
-            type="button"
-            variant="secondary"
-          >
-            <CalendarIcon className="h-5 w-5 text-burned-orange" />
-            {displayValue}
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-3">
-          <Calendar
-            disabled={calendarDisabled}
-            mode="single"
-            onSelect={(date) => {
-              const plainDate = date
-                ? getPlainDateFromCalendar(date)
-                : undefined;
+      <ReservationDatePicker
+        ariaLabel={dateLabel}
+        displayValue={displayValue}
+        locale={locale}
+        minimum={minimumDateTime?.toPlainDate().toString()}
+        name={name}
+        onChange={(date) => {
+          const plainDate = Temporal.PlainDate.from(date);
+          const currentMinimumDateTime = resolveMinimumDateTime(minimum);
+          const minimumTime = getMinimumTimeForDate(
+            plainDate,
+            currentMinimumDateTime
+          );
+          const time =
+            minimumTime && selectedTime < minimumTime
+              ? minimumTime
+              : selectedTime;
 
-              if (!plainDate) return;
-
-              const currentMinimumDateTime = resolveMinimumDateTime(minimum);
-              if (
-                currentMinimumDateTime &&
-                Temporal.PlainDate.compare(
-                  plainDate,
-                  currentMinimumDateTime.toPlainDate()
-                ) < 0
-              ) {
-                return;
-              }
-
-              const minimumTime = getMinimumTimeForDate(
-                plainDate,
-                currentMinimumDateTime
-              );
-              const time =
-                minimumTime && selectedTime < minimumTime
-                  ? minimumTime
-                  : selectedTime;
-
-              onChange?.(formatDateTimeValue({ date: plainDate, time }));
-              setOpen(false);
-            }}
-            selected={selectedCalendarDate}
-          />
-        </PopoverContent>
-      </Popover>
+          onChange?.(formatDateTimeValue({ date: plainDate, time }));
+        }}
+        placeholder={placeholder}
+        value={selectedDate?.toString()}
+        variant={variant}
+      />
       <div className="relative">
         <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
         <Input
           aria-label={timeLabel}
           className="pl-11"
-          disabled={!selectedDate}
           onBlur={onBlur}
           onInput={(event) => {
-            if (!selectedDate) return;
             const input = event.currentTarget;
             const restoreSelectedTime = () => {
               input.value = selectedTime;
@@ -217,7 +154,10 @@ export function MeetingRoomDateTimePicker({
               const time = Temporal.PlainTime.from(input.value).toString({
                 smallestUnit: "minute",
               });
-              if (!time.endsWith(":00")) {
+              const parsedTime = Temporal.PlainTime.from(time);
+              const minutesFromMidnight =
+                parsedTime.hour * 60 + parsedTime.minute;
+              if (minutesFromMidnight % resolvedTimeStepMinutes !== 0) {
                 restoreSelectedTime();
                 return;
               }
@@ -230,18 +170,16 @@ export function MeetingRoomDateTimePicker({
                 return;
               }
 
-              onChange?.(
-                formatDateTimeValue({
-                  date: selectedDate,
-                  time,
-                })
-              );
+              setPendingTime(time);
+              if (selectedDate) {
+                onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+              }
             } catch {
               restoreSelectedTime();
             }
           }}
           min={selectedDateMinimumTime}
-          step={3600}
+          step={resolvedTimeStepMinutes * 60}
           type="time"
           value={selectedTime}
           variant={variant}
