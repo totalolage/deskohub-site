@@ -6,14 +6,11 @@ import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
-  type AdvertisedPriceRequest,
   isMeetingRoomAdvertisedPrice,
+  type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
-import {
-  getWorkspaceMeetingRoomPriceForDuration,
-  workspaceMeetingRoomDurationOptions,
-} from "@/features/checkout/product-catalog";
+import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
@@ -32,6 +29,7 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
+import { getMeetingRoomDurationAdvertisedPriceRequests } from "@/features/reservation/meeting-room-advertised-price";
 import {
   getMeetingRoomReservationDefaultValues,
   getMeetingRoomReservationOrder,
@@ -57,6 +55,7 @@ import {
 
 type MeetingRoomReservationFormProps = {
   readonly checkoutSessionId?: string;
+  readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
 };
@@ -71,6 +70,7 @@ const meetingRoomReservationFormSchema = Schema.toStandardSchemaV1(
 
 export function MeetingRoomReservationForm({
   checkoutSessionId,
+  initialAdvertisedPrices = [],
   initialReservation,
   locale,
 }: MeetingRoomReservationFormProps) {
@@ -129,33 +129,15 @@ export function MeetingRoomReservationForm({
   );
   const advertisedPriceRequests = useMemo(
     () =>
-      workspaceMeetingRoomDurationOptions.flatMap((duration) => {
-        const interval = getMeetingRoomReservationInterval(
-          selectedStartDateTime,
-          duration
-        );
-        if (!interval) return [];
-
-        return [
-          {
-            duration,
-            request: {
-              locale,
-              reservation: {
-                kind: "meeting-room",
-                details: {
-                  kind: "meeting-room",
-                  ...interval,
-                },
-              },
-            } satisfies AdvertisedPriceRequest,
-          },
-        ];
+      getMeetingRoomDurationAdvertisedPriceRequests({
+        locale,
+        startDateTime: selectedStartDateTime,
       }),
     [locale, selectedStartDateTime]
   );
   const advertisedPriceQueryResults = useAdvertisedPrices(
-    advertisedPriceRequests.map(({ request }) => request)
+    advertisedPriceRequests.map(({ request }) => request),
+    initialAdvertisedPrices
   );
   const advertisedPricesByDuration = new Map<
     (typeof workspaceMeetingRoomDurationOptions)[number],
@@ -310,16 +292,19 @@ export function MeetingRoomReservationForm({
                           : undefined
                       }
                       price={
-                        <ReservationAdvertisedPrice
-                          amount={
-                            advertisedProductItem?.amount ??
-                            getWorkspaceMeetingRoomPriceForDuration(duration)
-                          }
-                          locale={locale}
-                          originalAmount={
-                            hasAdvertisedDiscounts ? originalAmount : undefined
-                          }
-                        />
+                        advertisedProductItem ? (
+                          <ReservationAdvertisedPrice
+                            amount={advertisedProductItem.amount}
+                            locale={locale}
+                            originalAmount={
+                              hasAdvertisedDiscounts
+                                ? originalAmount
+                                : undefined
+                            }
+                          />
+                        ) : (
+                          <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
+                        )
                       }
                       priceReady={Boolean(advertisedProductItem)}
                       title={m.reservationMeetingRoomDurationHours(

@@ -17,6 +17,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Schema } from "effect";
+import type { ComponentProps } from "react";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
@@ -150,7 +151,9 @@ const jsonResponse = (body: unknown) =>
     headers: { "Content-Type": "application/json" },
   });
 
-const renderForm = () => {
+const renderForm = (
+  props: Partial<ComponentProps<typeof MeetingRoomReservationForm>> = {}
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retryDelay: 0 } },
   });
@@ -161,6 +164,7 @@ const renderForm = () => {
         checkoutSessionId="restored-checkout-session"
         initialReservation={initialReservation}
         locale="en-US"
+        {...props}
       />
     </QueryClientProvider>
   );
@@ -194,6 +198,39 @@ describe("MeetingRoomReservationForm", () => {
 
   afterAll(() => {
     unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("renders every server-loaded duration quote on the first paint without refetching", () => {
+    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    const initialAdvertisedPrices = ([60, 240, 1440] as const).map(
+      (durationMinutes) => ({
+        request: {
+          locale: "en-US" as const,
+          reservation: {
+            kind: "meeting-room" as const,
+            details: {
+              kind: "meeting-room" as const,
+              startsAt: "2099-07-30T08:00:00Z",
+              endsAt: Temporal.Instant.from("2099-07-30T08:00:00Z")
+                .add({ minutes: durationMinutes })
+                .toString(),
+            },
+          },
+        },
+        advertisedPrice: getDiscountedAdvertisedPriceResponse(durationMinutes),
+      })
+    );
+
+    const view = renderForm({ initialAdvertisedPrices });
+
+    for (const duration of [60, 240, 1440]) {
+      expect(
+        view.container.querySelector(
+          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+        )
+      ).not.toBeNull();
+    }
+    expect(getAdvertisedPrice).not.toHaveBeenCalled();
   });
 
   test("loads cancellable availability and submits the current advertised reservation", async () => {

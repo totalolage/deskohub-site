@@ -13,13 +13,10 @@ import {
 } from "@/features/checkout/advertised-price";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import {
-  formatWorkspaceProductCurrencyAmount,
-  getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductMonitorOption,
   type WorkspaceCoworkProductTier,
-  type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
-  workspaceCoworkProductCatalog,
+  workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -48,7 +45,10 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import { getCoworkTierAdvertisedPriceRequests } from "@/features/reservation/cowork-advertised-price";
+import {
+  getCoworkCoffeeAdvertisedPriceRequest,
+  getCoworkTierAdvertisedPriceRequests,
+} from "@/features/reservation/cowork-advertised-price";
 import {
   type CoworkReservationData,
   type CoworkReservationInput,
@@ -96,14 +96,12 @@ const coworkReservationFormSchema = Schema.toStandardSchemaV1(
 );
 
 const tierOptions: ReadonlyArray<{
-  product: WorkspaceProductCatalogItem;
   value: WorkspaceCoworkProductTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceCoworkProductCatalog.map((product) => ({
-  product,
-  value: product.tier,
-  ...workspaceProductTierMessages[product.tier],
+}> = workspaceCoworkProductTiers.map((tier) => ({
+  value: tier,
+  ...workspaceProductTierMessages[tier],
 }));
 
 const monitorOptions: ReadonlyArray<{
@@ -179,8 +177,6 @@ export function CoworkReservationForm({
     });
   const courtesyCoffeeIncluded =
     getCoworkTierIncludesCourtesyCoffee(selectedTier);
-  const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
-  const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = getCoworkTierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions =
     getAllowedMonitorOptionsForCoworkTier(selectedTier);
@@ -220,6 +216,32 @@ export function CoworkReservationForm({
     advertisedPriceRequests.map(({ request }) => request),
     initialAdvertisedPrices
   );
+  const coffeeAdvertisedPriceRequest = useMemo(
+    () =>
+      selectedDate
+        ? getCoworkCoffeeAdvertisedPriceRequest({
+            date: selectedDate,
+            locale,
+            tier: selectedTier,
+          })
+        : undefined,
+    [locale, selectedDate, selectedTier]
+  );
+  const [coffeeAdvertisedPriceQueryResult] = useAdvertisedPrices(
+    coffeeAdvertisedPriceRequest ? [coffeeAdvertisedPriceRequest] : [],
+    initialAdvertisedPrices
+  );
+  const coffeeAdvertisedPrice =
+    coffeeAdvertisedPriceQueryResult?.data &&
+    isCoworkAdvertisedPrice(coffeeAdvertisedPriceQueryResult.data)
+      ? coffeeAdvertisedPriceQueryResult.data
+      : undefined;
+  const coffeePrice = coffeeAdvertisedPrice?.quote.items.find(
+    ({ type }) => type === "coffee"
+  )?.amount;
+  const coffeePriceLabel = coffeePrice
+    ? formatWorkspaceMoney(coffeePrice, locale)
+    : undefined;
   const advertisedPricesByTier = new Map<
     WorkspaceCoworkProductTier,
     Extract<AdvertisedPrice, { readonly kind: "cowork" }>
@@ -363,17 +385,6 @@ export function CoworkReservationForm({
                   const hasAdvertisedDiscounts = Boolean(
                     advertisedDiscounts?.length
                   );
-                  const advertisedPriceRequestIndex =
-                    advertisedPriceRequests.findIndex(
-                      ({ tier }) => tier === option.value
-                    );
-                  const isAdvertisedPricePending = Boolean(
-                    selectedDate &&
-                      advertisedPriceQueryResults[advertisedPriceRequestIndex]
-                        ?.isFetching &&
-                      !advertisedProductItem
-                  );
-
                   return (
                     <ReservationTypeOption
                       key={option.value}
@@ -411,9 +422,7 @@ export function CoworkReservationForm({
                           : undefined
                       }
                       price={
-                        isAdvertisedPricePending ? (
-                          <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
-                        ) : advertisedProductItem ? (
+                        advertisedProductItem ? (
                           <ReservationAdvertisedPrice
                             amount={advertisedProductItem.amount}
                             locale={locale}
@@ -429,13 +438,7 @@ export function CoworkReservationForm({
                             )}
                           />
                         ) : (
-                          <span>
-                            {formatWorkspaceProductCurrencyAmount(
-                              option.product,
-                              locale
-                            )}
-                            {m.pricingTariffPricePeriodSuffix({}, { locale })}
-                          </span>
+                          <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
                         )
                       }
                       priceReady={Boolean(advertisedProductItem)}
@@ -519,8 +522,14 @@ export function CoworkReservationForm({
                       />
                     </FormControl>
                   </span>
-                  <span className="text-sm font-semibold text-navy-blue before:content-['+']">
-                    {coffeePriceLabel}
+                  <span data-reservation-coffee-price="">
+                    {coffeePriceLabel ? (
+                      <span className="text-sm font-semibold text-navy-blue before:content-['+']">
+                        {coffeePriceLabel}
+                      </span>
+                    ) : (
+                      <ReservationSkeletonBlock className="h-4 w-14 bg-sunset-yellow/25" />
+                    )}
                   </span>
                 </FormLabel>
                 <FormMessage />

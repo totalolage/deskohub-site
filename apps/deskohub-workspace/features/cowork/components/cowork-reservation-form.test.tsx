@@ -248,6 +248,39 @@ describe("CoworkReservationForm advertised pricing", () => {
     });
 
     expect(view.getByText(/discounted price.*175/i)).toBeDefined();
+    const coffeePrice = view.container.querySelector(
+      "[data-reservation-coffee-price]"
+    );
+    expect(coffeePrice?.textContent).toContain("50");
+    expect(coffeePrice?.querySelector("[data-slot='skeleton']")).toBeNull();
+    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+    view.unmount();
+  });
+
+  test("does not render catalog prices before a backend quote is available", () => {
+    workspaceUseSearchParams.mockReturnValue(
+      new URLSearchParams("entryTier=basic")
+    );
+    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+
+    const view = renderForm();
+    const priceRows = Array.from(
+      view.container.querySelectorAll("[data-reservation-type-price]")
+    );
+
+    expect(priceRows).toHaveLength(3);
+    expect(
+      priceRows.every(
+        (price) =>
+          price.getAttribute("data-reservation-type-price-ready") === "false" &&
+          price.querySelector("[data-slot='skeleton']")
+      )
+    ).toBe(true);
+    expect(
+      view.container.querySelector(
+        "[data-reservation-coffee-price] [data-slot='skeleton']"
+      )
+    ).not.toBeNull();
     expect(getAdvertisedPrice).not.toHaveBeenCalled();
     view.unmount();
   });
