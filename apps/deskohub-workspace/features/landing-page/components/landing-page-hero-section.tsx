@@ -12,12 +12,17 @@ import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
+import {
+  LandingPageSaleBanner,
+  type LandingPageSaleBannerConfig,
+} from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
   locale: Locale;
   overviewSectionId: string;
   reservationHref: string;
   eventsHref: string;
+  saleBanner?: LandingPageSaleBannerConfig;
 };
 
 export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
@@ -30,6 +35,7 @@ export function LandingPageHeroSection({
   overviewSectionId,
   reservationHref,
   eventsHref,
+  saleBanner,
 }: LandingPageHeroSectionProps) {
   const { props: cornerMaskProps } = getImageProps({
     ...cornerMask,
@@ -48,7 +54,7 @@ export function LandingPageHeroSection({
         {m.landingHeroSubtitle({}, { locale })}
       </p>
 
-      <div className="sm:mt-9 mt-20 flex w-full flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
+      <div className="mt-20 flex w-full flex-col items-center justify-center gap-x-8 gap-y-16 sm:mt-9 sm:flex-row">
         <Button
           asChild
           className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
@@ -119,8 +125,15 @@ export function LandingPageHeroSection({
     <LandingPageHeroScrollScene
       background={<Background />}
       bottomSection={orangeMaskSection}
-      className="relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
+      className={
+        saleBanner
+          ? "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+10rem)] text-white sm:pt-[calc(var(--site-header-height)+6rem)]"
+          : "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
+      }
       id={overviewSectionId}
+      overlay={
+        saleBanner ? <LandingPageSaleBanner {...saleBanner} /> : undefined
+      }
     >
       {heroContent}
     </LandingPageHeroScrollScene>
