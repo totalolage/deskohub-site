@@ -17,7 +17,7 @@ import {
 } from "./landing-page-sale-banner";
 
 const content = {
-  label: "Summer focus: 20% off any cowork access!",
+  label: "Summer focus: 20% off cowork access!",
   statusLabel: "Sale active",
   ctaLabel: "Book with discount",
   href: "/en-US/reserve/cowork",

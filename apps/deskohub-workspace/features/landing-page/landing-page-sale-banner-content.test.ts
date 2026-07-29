@@ -50,25 +50,25 @@ describe("formatLandingPageSaleBannerLabel", () => {
 
   test("describes a sale on every cowork product", () => {
     expect(formatLabel(coworkProducts)).toBe(
-      "Summer focus: 20% off any cowork access!"
+      "Summer focus: 20% off cowork access!"
     );
   });
 
   test("describes a sale on every meeting-room product", () => {
     expect(formatLabel(meetingRoomProducts)).toBe(
-      "Summer focus: 20% off any meeting room reservation!"
+      "Summer focus: 20% off meeting room reservations!"
     );
   });
 
   test("describes all cowork and selected meeting-room products", () => {
     expect(formatLabel([...coworkProducts, meetingRoomProducts[0]!])).toBe(
-      "Summer focus: 20% off any cowork access and chosen meeting room reservations!"
+      "Summer focus: 20% off cowork access and chosen meeting room reservations!"
     );
   });
 
   test("describes selected cowork and all meeting-room products", () => {
     expect(formatLabel([coworkProducts[0]!, ...meetingRoomProducts])).toBe(
-      "Summer focus: 20% off chosen cowork access and any meeting room reservation!"
+      "Summer focus: 20% off chosen cowork access and meeting room reservations!"
     );
   });
 
@@ -84,7 +84,20 @@ describe("formatLandingPageSaleBannerLabel", () => {
         kind: "fixed",
         amount: { value: 20_000, exponent: 2, currency: "CZK" },
       })
-    ).toBe("Summer focus: CZK 200 off any cowork access!");
+    ).toBe("Summer focus: CZK 200 off cowork access!");
+  });
+
+  test("omits the redundant Czech quantifier", () => {
+    expect(
+      formatLandingPageSaleBannerLabel(
+        {
+          title: "Letní soustředění",
+          adjustment: { kind: "percentage", basisPoints: 2000 },
+          products: coworkProducts,
+        },
+        "cs-CZ"
+      )
+    ).toBe("Letní soustředění: sleva 20 % na coworkingové vstupy!");
   });
 });
 
