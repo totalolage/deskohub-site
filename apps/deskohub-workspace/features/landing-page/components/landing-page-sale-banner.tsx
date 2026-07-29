@@ -1,8 +1,10 @@
-import { ArrowRight, BadgePercent } from "lucide-react";
+import { ArrowRight, DollarSign, Percent } from "lucide-react";
 import Link from "next/link";
+import type { DiscountAdjustment } from "@/features/discounts/contracts";
 
 export type LandingPageSaleBannerContent = {
   label: string;
+  adjustmentKind: DiscountAdjustment["kind"];
   statusLabel: string;
   ctaLabel: string;
   href: string;
@@ -35,9 +37,22 @@ export function LandingPageSaleBanner({
         }}
       >
         <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-burned-orange text-white">
-            <BadgePercent aria-hidden="true" className="size-5" />
-          </span>
+          {
+            {
+              fixed: (
+                <DollarSign
+                  aria-hidden="true"
+                  className="size-9 shrink-0 text-burned-orange sm:size-10"
+                />
+              ),
+              percentage: (
+                <Percent
+                  aria-hidden="true"
+                  className="size-9 shrink-0 text-burned-orange sm:size-10"
+                />
+              ),
+            }[content.adjustmentKind]
+          }
           <div>
             <p className="text-sm font-semibold leading-6 sm:text-base">
               {content.label}

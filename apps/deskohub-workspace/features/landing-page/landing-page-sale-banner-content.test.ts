@@ -4,7 +4,10 @@ import {
   workspaceMeetingRoomDurationOptions,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import { formatLandingPageSaleBannerLabel } from "./landing-page-sale-banner-content";
+import {
+  formatLandingPageSaleBannerLabel,
+  getLandingPageSaleBannerContent,
+} from "./landing-page-sale-banner-content";
 
 const coworkProducts = workspaceCoworkProductTiers.map(
   (tier): WorkspaceProductIdentity => ({ kind: "cowork", tier })
@@ -82,5 +85,30 @@ describe("formatLandingPageSaleBannerLabel", () => {
         amount: { value: 20_000, exponent: 2, currency: "CZK" },
       })
     ).toBe("Summer focus: CZK 200 off any cowork access!");
+  });
+});
+
+describe("getLandingPageSaleBannerContent", () => {
+  test.each([
+    ["percentage", { kind: "percentage" as const, basisPoints: 2000 }],
+    [
+      "fixed",
+      {
+        kind: "fixed" as const,
+        amount: { value: 20_000, exponent: 2, currency: "CZK" },
+      },
+    ],
+  ])("exposes the %s adjustment kind to the banner", (kind, adjustment) => {
+    expect(
+      getLandingPageSaleBannerContent({
+        href: "/en-US/reserve/cowork",
+        locale: "en-US",
+        sale: {
+          title: "Summer focus",
+          adjustment,
+          products: coworkProducts,
+        },
+      }).adjustmentKind
+    ).toBe(kind);
   });
 });
