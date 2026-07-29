@@ -10,12 +10,12 @@ import {
 } from "./landing-page-hero-section";
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
-import type { LandingPageSaleBannerConfig } from "./landing-page-sale-banner";
+import type { LandingPageSaleBannerContent } from "./landing-page-sale-banner";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 
 type LandingPageProps = {
   locale: Locale;
-  saleBanner?: LandingPageSaleBannerConfig;
+  saleBanner?: LandingPageSaleBannerContent;
 };
 
 export function LandingPage({ locale, saleBanner }: LandingPageProps) {

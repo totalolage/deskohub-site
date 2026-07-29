@@ -28,7 +28,6 @@ export function getLandingPageSaleBannerContent({
 }): LandingPageSaleBannerContent {
   return {
     label: formatLandingPageSaleBannerLabel(sale, locale),
-    description: m.landingSaleBannerDescription({}, { locale }),
     statusLabel: m.landingSaleBannerStatus({}, { locale }),
     ctaLabel: m.landingSaleBannerCta({}, { locale }),
     href,

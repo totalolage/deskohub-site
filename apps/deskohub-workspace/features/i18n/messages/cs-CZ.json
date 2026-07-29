@@ -44,7 +44,6 @@
   "landingSaleBannerAllCoworkAndSelectedMeetingRoomProducts": "{title}: sleva {adjustment} na všechny coworkingové vstupy a vybrané rezervace zasedačky!",
   "landingSaleBannerSelectedCoworkAndAllMeetingRoomProducts": "{title}: sleva {adjustment} na vybrané coworkingové vstupy a každou rezervaci zasedačky!",
   "landingSaleBannerSelectedProducts": "{title}: sleva {adjustment} na vybrané produkty!",
-  "landingSaleBannerDescription": "Sleva se při rezervaci uplatní automaticky.",
   "landingSaleBannerCta": "Rezervovat se slevou",
   "landingHeroHighlightOne": "24/7 přístup na unikátní kód",
   "landingHeroHighlightTwo": "Samoobslužný režim bez čekání",

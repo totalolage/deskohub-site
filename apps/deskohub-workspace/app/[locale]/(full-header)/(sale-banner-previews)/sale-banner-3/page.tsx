@@ -10,5 +10,5 @@ export default function SaleBannerThreePreviewPage({
 }: {
   params: Promise<{ locale: string }>;
 }) {
-  return <SaleBannerPreviewPage params={params} variant={3} />;
+  return <SaleBannerPreviewPage params={params} />;
 }

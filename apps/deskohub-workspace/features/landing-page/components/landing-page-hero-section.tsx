@@ -14,7 +14,7 @@ import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 import {
   LandingPageSaleBanner,
-  type LandingPageSaleBannerConfig,
+  type LandingPageSaleBannerContent,
 } from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
@@ -22,7 +22,7 @@ type LandingPageHeroSectionProps = {
   overviewSectionId: string;
   reservationHref: string;
   eventsHref: string;
-  saleBanner?: LandingPageSaleBannerConfig;
+  saleBanner?: LandingPageSaleBannerContent;
 };
 
 export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
@@ -131,9 +131,7 @@ export function LandingPageHeroSection({
           : "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
       }
       id={overviewSectionId}
-      overlay={
-        saleBanner ? <LandingPageSaleBanner {...saleBanner} /> : undefined
-      }
+      overlay={saleBanner && <LandingPageSaleBanner content={saleBanner} />}
     >
       {heroContent}
     </LandingPageHeroScrollScene>
