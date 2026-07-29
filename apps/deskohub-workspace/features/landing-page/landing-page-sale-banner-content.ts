@@ -9,6 +9,8 @@ import {
 } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import { getReservationStartPath } from "@/features/reservation/routes";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
 
 type LandingPageSale = {
@@ -18,12 +20,12 @@ type LandingPageSale = {
 };
 
 export function getLandingPageSaleBannerContent({
-  href,
   locale,
+  reservationKind,
   sale,
 }: {
-  href: string;
   locale: Locale;
+  reservationKind: ReservationOrderData["kind"];
   sale: LandingPageSale;
 }): LandingPageSaleBannerContent {
   return {
@@ -31,7 +33,15 @@ export function getLandingPageSaleBannerContent({
     adjustmentKind: sale.adjustment.kind,
     statusLabel: m.landingSaleBannerStatus({}, { locale }),
     ctaLabel: m.landingSaleBannerCta({}, { locale }),
-    href,
+    href: getReservationStartPath(
+      locale,
+      reservationKind,
+      new URLSearchParams({
+        utm_source: "deskohub",
+        utm_medium: "sale_banner",
+        utm_content: "home_hero",
+      })
+    ),
   };
 }
 

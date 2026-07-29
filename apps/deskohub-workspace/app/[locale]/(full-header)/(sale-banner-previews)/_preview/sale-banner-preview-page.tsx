@@ -5,7 +5,6 @@ import { isLocale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
 import { getLandingPageSaleBannerContent } from "@/features/landing-page/landing-page-sale-banner-content";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
 
 type SaleBannerPreviewPageProps = {
   params: Promise<{ locale: string }>;
@@ -29,8 +28,8 @@ export async function SaleBannerPreviewPage({
     <LandingPage
       locale={locale}
       saleBanner={getLandingPageSaleBannerContent({
-        href: getCoworkReservationPath(locale),
         locale,
+        reservationKind: "cowork",
         sale: {
           title: m.landingSaleBannerPreviewTitle({}, { locale }),
           adjustment: {

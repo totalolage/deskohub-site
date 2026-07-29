@@ -114,8 +114,8 @@ describe("getLandingPageSaleBannerContent", () => {
   ])("exposes the %s adjustment kind to the banner", (kind, adjustment) => {
     expect(
       getLandingPageSaleBannerContent({
-        href: "/en-US/reserve/cowork",
         locale: "en-US",
+        reservationKind: "cowork",
         sale: {
           title: "Summer focus",
           adjustment,
@@ -123,5 +123,21 @@ describe("getLandingPageSaleBannerContent", () => {
         },
       }).adjustmentKind
     ).toBe(kind);
+  });
+
+  test("attributes reservation visits to the home sale banner", () => {
+    expect(
+      getLandingPageSaleBannerContent({
+        locale: "en-US",
+        reservationKind: "meeting-room",
+        sale: {
+          title: "Summer focus",
+          adjustment: { kind: "percentage", basisPoints: 2000 },
+          products: meetingRoomProducts,
+        },
+      }).href
+    ).toBe(
+      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+    );
   });
 });
