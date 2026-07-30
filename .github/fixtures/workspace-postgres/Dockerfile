@@ -4,7 +4,10 @@ ARG PG_UUIDV7_VERSION=1.7.0
 ARG PG_UUIDV7_SHA256=9364ca01246dbf792de9ed50ffbe502d49e8c28e659f4e7073d4225096b15965
 
 RUN set -eux; \
-    test "$(pg_config --version)" = "PostgreSQL 18.4"; \
+    apt-get update; \
+    apt-get install --yes --no-install-recommends ca-certificates curl; \
+    rm --recursive --force /var/lib/apt/lists/*; \
+    pg_config --version | grep --extended-regexp '^PostgreSQL 18\.4([[:space:]]|$)'; \
     curl --fail --location --silent --show-error \
       --output /tmp/pg_uuidv7.tar.gz \
       "https://github.com/fboulnois/pg_uuidv7/releases/download/v${PG_UUIDV7_VERSION}/pg_uuidv7.tar.gz"; \
