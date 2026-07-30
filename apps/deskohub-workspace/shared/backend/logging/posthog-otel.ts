@@ -16,7 +16,6 @@ type PostHogLoggerProviderOptions = {
   readonly vercelGitCommitSha?: string;
 };
 
-type PostHogLogsFlushScheduler = (task: () => Promise<void>) => void;
 type PostHogLogsFlushProvider = Pick<LoggerProvider, "forceFlush">;
 
 type PostHogLogsFlushOptions = {
@@ -96,20 +95,5 @@ export async function flushPostHogLogs(options: PostHogLogsFlushOptions = {}) {
     console.warn("PostHog log flush failed.");
   } else if (result === "timed_out") {
     console.warn("PostHog log flush exceeded its post-response deadline.");
-  }
-}
-
-export function schedulePostHogLogsFlush(
-  schedule: PostHogLogsFlushScheduler,
-  options: PostHogLogsFlushOptions = {}
-) {
-  const provider = options.provider ?? registeredPostHogLoggerProvider;
-  if (provider) {
-    schedule(() =>
-      flushPostHogLogs({
-        provider,
-        timeoutMs: options.timeoutMs,
-      })
-    );
   }
 }

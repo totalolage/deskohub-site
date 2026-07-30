@@ -56,14 +56,13 @@ export const defineWorkspaceRoute =
     );
   };
 
-export const mapWorkspaceInternalRouteFailure = (publicMessage: string) =>
-  function mapFailure(cause: unknown) {
-    return new WorkspaceRouteFailure({
+export const mapWorkspaceInternalRouteFailure =
+  (publicMessage: string) => (cause: unknown) =>
+    new WorkspaceRouteFailure({
       statusCode: 500,
       publicMessage,
       cause,
     });
-  };
 
 const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
   function* (failure: WorkspaceRouteFailure) {
