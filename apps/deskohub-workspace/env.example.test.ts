@@ -44,7 +44,31 @@ const validateCheckoutRolloutSection = (example: string): readonly string[] => {
   return failures;
 };
 
+const trackedExamples = {
+  boardgameBar: new URL("../deskohub-boardgame-bar/.env.example", import.meta.url),
+  workspace: new URL("./.env.example", import.meta.url),
+} as const;
+
+const nonblankAssignments = (example: string) =>
+  example
+    .split(/\r?\n/)
+    .filter((line) => /^[A-Za-z_][A-Za-z0-9_]*=.+$/.test(line));
+
 describe(".env.example checkout rollout section", () => {
+  test("keeps every tracked example assignment blank", async () => {
+    const assignments = await Promise.all(
+      Object.entries(trackedExamples).map(async ([name, url]) => ({
+        name,
+        assignments: nonblankAssignments(await Bun.file(url).text()),
+      }))
+    );
+
+    expect(assignments).toEqual([
+      { name: "boardgameBar", assignments: [] },
+      { name: "workspace", assignments: [] },
+    ]);
+  });
+
   test("is the exact contiguous blank 11-line non-secret section", async () => {
     const example = await Bun.file(
       new URL("./.env.example", import.meta.url)
