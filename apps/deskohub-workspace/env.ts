@@ -92,7 +92,7 @@ export const env = createEnv({
             ? "Invalid checkout reservation HMAC rollout configuration."
             : isAdminBasicAuth
               ? "Invalid administration authentication hash."
-            : issue.message,
+              : issue.message,
       };
     });
 

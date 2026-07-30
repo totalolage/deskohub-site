@@ -45,7 +45,10 @@ const validateCheckoutRolloutSection = (example: string): readonly string[] => {
 };
 
 const trackedExamples = {
-  boardgameBar: new URL("../deskohub-boardgame-bar/.env.example", import.meta.url),
+  boardgameBar: new URL(
+    "../deskohub-boardgame-bar/.env.example",
+    import.meta.url
+  ),
   workspace: new URL("./.env.example", import.meta.url),
 } as const;
 

@@ -157,21 +157,20 @@ describe("payment reconciliation real PostgreSQL locking", () => {
       expect(admitted.outcome).toBe("created");
       if (admitted.outcome !== "created") return;
 
-      const reconciliationClaims = await Promise.all([
-        ownerPool,
-        contenderPool,
-      ].map((pool) =>
-        runRepository(
-          pool,
-          Effect.gen(function* () {
-            const repository = yield* PaymentLifecycleRepository;
-            return yield* repository.claimProviderReconciliation({
-              id: admitted.attempt.id,
-              workspaceReservationId: "reservation-a",
-            });
-          })
+      const reconciliationClaims = await Promise.all(
+        [ownerPool, contenderPool].map((pool) =>
+          runRepository(
+            pool,
+            Effect.gen(function* () {
+              const repository = yield* PaymentLifecycleRepository;
+              return yield* repository.claimProviderReconciliation({
+                id: admitted.attempt.id,
+                workspaceReservationId: "reservation-a",
+              });
+            })
+          )
         )
-      ));
+      );
       expect(reconciliationClaims.map(({ outcome }) => outcome).sort()).toEqual(
         ["claimed", "unavailable"]
       );
