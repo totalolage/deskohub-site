@@ -175,6 +175,17 @@ describe("workspace environment schemas", () => {
     expect(invalidEnvironmentError).not.toContain(syntheticMaterial);
   });
 
+  test("accepts an absent or lowercase SHA-256 administration hash", () => {
+    const decodeHash = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.ADMIN_BASIC_AUTH_SHA256
+    );
+
+    expect(decodeHash(undefined)).toBeUndefined();
+    expect(decodeHash("7".repeat(64))).toBe("7".repeat(64));
+    expect(() => decodeHash("7".repeat(63))).toThrow();
+    expect(() => decodeHash("G".repeat(64))).toThrow();
+  });
+
   test("exposes fields through Standard Schema for T3 Env", async () => {
     const result =
       await workspaceServerEnvSchema.fields.DOTYPOS_API_TIMEOUT[

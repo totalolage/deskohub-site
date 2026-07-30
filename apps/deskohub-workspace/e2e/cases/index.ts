@@ -26,6 +26,7 @@ import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
 import { makeDiscountE2ECases } from "./discounts";
 import { assertLocaleSwitcher } from "./locale";
+import { makeMeetingRoomE2ECases } from "./meeting-room";
 import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
@@ -94,11 +95,14 @@ export const makeWorkspaceE2ECases = ({
             config,
             data,
             datasourceConfig,
+            reservationPath: "/en-US/reservation/cowork",
             run,
             runStep,
             scenario,
             session,
             state,
+            submitReservationScript:
+              getSubmitCoworkReservationScript(data),
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
@@ -132,10 +136,13 @@ export const makeWorkspaceE2ECases = ({
           config,
           data: reservationReplacementData,
           datasourceConfig,
+          replacementData: reservationReplacementData,
+          reservationPath: "/en-US/reservation/cowork",
           run,
           runStep,
           session,
           state: reservationReplacementState,
+          submitReservationScript: getSubmitCoworkReservationScript,
         }).pipe(
           Effect.mapError((cause) =>
             toWorkspaceE2EError("run reservation replacement e2e case", cause)
@@ -209,6 +216,15 @@ export const makeWorkspaceE2ECases = ({
         timeoutMs: config.timeouts.checkoutCase,
       });
     }
+
+    cases.push(
+      ...(yield* makeMeetingRoomE2ECases({
+        config,
+        datasourceConfig,
+        flowStates,
+        run,
+      }))
+    );
 
     cases.push(
       ...(yield* makeDiscountE2ECases({

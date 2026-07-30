@@ -13,6 +13,7 @@ export const env = createEnv({
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_URL_UNPOOLED: process.env.DATABASE_URL_UNPOOLED,
+    ADMIN_BASIC_AUTH_SHA256: process.env.ADMIN_BASIC_AUTH_SHA256,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -81,6 +82,7 @@ export const env = createEnv({
           key.startsWith("CHECKOUT_RESERVATION_HMAC_")
         );
       });
+      const isAdminBasicAuth = path?.includes("ADMIN_BASIC_AUTH_SHA256");
 
       return {
         path,
@@ -88,6 +90,8 @@ export const env = createEnv({
           ? "Invalid PostHog feature flag override configuration."
           : isReservationHmac
             ? "Invalid checkout reservation HMAC rollout configuration."
+            : isAdminBasicAuth
+              ? "Invalid administration authentication hash."
             : issue.message,
       };
     });

@@ -10,7 +10,10 @@ type SendResponse =
         readonly statusCode?: number;
       };
     };
-type SendImplementation = () => Promise<SendResponse>;
+type SendImplementation = (
+  payload?: unknown,
+  options?: { readonly idempotencyKey?: string }
+) => Promise<SendResponse>;
 type ListDomainsResponse =
   | { readonly data: readonly unknown[]; readonly error?: never }
   | { readonly data?: never; readonly error: { readonly message: string } };
@@ -157,6 +160,25 @@ describe("ResendEmailProvider", () => {
       id: "resend-id",
       provider: "resend",
       status: "sent",
+    });
+  });
+
+  test("uses reservation and category metadata as the idempotency key", async () => {
+    await runProvider(
+      Effect.gen(function* () {
+        const provider = yield* EmailProviderTag;
+        return yield* provider.send({
+          ...message,
+          tags: ["workspace-paid-reservation-access"],
+          metadata: {
+            workspaceReservationId: "reservation-id",
+          },
+        });
+      })
+    );
+
+    expect(send).toHaveBeenCalledWith(expect.any(Object), {
+      idempotencyKey: "workspace-paid-reservation-access-reservation-id",
     });
   });
 

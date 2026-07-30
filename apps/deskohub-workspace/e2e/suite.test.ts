@@ -13,35 +13,22 @@ import { runWorkspaceE2ECases } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 
-test("runs checkout and terminal cases concurrently", async () => {
+test("runs checkout and terminal cases", async () => {
   const telemetryEvents: E2ETelemetryObservation[] = [];
   const startedSessions: string[] = [];
-  let startedCaseCount = 0;
-  let releaseCases: () => void = () => undefined;
-  const bothCasesStarted = new Promise<void>((resolve) => {
-    releaseCases = resolve;
-  });
-  const waitForBothCases = () =>
-    Effect.promise(async () => {
-      startedCaseCount += 1;
-      if (startedCaseCount === 2) releaseCases();
-      await bothCasesStarted;
-    });
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: ({ session }) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           startedSessions.push(session);
-          yield* waitForBothCases();
         }),
       id: "payment-failed",
       timeoutMs: 10_000,
     },
     {
       execute: ({ session }) =>
-        Effect.gen(function* () {
+        Effect.sync(() => {
           startedSessions.push(session);
-          yield* waitForBothCases();
         }),
       id: "checkout-cowork",
       timeoutMs: 10_000,
@@ -81,6 +68,48 @@ test("runs checkout and terminal cases concurrently", async () => {
       }),
     ])
   );
+});
+
+test("runs all independent preview cases concurrently", async () => {
+  let activeCaseCount = 0;
+  let maximumActiveCaseCount = 0;
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: 12 },
+    (_, index) => ({
+      execute: () =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            activeCaseCount += 1;
+            maximumActiveCaseCount = Math.max(
+              maximumActiveCaseCount,
+              activeCaseCount
+            );
+          }),
+          () =>
+            Effect.promise(
+              () => new Promise<void>((resolve) => setTimeout(resolve, 10))
+            ),
+          () =>
+            Effect.sync(() => {
+              activeCaseCount -= 1;
+            })
+        ),
+      id: `concurrent-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-concurrency-test",
+      cases,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-concurrency",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+  );
+
+  expect(maximumActiveCaseCount).toBe(cases.length);
 });
 
 test("keeps browser session names independent of descriptive case ids", async () => {

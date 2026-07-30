@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit, Fiber } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -8,6 +8,7 @@ import {
   stopBrowserHar,
 } from "./browser";
 import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
+import type { E2EDatabase } from "./integrations/database.service";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 import {
@@ -26,7 +27,6 @@ import type {
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "./types";
-import type { E2EDatabase } from "./integrations/database.service";
 
 const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   cancelled: "CANCEL",
@@ -58,11 +58,7 @@ export const runWorkspaceE2ECases = ({
   run: Runner;
   sessionPrefix: string;
   timeouts: WorkspaceE2ETimeouts;
-}): Effect.Effect<
-  void,
-  WorkspaceE2EError,
-  E2EDatabase | E2ETelemetryService
-> =>
+}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase | E2ETelemetryService> =>
   Effect.scoped(
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
@@ -71,9 +67,10 @@ export const runWorkspaceE2ECases = ({
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
-      yield* Effect.forEach(cases.entries(), ([caseIndex, testCase]) =>
-        telemetry
-          .traceCase({
+      yield* Effect.forEach(
+        cases.entries(),
+        ([caseIndex, testCase]) =>
+          telemetry.traceCase({
             caseId: testCase.id,
             effect: Effect.acquireUseRelease(
               Effect.sync(
@@ -96,9 +93,12 @@ export const runWorkspaceE2ECases = ({
               (runtime) => finalizeCaseRuntime(runtime, run, timeouts)
             ),
             timeoutMs: testCase.timeoutMs,
-          })
-          .pipe(Effect.forkChild)
-      ).pipe(Effect.andThen(Fiber.joinAll));
+          }),
+        {
+          concurrency: "unbounded",
+          discard: true,
+        }
+      );
     })
   );
 

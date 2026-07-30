@@ -687,6 +687,35 @@ const fillHostedPaymentField = (
           }
         );
         if (valueResult.exitCode === 0 && valueResult.stdout.trim()) return;
+
+        const typeResult = yield* runBrowserCommand(
+          "type hosted payment field",
+          run,
+          session,
+          ["type", target.ref, value],
+          {
+            allowFailure: true,
+            logCommand: false,
+            logOutput: false,
+            timeoutMs: 60_000,
+          }
+        );
+        if (typeResult.exitCode !== 0) continue;
+
+        const typedValueResult = yield* runBrowserCommand(
+          "verify typed hosted payment field",
+          run,
+          session,
+          ["get", "value", target.ref],
+          {
+            allowFailure: true,
+            logCommand: false,
+            logOutput: false,
+            timeoutMs: 30_000,
+          }
+        );
+        if (typedValueResult.exitCode === 0 && typedValueResult.stdout.trim())
+          return;
       }
 
       return yield* toWorkspaceE2EError(

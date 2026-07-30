@@ -67,6 +67,25 @@ const sensitiveLogExactKeys = new Set([
   "x-vercel-sc-headers",
 ]);
 
+const sensitiveLogUrlSearchParams = new Set([
+  "checkouttoken",
+  "paystate",
+  "paystateref",
+  "x-vercel-protection-bypass",
+  "token",
+  "state",
+  "secret",
+  "name",
+  "message",
+  "filter",
+]);
+
+const isSensitiveLogUrlSearchParam = (key: string): boolean =>
+  sensitiveLogUrlSearchParams.has(key.toLowerCase());
+
+const isSensitiveLogRecordKey = (key: string): boolean =>
+  isSensitiveLogKey(key) || isSensitiveLogUrlSearchParam(key);
+
 const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 
 const sensitiveLogKeyFragmentWords = sensitiveLogKeyFragments.map(

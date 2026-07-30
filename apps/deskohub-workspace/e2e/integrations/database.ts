@@ -666,7 +666,7 @@ export const markFulfillmentFailedForE2E = (
     );
   });
 
-export const markConsoleFulfillmentDeliveredForE2E = (
+export const markPreviewFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
   orderId: string
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
@@ -675,7 +675,7 @@ export const markConsoleFulfillmentDeliveredForE2E = (
     const row = yield* pollUntil(
       Effect.gen(function* () {
         const rows = yield* runRetrySafeDatabaseOperation(
-            "mark console fulfillment delivered",
+          "mark preview fulfillment delivered",
           db
             .update(workspaceReservations)
             .set({
@@ -706,15 +706,15 @@ export const markConsoleFulfillmentDeliveredForE2E = (
       }),
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: `console fulfillment marker for ${orderId}`,
+        label: `preview fulfillment marker for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
       }
     );
 
-    yield* tryWorkspaceE2ESync("assert console fulfillment marker row", () =>
-      assert(row, "console fulfillment marker row missing")
+    yield* tryWorkspaceE2ESync("assert preview fulfillment marker row", () =>
+      assert(row, "preview fulfillment marker row missing")
     );
-    log("Console fulfillment delivery marker applied");
+    log("Preview fulfillment delivery marker applied");
   });
 
 const isPostgresComplete = (row: CheckoutRow, config: DatasourceConfig) =>

@@ -20,7 +20,7 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-export const maxDuration = 15;
+export const maxDuration = 30;
 
 type LocalizedCheckoutStatusPageProps = {
   params: Promise<{ locale: string; orderId: string }>;

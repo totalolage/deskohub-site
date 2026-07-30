@@ -8,7 +8,7 @@ import {
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
-  markConsoleFulfillmentDeliveredForE2E,
+  markPreviewFulfillmentDeliveredForE2E,
   validateInternalPostgres,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
@@ -92,7 +92,7 @@ export const executeZeroTotalCheckout = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     yield* runStep({
-      execute: markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId),
+      execute: markPreviewFulfillmentDeliveredForE2E(datasourceConfig, orderId),
       id: "complete-zero-total-fulfillment",
       timeoutMs: config.timeouts.datasource,
     });
@@ -112,7 +112,7 @@ export const executeZeroTotalCheckout = ({
     yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
-        locale: data.locale,
+        data,
         orderId,
         run,
         session,

@@ -168,7 +168,10 @@ export function CheckoutPayPage({
           asChild
           className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
         >
-          <Link href={freshPayUrl ?? getCoworkReservationPath(locale)}>
+          <Link
+            href={freshPayUrl ?? getCoworkReservationPath(locale)}
+            prefetch={false}
+          >
             {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
           </Link>
         </Button>
