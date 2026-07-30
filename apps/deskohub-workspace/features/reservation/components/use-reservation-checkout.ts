@@ -6,7 +6,7 @@ import { useMemo, useRef, useState } from "react";
 import { createCheckoutIdentifier } from "@/features/checkout/checkout-identifiers";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import { preparePayState } from "@/features/reservation/actions/prepare-pay-state.action";
 import { getReservationAnalyticsProperties } from "@/features/reservation/reservation-analytics";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
