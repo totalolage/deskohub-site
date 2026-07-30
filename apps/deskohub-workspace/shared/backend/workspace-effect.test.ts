@@ -1,7 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { Effect } from "effect";
 import { CENSORED_LOG_VALUE } from "./logging/censorship";
-import { defineWorkspaceTask, runWorkspaceEffect } from "./workspace-effect";
+import {
+  defineWorkspacePage,
+  defineWorkspaceTask,
+  runWorkspaceEffect,
+} from "./workspace-effect";
 
 describe("Workspace Effect execution", () => {
   test("provides the censored Workspace logger", async () => {
@@ -41,5 +45,14 @@ describe("Workspace Effect execution", () => {
     });
 
     await expect(task()).rejects.toBe(defect);
+  });
+
+  test("pages pass props into an Effect component", async () => {
+    const page = defineWorkspacePage(
+      "test.page",
+      ({ slug }: { readonly slug: string }) => Effect.succeed(`page:${slug}`)
+    );
+
+    await expect(page({ slug: "sale" })).resolves.toBe("page:sale");
   });
 });

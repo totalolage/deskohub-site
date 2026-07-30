@@ -11,7 +11,7 @@ import {
 } from "./logging/posthog-otel";
 import { WorkspaceTracingLive } from "./observability/workspace-tracing";
 
-type WorkspaceEffectBoundary = "action" | "route" | "run" | "task";
+type WorkspaceEffectBoundary = "action" | "page" | "route" | "run" | "task";
 
 interface RunWorkspaceEffectOptions {
   readonly boundary?: WorkspaceEffectBoundary;
@@ -41,6 +41,19 @@ export const defineWorkspaceTask =
       Effect.ensuring(flushTelemetry),
       runWorkspaceEffect(operation, { boundary: "task" })
     );
+
+export const defineWorkspacePage = <Props, A, E>(
+  operation: string,
+  component: (props: Props) => Effect.Effect<A, E, never>
+) =>
+  workspaceRuntime.page((props: Props) =>
+    component(props).pipe(
+      Effect.annotateLogs({
+        boundary: "page",
+        operation,
+      })
+    )
+  );
 
 export const scheduleWorkspaceTelemetryFlush = () =>
   getRegisteredPostHogLoggerProvider()
