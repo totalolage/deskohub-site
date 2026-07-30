@@ -65,7 +65,7 @@ jobs:
           docker exec deskohub-workspace-postgres psql -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
           DO $$
           BEGIN
-            IF current_setting('server_version') <> '18.4' THEN
+            IF current_setting('server_version') !~ '^18\\.4([[:space:]]|$)' THEN
               RAISE EXCEPTION 'Expected PostgreSQL 18.4, got %', current_setting('server_version');
             END IF;
           END

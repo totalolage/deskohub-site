@@ -157,6 +157,56 @@ describe("payment reconciliation real PostgreSQL locking", () => {
       expect(admitted.outcome).toBe("created");
       if (admitted.outcome !== "created") return;
 
+      const reconciliationClaims = await Promise.all([
+        ownerPool,
+        contenderPool,
+      ].map((pool) =>
+        runRepository(
+          pool,
+          Effect.gen(function* () {
+            const repository = yield* PaymentLifecycleRepository;
+            return yield* repository.claimProviderReconciliation({
+              id: admitted.attempt.id,
+              workspaceReservationId: "reservation-a",
+            });
+          })
+        )
+      ));
+      expect(reconciliationClaims.map(({ outcome }) => outcome).sort()).toEqual(
+        ["claimed", "unavailable"]
+      );
+      const winningClaim = reconciliationClaims.find(
+        (claim) => claim.outcome === "claimed"
+      );
+      expect(winningClaim?.outcome).toBe("claimed");
+      if (!winningClaim || winningClaim.outcome !== "claimed") return;
+
+      const durableClaim = await migrationClient.query<{
+        attemptId: string | null;
+        claimId: string | null;
+      }>(
+        `select payment_reconciliation_attempt_id as "attemptId",
+                payment_reconciliation_claim_id as "claimId"
+         from workspace_reservations
+         where id = $1`,
+        ["reservation-a"]
+      );
+      expect(durableClaim.rows[0]).toEqual({
+        attemptId: admitted.attempt.id,
+        claimId: winningClaim.claimId,
+      });
+      await runRepository(
+        ownerPool,
+        Effect.gen(function* () {
+          const repository = yield* PaymentLifecycleRepository;
+          yield* repository.releaseProviderReconciliation({
+            id: admitted.attempt.id,
+            workspaceReservationId: "reservation-a",
+            claimId: winningClaim.claimId,
+          });
+        })
+      );
+
       await migrationClient.query(
         `update payment_attempts
            set provider_start_lease_expires_at = clock_timestamp() - interval '1 second'
