@@ -253,7 +253,7 @@ afterAll(async () => {
   const admin = new Client({ connectionString: requireRealPostgresUrl() });
   try {
     await admin.connect();
-    await admin.query(`drop database "${testDatabaseName}"`);
+    await admin.query(`drop database if exists "${testDatabaseName}" with (force)`);
   } finally {
     await admin.end();
   }
