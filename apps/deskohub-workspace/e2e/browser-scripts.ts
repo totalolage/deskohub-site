@@ -62,9 +62,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 `;
 };
 
-const getAssertPrefilledMeetingRoomReservationScript = (
-  data: CheckoutData
-) => {
+const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   if (!data.meetingRoom) {
     throw new Error("Meeting-room backfill assertions require interval data");
   }
@@ -79,6 +77,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
+    wholeDay: data.meetingRoom.durationMinutes === 1440,
   })};
   const fail = (field) => {
     throw new Error('restored meeting-room ' + field + ' did not match');
@@ -90,7 +89,12 @@ const getAssertPrefilledMeetingRoomReservationScript = (
   };
 
   if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
-  if (value('input[aria-label="Meeting room start time"]', 'start time') !== expected.time) fail('start time');
+  const time = document.querySelector('input[aria-label="Meeting room start time"]');
+  if (expected.wholeDay) {
+    if (time !== null) fail('hidden start time');
+  } else if (!(time instanceof HTMLInputElement) || time.value !== expected.time) {
+    fail('start time');
+  }
   const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
   if (!(duration instanceof HTMLInputElement) || duration.value !== String(expected.durationMinutes)) fail('duration');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
@@ -251,6 +255,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
+    wholeDay: data.meetingRoom.durationMinutes === 1440,
   })};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
@@ -335,12 +340,14 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     );
   }, 'meeting-room date did not update');
 
-  setField('input[aria-label="Meeting room start time"]', expected.time);
   const duration = document.querySelector('#meeting-room-duration-' + expected.durationMinutes);
   if (!(duration instanceof HTMLInputElement)) {
     throw new Error('meeting-room duration control not found');
   }
   if (!duration.checked) (duration.closest('label') ?? duration).click();
+  if (!expected.wholeDay) {
+    setField('input[aria-label="Meeting room start time"]', expected.time);
+  }
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
   setField('input[name="name"]', expected.name);
@@ -353,8 +360,9 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     return (
       hiddenStart instanceof HTMLInputElement &&
       hiddenStart.value === expected.date &&
-      time instanceof HTMLInputElement &&
-      time.value === expected.time &&
+      (expected.wholeDay
+        ? time === null
+        : time instanceof HTMLInputElement && time.value === expected.time) &&
       duration.checked &&
       submit instanceof HTMLButtonElement &&
       !submit.disabled

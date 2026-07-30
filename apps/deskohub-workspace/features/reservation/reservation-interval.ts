@@ -20,7 +20,6 @@ import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
 } from "@/features/reservation/reservation-interval-normalization";
-import { toPlainDateTime } from "@/features/reservation/reservation-interval-parser";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
@@ -73,17 +72,16 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
   )
 );
 
-export const isSingleDayReservationInterval = (
-  interval: ReservationInterval
-) => {
-  const start = toPlainDateTime(
-    interval.startsAt,
-    workspaceSiteConstants.location.timeZone
-  );
-  const end = toPlainDateTime(
-    interval.endsAt,
-    workspaceSiteConstants.location.timeZone
-  );
+export const isSingleDayReservationInterval = (interval: {
+  readonly startsAt: ReservationInterval["startsAt"] | Temporal.Instant;
+  readonly endsAt: ReservationInterval["endsAt"] | Temporal.Instant;
+}) => {
+  const start = Temporal.Instant.from(interval.startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime();
+  const end = Temporal.Instant.from(interval.endsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDateTime();
 
   return (
     isMidnight(start) &&
@@ -94,7 +92,13 @@ export const isSingleDayReservationInterval = (
 
 const getMeetingRoomDurationMessage = (
   duration: WorkspaceMeetingRoomDurationMinutes
-) => m.reservationMeetingRoomDurationHours({ count: duration / 60 });
+) => {
+  if (duration === 1440) {
+    return m.reservationMeetingRoomDurationWholeDay();
+  }
+
+  return m.reservationMeetingRoomDurationHours({ count: duration / 60 });
+};
 
 export const getMeetingRoomDurationValidationMessage = () =>
   m.reservationValidationMeetingRoomDuration({
@@ -129,7 +133,9 @@ export const meetingRoomReservationIntervalSchema =
   reservationIntervalSchema.check(
     Schema.makeFilter(
       (interval) =>
-        isMeetingRoomReservationDuration(getDurationMinutes(interval)),
+        isSingleDayReservationInterval(interval) ||
+        (getDurationMinutes(interval) !== 1440 &&
+          isMeetingRoomReservationDuration(getDurationMinutes(interval))),
       {
         message: getMeetingRoomDurationValidationMessage(),
       }
@@ -188,7 +194,7 @@ export const getReservationDate = ({
     timeZone,
   }).toString();
 
-const isMidnight = (dateTime: ReturnType<typeof toPlainDateTime>) =>
+const isMidnight = (dateTime: Temporal.PlainDateTime) =>
   dateTime.hour === 0 &&
   dateTime.minute === 0 &&
   dateTime.second === 0 &&

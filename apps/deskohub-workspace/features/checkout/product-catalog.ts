@@ -81,9 +81,9 @@ export const workspaceMeetingRoomDurationPrices: Record<
   WorkspaceMeetingRoomDurationMinutes,
   WorkspaceMoney
 > = {
-  60: { value: 30_000, exponent: 2, currency: "CZK" },
-  240: { value: 60_000, exponent: 2, currency: "CZK" },
-  1440: { value: 100_000, exponent: 2, currency: "CZK" },
+  60: { value: 47_500, exponent: 2, currency: "CZK" },
+  240: { value: 155_000, exponent: 2, currency: "CZK" },
+  1440: { value: 232_000, exponent: 2, currency: "CZK" },
 };
 
 export const workspaceProductCoffeePrice: WorkspaceMoney = {

@@ -4,9 +4,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail";
-import {
-  getMeetingRoomReservationInterval,
-} from "@/features/reservation/meeting-room-reservation-time";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -312,14 +310,14 @@ test("selects non-overlapping meeting-room slots for every duration", async () =
     {
       date: "2099-08-04",
       durationMinutes: 1440,
-      startDateTime: "2099-08-04T10:00",
+      startDateTime: "2099-08-04T00:00",
     },
   ]);
   expect(requests).toHaveLength(3);
   expect(requests[0]?.url).toContain("kind=meeting-room");
   expect(requests[0]?.url).not.toContain("_tag");
   expect(requests[2]?.url).toContain("from=2099-08-04");
-  expect(requests[2]?.url).toContain("to=2099-08-05");
+  expect(requests[2]?.url).toContain("to=2099-08-04");
   expect(requests[2]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );
@@ -358,7 +356,7 @@ test("rejects meeting-room slots that touch an unavailable date", async () => {
   );
 
   expect(requests).toHaveLength(2);
-  expect(slots[0]?.startDateTime).toBe("2099-08-03T10:00");
+  expect(slots[0]?.startDateTime).toBe("2099-08-03T00:00");
 });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

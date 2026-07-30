@@ -17,6 +17,7 @@ type ReservationDateTimePickerProps = {
   readonly onChange?: (value: string) => void;
   readonly placeholder?: string;
   readonly preserveValueBeforeMinimum?: boolean;
+  readonly timeMode?: "selectable" | "midnight";
   readonly timeStepMinutes?: number;
   readonly timeLabel: string;
   readonly value?: string;
@@ -70,6 +71,7 @@ export function ReservationDateTimePicker({
   onChange,
   placeholder = "Pick date and time",
   preserveValueBeforeMinimum = false,
+  timeMode = "selectable",
   timeStepMinutes = 1,
   timeLabel,
   value,
@@ -101,8 +103,23 @@ export function ReservationDateTimePicker({
     : placeholder;
 
   useEffect(() => {
+    if (
+      timeMode === "midnight" &&
+      dateTime &&
+      !dateTime.toPlainTime().equals(Temporal.PlainTime.from("00:00"))
+    ) {
+      onChange?.(
+        dateTime
+          .toPlainDate()
+          .toPlainDateTime()
+          .toString({ smallestUnit: "minute" })
+      );
+      return;
+    }
+
     const currentMinimum = resolveMinimumDateTime(minimum);
     if (
+      timeMode === "selectable" &&
       dateTime &&
       currentMinimum &&
       !preserveValueBeforeMinimum &&
@@ -110,7 +127,7 @@ export function ReservationDateTimePicker({
     ) {
       onChange?.(currentMinimum.toString({ smallestUnit: "minute" }));
     }
-  }, [dateTime, minimum, onChange, preserveValueBeforeMinimum]);
+  }, [dateTime, minimum, onChange, preserveValueBeforeMinimum, timeMode]);
 
   return (
     <div className={cn("grid gap-3", className)}>
@@ -123,14 +140,16 @@ export function ReservationDateTimePicker({
         onChange={(date) => {
           const plainDate = Temporal.PlainDate.from(date);
           const currentMinimumDateTime = resolveMinimumDateTime(minimum);
-          const minimumTime = getMinimumTimeForDate(
-            plainDate,
-            currentMinimumDateTime
-          );
+          const minimumTime =
+            timeMode === "selectable"
+              ? getMinimumTimeForDate(plainDate, currentMinimumDateTime)
+              : undefined;
           const time =
-            minimumTime && selectedTime < minimumTime
-              ? minimumTime
-              : selectedTime;
+            timeMode === "midnight"
+              ? "00:00"
+              : minimumTime && selectedTime < minimumTime
+                ? minimumTime
+                : selectedTime;
 
           onChange?.(formatDateTimeValue({ date: plainDate, time }));
         }}
@@ -138,53 +157,55 @@ export function ReservationDateTimePicker({
         value={selectedDate?.toString()}
         variant={variant}
       />
-      <div className="relative">
-        <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
-        <Input
-          aria-label={timeLabel}
-          className="pl-11"
-          onBlur={onBlur}
-          onInput={(event) => {
-            const input = event.currentTarget;
-            const restoreSelectedTime = () => {
-              input.value = selectedTime;
-            };
+      {timeMode === "selectable" && (
+        <div className="relative">
+          <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
+          <Input
+            aria-label={timeLabel}
+            className="pl-11"
+            onBlur={onBlur}
+            onInput={(event) => {
+              const input = event.currentTarget;
+              const restoreSelectedTime = () => {
+                input.value = selectedTime;
+              };
 
-            try {
-              const time = Temporal.PlainTime.from(input.value).toString({
-                smallestUnit: "minute",
-              });
-              const parsedTime = Temporal.PlainTime.from(time);
-              const minutesFromMidnight =
-                parsedTime.hour * 60 + parsedTime.minute;
-              if (minutesFromMidnight % resolvedTimeStepMinutes !== 0) {
-                restoreSelectedTime();
-                return;
-              }
-              const currentMinimumTime = getMinimumTimeForDate(
-                selectedDate,
-                resolveMinimumDateTime(minimum)
-              );
-              if (currentMinimumTime && time < currentMinimumTime) {
-                restoreSelectedTime();
-                return;
-              }
+              try {
+                const time = Temporal.PlainTime.from(input.value).toString({
+                  smallestUnit: "minute",
+                });
+                const parsedTime = Temporal.PlainTime.from(time);
+                const minutesFromMidnight =
+                  parsedTime.hour * 60 + parsedTime.minute;
+                if (minutesFromMidnight % resolvedTimeStepMinutes !== 0) {
+                  restoreSelectedTime();
+                  return;
+                }
+                const currentMinimumTime = getMinimumTimeForDate(
+                  selectedDate,
+                  resolveMinimumDateTime(minimum)
+                );
+                if (currentMinimumTime && time < currentMinimumTime) {
+                  restoreSelectedTime();
+                  return;
+                }
 
-              setPendingTime(time);
-              if (selectedDate) {
-                onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+                setPendingTime(time);
+                if (selectedDate) {
+                  onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+                }
+              } catch {
+                restoreSelectedTime();
               }
-            } catch {
-              restoreSelectedTime();
-            }
-          }}
-          min={selectedDateMinimumTime}
-          step={resolvedTimeStepMinutes * 60}
-          type="time"
-          value={selectedTime}
-          variant={variant}
-        />
-      </div>
+            }}
+            min={selectedDateMinimumTime}
+            step={resolvedTimeStepMinutes * 60}
+            type="time"
+            value={selectedTime}
+            variant={variant}
+          />
+        </div>
+      )}
     </div>
   );
 }

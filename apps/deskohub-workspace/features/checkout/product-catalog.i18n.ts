@@ -120,16 +120,27 @@ export const getWorkspaceProductMonitorTitle = (
     locale
   );
 
+export const getWorkspaceMeetingRoomDurationLabel = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
+  locale: Locale
+) => {
+  if (durationMinutes === 1440) {
+    return m.reservationMeetingRoomDurationWholeDay({}, { locale });
+  }
+
+  return m.reservationMeetingRoomDurationHours(
+    { count: durationMinutes / 60 },
+    { locale }
+  );
+};
+
 export const getWorkspaceMeetingRoomDurationTitle = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
   locale: Locale
 ) =>
   m.checkoutSummaryItemMeetingRoom(
     {
-      duration: m.reservationMeetingRoomDurationHours(
-        { count: durationMinutes / 60 },
-        { locale }
-      ),
+      duration: getWorkspaceMeetingRoomDurationLabel(durationMinutes, locale),
     },
     { locale }
   );

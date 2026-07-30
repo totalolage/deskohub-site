@@ -456,10 +456,10 @@ const runMeetingRoomNewHoldScenario = async () => {
   const enqueueCleanup = mock(() => Effect.void);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
     product: { kind: "meeting-room", durationMinutes: 240 },
-    discountableSubtotal: basicMoney(60_000),
+    discountableSubtotal: basicMoney(155_000),
     discounts: [],
     totalDiscount: basicMoney(0),
-    discountedSubtotal: basicMoney(60_000),
+    discountedSubtotal: basicMoney(155_000),
   });
   const affirmedAdvertisement =
     affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
@@ -655,11 +655,11 @@ describe("prepareWorkspacePayState", () => {
         {
           type: "meeting-room",
           durationMinutes: 240,
-          amount: { value: 60_000, exponent: 2, currency: "CZK" },
+          amount: { value: 155_000, exponent: 2, currency: "CZK" },
         },
       ],
       payment: {
-        expectedPrice: { value: 60_000, exponent: 2, currency: "CZK" },
+        expectedPrice: { value: 155_000, exponent: 2, currency: "CZK" },
       },
     });
   });

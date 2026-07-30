@@ -4,6 +4,7 @@ import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationDefaultValues,
+  getMeetingRoomReservationDurationMinutes,
   getMeetingRoomReservationIssues,
   getMeetingRoomReservationOrder,
   getStoredMeetingRoomReservationDetails,
@@ -190,5 +191,55 @@ describe("meetingRoomReservationSchema", () => {
     expect(
       getMeetingRoomReservationOrder({ ...defaults, legalConsent: true })
     ).toEqual(reservation);
+  });
+
+  test("maps a DST whole day to the stable whole-day product identity", () => {
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2026-03-28T23:00:00Z",
+      endsAt: "2026-03-29T22:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(getMeetingRoomReservationDurationMinutes(reservation)).toBe(1440);
+    expect(getMeetingRoomReservationDefaultValues(reservation)).toMatchObject({
+      startDateTime: "2026-03-29T00:00",
+      durationMinutes: 1440,
+    });
+  });
+
+  test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {
+    const result = schema.safeParse({
+      startDateTime: "2099-06-10T15:00",
+      durationMinutes: 1440,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "",
+      legalConsent: true,
+    });
+    const issues = Effect.runSync(
+      getMeetingRoomReservationIssues(
+        decodeOrder({
+          kind: "meeting-room",
+          startsAt: "2099-06-10T13:00:00Z",
+          endsAt: "2099-06-11T13:00:00Z",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "+420777777777",
+        })
+      )
+    );
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(getMeetingRoomReservationOrder(result.success)).toMatchObject({
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
+      });
+    }
+    expect(issues).toHaveLength(1);
   });
 });

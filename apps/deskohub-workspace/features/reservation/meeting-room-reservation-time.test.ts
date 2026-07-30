@@ -43,17 +43,26 @@ describe("meeting room reservation time helpers", () => {
     ).toBe("2026-07-12T11:00");
   });
 
-  test("adds selected durations as absolute Prague instants across DST changes", () => {
+  test("keeps whole-day reservations at Prague midnight across spring DST", () => {
     const interval = getMeetingRoomReservationInterval(
-      "2026-03-29T00:00",
+      "2026-03-29T10:00",
       1440
     );
 
     expect(interval).toEqual({
       startsAt: "2026-03-28T23:00:00Z",
-      endsAt: "2026-03-29T23:00:00Z",
+      endsAt: "2026-03-29T22:00:00Z",
     });
-    expect(getMeetingRoomAvailabilityToDate(interval!)).toBe("2026-03-30");
+    expect(getMeetingRoomAvailabilityToDate(interval!)).toBe("2026-03-29");
+  });
+
+  test("keeps whole-day reservations at Prague midnight across autumn DST", () => {
+    expect(getMeetingRoomReservationInterval("2026-10-25T10:00", 1440)).toEqual(
+      {
+        startsAt: "2026-10-24T22:00:00Z",
+        endsAt: "2026-10-25T23:00:00Z",
+      }
+    );
   });
 
   test("rejects nonexistent Prague times during the spring DST transition", () => {

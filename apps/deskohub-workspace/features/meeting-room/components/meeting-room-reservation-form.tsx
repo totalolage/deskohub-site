@@ -11,7 +11,10 @@ import {
 } from "@/features/checkout/advertised-price";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
+import {
+  getWorkspaceMeetingRoomDurationLabel,
+  getWorkspaceMeetingRoomDurationTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
@@ -98,6 +101,7 @@ export function MeetingRoomReservationForm({
     control: form.control,
     name: ["startDateTime", "durationMinutes"],
   });
+  const isWholeDaySelected = selectedDurationMinutes === 1440;
   const selectedInterval = useMemo(
     () =>
       getMeetingRoomReservationInterval(
@@ -196,10 +200,16 @@ export function MeetingRoomReservationForm({
         render={({ field, fieldState }) => (
           <FormItem>
             <ReservationFormLabel required>
-              {m.reservationMeetingRoomStartLabel({}, { locale })}
+              {isWholeDaySelected
+                ? m.reservationDateLabel({}, { locale })
+                : m.reservationMeetingRoomStartLabel({}, { locale })}
             </ReservationFormLabel>
             <ReservationDateTimePicker
-              className="grid-cols-1 sm:grid-cols-2"
+              className={
+                isWholeDaySelected
+                  ? "grid-cols-1"
+                  : "grid-cols-1 sm:grid-cols-2"
+              }
               dateLabel={m.reservationMeetingRoomDateLabel({}, { locale })}
               locale={locale}
               minimum={getEarliestSelectableMeetingRoomStartDateTime}
@@ -209,6 +219,7 @@ export function MeetingRoomReservationForm({
               placeholder={m.reservationDatePlaceholder({}, { locale })}
               preserveValueBeforeMinimum={preservesRestoredStart}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}
+              timeMode={isWholeDaySelected ? "midnight" : "selectable"}
               timeStepMinutes={60}
               value={field.value}
               variant={fieldState.error ? "error" : "default"}
@@ -310,9 +321,9 @@ export function MeetingRoomReservationForm({
                         )
                       }
                       priceReady={Boolean(advertisedProductItem)}
-                      title={m.reservationMeetingRoomDurationHours(
-                        { count: duration / 60 },
-                        { locale }
+                      title={getWorkspaceMeetingRoomDurationLabel(
+                        duration,
+                        locale
                       )}
                       value={duration}
                     />

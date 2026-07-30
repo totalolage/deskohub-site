@@ -28,6 +28,7 @@ import {
   meetingRoomReservationDefaultValues,
   normalizedMeetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   workspaceRouterPush as push,
   workspaceUseAction,
@@ -77,12 +78,12 @@ const meetingRoomQuote = {
     {
       type: "meeting-room" as const,
       durationMinutes: 60 as const,
-      amount: money(30_000),
+      amount: money(47_500),
     },
   ] as const,
   payment: {
-    expectedPrice: money(30_000),
-    undiscountedPrice: money(30_000),
+    expectedPrice: money(47_500),
+    undiscountedPrice: money(47_500),
     discounts: [],
   },
 };
@@ -206,22 +207,30 @@ describe("MeetingRoomReservationForm", () => {
   test("renders every server-loaded duration quote on the first paint without refetching", () => {
     getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
     const initialAdvertisedPrices = ([60, 240, 1440] as const).map(
-      (durationMinutes) => ({
-        request: {
-          locale: "en-US" as const,
-          reservation: {
-            kind: "meeting-room" as const,
-            details: {
+      (durationMinutes) => {
+        const interval = getMeetingRoomReservationInterval(
+          "2099-07-30T10:00",
+          durationMinutes
+        );
+        if (!interval) {
+          throw new Error("Expected a valid meeting-room interval");
+        }
+
+        return {
+          request: {
+            locale: "en-US" as const,
+            reservation: {
               kind: "meeting-room" as const,
-              startsAt: "2099-07-30T08:00:00Z",
-              endsAt: Temporal.Instant.from("2099-07-30T08:00:00Z")
-                .add({ minutes: durationMinutes })
-                .toString(),
+              details: {
+                kind: "meeting-room" as const,
+                ...interval,
+              },
             },
           },
-        },
-        advertisedPrice: getDiscountedAdvertisedPriceResponse(durationMinutes),
-      })
+          advertisedPrice:
+            getDiscountedAdvertisedPriceResponse(durationMinutes),
+        };
+      }
     );
 
     const view = renderForm({
@@ -282,7 +291,7 @@ describe("MeetingRoomReservationForm", () => {
       Array.from(
         view.container.querySelectorAll("[data-reservation-type-title]")
       ).map((title) => title.textContent)
-    ).toEqual(["1 hour", "4 hours", "24 hours"]);
+    ).toEqual(["1 hour", "4 hours", "whole day"]);
     expect(
       Array.from(
         view.container.querySelectorAll("[data-reservation-type-option]")
@@ -358,12 +367,75 @@ describe("MeetingRoomReservationForm", () => {
     );
   });
 
+  test("hides time and submits whole-day reservations midnight to midnight", async () => {
+    const interval = getMeetingRoomReservationInterval(
+      "2099-07-30T10:00",
+      1440
+    );
+    if (!interval) {
+      throw new Error("Expected a valid whole-day meeting-room interval");
+    }
+    let availabilityUrl = "";
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      availabilityUrl = String(request);
+      return Promise.resolve(jsonResponse(availabilityResponse));
+    }) as typeof fetch;
+    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    const advertisedPrice = getDiscountedAdvertisedPriceResponse(1440);
+    const view = renderForm({
+      initialAdvertisedPrices: [
+        {
+          request: {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: { kind: "meeting-room", ...interval },
+            },
+          },
+          advertisedPrice,
+        },
+      ],
+      initialReservation: undefined,
+      initialValues: {
+        ...meetingRoomReservationDefaultValues,
+        startDateTime: "2099-07-30T10:00",
+        durationMinutes: 1440,
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420777777777",
+      },
+    });
+
+    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(view.getByText("Reservation date")).toBeDefined();
+    expect(view.getByText("whole day")).toBeDefined();
+    await waitFor(() => {
+      expect(availabilityUrl).toContain("startsAt=2099-07-29T22%3A00%3A00Z");
+      expect(availabilityUrl).toContain("endsAt=2099-07-30T22%3A00%3A00Z");
+      expect(
+        view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+      ).toBe(false);
+    });
+
+    fireEvent.click(view.getByRole("checkbox"));
+    fireEvent.click(view.getByRole("button", { name: "Continue" }));
+
+    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    expect(execute.mock.calls[0]?.[0]).toMatchObject({
+      advertisedPriceToken: advertisedPrice.advertisedPriceToken,
+      reservation: {
+        kind: "meeting-room",
+        ...interval,
+      },
+    });
+  });
+
   test("renders the selected advertised discount without adding a price card", async () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,
       payment: {
-        expectedPrice: money(15_000),
-        undiscountedPrice: money(30_000),
+        expectedPrice: money(23_750),
+        undiscountedPrice: money(47_500),
         discounts: [
           {
             discount: {
@@ -376,9 +448,9 @@ describe("MeetingRoomReservationForm", () => {
                 basisPoints: 5000,
               },
             },
-            subtotalBefore: money(30_000),
-            amount: money(15_000),
-            subtotalAfter: money(15_000),
+            subtotalBefore: money(47_500),
+            amount: money(23_750),
+            subtotalAfter: money(23_750),
           },
         ],
       },
@@ -399,9 +471,9 @@ describe("MeetingRoomReservationForm", () => {
     const view = renderForm();
 
     expect(
-      await view.findByText(/original price.*300/i, {}, { timeout: 3000 })
+      await view.findByText(/original price.*475/i, {}, { timeout: 3000 })
     ).toBeDefined();
-    expect(view.getByText(/discounted price.*150/i)).toBeDefined();
+    expect(view.getByText(/discounted price.*237[.,]5/i)).toBeDefined();
     expect(
       view.getByRole("button", { name: /discount.*meeting room.*1 hour/i })
     ).toBeDefined();

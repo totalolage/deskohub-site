@@ -278,18 +278,18 @@ describe("reservation quotes", () => {
       meetingRoomReservation("2099-06-10T07:00:00Z", "2099-06-10T11:00:00Z")
     );
     const fullDay = buildQuote(
-      meetingRoomReservation("2099-06-10T13:00:00Z", "2099-06-11T13:00:00Z")
+      meetingRoomReservation("2099-06-09T22:00:00Z", "2099-06-10T22:00:00Z")
     );
 
     expect(oneHour.items).toEqual([
       {
         type: "meeting-room",
         durationMinutes: 60,
-        amount: { value: 30_000, exponent: 2, currency: "CZK" },
+        amount: { value: 47_500, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(fourHours.payment.expectedPrice.value).toBe(60_000);
-    expect(fullDay.payment.expectedPrice.value).toBe(100_000);
+    expect(fourHours.payment.expectedPrice.value).toBe(155_000);
+    expect(fullDay.payment.expectedPrice.value).toBe(232_000);
   });
 
   test("applies discounts to meeting-room reservations", () => {
@@ -298,21 +298,35 @@ describe("reservation quotes", () => {
       "2099-06-10T11:00:00Z"
     );
     const application = discountApplication(10_000, {
-      subtotalBefore: money(60_000),
-      subtotalAfter: money(50_000),
+      subtotalBefore: money(155_000),
+      subtotalAfter: money(145_000),
     });
     const quote = buildQuote(reservation, {
       discountQuote: {
         product: { kind: "meeting-room", durationMinutes: 240 },
-        discountableSubtotal: money(60_000),
+        discountableSubtotal: money(155_000),
         discounts: [application],
         totalDiscount: money(10_000),
-        discountedSubtotal: money(50_000),
+        discountedSubtotal: money(145_000),
       },
     });
 
-    expect(quote.payment.expectedPrice).toEqual(money(50_000));
-    expect(quote.payment.undiscountedPrice).toEqual(money(60_000));
+    expect(quote.payment.expectedPrice).toEqual(money(145_000));
+    expect(quote.payment.undiscountedPrice).toEqual(money(155_000));
     expect(quote.payment.discounts).toEqual([application]);
+  });
+
+  test("prices a DST calendar day as the whole-day product", () => {
+    const quote = buildQuote(
+      meetingRoomReservation("2027-03-27T23:00:00Z", "2027-03-28T22:00:00Z")
+    );
+
+    expect(quote.items).toEqual([
+      {
+        type: "meeting-room",
+        durationMinutes: 1440,
+        amount: money(232_000),
+      },
+    ]);
   });
 });

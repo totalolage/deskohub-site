@@ -953,16 +953,16 @@ describe("CheckoutService", () => {
     const submittedCode = canonicalCode("ROOM50");
     const meetingRoomApplication = {
       ...application,
-      subtotalBefore: money(60_000),
+      subtotalBefore: money(155_000),
       amount: money(10_000),
-      subtotalAfter: money(50_000),
+      subtotalAfter: money(145_000),
     };
     const acceptedDiscountQuote: DiscountQuote = {
       product: { kind: "meeting-room", durationMinutes: 240 },
-      discountableSubtotal: money(60_000),
+      discountableSubtotal: money(155_000),
       discounts: [meetingRoomApplication],
       totalDiscount: money(10_000),
-      discountedSubtotal: money(50_000),
+      discountedSubtotal: money(145_000),
     };
     const freshDiscountQuote: DiscountQuote = {
       ...acceptedDiscountQuote,
@@ -970,11 +970,11 @@ describe("CheckoutService", () => {
         {
           ...meetingRoomApplication,
           amount: money(20_000),
-          subtotalAfter: money(40_000),
+          subtotalAfter: money(135_000),
         },
       ],
       totalDiscount: money(20_000),
-      discountedSubtotal: money(40_000),
+      discountedSubtotal: money(135_000),
     };
     const affirm = mock(() =>
       Effect.succeed({

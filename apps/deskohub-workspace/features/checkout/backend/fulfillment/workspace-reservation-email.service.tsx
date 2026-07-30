@@ -30,10 +30,8 @@ import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map"
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import {
-  formatReservationDisplayDate,
-  formatReservationDisplayTimeRange,
-} from "@/features/reservation/reservation-date";
+import { formatMeetingRoomReservationDisplayTime } from "@/features/reservation/reservation.i18n";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -350,9 +348,11 @@ const createMeetingRoomReservationDetailRows = (
   ],
   [
     m.reservationEmailTimeLabel({}, { locale }),
-    formatReservationDisplayTimeRange(
-      reservation.reservedFrom,
-      reservation.reservedUntil,
+    formatMeetingRoomReservationDisplayTime(
+      {
+        startsAt: reservation.reservedFrom,
+        endsAt: reservation.reservedUntil,
+      },
       locale
     ),
   ],

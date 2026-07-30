@@ -26,17 +26,17 @@ describe("workspace product catalog", () => {
   test("exposes approved meeting room duration prices", () => {
     expect([...workspaceMeetingRoomDurationOptions]).toEqual([60, 240, 1440]);
     expect(getWorkspaceMeetingRoomPriceForDuration(60)).toEqual({
-      value: 30_000,
+      value: 47_500,
       exponent: 2,
       currency: "CZK",
     });
     expect(getWorkspaceMeetingRoomPriceForDuration(240)).toEqual({
-      value: 60_000,
+      value: 155_000,
       exponent: 2,
       currency: "CZK",
     });
     expect(getWorkspaceMeetingRoomPriceForDuration(1440)).toEqual({
-      value: 100_000,
+      value: 232_000,
       exponent: 2,
       currency: "CZK",
     });
@@ -49,6 +49,9 @@ describe("workspace product catalog", () => {
     expect(getWorkspaceMeetingRoomDurationTitle(240, "en-US")).toBe(
       "Meeting room - 4 hours"
     );
+    expect(getWorkspaceMeetingRoomDurationTitle(1440, "en-US")).toBe(
+      "Meeting room - whole day"
+    );
     expect(getWorkspaceMeetingRoomDurationTitle(60, "cs-CZ")).toBe(
       "Zasedací místnost - 1 hodina"
     );
@@ -56,7 +59,7 @@ describe("workspace product catalog", () => {
       "Zasedací místnost - 4 hodiny"
     );
     expect(getWorkspaceMeetingRoomDurationTitle(1440, "cs-CZ")).toBe(
-      "Zasedací místnost - 24 hodin"
+      "Zasedací místnost - celý den"
     );
   });
 

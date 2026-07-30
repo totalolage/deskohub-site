@@ -13,6 +13,7 @@ import {
 import {
   getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
+  isSingleDayReservationInterval,
   meetingRoomReservationDurationMinutesSchema,
   reservationTimestampInputSchema,
   wholeHourReservationInstantSchema,
@@ -147,6 +148,13 @@ export const getMeetingRoomReservationProductMonitorOption = (
   _reservation: MeetingRoomReservationProductInput
 ) => undefined;
 
+export const getMeetingRoomReservationDurationMinutes = (
+  reservation: MeetingRoomReservationDetails
+) =>
+  isSingleDayReservationInterval(reservation)
+    ? 1440
+    : getDurationMinutes(reservation);
+
 export const getMeetingRoomReservationIssues = Effect.fn(
   "getMeetingRoomReservationIssues"
 )(function* (reservation: MeetingRoomReservationOrderInput) {
@@ -161,9 +169,11 @@ export const getMeetingRoomReservationIssues = Effect.fn(
   }
 
   if (
-    !Schema.is(meetingRoomReservationDurationMinutesSchema)(
-      getDurationMinutes(interval)
-    )
+    !isSingleDayReservationInterval(interval) &&
+    (getDurationMinutes(interval) === 1440 ||
+      !Schema.is(meetingRoomReservationDurationMinutesSchema)(
+        getDurationMinutes(interval)
+      ))
   ) {
     return [
       {
@@ -339,8 +349,11 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
 export const getMeetingRoomReservationDefaultValues = (
   reservation: NormalizedMeetingRoomReservationOrder
 ): MeetingRoomReservationInput => {
-  const durationMinutes = getDurationMinutes(reservation);
-  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
+  const durationMinutes = getMeetingRoomReservationDurationMinutes(reservation);
+  if (
+    !isWorkspaceMeetingRoomDuration(durationMinutes) ||
+    (durationMinutes === 1440 && !isSingleDayReservationInterval(reservation))
+  ) {
     throw new Error("Meeting-room pay state has an unsupported duration.");
   }
 

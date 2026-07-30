@@ -1,18 +1,17 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import {
-  getWorkspaceMeetingRoomPriceForDuration,
-} from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import {
-  getPrepareMeetingRoomAdvertisedPriceScript,
-  getSubmitMeetingRoomReservationScript,
-} from "../browser-scripts";
 import {
   evalBrowserScript,
   openBrowserPage,
   waitForBrowserText,
 } from "../browser";
+import {
+  getPrepareMeetingRoomAdvertisedPriceScript,
+  getSubmitMeetingRoomReservationScript,
+} from "../browser-scripts";
 import {
   loadMeetingRoomAvailability,
   makeMeetingRoomCheckoutData,
@@ -60,14 +59,10 @@ export const makeMeetingRoomE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const slots = yield* selectAvailableMeetingRoomSlots(config, [
-      60,
-      240,
-      60,
-      240,
-      60,
-      1440,
-    ]);
+    const slots = yield* selectAvailableMeetingRoomSlots(
+      config,
+      [60, 240, 60, 240, 60, 1440]
+    );
     const [
       paidSlot,
       zeroTotalSlot,
@@ -76,7 +71,10 @@ export const makeMeetingRoomE2ECases = ({
       cancelledSlot,
       daySlot,
     ] = slots;
-    const requireSlot = (slot: (typeof slots)[number] | undefined, id: string) =>
+    const requireSlot = (
+      slot: (typeof slots)[number] | undefined,
+      id: string
+    ) =>
       tryWorkspaceE2ESync(`require ${id} meeting-room slot`, () => {
         assert(slot, `missing ${id} meeting-room slot`);
         return slot;
@@ -113,7 +111,7 @@ export const makeMeetingRoomE2ECases = ({
     const cancelledState = trackCheckoutState(flowStates, cancelledData);
     const dayData = makeMeetingRoomCheckoutData(
       config.baseUrl,
-      yield* requireSlot(daySlot, "24-hour"),
+      yield* requireSlot(daySlot, "whole-day"),
       "meeting-room-advertised-1440"
     );
     const cancelledScenario = yield* tryWorkspaceE2ESync(
@@ -193,9 +191,7 @@ export const makeMeetingRoomE2ECases = ({
               execute: assertMeetingRoomSlotUnavailable(
                 config,
                 replacementData
-              ).pipe(
-                Effect.provideService(HttpClient.HttpClient, httpClient)
-              ),
+              ).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
               id: "assert-held-meeting-room-slot-unavailable",
               timeoutMs: config.timeouts.datasource,
             }),
@@ -253,7 +249,7 @@ export const makeMeetingRoomE2ECases = ({
           }).pipe(
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
-                "run 24-hour meeting-room advertisement e2e case",
+                "run whole-day meeting-room advertisement e2e case",
                 cause
               )
             )
@@ -267,11 +263,7 @@ export const makeMeetingRoomE2ECases = ({
 export const assertMeetingRoomSlotUnavailable = (
   config: WorkspaceE2EConfig,
   data: CheckoutData
-): Effect.Effect<
-  void,
-  WorkspaceE2EError,
-  HttpClient.HttpClient
-> =>
+): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const slot = yield* getMeetingRoomSlot(data);
     const availability = yield* pollUntil(
@@ -306,10 +298,10 @@ const assertMeetingRoomPayPage = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const meetingRoom = yield* getMeetingRoomSlot(data);
-    const durationHours = meetingRoom.durationMinutes / 60;
-    const durationTitle = `Meeting room - ${durationHours} ${
-      durationHours === 1 ? "hour" : "hours"
-    }`;
+    const durationTitle = getWorkspaceMeetingRoomDurationTitle(
+      meetingRoom.durationMinutes,
+      data.locale
+    );
     const price = formatWorkspaceMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.durationMinutes),
       data.locale
@@ -350,33 +342,35 @@ const assertMeetingRoomDayOption = ({
       execute: openBrowserPage(config, run, session, data.checkoutUrl, {
         timeoutMs: config.timeouts.browserNavigation,
       }).pipe(Effect.asVoid),
-      id: "open-24-hour-meeting-room-form",
+      id: "open-whole-day-meeting-room-form",
       timeoutMs: config.timeouts.browserNavigation,
     });
     yield* runStep({
       execute: evalBrowserScript(
-        "prepare 24-hour meeting-room advertised price",
+        "prepare whole-day meeting-room advertised price",
         run,
         session,
         getPrepareMeetingRoomAdvertisedPriceScript(data),
         { timeoutMs: config.timeouts.browserAction }
       ).pipe(Effect.asVoid),
-      id: "prepare-24-hour-meeting-room-advertisement",
+      id: "prepare-whole-day-meeting-room-advertisement",
       timeoutMs: config.timeouts.checkoutStart,
     });
     yield* runStep({
       execute: waitForBrowserText({
-        description: "24-hour meeting-room advertised price",
+        description: "whole-day meeting-room advertised price",
         matches: (text) =>
-          /24 hours/i.test(text) && /CZK/i.test(text) && /1[,\s]000/.test(text),
+          /whole day/i.test(text) &&
+          /CZK/i.test(text) &&
+          /2[,\s]320/.test(text),
         run,
         session,
         timeoutMs: config.timeouts.uiTransition,
       }),
-      id: "assert-24-hour-meeting-room-advertisement",
+      id: "assert-whole-day-meeting-room-advertisement",
       timeoutMs: config.timeouts.uiTransition,
     });
-    log("24-hour meeting-room option is available and priced");
+    log("Whole-day meeting-room option is available and priced");
   });
 
 const getMeetingRoomSlot = (data: CheckoutData) =>

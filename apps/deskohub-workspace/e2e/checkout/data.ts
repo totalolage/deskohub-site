@@ -120,11 +120,7 @@ export const makeMeetingRoomCheckoutData = (
   flowId = `meeting-room-${slot.durationMinutes}`
 ): CheckoutData => {
   const contact = makeCheckoutContact(flowId);
-  return makeMeetingRoomCheckoutDataWithContact(
-    checkoutBaseUrl,
-    slot,
-    contact
-  );
+  return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, contact);
 };
 
 export const reuseMeetingRoomCheckoutContact = (
@@ -350,7 +346,9 @@ export const selectAvailableMeetingRoomSlots = (
         const date = futureIsoDate(offset);
         if (!isWeekday(date) || reservedDates.has(date)) continue;
 
-        const startDateTime = `${date}T10:00`;
+        const startDateTime = `${date}T${
+          durationMinutes === 1440 ? "00:00" : "10:00"
+        }`;
         const interval = yield* tryWorkspaceE2ESync(
           "create meeting-room checkout interval",
           () => {
@@ -447,25 +445,22 @@ export const loadMeetingRoomAvailability = (
       readonly unavailableDates?: unknown;
     };
 
-    return yield* tryWorkspaceE2ESync(
-      "parse meeting-room availability",
-      () => {
-        assert(
-          typeof availability.meetingRoomUnavailable === "boolean",
-          "availability response missing meetingRoomUnavailable"
-        );
-        assert(
-          Array.isArray(availability.unavailableDates),
-          "availability response missing unavailableDates"
-        );
-        return {
-          meetingRoomUnavailable: availability.meetingRoomUnavailable,
-          unavailableDates: availability.unavailableDates.filter(
-            (date): date is string => typeof date === "string"
-          ),
-        };
-      }
-    );
+    return yield* tryWorkspaceE2ESync("parse meeting-room availability", () => {
+      assert(
+        typeof availability.meetingRoomUnavailable === "boolean",
+        "availability response missing meetingRoomUnavailable"
+      );
+      assert(
+        Array.isArray(availability.unavailableDates),
+        "availability response missing unavailableDates"
+      );
+      return {
+        meetingRoomUnavailable: availability.meetingRoomUnavailable,
+        unavailableDates: availability.unavailableDates.filter(
+          (date): date is string => typeof date === "string"
+        ),
+      };
+    });
   });
 
 const futureIsoDate = (offsetDays: number) => {

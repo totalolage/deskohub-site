@@ -91,7 +91,7 @@ describe("CheckoutStatusPage", () => {
             kind: "meeting-room",
             reservedFrom: Temporal.Instant.from("2026-06-20T07:00:00.000Z"),
             reservedUntil: Temporal.Instant.from("2026-06-20T11:00:00.000Z"),
-            price: { value: 60_000, exponent: 2, currency: "CZK" },
+            price: { value: 155_000, exponent: 2, currency: "CZK" },
           },
         }}
       />
@@ -100,12 +100,34 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("Meeting Room")).toBeDefined();
     expect(view.getByText("Saturday, June 20, 2026")).toBeDefined();
     expect(view.getByText(/9:00 AM.*1:00 PM/)).toBeDefined();
-    expect(view.getByText("CZK 600")).toBeDefined();
+    expect(view.getByText("CZK 1,550")).toBeDefined();
     expect(
       view
         .getByRole("link", { name: "Start a new reservation" })
         .getAttribute("href")
     ).toBe("/en-US/reservation/meeting-room");
+  });
+
+  test("presents midnight-to-midnight meeting-room reservations as whole day", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "meeting-room",
+          summary: {
+            kind: "meeting-room",
+            reservedFrom: Temporal.Instant.from("2026-03-28T23:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-03-29T22:00:00Z"),
+            price: { value: 232_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("whole day")).toBeDefined();
+    expect(view.queryByText(/12:00 AM/)).toBeNull();
+    expect(view.getByText("CZK 2,320")).toBeDefined();
   });
 
   test("renders not found without reservation summary copy", () => {

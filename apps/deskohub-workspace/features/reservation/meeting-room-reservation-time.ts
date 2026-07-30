@@ -14,7 +14,7 @@ import {
 const decodeInstant = Schema.decodeUnknownOption(instantStringSchema);
 const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
-  (startDateTime: LocalDateTime) =>
+  (startDateTime: LocalDateTime | Temporal.PlainDateTime) =>
     Temporal.PlainDateTime.from(startDateTime)
       .toZonedDateTime(workspaceSiteConstants.location.timeZone, {
         disambiguation: "reject",
@@ -60,14 +60,35 @@ export const getMeetingRoomReservationInterval = (
   if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
 
   return decodeLocalDateTime(startDateTime).pipe(
-    Option.flatMap(localDateTimeToMeetingRoomStartInstant),
-    Option.flatMap((startInstant) => {
-      const endInstant = startInstant.add({ minutes: durationMinutes });
+    Option.flatMap((selectedStartDateTime) => {
+      const selectedPlainDateTime = Temporal.PlainDateTime.from(
+        selectedStartDateTime
+      );
+      const startDateTime =
+        durationMinutes === 1440
+          ? selectedPlainDateTime.toPlainDate().toPlainDateTime()
+          : selectedPlainDateTime;
 
-      return Option.all({
-        startsAt: decodeInstant(startInstant.toString()),
-        endsAt: decodeInstant(endInstant.toString()),
-      }).pipe(Option.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })));
+      return localDateTimeToMeetingRoomStartInstant(startDateTime).pipe(
+        Option.flatMap((startInstant) => {
+          const endInstant =
+            durationMinutes === 1440
+              ? localDateTimeToMeetingRoomStartInstant(
+                  startDateTime.add({ days: 1 })
+                )
+              : Option.some(startInstant.add({ minutes: durationMinutes }));
+
+          return endInstant.pipe(
+            Option.flatMap((end) =>
+              Option.all({
+                startsAt: decodeInstant(startInstant.toString()),
+                endsAt: decodeInstant(end.toString()),
+              })
+            ),
+            Option.map(({ startsAt, endsAt }) => ({ startsAt, endsAt }))
+          );
+        })
+      );
     }),
     Option.getOrNull
   );

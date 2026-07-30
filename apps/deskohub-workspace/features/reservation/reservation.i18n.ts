@@ -2,7 +2,26 @@ import { Match } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
-import { formatReservationInputDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayTimeRange,
+  formatReservationInputDate,
+} from "@/features/reservation/reservation-date";
+import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval";
+
+export const formatMeetingRoomReservationDisplayTime = (
+  interval: {
+    readonly startsAt: Temporal.Instant;
+    readonly endsAt: Temporal.Instant;
+  },
+  locale: Locale
+) =>
+  isSingleDayReservationInterval(interval)
+    ? m.reservationMeetingRoomDurationWholeDay({}, { locale })
+    : formatReservationDisplayTimeRange(
+        interval.startsAt,
+        interval.endsAt,
+        locale
+      );
 
 export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;

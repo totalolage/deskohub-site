@@ -169,4 +169,21 @@ describe("ReservationDateTimePicker", () => {
 
     expect(onChange).toHaveBeenCalledWith("2099-06-10T17:00");
   });
+
+  test("hides time and normalizes the selected date to midnight", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        minimum="2099-06-10T15:00"
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        timeMode="midnight"
+        value="2099-06-10T16:00"
+      />
+    );
+
+    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(onChange).toHaveBeenCalledWith("2099-06-10T00:00");
+  });
 });

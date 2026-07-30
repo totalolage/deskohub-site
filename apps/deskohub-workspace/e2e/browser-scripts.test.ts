@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getAssertPrefilledReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
@@ -13,7 +14,6 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
 } from "./checkout/data";
-import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 
 const workspaceTemporal = globalThis.Temporal;
 
@@ -37,9 +37,7 @@ test("keeps advertised-price preparation separable from form submission", () => 
   expect(submitPreparedCoworkReservationScript).toContain(
     "reservation-privacy-consent"
   );
-  expect(submitPreparedCoworkReservationScript).toContain(
-    "Date.now() + 60000"
-  );
+  expect(submitPreparedCoworkReservationScript).toContain("Date.now() + 60000");
   expect(combined).toContain(prepare.trim());
 
   expect(() => new Function(`return ${combined}`)).not.toThrow();
@@ -215,15 +213,11 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
 
   expect(prepare).toContain('button[aria-label="Meeting room start date"]');
   expect(prepare).toContain("'[data-day=\"' + expected.date");
-  expect(prepare).toContain(
-    'input[aria-label="Meeting room start time"]'
-  );
+  expect(prepare).toContain('input[aria-label="Meeting room start time"]');
   expect(prepare).toContain("meeting-room-duration-");
   expect(prepare).toContain('"date":"2099-09-01"');
   expect(prepare).toContain('"time":"10:00"');
-  expect(prepare).not.toContain(
-    "setField('input[name=\"startDateTime\"]'"
-  );
+  expect(prepare).not.toContain("setField('input[name=\"startDateTime\"]'");
   expect(submitPreparedMeetingRoomReservationScript).toContain(
     "reservation-privacy-consent"
   );
@@ -405,15 +399,15 @@ test("waits for the date-only meeting-room state before editing time", async () 
   }
 });
 
-test("asserts restored date-only meeting-room state and reset legal consent", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 1440);
+test("asserts restored whole-day meeting-room state and reset legal consent", async () => {
+  const interval = getMeetingRoomReservationInterval("2099-09-01T00:00", 1440);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-09-01",
       durationMinutes: 1440,
-      startDateTime: "2099-09-01T10:00",
+      startDateTime: "2099-09-01T00:00",
       ...interval!,
     },
     "meeting-room-backfill"
@@ -426,7 +420,6 @@ test("asserts restored date-only meeting-room state and reset legal consent", as
   try {
     document.body.innerHTML = `
       <input name="startDateTime" value="2099-09-01" />
-      <input aria-label="Meeting room start time" value="10:00" />
       <input id="meeting-room-duration-1440" type="radio" value="1440" checked />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
@@ -443,12 +436,7 @@ test("asserts restored date-only meeting-room state and reset legal consent", as
     );
 
     expect(
-      run(
-        document,
-        HTMLButtonElement,
-        HTMLInputElement,
-        HTMLTextAreaElement
-      )
+      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
     ).toBe(true);
   } finally {
     await GlobalRegistrator.unregister();
