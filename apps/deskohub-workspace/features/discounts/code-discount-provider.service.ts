@@ -32,21 +32,11 @@ export type CodeDiscountProviderInput = Pick<
   | "submittedCode"
 >;
 
-export type SubmittedCodeDiscountProviderInput = Omit<
-  CodeDiscountProviderInput,
-  "submittedCode"
-> & {
-  readonly submittedCode: CanonicalDiscountCode;
-};
-
 type CodeDiscountProviderError =
   | DiscountCodeUnavailableError
   | DiscountProviderError;
 
 export interface ICodeDiscountProvider {
-  readonly quote: (
-    input: SubmittedCodeDiscountProviderInput
-  ) => Effect.Effect<readonly [DiscountCandidate], CodeDiscountProviderError>;
   readonly revalidate: (
     input: CodeDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], CodeDiscountProviderError>;
@@ -149,20 +139,12 @@ export class CodeDiscountProvider extends Context.Service<
           )
       );
 
-      const quote = Effect.fn("CodeDiscountProvider.quote")(
-        (input: SubmittedCodeDiscountProviderInput) =>
-          resolveCode({ ...input, code: input.submittedCode }).pipe(
-            Effect.map((candidate) => [candidate] as const)
-          ),
-        withProviderAnnotations("quote")
-      );
-
       const revalidate = Effect.fn("CodeDiscountProvider.revalidate")(
         (input: CodeDiscountProviderInput) => resolve(input),
         withProviderAnnotations("revalidate")
       );
 
-      return { quote, revalidate } satisfies ICodeDiscountProvider;
+      return { revalidate } satisfies ICodeDiscountProvider;
     })
   );
 }
@@ -359,7 +341,7 @@ const toDiscountCodeProviderError = (
   });
 
 const withProviderAnnotations =
-  (operation: "quote" | "revalidate") =>
+  (operation: "revalidate") =>
   <A, E>(effect: Effect.Effect<A, E>, input: CodeDiscountProviderInput) =>
     effect.pipe(
       Effect.annotateLogs({

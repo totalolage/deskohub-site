@@ -56,12 +56,10 @@ export class CustomerDiscountProvider extends Context.Service<
           })
           .pipe(
             Effect.mapError(
-              (cause) =>
-                new DiscountProviderError({
-                  reason: "provider_failure",
-                  message: "The Dotypos customer discount could not be loaded.",
-                  cause,
-                })
+              DiscountProviderError.fromCause({
+                reason: "provider_failure",
+                message: "The Dotypos customer discount could not be loaded.",
+              })
             )
           )
       );
@@ -129,12 +127,10 @@ const toCustomerDiscountCandidate = (input: {
       })
     ),
     Effect.mapError(
-      (cause) =>
-        new DiscountProviderError({
-          reason: "malformed_configuration",
-          message: "The Dotypos customer discount is malformed.",
-          cause,
-        })
+      DiscountProviderError.fromCause({
+        reason: "malformed_configuration",
+        message: "The Dotypos customer discount is malformed.",
+      })
     )
   );
 };

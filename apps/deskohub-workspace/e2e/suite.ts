@@ -62,43 +62,62 @@ export const runWorkspaceE2ECases = ({
   Effect.scoped(
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
+      const indexedCases = [...cases.entries()];
+      const parallelCases = indexedCases.filter(
+        ([, testCase]) => !testCase.runAfterParallel
+      );
+      const sharedFixtureCases = indexedCases.filter(
+        ([, testCase]) => testCase.runAfterParallel
+      );
+      const runCaseEntry = ([
+        caseIndex,
+        testCase,
+      ]: (typeof indexedCases)[number]) =>
+        telemetry.traceCase({
+          caseId: testCase.id,
+          effect: Effect.acquireUseRelease(
+            Effect.sync(
+              (): WorkspaceE2ECaseRuntime => ({
+                artifactDir: resolve(artifactRoot, testCase.id),
+                browserHarStarted: false,
+                browserHarStopped: false,
+                session: `${sessionPrefix}-${caseIndex}`,
+                testCase,
+              })
+            ),
+            (runtime) =>
+              runCase(runtime, run, telemetry, timeouts).pipe(
+                Effect.tapCause(() =>
+                  runtime.failureCause
+                    ? captureFailureArtifacts(runtime, run, timeouts)
+                    : Effect.void
+                )
+              ),
+            (runtime) => finalizeCaseRuntime(runtime, run, timeouts)
+          ),
+          timeoutMs: testCase.timeoutMs,
+        });
+
       log(
-        `Running ${cases.length} workspace e2e cases in parallel: ${cases
-          .map((testCase) => testCase.id)
+        `Running ${parallelCases.length} workspace e2e cases in parallel: ${parallelCases
+          .map(([, testCase]) => testCase.id)
           .join(", ")}`
       );
-      yield* Effect.forEach(
-        cases.entries(),
-        ([caseIndex, testCase]) =>
-          telemetry.traceCase({
-            caseId: testCase.id,
-            effect: Effect.acquireUseRelease(
-              Effect.sync(
-                (): WorkspaceE2ECaseRuntime => ({
-                  artifactDir: resolve(artifactRoot, testCase.id),
-                  browserHarStarted: false,
-                  browserHarStopped: false,
-                  session: `${sessionPrefix}-${caseIndex}`,
-                  testCase,
-                })
-              ),
-              (runtime) =>
-                runCase(runtime, run, telemetry, timeouts).pipe(
-                  Effect.tapCause(() =>
-                    runtime.failureCause
-                      ? captureFailureArtifacts(runtime, run, timeouts)
-                      : Effect.void
-                  )
-                ),
-              (runtime) => finalizeCaseRuntime(runtime, run, timeouts)
-            ),
-            timeoutMs: testCase.timeoutMs,
-          }),
-        {
-          concurrency: "unbounded",
+      yield* Effect.forEach(parallelCases, runCaseEntry, {
+        concurrency: "unbounded",
+        discard: true,
+      });
+      if (sharedFixtureCases.length > 0) {
+        log(
+          `Running ${sharedFixtureCases.length} shared-fixture workspace e2e cases after the parallel phase: ${sharedFixtureCases
+            .map(([, testCase]) => testCase.id)
+            .join(", ")}`
+        );
+        yield* Effect.forEach(sharedFixtureCases, runCaseEntry, {
+          concurrency: 1,
           discard: true,
-        }
-      );
+        });
+      }
     })
   );
 

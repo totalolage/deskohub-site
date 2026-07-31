@@ -15,30 +15,24 @@ export const toDiscountDefinitionProviderError = (
   Match.value(cause).pipe(
     Match.tag(
       "EffectDrizzleQueryError",
-      (error) =>
-        new DiscountProviderError({
-          reason: "provider_failure",
-          message: "Stored discount definitions could not be loaded.",
-          cause: error,
-        })
+      DiscountProviderError.fromCause({
+        reason: "provider_failure",
+        message: "Stored discount definitions could not be loaded.",
+      })
     ),
     Match.tag(
       "DiscountDefinitionNotFoundError",
-      (error) =>
-        new DiscountProviderError({
-          reason: "malformed_configuration",
-          message: "A referenced discount definition is unavailable.",
-          cause: error,
-        })
+      DiscountProviderError.fromCause({
+        reason: "malformed_configuration",
+        message: "A referenced discount definition is unavailable.",
+      })
     ),
     Match.tag(
       "DiscountDefinitionMalformedError",
-      (error) =>
-        new DiscountProviderError({
-          reason: "malformed_configuration",
-          message: "A referenced discount definition is unavailable.",
-          cause: error,
-        })
+      DiscountProviderError.fromCause({
+        reason: "malformed_configuration",
+        message: "A referenced discount definition is unavailable.",
+      })
     ),
     Match.exhaustive
   );

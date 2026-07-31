@@ -1,10 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Data, Effect, Layer } from "effect";
-import {
-  defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceRouteFailure,
-} from "./workspace-route";
+import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
 
 class TestService extends Context.Service<
   TestService,
@@ -76,7 +72,7 @@ describe("Workspace routes", () => {
             )
           ),
           Effect.mapError(
-            mapWorkspaceInternalRouteFailure("Temporarily unavailable")
+            WorkspaceRouteFailure.internal("Temporarily unavailable")
           )
         )
     );

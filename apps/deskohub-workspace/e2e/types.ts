@@ -1,10 +1,10 @@
 import type { Effect } from "effect";
 import type { WorkspaceMeetingRoomDurationMinutes } from "../features/checkout/product-catalog";
-import type { E2EDatabase } from "./integrations/database.service";
 import type { StoredWorkspaceReservationDetails } from "../features/reservation/persistence-contracts";
 import type { ReservationInterval } from "../features/reservation/reservation-interval";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
+import type { E2EDatabase } from "./integrations/database.service";
 
 export type CheckoutRow = {
   reservation_id: string;
@@ -94,6 +94,7 @@ export type PaymentTerminalScenario = {
 
 export type WorkspaceE2ECase = {
   readonly id: string;
+  readonly runAfterParallel?: boolean;
   readonly timeoutMs: number;
   readonly execute: (context: {
     readonly runStep: WorkspaceE2EStepRunner;

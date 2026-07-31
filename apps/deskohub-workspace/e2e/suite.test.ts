@@ -112,6 +112,48 @@ test("runs all independent preview cases concurrently", async () => {
   expect(maximumActiveCaseCount).toBe(cases.length);
 });
 
+test("runs shared-fixture cases after the independent parallel phase", async () => {
+  const completedCases: string[] = [];
+  const cases: readonly WorkspaceE2ECase[] = [
+    ...["parallel-a", "parallel-b"].map((id) => ({
+      execute: () =>
+        Effect.sleep("20 millis").pipe(
+          Effect.tap(() =>
+            Effect.sync(() => {
+              completedCases.push(id);
+            })
+          )
+        ),
+      id,
+      timeoutMs: 10_000,
+    })),
+    {
+      execute: () =>
+        Effect.sync(() => {
+          completedCases.push("shared-fixture");
+        }),
+      id: "shared-fixture",
+      runAfterParallel: true,
+      timeoutMs: 10_000,
+    },
+  ];
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-shared-fixture-test",
+      cases,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-shared-fixture",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+  );
+
+  expect(new Set(completedCases.slice(0, 2))).toEqual(
+    new Set(["parallel-a", "parallel-b"])
+  );
+  expect(completedCases.at(-1)).toBe("shared-fixture");
+});
+
 test("keeps browser session names independent of descriptive case ids", async () => {
   const startedSessions: string[] = [];
   const cases: readonly WorkspaceE2ECase[] = [
