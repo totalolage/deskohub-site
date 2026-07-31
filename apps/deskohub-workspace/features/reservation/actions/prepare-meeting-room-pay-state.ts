@@ -17,6 +17,7 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   getMeetingRoomAdvertisedPriceReservation,
+  isRollingMeetingRoomWholeDayInterval,
   meetingRoomAdvertisedPriceReservationEquals,
   type NormalizedMeetingRoomReservationOrder,
   normalizeMeetingRoomWholeDayInterval,
@@ -68,7 +69,23 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     });
   }
 
+  const isLegacyWholeDay = isRollingMeetingRoomWholeDayInterval(
+    input.reservation
+  );
   const reservation = normalizeMeetingRoomWholeDayInterval(input.reservation);
+  if (
+    isLegacyWholeDay &&
+    Temporal.Instant.compare(
+      Temporal.Instant.from(reservation.startsAt),
+      Temporal.Now.instant()
+    ) < 0
+  ) {
+    return yield* new AdvertisedPriceMismatchError({
+      reason: "input_mismatch",
+      message:
+        "Advertised price snapshot does not match an eligible reservation day.",
+    });
+  }
   const pricing = yield* CheckoutPricingService;
   const affirmed = yield* pricing.affirmAdvertisement({
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),

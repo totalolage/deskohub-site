@@ -39,7 +39,9 @@ const getSummaryItemLabel = (
         cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
         "meeting-room": ({ durationMinutes }) =>
           getWorkspaceMeetingRoomDurationTitle(durationMinutes, locale, {
-            displayAsWholeDay: item.meetingRoomDurationPresentation !== "hours",
+            displayAsWholeDay:
+              "meetingRoomDurationPresentation" in item &&
+              item.meetingRoomDurationPresentation === "whole-day",
           }),
       })
     );

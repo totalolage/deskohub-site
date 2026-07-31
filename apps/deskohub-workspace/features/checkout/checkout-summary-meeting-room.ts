@@ -1,12 +1,14 @@
 import {
   type CheckoutSummary,
-  checkoutSummaryDiscountedProductItemSchema,
   checkoutSummaryDiscountSchema,
   checkoutSummaryOrderSectionSchema,
-  checkoutSummaryProductItemSchema,
   checkoutSummarySchema,
   checkoutSummaryTotalSectionSchema,
 } from "@/features/checkout/checkout-summary";
+import {
+  meetingRoomCheckoutSummaryDiscountedProductItemSchema,
+  meetingRoomCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-meeting-room-item";
 import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
@@ -34,7 +36,7 @@ export const getMeetingRoomCheckoutSummary = (
   );
   const productItem =
     summaryDiscounts.length > 0
-      ? checkoutSummaryDiscountedProductItemSchema.make({
+      ? meetingRoomCheckoutSummaryDiscountedProductItemSchema.make({
           key,
           product,
           meetingRoomDurationPresentation,
@@ -42,7 +44,7 @@ export const getMeetingRoomCheckoutSummary = (
           originalAmount: quote.payment.undiscountedPrice,
           discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
         })
-      : checkoutSummaryProductItemSchema.make({
+      : meetingRoomCheckoutSummaryProductItemSchema.make({
           key,
           product,
           meetingRoomDurationPresentation,

@@ -30,6 +30,7 @@ import {
   getMeetingRoomReservationDurationMinutes,
   meetingRoomAdvertisedPriceReservationSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("server-only", () => ({}));
 
@@ -707,6 +708,58 @@ describe("prepareWorkspacePayState", () => {
       status: "pricing_changed",
       affectedProductKeys: ["product:meeting-room:1440"],
     });
+  });
+
+  test("rejects legacy whole-day normalization into an already-started day", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const localToday = Temporal.Now.zonedDateTimeISO(
+      workspaceSiteConstants.location.timeZone
+    ).toPlainDate();
+    const rollingStart = localToday
+      .toPlainDateTime({ hour: 12 })
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant();
+    const legacyReservation = {
+      kind: "meeting-room" as const,
+      startsAt: rollingStart.toString(),
+      endsAt: rollingStart.add({ hours: 24 }).toString(),
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    };
+    const affirmAdvertisement = mock(() =>
+      Effect.die("already-started legacy day must not be repriced")
+    );
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      checkoutSessionId: "meeting-room-session-id",
+      checkoutAttemptId: "meeting-room-attempt-id",
+      advertisedPriceToken:
+        await buildMeetingRoomAdvertisedPriceToken(legacyReservation),
+      reservation: legacyReservation,
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        Layer.merge(
+          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
+          CheckoutPricingServiceMock({ affirmAdvertisement })
+        )
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: {
+        _tag: "AdvertisedPriceMismatchError",
+        reason: "input_mismatch",
+      },
+    });
+    expect(affirmAdvertisement).not.toHaveBeenCalled();
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {

@@ -165,13 +165,16 @@ export const getMeetingRoomReservationDurationMinutes = (
     ? 1440
     : getDurationMinutes(reservation);
 
+export const isRollingMeetingRoomWholeDayInterval = (
+  reservation: MeetingRoomReservationDetails
+) =>
+  getDurationMinutes(reservation) === 1440 &&
+  !isSingleDayReservationInterval(reservation);
+
 export const normalizeMeetingRoomWholeDayInterval = (
   reservation: NormalizedMeetingRoomReservationOrder
 ): NormalizedMeetingRoomReservationOrder => {
-  if (
-    getDurationMinutes(reservation) !== 1440 ||
-    isSingleDayReservationInterval(reservation)
-  ) {
+  if (!isRollingMeetingRoomWholeDayInterval(reservation)) {
     return reservation;
   }
 
