@@ -223,6 +223,23 @@ describe("meetingRoomReservationSchema", () => {
     expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
   });
 
+  test("discards a canonical whole day that is before the current minimum", () => {
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(
+      getMeetingRoomReservationDefaultValues(reservation, {
+        minimumStartDateTime: "2099-06-10T15:00",
+      })
+    ).toBeUndefined();
+  });
+
   test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {
     const result = schema.safeParse({
       startDateTime: "2099-06-10T15:00",

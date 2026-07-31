@@ -165,6 +165,14 @@ export const getMeetingRoomReservationDurationMinutes = (
     ? 1440
     : getDurationMinutes(reservation);
 
+export const hasMeetingRoomWholeDayStarted = (
+  reservation: MeetingRoomReservationDetails,
+  now = Temporal.Now.instant()
+) =>
+  getMeetingRoomReservationDurationMinutes(reservation) === 1440 &&
+  Temporal.Instant.compare(Temporal.Instant.from(reservation.startsAt), now) <
+    0;
+
 const isRollingMeetingRoomWholeDayInterval = (
   reservation: MeetingRoomReservationDetails
 ) =>
@@ -386,7 +394,10 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
   };
 
 export const getMeetingRoomReservationDefaultValues = (
-  reservation: NormalizedMeetingRoomReservationOrder
+  reservation: NormalizedMeetingRoomReservationOrder,
+  options: {
+    readonly minimumStartDateTime?: string;
+  } = {}
 ): MeetingRoomReservationInput | undefined => {
   const durationMinutes = getMeetingRoomReservationDurationMinutes(reservation);
   if (
@@ -400,6 +411,16 @@ export const getMeetingRoomReservationDefaultValues = (
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
+  if (
+    durationMinutes === 1440 &&
+    options.minimumStartDateTime &&
+    Temporal.PlainDateTime.compare(
+      startDateTime,
+      options.minimumStartDateTime
+    ) < 0
+  ) {
+    return undefined;
+  }
 
   return {
     startDateTime,

@@ -17,7 +17,7 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   getMeetingRoomAdvertisedPriceReservation,
-  getMeetingRoomReservationDurationMinutes,
+  hasMeetingRoomWholeDayStarted,
   meetingRoomAdvertisedPriceReservationEquals,
   type NormalizedMeetingRoomReservationOrder,
   normalizeMeetingRoomWholeDayInterval,
@@ -70,13 +70,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
   }
 
   const reservation = normalizeMeetingRoomWholeDayInterval(input.reservation);
-  if (
-    getMeetingRoomReservationDurationMinutes(reservation) === 1440 &&
-    Temporal.Instant.compare(
-      Temporal.Instant.from(reservation.startsAt),
-      Temporal.Now.instant()
-    ) < 0
-  ) {
+  if (hasMeetingRoomWholeDayStarted(reservation)) {
     return yield* new AdvertisedPriceMismatchError({
       reason: "input_mismatch",
       message:
