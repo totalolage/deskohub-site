@@ -412,7 +412,6 @@ const getSubmitPreparedReservationScript = (consentSelector: string) => `
   const button = form.querySelector('button[type="submit"]');
   if (!(button instanceof HTMLButtonElement)) throw new Error('reservation submit button not found');
   await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
-  setTimeout(() => button.click(), 0);
   return location.href;
 })()
 `;

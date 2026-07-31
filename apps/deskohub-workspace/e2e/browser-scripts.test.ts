@@ -47,6 +47,7 @@ test("keeps advertised-price preparation separable from form submission", () => 
     "reservation-privacy-consent"
   );
   expect(submitPreparedCoworkReservationScript).toContain("Date.now() + 60000");
+  expect(submitPreparedCoworkReservationScript).not.toContain("button.click");
   expect(combined).toContain(prepare.trim());
 
   expect(() => new Function(`return ${combined}`)).not.toThrow();
@@ -232,6 +233,9 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   );
   expect(submitPreparedMeetingRoomReservationScript).not.toContain(
     "meeting-room-privacy-consent"
+  );
+  expect(submitPreparedMeetingRoomReservationScript).not.toContain(
+    "button.click"
   );
   expect(combined).toContain(prepare.trim());
   expect(() => new Function(`return ${combined}`)).not.toThrow();

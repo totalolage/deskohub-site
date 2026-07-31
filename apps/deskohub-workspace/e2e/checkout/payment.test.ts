@@ -117,7 +117,12 @@ test("retries a transient reservation preparation failure with the same checkout
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
   expect(clickedRefs).toEqual([]);
-  expect(activatedRefs).toEqual(["@e2", "@e3"]);
+  expect(activatedRefs).toEqual([
+    "#reservation-submit",
+    "#reservation-submit",
+    "@e2",
+    "@e3",
+  ]);
 });
 
 test("types into a hosted payment field when fill does not stick", async () => {

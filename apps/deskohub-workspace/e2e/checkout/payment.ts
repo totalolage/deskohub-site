@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 import {
+  activateBrowserElement,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
@@ -44,6 +45,7 @@ const reservationStartRetryableErrorMessages = [
   "Platbu se nepodařilo spustit.",
 ] as const;
 const reservationSubmitAttemptCount = 2;
+const reservationSubmitSelector = "#reservation-submit";
 const hostedPaymentFieldFillAttemptCount = 3;
 
 const runBrowserCommand = (
@@ -232,6 +234,12 @@ const submitReservationAndWaitForPayPage = ({
             input: submitReservationScript,
             logOutput: false,
           }
+        );
+        yield* activateBrowserElement(
+          run,
+          session,
+          reservationSubmitSelector,
+          { timeoutMs }
         );
 
         const result = yield* waitForReservationStart(run, session, timeoutMs);
