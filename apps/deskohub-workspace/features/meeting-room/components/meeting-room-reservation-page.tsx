@@ -38,10 +38,8 @@ export const meetingRoomReservationPage = createReservationPage({
     const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
-        minimumStartDateTime:
-          restoredInitialValues?.durationMinutes === 1440
-            ? undefined
-            : minimumStartDateTime,
+        minimumStartDateTime,
+        preservedDurationMinutes: restoredInitialValues?.durationMinutes,
         startDateTime: initialValues.startDateTime,
       }).map(({ request }) => request)
     ).pipe(
