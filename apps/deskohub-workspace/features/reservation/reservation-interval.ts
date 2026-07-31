@@ -166,6 +166,11 @@ export const normalizeReservationInterval = Effect.fn(
   );
 });
 
+export const hasReservationIntervalEnded = (
+  interval: Pick<ReservationInterval, "endsAt">,
+  now = Temporal.Now.instant()
+) => Temporal.Instant.compare(Temporal.Instant.from(interval.endsAt), now) < 0;
+
 export const getReservationDate = ({
   interval,
   timeZone,

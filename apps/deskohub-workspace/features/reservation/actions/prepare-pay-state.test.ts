@@ -713,11 +713,7 @@ describe("prepareWorkspacePayState", () => {
   test.each([
     "legacy rolling",
     "calendar",
-  ] as const)("rejects an already-started %s whole-day submission", async (intervalKind) => {
-    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-    const { BotProtectionServiceMock } = await import(
-      "@/shared/backend/bot-protection/bot-protection.service.mock"
-    );
+  ] as const)("allows an already-started %s whole-day submission before its end", async (intervalKind) => {
     const localToday = Temporal.Now.zonedDateTimeISO(
       workspaceSiteConstants.location.timeZone
     ).toPlainDate();
@@ -741,36 +737,13 @@ describe("prepareWorkspacePayState", () => {
       email: "ada@example.com",
       phone: "+420 777 777 777",
     };
-    const affirmAdvertisement = mock(() =>
-      Effect.die("already-started legacy day must not be repriced")
+    const scenario = await runMeetingRoomNewHoldScenario(wholeDayReservation);
+
+    expect(scenario.result.status).toBe(
+      intervalKind === "legacy rolling" ? "pricing_changed" : "ready"
     );
-    const effect = prepareWorkspacePayState({
-      locale: "en-US",
-      checkoutSessionId: "meeting-room-session-id",
-      checkoutAttemptId: "meeting-room-attempt-id",
-      advertisedPriceToken:
-        await buildMeetingRoomAdvertisedPriceToken(wholeDayReservation),
-      reservation: wholeDayReservation,
-      legalConsent: true,
-    }).pipe(
-      Effect.provide(
-        Layer.merge(
-          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
-          CheckoutPricingServiceMock({ affirmAdvertisement })
-        )
-      )
-    ) as Effect.Effect<never, unknown, never>;
-
-    const error = await Effect.runPromise(Effect.flip(effect));
-
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      cause: {
-        _tag: "AdvertisedPriceMismatchError",
-        reason: "input_mismatch",
-      },
-    });
-    expect(affirmAdvertisement).not.toHaveBeenCalled();
+    expect(scenario.affirmAdvertisement).toHaveBeenCalled();
+    expect(scenario.createReservation).toHaveBeenCalled();
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {

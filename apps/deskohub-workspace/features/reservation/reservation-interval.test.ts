@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
   getReservationIntervalValidationIssue,
+  hasReservationIntervalEnded,
   isSingleDayReservationInterval,
   normalizeReservationInterval,
   reservationIntervalInputSchema,
@@ -80,6 +81,23 @@ describe("reservation intervals", () => {
         )
       )
     ).toBeNull();
+  });
+
+  test("keeps an interval eligible until its end has passed", () => {
+    const interval = { endsAt: "2099-06-10T08:00:00Z" };
+
+    expect(
+      hasReservationIntervalEnded(
+        interval,
+        Temporal.Instant.from("2099-06-10T08:00:00Z")
+      )
+    ).toBeFalse();
+    expect(
+      hasReservationIntervalEnded(
+        interval,
+        Temporal.Instant.from("2099-06-10T08:00:00.001Z")
+      )
+    ).toBeTrue();
   });
 
   test("treats local midnight-to-midnight as full-day across DST changes", () => {

@@ -24,6 +24,7 @@ import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -281,6 +282,27 @@ const buildStartedWholeDayReservation = () => {
   }
 
   return reservation;
+};
+
+const buildEndedMeetingRoomReservation = () => {
+  const yesterday = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  )
+    .toPlainDate()
+    .subtract({ days: 1 });
+  const startsAt = yesterday
+    .toPlainDateTime({ hour: 12 })
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .toInstant();
+
+  return normalizedMeetingRoomReservationOrderSchema.make({
+    kind: "meeting-room",
+    startsAt: startsAt.toString(),
+    endsAt: startsAt.add({ hours: 1 }).toString(),
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
 };
 
 const makeAttempt = (input: {
@@ -1066,15 +1088,61 @@ describe("CheckoutService", () => {
     expect(freshState.submittedCodeDiscountId).toBe(application.discount.id);
   });
 
-  test("rejects an already-started whole day before payment affirmation", async () => {
+  test("allows payment for a started whole day before its end", async () => {
     const wholeDayReservation = buildStartedWholeDayReservation();
     const orderId = "meeting-room-started-whole-day";
+    const quote = buildMeetingRoomQuote(undefined, wholeDayReservation);
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote,
+        commitment: emptyCommitment,
+      })
+    );
     const harness = await createCheckoutHarness({
       orderId,
       payStateToken: buildMeetingRoomPayStateToken({
         orderId,
         reservation: wholeDayReservation,
+        quote,
       }),
+      affirm,
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(harness.requireCurrent).toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).toHaveBeenCalled();
+  });
+
+  test("rejects payment after a meeting-room reservation ends", async () => {
+    const endedReservation = buildEndedMeetingRoomReservation();
+    const orderId = "meeting-room-ended";
+    const quote = buildMeetingRoomQuote(undefined, endedReservation);
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: endedReservation,
+        quote,
+      }),
+      affirm: mock(() =>
+        Effect.succeed({
+          quote,
+          commitment: emptyCommitment,
+        })
+      ),
       reservationOverrides: {
         productTier: null,
         productCoffee: false,
@@ -1087,9 +1155,8 @@ describe("CheckoutService", () => {
 
     expect(error).toMatchObject({
       _tag: "CheckoutError",
-      message: "Whole-day meeting-room reservation has already started.",
+      message: "Meeting-room reservation has already ended.",
     });
-    expect(harness.requireCurrent).toHaveBeenCalled();
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();

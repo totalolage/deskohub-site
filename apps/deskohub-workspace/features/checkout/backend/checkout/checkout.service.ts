@@ -37,8 +37,8 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { hasMeetingRoomWholeDayStarted } from "@/features/reservation/meeting-room-reservation";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -721,14 +721,13 @@ export const CheckoutServiceLive = Layer.effect(
 
           if (
             state.reservation.kind === "meeting-room" &&
-            hasMeetingRoomWholeDayStarted(state.reservation)
+            hasReservationIntervalEnded(state.reservation)
           ) {
             yield* Effect.logInfo(
-              "Hosted payment checkout rejected: whole day already started"
+              "Hosted payment checkout rejected: reservation already ended"
             );
             return yield* new CheckoutError({
-              message:
-                "Whole-day meeting-room reservation has already started.",
+              message: "Meeting-room reservation has already ended.",
             });
           }
 

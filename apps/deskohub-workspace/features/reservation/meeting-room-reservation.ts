@@ -13,6 +13,7 @@ import {
 import {
   getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
+  hasReservationIntervalEnded,
   isSingleDayReservationInterval,
   meetingRoomReservationDurationMinutesSchema,
   reservationTimestampInputSchema,
@@ -165,14 +166,6 @@ export const getMeetingRoomReservationDurationMinutes = (
     ? 1440
     : getDurationMinutes(reservation);
 
-export const hasMeetingRoomWholeDayStarted = (
-  reservation: MeetingRoomReservationDetails,
-  now = Temporal.Now.instant()
-) =>
-  isSingleDayReservationInterval(reservation) &&
-  Temporal.Instant.compare(Temporal.Instant.from(reservation.startsAt), now) <
-    0;
-
 const isRollingMeetingRoomWholeDayInterval = (
   reservation: MeetingRoomReservationDetails
 ) =>
@@ -230,12 +223,7 @@ export const getMeetingRoomReservationIssues = Effect.fn(
     ];
   }
 
-  if (
-    Temporal.Instant.compare(
-      Temporal.Instant.from(interval.endsAt),
-      Temporal.Now.instant()
-    ) < 0
-  ) {
+  if (hasReservationIntervalEnded(interval)) {
     return [
       {
         path: ["endsAt"],
@@ -366,10 +354,7 @@ export const meetingRoomReservationSchema =
 
       return (
         interval === null ||
-        Temporal.Instant.compare(
-          Temporal.Instant.from(interval.endsAt),
-          Temporal.Now.instant()
-        ) >= 0 || {
+        !hasReservationIntervalEnded(interval) || {
           path: ["startDateTime"],
           issue: m.reservationValidationMeetingRoomEnded(),
         }
