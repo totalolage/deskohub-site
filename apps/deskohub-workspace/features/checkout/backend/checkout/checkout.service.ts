@@ -107,6 +107,24 @@ export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly cause?: unknown;
 }> {}
 
+const ensureMeetingRoomReservationHasNotEnded = Effect.fn(
+  "checkout.ensureMeetingRoomReservationHasNotEnded"
+)(function* (reservation: SignedPayState["reservation"]) {
+  if (
+    reservation.kind !== "meeting-room" ||
+    !hasReservationIntervalEnded(reservation)
+  ) {
+    return;
+  }
+
+  yield* Effect.logInfo(
+    "Hosted payment checkout rejected: reservation already ended"
+  );
+  return yield* new CheckoutError({
+    message: "Meeting-room reservation has already ended.",
+  });
+});
+
 export interface CheckoutService {
   readonly createHostedPaymentCheckout: (
     input: {
@@ -719,17 +737,7 @@ export const CheckoutServiceLive = Layer.effect(
             return { status: "in_progress" as const };
           }
 
-          if (
-            state.reservation.kind === "meeting-room" &&
-            hasReservationIntervalEnded(state.reservation)
-          ) {
-            yield* Effect.logInfo(
-              "Hosted payment checkout rejected: reservation already ended"
-            );
-            return yield* new CheckoutError({
-              message: "Meeting-room reservation has already ended.",
-            });
-          }
+          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
 
           if (reservation.activePaymentAttemptId) {
             yield* Effect.logDebug(
@@ -909,6 +917,7 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout Dotypos reservation note updated"
           );
 
+          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
           const expectedPrice = prepared.quote.payment.expectedPrice;
           const startPayment =
             expectedPrice.value === 0

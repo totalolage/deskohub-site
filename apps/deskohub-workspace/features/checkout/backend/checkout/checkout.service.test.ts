@@ -1162,6 +1162,59 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("rechecks the meeting-room end immediately before starting payment", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-06-10T11:59:00Z");
+    Temporal.Now.instant = () => now;
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T11:00:00Z",
+      endsAt: "2099-06-10T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+    const orderId = "meeting-room-ends-during-payment-preparation";
+    const quote = buildMeetingRoomQuote(undefined, reservation);
+    const affirm = mock(() => {
+      now = Temporal.Instant.from("2099-06-10T12:00:00.001Z");
+      return Effect.succeed({
+        quote,
+        commitment: emptyCommitment,
+      });
+    });
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId,
+        payStateToken: buildMeetingRoomPayStateToken({
+          orderId,
+          reservation,
+          quote,
+        }),
+        affirm,
+        reservationOverrides: {
+          productTier: null,
+          productCoffee: false,
+          productMonitorOption: null,
+          reservationDetails: { kind: "meeting-room" },
+        },
+      });
+
+      const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+      expect(error).toMatchObject({
+        _tag: "CheckoutError",
+        message: "Meeting-room reservation has already ended.",
+      });
+      expect(harness.affirm).toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+      expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("recovers an already-paid whole day after its start", async () => {
     const wholeDayReservation = buildStartedWholeDayReservation();
     const orderId = "meeting-room-paid-whole-day";
