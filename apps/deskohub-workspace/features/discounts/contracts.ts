@@ -84,6 +84,15 @@ export type Discount = {
   readonly countdownStartsAt?: string;
 };
 
+export type ActiveSale = Discount & {
+  readonly products: readonly WorkspaceProductIdentity[];
+};
+
+export type ActiveSaleDiscoveryInput = {
+  readonly locale: Locale;
+  readonly reservationDate: string;
+};
+
 export const discountCodec = Schema.Struct({
   id: discountIdSchema,
   label: Schema.NonEmptyString,

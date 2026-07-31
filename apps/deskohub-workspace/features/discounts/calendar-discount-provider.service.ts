@@ -16,7 +16,11 @@ import {
 } from "@/features/checkout/product-identity";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
-import type { DiscountQuoteInput } from "./contracts";
+import type {
+  ActiveSale,
+  ActiveSaleDiscoveryInput,
+  DiscountQuoteInput,
+} from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
@@ -33,6 +37,9 @@ export type CalendarDiscountProviderInput = Pick<
 >;
 
 export interface ICalendarDiscountProvider {
+  readonly discoverActiveSales: (
+    input: ActiveSaleDiscoveryInput
+  ) => Effect.Effect<readonly ActiveSale[], DiscountProviderError>;
   readonly discover: (
     input: CalendarDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
@@ -172,6 +179,38 @@ export class CalendarDiscountProvider extends Context.Service<
         withProviderAnnotations("discover")
       );
 
+      const discoverActiveSales = Effect.fn(
+        "CalendarDiscountProvider.discoverActiveSales"
+      )(
+        (input: ActiveSaleDiscoveryInput) =>
+          Effect.succeed(input).pipe(
+            Effect.let(
+              "cacheKey",
+              ({ reservationDate }) =>
+                new CalendarSalesCacheKey({
+                  calendarId: salesCalendarId,
+                  reservationDate,
+                })
+            ),
+            Effect.bind("resolvedSales", ({ cacheKey }) =>
+              Cache.get(salesCache, cacheKey)
+            ),
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
+            Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
+            Effect.map(toActiveCalendarSales)
+          ),
+        (effect) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              discountOperation: "discover_active_sales",
+            })
+          )
+      );
+
       const revalidate = Effect.fn("CalendarDiscountProvider.revalidate")(
         (input: CalendarDiscountProviderInput) =>
           Effect.succeed(input).pipe(
@@ -198,7 +237,11 @@ export class CalendarDiscountProvider extends Context.Service<
         withProviderAnnotations("revalidate")
       );
 
-      return { discover, revalidate } satisfies ICalendarDiscountProvider;
+      return {
+        discoverActiveSales,
+        discover,
+        revalidate,
+      } satisfies ICalendarDiscountProvider;
     })
   );
 }
@@ -232,6 +275,24 @@ const toEligibleCalendarCandidates = (input: {
     .toSorted((left, right) =>
       left.discount.id.localeCompare(right.discount.id)
     );
+
+const toActiveCalendarSales = (input: {
+  readonly at: Temporal.Instant;
+  readonly locale: ActiveSaleDiscoveryInput["locale"];
+  readonly sales: readonly ResolvedCalendarSale[];
+}): readonly ActiveSale[] =>
+  input.sales
+    .filter(
+      ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
+    )
+    .map((resolvedSale) => ({
+      ...toCalendarDiscountCandidate({
+        locale: input.locale,
+        resolvedSale,
+      }).discount,
+      products: resolvedSale.definition.products,
+    }))
+    .toSorted((left, right) => left.id.localeCompare(right.id));
 
 const toCalendarDiscountCandidate = (input: {
   readonly locale: CalendarDiscountProviderInput["locale"];

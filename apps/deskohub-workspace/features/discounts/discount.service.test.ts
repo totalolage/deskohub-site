@@ -9,6 +9,7 @@ import { CalendarDiscountProviderMock } from "./calendar-discount-provider.servi
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import { getDiscountCommitmentPayload } from "./commitment";
 import {
+  type ActiveSale,
   affirmedDiscountAdvertisementQuoteCodec,
   canonicalDiscountCodeSchema,
   type Discount,
@@ -90,6 +91,13 @@ const percentage = (
   providerNamespace: string
 ) => candidate(id, { kind: "percentage", basisPoints }, providerNamespace);
 
+const activeSale: ActiveSale = {
+  id: discountId("active-sale"),
+  label: "Summer focus",
+  adjustment: { kind: "percentage", basisPoints: 2000 },
+  products: [product],
+};
+
 const emptyAffirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make(
   {
     product,
@@ -121,6 +129,94 @@ const runWithProviders = <A, E>(
   );
 
 describe("DiscountService", () => {
+  test.each([
+    true,
+    false,
+  ])("discovers active sales when the Calendar gate is %s", async (calendarSales) => {
+    const discoverActiveSales = mock(() => Effect.succeed([activeSale]));
+    const evaluate = mock(() =>
+      Effect.succeed({
+        calendarSales,
+        customerDiscounts: true,
+        discountCodes: true,
+      })
+    );
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({ discoverActiveSales }),
+      CustomerDiscountProviderMock(),
+      CodeDiscountProviderMock()
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.discoverActiveSales({
+          locale: "en-US",
+          reservationDate: "2026-07-20",
+        });
+      }),
+      providers,
+      DiscountReleaseGateServiceMock({ evaluate })
+    );
+
+    expect(result).toEqual(calendarSales ? [activeSale] : []);
+    expect(evaluate).toHaveBeenCalledWith({
+      operation: "discover_active_sales",
+    });
+    expect(discoverActiveSales).toHaveBeenCalledTimes(calendarSales ? 1 : 0);
+  });
+
+  test("recovers active-sale provider failures without exposing their cause", async () => {
+    const logRecords: {
+      readonly annotations: Record<string, unknown>;
+      readonly level: string;
+    }[] = [];
+    const logger = Logger.make((options) => {
+      logRecords.push({
+        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+        level: options.logLevel,
+      });
+    });
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        discoverActiveSales: () =>
+          Effect.fail(
+            new DiscountProviderError({
+              reason: "provider_failure",
+              message: "Calendar failed.",
+              cause: new Error("private provider detail"),
+            })
+          ),
+      }),
+      CustomerDiscountProviderMock(),
+      CodeDiscountProviderMock()
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.discoverActiveSales({
+          locale: "en-US",
+          reservationDate: "2026-07-20",
+        });
+      }).pipe(Effect.provide(Logger.layer([logger]))),
+      providers
+    );
+
+    expect(result).toEqual([]);
+    expect(logRecords).toContainEqual({
+      level: "Error",
+      annotations: expect.objectContaining({
+        discountBoundary: "resolution",
+        discountProvider: "calendar",
+        discountOperation: "discover_active_sales",
+        discountErrorTag: "DiscountProviderError",
+        discountErrorReason: "provider_failure",
+      }),
+    });
+    expect(JSON.stringify(logRecords)).not.toContain("private provider detail");
+  });
+
   test("starts payment-affirmation providers in parallel", async () => {
     const allProvidersStarted = Deferred.makeUnsafe<void>();
     const startedProviders: string[] = [];

@@ -1,5 +1,7 @@
 export type { DiscountCommitment } from "./commitment";
 export {
+  type ActiveSale,
+  type ActiveSaleDiscoveryInput,
   type AffirmedDiscountAdvertisementQuote,
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,

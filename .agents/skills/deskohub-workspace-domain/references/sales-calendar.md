@@ -42,3 +42,8 @@ Model Workspace sales calendar events as references to stored discount definitio
 - Snapshot the resolved string in checkout and application history so later
   translation edits cannot rewrite what a customer saw.
 - Do not reintroduce TOML sale configuration.
+- Treat the home-page sale banner as a single-sale presentation boundary. Show
+  it only when Calendar discovery resolves exactly one active sale; if
+  overlapping sales are active, log the ambiguous count and omit the banner
+  rather than advertising an arbitrary discount. Pricing may still resolve
+  and stack those overlapping sales independently.
