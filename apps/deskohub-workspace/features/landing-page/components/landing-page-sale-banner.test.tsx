@@ -36,6 +36,18 @@ afterAll(() => {
 });
 
 describe("LandingPageSaleBanner", () => {
+  test("keeps the icon-only mobile CTA accessible", () => {
+    const { container } = render(
+      <LandingPageSaleBanner
+        content={{ ...content, adjustmentKind: "percentage" }}
+      />
+    );
+
+    expect(container.querySelector("a")?.getAttribute("aria-label")).toBe(
+      content.ctaLabel
+    );
+  });
+
   test.each([
     ["percentage" as const, ".lucide-percent"],
     ["fixed" as const, ".lucide-dollar-sign"],

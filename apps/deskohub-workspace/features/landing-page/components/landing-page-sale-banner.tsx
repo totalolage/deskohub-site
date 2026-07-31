@@ -63,6 +63,7 @@ export function LandingPageSaleBanner({
           </div>
         </div>
         <Link
+          aria-label={content.ctaLabel}
           href={content.href}
           className="inline-flex h-11 w-fit items-center justify-center gap-2 whitespace-nowrap rounded-xl border border-burned-orange/16 bg-burned-orange px-4 text-xs font-semibold uppercase tracking-[0.08em] text-white transition-colors hover:bg-burned-orange/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sunset-yellow focus-visible:ring-offset-2 focus-visible:ring-offset-navy-blue active:translate-y-px"
         >
