@@ -17,7 +17,7 @@ import {
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
-  excludeExpiredLocalHolds,
+  excludeDotyposReservationsById,
   getWorkspaceReservationIntervalDates,
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
@@ -96,7 +96,7 @@ export class WorkspaceTableAssignmentService extends Context.Service<
             loadInventory(getWorkspaceReservationIntervalDates(occupancyInput))
           ),
           Effect.let("activeReservations", ({ inventory }) =>
-            excludeExpiredLocalHolds(
+            excludeDotyposReservationsById(
               inventory.reservations,
               inventory.expiredDotyposReservationIds
             )

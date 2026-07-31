@@ -13,6 +13,7 @@ import {
   type StoredWorkspaceReservationDetails,
   storedWorkspaceReservationDetailsSchema,
 } from "@/features/reservation/persistence-contracts";
+import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
   const reservationWithCoworkFields = withCoworkProductFields(reservation);
@@ -515,12 +516,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             and(
               eq(workspaceReservations.id, id),
               eq(workspaceReservations.reservationState, "held"),
-              inArray(workspaceReservations.paymentState, [
-                "not_started",
-                "failed",
-                "cancelled",
-                "expired",
-              ])
+              inArray(
+                workspaceReservations.paymentState,
+                supersedableReservationPaymentStates
+              )
             )
           )
           .returning();

@@ -31,6 +31,7 @@ export const coworkReservationPage = createReservationPage({
     checkoutSessionId,
     initialReservation,
     locale,
+    replacementToken,
     searchParams,
   }) => {
     const restoredOrQueryValues = initialReservation
@@ -77,6 +78,7 @@ export const coworkReservationPage = createReservationPage({
           initialReservation={initialReservation}
           initialValues={initialValues}
           locale={locale}
+          replacementToken={replacementToken}
         />
       ),
     };

@@ -7,5 +7,7 @@ export * from "./checkout-status-page.server";
 export * from "./pay-state";
 export * from "./pay-state.server";
 export * from "./payable-reservation.service";
+export * from "./replacement-pay-state";
 export * from "./reservation-status-url";
+export * from "./reservation-supersession.service";
 export * from "./vercel-preview-protection-bypass";

@@ -10,7 +10,7 @@ import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
-  excludeExpiredLocalHolds,
+  excludeDotyposReservationsById,
   getWorkspaceTableOccupancyById,
   hasAvailableWorkspaceTableCandidate,
   workspaceBookingGuestCount,
@@ -91,7 +91,7 @@ type WorkspaceAvailabilityEnsureQuery =
 
 export interface IWorkspaceAvailabilityService {
   readonly getAvailability: (
-    query: WorkspaceAvailabilityQuery
+    input: WorkspaceAvailabilityRequest
   ) => Effect.Effect<WorkspaceAvailability, WorkspaceAvailabilityError>;
   readonly ensureAvailable: (
     query: WorkspaceAvailabilityEnsureQuery
@@ -100,6 +100,15 @@ export interface IWorkspaceAvailabilityService {
     WorkspaceAvailabilityError | WorkspaceTableUnavailableError
   >;
 }
+
+export type WorkspaceAvailabilityOccupancyExclusion = {
+  readonly dotyposReservationId: string;
+};
+
+type WorkspaceAvailabilityRequest = {
+  readonly query: WorkspaceAvailabilityQuery;
+  readonly occupancyExclusion?: WorkspaceAvailabilityOccupancyExclusion;
+};
 
 const GoogleCalendarWorkspaceLimitationsLive =
   GoogleCalendarWorkspaceLimitationsService.Live.pipe(
@@ -114,7 +123,7 @@ const implementation = Effect.gen(function* () {
 
   const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
     function* (
-      query: Pick<WorkspaceAvailabilityQuery, "from" | "to"> & {
+      input: WorkspaceAvailabilityRequest & {
         readonly reservationInterval: DotyposReservationInterval;
       }
     ) {
@@ -125,11 +134,11 @@ const implementation = Effect.gen(function* () {
           [
             dotypos.getTables(),
             dotypos.listActiveReservationsOverlapping(
-              query.reservationInterval
+              input.reservationInterval
             ),
             calendarLimitations.listLimitations({
-              from: query.from,
-              to: query.to,
+              from: input.query.from,
+              to: input.query.to,
             }),
             workspaceReservations
               .selectExpiredHoldDotyposReservationIds({
@@ -147,10 +156,19 @@ const implementation = Effect.gen(function* () {
           ],
           { concurrency: "inherit" }
         );
-      const activeReservations = excludeExpiredLocalHolds(
-        reservations,
-        expiredDotyposReservationIds
+      const replacementReservationId =
+        input.occupancyExclusion?.dotyposReservationId;
+      const replacementIsPending = reservations.some(
+        (reservation) =>
+          reservation.id === replacementReservationId &&
+          reservation.status === "NEW"
       );
+      const activeReservations = excludeDotyposReservationsById(reservations, [
+        ...expiredDotyposReservationIds,
+        ...(replacementIsPending && replacementReservationId
+          ? [replacementReservationId]
+          : []),
+      ]);
       yield* Effect.annotateLogsScoped({
         tables,
         reservations,
@@ -172,7 +190,8 @@ const implementation = Effect.gen(function* () {
   );
 
   const getAvailability = Effect.fn("workspaceAvailability.getAvailability")(
-    function* (query: WorkspaceAvailabilityQuery) {
+    function* (input: WorkspaceAvailabilityRequest) {
+      const { query } = input;
       yield* Effect.annotateLogsScoped({ query });
       yield* Effect.logInfo("Workspace availability computation started");
 
@@ -188,9 +207,8 @@ const implementation = Effect.gen(function* () {
       yield* Effect.annotateLogsScoped({ dates, selectedDate });
 
       const { tables, reservations, limitations } = yield* loadInventory({
-        from: query.from,
+        ...input,
         reservationInterval,
-        to: query.to,
       });
       const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
       const occupancyByDate = new Map<string, Map<string, number>>();
@@ -253,7 +271,7 @@ const implementation = Effect.gen(function* () {
 
       return result;
     },
-    (effect, query) =>
+    (effect, input) =>
       effect.pipe(
         Effect.scoped,
         Effect.tapError((cause) =>
@@ -262,9 +280,9 @@ const implementation = Effect.gen(function* () {
           })
         ),
         Effect.annotateLogs({
-          from: query.from,
-          to: query.to,
-          ...Match.value(query).pipe(
+          from: input.query.from,
+          to: input.query.to,
+          ...Match.value(input.query).pipe(
             Match.discriminatorsExhaustive("kind")({
               "meeting-room": (meetingRoomQuery) => ({
                 startsAt: meetingRoomQuery.startsAt,
@@ -295,9 +313,11 @@ const implementation = Effect.gen(function* () {
       const availabilityRange =
         getAvailabilityTouchedDateRange(reservationInterval);
       const availability = yield* getAvailability({
-        ...query,
-        from: availabilityRange.from,
-        to: availabilityRange.to,
+        query: {
+          ...query,
+          from: availabilityRange.from,
+          to: availabilityRange.to,
+        },
       });
       yield* Effect.annotateLogsScoped({ availability });
 

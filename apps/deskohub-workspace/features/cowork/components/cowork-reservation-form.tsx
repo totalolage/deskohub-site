@@ -83,6 +83,7 @@ type CoworkReservationFormProps = {
   initialValues?: CoworkReservationInput;
   locale: Locale;
   checkoutSessionId?: string;
+  replacementToken?: string;
 };
 
 type CoworkReservationFormFallbackProps = Pick<
@@ -152,6 +153,7 @@ export function CoworkReservationForm({
   initialValues,
   locale,
   checkoutSessionId,
+  replacementToken,
 }: CoworkReservationFormProps) {
   const searchParams = useSearchParams();
   const defaultValues = useMemo(
@@ -202,7 +204,7 @@ export function CoworkReservationForm({
   );
   const availabilityQueryResult = useReservationAvailability(
     availabilityQuery,
-    { keepPreviousData: true }
+    { keepPreviousData: true, replacementToken }
   );
   const advertisedPriceRequests = useMemo(() => {
     if (!selectedDate) {

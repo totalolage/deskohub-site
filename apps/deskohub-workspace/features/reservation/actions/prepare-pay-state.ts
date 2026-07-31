@@ -48,6 +48,7 @@ import {
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   type CreateWorkspaceReservationInput,
@@ -260,9 +261,10 @@ const isReusableSubmissionReservation = (reservation: WorkspaceReservation) =>
     ) > 0);
 
 const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
-  reservation.paymentState === "pending" ||
-  reservation.paymentState === "paid" ||
-  reservation.reservationState !== "held";
+  reservation.reservationState !== "held" ||
+  !supersedableReservationPaymentStates.some(
+    (paymentState) => paymentState === reservation.paymentState
+  );
 
 const enqueueReservationHoldCleanup = Effect.fn(
   "preparePayState.enqueueReservationHoldCleanup"

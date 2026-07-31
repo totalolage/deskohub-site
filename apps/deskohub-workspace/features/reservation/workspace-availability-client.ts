@@ -4,6 +4,12 @@ import {
   type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
+import {
+  type WorkspaceAvailabilityClientRequest,
+  workspaceAvailabilityReplacementHeader,
+} from "@/features/reservation/workspace-availability-request";
+
+export { workspaceAvailabilityReplacementHeader };
 
 export const getWorkspaceAvailabilityUrl = (
   query: WorkspaceAvailabilityQuery
@@ -33,12 +39,19 @@ export const getWorkspaceAvailabilityUrl = (
 
 export const loadWorkspaceAvailability = async ({
   query,
+  replacementToken,
   signal,
-}: {
-  readonly query: WorkspaceAvailabilityQuery;
+}: WorkspaceAvailabilityClientRequest & {
   readonly signal: AbortSignal;
 }): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
+  const response = await fetch(getWorkspaceAvailabilityUrl(query), {
+    signal,
+    ...(replacementToken && {
+      headers: {
+        [workspaceAvailabilityReplacementHeader]: replacementToken,
+      },
+    }),
+  });
   if (!response.ok) throw new Error("Availability request failed");
 
   return parseWorkspaceAvailabilityResponse(await response.json());

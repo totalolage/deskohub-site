@@ -68,6 +68,7 @@ type MeetingRoomReservationFormProps = {
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly initialValues?: MeetingRoomReservationInput;
   readonly locale: Locale;
+  readonly replacementToken?: string;
 };
 
 type MeetingRoomReservationFormFallbackProps = {
@@ -84,6 +85,7 @@ export function MeetingRoomReservationForm({
   initialReservation,
   initialValues,
   locale,
+  replacementToken,
 }: MeetingRoomReservationFormProps) {
   const restoredInitialValues = useMemo(
     () =>
@@ -139,7 +141,7 @@ export function MeetingRoomReservationForm({
   );
   const availabilityQueryResult = useReservationAvailability(
     availabilityQuery,
-    { debounceMs: 250 }
+    { debounceMs: 250, replacementToken }
   );
   const { availability } = availabilityQueryResult;
   const isSelectedReservationUnavailable = Boolean(

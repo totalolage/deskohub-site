@@ -31,6 +31,7 @@ type ReservationPageContext<Kind extends ReservationKind> = {
   readonly checkoutSessionId?: string;
   readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
+  readonly replacementToken?: string;
   readonly searchParams: SearchParamsRecord;
 };
 
@@ -80,6 +81,7 @@ const loadRestoredReservation = Effect.fn(
   return {
     checkoutSessionId: payState.checkoutSessionId,
     initialReservation: payState.reservation as ReservationForKind<Kind>,
+    replacementToken: token,
   };
 });
 

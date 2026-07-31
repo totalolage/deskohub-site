@@ -66,15 +66,15 @@ export const getWorkspaceReservationIntervalDates = (
   return { startDate: new Date(startsAt), endDate: new Date(endsAt) };
 };
 
-export const excludeExpiredLocalHolds = (
+export const excludeDotyposReservationsById = (
   reservations: readonly Reservation[],
-  expiredDotyposReservationIds: readonly string[]
+  excludedDotyposReservationIds: readonly string[]
 ) => {
-  if (expiredDotyposReservationIds.length === 0) return reservations;
+  if (excludedDotyposReservationIds.length === 0) return reservations;
 
-  const expiredIds = new Set(expiredDotyposReservationIds);
+  const excludedIds = new Set(excludedDotyposReservationIds);
   return reservations.filter(
-    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
+    (reservation) => !reservation.id || !excludedIds.has(reservation.id)
   );
 };
 
