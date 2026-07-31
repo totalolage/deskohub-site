@@ -106,6 +106,16 @@ export const meetingRoomAdvertisedPriceReservationSchema = Schema.Struct({
 export type MeetingRoomAdvertisedPriceReservation =
   typeof meetingRoomAdvertisedPriceReservationSchema.Type;
 
+export const meetingRoomAdvertisedPriceRequestReservationSchema =
+  meetingRoomAdvertisedPriceReservationSchema.check(
+    Schema.makeFilter(
+      ({ details }) =>
+        getDurationMinutes(details) !== 1440 ||
+        isSingleDayReservationInterval(details),
+      { message: getMeetingRoomDurationValidationMessage() }
+    )
+  );
+
 export const meetingRoomAdvertisedPriceReservationEquals = Schema.toEquivalence(
   meetingRoomAdvertisedPriceReservationSchema
 );
@@ -154,6 +164,32 @@ export const getMeetingRoomReservationDurationMinutes = (
   isSingleDayReservationInterval(reservation)
     ? 1440
     : getDurationMinutes(reservation);
+
+export const normalizeMeetingRoomWholeDayInterval = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): NormalizedMeetingRoomReservationOrder => {
+  if (
+    getDurationMinutes(reservation) !== 1440 ||
+    isSingleDayReservationInterval(reservation)
+  ) {
+    return reservation;
+  }
+
+  const localStartDateTime = Temporal.Instant.from(reservation.startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate()
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+  const interval = getMeetingRoomReservationInterval(localStartDateTime, 1440);
+  if (!interval) {
+    throw new Error("Meeting-room whole-day interval could not be normalized.");
+  }
+
+  return normalizedMeetingRoomReservationOrderSchema.make({
+    ...reservation,
+    ...interval,
+  });
+};
 
 export const getMeetingRoomReservationIssues = Effect.fn(
   "getMeetingRoomReservationIssues"

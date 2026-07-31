@@ -10,6 +10,7 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import {
   buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
   type CoworkReservationQuote,
@@ -25,7 +26,10 @@ import {
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
+import {
+  getMeetingRoomReservationDurationMinutes,
+  meetingRoomAdvertisedPriceReservationSchema,
+} from "@/features/reservation/meeting-room-reservation";
 
 mock.module("server-only", () => ({}));
 
@@ -400,7 +404,16 @@ const runReusableReservationScenario = async (input: {
   };
 };
 
-const runMeetingRoomNewHoldScenario = async () => {
+const runMeetingRoomNewHoldScenario = async (
+  meetingRoomReservation = {
+    kind: "meeting-room" as const,
+    startsAt: "2099-06-10T08:00:00Z",
+    endsAt: "2099-06-10T12:00:00Z",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  }
+) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { CheckoutPricingService } = await import(
     "@/features/checkout/backend/checkout/checkout-pricing.service"
@@ -430,14 +443,6 @@ const runMeetingRoomNewHoldScenario = async () => {
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
 
-  const meetingRoomReservation = {
-    kind: "meeting-room" as const,
-    startsAt: "2099-06-10T08:00:00Z",
-    endsAt: "2099-06-10T12:00:00Z",
-    name: "Ada Lovelace",
-    email: "ada@example.com",
-    phone: "+420 777 777 777",
-  };
   const ensureAvailable = mock(() => Effect.void);
   const createDraft = mock((input) =>
     Effect.succeed({
@@ -454,12 +459,16 @@ const runMeetingRoomNewHoldScenario = async () => {
   );
   const attachHold = mock(() => Effect.void);
   const enqueueCleanup = mock(() => Effect.void);
+  const durationMinutes = getMeetingRoomReservationDurationMinutes(
+    meetingRoomReservation
+  );
+  const price = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
-    product: { kind: "meeting-room", durationMinutes: 240 },
-    discountableSubtotal: basicMoney(155_000),
+    product: { kind: "meeting-room", durationMinutes },
+    discountableSubtotal: price,
     discounts: [],
     totalDiscount: basicMoney(0),
-    discountedSubtotal: basicMoney(155_000),
+    discountedSubtotal: price,
   });
   const affirmedAdvertisement =
     affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
@@ -662,6 +671,39 @@ describe("prepareWorkspacePayState", () => {
         expectedPrice: { value: 155_000, exponent: 2, currency: "CZK" },
       },
     });
+  });
+
+  test("normalizes a sealed rolling whole-day token before creating its hold", async () => {
+    const scenario = await runMeetingRoomNewHoldScenario({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-11T08:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+    const calendarDayInterval = {
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    };
+
+    expect(scenario.ensureAvailable).toHaveBeenCalledWith({
+      kind: "meeting-room",
+      ...calendarDayInterval,
+    });
+    expect(scenario.assignTableId).toHaveBeenCalledWith({
+      kind: "meeting-room",
+      ...calendarDayInterval,
+    });
+    expect(scenario.createReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startDate: new Date(calendarDayInterval.startsAt),
+        endDate: new Date(calendarDayInterval.endsAt),
+        tableId: "meeting-room-table-id",
+        status: "NEW",
+      })
+    );
+    expect(scenario.result.status).toBe("pricing_changed");
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {

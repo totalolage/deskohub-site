@@ -38,6 +38,22 @@ describe("advertised price contract", () => {
     expect(Option.isSome(decoded)).toBe(true);
   });
 
+  test("rejects rolling whole-day meeting-room advertisements", () => {
+    const decoded = decodeRequest({
+      locale: "en-US",
+      reservation: {
+        kind: "meeting-room",
+        details: {
+          kind: "meeting-room",
+          startsAt: "2099-06-10T08:00:00Z",
+          endsAt: "2099-06-11T08:00:00Z",
+        },
+      },
+    });
+
+    expect(Option.isNone(decoded)).toBe(true);
+  });
+
   test("strictly rejects contact details at the anonymous request boundary", () => {
     const decoded = decodeRequest({
       locale: "en-US",

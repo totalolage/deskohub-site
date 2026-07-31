@@ -19,6 +19,7 @@ import {
   getMeetingRoomAdvertisedPriceReservation,
   meetingRoomAdvertisedPriceReservationEquals,
   type NormalizedMeetingRoomReservationOrder,
+  normalizeMeetingRoomWholeDayInterval,
 } from "@/features/reservation/meeting-room-reservation";
 import type { PrepareMeetingRoomPayStateInput } from "./prepare-meeting-room-pay-state.schema";
 
@@ -67,9 +68,10 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     });
   }
 
+  const reservation = normalizeMeetingRoomWholeDayInterval(input.reservation);
   const pricing = yield* CheckoutPricingService;
   const affirmed = yield* pricing.affirmAdvertisement({
-    reservation: state.reservation,
+    reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
   });
@@ -82,7 +84,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
 
   return {
     kind: input.reservation.kind,
-    reservation: input.reservation,
+    reservation,
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(

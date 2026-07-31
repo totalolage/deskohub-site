@@ -4,7 +4,10 @@ import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-qu
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
 import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
-import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
+import {
+  meetingRoomAdvertisedPriceRequestReservationSchema,
+  meetingRoomAdvertisedPriceReservationSchema,
+} from "@/features/reservation/meeting-room-reservation";
 
 const advertisedPriceRequestBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
@@ -17,7 +20,7 @@ export const advertisedPriceRequestSchema = Schema.Union([
   }),
   Schema.Struct({
     ...advertisedPriceRequestBaseSchema.fields,
-    reservation: meetingRoomAdvertisedPriceReservationSchema,
+    reservation: meetingRoomAdvertisedPriceRequestReservationSchema,
   }),
 ]).annotate({
   identifier: "AdvertisedPriceRequest",

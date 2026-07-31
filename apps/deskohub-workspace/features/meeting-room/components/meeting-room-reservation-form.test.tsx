@@ -430,59 +430,71 @@ describe("MeetingRoomReservationForm", () => {
     });
   });
 
-  test("preserves the selected time across whole-day toggles", async () => {
+  test("preserves the selected date and time across whole-day toggles", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T12:37:00Z");
     globalThis.fetch = mock(() =>
       Promise.resolve(jsonResponse(availabilityResponse))
     ) as typeof fetch;
-    const view = renderForm({
-      initialReservation: undefined,
-      initialValues: {
-        ...meetingRoomReservationDefaultValues,
-        email: "ada@example.com",
-        name: "Ada Lovelace",
-        phone: "+420777777777",
-        startDateTime: "2099-07-30T16:00",
-      },
-    });
 
-    expect(
-      (view.getByLabelText("Meeting room start time") as HTMLInputElement).value
-    ).toBe("16:00");
+    try {
+      const view = renderForm({
+        initialReservation: undefined,
+        initialValues: {
+          ...meetingRoomReservationDefaultValues,
+          email: "ada@example.com",
+          name: "Ada Lovelace",
+          phone: "+420777777777",
+          startDateTime: "2099-07-30T16:00",
+        },
+      });
 
-    fireEvent.click(
-      view.container.querySelector(
-        'input[type="radio"][value="1440"]'
-      ) as HTMLInputElement
-    );
-    await waitFor(() => {
-      expect(view.queryByLabelText("Meeting room start time")).toBeNull();
-    });
-
-    fireEvent.click(
-      view.container.querySelector(
-        'input[type="radio"][value="60"]'
-      ) as HTMLInputElement
-    );
-    await waitFor(() => {
       expect(
         (view.getByLabelText("Meeting room start time") as HTMLInputElement)
           .value
       ).toBe("16:00");
-    });
 
-    const continueButton = view.getByRole("button", { name: "Continue" });
-    await waitFor(() => {
-      expect(continueButton.hasAttribute("disabled")).toBe(false);
-    });
-    fireEvent.click(view.getByRole("checkbox"));
-    fireEvent.click(continueButton);
+      fireEvent.click(
+        view.container.querySelector(
+          'input[type="radio"][value="1440"]'
+        ) as HTMLInputElement
+      );
+      await waitFor(() => {
+        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+      });
 
-    await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
-    expect(execute.mock.calls[0]?.[0].reservation).toMatchObject({
-      kind: "meeting-room",
-      startsAt: "2099-07-30T14:00:00Z",
-      endsAt: "2099-07-30T15:00:00Z",
-    });
+      fireEvent.click(
+        view.container.querySelector(
+          'input[type="radio"][value="60"]'
+        ) as HTMLInputElement
+      );
+      await waitFor(() => {
+        expect(
+          (view.getByLabelText("Meeting room start time") as HTMLInputElement)
+            .value
+        ).toBe("16:00");
+        expect(
+          view.getByRole("button", { name: "Meeting room start date" })
+            .textContent
+        ).toContain("July 30, 2099");
+      });
+
+      const continueButton = view.getByRole("button", { name: "Continue" });
+      await waitFor(() => {
+        expect(continueButton.hasAttribute("disabled")).toBe(false);
+      });
+      fireEvent.click(view.getByRole("checkbox"));
+      fireEvent.click(continueButton);
+
+      await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+      expect(execute.mock.calls[0]?.[0].reservation).toMatchObject({
+        kind: "meeting-room",
+        startsAt: "2099-07-30T14:00:00Z",
+        endsAt: "2099-07-30T15:00:00Z",
+      });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
   });
 
   test("quotes the selectable whole day when restoring an hourly reservation", async () => {
