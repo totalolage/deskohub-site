@@ -143,12 +143,13 @@ export function MeetingRoomReservationForm({
     () =>
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
-        minimumStartDateTime: preservesRestoredStart
-          ? undefined
-          : getEarliestSelectableMeetingRoomStartDateTime(),
+        minimumStartDateTime:
+          preservesRestoredStart && isWholeDaySelected
+            ? undefined
+            : getEarliestSelectableMeetingRoomStartDateTime(),
         startDateTime: selectedStartDateTime,
       }),
-    [locale, preservesRestoredStart, selectedStartDateTime]
+    [isWholeDaySelected, locale, preservesRestoredStart, selectedStartDateTime]
   );
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests.map(({ request }) => request),

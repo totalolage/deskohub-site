@@ -485,6 +485,52 @@ describe("MeetingRoomReservationForm", () => {
     });
   });
 
+  test("quotes the selectable whole day when restoring an hourly reservation", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T12:37:00Z");
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+    const restoredHourlyReservation =
+      normalizedMeetingRoomReservationOrderSchema.make({
+        ...initialReservation,
+        startsAt: "2099-07-30T14:00:00Z",
+        endsAt: "2099-07-30T15:00:00Z",
+      });
+
+    try {
+      renderForm({ initialReservation: restoredHourlyReservation });
+
+      await waitFor(() => {
+        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+      });
+      expect(getAdvertisedPrice).toHaveBeenCalledWith({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            startsAt: "2099-07-30T22:00:00Z",
+            endsAt: "2099-07-31T22:00:00Z",
+          },
+        },
+      });
+      expect(getAdvertisedPrice).toHaveBeenCalledWith({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            startsAt: "2099-07-30T14:00:00Z",
+            endsAt: "2099-07-30T15:00:00Z",
+          },
+        },
+      });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("renders the selected advertised discount without adding a price card", async () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,
