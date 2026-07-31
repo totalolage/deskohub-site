@@ -11,15 +11,55 @@ export type MeetingRoomDurationAdvertisedPriceRequest = {
   readonly request: AdvertisedPriceRequest;
 };
 
+const getWholeDayAdvertisedStartDateTime = (
+  startDateTime: string,
+  minimumStartDateTime: string | undefined
+) => {
+  if (!minimumStartDateTime) return startDateTime;
+
+  try {
+    const selectedDate =
+      Temporal.PlainDateTime.from(startDateTime).toPlainDate();
+    const minimum = Temporal.PlainDateTime.from(minimumStartDateTime);
+    const minimumDate = minimum
+      .toPlainTime()
+      .equals(Temporal.PlainTime.from("00:00"))
+      ? minimum.toPlainDate()
+      : minimum.toPlainDate().add({ days: 1 });
+    const advertisedDate =
+      Temporal.PlainDate.compare(selectedDate, minimumDate) < 0
+        ? minimumDate
+        : selectedDate;
+
+    return advertisedDate
+      .toPlainDateTime()
+      .toString({ smallestUnit: "minute" });
+  } catch {
+    return startDateTime;
+  }
+};
+
 export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   locale,
+  minimumStartDateTime,
   startDateTime,
 }: {
   readonly locale: Locale;
+  readonly minimumStartDateTime?: string;
   readonly startDateTime: string;
 }): ReadonlyArray<MeetingRoomDurationAdvertisedPriceRequest> =>
   workspaceMeetingRoomDurationOptions.flatMap((duration) => {
-    const interval = getMeetingRoomReservationInterval(startDateTime, duration);
+    const advertisedStartDateTime =
+      duration === 1440
+        ? getWholeDayAdvertisedStartDateTime(
+            startDateTime,
+            minimumStartDateTime
+          )
+        : startDateTime;
+    const interval = getMeetingRoomReservationInterval(
+      advertisedStartDateTime,
+      duration
+    );
     if (!interval) return [];
 
     return [

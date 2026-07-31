@@ -24,16 +24,21 @@ export const meetingRoomReservationPage = createReservationPage({
     description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
   }),
   render: async ({ checkoutSessionId, initialReservation, locale }) => {
+    const minimumStartDateTime =
+      getEarliestSelectableMeetingRoomStartDateTime();
     const restoredInitialValues = initialReservation
       ? getMeetingRoomReservationDefaultValues(initialReservation)
       : undefined;
     const initialValues = restoredInitialValues ?? {
       ...meetingRoomReservationDefaultValues,
-      startDateTime: getEarliestSelectableMeetingRoomStartDateTime(),
+      startDateTime: minimumStartDateTime,
     };
     const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
+        minimumStartDateTime: restoredInitialValues
+          ? undefined
+          : minimumStartDateTime,
         startDateTime: initialValues.startDateTime,
       }).map(({ request }) => request)
     ).pipe(

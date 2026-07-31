@@ -1,7 +1,7 @@
 "use client";
 
 import { Clock } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -92,7 +92,12 @@ export function ReservationDateTimePicker({
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
-  const [pendingTime, setPendingTime] = useState<string>(defaultTime);
+  const [pendingTime, setPendingTime] = useState<string>(
+    () =>
+      dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
+      defaultTime
+  );
+  const previousTimeMode = useRef(timeMode);
   const minimumDateTime = resolveMinimumDateTime(minimum);
   const minimumSelectableDate = getMinimumSelectableDate(
     minimumDateTime,
@@ -122,6 +127,9 @@ export function ReservationDateTimePicker({
     : placeholder;
 
   useEffect(() => {
+    const priorTimeMode = previousTimeMode.current;
+    previousTimeMode.current = timeMode;
+
     if (timeMode === "midnight" && dateTime) {
       const currentMinimumDate = getMinimumSelectableDate(
         resolveMinimumDateTime(minimum),
@@ -143,6 +151,31 @@ export function ReservationDateTimePicker({
     }
 
     const currentMinimum = resolveMinimumDateTime(minimum);
+    if (timeMode === "selectable" && dateTime) {
+      const currentTime = dateTime
+        .toPlainTime()
+        .toString({ smallestUnit: "minute" });
+
+      if (priorTimeMode === "midnight" && currentTime === "00:00") {
+        const minimumTime = getMinimumTimeForDate(
+          dateTime.toPlainDate(),
+          currentMinimum
+        );
+        const restoredTime =
+          minimumTime && pendingTime < minimumTime ? minimumTime : pendingTime;
+        const restoredDateTime = dateTime
+          .toPlainDate()
+          .toPlainDateTime(Temporal.PlainTime.from(restoredTime));
+
+        if (!dateTime.equals(restoredDateTime)) {
+          onChange?.(restoredDateTime.toString({ smallestUnit: "minute" }));
+        }
+        return;
+      }
+
+      setPendingTime(currentTime);
+    }
+
     if (
       timeMode === "selectable" &&
       dateTime &&
@@ -152,7 +185,14 @@ export function ReservationDateTimePicker({
     ) {
       onChange?.(currentMinimum.toString({ smallestUnit: "minute" }));
     }
-  }, [dateTime, minimum, onChange, preserveValueBeforeMinimum, timeMode]);
+  }, [
+    dateTime,
+    minimum,
+    onChange,
+    pendingTime,
+    preserveValueBeforeMinimum,
+    timeMode,
+  ]);
 
   return (
     <div className={cn("grid gap-3", className)}>
