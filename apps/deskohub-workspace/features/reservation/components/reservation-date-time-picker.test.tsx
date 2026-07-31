@@ -170,7 +170,7 @@ describe("ReservationDateTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith("2099-06-10T17:00");
   });
 
-  test("hides time and normalizes the selected date to midnight", () => {
+  test("hides time and advances a started calendar day to next midnight", () => {
     const onChange = mock(() => undefined);
     const view = render(
       <ReservationDateTimePicker
@@ -184,6 +184,24 @@ describe("ReservationDateTimePicker", () => {
     );
 
     expect(view.queryByLabelText("Meeting room start time")).toBeNull();
-    expect(onChange).toHaveBeenCalledWith("2099-06-10T00:00");
+    expect(onChange).toHaveBeenCalledWith("2099-06-11T00:00");
+  });
+
+  test("preserves a restored whole-day value that has already started", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        minimum="2099-06-10T15:00"
+        onChange={onChange}
+        preserveValueBeforeMinimum
+        timeLabel="Meeting room start time"
+        timeMode="midnight"
+        value="2099-06-10T00:00"
+      />
+    );
+
+    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

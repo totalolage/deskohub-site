@@ -40,6 +40,20 @@ const resolveMinimumDateTime = (
   minimum: ReservationDateTimePickerProps["minimum"]
 ) => parsePlainDateTime(typeof minimum === "function" ? minimum() : minimum);
 
+const getMinimumSelectableDate = (
+  minimum: Temporal.PlainDateTime | undefined,
+  preserveValueBeforeMinimum: boolean,
+  timeMode: NonNullable<ReservationDateTimePickerProps["timeMode"]>
+) => {
+  if (!minimum) return undefined;
+
+  return timeMode === "midnight" &&
+    !preserveValueBeforeMinimum &&
+    !minimum.toPlainTime().equals(Temporal.PlainTime.from("00:00"))
+    ? minimum.toPlainDate().add({ days: 1 })
+    : minimum.toPlainDate();
+};
+
 const getMinimumTimeForDate = (
   date: Temporal.PlainDate | undefined,
   minimum: ReturnType<typeof Temporal.PlainDateTime.from> | undefined
@@ -80,6 +94,11 @@ export function ReservationDateTimePicker({
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
   const [pendingTime, setPendingTime] = useState<string>(defaultTime);
   const minimumDateTime = resolveMinimumDateTime(minimum);
+  const minimumSelectableDate = getMinimumSelectableDate(
+    minimumDateTime,
+    preserveValueBeforeMinimum,
+    timeMode
+  );
   const selectedDate = dateTime?.toPlainDate();
   const selectedTime =
     dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? pendingTime;
@@ -103,17 +122,23 @@ export function ReservationDateTimePicker({
     : placeholder;
 
   useEffect(() => {
-    if (
-      timeMode === "midnight" &&
-      dateTime &&
-      !dateTime.toPlainTime().equals(Temporal.PlainTime.from("00:00"))
-    ) {
-      onChange?.(
-        dateTime
-          .toPlainDate()
-          .toPlainDateTime()
-          .toString({ smallestUnit: "minute" })
+    if (timeMode === "midnight" && dateTime) {
+      const currentMinimumDate = getMinimumSelectableDate(
+        resolveMinimumDateTime(minimum),
+        preserveValueBeforeMinimum,
+        timeMode
       );
+      const normalizedDate =
+        currentMinimumDate &&
+        Temporal.PlainDate.compare(dateTime.toPlainDate(), currentMinimumDate) <
+          0
+          ? currentMinimumDate
+          : dateTime.toPlainDate();
+      const normalizedDateTime = normalizedDate.toPlainDateTime();
+
+      if (!dateTime.equals(normalizedDateTime)) {
+        onChange?.(normalizedDateTime.toString({ smallestUnit: "minute" }));
+      }
       return;
     }
 
@@ -135,7 +160,7 @@ export function ReservationDateTimePicker({
         ariaLabel={dateLabel}
         displayValue={displayValue}
         locale={locale}
-        minimum={minimumDateTime?.toPlainDate().toString()}
+        minimum={minimumSelectableDate?.toString()}
         name={name}
         onChange={(date) => {
           const plainDate = Temporal.PlainDate.from(date);

@@ -356,6 +356,9 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     const time = document.querySelector('input[aria-label="Meeting room start time"]');
+    const selectedDuration = document.querySelector(
+      '#meeting-room-duration-' + expected.durationMinutes
+    );
     const submit = document.querySelector('button[type="submit"]');
     return (
       hiddenStart instanceof HTMLInputElement &&
@@ -363,7 +366,8 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       (expected.wholeDay
         ? time === null
         : time instanceof HTMLInputElement && time.value === expected.time) &&
-      duration.checked &&
+      selectedDuration instanceof HTMLInputElement &&
+      selectedDuration.checked &&
       submit instanceof HTMLButtonElement &&
       !submit.disabled
     );
