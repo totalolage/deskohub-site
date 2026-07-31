@@ -16,6 +16,7 @@ import type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
+import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
@@ -32,6 +33,7 @@ export type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
+export { isSingleDayReservationInterval };
 
 export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
@@ -71,24 +73,6 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
     }
   )
 );
-
-export const isSingleDayReservationInterval = (interval: {
-  readonly startsAt: ReservationInterval["startsAt"] | Temporal.Instant;
-  readonly endsAt: ReservationInterval["endsAt"] | Temporal.Instant;
-}) => {
-  const start = Temporal.Instant.from(interval.startsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime();
-  const end = Temporal.Instant.from(interval.endsAt)
-    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDateTime();
-
-  return (
-    isMidnight(start) &&
-    isMidnight(end) &&
-    end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
-  );
-};
 
 const getMeetingRoomDurationMessage = (
   duration: WorkspaceMeetingRoomDurationMinutes
@@ -193,12 +177,6 @@ export const getReservationDate = ({
     instant: Temporal.Instant.from(interval.startsAt),
     timeZone,
   }).toString();
-
-const isMidnight = (dateTime: Temporal.PlainDateTime) =>
-  dateTime.hour === 0 &&
-  dateTime.minute === 0 &&
-  dateTime.second === 0 &&
-  dateTime.millisecond === 0;
 
 const toSchemaIssue = (
   input: unknown,

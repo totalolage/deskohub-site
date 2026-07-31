@@ -1,17 +1,9 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import {
-  evalBrowserScript,
-  openBrowserPage,
-  waitForBrowserText,
-} from "../browser";
-import {
-  getPrepareMeetingRoomAdvertisedPriceScript,
-  getSubmitMeetingRoomReservationScript,
-} from "../browser-scripts";
+import { waitForBrowserText } from "../browser";
+import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
 import {
   loadMeetingRoomAvailability,
   makeMeetingRoomCheckoutData,
@@ -112,8 +104,9 @@ export const makeMeetingRoomE2ECases = ({
     const dayData = makeMeetingRoomCheckoutData(
       config.baseUrl,
       yield* requireSlot(daySlot, "whole-day"),
-      "meeting-room-advertised-1440"
+      "meeting-room-paid-whole-day"
     );
+    const dayState = trackCheckoutState(flowStates, dayData);
     const cancelledScenario = yield* tryWorkspaceE2ESync(
       "select cancelled meeting-room payment scenario",
       () => {
@@ -240,22 +233,34 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         execute: ({ runStep, session }) =>
-          assertMeetingRoomDayOption({
+          executeCheckoutFlow({
             config,
             data: dayData,
+            datasourceConfig,
+            flow: {
+              id: "meeting-room-paid-whole-day",
+              submitReservationScript: getSubmitMeetingRoomReservationScript,
+            },
+            payPageStep: () => ({
+              execute: assertMeetingRoomPayPage(config, dayData, run, session),
+              id: "assert-whole-day-meeting-room-pay-summary",
+              timeoutMs: config.timeouts.uiTransition,
+            }),
             run,
             runStep,
             session,
+            state: dayState,
           }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.mapError((cause) =>
               toWorkspaceE2EError(
-                "run whole-day meeting-room advertisement e2e case",
+                "run paid whole-day meeting-room checkout e2e case",
                 cause
               )
             )
           ),
-        id: "meeting-room-advertised-1440",
-        timeoutMs: config.timeouts.checkoutStart,
+        id: "checkout-meeting-room-paid-whole-day",
+        timeoutMs: config.timeouts.checkoutCase,
       },
     ];
   });
@@ -298,10 +303,13 @@ const assertMeetingRoomPayPage = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const meetingRoom = yield* getMeetingRoomSlot(data);
-    const durationTitle = getWorkspaceMeetingRoomDurationTitle(
-      meetingRoom.durationMinutes,
-      data.locale
-    );
+    const durationHours = meetingRoom.durationMinutes / 60;
+    const durationTitle =
+      meetingRoom.durationMinutes === 1440
+        ? "Meeting room - whole day"
+        : `Meeting room - ${durationHours} ${
+            durationHours === 1 ? "hour" : "hours"
+          }`;
     const price = formatWorkspaceMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.durationMinutes),
       data.locale
@@ -322,55 +330,6 @@ const assertMeetingRoomPayPage = (
       timeoutMs: config.timeouts.uiTransition,
     });
     log("Meeting-room pay summary validated");
-  });
-
-const assertMeetingRoomDayOption = ({
-  config,
-  data,
-  run,
-  runStep,
-  session,
-}: {
-  readonly config: WorkspaceE2EConfig;
-  readonly data: CheckoutData;
-  readonly run: Runner;
-  readonly runStep: Parameters<WorkspaceE2ECase["execute"]>[0]["runStep"];
-  readonly session: string;
-}): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    yield* runStep({
-      execute: openBrowserPage(config, run, session, data.checkoutUrl, {
-        timeoutMs: config.timeouts.browserNavigation,
-      }).pipe(Effect.asVoid),
-      id: "open-whole-day-meeting-room-form",
-      timeoutMs: config.timeouts.browserNavigation,
-    });
-    yield* runStep({
-      execute: evalBrowserScript(
-        "prepare whole-day meeting-room advertised price",
-        run,
-        session,
-        getPrepareMeetingRoomAdvertisedPriceScript(data),
-        { timeoutMs: config.timeouts.browserAction }
-      ).pipe(Effect.asVoid),
-      id: "prepare-whole-day-meeting-room-advertisement",
-      timeoutMs: config.timeouts.checkoutStart,
-    });
-    yield* runStep({
-      execute: waitForBrowserText({
-        description: "whole-day meeting-room advertised price",
-        matches: (text) =>
-          /whole day/i.test(text) &&
-          /CZK/i.test(text) &&
-          /2[,\s]320/.test(text),
-        run,
-        session,
-        timeoutMs: config.timeouts.uiTransition,
-      }),
-      id: "assert-whole-day-meeting-room-advertisement",
-      timeoutMs: config.timeouts.uiTransition,
-    });
-    log("Whole-day meeting-room option is available and priced");
   });
 
 const getMeetingRoomSlot = (data: CheckoutData) =>

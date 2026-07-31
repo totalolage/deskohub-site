@@ -7,6 +7,7 @@ import {
 import { Context, Data, Effect, Layer } from "effect";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { isMidnight } from "@/shared/utils/temporal";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
@@ -203,14 +204,6 @@ const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) => {
       .withTimeZone(workspaceSiteConstants.location.timeZone);
   }
 };
-
-const isMidnight = (dateTime: ReturnType<typeof toWorkspaceZonedDateTime>) =>
-  dateTime.hour === 0 &&
-  dateTime.minute === 0 &&
-  dateTime.second === 0 &&
-  dateTime.millisecond === 0 &&
-  dateTime.microsecond === 0 &&
-  dateTime.nanosecond === 0;
 
 const getDateRange = (from: string, to: string) => {
   const dates: string[] = [];

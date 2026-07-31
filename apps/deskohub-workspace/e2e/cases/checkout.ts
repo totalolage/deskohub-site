@@ -1,9 +1,12 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
+import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   activateHydratedBrowserElement,
   evalBrowserScript,
@@ -228,17 +231,29 @@ export const assertFulfilledStatusPage = ({
       { timeoutMs: config.timeouts.browserNavigation }
     );
     const expectedMeetingRoomText = data.meetingRoom
-      ? [
-          formatReservationDisplayDate(
-            Temporal.Instant.from(data.meetingRoom.startsAt),
-            data.locale
-          ),
-          formatReservationDisplayTimeRange(
-            Temporal.Instant.from(data.meetingRoom.startsAt),
-            Temporal.Instant.from(data.meetingRoom.endsAt),
-            data.locale
-          ),
-        ]
+      ? (() => {
+          const interval = {
+            startsAt: Temporal.Instant.from(data.meetingRoom.startsAt),
+            endsAt: Temporal.Instant.from(data.meetingRoom.endsAt),
+          };
+
+          return [
+            formatReservationDisplayDate(interval.startsAt, data.locale),
+            isSingleDayReservationInterval(interval)
+              ? "whole day"
+              : formatReservationDisplayTimeRange(
+                  interval.startsAt,
+                  interval.endsAt,
+                  data.locale
+                ),
+            formatWorkspaceMoney(
+              getWorkspaceMeetingRoomPriceForDuration(
+                data.meetingRoom.durationMinutes
+              ),
+              data.locale
+            ),
+          ];
+        })()
       : [];
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
