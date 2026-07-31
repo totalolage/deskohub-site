@@ -121,8 +121,10 @@ export function MeetingRoomReservationForm({
   );
   const preservesRestoredStart =
     Boolean(restoredInitialValues) &&
-    selectedStartDateTime === defaultValues.startDateTime &&
     selectedDurationMinutes === defaultValues.durationMinutes &&
+    (selectedStartDateTime === defaultValues.startDateTime ||
+      (!isWholeDaySelected &&
+        selectableStartDateTime === defaultValues.startDateTime)) &&
     (!isWholeDaySelected ||
       Temporal.PlainDateTime.compare(
         selectedStartDateTime,

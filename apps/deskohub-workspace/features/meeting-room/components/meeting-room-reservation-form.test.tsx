@@ -711,6 +711,54 @@ describe("MeetingRoomReservationForm", () => {
     }
   });
 
+  test("preserves a restored hourly slot across a whole-day preview", async () => {
+    const originalNow = Temporal.Now.instant;
+    Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+    const restoredHourlyReservation =
+      normalizedMeetingRoomReservationOrderSchema.make({
+        ...initialReservation,
+        startsAt: "2099-07-30T13:00:00Z",
+        endsAt: "2099-07-30T17:00:00Z",
+      });
+
+    try {
+      const view = renderForm({
+        initialReservation: restoredHourlyReservation,
+      });
+
+      await waitFor(() => {
+        expect(
+          view.getByLabelText("Meeting room start time").getAttribute("value")
+        ).toBe("15:00");
+      });
+
+      fireEvent.click(
+        view.container.querySelector(
+          'input[type="radio"][value="1440"]'
+        ) as HTMLInputElement
+      );
+      await waitFor(() => {
+        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+      });
+
+      fireEvent.click(
+        view.container.querySelector(
+          'input[type="radio"][value="240"]'
+        ) as HTMLInputElement
+      );
+      await waitFor(() => {
+        expect(
+          view.getByLabelText("Meeting room start time").getAttribute("value")
+        ).toBe("15:00");
+      });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
   test("renders the selected advertised discount without adding a price card", async () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,
