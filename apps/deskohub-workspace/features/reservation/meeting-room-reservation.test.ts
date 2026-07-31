@@ -194,6 +194,7 @@ describe("meetingRoomReservationSchema", () => {
   });
 
   test("maps a DST whole day to the stable whole-day product identity", () => {
+    setSystemTime(new Date("2026-03-29T12:00:00Z"));
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
       startsAt: "2026-03-28T23:00:00Z",
@@ -223,7 +224,8 @@ describe("meetingRoomReservationSchema", () => {
     expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
   });
 
-  test("discards a canonical whole day that is before the current minimum", () => {
+  test("restores a started canonical whole day before its end", () => {
+    setSystemTime(new Date("2099-06-10T12:00:00Z"));
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
       startsAt: "2099-06-09T22:00:00Z",
@@ -233,11 +235,25 @@ describe("meetingRoomReservationSchema", () => {
       phone: "+420777777777",
     });
 
-    expect(
-      getMeetingRoomReservationDefaultValues(reservation, {
-        minimumStartDateTime: "2099-06-10T15:00",
-      })
-    ).toBeUndefined();
+    expect(getMeetingRoomReservationDefaultValues(reservation)).toMatchObject({
+      startDateTime: "2099-06-10T00:00",
+      durationMinutes: 1440,
+      name: "Ada Lovelace",
+    });
+  });
+
+  test("discards a restored reservation after its end", () => {
+    setSystemTime(new Date("2099-06-10T22:00:00.001Z"));
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
   });
 
   test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {

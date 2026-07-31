@@ -27,9 +27,7 @@ export const meetingRoomReservationPage = createReservationPage({
     const minimumStartDateTime =
       getEarliestSelectableMeetingRoomStartDateTime();
     const restoredInitialValues = initialReservation
-      ? getMeetingRoomReservationDefaultValues(initialReservation, {
-          minimumStartDateTime,
-        })
+      ? getMeetingRoomReservationDefaultValues(initialReservation)
       : undefined;
     const initialValues = restoredInitialValues ?? {
       ...meetingRoomReservationDefaultValues,

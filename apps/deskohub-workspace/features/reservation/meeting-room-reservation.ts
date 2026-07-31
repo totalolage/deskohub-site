@@ -379,15 +379,14 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
   };
 
 export const getMeetingRoomReservationDefaultValues = (
-  reservation: NormalizedMeetingRoomReservationOrder,
-  options: {
-    readonly minimumStartDateTime?: string;
-  } = {}
+  reservation: NormalizedMeetingRoomReservationOrder
 ): MeetingRoomReservationInput | undefined => {
   const durationMinutes = getMeetingRoomReservationDurationMinutes(reservation);
   if (
     !isWorkspaceMeetingRoomDuration(durationMinutes) ||
-    (durationMinutes === 1440 && !isSingleDayReservationInterval(reservation))
+    (durationMinutes === 1440 &&
+      !isSingleDayReservationInterval(reservation)) ||
+    hasReservationIntervalEnded(reservation)
   ) {
     return undefined;
   }
@@ -396,16 +395,6 @@ export const getMeetingRoomReservationDefaultValues = (
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
-  if (
-    durationMinutes === 1440 &&
-    options.minimumStartDateTime &&
-    Temporal.PlainDateTime.compare(
-      startDateTime,
-      options.minimumStartDateTime
-    ) < 0
-  ) {
-    return undefined;
-  }
 
   return {
     startDateTime,

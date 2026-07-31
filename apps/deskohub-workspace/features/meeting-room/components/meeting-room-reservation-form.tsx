@@ -48,6 +48,7 @@ import {
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import type { MeetingRoomWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
@@ -125,11 +126,7 @@ export function MeetingRoomReservationForm({
     (selectedStartDateTime === defaultValues.startDateTime ||
       (!isWholeDaySelected &&
         selectableStartDateTime === defaultValues.startDateTime)) &&
-    (!isWholeDaySelected ||
-      Temporal.PlainDateTime.compare(
-        selectedStartDateTime,
-        minimumStartDateTime
-      ) >= 0);
+    Boolean(selectedInterval && !hasReservationIntervalEnded(selectedInterval));
   const availabilityQuery = useMemo(
     (): MeetingRoomWorkspaceAvailabilityQuery | undefined =>
       selectedInterval

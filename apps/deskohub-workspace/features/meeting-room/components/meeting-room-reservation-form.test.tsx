@@ -533,7 +533,7 @@ describe("MeetingRoomReservationForm", () => {
     }
   });
 
-  test("stops preserving a restored whole day after its Prague date starts", async () => {
+  test("preserves a restored whole day after its start and before its end", async () => {
     const originalNow = Temporal.Now.instant;
     let now = Temporal.Instant.from("2099-07-30T12:37:00Z");
     Temporal.Now.instant = () => now;
@@ -563,8 +563,7 @@ describe("MeetingRoomReservationForm", () => {
         expect(
           view.getByRole("button", { name: "Meeting room start date" })
             .textContent
-        ).toContain("August 1, 2099");
-        expect(getAdvertisedPrice).toHaveBeenCalledTimes(6);
+        ).toContain("July 31, 2099");
       });
     } finally {
       Temporal.Now.instant = originalNow;
