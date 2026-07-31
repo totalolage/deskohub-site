@@ -309,6 +309,7 @@ export const makeDiscountE2ECases = ({
           )
         ),
       id: "calendar-sale-pricing-changes",
+      runAfterParallel: true,
       timeoutMs: config.timeouts.checkoutCase * 2,
     });
 
@@ -666,11 +667,15 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
-    yield* assertDisplayedDiscounts({
-      config,
-      discounts: [calendarDiscountExpectation],
-      run,
-      session,
+    yield* runStep({
+      execute: assertDisplayedDiscounts({
+        config,
+        discounts: [calendarDiscountExpectation],
+        run,
+        session,
+      }),
+      id: "assert-calendar-pay-page-discount",
+      timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
       execute: setE2ECalendarSaleProfiEligibility(false),
@@ -792,9 +797,7 @@ const withE2ECalendarSaleProfiEligibility = <A>(
     yield* setE2ECalendarSaleProfiEligibility(true);
     return yield* effect;
   }).pipe(
-    Effect.ensuring(
-      setE2ECalendarSaleProfiEligibility(true).pipe(Effect.orDie)
-    )
+    Effect.ensuring(setE2ECalendarSaleProfiEligibility(true).pipe(Effect.orDie))
   );
 
 const executeConsumedDiscountCode = ({
