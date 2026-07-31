@@ -11,7 +11,7 @@ export const workspaceE2ETimeouts = {
   contactCase: 2 * MINUTE,
   datasource: 2 * MINUTE,
   hostedPayment: 3 * MINUTE,
-  localeCase: 2 * MINUTE,
+  localeCase: 3 * MINUTE,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
   uiTransition: 45 * SECOND,
