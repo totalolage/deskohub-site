@@ -109,6 +109,7 @@ export const executeZeroTotalCheckout = ({
     state.checkoutRow = checkoutRow;
     yield* runStep({
       execute: assertFulfilledStatusPage({
+        checkoutRow,
         config,
         data,
         orderId,

@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   formatReservationDisplayDate,
@@ -24,7 +23,7 @@ import {
   submitReservationForPayPage,
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import type { WorkspaceE2EError } from "../errors";
+import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import {
   type ExpectedDiscountApplication,
   markFulfillmentFailedForE2E,
@@ -42,6 +41,7 @@ import type {
   CheckoutData,
   CheckoutFlow,
   CheckoutFlowState,
+  CheckoutRow,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -166,6 +166,7 @@ export const executeCheckoutFlow = ({
     }
     yield* runStep({
       execute: assertFulfilledStatusPage({
+        checkoutRow,
         config,
         data,
         orderId,
@@ -210,12 +211,14 @@ const waitForCheckoutStatusPage = (
   }).pipe(Effect.asVoid);
 
 export const assertFulfilledStatusPage = ({
+  checkoutRow,
   config,
   data,
   orderId,
   run,
   session,
 }: {
+  checkoutRow: CheckoutRow;
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   orderId: string;
@@ -223,6 +226,27 @@ export const assertFulfilledStatusPage = ({
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    const expectedPaymentPrice = yield* tryWorkspaceE2ESync(
+      "read checkout payment amount for status assertion",
+      () => {
+        if (
+          checkoutRow.amount_value === null ||
+          checkoutRow.amount_exponent === null ||
+          checkoutRow.currency === null
+        ) {
+          throw new Error("checkout payment amount is incomplete");
+        }
+
+        return formatWorkspaceMoney(
+          {
+            value: checkoutRow.amount_value,
+            exponent: checkoutRow.amount_exponent,
+            currency: checkoutRow.currency,
+          },
+          data.locale
+        );
+      }
+    );
     yield* openBrowserPage(
       config,
       run,
@@ -246,12 +270,7 @@ export const assertFulfilledStatusPage = ({
                   interval.endsAt,
                   data.locale
                 ),
-            formatWorkspaceMoney(
-              getWorkspaceMeetingRoomPriceForDuration(
-                data.meetingRoom.durationMinutes
-              ),
-              data.locale
-            ),
+            expectedPaymentPrice,
           ];
         })()
       : [];
