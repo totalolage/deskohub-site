@@ -2,6 +2,7 @@
 
 import {
   normalizeExpression,
+  type SearchOptions,
   type UnnormalizedLogicalExpression,
 } from "@deskohub/cloudinary";
 import { getGalleryImages } from "@deskohub/cloudinary/server";
@@ -14,16 +15,21 @@ import {
 } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
-export interface GetCloudinaryImagesOptions {
+export interface GetCloudinaryImagesOptions extends SearchOptions {
   tags: UnnormalizedLogicalExpression<CloudinaryTag>;
-  maxResults?: number;
 }
 
 export async function getCloudinaryImages({
   tags,
   maxResults = 60,
+  sortBy,
+  sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  return getGalleryImages(normalizeExpression(tags), { maxResults }).pipe(
+  return getGalleryImages(normalizeExpression(tags), {
+    maxResults,
+    sortBy,
+    sortDirection,
+  }).pipe(
     Effect.catch((error) => {
       if (env.VERCEL_ENV !== "development") return Effect.fail(error);
 
