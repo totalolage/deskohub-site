@@ -1,4 +1,5 @@
 import type { CheckoutData } from "./types";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
@@ -160,7 +161,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
   const desiredMonitorOption = ${JSON.stringify(desiredMonitorOption)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + ${workspaceE2ETimeouts.uiTransition};
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
@@ -259,7 +260,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   })};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + ${workspaceE2ETimeouts.uiTransition};
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
