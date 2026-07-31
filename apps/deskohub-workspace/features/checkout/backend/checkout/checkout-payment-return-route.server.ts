@@ -4,7 +4,7 @@ import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import {
@@ -128,19 +128,21 @@ export const makeCheckoutPaymentReturnGet = (
     (request, context: LocalizedCheckoutPaymentRouteContext) =>
       decodeCheckoutPaymentReturn(request, context).pipe(
         Effect.flatMap((decoded) =>
-          Option.match(decoded, {
-            onNone: () =>
-              Effect.succeed(new NextResponse(null, { status: 404 })),
-            onSome: (input) =>
+          decoded.pipe(
+            Option.map((input) =>
               handleCheckoutPaymentReturn(request, input).pipe(
                 Effect.provide(statusServiceLayer),
                 Effect.mapError(
-                  mapWorkspaceInternalRouteFailure(
+                  WorkspaceRouteFailure.internal(
                     "Checkout status could not be refreshed"
                   )
                 )
-              ),
-          })
+              )
+            ),
+            Option.getOrElse(() =>
+              Effect.succeed(new NextResponse(null, { status: 404 }))
+            )
+          )
         )
       )
   );

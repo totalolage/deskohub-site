@@ -105,12 +105,10 @@ export class CalendarDiscountProvider extends Context.Service<
               })
               .pipe(
                 Effect.mapError(
-                  (cause) =>
-                    new DiscountProviderError({
-                      reason: "provider_failure",
-                      message: "Google Calendar sales could not be loaded.",
-                      cause,
-                    })
+                  DiscountProviderError.fromCause({
+                    reason: "provider_failure",
+                    message: "Google Calendar sales could not be loaded.",
+                  })
                 )
               )
           ),

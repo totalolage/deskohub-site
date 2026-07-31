@@ -49,7 +49,15 @@ export class DiscountProviderError extends Data.TaggedError(
   readonly reason: DiscountProviderFailureReason;
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static fromCause =
+    (input: {
+      readonly reason: DiscountProviderFailureReason;
+      readonly message: string;
+    }) =>
+    (cause: unknown) =>
+      new DiscountProviderError({ ...input, cause });
+}
 
 export type DiscountClaimFailureReason =
   | "unknown_code"

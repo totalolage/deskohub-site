@@ -16,7 +16,14 @@ export class WorkspaceRouteFailure extends Data.TaggedError(
   readonly statusCode: number;
   readonly publicMessage: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static internal = (publicMessage: string) => (cause: unknown) =>
+    new WorkspaceRouteFailure({
+      statusCode: 500,
+      publicMessage,
+      cause,
+    });
+}
 
 export type WorkspaceRouteErrorResponse = NextResponse<{
   readonly error: string;
@@ -55,14 +62,6 @@ export const defineWorkspaceRoute =
       runWorkspaceEffect(options.operation, { boundary: "route", signal })
     );
   };
-
-export const mapWorkspaceInternalRouteFailure =
-  (publicMessage: string) => (cause: unknown) =>
-    new WorkspaceRouteFailure({
-      statusCode: 500,
-      publicMessage,
-      cause,
-    });
 
 const recoverWorkspaceRouteFailure = Effect.fn("workspaceRoute.recoverFailure")(
   function* (failure: WorkspaceRouteFailure) {

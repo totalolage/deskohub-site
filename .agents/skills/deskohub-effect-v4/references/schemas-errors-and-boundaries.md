@@ -10,5 +10,6 @@
 - When related struct schemas share fields, declare a base `Schema.Struct` and extend its `fields`. Do not declare a standalone fields object as a schema substitute.
 - Use branded domain identifier types in contracts and error fields instead of plain strings.
 - When mapping an error into a domain error, preserve the original error in the wrapping error's `cause` property.
+- Put reusable cause-to-error mappers on the error class as concise, domain-named curried static properties and pass them directly to `Effect.mapError`.
 - Define fallible operations as Effects at their point of definition and carry expected failures through the typed error channel. Do not create throwing helpers and then recover by wrapping callers in `try`/`catch` or `Effect.try`. Reserve `Effect.try` and `Effect.tryPromise` for true third-party or platform boundaries that may throw or reject.
 - Parse external decimal percentages with Effect Schema and exact `BigDecimal` arithmetic. Do not hand-slice decimal strings or convert them through floating-point math.

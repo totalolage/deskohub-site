@@ -67,12 +67,10 @@ export const applyDiscountCodeToPayState = Effect.fn(
         dotyposCustomerIdSchema
       )(reservation.dotyposCustomerId).pipe(
         Effect.mapError(
-          (cause) =>
-            new DiscountProviderError({
-              reason: "provider_failure",
-              message: "Stored customer identity is invalid.",
-              cause,
-            })
+          DiscountProviderError.fromCause({
+            reason: "provider_failure",
+            message: "Stored customer identity is invalid.",
+          })
         )
       );
       const result = yield* pricing.applyDiscountCode({
