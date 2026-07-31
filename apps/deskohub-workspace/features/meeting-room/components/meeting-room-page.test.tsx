@@ -24,7 +24,14 @@ mock.module("@deskohub/cloudinary-image", () => ({
   }) => <span aria-label={alt} data-public-id={source.public_id} role="img" />,
 }));
 
-const createCloudinaryAsset = (publicId: string): CloudinaryAsset => ({
+type CloudinaryCustomContext = NonNullable<
+  NonNullable<CloudinaryAsset["context"]>["custom"]
+>;
+
+const createCloudinaryAsset = (
+  publicId: string,
+  custom?: CloudinaryCustomContext
+): CloudinaryAsset => ({
   created_at: "2026-07-31T00:00:00Z",
   format: "jpg",
   height: 1200,
@@ -33,6 +40,7 @@ const createCloudinaryAsset = (publicId: string): CloudinaryAsset => ({
   secure_url: `https://example.test/${publicId}.jpg`,
   url: `http://example.test/${publicId}.jpg`,
   width: 1600,
+  ...(custom ? { context: { custom } } : {}),
 });
 
 describe("MeetingRoomPage", () => {
@@ -51,7 +59,11 @@ describe("MeetingRoomPage", () => {
   test("renders the localized booking journey and ordered Cloudinary photos", async () => {
     const { MeetingRoomPage } = await import("./meeting-room-page");
     const galleryImages = Array.from({ length: 5 }, (_, index) =>
-      createCloudinaryAsset(`meeting-room-gallery-${index + 1}`)
+      createCloudinaryAsset(`meeting-room-gallery-${index + 1}`, {
+        "alt-en-US": `Meeting room gallery photo ${index + 1}`,
+        "caption-en-US": `Gallery caption ${index + 1}`,
+        "detail-en-US": `Gallery detail ${index + 1}`,
+      })
     );
     const view = render(
       <MeetingRoomPage
@@ -87,10 +99,35 @@ describe("MeetingRoomPage", () => {
       ]
     );
     expect(photos.at(-1)?.getAttribute("aria-label")).toBe(
-      "Team in a hybrid meeting with conference equipment"
+      "Meeting room gallery photo 5"
     );
-    expect(view.getByText("05 / Hybrid meeting")).toBeTruthy();
-    expect(view.getAllByText("Conference equipment")).toHaveLength(2);
+    expect(view.getByText("05 / Gallery caption 5")).toBeTruthy();
+    expect(view.getByText("Gallery detail 5")).toBeTruthy();
+  });
+
+  test("renders gallery descriptions from Cloudinary asset context", async () => {
+    const { MeetingRoomPage } = await import("./meeting-room-page");
+    const view = render(
+      <MeetingRoomPage
+        galleryImages={[
+          createCloudinaryAsset("meeting-room-gallery-planning", {
+            "alt-cs-CZ": "Tým plánuje u stolu v zasedací místnosti",
+            "alt-en-US": "Team planning around the meeting-room table",
+            "caption-cs-CZ": "Plánovací workshop",
+            "caption-en-US": "Planning workshop",
+          }),
+        ]}
+        locale="en-US"
+      />
+    );
+
+    expect(
+      view.getByRole("img", {
+        name: "Team planning around the meeting-room table",
+      })
+    ).toBeTruthy();
+    expect(view.getByText("01 / Planning workshop")).toBeTruthy();
+    expect(view.queryByText("01 / A closer look")).toBeNull();
   });
 
   test("renders intentional empty image states while Cloudinary tags are empty", async () => {
