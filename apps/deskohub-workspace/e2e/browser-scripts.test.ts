@@ -71,6 +71,7 @@ test("prepares the Profi advertised price without requiring another tier", async
   });
   try {
     document.body.innerHTML = `
+    <input name="date" value="2099-09-01" />
     <button data-reservation-type-price="basic" data-reservation-type-price-ready="true"></button>
     <button data-reservation-type-price="profi" data-reservation-type-price-ready="false"></button>
     <input id="reservation-entry-tier-basic" type="radio" disabled />
@@ -165,6 +166,7 @@ test("accepts an already-prepared prefilled Profi price", async () => {
   });
   try {
     document.body.innerHTML = `
+      <input name="date" value="2099-09-01" />
       <button data-reservation-type-price="profi" data-reservation-type-price-ready="true"></button>
       <input id="reservation-entry-tier-profi" type="radio" checked />
       <label><input type="radio" value="2x27-qhd" checked /></label>
@@ -202,6 +204,81 @@ test("accepts an already-prepared prefilled Profi price", async () => {
         location
       )
     ).resolves.toBe(location.href);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("selects an edited cowork date and waits for its advertised price", async () => {
+  const data = makeCoworkCheckoutData(
+    "https://workspace.example.test",
+    "2099-10-02",
+    "cowork-reservation-replacement"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/cowork",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-haspopup="dialog" type="button"></button>
+      <div data-day="2099-10-02"><button type="button"></button></div>
+      <input name="date" value="2099-10-01" />
+      <button data-reservation-type-price="basic" data-reservation-type-price-ready="true"></button>
+      <input id="reservation-entry-tier-basic" type="radio" checked />
+    `;
+
+    const hiddenDate =
+      document.querySelector<HTMLInputElement>('input[name="date"]')!;
+    const price = document.querySelector<HTMLElement>(
+      '[data-reservation-type-price="basic"]'
+    )!;
+    document
+      .querySelector('[data-day="2099-10-02"] button')!
+      .addEventListener("click", () => {
+        hiddenDate.value = "2099-10-02";
+        price.dataset.reservationTypePriceReady = "false";
+        queueMicrotask(() => {
+          price.dataset.reservationTypePriceReady = "true";
+        });
+      });
+
+    let now = 0;
+    class FastDate extends Date {
+      static override now() {
+        now += 1_000;
+        return now;
+      }
+    }
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "MutationObserver",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareCoworkAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        MutationObserver,
+        FastDate,
+        (callback: () => void) => {
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).resolves.toBe(location.href);
+    expect(hiddenDate.value).toBe("2099-10-02");
+    expect(price.dataset.reservationTypePriceReady).toBe("true");
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;

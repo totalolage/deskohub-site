@@ -165,6 +165,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
 
   return `
 (async () => {
+  const desiredDate = ${JSON.stringify(data.date)};
   const desiredTier = ${JSON.stringify(desiredTier)};
   const desiredMonitorOption = ${JSON.stringify(desiredMonitorOption)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -193,6 +194,86 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
     }
   };
   await selectTierThroughPrice(desiredTier, desiredMonitorOption === null);
+  const dateInput = document.querySelector('input[name="date"]');
+  if (!(dateInput instanceof HTMLInputElement)) {
+    throw new Error('cowork reservation date input not found');
+  }
+  if (dateInput.value !== desiredDate) {
+    const price = document.querySelector(
+      '[data-reservation-type-price="' + desiredTier + '"]'
+    );
+    const dateTrigger = document.querySelector('button[aria-haspopup="dialog"]');
+    if (!(price instanceof HTMLElement) || !(dateTrigger instanceof HTMLButtonElement)) {
+      throw new Error('cowork reservation date controls not found');
+    }
+    let sawPendingPrice = price.dataset.reservationTypePriceReady === 'false';
+    const priceObserver = new MutationObserver((records) => {
+      if (records.some((record) => record.oldValue === 'true')) {
+        sawPendingPrice = true;
+      }
+    });
+    priceObserver.observe(price, {
+      attributeFilter: ['data-reservation-type-price-ready'],
+      attributeOldValue: true,
+    });
+    try {
+      dateTrigger.click();
+      const findSelectableDateButton = () => {
+        const candidate = document.querySelector(
+          '[data-day="' + desiredDate + '"] button:not(:disabled)'
+        );
+        return candidate instanceof HTMLButtonElement ? candidate : undefined;
+      };
+      const visibleCalendarDates = () =>
+        [...document.querySelectorAll('[data-day]')]
+          .map((day) => day.getAttribute('data-day') ?? '')
+          .join('|');
+      let dateButton;
+      for (let month = 0; month < 5; month += 1) {
+        let nextMonth;
+        await waitUntil(() => {
+          dateButton = findSelectableDateButton();
+          if (dateButton instanceof HTMLButtonElement) return true;
+          const candidate = document.querySelector(
+            'button[aria-label="Go to the Next Month"]'
+          );
+          if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
+            nextMonth = candidate;
+            return true;
+          }
+          return false;
+        }, 'cowork reservation date is outside the selectable calendar');
+        if (dateButton instanceof HTMLButtonElement) break;
+
+        const previousDates = visibleCalendarDates();
+        nextMonth.click();
+        await waitUntil(() => {
+          dateButton = findSelectableDateButton();
+          const renderedDates = visibleCalendarDates();
+          return (
+            dateButton instanceof HTMLButtonElement ||
+            (renderedDates.length > 0 && renderedDates !== previousDates)
+          );
+        }, 'cowork reservation calendar did not advance');
+      }
+      if (!(dateButton instanceof HTMLButtonElement)) {
+        throw new Error('cowork reservation date was not found in the calendar');
+      }
+      dateButton.click();
+      await waitUntil(
+        () => dateInput.value === desiredDate,
+        'cowork reservation date did not update'
+      );
+      await waitUntil(
+        () =>
+          sawPendingPrice &&
+          price.dataset.reservationTypePriceReady === 'true',
+        'advertised price did not refresh after date selection'
+      );
+    } finally {
+      priceObserver.disconnect();
+    }
+  }
   if (desiredMonitorOption !== null) {
     let monitorInput;
     await waitUntil(() => {
