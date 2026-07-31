@@ -187,6 +187,38 @@ describe("ReservationDateTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith("2099-06-11T00:00");
   });
 
+  test("advances whole day when a stable minimum resolver crosses midnight", () => {
+    const onChange = mock(() => undefined);
+    let minimum = "2099-06-10T15:00";
+    const resolveMinimum = () => minimum;
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        minimum={resolveMinimum}
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        timeMode="midnight"
+        value="2099-06-11T00:00"
+      />
+    );
+
+    expect(onChange).not.toHaveBeenCalled();
+
+    minimum = "2099-06-11T15:00";
+    view.rerender(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        minimum={resolveMinimum}
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        timeMode="midnight"
+        value="2099-06-11T00:00"
+      />
+    );
+
+    expect(onChange).toHaveBeenCalledWith("2099-06-12T00:00");
+  });
+
   test("preserves a restored whole-day value that has already started", () => {
     const onChange = mock(() => undefined);
     const view = render(

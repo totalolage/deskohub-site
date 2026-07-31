@@ -102,6 +102,7 @@ export function ReservationDateTimePicker({
   const pendingDate = useRef(dateTime?.toPlainDate());
   const previousTimeMode = useRef(timeMode);
   const minimumDateTime = resolveMinimumDateTime(minimum);
+  const minimumDateTimeValue = minimumDateTime?.toString();
   const minimumSelectableDate = getMinimumSelectableDate(
     minimumDateTime,
     preserveValueBeforeMinimum,
@@ -132,6 +133,7 @@ export function ReservationDateTimePicker({
   useEffect(() => {
     const priorTimeMode = previousTimeMode.current;
     previousTimeMode.current = timeMode;
+    const currentMinimum = parsePlainDateTime(minimumDateTimeValue);
 
     if (timeMode === "midnight" && dateTime) {
       if (priorTimeMode === "selectable") {
@@ -141,7 +143,7 @@ export function ReservationDateTimePicker({
         );
       }
       const currentMinimumDate = getMinimumSelectableDate(
-        resolveMinimumDateTime(minimum),
+        currentMinimum,
         preserveValueBeforeMinimum,
         timeMode
       );
@@ -159,7 +161,6 @@ export function ReservationDateTimePicker({
       return;
     }
 
-    const currentMinimum = resolveMinimumDateTime(minimum);
     if (timeMode === "selectable" && dateTime) {
       const currentTime = dateTime
         .toPlainTime()
@@ -201,7 +202,7 @@ export function ReservationDateTimePicker({
     }
   }, [
     dateTime,
-    minimum,
+    minimumDateTimeValue,
     onChange,
     onSelectableValueChange,
     pendingTime,
