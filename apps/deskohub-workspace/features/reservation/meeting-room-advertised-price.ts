@@ -58,25 +58,29 @@ const getHourlyAdvertisedStartDateTime = (
 export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   locale,
   minimumStartDateTime,
+  preservedDurationMinutes,
   selectableStartDateTime,
   startDateTime,
 }: {
   readonly locale: Locale;
   readonly minimumStartDateTime?: string;
+  readonly preservedDurationMinutes?: WorkspaceMeetingRoomDurationMinutes;
   readonly selectableStartDateTime?: string;
   readonly startDateTime: string;
 }): ReadonlyArray<MeetingRoomDurationAdvertisedPriceRequest> =>
   workspaceMeetingRoomDurationOptions.flatMap((duration) => {
     const advertisedStartDateTime =
-      duration === 1440
-        ? getWholeDayAdvertisedStartDateTime(
-            startDateTime,
-            minimumStartDateTime
-          )
-        : getHourlyAdvertisedStartDateTime(
-            selectableStartDateTime ?? startDateTime,
-            minimumStartDateTime
-          );
+      duration === preservedDurationMinutes
+        ? startDateTime
+        : duration === 1440
+          ? getWholeDayAdvertisedStartDateTime(
+              startDateTime,
+              minimumStartDateTime
+            )
+          : getHourlyAdvertisedStartDateTime(
+              selectableStartDateTime ?? startDateTime,
+              minimumStartDateTime
+            );
     const interval = getMeetingRoomReservationInterval(
       advertisedStartDateTime,
       duration

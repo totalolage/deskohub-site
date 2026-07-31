@@ -152,19 +152,19 @@ export function MeetingRoomReservationForm({
     () =>
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
-        minimumStartDateTime:
-          preservesRestoredStart && isWholeDaySelected
-            ? undefined
-            : minimumStartDateTime,
+        minimumStartDateTime,
+        preservedDurationMinutes: preservesRestoredStart
+          ? selectedDurationMinutes
+          : undefined,
         selectableStartDateTime,
         startDateTime: selectedStartDateTime,
       }),
     [
-      isWholeDaySelected,
       locale,
       minimumStartDateTime,
       preservesRestoredStart,
       selectableStartDateTime,
+      selectedDurationMinutes,
       selectedStartDateTime,
     ]
   );
