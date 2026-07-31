@@ -165,7 +165,7 @@ export const getMeetingRoomReservationDurationMinutes = (
     ? 1440
     : getDurationMinutes(reservation);
 
-export const isRollingMeetingRoomWholeDayInterval = (
+const isRollingMeetingRoomWholeDayInterval = (
   reservation: MeetingRoomReservationDetails
 ) =>
   getDurationMinutes(reservation) === 1440 &&

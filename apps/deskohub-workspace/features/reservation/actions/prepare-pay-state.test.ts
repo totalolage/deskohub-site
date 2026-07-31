@@ -710,7 +710,10 @@ describe("prepareWorkspacePayState", () => {
     });
   });
 
-  test("rejects legacy whole-day normalization into an already-started day", async () => {
+  test.each([
+    "legacy rolling",
+    "calendar",
+  ] as const)("rejects an already-started %s whole-day submission", async (intervalKind) => {
     const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotProtectionServiceMock } = await import(
       "@/shared/backend/bot-protection/bot-protection.service.mock"
@@ -718,14 +721,22 @@ describe("prepareWorkspacePayState", () => {
     const localToday = Temporal.Now.zonedDateTimeISO(
       workspaceSiteConstants.location.timeZone
     ).toPlainDate();
-    const rollingStart = localToday
-      .toPlainDateTime({ hour: 12 })
+    const startsAt = localToday
+      .toPlainDateTime({ hour: intervalKind === "legacy rolling" ? 12 : 0 })
       .toZonedDateTime(workspaceSiteConstants.location.timeZone)
       .toInstant();
-    const legacyReservation = {
+    const endsAt =
+      intervalKind === "legacy rolling"
+        ? startsAt.add({ hours: 24 })
+        : localToday
+            .add({ days: 1 })
+            .toPlainDateTime()
+            .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+            .toInstant();
+    const wholeDayReservation = {
       kind: "meeting-room" as const,
-      startsAt: rollingStart.toString(),
-      endsAt: rollingStart.add({ hours: 24 }).toString(),
+      startsAt: startsAt.toString(),
+      endsAt: endsAt.toString(),
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 777 777",
@@ -738,8 +749,8 @@ describe("prepareWorkspacePayState", () => {
       checkoutSessionId: "meeting-room-session-id",
       checkoutAttemptId: "meeting-room-attempt-id",
       advertisedPriceToken:
-        await buildMeetingRoomAdvertisedPriceToken(legacyReservation),
-      reservation: legacyReservation,
+        await buildMeetingRoomAdvertisedPriceToken(wholeDayReservation),
+      reservation: wholeDayReservation,
       legalConsent: true,
     }).pipe(
       Effect.provide(
