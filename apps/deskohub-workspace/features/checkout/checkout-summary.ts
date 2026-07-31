@@ -33,21 +33,42 @@ const checkoutSummaryProductItemKeySchema = Schema.TemplateLiteral([
 const checkoutSummaryProductItemBaseSchema = Schema.Struct({
   key: checkoutSummaryProductItemKeySchema,
   product: workspaceProductIdentitySchema,
+  meetingRoomDurationPresentation: Schema.optionalKey(
+    Schema.Literals(["hours", "whole-day"])
+  ),
   amount: nonNegativeWorkspaceMoneyCodec,
 });
+
+const checkoutSummaryProductKeyFilter = Schema.makeFilter(
+  ({ key, product }: typeof checkoutSummaryProductItemBaseSchema.Type) =>
+    key === `product:${getWorkspaceProductKey(product)}` || {
+      path: ["key"],
+      issue: "product summary key must match the product identity",
+    }
+);
+
+const checkoutSummaryProductPresentationFilter = Schema.makeFilter(
+  ({
+    meetingRoomDurationPresentation,
+    product,
+  }: typeof checkoutSummaryProductItemBaseSchema.Type) =>
+    meetingRoomDurationPresentation === undefined ||
+    (product.kind === "meeting-room" &&
+      (meetingRoomDurationPresentation !== "whole-day" ||
+        product.durationMinutes === 1440)) || {
+      path: ["meetingRoomDurationPresentation"],
+      issue:
+        "meeting-room duration presentation must match its product identity",
+    }
+);
 
 export const checkoutSummaryProductItemSchema = Schema.Struct({
   ...checkoutSummaryProductItemBaseSchema.fields,
   originalAmount: Schema.optionalKey(Schema.Never),
   discounts: Schema.optionalKey(Schema.Never),
 }).check(
-  Schema.makeFilter(
-    ({ key, product }) =>
-      key === `product:${getWorkspaceProductKey(product)}` || {
-        path: ["key"],
-        issue: "product summary key must match the product identity",
-      }
-  )
+  checkoutSummaryProductKeyFilter,
+  checkoutSummaryProductPresentationFilter
 );
 
 export const checkoutSummaryDiscountedProductItemSchema = Schema.Struct({
@@ -55,13 +76,8 @@ export const checkoutSummaryDiscountedProductItemSchema = Schema.Struct({
   originalAmount: positiveWorkspaceMoneyCodec,
   discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
 }).check(
-  Schema.makeFilter(
-    ({ key, product }) =>
-      key === `product:${getWorkspaceProductKey(product)}` || {
-        path: ["key"],
-        issue: "product summary key must match the product identity",
-      }
-  )
+  checkoutSummaryProductKeyFilter,
+  checkoutSummaryProductPresentationFilter
 );
 
 export const checkoutSummaryAddOnItemSchema = Schema.Struct({
@@ -130,6 +146,9 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
   amount: item.amount,
   ...("product" in item && { product: item.product }),
+  ...("meetingRoomDurationPresentation" in item && {
+    meetingRoomDurationPresentation: item.meetingRoomDurationPresentation,
+  }),
   ...("originalAmount" in item && {
     originalAmount: item.originalAmount,
     discounts: item.discounts,

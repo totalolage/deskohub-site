@@ -9,11 +9,13 @@ import {
   test,
 } from "bun:test";
 import { act, cleanup, render } from "@testing-library/react";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote as buildCoworkPriceQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
@@ -75,6 +77,40 @@ describe("CheckoutSummary", () => {
 
     expect(view.getByText("Basic Day Pass")).toBeDefined();
     expect(view.queryByText("product:basic")).toBeNull();
+  });
+
+  test("distinguishes legacy rolling 24 hours from a calendar whole day", () => {
+    const reservation = {
+      kind: "meeting-room" as const,
+      startsAt: "2099-06-10T08:00:00Z" as const,
+      endsAt: "2099-06-11T08:00:00Z" as const,
+    };
+    const quote = Effect.runSync(getMeetingRoomReservationQuote(reservation));
+    const view = render(
+      <CheckoutSummary
+        locale="en-US"
+        summary={getMeetingRoomCheckoutSummary(reservation, quote)}
+      />
+    );
+
+    expect(view.getByText("Meeting room - 24 hours")).toBeDefined();
+    expect(view.queryByText("Meeting room - whole day")).toBeNull();
+
+    cleanup();
+    const wholeDayReservation = {
+      kind: "meeting-room" as const,
+      startsAt: "2099-06-09T22:00:00Z" as const,
+      endsAt: "2099-06-10T22:00:00Z" as const,
+    };
+    const wholeDay = render(
+      <CheckoutSummary
+        locale="en-US"
+        summary={getMeetingRoomCheckoutSummary(wholeDayReservation, quote)}
+      />
+    );
+
+    expect(wholeDay.getByText("Meeting room - whole day")).toBeDefined();
+    expect(wholeDay.queryByText("Meeting room - 24 hours")).toBeNull();
   });
 
   test("highlights the canonical changed product key", () => {

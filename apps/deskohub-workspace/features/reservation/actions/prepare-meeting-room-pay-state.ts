@@ -88,8 +88,8 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
-        getMeetingRoomCheckoutSummary(state.quote),
-        getMeetingRoomCheckoutSummary(affirmed.quote)
+        getMeetingRoomCheckoutSummary(state.reservation.details, state.quote),
+        getMeetingRoomCheckoutSummary(reservation, affirmed.quote)
       ),
     }),
   };

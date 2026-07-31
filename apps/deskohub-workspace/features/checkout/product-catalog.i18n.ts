@@ -122,9 +122,10 @@ export const getWorkspaceProductMonitorTitle = (
 
 export const getWorkspaceMeetingRoomDurationLabel = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
-  locale: Locale
+  locale: Locale,
+  options: { readonly displayAsWholeDay?: boolean } = {}
 ) => {
-  if (durationMinutes === 1440) {
+  if (durationMinutes === 1440 && options.displayAsWholeDay !== false) {
     return m.reservationMeetingRoomDurationWholeDay({}, { locale });
   }
 
@@ -136,11 +137,16 @@ export const getWorkspaceMeetingRoomDurationLabel = (
 
 export const getWorkspaceMeetingRoomDurationTitle = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
-  locale: Locale
+  locale: Locale,
+  options: { readonly displayAsWholeDay?: boolean } = {}
 ) =>
   m.checkoutSummaryItemMeetingRoom(
     {
-      duration: getWorkspaceMeetingRoomDurationLabel(durationMinutes, locale),
+      duration: getWorkspaceMeetingRoomDurationLabel(
+        durationMinutes,
+        locale,
+        options
+      ),
     },
     { locale }
   );

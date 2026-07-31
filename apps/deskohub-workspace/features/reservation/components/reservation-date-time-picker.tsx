@@ -15,6 +15,7 @@ type ReservationDateTimePickerProps = {
   readonly name?: string;
   readonly onBlur?: () => void;
   readonly onChange?: (value: string) => void;
+  readonly onSelectableValueChange?: (value: string) => void;
   readonly placeholder?: string;
   readonly preserveValueBeforeMinimum?: boolean;
   readonly timeMode?: "selectable" | "midnight";
@@ -83,6 +84,7 @@ export function ReservationDateTimePicker({
   name,
   onBlur,
   onChange,
+  onSelectableValueChange,
   placeholder = "Pick date and time",
   preserveValueBeforeMinimum = false,
   timeMode = "selectable",
@@ -134,6 +136,9 @@ export function ReservationDateTimePicker({
     if (timeMode === "midnight" && dateTime) {
       if (priorTimeMode === "selectable") {
         pendingDate.current = dateTime.toPlainDate();
+        onSelectableValueChange?.(
+          dateTime.toString({ smallestUnit: "minute" })
+        );
       }
       const currentMinimumDate = getMinimumSelectableDate(
         resolveMinimumDateTime(minimum),
@@ -174,11 +179,15 @@ export function ReservationDateTimePicker({
         if (!dateTime.equals(normalizedDateTime)) {
           onChange?.(normalizedDateTime.toString({ smallestUnit: "minute" }));
         }
+        onSelectableValueChange?.(
+          normalizedDateTime.toString({ smallestUnit: "minute" })
+        );
         return;
       }
 
       pendingDate.current = dateTime.toPlainDate();
       setPendingTime(currentTime);
+      onSelectableValueChange?.(dateTime.toString({ smallestUnit: "minute" }));
     }
 
     if (
@@ -194,6 +203,7 @@ export function ReservationDateTimePicker({
     dateTime,
     minimum,
     onChange,
+    onSelectableValueChange,
     pendingTime,
     preserveValueBeforeMinimum,
     timeMode,
@@ -221,8 +231,15 @@ export function ReservationDateTimePicker({
               : minimumTime && selectedTime < minimumTime
                 ? minimumTime
                 : selectedTime;
+          const nextValue = formatDateTimeValue({ date: plainDate, time });
 
-          onChange?.(formatDateTimeValue({ date: plainDate, time }));
+          onSelectableValueChange?.(
+            formatDateTimeValue({
+              date: plainDate,
+              time: timeMode === "midnight" ? pendingTime : time,
+            })
+          );
+          onChange?.(nextValue);
         }}
         placeholder={placeholder}
         value={selectedDate?.toString()}
@@ -263,7 +280,12 @@ export function ReservationDateTimePicker({
 
                 setPendingTime(time);
                 if (selectedDate) {
-                  onChange?.(formatDateTimeValue({ date: selectedDate, time }));
+                  const nextValue = formatDateTimeValue({
+                    date: selectedDate,
+                    time,
+                  });
+                  onSelectableValueChange?.(nextValue);
+                  onChange?.(nextValue);
                 }
               } catch {
                 restoreSelectedTime();

@@ -703,7 +703,10 @@ describe("prepareWorkspacePayState", () => {
         status: "NEW",
       })
     );
-    expect(scenario.result.status).toBe("pricing_changed");
+    expect(scenario.result).toMatchObject({
+      status: "pricing_changed",
+      affectedProductKeys: ["product:meeting-room:1440"],
+    });
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {

@@ -91,13 +91,20 @@ const meetingRoomQuote = {
 const advertisedPriceResponse = {
   kind: "meeting-room" as const,
   quote: meetingRoomQuote,
-  summary: getMeetingRoomCheckoutSummary(meetingRoomQuote),
+  summary: getMeetingRoomCheckoutSummary(initialReservation, meetingRoomQuote),
   advertisedPriceToken: "sealed-advertised-price",
 };
 
 const getDiscountedAdvertisedPriceResponse = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes
 ) => {
+  const interval = getMeetingRoomReservationInterval(
+    "2099-07-30T10:00",
+    durationMinutes
+  );
+  if (!interval) {
+    throw new Error("Expected a valid meeting-room interval");
+  }
   const originalPrice =
     getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
   const discountedPrice = money(originalPrice.value / 2);
@@ -134,7 +141,10 @@ const getDiscountedAdvertisedPriceResponse = (
   return {
     kind: "meeting-room" as const,
     quote,
-    summary: getMeetingRoomCheckoutSummary(quote),
+    summary: getMeetingRoomCheckoutSummary(
+      { kind: "meeting-room", ...interval },
+      quote
+    ),
     advertisedPriceToken: `sealed-advertised-price-${durationMinutes}`,
   };
 };
@@ -461,6 +471,28 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+        expect(getAdvertisedPrice).toHaveBeenCalledWith({
+          locale: "en-US",
+          reservation: {
+            kind: "meeting-room",
+            details: {
+              kind: "meeting-room",
+              startsAt: "2099-07-30T22:00:00Z",
+              endsAt: "2099-07-31T22:00:00Z",
+            },
+          },
+        });
+      });
+      expect(getAdvertisedPrice).not.toHaveBeenCalledWith({
+        locale: "en-US",
+        reservation: {
+          kind: "meeting-room",
+          details: {
+            kind: "meeting-room",
+            startsAt: "2099-07-30T22:00:00Z",
+            endsAt: "2099-07-30T23:00:00Z",
+          },
+        },
       });
 
       fireEvent.click(
@@ -573,7 +605,10 @@ describe("MeetingRoomReservationForm", () => {
         data: {
           ...advertisedPriceResponse,
           quote: discountedQuote,
-          summary: getMeetingRoomCheckoutSummary(discountedQuote),
+          summary: getMeetingRoomCheckoutSummary(
+            initialReservation,
+            discountedQuote
+          ),
         },
       })
     );

@@ -794,8 +794,8 @@ export const CheckoutServiceLive = Layer.effect(
             Match.discriminatorsExhaustive("kind")({
               cowork: ({ quote, reservation }) =>
                 getCoworkCheckoutSummary(reservation, quote),
-              "meeting-room": ({ quote }) =>
-                getMeetingRoomCheckoutSummary(quote),
+              "meeting-room": ({ quote, reservation }) =>
+                getMeetingRoomCheckoutSummary(reservation, quote),
             })
           );
           yield* Effect.annotateLogsScoped({ quote: prepared.quote });
@@ -935,8 +935,8 @@ export const CheckoutServiceLive = Layer.effect(
                   Match.discriminatorsExhaustive("kind")({
                     cowork: ({ quote, reservation }) =>
                       getCoworkCheckoutSummary(reservation, quote),
-                    "meeting-room": ({ quote }) =>
-                      getMeetingRoomCheckoutSummary(quote),
+                    "meeting-room": ({ quote, reservation }) =>
+                      getMeetingRoomCheckoutSummary(reservation, quote),
                   })
                 );
                 const changedKeys = getCheckoutSummaryChangedKeys(

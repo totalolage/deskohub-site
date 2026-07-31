@@ -2,7 +2,7 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Schema } from "effect";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -102,6 +102,9 @@ export function MeetingRoomReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
+  const [selectableStartDateTime, setSelectableStartDateTime] = useState(
+    defaultValues.startDateTime
+  );
   const [selectedStartDateTime, selectedDurationMinutes] = useWatch({
     control: form.control,
     name: ["startDateTime", "durationMinutes"],
@@ -147,9 +150,16 @@ export function MeetingRoomReservationForm({
           preservesRestoredStart && isWholeDaySelected
             ? undefined
             : getEarliestSelectableMeetingRoomStartDateTime(),
+        selectableStartDateTime,
         startDateTime: selectedStartDateTime,
       }),
-    [isWholeDaySelected, locale, preservesRestoredStart, selectedStartDateTime]
+    [
+      isWholeDaySelected,
+      locale,
+      preservesRestoredStart,
+      selectableStartDateTime,
+      selectedStartDateTime,
+    ]
   );
   const advertisedPriceQueryResults = useAdvertisedPrices(
     advertisedPriceRequests.map(({ request }) => request),
@@ -225,6 +235,7 @@ export function MeetingRoomReservationForm({
               name={field.name}
               onBlur={field.onBlur}
               onChange={field.onChange}
+              onSelectableValueChange={setSelectableStartDateTime}
               placeholder={m.reservationDatePlaceholder({}, { locale })}
               preserveValueBeforeMinimum={preservesRestoredStart}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}

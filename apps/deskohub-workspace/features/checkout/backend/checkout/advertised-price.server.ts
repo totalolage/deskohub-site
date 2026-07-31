@@ -25,7 +25,8 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ quote, reservation }) =>
           getCoworkCheckoutSummary(reservation.details, quote),
-        "meeting-room": ({ quote }) => getMeetingRoomCheckoutSummary(quote),
+        "meeting-room": ({ quote, reservation }) =>
+          getMeetingRoomCheckoutSummary(reservation.details, quote),
       })
     );
 
