@@ -12,7 +12,6 @@ import {
   getMeetingRoomReservationDurationMinutes,
   type MeetingRoomReservationDetails,
 } from "@/features/reservation/meeting-room-reservation";
-import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval";
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
@@ -54,10 +53,7 @@ export const getMeetingRoomReservationQuote = (
 > => {
   const durationMinutes = getMeetingRoomReservationDurationMinutes(reservation);
 
-  if (
-    !isWorkspaceMeetingRoomDuration(durationMinutes) ||
-    (durationMinutes === 1440 && !isSingleDayReservationInterval(reservation))
-  ) {
+  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
     return Effect.fail(
       new ReservationQuoteError({
         message: "Meeting room checkout pricing requires an approved duration.",

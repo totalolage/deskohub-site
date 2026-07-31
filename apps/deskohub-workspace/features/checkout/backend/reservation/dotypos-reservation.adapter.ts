@@ -19,6 +19,7 @@ import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork
 import {
   getReservationDate,
   getReservationIntervalNormalization,
+  isSingleDayReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -134,7 +135,11 @@ export const formatWorkspaceReservationNote = (
             timeZone: workspaceSiteConstants.location.timeZone,
           })}`,
           `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
-          `Duration: ${getDurationMinutes(meetingRoomReservation)} minutes`,
+          `Duration: ${
+            isSingleDayReservationInterval(meetingRoomReservation)
+              ? "whole day"
+              : `${getDurationMinutes(meetingRoomReservation)} minutes`
+          }`,
         ],
       }),
     })

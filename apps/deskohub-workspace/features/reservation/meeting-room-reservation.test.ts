@@ -210,6 +210,19 @@ describe("meetingRoomReservationSchema", () => {
     });
   });
 
+  test("discards a legacy rolling whole-day token when restoring the form", () => {
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-11T08:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
+  });
+
   test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {
     const result = schema.safeParse({
       startDateTime: "2099-06-10T15:00",

@@ -58,25 +58,24 @@ export const getMeetingRoomReservationInterval = (
   durationMinutes: number
 ): ReservationInterval | null => {
   if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
+  const isWholeDay = durationMinutes === 1440;
 
   return decodeLocalDateTime(startDateTime).pipe(
     Option.flatMap((selectedStartDateTime) => {
       const selectedPlainDateTime = Temporal.PlainDateTime.from(
         selectedStartDateTime
       );
-      const startDateTime =
-        durationMinutes === 1440
-          ? selectedPlainDateTime.toPlainDate().toPlainDateTime()
-          : selectedPlainDateTime;
+      const startDateTime = isWholeDay
+        ? selectedPlainDateTime.toPlainDate().toPlainDateTime()
+        : selectedPlainDateTime;
 
       return localDateTimeToMeetingRoomStartInstant(startDateTime).pipe(
         Option.flatMap((startInstant) => {
-          const endInstant =
-            durationMinutes === 1440
-              ? localDateTimeToMeetingRoomStartInstant(
-                  startDateTime.add({ days: 1 })
-                )
-              : Option.some(startInstant.add({ minutes: durationMinutes }));
+          const endInstant = isWholeDay
+            ? localDateTimeToMeetingRoomStartInstant(
+                startDateTime.add({ days: 1 })
+              )
+            : Option.some(startInstant.add({ minutes: durationMinutes }));
 
           return endInstant.pipe(
             Option.flatMap((end) =>

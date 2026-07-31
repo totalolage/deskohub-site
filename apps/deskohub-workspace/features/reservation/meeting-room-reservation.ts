@@ -348,13 +348,13 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
 
 export const getMeetingRoomReservationDefaultValues = (
   reservation: NormalizedMeetingRoomReservationOrder
-): MeetingRoomReservationInput => {
+): MeetingRoomReservationInput | undefined => {
   const durationMinutes = getMeetingRoomReservationDurationMinutes(reservation);
   if (
     !isWorkspaceMeetingRoomDuration(durationMinutes) ||
     (durationMinutes === 1440 && !isSingleDayReservationInterval(reservation))
   ) {
-    throw new Error("Meeting-room pay state has an unsupported duration.");
+    return undefined;
   }
 
   const startDateTime = Temporal.Instant.from(reservation.startsAt)

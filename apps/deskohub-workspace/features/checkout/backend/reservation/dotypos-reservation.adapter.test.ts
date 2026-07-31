@@ -6,7 +6,10 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { checkoutDetailsSchema } from "@/features/checkout/schemas/checkout-details";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
+import {
+  createWorkspaceDotyposReservation,
+  formatWorkspaceReservationNote,
+} from "./dotypos-reservation.adapter";
 import {
   type IWorkspaceTableAssignmentService,
   WorkspaceTableAssignmentService,
@@ -113,5 +116,20 @@ describe("createWorkspaceDotyposReservation", () => {
         ),
       })
     );
+  });
+
+  test("labels a DST calendar-day reservation as whole day in the note", () => {
+    const note = formatWorkspaceReservationNote({
+      paymentOrderId: "payment-order-id",
+      checkoutDetails,
+      reservation: {
+        kind: "meeting-room",
+        startsAt: decodeInstant("2026-03-28T23:00:00Z"),
+        endsAt: decodeInstant("2026-03-29T22:00:00Z"),
+      },
+    });
+
+    expect(note).toContain("Duration: whole day");
+    expect(note).not.toContain("Duration: 1380 minutes");
   });
 });

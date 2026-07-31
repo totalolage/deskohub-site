@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
@@ -15,7 +16,10 @@ import {
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
-import { normalizeMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
+import {
+  normalizedMeetingRoomReservationOrderSchema,
+  normalizeMeetingRoomReservationOrder,
+} from "@/features/reservation/meeting-room-reservation";
 import { meetingRoomCheckoutPricing } from "./meeting-room-checkout-pricing";
 
 const money = getWorkspaceMeetingRoomPriceForDuration(240);
@@ -207,6 +211,73 @@ describe("meeting-room checkout pricing", () => {
       displayedDiscountIds: [discountId],
     });
     expect(result.commitment).toBe(commitment);
+  });
+
+  test("keeps a legacy rolling whole-day token affirmable for price refresh", async () => {
+    const legacyReservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-11T08:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+    const legacyPrice = {
+      value: 100_000,
+      exponent: 2 as const,
+      currency: "CZK",
+    };
+    const legacyQuoteWithoutFingerprint = {
+      items: [
+        {
+          type: "meeting-room" as const,
+          durationMinutes: 1440 as const,
+          amount: legacyPrice,
+        },
+      ] as const,
+      payment: {
+        expectedPrice: legacyPrice,
+        undiscountedPrice: legacyPrice,
+        discounts: [],
+      },
+    };
+    const legacyQuote = {
+      ...legacyQuoteWithoutFingerprint,
+      fingerprint: getReservationQuoteFingerprint(
+        legacyReservation,
+        legacyQuoteWithoutFingerprint
+      ),
+    };
+    const wholeDayPrice = getWorkspaceMeetingRoomPriceForDuration(1440);
+    const affirmedQuote = discountQuoteCodec.make({
+      product: { kind: "meeting-room", durationMinutes: 1440 },
+      discountableSubtotal: wholeDayPrice,
+      discounts: [],
+      totalDiscount: { ...wholeDayPrice, value: 0 },
+      discountedSubtotal: wholeDayPrice,
+    });
+    const commitment = {
+      applications: [],
+    } as unknown as DiscountCommitment;
+    const affirmDisplayedDiscounts = mock(() =>
+      Effect.succeed({ quote: affirmedQuote, commitment })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* meetingRoomCheckoutPricing;
+        return yield* pricing.affirmForPayment({
+          reservation: legacyReservation,
+          locale: "en-US",
+          dotyposCustomerId,
+          quote: legacyQuote,
+        });
+      }),
+      DiscountServiceMock({ affirmDisplayedDiscounts })
+    );
+
+    expect(result.quote.payment.expectedPrice).toEqual(wholeDayPrice);
+    expect(result.quote.fingerprint).not.toBe(legacyQuote.fingerprint);
   });
 
   test("affirms the displayed price before appending a submitted code", async () => {

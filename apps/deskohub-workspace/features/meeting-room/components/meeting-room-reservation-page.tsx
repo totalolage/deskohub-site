@@ -24,12 +24,13 @@ export const meetingRoomReservationPage = createReservationPage({
     description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
   }),
   render: async ({ checkoutSessionId, initialReservation, locale }) => {
-    const initialValues = initialReservation
+    const restoredInitialValues = initialReservation
       ? getMeetingRoomReservationDefaultValues(initialReservation)
-      : {
-          ...meetingRoomReservationDefaultValues,
-          startDateTime: getEarliestSelectableMeetingRoomStartDateTime(),
-        };
+      : undefined;
+    const initialValues = restoredInitialValues ?? {
+      ...meetingRoomReservationDefaultValues,
+      startDateTime: getEarliestSelectableMeetingRoomStartDateTime(),
+    };
     const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
@@ -47,7 +48,9 @@ export const meetingRoomReservationPage = createReservationPage({
         <MeetingRoomReservationForm
           checkoutSessionId={checkoutSessionId}
           initialAdvertisedPrices={initialAdvertisedPrices}
-          initialReservation={initialReservation}
+          initialReservation={
+            restoredInitialValues ? initialReservation : undefined
+          }
           initialValues={initialValues}
           locale={locale}
         />

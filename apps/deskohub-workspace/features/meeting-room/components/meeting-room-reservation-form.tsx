@@ -79,13 +79,18 @@ export function MeetingRoomReservationForm({
   initialValues,
   locale,
 }: MeetingRoomReservationFormProps) {
+  const restoredInitialValues = useMemo(
+    () =>
+      initialReservation
+        ? getMeetingRoomReservationDefaultValues(initialReservation)
+        : undefined,
+    [initialReservation]
+  );
   const defaultValues = useMemo(
     () =>
       initialValues ??
-      (initialReservation
-        ? getMeetingRoomReservationDefaultValues(initialReservation)
-        : { ...meetingRoomReservationDefaultValues }),
-    [initialReservation, initialValues]
+      restoredInitialValues ?? { ...meetingRoomReservationDefaultValues },
+    [initialValues, restoredInitialValues]
   );
   const form = useForm<
     MeetingRoomReservationInput,
@@ -111,7 +116,7 @@ export function MeetingRoomReservationForm({
     [selectedDurationMinutes, selectedStartDateTime]
   );
   const preservesRestoredStart =
-    Boolean(initialReservation) &&
+    Boolean(restoredInitialValues) &&
     selectedStartDateTime === defaultValues.startDateTime &&
     selectedDurationMinutes === defaultValues.durationMinutes;
   const availabilityQuery = useMemo(
