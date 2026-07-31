@@ -73,10 +73,8 @@ export const getSignedPayStateCheckoutSummary = (
     Match.when({ reservation: { kind: "cowork" } }, ({ quote, reservation }) =>
       getCoworkCheckoutSummary(reservation, quote)
     ),
-    Match.when(
-      { reservation: { kind: "meeting-room" } },
-      ({ quote, reservation }) =>
-        getMeetingRoomCheckoutSummary(reservation, quote)
+    Match.when({ reservation: { kind: "meeting-room" } }, ({ quote }) =>
+      getMeetingRoomCheckoutSummary(quote)
     ),
     Match.exhaustive
   );

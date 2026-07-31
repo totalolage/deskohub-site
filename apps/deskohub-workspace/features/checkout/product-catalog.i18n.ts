@@ -1,9 +1,11 @@
-import type {
-  WorkspaceCoworkProductTier,
-  WorkspaceMeetingRoomDurationMinutes,
-  WorkspaceProductMonitorOption,
+import {
+  getWorkspaceMeetingRoomReservationDuration,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceMeetingRoomDurationMinutes,
+  type WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
+import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 
 type WorkspaceProductMessage = (
   inputs: Record<string, never>,
@@ -122,31 +124,26 @@ export const getWorkspaceProductMonitorTitle = (
 
 export const getWorkspaceMeetingRoomDurationLabel = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
-  locale: Locale,
-  options: { readonly displayAsWholeDay?: boolean } = {}
+  locale: Locale
 ) => {
-  if (durationMinutes === 1440 && options.displayAsWholeDay !== false) {
+  const duration = getWorkspaceMeetingRoomReservationDuration(durationMinutes);
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
     return m.reservationMeetingRoomDurationWholeDay({}, { locale });
   }
 
   return m.reservationMeetingRoomDurationHours(
-    { count: durationMinutes / 60 },
+    { count: duration.amount },
     { locale }
   );
 };
 
 export const getWorkspaceMeetingRoomDurationTitle = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
-  locale: Locale,
-  options: { readonly displayAsWholeDay?: boolean } = {}
+  locale: Locale
 ) =>
   m.checkoutSummaryItemMeetingRoom(
     {
-      duration: getWorkspaceMeetingRoomDurationLabel(
-        durationMinutes,
-        locale,
-        options
-      ),
+      duration: getWorkspaceMeetingRoomDurationLabel(durationMinutes, locale),
     },
     { locale }
   );

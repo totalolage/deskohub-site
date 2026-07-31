@@ -44,6 +44,8 @@ test("preloads the preserved quote for a restored hourly slot that has started",
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
   const restoredReservation = normalizedMeetingRoomReservationOrderSchema.make({
     kind: "meeting-room",
+    duration: { unit: "hour", amount: 4 },
+    reservationDate: "2099-07-30",
     startsAt: "2099-07-30T13:00:00Z",
     endsAt: "2099-07-30T17:00:00Z",
     name: "Ada Lovelace",
@@ -64,8 +66,8 @@ test("preloads the preserved quote for a restored hourly slot that has started",
         kind: "meeting-room",
         details: {
           kind: "meeting-room",
-          startsAt: "2099-07-30T13:00:00Z",
-          endsAt: "2099-07-30T17:00:00Z",
+          duration: { unit: "hour", amount: 4 },
+          reservationDate: "2099-07-30",
         },
       },
     });
@@ -75,8 +77,8 @@ test("preloads the preserved quote for a restored hourly slot that has started",
         kind: "meeting-room",
         details: {
           kind: "meeting-room",
-          startsAt: "2099-07-30T14:00:00Z",
-          endsAt: "2099-07-30T15:00:00Z",
+          duration: { unit: "hour", amount: 1 },
+          reservationDate: "2099-07-30",
         },
       },
     });
@@ -90,6 +92,8 @@ test("restores a whole-day reservation after its start and before its end", asyn
   Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T13:01:00Z");
   const restoredReservation = normalizedMeetingRoomReservationOrderSchema.make({
     kind: "meeting-room",
+    duration: { unit: "day", amount: 1 },
+    reservationDate: "2099-07-30",
     startsAt: "2099-07-29T22:00:00Z",
     endsAt: "2099-07-30T22:00:00Z",
     name: "Ada Lovelace",
@@ -109,7 +113,7 @@ test("restores a whole-day reservation after its start and before its end", asyn
     expect(form.props.initialReservation).toBe(restoredReservation);
     expect(form.props.initialValues).toMatchObject({
       startDateTime: "2099-07-30T00:00",
-      durationMinutes: 1440,
+      duration: "day:1",
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420777777777",
@@ -120,8 +124,8 @@ test("restores a whole-day reservation after its start and before its end", asyn
         kind: "meeting-room",
         details: {
           kind: "meeting-room",
-          startsAt: "2099-07-29T22:00:00Z",
-          endsAt: "2099-07-30T22:00:00Z",
+          duration: { unit: "day", amount: 1 },
+          reservationDate: "2099-07-30",
         },
       },
     });

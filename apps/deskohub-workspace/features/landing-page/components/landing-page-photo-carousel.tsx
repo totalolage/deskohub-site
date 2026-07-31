@@ -122,11 +122,8 @@ export function LandingPagePhotoCarousel({
     autoPlayInterval,
     count: images.length,
   });
-  const activeSlideTransition = shouldReduceMotion
-    ? instantTransition
-    : isSwiping
-      ? instantTransition
-      : slideTransition;
+  const activeSlideTransition =
+    shouldReduceMotion || isSwiping ? instantTransition : slideTransition;
   const activeDotTransition = shouldReduceMotion
     ? instantTransition
     : dotTransition;
@@ -150,8 +147,9 @@ export function LandingPagePhotoCarousel({
       })),
     [images]
   );
-  const visibleOffsets: readonly SlideOffset[] =
-    images.length === 0 ? [] : images.length === 1 ? [0] : slideOffsets;
+  let visibleOffsets: readonly SlideOffset[] = slideOffsets;
+  if (images.length === 0) visibleOffsets = [];
+  else if (images.length === 1) visibleOffsets = [0];
   const visibleSlides = visibleOffsets.map((offset) => {
     const virtualIndex = currentVirtualIndex + offset;
     return {
@@ -210,6 +208,9 @@ export function LandingPagePhotoCarousel({
           const logicalIndex = wrapIndex(virtualIndex, images.length);
           const isVisibleSide = Math.abs(baseOffset) === 1;
           const isVisible = isCurrent || isVisibleSide;
+          let cursorClassName = "pointer-events-none";
+          if (isCurrent) cursorClassName = "cursor-zoom-in";
+          else if (isVisibleSide) cursorClassName = "cursor-pointer";
 
           return (
             <motion.button
@@ -223,11 +224,7 @@ export function LandingPagePhotoCarousel({
               }
               className={cn(
                 "absolute left-1/2 top-1/2 aspect-16/10 w-[min(78cqw,160cqh)] select-none overflow-hidden rounded-[1.8rem] border border-white/35 bg-white/18 p-2 text-left shadow-[0_30px_90px_-48px_rgba(0,2,79,0.95)] backdrop-blur-sm focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-white sm:rounded-[2.5rem] sm:p-3",
-                isCurrent
-                  ? "cursor-zoom-in"
-                  : isVisibleSide
-                    ? "cursor-pointer"
-                    : "pointer-events-none"
+                cursorClassName
               )}
               disabled={!isVisible}
               draggable={false}

@@ -98,18 +98,20 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
 
     // Process each product in the payload
-    const operations = validatedPayload.map((product) => ({
-      productId: product.productid,
-      operation:
-        product.deleted === 1
-          ? "deleted"
-          : Math.abs(product.created - product.versiondate) < 1000
-            ? "created"
-            : "updated",
-      name: product.name,
-      categoryId: product.categoryid,
-      deleted: product.deleted === 1,
-    }));
+    const operations = validatedPayload.map((product) => {
+      let operation: "created" | "deleted" | "updated" = "updated";
+      if (product.deleted === 1) operation = "deleted";
+      else if (Math.abs(product.created - product.versiondate) < 1000)
+        operation = "created";
+
+      return {
+        productId: product.productid,
+        operation,
+        name: product.name,
+        categoryId: product.categoryid,
+        deleted: product.deleted === 1,
+      };
+    });
 
     // Collect unique category IDs from affected products
     const categoryIds = new Set(

@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
+import { getWorkspaceMeetingRoomReservationDuration } from "@/features/checkout/product-catalog";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getAssertPrefilledReservationScript,
@@ -16,6 +17,14 @@ import {
 } from "./checkout/data";
 
 const workspaceTemporal = globalThis.Temporal;
+const getTestMeetingRoomInterval = (
+  startDateTime: string,
+  durationMinutes: 60 | 240 | 1440
+) =>
+  getMeetingRoomReservationInterval(
+    startDateTime,
+    getWorkspaceMeetingRoomReservationDuration(durationMinutes)
+  );
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(
@@ -196,7 +205,7 @@ test("accepts an already-prepared prefilled Profi price", async () => {
 });
 
 test("drives meeting-room date, time, duration, and consent controls", () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 240);
+  const interval = getTestMeetingRoomInterval("2099-09-01T10:00", 240);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -229,7 +238,7 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
 });
 
 test("waits through delayed meeting-room availability readiness", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-02T10:00", 60);
+  const interval = getTestMeetingRoomInterval("2099-09-02T10:00", 60);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -249,7 +258,7 @@ test("waits through delayed meeting-room availability readiness", async () => {
       <button aria-label="Meeting room start date"></button>
       <div data-day="2099-09-02"><button type="button"></button></div>
       <input aria-label="Meeting room start time" value="10:00" />
-      <input id="meeting-room-duration-60" type="radio" checked />
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
       <input name="email" />
       <input name="phone" />
       <input name="name" />
@@ -308,7 +317,7 @@ test("waits through delayed meeting-room availability readiness", async () => {
 });
 
 test("waits for the meeting-room calendar to render the next month", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-10-01T10:00", 60);
+  const interval = getTestMeetingRoomInterval("2099-10-01T10:00", 60);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -330,7 +339,7 @@ test("waits for the meeting-room calendar to render the next month", async () =>
       <button aria-label="Go to the Next Month"></button>
       <div data-day="2099-09-30"><button type="button"></button></div>
       <input aria-label="Meeting room start time" />
-      <input id="meeting-room-duration-60" type="radio" checked />
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
       <input name="email" />
       <input name="phone" />
       <input name="name" />
@@ -387,7 +396,7 @@ test("waits for the meeting-room calendar to render the next month", async () =>
 });
 
 test("waits for the date-only meeting-room state before editing time", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-10-02T10:00", 240);
+  const interval = getTestMeetingRoomInterval("2099-10-02T10:00", 240);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -407,7 +416,7 @@ test("waits for the date-only meeting-room state before editing time", async () 
       <button aria-label="Meeting room start date"></button>
       <div data-day="2099-10-02"><button type="button"></button></div>
       <input aria-label="Meeting room start time" value="10:00" />
-      <input id="meeting-room-duration-240" type="radio" checked />
+      <input id="meeting-room-duration-hour:4" type="radio" value="hour:4" checked />
       <input name="email" />
       <input name="phone" />
       <input name="name" />
@@ -479,7 +488,7 @@ test("waits for the date-only meeting-room state before editing time", async () 
 });
 
 test("follows the current meeting-room duration control after rerender", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-10-03T10:00", 240);
+  const interval = getTestMeetingRoomInterval("2099-10-03T10:00", 240);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -500,7 +509,7 @@ test("follows the current meeting-room duration control after rerender", async (
       <div data-day="2099-10-03"><button type="button"></button></div>
       <input aria-label="Meeting room start time" value="10:00" />
       <label id="duration-label">
-        <input id="meeting-room-duration-240" type="radio" />
+        <input id="meeting-room-duration-hour:4" type="radio" value="hour:4" />
       </label>
       <input name="email" />
       <input name="phone" />
@@ -514,11 +523,12 @@ test("follows the current meeting-room duration control after rerender", async (
       .addEventListener("click", (event) => {
         event.preventDefault();
         const replacement = document.createElement("input");
-        replacement.id = "meeting-room-duration-240";
+        replacement.id = "meeting-room-duration-hour:4";
         replacement.type = "radio";
+        replacement.value = "hour:4";
         replacement.checked = true;
         document
-          .querySelector("#meeting-room-duration-240")!
+          .querySelector('[id="meeting-room-duration-hour:4"]')!
           .replaceWith(replacement);
       });
 
@@ -565,7 +575,7 @@ test("follows the current meeting-room duration control after rerender", async (
 });
 
 test("asserts restored whole-day meeting-room state and reset legal consent", async () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-01T00:00", 1440);
+  const interval = getTestMeetingRoomInterval("2099-09-01T00:00", 1440);
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
@@ -585,7 +595,7 @@ test("asserts restored whole-day meeting-room state and reset legal consent", as
   try {
     document.body.innerHTML = `
       <input name="startDateTime" value="2099-09-01" />
-      <input id="meeting-room-duration-1440" type="radio" value="1440" checked />
+      <input id="meeting-room-duration-day:1" type="radio" value="day:1" checked />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />

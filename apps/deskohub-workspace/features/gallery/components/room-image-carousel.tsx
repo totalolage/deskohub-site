@@ -140,11 +140,8 @@ export function RoomImageCarousel({
     count: carouselImages.length,
     getSwipeDistance: (stageWidth) => stageWidth,
   });
-  const activeTransition = shouldReduceMotion
-    ? instantTransition
-    : isSwiping
-      ? instantTransition
-      : slideTransition;
+  const activeTransition =
+    shouldReduceMotion || isSwiping ? instantTransition : slideTransition;
   const lightboxAnimation = shouldReduceMotion
     ? { fade: 0, navigation: 0, swipe: 0 }
     : undefined;

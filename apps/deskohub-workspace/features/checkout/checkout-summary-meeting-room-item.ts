@@ -10,39 +10,17 @@ import { workspaceMeetingRoomProductIdentitySchema } from "@/features/reservatio
 const meetingRoomCheckoutSummaryProductItemBaseSchema = Schema.Struct({
   ...checkoutSummaryProductItemBaseSchema.fields,
   product: workspaceMeetingRoomProductIdentitySchema,
-  meetingRoomDurationPresentation: Schema.optionalKey(
-    Schema.Literals(["hours", "whole-day"])
-  ),
 });
-
-const meetingRoomDurationPresentationFilter = Schema.makeFilter(
-  ({
-    meetingRoomDurationPresentation,
-    product,
-  }: typeof meetingRoomCheckoutSummaryProductItemBaseSchema.Type) =>
-    meetingRoomDurationPresentation !== "whole-day" ||
-    product.durationMinutes === 1440 || {
-      path: ["meetingRoomDurationPresentation"],
-      issue:
-        "meeting-room duration presentation must match its product identity",
-    }
-);
 
 export const meetingRoomCheckoutSummaryProductItemSchema = Schema.Struct({
   ...meetingRoomCheckoutSummaryProductItemBaseSchema.fields,
   originalAmount: Schema.optionalKey(Schema.Never),
   discounts: Schema.optionalKey(Schema.Never),
-}).check(
-  checkoutSummaryProductKeyFilter,
-  meetingRoomDurationPresentationFilter
-);
+}).check(checkoutSummaryProductKeyFilter);
 
 export const meetingRoomCheckoutSummaryDiscountedProductItemSchema =
   Schema.Struct({
     ...meetingRoomCheckoutSummaryProductItemBaseSchema.fields,
     originalAmount: positiveWorkspaceMoneyCodec,
     discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
-  }).check(
-    checkoutSummaryProductKeyFilter,
-    meetingRoomDurationPresentationFilter
-  );
+  }).check(checkoutSummaryProductKeyFilter);

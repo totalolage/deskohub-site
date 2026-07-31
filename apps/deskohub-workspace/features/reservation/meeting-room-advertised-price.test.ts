@@ -3,33 +3,50 @@ import "@/shared/polyfills/temporal";
 import { getMeetingRoomDurationAdvertisedPriceRequests } from "./meeting-room-advertised-price";
 
 describe("meeting-room advertised prices", () => {
-  test("quotes whole-day pricing for the earliest selectable calendar day", () => {
-    const input = {
-      locale: "en-US",
-      startDateTime: "2099-07-30T10:00",
-      minimumStartDateTime: "2099-07-30T15:00",
-    } as const;
-    const requests = getMeetingRoomDurationAdvertisedPriceRequests(input);
-    const wholeDayRequest = requests.find(({ duration }) => duration === 1440);
-
-    expect(wholeDayRequest?.request.reservation.details).toMatchObject({
-      startsAt: "2099-07-30T22:00:00Z",
-      endsAt: "2099-07-31T22:00:00Z",
-    });
-  });
-
-  test("quotes hourly cards for the selectable value retained by whole-day mode", () => {
+  test("quotes every product for the selected calendar date", () => {
     const requests = getMeetingRoomDurationAdvertisedPriceRequests({
       locale: "en-US",
-      startDateTime: "2099-07-31T00:00",
-      minimumStartDateTime: "2099-07-30T15:00",
-      selectableStartDateTime: "2099-07-30T16:00",
+      startDateTime: "2099-07-30T10:00",
     });
-    const hourlyRequest = requests.find(({ duration }) => duration === 60);
 
-    expect(hourlyRequest?.request.reservation.details).toMatchObject({
-      startsAt: "2099-07-30T14:00:00Z",
-      endsAt: "2099-07-30T15:00:00Z",
+    expect(requests.map(({ request }) => request.reservation.details)).toEqual([
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+        reservationDate: "2099-07-30",
+      },
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+        reservationDate: "2099-07-30",
+      },
+      {
+        kind: "meeting-room",
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2099-07-30",
+      },
+    ]);
+  });
+
+  test("does not bind advertised price to an hourly clock value", () => {
+    const morning = getMeetingRoomDurationAdvertisedPriceRequests({
+      locale: "en-US",
+      startDateTime: "2099-07-30T10:00",
     });
+    const afternoon = getMeetingRoomDurationAdvertisedPriceRequests({
+      locale: "en-US",
+      startDateTime: "2099-07-30T16:00",
+    });
+
+    expect(afternoon).toEqual(morning);
+  });
+
+  test("returns no request for incomplete or invalid form state", () => {
+    expect(
+      getMeetingRoomDurationAdvertisedPriceRequests({
+        locale: "en-US",
+        startDateTime: "",
+      })
+    ).toEqual([]);
   });
 });

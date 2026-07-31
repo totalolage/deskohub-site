@@ -810,9 +810,10 @@ const findHostedPaymentFrames = (
     frames.set(ref, { exact, ref });
   }
 
-  return [...frames.values()].sort((left, right) =>
-    left.exact === right.exact ? 0 : left.exact ? -1 : 1
-  );
+  return [...frames.values()].sort((left, right) => {
+    if (left.exact === right.exact) return 0;
+    return left.exact ? -1 : 1;
+  });
 };
 
 type HostedPaymentClickTarget = {

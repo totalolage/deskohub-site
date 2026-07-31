@@ -122,7 +122,11 @@ test("reuses customer identity for a later reservation", () => {
 });
 
 test("builds minimal meeting-room persistence data with transient timing", () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 240);
+  const duration = { unit: "hour", amount: 4 } as const;
+  const interval = getMeetingRoomReservationInterval(
+    "2099-09-01T10:00",
+    duration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData("https://workspace.example.com", {
     date: "2099-09-01",
@@ -134,7 +138,10 @@ test("builds minimal meeting-room persistence data with transient timing", () =>
   expect(new URL(data.checkoutUrl).pathname).toBe(
     "/en-US/reservation/meeting-room"
   );
-  expect(data.expectedReservationDetails).toEqual({ kind: "meeting-room" });
+  expect(data.expectedReservationDetails).toEqual({
+    kind: "meeting-room",
+    duration,
+  });
   expect(data.meetingRoom).toEqual({
     durationMinutes: 240,
     endsAt: interval!.endsAt,
@@ -148,11 +155,11 @@ test("builds minimal meeting-room persistence data with transient timing", () =>
 test("reuses a meeting-room customer while changing the interval", () => {
   const firstInterval = getMeetingRoomReservationInterval(
     "2099-09-01T10:00",
-    60
+    { unit: "hour", amount: 1 }
   );
   const secondInterval = getMeetingRoomReservationInterval(
     "2099-09-02T10:00",
-    240
+    { unit: "hour", amount: 4 }
   );
   expect(firstInterval).toBeDefined();
   expect(secondInterval).toBeDefined();

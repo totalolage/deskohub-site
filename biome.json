@@ -39,7 +39,8 @@
         "noForEach": "off"
       },
       "style": {
-        "noNonNullAssertion": "off"
+        "noNonNullAssertion": "off",
+        "noNestedTernary": "error"
       },
       "suspicious": {
         "noExplicitAny": "error",

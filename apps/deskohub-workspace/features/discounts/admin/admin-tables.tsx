@@ -330,17 +330,11 @@ function AdminDataTable<T>({
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const sorted = header.column.getIsSorted();
+                let ariaSort: "ascending" | "descending" | "none" = "none";
+                if (sorted === "asc") ariaSort = "ascending";
+                else if (sorted === "desc") ariaSort = "descending";
                 return (
-                  <TableHead
-                    aria-sort={
-                      sorted === "asc"
-                        ? "ascending"
-                        : sorted === "desc"
-                          ? "descending"
-                          : "none"
-                    }
-                    key={header.id}
-                  >
+                  <TableHead aria-sort={ariaSort} key={header.id}>
                     <button
                       className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
                       onClick={header.column.getToggleSortingHandler()}

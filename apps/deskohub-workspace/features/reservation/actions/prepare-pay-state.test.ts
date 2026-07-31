@@ -10,7 +10,10 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
-import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceMeetingRoomDurationMinutes,
+  getWorkspaceMeetingRoomPriceForDuration,
+} from "@/features/checkout/product-catalog";
 import {
   buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
   type CoworkReservationQuote,
@@ -26,10 +29,7 @@ import {
 import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import {
-  getMeetingRoomReservationDurationMinutes,
-  meetingRoomAdvertisedPriceReservationSchema,
-} from "@/features/reservation/meeting-room-reservation";
+import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("server-only", () => ({}));
@@ -91,8 +91,10 @@ const buildAdvertisedPriceToken = async (
 };
 
 const buildMeetingRoomAdvertisedPriceToken = async (input: {
-  readonly startsAt: string;
-  readonly endsAt: string;
+  readonly duration:
+    | { readonly unit: "hour"; readonly amount: 1 | 4 }
+    | { readonly unit: "day"; readonly amount: 1 };
+  readonly reservationDate: string;
 }) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
@@ -103,8 +105,8 @@ const buildMeetingRoomAdvertisedPriceToken = async (input: {
     kind: "meeting-room",
     details: {
       kind: "meeting-room",
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
+      duration: input.duration,
+      reservationDate: input.reservationDate,
     },
   });
   const quoteWithoutFingerprint = Effect.runSync(
@@ -408,6 +410,8 @@ const runReusableReservationScenario = async (input: {
 const runMeetingRoomNewHoldScenario = async (
   meetingRoomReservation = {
     kind: "meeting-room" as const,
+    duration: { unit: "hour" as const, amount: 4 as const },
+    reservationDate: "2099-06-10",
     startsAt: "2099-06-10T08:00:00Z",
     endsAt: "2099-06-10T12:00:00Z",
     name: "Ada Lovelace",
@@ -460,8 +464,8 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const attachHold = mock(() => Effect.void);
   const enqueueCleanup = mock(() => Effect.void);
-  const durationMinutes = getMeetingRoomReservationDurationMinutes(
-    meetingRoomReservation
+  const durationMinutes = getWorkspaceMeetingRoomDurationMinutes(
+    meetingRoomReservation.duration
   );
   const price = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
@@ -574,6 +578,8 @@ describe("prepareWorkspacePayState", () => {
       advertisedPriceToken: "meeting-room-advertised-price-token",
       reservation: {
         kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+        reservationDate: "2099-06-10",
         startsAt: "2099-06-10T08:00:00Z",
         endsAt: "2099-06-10T12:00:00Z",
         name: "Ada Lovelace",
@@ -603,18 +609,23 @@ describe("prepareWorkspacePayState", () => {
       expect.objectContaining({
         checkoutSessionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
         checkoutAttemptKey: expect.stringMatching(/^[a-f0-9]{64}$/),
-        reservationDetails: { kind: "meeting-room" },
+        reservationDetails: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
       })
     );
     const persistedDraft = scenario.createDraft.mock.calls[0]?.[0];
     expect(JSON.stringify(persistedDraft?.reservationDetails)).toBe(
-      '{"kind":"meeting-room"}'
+      '{"kind":"meeting-room","duration":{"unit":"hour","amount":4}}'
     );
-    expect(scenario.assignTableId).toHaveBeenCalledWith({
-      kind: "meeting-room",
-      startsAt,
-      endsAt,
-    });
+    expect(scenario.assignTableId).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "meeting-room",
+        startsAt,
+        endsAt,
+      })
+    );
     expect(scenario.createReservation).toHaveBeenCalledWith(
       expect.objectContaining({
         startDate: new Date(startsAt),
@@ -674,63 +685,23 @@ describe("prepareWorkspacePayState", () => {
     });
   });
 
-  test("normalizes a sealed rolling whole-day token before creating its hold", async () => {
-    const scenario = await runMeetingRoomNewHoldScenario({
-      kind: "meeting-room",
-      startsAt: "2099-06-10T08:00:00Z",
-      endsAt: "2099-06-11T08:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 777 777",
-    });
-    const calendarDayInterval = {
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
-    };
-
-    expect(scenario.ensureAvailable).toHaveBeenCalledWith({
-      kind: "meeting-room",
-      ...calendarDayInterval,
-    });
-    expect(scenario.assignTableId).toHaveBeenCalledWith({
-      kind: "meeting-room",
-      ...calendarDayInterval,
-    });
-    expect(scenario.createReservation).toHaveBeenCalledWith(
-      expect.objectContaining({
-        startDate: new Date(calendarDayInterval.startsAt),
-        endDate: new Date(calendarDayInterval.endsAt),
-        tableId: "meeting-room-table-id",
-        status: "NEW",
-      })
-    );
-    expect(scenario.result).toMatchObject({
-      status: "pricing_changed",
-      affectedProductKeys: ["product:meeting-room:1440"],
-    });
-  });
-
-  test.each([
-    "legacy rolling",
-    "calendar",
-  ] as const)("allows an already-started %s whole-day submission before its end", async (intervalKind) => {
+  test("allows an already-started calendar-day submission before its end", async () => {
     const localToday = Temporal.Now.zonedDateTimeISO(
       workspaceSiteConstants.location.timeZone
     ).toPlainDate();
     const startsAt = localToday
-      .toPlainDateTime({ hour: intervalKind === "legacy rolling" ? 12 : 0 })
+      .toPlainDateTime()
       .toZonedDateTime(workspaceSiteConstants.location.timeZone)
       .toInstant();
-    const endsAt =
-      intervalKind === "legacy rolling"
-        ? startsAt.add({ hours: 24 })
-        : localToday
-            .add({ days: 1 })
-            .toPlainDateTime()
-            .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-            .toInstant();
+    const endsAt = localToday
+      .add({ days: 1 })
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant();
     const wholeDayReservation = {
       kind: "meeting-room" as const,
+      duration: { unit: "day" as const, amount: 1 as const },
+      reservationDate: localToday.toString(),
       startsAt: startsAt.toString(),
       endsAt: endsAt.toString(),
       name: "Ada Lovelace",
@@ -739,9 +710,7 @@ describe("prepareWorkspacePayState", () => {
     };
     const scenario = await runMeetingRoomNewHoldScenario(wholeDayReservation);
 
-    expect(scenario.result.status).toBe(
-      intervalKind === "legacy rolling" ? "pricing_changed" : "ready"
-    );
+    expect(scenario.result.status).toBe("ready");
     expect(scenario.affirmAdvertisement).toHaveBeenCalled();
     expect(scenario.createReservation).toHaveBeenCalled();
   });

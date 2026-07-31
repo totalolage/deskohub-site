@@ -121,6 +121,17 @@ const statusButtonVariants = cva("", {
 
 export type ReservationStatus = "submitted" | "confirmed" | "rejected";
 
+const getNextSteps = (
+  type: "table" | "training-room",
+  status: ReservationStatus
+) => {
+  if (type === "training-room" && status === "submitted") {
+    return m["trainingReservation.nextSteps"]();
+  }
+  if (status === "confirmed") return m["thankYou.nextStepsConfirmed"]();
+  return m["thankYou.nextStepsPending"]();
+};
+
 // Status Icon Component
 interface StatusIconProps {
   status: ReservationStatus;
@@ -439,11 +450,7 @@ export function ReservationConfirmation({
           <CardContent>
             <div className={cn("space-y-3", statusTextVariants({ status }))}>
               <p className={statusTextVariants({ status })}>
-                {type === "training-room" && status === "submitted"
-                  ? m["trainingReservation.nextSteps"]()
-                  : status === "confirmed"
-                    ? m["thankYou.nextStepsConfirmed"]()
-                    : m["thankYou.nextStepsPending"]()}
+                {getNextSteps(type, status)}
               </p>
             </div>
           </CardContent>

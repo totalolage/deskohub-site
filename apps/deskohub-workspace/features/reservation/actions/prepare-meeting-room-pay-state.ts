@@ -19,7 +19,6 @@ import {
   getMeetingRoomAdvertisedPriceReservation,
   meetingRoomAdvertisedPriceReservationEquals,
   type NormalizedMeetingRoomReservationOrder,
-  normalizeMeetingRoomWholeDayInterval,
 } from "@/features/reservation/meeting-room-reservation";
 import type { PrepareMeetingRoomPayStateInput } from "./prepare-meeting-room-pay-state.schema";
 
@@ -68,7 +67,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     });
   }
 
-  const reservation = normalizeMeetingRoomWholeDayInterval(input.reservation);
+  const reservation = input.reservation;
   const pricing = yield* CheckoutPricingService;
   const affirmed = yield* pricing.affirmAdvertisement({
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
@@ -88,8 +87,8 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(
-        getMeetingRoomCheckoutSummary(state.reservation.details, state.quote),
-        getMeetingRoomCheckoutSummary(reservation, affirmed.quote)
+        getMeetingRoomCheckoutSummary(state.quote),
+        getMeetingRoomCheckoutSummary(affirmed.quote)
       ),
     }),
   };

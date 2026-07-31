@@ -6,6 +6,8 @@ import type {
   WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomReservationDuration } from "@/features/checkout/product-catalog";
+import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationDate,
@@ -142,12 +144,15 @@ const makeMeetingRoomCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
+  const duration = getWorkspaceMeetingRoomReservationDuration(
+    slot.durationMinutes
+  );
 
   return {
     checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
     date: slot.date,
     email: contact.email,
-    expectedReservationDetails: { kind: "meeting-room" },
+    expectedReservationDetails: { kind: "meeting-room", duration },
     locale,
     meetingRoom: {
       durationMinutes: slot.durationMinutes,
@@ -341,20 +346,22 @@ export const selectAvailableMeetingRoomSlots = (
 
     for (const durationMinutes of durations) {
       let selected: MeetingRoomCheckoutSlot | undefined;
+      const duration =
+        getWorkspaceMeetingRoomReservationDuration(durationMinutes);
 
       for (let offset = 14; offset <= 90; offset += 1) {
         const date = futureIsoDate(offset);
         if (!isWeekday(date) || reservedDates.has(date)) continue;
 
         const startDateTime = `${date}T${
-          durationMinutes === 1440 ? "00:00" : "10:00"
+          isMeetingRoomWholeDayReservationDuration(duration) ? "00:00" : "10:00"
         }`;
         const interval = yield* tryWorkspaceE2ESync(
           "create meeting-room checkout interval",
           () => {
             const value = getMeetingRoomReservationInterval(
               startDateTime,
-              durationMinutes
+              duration
             );
             assert(value, "meeting-room test interval could not be created");
             return value;

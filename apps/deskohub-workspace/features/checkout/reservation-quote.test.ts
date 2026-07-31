@@ -41,11 +41,17 @@ const coworkReservation = (
   });
 
 const meetingRoomReservation = (
+  duration:
+    | { readonly unit: "hour"; readonly amount: 1 | 4 }
+    | { readonly unit: "day"; readonly amount: 1 },
   startsAt: string,
-  endsAt: string
+  endsAt: string,
+  reservationDate = "2099-06-10"
 ): ReservationOrderData =>
   decodeReservation({
     kind: "meeting-room",
+    duration,
+    reservationDate,
     ...defaultCustomer,
     startsAt,
     endsAt,
@@ -244,7 +250,7 @@ describe("reservation quotes", () => {
     expect(secondQuote.fingerprint).toBe(firstQuote.fingerprint);
   });
 
-  test("excludes cowork dates but fingerprints meeting-room intervals", () => {
+  test("fingerprints meeting-room price inputs rather than hourly clocks", () => {
     const firstCoworkDate = buildQuote(
       coworkReservation({
         entryTier: "basic",
@@ -260,25 +266,45 @@ describe("reservation quotes", () => {
       })
     );
     const morning = buildQuote(
-      meetingRoomReservation("2099-06-10T07:00:00Z", "2099-06-10T11:00:00Z")
+      meetingRoomReservation(
+        { unit: "hour", amount: 4 },
+        "2099-06-10T07:00:00Z",
+        "2099-06-10T11:00:00Z"
+      )
     );
     const afternoon = buildQuote(
-      meetingRoomReservation("2099-06-10T11:00:00Z", "2099-06-10T15:00:00Z")
+      meetingRoomReservation(
+        { unit: "hour", amount: 4 },
+        "2099-06-10T11:00:00Z",
+        "2099-06-10T15:00:00Z"
+      )
     );
 
     expect(secondCoworkDate.fingerprint).toBe(firstCoworkDate.fingerprint);
-    expect(afternoon.fingerprint).not.toBe(morning.fingerprint);
+    expect(afternoon.fingerprint).toBe(morning.fingerprint);
   });
 
   test("prices meeting room reservations by approved duration", () => {
     const oneHour = buildQuote(
-      meetingRoomReservation("2099-06-10T07:00:00Z", "2099-06-10T08:00:00Z")
+      meetingRoomReservation(
+        { unit: "hour", amount: 1 },
+        "2099-06-10T07:00:00Z",
+        "2099-06-10T08:00:00Z"
+      )
     );
     const fourHours = buildQuote(
-      meetingRoomReservation("2099-06-10T07:00:00Z", "2099-06-10T11:00:00Z")
+      meetingRoomReservation(
+        { unit: "hour", amount: 4 },
+        "2099-06-10T07:00:00Z",
+        "2099-06-10T11:00:00Z"
+      )
     );
     const fullDay = buildQuote(
-      meetingRoomReservation("2099-06-09T22:00:00Z", "2099-06-10T22:00:00Z")
+      meetingRoomReservation(
+        { unit: "day", amount: 1 },
+        "2099-06-09T22:00:00Z",
+        "2099-06-10T22:00:00Z"
+      )
     );
 
     expect(oneHour.items).toEqual([
@@ -294,6 +320,7 @@ describe("reservation quotes", () => {
 
   test("applies discounts to meeting-room reservations", () => {
     const reservation = meetingRoomReservation(
+      { unit: "hour", amount: 4 },
       "2099-06-10T07:00:00Z",
       "2099-06-10T11:00:00Z"
     );
@@ -318,7 +345,12 @@ describe("reservation quotes", () => {
 
   test("prices a DST calendar day as the whole-day product", () => {
     const quote = buildQuote(
-      meetingRoomReservation("2027-03-27T23:00:00Z", "2027-03-28T22:00:00Z")
+      meetingRoomReservation(
+        { unit: "day", amount: 1 },
+        "2027-03-27T23:00:00Z",
+        "2027-03-28T22:00:00Z",
+        "2027-03-28"
+      )
     );
 
     expect(quote.items).toEqual([

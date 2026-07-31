@@ -80,6 +80,8 @@ const meetingRoomReservationData = Schema.decodeUnknownSync(
   reservationOrderSchema
 )({
   kind: "meeting-room",
+  duration: { unit: "hour", amount: 4 },
+  reservationDate: "2099-06-20",
   startsAt: "2099-06-20T08:00:00Z",
   endsAt: "2099-06-20T12:00:00Z",
   name: "Ada Lovelace",
@@ -262,6 +264,8 @@ const buildStartedWholeDayReservation = () => {
   ).toPlainDate();
   const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
     kind: "meeting-room",
+    duration: { unit: "day", amount: 1 },
+    reservationDate: today.toString(),
     startsAt: today
       .toPlainDateTime()
       .toZonedDateTime(workspaceSiteConstants.location.timeZone)
@@ -297,6 +301,8 @@ const buildEndedMeetingRoomReservation = () => {
 
   return normalizedMeetingRoomReservationOrderSchema.make({
     kind: "meeting-room",
+    duration: { unit: "hour", amount: 1 },
+    reservationDate: yesterday.toString(),
     startsAt: startsAt.toString(),
     endsAt: startsAt.add({ hours: 1 }).toString(),
     name: "Ada Lovelace",
@@ -1168,6 +1174,8 @@ describe("CheckoutService", () => {
     Temporal.Now.instant = () => now;
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-10T11:00:00Z",
       endsAt: "2099-06-10T12:00:00Z",
       name: "Ada Lovelace",

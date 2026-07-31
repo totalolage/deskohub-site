@@ -1,5 +1,11 @@
-import type { CheckoutData } from "./types";
 import { workspaceE2ETimeouts } from "./timeouts";
+import type { CheckoutData } from "./types";
+
+const getMeetingRoomDurationKey = (durationMinutes: 60 | 240 | 1440) => {
+  if (durationMinutes === 60) return "hour:1";
+  if (durationMinutes === 240) return "hour:4";
+  return "day:1";
+};
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
@@ -72,7 +78,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationMinutes: data.meetingRoom.durationMinutes,
+    durationKey: getMeetingRoomDurationKey(data.meetingRoom.durationMinutes),
     email: data.email,
     message: data.message,
     name: data.name,
@@ -97,7 +103,7 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
     fail('start time');
   }
   const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
-  if (!(duration instanceof HTMLInputElement) || duration.value !== String(expected.durationMinutes)) fail('duration');
+  if (!(duration instanceof HTMLInputElement) || duration.value !== expected.durationKey) fail('duration');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
@@ -250,7 +256,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 (async () => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationMinutes: data.meetingRoom.durationMinutes,
+    durationKey: getMeetingRoomDurationKey(data.meetingRoom.durationMinutes),
     email: data.email,
     message: data.message,
     name: data.name,
@@ -341,7 +347,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     );
   }, 'meeting-room date did not update');
 
-  const duration = document.querySelector('#meeting-room-duration-' + expected.durationMinutes);
+  const duration = document.querySelector('[id="meeting-room-duration-' + expected.durationKey + '"]');
   if (!(duration instanceof HTMLInputElement)) {
     throw new Error('meeting-room duration control not found');
   }
@@ -358,7 +364,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     const time = document.querySelector('input[aria-label="Meeting room start time"]');
     const selectedDuration = document.querySelector(
-      '#meeting-room-duration-' + expected.durationMinutes
+      '[id="meeting-room-duration-' + expected.durationKey + '"]'
     );
     const submit = document.querySelector('button[type="submit"]');
     return (

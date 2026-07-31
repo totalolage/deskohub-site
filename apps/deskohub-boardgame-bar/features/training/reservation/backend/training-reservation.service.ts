@@ -29,6 +29,11 @@ export interface TrainingReservationService {
   ) => Effect.Effect<TrainingRoomReservation, StorageError>;
 }
 
+const getCzechDurationLabel = (duration: number) => {
+  if (duration === 1) return "hodina";
+  return duration < 5 ? "hodiny" : "hodin";
+};
+
 export const TrainingReservationService =
   Context.Service<TrainingReservationService>("TrainingReservationService");
 
@@ -105,7 +110,7 @@ ${fullName ? `- Jméno: ${fullName}\n` : ""}${data.company ? `- Společnost: ${d
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}
+- Doba trvání: ${duration} ${getCzechDurationLabel(duration)}
 
 ${data.specialRequirements ? `Speciální požadavky:\n${data.specialRequirements}` : ""}
 
@@ -215,7 +220,7 @@ Co bude následovat:
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}
+- Doba trvání: ${duration} ${getCzechDurationLabel(duration)}
 
 Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.
 

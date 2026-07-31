@@ -22,7 +22,7 @@ test("keeps the deployed E2E runner independent of generated translations", asyn
 test("treats an occupied interval as unavailable without requiring the whole date", async () => {
   const interval = getMeetingRoomReservationInterval(
     "2099-09-01T10:00",
-    60
+    { unit: "hour", amount: 1 }
   );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(

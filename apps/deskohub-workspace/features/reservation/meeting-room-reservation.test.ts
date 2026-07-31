@@ -4,7 +4,6 @@ import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationDefaultValues,
-  getMeetingRoomReservationDurationMinutes,
   getMeetingRoomReservationIssues,
   getMeetingRoomReservationOrder,
   getStoredMeetingRoomReservationDetails,
@@ -24,11 +23,16 @@ const storedDetailsParser = makeSchemaParser(
   storedMeetingRoomReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
+const customer = {
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420777777777",
+};
 
 afterEach(() => setSystemTime());
 
 describe("meetingRoomReservationSchema", () => {
-  test("owns canonical meeting-room product keys", () => {
+  test("owns stable pricing-boundary meeting-room product keys", () => {
     expect(
       getWorkspaceMeetingRoomProductKey({
         kind: "meeting-room",
@@ -57,10 +61,8 @@ describe("meetingRoomReservationSchema", () => {
   test("rejects an empty meeting-room start without throwing", () => {
     const result = schema.safeParse({
       startDateTime: "",
-      durationMinutes: 60,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      duration: "hour:1",
+      ...customer,
       message: "",
       legalConsent: true,
     });
@@ -71,10 +73,10 @@ describe("meetingRoomReservationSchema", () => {
   test("reuses contact normalization for a valid meeting-room form", () => {
     const result = schema.safeParse({
       startDateTime: "2099-06-10T10:00",
-      durationMinutes: 240,
+      duration: "hour:4",
       name: "  Ada Lovelace  ",
       email: "  ada@example.com  ",
-      phone: "+420777777777",
+      phone: customer.phone,
       message: "  Project workshop  ",
       legalConsent: true,
     });
@@ -94,23 +96,20 @@ describe("meetingRoomReservationSchema", () => {
 
     const formResult = schema.safeParse({
       startDateTime: "2099-06-10T12:00",
-      durationMinutes: 60,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      duration: "hour:1",
+      ...customer,
       message: "",
       legalConsent: true,
     });
-
     const issues = Effect.runSync(
       getMeetingRoomReservationIssues(
         decodeOrder({
           kind: "meeting-room",
+          duration: { unit: "hour", amount: 1 },
+          reservationDate: "2099-06-10",
           startsAt: "2099-06-10T10:00:00Z",
           endsAt: "2099-06-10T11:00:00Z",
-          name: "Ada Lovelace",
-          email: "ada@example.com",
-          phone: "+420777777777",
+          ...customer,
         })
       )
     );
@@ -119,32 +118,35 @@ describe("meetingRoomReservationSchema", () => {
     expect(issues).toEqual([]);
   });
 
-  test("decodes meeting-room orders with the domain discriminator", () => {
+  test("decodes explicit product intent with the interval", () => {
     const result = decodeOrder({
       kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-10T10:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      ...customer,
     });
 
-    expect(result).toMatchObject({ kind: "meeting-room" });
-    expect(result).not.toHaveProperty("_tag");
+    expect(result).toMatchObject({
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+    });
   });
 
-  test("stores only the meeting-room family discriminator", () => {
+  test("persists the selected meeting-room duration", () => {
     expect(
-      getStoredMeetingRoomReservationDetails({ kind: "meeting-room" })
-    ).toEqual({ kind: "meeting-room" });
+      getStoredMeetingRoomReservationDetails({
+        kind: "meeting-room",
+        duration: { unit: "day", amount: 1 },
+      })
+    ).toEqual({
+      kind: "meeting-room",
+      duration: { unit: "day", amount: 1 },
+    });
 
     expect(
-      Result.isFailure(
-        storedDetailsParser.safeParse({
-          kind: "meeting-room",
-          startsAt: "2099-06-10T10:00:00Z",
-        })
-      )
+      Result.isSuccess(storedDetailsParser.safeParse({ kind: "meeting-room" }))
     ).toBe(true);
   });
 
@@ -154,10 +156,8 @@ describe("meetingRoomReservationSchema", () => {
     for (const startDateTime of ["2026-03-29T02:00", "2026-10-25T02:00"]) {
       const result = schema.safeParse({
         startDateTime,
-        durationMinutes: 60,
-        name: "Ada Lovelace",
-        email: "ada@example.com",
-        phone: "+420777777777",
+        duration: "hour:1",
+        ...customer,
         message: "",
         legalConsent: true,
       });
@@ -169,123 +169,95 @@ describe("meetingRoomReservationSchema", () => {
   test("projects signed state to Prague form values and back to an order", () => {
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-07-30",
       startsAt: "2099-07-30T08:00:00Z",
       endsAt: "2099-07-30T12:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      ...customer,
       message: "Workshop",
     });
 
     const defaults = getMeetingRoomReservationDefaultValues(reservation);
     expect(defaults).toEqual({
       startDateTime: "2099-07-30T10:00",
-      durationMinutes: 240,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      duration: "hour:4",
+      ...customer,
       message: "Workshop",
       legalConsent: false,
     });
-
     expect(
-      getMeetingRoomReservationOrder({ ...defaults, legalConsent: true })
+      getMeetingRoomReservationOrder({ ...defaults!, legalConsent: true })
     ).toEqual(reservation);
   });
 
-  test("maps a DST whole day to the stable whole-day product identity", () => {
+  test("keeps whole-day intent across a 23-hour DST day", () => {
     setSystemTime(new Date("2026-03-29T12:00:00Z"));
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
+      duration: { unit: "day", amount: 1 },
+      reservationDate: "2026-03-29",
       startsAt: "2026-03-28T23:00:00Z",
       endsAt: "2026-03-29T22:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      ...customer,
     });
 
-    expect(getMeetingRoomReservationDurationMinutes(reservation)).toBe(1440);
     expect(getMeetingRoomReservationDefaultValues(reservation)).toMatchObject({
       startDateTime: "2026-03-29T00:00",
-      durationMinutes: 1440,
+      duration: "day:1",
     });
   });
 
-  test("discards a legacy rolling whole-day token when restoring the form", () => {
-    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
-      kind: "meeting-room",
-      startsAt: "2099-06-10T08:00:00Z",
-      endsAt: "2099-06-11T08:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-    });
-
-    expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
-  });
-
-  test("restores a started canonical whole day before its end", () => {
+  test("restores a started calendar day before its end", () => {
     setSystemTime(new Date("2099-06-10T12:00:00Z"));
     const reservation = normalizedMeetingRoomReservationOrderSchema.make({
       kind: "meeting-room",
+      duration: { unit: "day", amount: 1 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-09T22:00:00Z",
       endsAt: "2099-06-10T22:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
+      ...customer,
     });
 
     expect(getMeetingRoomReservationDefaultValues(reservation)).toMatchObject({
       startDateTime: "2099-06-10T00:00",
-      durationMinutes: 1440,
-      name: "Ada Lovelace",
+      duration: "day:1",
     });
   });
 
-  test("discards a restored reservation after its end", () => {
-    setSystemTime(new Date("2099-06-10T22:00:00.001Z"));
-    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
-      kind: "meeting-room",
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-    });
-
-    expect(getMeetingRoomReservationDefaultValues(reservation)).toBeUndefined();
-  });
-
-  test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {
-    const result = schema.safeParse({
-      startDateTime: "2099-06-10T15:00",
-      durationMinutes: 1440,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-      message: "",
-      legalConsent: true,
-    });
+  test("rejects a day product paired with a rolling 24-hour interval", () => {
     const issues = Effect.runSync(
       getMeetingRoomReservationIssues(
         decodeOrder({
           kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+          reservationDate: "2099-06-10",
           startsAt: "2099-06-10T13:00:00Z",
           endsAt: "2099-06-11T13:00:00Z",
-          name: "Ada Lovelace",
-          email: "ada@example.com",
-          phone: "+420777777777",
+          ...customer,
         })
       )
     );
 
+    expect(issues).toHaveLength(1);
+  });
+
+  test("creates a day interval from the selected date, not its hidden clock", () => {
+    const result = schema.safeParse({
+      startDateTime: "2099-06-10T15:00",
+      duration: "day:1",
+      ...customer,
+      message: "",
+      legalConsent: true,
+    });
+
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
       expect(getMeetingRoomReservationOrder(result.success)).toMatchObject({
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2099-06-10",
         startsAt: "2099-06-09T22:00:00Z",
         endsAt: "2099-06-10T22:00:00Z",
       });
     }
-    expect(issues).toHaveLength(1);
   });
 });

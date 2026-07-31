@@ -93,16 +93,14 @@ describe("checkout summary schemas", () => {
       })
     ).toThrow();
 
-    expect(
+    expect(() =>
       decodeOrderItem({
         key: "product:meeting-room:1440",
         product: { kind: "meeting-room", durationMinutes: 1440 },
         meetingRoomDurationPresentation: "whole-day",
         amount: money(232_000),
       })
-    ).toMatchObject({
-      meetingRoomDurationPresentation: "whole-day",
-    });
+    ).toThrow();
 
     expect(
       decodeOrderItem({

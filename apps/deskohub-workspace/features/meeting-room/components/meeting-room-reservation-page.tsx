@@ -8,7 +8,8 @@ import {
   getMeetingRoomReservationDefaultValues,
   meetingRoomReservationDefaultValues,
 } from "@/features/reservation/meeting-room-reservation";
-import { getEarliestSelectableMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
+import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { getEarliestMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -24,8 +25,11 @@ export const meetingRoomReservationPage = createReservationPage({
     description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
   }),
   render: async ({ checkoutSessionId, initialReservation, locale }) => {
-    const minimumStartDateTime =
-      getEarliestSelectableMeetingRoomStartDateTime();
+    const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
+      getMeetingRoomReservationDuration(
+        meetingRoomReservationDefaultValues.duration
+      )
+    );
     const restoredInitialValues = initialReservation
       ? getMeetingRoomReservationDefaultValues(initialReservation)
       : undefined;
@@ -36,8 +40,6 @@ export const meetingRoomReservationPage = createReservationPage({
     const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
-        minimumStartDateTime,
-        preservedDurationMinutes: restoredInitialValues?.durationMinutes,
         startDateTime: initialValues.startDateTime,
       }).map(({ request }) => request)
     ).pipe(

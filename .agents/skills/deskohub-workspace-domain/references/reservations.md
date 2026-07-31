@@ -13,6 +13,34 @@ Meeting-room eligibility is bounded by the reservation's exclusive end, not its
 start. A reservation may be submitted or paid after it starts while its end has
 not passed; reject it only after the end is in the past.
 
+## Meeting-room duration intent
+
+Model the purchasable meeting-room duration as the exact semantic union
+`{ unit: "hour", amount: 1 | 4 } | { unit: "day", amount: 1 }`. Carry that
+intent, together with the selected Prague calendar date, through form decoding,
+advertised pricing, normalized reservations, quote fingerprints, checkout
+details, and new stored reservation details.
+
+A day is a calendar period, not 1,440 elapsed minutes. Project the semantic
+duration into an interval in one time-domain boundary:
+
+- hourly products add elapsed hours to the selected Prague start time;
+- the day product starts at the selected date's Prague midnight and ends at the
+  next Prague midnight, including 23- and 25-hour DST days.
+
+Do not infer a meeting-room product or presentation from an interval, and do not
+normalize a rolling 24-hour interval into a calendar day. `Temporal.PlainDate`
+and `Temporal.ZonedDateTime` are the arithmetic bridge; do not expose
+`Temporal.Duration` as the serialized product identity because it does not
+encode the required midnight anchor.
+
+The existing numeric meeting-room product identity and discount keys remain a
+compatibility boundary. Convert semantic duration to `durationMinutes` only in
+the product catalog, then reuse the existing `meeting-room:${durationMinutes}`
+identity for pricing, discount targeting, and external integrations. Keep one
+explicit legacy decoder for stored meeting-room details that predate semantic
+duration persistence.
+
 Cowork compatibility-field enrichment owns its field contract and complete partial family match in the cowork domain. Make the enricher generic over a reservation carrying decoded family details, project cowork details there, and return empty cowork fields for every non-cowork family. Generic repositories compose family enrichers in one concrete composition function and derive the aggregate return type from that function instead of importing or redeclaring family-specific field types. Identify that composition point for adding future family enrichments.
 
 ## Product identities and keys

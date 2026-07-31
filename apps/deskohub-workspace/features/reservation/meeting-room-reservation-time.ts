@@ -1,8 +1,8 @@
 import { Option, Schema } from "effect";
 import {
-  isWorkspaceMeetingRoomDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
-} from "@/features/checkout/product-catalog";
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -37,28 +37,28 @@ const roundUpToWholePragueHour = (instant: Temporal.Instant) => {
   return dateTime.equals(wholeHour) ? wholeHour : wholeHour.add({ hours: 1 });
 };
 
-export const getEarliestSelectableMeetingRoomStartDateTime = (
-  now = Temporal.Now.instant()
-) =>
-  roundUpToWholePragueHour(now)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
-
 export const getEarliestMeetingRoomStartDateTime = (
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
+  duration: MeetingRoomReservationDuration,
   now = Temporal.Now.instant()
 ) => {
-  return roundUpToWholePragueHour(now.subtract({ minutes: durationMinutes }))
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return now
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .toPlainDateTime()
+      .toString({ smallestUnit: "minute" });
+  }
+
+  return roundUpToWholePragueHour(now.subtract({ hours: duration.amount }))
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
 };
 
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
-  durationMinutes: number
+  duration: MeetingRoomReservationDuration
 ): ReservationInterval | null => {
-  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
-  const isWholeDay = durationMinutes === 1440;
+  const isWholeDay = isMeetingRoomWholeDayReservationDuration(duration);
 
   return decodeLocalDateTime(startDateTime).pipe(
     Option.flatMap((selectedStartDateTime) => {
@@ -75,7 +75,7 @@ export const getMeetingRoomReservationInterval = (
             ? localDateTimeToMeetingRoomStartInstant(
                 startDateTime.add({ days: 1 })
               )
-            : Option.some(startInstant.add({ minutes: durationMinutes }));
+            : Option.some(startInstant.add({ hours: duration.amount }));
 
           return endInstant.pipe(
             Option.flatMap((end) =>
@@ -83,8 +83,7 @@ export const getMeetingRoomReservationInterval = (
                 startsAt: decodeInstant(startInstant.toString()),
                 endsAt: decodeInstant(end.toString()),
               })
-            ),
-            Option.map(({ startsAt, endsAt }) => ({ startsAt, endsAt }))
+            )
           );
         })
       );

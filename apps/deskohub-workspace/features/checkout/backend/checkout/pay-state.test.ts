@@ -144,6 +144,8 @@ describe("Pay URL state", () => {
   test("preserves discount and price-change metadata for meeting-room state", () => {
     const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
       kind: "meeting-room",
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-10T08:00:00Z",
       endsAt: "2099-06-10T12:00:00Z",
       name: "Ada Lovelace",

@@ -11,7 +11,7 @@ import { returnToPrefilledReservation } from "./reservation-reuse";
 test("waits for the meeting-room consent control before checking restored state", async () => {
   const interval = getMeetingRoomReservationInterval(
     "2099-09-01T10:00",
-    60
+    { unit: "hour", amount: 1 }
   );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(

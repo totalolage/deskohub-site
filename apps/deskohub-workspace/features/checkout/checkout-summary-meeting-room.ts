@@ -14,11 +14,8 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import type { MeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
-import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
-import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval";
 
 export const getMeetingRoomCheckoutSummary = (
-  reservation: MeetingRoomReservationDetails,
   quote: MeetingRoomReservationQuote
 ): CheckoutSummary => {
   const [item] = quote.items;
@@ -27,10 +24,6 @@ export const getMeetingRoomCheckoutSummary = (
     durationMinutes: item.durationMinutes,
   };
   const key = `product:${getWorkspaceProductKey(product)}` as const;
-  const meetingRoomDurationPresentation =
-    item.durationMinutes === 1440 && isSingleDayReservationInterval(reservation)
-      ? ("whole-day" as const)
-      : ("hours" as const);
   const summaryDiscounts = quote.payment.discounts.map(({ amount, discount }) =>
     checkoutSummaryDiscountSchema.make({ amount, discount })
   );
@@ -39,7 +32,6 @@ export const getMeetingRoomCheckoutSummary = (
       ? meetingRoomCheckoutSummaryDiscountedProductItemSchema.make({
           key,
           product,
-          meetingRoomDurationPresentation,
           amount: quote.payment.expectedPrice,
           originalAmount: quote.payment.undiscountedPrice,
           discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
@@ -47,7 +39,6 @@ export const getMeetingRoomCheckoutSummary = (
       : meetingRoomCheckoutSummaryProductItemSchema.make({
           key,
           product,
-          meetingRoomDurationPresentation,
           amount: quote.payment.undiscountedPrice,
         });
   const orderSection = checkoutSummaryOrderSectionSchema.make({

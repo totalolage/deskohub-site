@@ -38,11 +38,7 @@ const getSummaryItemLabel = (
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
         "meeting-room": ({ durationMinutes }) =>
-          getWorkspaceMeetingRoomDurationTitle(durationMinutes, locale, {
-            displayAsWholeDay:
-              "meetingRoomDurationPresentation" in item &&
-              item.meetingRoomDurationPresentation === "whole-day",
-          }),
+          getWorkspaceMeetingRoomDurationTitle(durationMinutes, locale),
       })
     );
   }

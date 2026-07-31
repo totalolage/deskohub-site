@@ -21,6 +21,16 @@ const getSubmitReservationErrorMessage = (
     return m.reservationRateLimitMessage({}, { locale: input.locale });
   }
 
+  if (
+    error instanceof CheckoutError &&
+    error.code === "meeting_room_reservation_ended"
+  ) {
+    return m.reservationValidationMeetingRoomEnded(
+      {},
+      { locale: input.locale }
+    );
+  }
+
   const unavailableCause =
     error instanceof CheckoutError &&
     error.cause instanceof WorkspaceTableUnavailableError

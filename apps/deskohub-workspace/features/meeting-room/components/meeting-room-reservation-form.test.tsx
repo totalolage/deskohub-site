@@ -20,14 +20,18 @@ import { Schema } from "effect";
 import type { ComponentProps } from "react";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
+  getWorkspaceMeetingRoomDurationMinutes,
   getWorkspaceMeetingRoomPriceForDuration,
+  getWorkspaceMeetingRoomReservationDuration,
   type WorkspaceMeetingRoomDurationMinutes,
+  workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   meetingRoomReservationDefaultValues,
   normalizedMeetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   workspaceRouterPush as push,
@@ -64,6 +68,8 @@ const money = (value: number) => ({
 
 const initialReservation = normalizedMeetingRoomReservationOrderSchema.make({
   kind: "meeting-room",
+  duration: { unit: "hour", amount: 1 },
+  reservationDate: "2099-07-30",
   startsAt: "2099-07-30T08:00:00Z",
   endsAt: "2099-07-30T09:00:00Z",
   name: "Ada Lovelace",
@@ -91,16 +97,17 @@ const meetingRoomQuote = {
 const advertisedPriceResponse = {
   kind: "meeting-room" as const,
   quote: meetingRoomQuote,
-  summary: getMeetingRoomCheckoutSummary(initialReservation, meetingRoomQuote),
+  summary: getMeetingRoomCheckoutSummary(meetingRoomQuote),
   advertisedPriceToken: "sealed-advertised-price",
 };
 
 const getDiscountedAdvertisedPriceResponse = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes
 ) => {
+  const duration = getWorkspaceMeetingRoomReservationDuration(durationMinutes);
   const interval = getMeetingRoomReservationInterval(
     "2099-07-30T10:00",
-    durationMinutes
+    duration
   );
   if (!interval) {
     throw new Error("Expected a valid meeting-room interval");
@@ -141,10 +148,7 @@ const getDiscountedAdvertisedPriceResponse = (
   return {
     kind: "meeting-room" as const,
     quote,
-    summary: getMeetingRoomCheckoutSummary(
-      { kind: "meeting-room", ...interval },
-      quote
-    ),
+    summary: getMeetingRoomCheckoutSummary(quote),
     advertisedPriceToken: `sealed-advertised-price-${durationMinutes}`,
   };
 };
@@ -220,16 +224,8 @@ describe("MeetingRoomReservationForm", () => {
 
   test("renders every server-loaded duration quote on the first paint without refetching", () => {
     getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
-    const initialAdvertisedPrices = ([60, 240, 1440] as const).map(
-      (durationMinutes) => {
-        const interval = getMeetingRoomReservationInterval(
-          "2099-07-30T10:00",
-          durationMinutes
-        );
-        if (!interval) {
-          throw new Error("Expected a valid meeting-room interval");
-        }
-
+    const initialAdvertisedPrices = workspaceMeetingRoomCatalog.map(
+      ({ duration, durationMinutes }) => {
         return {
           request: {
             locale: "en-US" as const,
@@ -237,7 +233,8 @@ describe("MeetingRoomReservationForm", () => {
               kind: "meeting-room" as const,
               details: {
                 kind: "meeting-room" as const,
-                ...interval,
+                duration,
+                reservationDate: "2099-07-30",
               },
             },
           },
@@ -256,10 +253,11 @@ describe("MeetingRoomReservationForm", () => {
       },
     });
 
-    for (const duration of [60, 240, 1440]) {
+    for (const { duration } of workspaceMeetingRoomCatalog) {
+      const durationKey = getMeetingRoomReservationDurationKey(duration);
       expect(
         view.container.querySelector(
-          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
         )
       ).not.toBeNull();
     }
@@ -283,10 +281,10 @@ describe("MeetingRoomReservationForm", () => {
 
     const view = renderForm();
     const continueButton = view.getByRole("button", { name: "Continue" });
-    const durationInputs = [60, 240, 1440].map(
-      (duration) =>
+    const durationInputs = ["hour:1", "hour:4", "day:1"].map(
+      (durationKey) =>
         view.container.querySelector(
-          `#meeting-room-duration-${duration}`
+          `[id="meeting-room-duration-${durationKey}"]`
         ) as HTMLInputElement
     );
 
@@ -327,8 +325,8 @@ describe("MeetingRoomReservationForm", () => {
         kind: "meeting-room",
         details: {
           kind: "meeting-room",
-          startsAt: "2099-07-30T08:00:00Z",
-          endsAt: "2099-07-30T09:00:00Z",
+          duration: { unit: "hour", amount: 1 },
+          reservationDate: "2099-07-30",
         },
       },
     });
@@ -355,7 +353,7 @@ describe("MeetingRoomReservationForm", () => {
 
     fireEvent.click(
       view.container.querySelector(
-        'input[type="radio"][value="240"]'
+        'input[type="radio"][value="hour:4"]'
       ) as HTMLInputElement
     );
     await waitFor(() => {
@@ -368,8 +366,8 @@ describe("MeetingRoomReservationForm", () => {
           kind: "meeting-room",
           details: {
             kind: "meeting-room",
-            startsAt: "2099-07-30T08:00:00Z",
-            endsAt: "2099-07-30T12:00:00Z",
+            duration: { unit: "hour", amount: 4 },
+            reservationDate: "2099-07-30",
           },
         },
       });
@@ -382,10 +380,10 @@ describe("MeetingRoomReservationForm", () => {
   });
 
   test("hides time and submits whole-day reservations midnight to midnight", async () => {
-    const interval = getMeetingRoomReservationInterval(
-      "2099-07-30T10:00",
-      1440
-    );
+    const interval = getMeetingRoomReservationInterval("2099-07-30T10:00", {
+      unit: "day",
+      amount: 1,
+    });
     if (!interval) {
       throw new Error("Expected a valid whole-day meeting-room interval");
     }
@@ -403,7 +401,11 @@ describe("MeetingRoomReservationForm", () => {
             locale: "en-US",
             reservation: {
               kind: "meeting-room",
-              details: { kind: "meeting-room", ...interval },
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "day", amount: 1 },
+                reservationDate: "2099-07-30",
+              },
             },
           },
           advertisedPrice,
@@ -413,7 +415,7 @@ describe("MeetingRoomReservationForm", () => {
       initialValues: {
         ...meetingRoomReservationDefaultValues,
         startDateTime: "2099-07-30T10:00",
-        durationMinutes: 1440,
+        duration: "day:1",
         name: "Ada Lovelace",
         email: "ada@example.com",
         phone: "+420777777777",
@@ -439,6 +441,8 @@ describe("MeetingRoomReservationForm", () => {
       advertisedPriceToken: advertisedPrice.advertisedPriceToken,
       reservation: {
         kind: "meeting-room",
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2099-07-30",
         ...interval,
       },
     });
@@ -470,7 +474,7 @@ describe("MeetingRoomReservationForm", () => {
 
       fireEvent.click(
         view.container.querySelector(
-          'input[type="radio"][value="1440"]'
+          'input[type="radio"][value="day:1"]'
         ) as HTMLInputElement
       );
       await waitFor(() => {
@@ -481,27 +485,15 @@ describe("MeetingRoomReservationForm", () => {
             kind: "meeting-room",
             details: {
               kind: "meeting-room",
-              startsAt: "2099-07-30T22:00:00Z",
-              endsAt: "2099-07-31T22:00:00Z",
+              duration: { unit: "day", amount: 1 },
+              reservationDate: "2099-07-30",
             },
           },
         });
       });
-      expect(getAdvertisedPrice).not.toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            startsAt: "2099-07-30T22:00:00Z",
-            endsAt: "2099-07-30T23:00:00Z",
-          },
-        },
-      });
-
       fireEvent.click(
         view.container.querySelector(
-          'input[type="radio"][value="60"]'
+          'input[type="radio"][value="hour:1"]'
         ) as HTMLInputElement
       );
       await waitFor(() => {
@@ -525,6 +517,8 @@ describe("MeetingRoomReservationForm", () => {
       await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
       expect(execute.mock.calls[0]?.[0].reservation).toMatchObject({
         kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+        reservationDate: "2099-07-30",
         startsAt: "2099-07-30T14:00:00Z",
         endsAt: "2099-07-30T15:00:00Z",
       });
@@ -543,6 +537,8 @@ describe("MeetingRoomReservationForm", () => {
     const restoredWholeDayReservation =
       normalizedMeetingRoomReservationOrderSchema.make({
         ...initialReservation,
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2099-07-31",
         startsAt: "2099-07-30T22:00:00Z",
         endsAt: "2099-07-31T22:00:00Z",
       });
@@ -570,54 +566,6 @@ describe("MeetingRoomReservationForm", () => {
     }
   });
 
-  test("refreshes retained hourly quotes after whole-day midnight rollover", async () => {
-    const originalNow = Temporal.Now.instant;
-    let now = Temporal.Instant.from("2099-07-30T21:37:00Z");
-    Temporal.Now.instant = () => now;
-    globalThis.fetch = mock(() =>
-      Promise.resolve(jsonResponse(availabilityResponse))
-    ) as typeof fetch;
-
-    try {
-      const view = renderForm({
-        initialReservation: undefined,
-        initialValues: {
-          ...meetingRoomReservationDefaultValues,
-          durationMinutes: 1440,
-          startDateTime: "2099-07-31T00:00",
-        },
-      });
-      await waitFor(() => {
-        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
-      });
-      getAdvertisedPrice.mockClear();
-
-      now = Temporal.Instant.from("2099-07-30T22:37:00Z");
-      view.rerenderForm();
-
-      await waitFor(() => {
-        expect(
-          view.getByRole("button", { name: "Meeting room start date" })
-            .textContent
-        ).toContain("August 1, 2099");
-        expect(getAdvertisedPrice).toHaveBeenCalledWith({
-          locale: "en-US",
-          reservation: {
-            kind: "meeting-room",
-            details: {
-              kind: "meeting-room",
-              startsAt: "2099-07-30T23:00:00Z",
-              endsAt: "2099-07-31T00:00:00Z",
-            },
-          },
-        });
-        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
-      });
-    } finally {
-      Temporal.Now.instant = originalNow;
-    }
-  });
-
   test("quotes the selectable whole day when restoring an hourly reservation", async () => {
     const originalNow = Temporal.Now.instant;
     Temporal.Now.instant = () => Temporal.Instant.from("2099-07-30T12:37:00Z");
@@ -627,6 +575,7 @@ describe("MeetingRoomReservationForm", () => {
     const restoredHourlyReservation =
       normalizedMeetingRoomReservationOrderSchema.make({
         ...initialReservation,
+        duration: { unit: "hour", amount: 1 },
         startsAt: "2099-07-30T14:00:00Z",
         endsAt: "2099-07-30T15:00:00Z",
       });
@@ -643,8 +592,8 @@ describe("MeetingRoomReservationForm", () => {
           kind: "meeting-room",
           details: {
             kind: "meeting-room",
-            startsAt: "2099-07-30T22:00:00Z",
-            endsAt: "2099-07-31T22:00:00Z",
+            duration: { unit: "day", amount: 1 },
+            reservationDate: "2099-07-30",
           },
         },
       });
@@ -654,8 +603,8 @@ describe("MeetingRoomReservationForm", () => {
           kind: "meeting-room",
           details: {
             kind: "meeting-room",
-            startsAt: "2099-07-30T14:00:00Z",
-            endsAt: "2099-07-30T15:00:00Z",
+            duration: { unit: "hour", amount: 1 },
+            reservationDate: "2099-07-30",
           },
         },
       });
@@ -673,6 +622,7 @@ describe("MeetingRoomReservationForm", () => {
     const restoredHourlyReservation =
       normalizedMeetingRoomReservationOrderSchema.make({
         ...initialReservation,
+        duration: { unit: "hour", amount: 4 },
         startsAt: "2099-07-30T13:00:00Z",
         endsAt: "2099-07-30T17:00:00Z",
       });
@@ -689,8 +639,8 @@ describe("MeetingRoomReservationForm", () => {
           kind: "meeting-room",
           details: {
             kind: "meeting-room",
-            startsAt: "2099-07-30T13:00:00Z",
-            endsAt: "2099-07-30T17:00:00Z",
+            duration: { unit: "hour", amount: 4 },
+            reservationDate: "2099-07-30",
           },
         },
       });
@@ -700,8 +650,8 @@ describe("MeetingRoomReservationForm", () => {
           kind: "meeting-room",
           details: {
             kind: "meeting-room",
-            startsAt: "2099-07-30T14:00:00Z",
-            endsAt: "2099-07-30T15:00:00Z",
+            duration: { unit: "hour", amount: 1 },
+            reservationDate: "2099-07-30",
           },
         },
       });
@@ -719,6 +669,7 @@ describe("MeetingRoomReservationForm", () => {
     const restoredHourlyReservation =
       normalizedMeetingRoomReservationOrderSchema.make({
         ...initialReservation,
+        duration: { unit: "hour", amount: 4 },
         startsAt: "2099-07-30T13:00:00Z",
         endsAt: "2099-07-30T17:00:00Z",
       });
@@ -736,7 +687,7 @@ describe("MeetingRoomReservationForm", () => {
 
       fireEvent.click(
         view.container.querySelector(
-          'input[type="radio"][value="1440"]'
+          'input[type="radio"][value="day:1"]'
         ) as HTMLInputElement
       );
       await waitFor(() => {
@@ -745,7 +696,7 @@ describe("MeetingRoomReservationForm", () => {
 
       fireEvent.click(
         view.container.querySelector(
-          'input[type="radio"][value="240"]'
+          'input[type="radio"][value="hour:4"]'
         ) as HTMLInputElement
       );
       await waitFor(() => {
@@ -788,10 +739,7 @@ describe("MeetingRoomReservationForm", () => {
         data: {
           ...advertisedPriceResponse,
           quote: discountedQuote,
-          summary: getMeetingRoomCheckoutSummary(
-            initialReservation,
-            discountedQuote
-          ),
+          summary: getMeetingRoomCheckoutSummary(discountedQuote),
         },
       })
     );
@@ -809,7 +757,7 @@ describe("MeetingRoomReservationForm", () => {
       view.getByRole("button", { name: /discount.*meeting room.*1 hour/i })
     ).toBeDefined();
     const discountedOption = view.container.querySelector(
-      '[data-reservation-type-option="60"]'
+      '[data-reservation-type-option="hour:1"]'
     );
     expect(discountedOption?.className).toContain("outline-purple-500");
     expect(
@@ -825,12 +773,8 @@ describe("MeetingRoomReservationForm", () => {
 
   test("advertises a sale on every duration before it is selected", async () => {
     getAdvertisedPrice.mockImplementation((input) => {
-      const endsAt = input.reservation.details.endsAt;
-      const durationMinutes = endsAt.endsWith("09:00:00Z")
-        ? 60
-        : endsAt.endsWith("12:00:00Z")
-          ? 240
-          : 1440;
+      const duration = input.reservation.details.duration;
+      const durationMinutes = getWorkspaceMeetingRoomDurationMinutes(duration);
 
       return Promise.resolve({
         data: getDiscountedAdvertisedPriceResponse(durationMinutes),
@@ -845,10 +789,11 @@ describe("MeetingRoomReservationForm", () => {
     await waitFor(() => {
       expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
     });
-    for (const duration of [60, 240, 1440]) {
+    for (const { duration } of workspaceMeetingRoomCatalog) {
+      const durationKey = getMeetingRoomReservationDurationKey(duration);
       expect(
         view.container.querySelector(
-          `[data-reservation-type-option="${duration}"] [data-reservation-type-discount="meeting-room-sale"]`
+          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
         )
       ).not.toBeNull();
     }

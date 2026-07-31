@@ -79,38 +79,22 @@ describe("CheckoutSummary", () => {
     expect(view.queryByText("product:basic")).toBeNull();
   });
 
-  test("distinguishes legacy rolling 24 hours from a calendar whole day", () => {
+  test("renders the day product as whole day", () => {
     const reservation = {
       kind: "meeting-room" as const,
-      startsAt: "2099-06-10T08:00:00Z" as const,
-      endsAt: "2099-06-11T08:00:00Z" as const,
+      duration: { unit: "day" as const, amount: 1 as const },
+      reservationDate: "2099-06-10" as const,
     };
     const quote = Effect.runSync(getMeetingRoomReservationQuote(reservation));
     const view = render(
       <CheckoutSummary
         locale="en-US"
-        summary={getMeetingRoomCheckoutSummary(reservation, quote)}
+        summary={getMeetingRoomCheckoutSummary(quote)}
       />
     );
 
-    expect(view.getByText("Meeting room - 24 hours")).toBeDefined();
-    expect(view.queryByText("Meeting room - whole day")).toBeNull();
-
-    cleanup();
-    const wholeDayReservation = {
-      kind: "meeting-room" as const,
-      startsAt: "2099-06-09T22:00:00Z" as const,
-      endsAt: "2099-06-10T22:00:00Z" as const,
-    };
-    const wholeDay = render(
-      <CheckoutSummary
-        locale="en-US"
-        summary={getMeetingRoomCheckoutSummary(wholeDayReservation, quote)}
-      />
-    );
-
-    expect(wholeDay.getByText("Meeting room - whole day")).toBeDefined();
-    expect(wholeDay.queryByText("Meeting room - 24 hours")).toBeNull();
+    expect(view.getByText("Meeting room - whole day")).toBeDefined();
+    expect(view.queryByText("Meeting room - 24 hours")).toBeNull();
   });
 
   test("highlights the canonical changed product key", () => {

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+  getWorkspaceMeetingRoomDurationMinutes,
   getWorkspaceMeetingRoomPriceForDuration,
+  getWorkspaceMeetingRoomReservationDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   workspaceCoworkProductCatalog,
@@ -39,6 +41,13 @@ describe("workspace product catalog", () => {
       value: 232_000,
       exponent: 2,
       currency: "CZK",
+    });
+    expect(
+      getWorkspaceMeetingRoomDurationMinutes({ unit: "day", amount: 1 })
+    ).toBe(1440);
+    expect(getWorkspaceMeetingRoomReservationDuration(1440)).toEqual({
+      unit: "day",
+      amount: 1,
     });
   });
 

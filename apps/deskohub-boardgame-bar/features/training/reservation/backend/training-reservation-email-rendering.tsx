@@ -24,7 +24,8 @@ const footerStyle = { color: "#999", fontSize: "12px" } as const;
 
 const durationLabel = (duration: number, locale?: string) => {
   if (locale === "cs-CZ") {
-    return duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin";
+    if (duration === 1) return "hodina";
+    return duration < 5 ? "hodiny" : "hodin";
   }
 
   return duration === 1 ? "hour" : "hours";
