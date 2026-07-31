@@ -171,8 +171,7 @@ const renderForm = (
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retryDelay: 0 } },
   });
-
-  return render(
+  const renderElement = () => (
     <QueryClientProvider client={queryClient}>
       <MeetingRoomReservationForm
         checkoutSessionId="restored-checkout-session"
@@ -182,6 +181,11 @@ const renderForm = (
       />
     </QueryClientProvider>
   );
+  const view = render(renderElement());
+
+  return Object.assign(view, {
+    rerenderForm: () => view.rerender(renderElement()),
+  });
 };
 
 describe("MeetingRoomReservationForm", () => {
@@ -523,6 +527,92 @@ describe("MeetingRoomReservationForm", () => {
         kind: "meeting-room",
         startsAt: "2099-07-30T14:00:00Z",
         endsAt: "2099-07-30T15:00:00Z",
+      });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("stops preserving a restored whole day after its Prague date starts", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-07-30T12:37:00Z");
+    Temporal.Now.instant = () => now;
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+    const restoredWholeDayReservation =
+      normalizedMeetingRoomReservationOrderSchema.make({
+        ...initialReservation,
+        startsAt: "2099-07-30T22:00:00Z",
+        endsAt: "2099-07-31T22:00:00Z",
+      });
+
+    try {
+      const view = renderForm({
+        initialReservation: restoredWholeDayReservation,
+      });
+      expect(
+        view.getByRole("button", { name: "Meeting room start date" })
+          .textContent
+      ).toContain("July 31, 2099");
+
+      now = Temporal.Instant.from("2099-07-30T22:37:00Z");
+      view.rerenderForm();
+
+      await waitFor(() => {
+        expect(
+          view.getByRole("button", { name: "Meeting room start date" })
+            .textContent
+        ).toContain("August 1, 2099");
+        expect(getAdvertisedPrice).toHaveBeenCalledTimes(6);
+      });
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("refreshes retained hourly quotes after whole-day midnight rollover", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-07-30T21:37:00Z");
+    Temporal.Now.instant = () => now;
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+
+    try {
+      const view = renderForm({
+        initialReservation: undefined,
+        initialValues: {
+          ...meetingRoomReservationDefaultValues,
+          durationMinutes: 1440,
+          startDateTime: "2099-07-31T00:00",
+        },
+      });
+      await waitFor(() => {
+        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+      });
+      getAdvertisedPrice.mockClear();
+
+      now = Temporal.Instant.from("2099-07-30T22:37:00Z");
+      view.rerenderForm();
+
+      await waitFor(() => {
+        expect(
+          view.getByRole("button", { name: "Meeting room start date" })
+            .textContent
+        ).toContain("August 1, 2099");
+        expect(getAdvertisedPrice).toHaveBeenCalledWith({
+          locale: "en-US",
+          reservation: {
+            kind: "meeting-room",
+            details: {
+              kind: "meeting-room",
+              startsAt: "2099-07-30T23:00:00Z",
+              endsAt: "2099-07-31T00:00:00Z",
+            },
+          },
+        });
+        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
       });
     } finally {
       Temporal.Now.instant = originalNow;

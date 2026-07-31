@@ -169,7 +169,7 @@ export const hasMeetingRoomWholeDayStarted = (
   reservation: MeetingRoomReservationDetails,
   now = Temporal.Now.instant()
 ) =>
-  getMeetingRoomReservationDurationMinutes(reservation) === 1440 &&
+  isSingleDayReservationInterval(reservation) &&
   Temporal.Instant.compare(Temporal.Instant.from(reservation.startsAt), now) <
     0;
 

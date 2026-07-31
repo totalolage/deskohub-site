@@ -39,6 +39,22 @@ const getWholeDayAdvertisedStartDateTime = (
   }
 };
 
+const getHourlyAdvertisedStartDateTime = (
+  startDateTime: string,
+  minimumStartDateTime: string | undefined
+) => {
+  if (!minimumStartDateTime) return startDateTime;
+
+  try {
+    return Temporal.PlainDateTime.compare(startDateTime, minimumStartDateTime) <
+      0
+      ? minimumStartDateTime
+      : startDateTime;
+  } catch {
+    return startDateTime;
+  }
+};
+
 export const getMeetingRoomDurationAdvertisedPriceRequests = ({
   locale,
   minimumStartDateTime,
@@ -57,7 +73,10 @@ export const getMeetingRoomDurationAdvertisedPriceRequests = ({
             startDateTime,
             minimumStartDateTime
           )
-        : (selectableStartDateTime ?? startDateTime);
+        : getHourlyAdvertisedStartDateTime(
+            selectableStartDateTime ?? startDateTime,
+            minimumStartDateTime
+          );
     const interval = getMeetingRoomReservationInterval(
       advertisedStartDateTime,
       duration

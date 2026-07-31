@@ -642,18 +642,6 @@ export const CheckoutServiceLive = Layer.effect(
           const state = yield* openFinalPayState(input.payStateToken, locale);
           yield* Effect.annotateLogsScoped({ payState: state });
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
-          if (
-            state.reservation.kind === "meeting-room" &&
-            hasMeetingRoomWholeDayStarted(state.reservation)
-          ) {
-            yield* Effect.logInfo(
-              "Hosted payment checkout rejected: whole day already started"
-            );
-            return yield* new CheckoutError({
-              message:
-                "Whole-day meeting-room reservation has already started.",
-            });
-          }
 
           const data = state.reservation;
           const reservation = yield* payableReservations
@@ -729,6 +717,19 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             return { status: "in_progress" as const };
+          }
+
+          if (
+            state.reservation.kind === "meeting-room" &&
+            hasMeetingRoomWholeDayStarted(state.reservation)
+          ) {
+            yield* Effect.logInfo(
+              "Hosted payment checkout rejected: whole day already started"
+            );
+            return yield* new CheckoutError({
+              message:
+                "Whole-day meeting-room reservation has already started.",
+            });
           }
 
           if (reservation.activePaymentAttemptId) {

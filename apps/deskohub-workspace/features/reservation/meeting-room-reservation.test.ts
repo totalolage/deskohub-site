@@ -9,6 +9,7 @@ import {
   getMeetingRoomReservationOrder,
   getStoredMeetingRoomReservationDetails,
   getWorkspaceMeetingRoomProductKey,
+  hasMeetingRoomWholeDayStarted,
   meetingRoomReservationOrderInputSchema,
   meetingRoomReservationSchema,
   normalizedMeetingRoomReservationOrderSchema,
@@ -238,6 +239,24 @@ describe("meetingRoomReservationSchema", () => {
         minimumStartDateTime: "2099-06-10T15:00",
       })
     ).toBeUndefined();
+  });
+
+  test("does not classify a started legacy rolling interval as a whole day", () => {
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T10:00:00Z",
+      endsAt: "2099-06-11T10:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(
+      hasMeetingRoomWholeDayStarted(
+        reservation,
+        Temporal.Instant.from("2099-06-10T10:30:00Z")
+      )
+    ).toBe(false);
   });
 
   test("normalizes whole-day form selections and rejects rolling 24-hour orders", () => {

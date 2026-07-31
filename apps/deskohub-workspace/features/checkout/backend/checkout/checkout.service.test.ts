@@ -255,6 +255,34 @@ const buildMeetingRoomPayStateToken = (input: {
     })
   );
 
+const buildStartedWholeDayReservation = () => {
+  const today = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  ).toPlainDate();
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+    kind: "meeting-room",
+    startsAt: today
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant()
+      .toString(),
+    endsAt: today
+      .add({ days: 1 })
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant()
+      .toString(),
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+  if (reservation.kind !== "meeting-room") {
+    throw new Error("Expected meeting-room reservation");
+  }
+
+  return reservation;
+};
+
 const makeAttempt = (input: {
   readonly id: string;
   readonly orderId: string;
@@ -1039,31 +1067,7 @@ describe("CheckoutService", () => {
   });
 
   test("rejects an already-started whole day before payment affirmation", async () => {
-    const today = Temporal.Now.zonedDateTimeISO(
-      workspaceSiteConstants.location.timeZone
-    ).toPlainDate();
-    const startsAt = today
-      .toPlainDateTime()
-      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-      .toInstant();
-    const endsAt = today
-      .add({ days: 1 })
-      .toPlainDateTime()
-      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
-      .toInstant();
-    const wholeDayReservation = Schema.decodeUnknownSync(
-      reservationOrderSchema
-    )({
-      kind: "meeting-room",
-      startsAt: startsAt.toString(),
-      endsAt: endsAt.toString(),
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 777 777",
-    });
-    if (wholeDayReservation.kind !== "meeting-room") {
-      throw new Error("Expected meeting-room reservation");
-    }
+    const wholeDayReservation = buildStartedWholeDayReservation();
     const orderId = "meeting-room-started-whole-day";
     const harness = await createCheckoutHarness({
       orderId,
@@ -1085,9 +1089,40 @@ describe("CheckoutService", () => {
       _tag: "CheckoutError",
       message: "Whole-day meeting-room reservation has already started.",
     });
-    expect(harness.requireCurrent).not.toHaveBeenCalled();
+    expect(harness.requireCurrent).toHaveBeenCalled();
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("recovers an already-paid whole day after its start", async () => {
+    const wholeDayReservation = buildStartedWholeDayReservation();
+    const orderId = "meeting-room-paid-whole-day";
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: wholeDayReservation,
+      }),
+      reservationOverrides: {
+        paymentState: "paid",
+        paidAt: testInstant(),
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl:
+        "/en-US/reservation/status/meeting-room-paid-whole-day?outcome=success",
+    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 

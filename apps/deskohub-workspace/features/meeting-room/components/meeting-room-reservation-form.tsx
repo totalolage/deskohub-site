@@ -110,6 +110,7 @@ export function MeetingRoomReservationForm({
     name: ["startDateTime", "durationMinutes"],
   });
   const isWholeDaySelected = selectedDurationMinutes === 1440;
+  const minimumStartDateTime = getEarliestSelectableMeetingRoomStartDateTime();
   const selectedInterval = useMemo(
     () =>
       getMeetingRoomReservationInterval(
@@ -121,7 +122,12 @@ export function MeetingRoomReservationForm({
   const preservesRestoredStart =
     Boolean(restoredInitialValues) &&
     selectedStartDateTime === defaultValues.startDateTime &&
-    selectedDurationMinutes === defaultValues.durationMinutes;
+    selectedDurationMinutes === defaultValues.durationMinutes &&
+    (!isWholeDaySelected ||
+      Temporal.PlainDateTime.compare(
+        selectedStartDateTime,
+        minimumStartDateTime
+      ) >= 0);
   const availabilityQuery = useMemo(
     (): MeetingRoomWorkspaceAvailabilityQuery | undefined =>
       selectedInterval
@@ -149,13 +155,14 @@ export function MeetingRoomReservationForm({
         minimumStartDateTime:
           preservesRestoredStart && isWholeDaySelected
             ? undefined
-            : getEarliestSelectableMeetingRoomStartDateTime(),
+            : minimumStartDateTime,
         selectableStartDateTime,
         startDateTime: selectedStartDateTime,
       }),
     [
       isWholeDaySelected,
       locale,
+      minimumStartDateTime,
       preservesRestoredStart,
       selectableStartDateTime,
       selectedStartDateTime,
