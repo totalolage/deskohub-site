@@ -756,8 +756,6 @@ export const CheckoutServiceLive = Layer.effect(
             return { status: "in_progress" as const };
           }
 
-          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
-
           if (reservation.activePaymentAttemptId) {
             yield* Effect.logDebug(
               "Hosted payment checkout active payment attempt lookup started"
@@ -794,6 +792,8 @@ export const CheckoutServiceLive = Layer.effect(
               return { status: "in_progress" as const };
             }
           }
+
+          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
 
           if (state.changedKeys) {
             yield* Effect.logInfo(

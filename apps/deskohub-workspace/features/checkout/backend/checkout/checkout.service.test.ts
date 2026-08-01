@@ -1171,6 +1171,49 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("recovers an active provider session after the meeting-room reservation ends", async () => {
+    const endedReservation = buildEndedMeetingRoomReservation();
+    const orderId = "meeting-room-ended-active-payment";
+    const quote = buildMeetingRoomQuote(undefined, endedReservation);
+    const activeAttempt = {
+      ...makeAttempt({
+        id: "meeting-room-active-attempt",
+        orderId,
+        state: "pending",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+      }),
+      amount: money(47_500),
+    };
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: endedReservation,
+        quote,
+      }),
+      activeAttempt,
+      reservationOverrides: {
+        activePaymentAttemptId: activeAttempt.id,
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/existing",
+    });
+    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
   test("rechecks the meeting-room end immediately before starting payment", async () => {
     const originalNow = Temporal.Now.instant;
     let now = Temporal.Instant.from("2099-06-10T11:59:00Z");
