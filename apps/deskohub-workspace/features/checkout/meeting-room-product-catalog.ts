@@ -1,9 +1,8 @@
 import { Schema } from "effect";
 import {
+  currencyCZK,
   type WorkspaceMoney,
-  workspaceMoneyFromCurrency,
 } from "@/features/checkout/workspace-money";
-import { defaultWorkspaceCurrency } from "@/shared/money/currencies";
 
 type WorkspaceMeetingRoomDurationUnit = "day" | "hour";
 
@@ -50,21 +49,9 @@ const meetingRoomProduct = <
 
 export const workspaceMeetingRoomProductsByDurationKey =
   defineMeetingRoomProducts({
-    "hour:1": meetingRoomProduct(
-      "hour",
-      1,
-      workspaceMoneyFromCurrency(47_500, defaultWorkspaceCurrency)
-    ),
-    "hour:4": meetingRoomProduct(
-      "hour",
-      4,
-      workspaceMoneyFromCurrency(155_000, defaultWorkspaceCurrency)
-    ),
-    "day:1": meetingRoomProduct(
-      "day",
-      1,
-      workspaceMoneyFromCurrency(232_000, defaultWorkspaceCurrency)
-    ),
+    "hour:1": meetingRoomProduct("hour", 1, currencyCZK(47_500)),
+    "hour:4": meetingRoomProduct("hour", 4, currencyCZK(155_000)),
+    "day:1": meetingRoomProduct("day", 1, currencyCZK(232_000)),
   });
 
 export type WorkspaceMeetingRoomDurationKey =

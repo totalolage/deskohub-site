@@ -41,7 +41,7 @@ export const submitWorkspaceReservation = Effect.fn(
         (error) =>
           new PublicSafeActionError({
             message: Match.value(error).pipe(
-              Match.discriminatorsExhaustive("_tag")({
+              Match.tagsExhaustive({
                 BotDetectedError: () =>
                   m.reservationRateLimitMessage({}, { locale: input.locale }),
                 BotVerificationError: () =>

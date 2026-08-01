@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
-import { defaultWorkspaceCurrency } from "@/shared/money/currencies";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
@@ -61,7 +60,7 @@ describe("workspace product catalog", () => {
     });
   });
 
-  test("derives duration keys and currency metadata from the catalog", () => {
+  test("keeps duration keys aligned and catalog prices in CZK", () => {
     expect(Object.keys(workspaceMeetingRoomProductsByDurationKey)).toEqual(
       workspaceMeetingRoomCatalog.map(({ duration }) =>
         getMeetingRoomReservationDurationKey(duration)
@@ -76,8 +75,8 @@ describe("workspace product catalog", () => {
 
     for (const price of prices) {
       expect(price).toMatchObject({
-        currency: defaultWorkspaceCurrency.code,
-        exponent: defaultWorkspaceCurrency.exponent,
+        currency: "CZK",
+        exponent: 2,
       });
     }
   });

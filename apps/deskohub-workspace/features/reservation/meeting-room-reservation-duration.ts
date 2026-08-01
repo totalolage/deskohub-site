@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Match, Schema, Struct } from "effect";
 import {
   type WorkspaceMeetingRoomDurationKey,
   workspaceMeetingRoomCatalog,
@@ -16,9 +16,9 @@ export const meetingRoomReservationDurationSchema = Schema.Union(
 export type MeetingRoomReservationDuration =
   typeof meetingRoomReservationDurationSchema.Type;
 
-export const meetingRoomReservationDurationKeys = Object.keys(
+export const meetingRoomReservationDurationKeys = Struct.keys(
   workspaceMeetingRoomProductsByDurationKey
-) as [WorkspaceMeetingRoomDurationKey, ...WorkspaceMeetingRoomDurationKey[]];
+);
 
 export const meetingRoomReservationDurationKeySchema = Schema.Literals(
   meetingRoomReservationDurationKeys
@@ -26,15 +26,23 @@ export const meetingRoomReservationDurationKeySchema = Schema.Literals(
 
 export type MeetingRoomReservationDurationKey = WorkspaceMeetingRoomDurationKey;
 
+type MeetingRoomReservationDurationKeyForUnit<
+  Unit extends MeetingRoomReservationDuration["unit"],
+> = Extract<WorkspaceMeetingRoomDurationKey, `${Unit}:${number}`>;
+
 export const meetingRoomReservationDurations = workspaceMeetingRoomCatalog.map(
   ({ duration }) => duration
 );
 
-export const getMeetingRoomReservationDurationKey = ({
-  amount,
-  unit,
-}: MeetingRoomReservationDuration): MeetingRoomReservationDurationKey =>
-  `${unit}:${amount}` as MeetingRoomReservationDurationKey;
+export const getMeetingRoomReservationDurationKey =
+  Match.type<MeetingRoomReservationDuration>().pipe(
+    Match.discriminatorsExhaustive("unit")({
+      day: ({ amount }): MeetingRoomReservationDurationKeyForUnit<"day"> =>
+        `day:${amount}`,
+      hour: ({ amount }): MeetingRoomReservationDurationKeyForUnit<"hour"> =>
+        `hour:${amount}`,
+    })
+  );
 
 export const getMeetingRoomReservationDuration = (
   key: MeetingRoomReservationDurationKey

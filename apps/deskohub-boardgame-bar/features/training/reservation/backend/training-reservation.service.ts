@@ -9,6 +9,8 @@ import {
   renderTrainingReservationConfirmationEmailHtml,
 } from "./training-reservation-email-rendering";
 
+const businessEmailLocale: Locale = "cs-CZ";
+
 export interface TrainingRoomReservation {
   firstName: string;
   lastName: string;
@@ -21,13 +23,13 @@ export interface TrainingRoomReservation {
   duration: number;
   specialRequirements?: string;
   submittedAt: string;
-  locale?: string;
+  locale: Locale;
 }
 
 export interface TrainingReservationService {
   readonly submit: (
-    data: Omit<TrainingRoomReservation, "submittedAt">,
-    locale?: string
+    data: Omit<TrainingRoomReservation, "locale" | "submittedAt">,
+    locale: Locale
   ) => Effect.Effect<TrainingRoomReservation, StorageError>;
 }
 
@@ -77,14 +79,13 @@ export const TrainingReservationServiceLive = Layer.effect(
           });
 
           const formattedTime = data.time;
-          const customerLocale: Locale = locale === "cs-CZ" ? "cs-CZ" : "en-US";
           const businessFormattedDuration = formatDurationMinutes(
             data.duration * 60,
-            "cs-CZ"
+            businessEmailLocale
           );
           const customerFormattedDuration = formatDurationMinutes(
             data.duration * 60,
-            customerLocale
+            locale
           );
 
           // Create email content for the business

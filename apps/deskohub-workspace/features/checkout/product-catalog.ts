@@ -1,14 +1,13 @@
 import {
+  currencyCZK,
   formatWorkspaceMoney,
   type WorkspaceMoney,
-  workspaceMoneyFromCurrency,
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import {
   getMeetingRoomReservationDurationKey,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
-import { defaultWorkspaceCurrency } from "@/shared/money/currencies";
 import { workspaceMeetingRoomProductsByDurationKey } from "./meeting-room-product-catalog";
 
 export {
@@ -59,7 +58,7 @@ const workspaceCoworkProductsByTier: Record<
   basic: {
     tier: "basic",
     label: "Basic Day Pass",
-    price: workspaceMoneyFromCurrency(35_000, defaultWorkspaceCurrency),
+    price: currencyCZK(35_000),
     includesCourtesyCoffee: false,
     requiresCoffee: false,
     requiresMonitorOption: false,
@@ -68,7 +67,7 @@ const workspaceCoworkProductsByTier: Record<
   plus: {
     tier: "plus",
     label: "Cowork Plus",
-    price: workspaceMoneyFromCurrency(49_000, defaultWorkspaceCurrency),
+    price: currencyCZK(49_000),
     includesCourtesyCoffee: true,
     requiresCoffee: true,
     requiresMonitorOption: false,
@@ -77,7 +76,7 @@ const workspaceCoworkProductsByTier: Record<
   profi: {
     tier: "profi",
     label: "Profi Workstation",
-    price: workspaceMoneyFromCurrency(55_000, defaultWorkspaceCurrency),
+    price: currencyCZK(55_000),
     includesCourtesyCoffee: true,
     requiresCoffee: true,
     requiresMonitorOption: true,
@@ -92,8 +91,7 @@ export const workspaceCoworkCatalog = workspaceCoworkTiers.map(
 export const workspaceProductCatalog = workspaceCoworkCatalog;
 export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
 
-export const workspaceProductCoffeePrice: WorkspaceMoney =
-  workspaceMoneyFromCurrency(5000, defaultWorkspaceCurrency);
+export const workspaceProductCoffeePrice: WorkspaceMoney = currencyCZK(5000);
 
 export function getWorkspaceProductByTier(tier: WorkspaceProductTier) {
   return workspaceCoworkProductsByTier[tier];

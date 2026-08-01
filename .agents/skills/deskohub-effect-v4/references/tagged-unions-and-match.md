@@ -5,7 +5,11 @@
   `Some`/`None` implementation tags with `Match`.
 - When the `Some` branch maps a value and the `None` branch supplies a fallback,
   prefer `Option.map` followed by `Option.getOrElse` over a full match.
-- Use `Match.tag` for `_tag` variants. Use `Match.discriminatorsExhaustive(field)` for complete unions discriminated by another domain field. Reserve `Match.when` for predicates and partial refinements.
+- Use `Match.tag` for individual `_tag` branches and
+  `Match.tagsExhaustive` for exhaustive `_tag` handler maps. Use
+  `Match.discriminatorsExhaustive(field)` for complete unions discriminated by
+  another domain field. Reserve `Match.when` for predicates and partial
+  refinements.
 - Use `Match.when` patterns when nested or optional discriminators must be
   correlated. Do not compare their discriminator strings manually and then
   recover the relationship with casts or conditional spreads.
