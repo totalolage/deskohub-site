@@ -1,10 +1,7 @@
 import { Context, Effect, type Layer, Schema } from "effect";
 import { defineWorkspaceAction } from "./workspace-action";
 import { generateWorkspaceLocationMapImage } from "./workspace-location-map";
-import {
-  defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
-} from "./workspace-route";
+import { defineWorkspaceRoute, WorkspaceRouteFailure } from "./workspace-route";
 
 class TestService extends Context.Service<
   TestService,
@@ -75,7 +72,7 @@ if (typecheck) {
     () =>
       Effect.fail("handler failed").pipe(
         Effect.as(new Response()),
-        Effect.mapError(mapWorkspaceInternalRouteFailure("Failed"))
+        Effect.mapError(WorkspaceRouteFailure.internal("Failed"))
       )
   );
 }

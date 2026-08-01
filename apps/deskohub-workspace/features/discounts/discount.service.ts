@@ -122,7 +122,7 @@ export class DiscountService extends Context.Service<
                 enabled: input.releaseGates.calendarSales,
                 operation: "quote",
                 provider: "calendar",
-                resolve: () => calendar.quote(input.quoteInput),
+                resolve: () => calendar.discover(input.quoteInput),
               }),
               recoverGatedDiscountResolution({
                 enabled: input.releaseGates.customerDiscounts,
@@ -138,28 +138,9 @@ export class DiscountService extends Context.Service<
               }),
             ],
             { concurrency: "inherit" }
-          ).pipe(Effect.map(collectDiscountCandidates))
-      );
-
-      const resolveAdvertisementCandidates = Effect.fn(
-        "DiscountService.resolveAdvertisementCandidates"
-      )(
-        (input: {
-          readonly advertisementInput: DiscountAdvertisementInput;
-          readonly releaseGates: DiscountReleaseGates;
-          readonly operation:
-            | "discover_advertised_discounts"
-            | "affirm_advertisement";
-        }) =>
-          recoverGatedDiscountResolution({
-            enabled: input.releaseGates.calendarSales,
-            operation: input.operation,
-            provider: "calendar",
-            resolve: () =>
-              input.operation === "discover_advertised_discounts"
-                ? calendar.quote(input.advertisementInput)
-                : calendar.revalidate(input.advertisementInput),
-          }).pipe(Effect.map(Option.getOrElse(() => [])))
+          ).pipe(
+            Effect.map((candidatesByProvider) => candidatesByProvider.flat())
+          )
       );
 
       const resolveDisplayedCandidates = Effect.fn(
@@ -192,7 +173,7 @@ export class DiscountService extends Context.Service<
             ],
             { concurrency: "inherit" }
           ).pipe(
-            Effect.map(collectDiscountCandidates),
+            Effect.map((candidatesByProvider) => candidatesByProvider.flat()),
             Effect.map((candidates) =>
               selectDiscountCandidates({
                 selectedDiscountIds:
@@ -230,10 +211,11 @@ export class DiscountService extends Context.Service<
               })
             ),
             Effect.bind("candidates", ({ releaseGates }) =>
-              resolveAdvertisementCandidates({
-                advertisementInput: input,
-                releaseGates,
+              recoverGatedDiscountResolution({
+                enabled: releaseGates.calendarSales,
                 operation: "discover_advertised_discounts",
+                provider: "calendar",
+                resolve: () => calendar.discover(input),
               })
             ),
             Effect.bind("calculation", calculateDiscounts),
@@ -254,15 +236,13 @@ export class DiscountService extends Context.Service<
               releaseGates.evaluate({ operation: "affirm_advertisement" })
             ),
             Effect.bind("candidates", ({ releaseGates }) =>
-              resolveAdvertisementCandidates({
-                advertisementInput: input,
-                releaseGates: {
-                  ...releaseGates,
-                  calendarSales:
-                    releaseGates.calendarSales &&
-                    input.advertisedDiscountIds.length > 0,
-                },
+              recoverGatedDiscountResolution({
+                enabled:
+                  releaseGates.calendarSales &&
+                  input.advertisedDiscountIds.length > 0,
                 operation: "affirm_advertisement",
+                provider: "calendar",
+                resolve: () => calendar.revalidate(input),
               }).pipe(
                 Effect.map((candidates) =>
                   selectDiscountCandidates({
@@ -300,7 +280,7 @@ export class DiscountService extends Context.Service<
                     locale: input.locale,
                     product: input.affirmedAdvertisement.product,
                   }),
-              }).pipe(Effect.map(Option.getOrElse(() => [])))
+              })
             ),
             Effect.bind("quote", ({ candidates }) =>
               appendDiscounts({
@@ -358,7 +338,7 @@ export class DiscountService extends Context.Service<
             ),
             Effect.tap(requireEligibleSubtotal),
             Effect.bind("candidates", () =>
-              code.quote({
+              code.revalidate({
                 product: input.baseQuote.product,
                 discountableSubtotal: input.baseQuote.discountableSubtotal,
                 dotyposCustomerId: input.dotyposCustomerId,
@@ -413,14 +393,8 @@ const recoverGatedDiscountResolution = (input: {
       recoverDiscountResolution(effect, {
         operation: input.operation,
         provider: input.provider,
-      })
-  );
-
-const collectDiscountCandidates = (
-  candidatesByProvider: readonly Option.Option<readonly DiscountCandidate[]>[]
-) =>
-  candidatesByProvider.flatMap((candidates) =>
-    Option.getOrElse(candidates, () => [])
+      }),
+    Effect.map(Option.getOrElse(() => []))
   );
 
 const selectDiscountCandidates = (input: {

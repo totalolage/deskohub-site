@@ -214,13 +214,13 @@ describe("DiscountService", () => {
   });
 
   test("strictly appends a submitted code after freshly affirmed discounts", async () => {
-    const codeQuote = mock(() =>
+    const codeRevalidate = mock(() =>
       Effect.succeed([percentage("code", 5000, "code")])
     );
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ quote: codeQuote })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
     const baseQuote = discountQuoteCodec.make({
       product,
@@ -250,7 +250,7 @@ describe("DiscountService", () => {
       providers
     );
 
-    expect(codeQuote).toHaveBeenCalledWith({
+    expect(codeRevalidate).toHaveBeenCalledWith({
       product,
       discountableSubtotal: money(10_000),
       dotyposCustomerId: paymentInput.dotyposCustomerId,
@@ -276,13 +276,13 @@ describe("DiscountService", () => {
     [true, true, false],
     [true, true, true],
   ] as const)("gates submitted-code admission for calendar=%s customer=%s code=%s", async (calendarSales, customerDiscounts, discountCodes) => {
-    const codeQuote = mock(() =>
+    const codeRevalidate = mock(() =>
       Effect.succeed([percentage("code", 1000, "code")])
     );
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ quote: codeQuote })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
     const evaluate = mock(() =>
       Effect.succeed({ calendarSales, customerDiscounts, discountCodes })
@@ -308,7 +308,7 @@ describe("DiscountService", () => {
     expect(evaluate).toHaveBeenCalledWith({
       operation: "apply_discount_code",
     });
-    expect(codeQuote).toHaveBeenCalledTimes(discountCodes ? 1 : 0);
+    expect(codeRevalidate).toHaveBeenCalledTimes(discountCodes ? 1 : 0);
     if (discountCodes) {
       expect(result._tag).toBe("Success");
     } else {
@@ -327,7 +327,7 @@ describe("DiscountService", () => {
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
       CodeDiscountProviderMock({
-        quote: () =>
+        revalidate: () =>
           Effect.fail(
             new DiscountCodeUnavailableError({
               reason: "already_redeemed",
@@ -362,11 +362,11 @@ describe("DiscountService", () => {
   });
 
   test("does not resolve a code when no eligible subtotal remains", async () => {
-    const codeQuote = mock(() => Effect.succeed([]));
+    const codeRevalidate = mock(() => Effect.succeed([]));
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
-      CodeDiscountProviderMock({ quote: codeQuote })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
     const exhaustedQuote = discountQuoteCodec.make({
       product,
@@ -398,7 +398,7 @@ describe("DiscountService", () => {
       providers
     );
 
-    expect(codeQuote).not.toHaveBeenCalled();
+    expect(codeRevalidate).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
@@ -413,7 +413,7 @@ describe("DiscountService", () => {
       CalendarDiscountProviderMock(),
       CustomerDiscountProviderMock(),
       CodeDiscountProviderMock({
-        quote: () => Effect.succeed([percentage("code", 1, "code")]),
+        revalidate: () => Effect.succeed([percentage("code", 1, "code")]),
       })
     );
     const minimalQuote = discountQuoteCodec.make({
@@ -449,15 +449,15 @@ describe("DiscountService", () => {
   });
 
   test("discovers advertised discounts through Calendar only", async () => {
-    const calendarQuote = mock(() =>
+    const calendarDiscover = mock(() =>
       Effect.succeed([percentage("calendar", 1000, "calendar")])
     );
     const customerResolve = mock(() => Effect.succeed([]));
-    const codeQuote = mock(() => Effect.succeed([]));
+    const codeRevalidate = mock(() => Effect.succeed([]));
     const providers = Layer.mergeAll(
-      CalendarDiscountProviderMock({ quote: calendarQuote }),
+      CalendarDiscountProviderMock({ discover: calendarDiscover }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ quote: codeQuote })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
 
     const result = await runWithProviders(
@@ -471,13 +471,13 @@ describe("DiscountService", () => {
     expect(result.discounts.map(({ discount }) => discount.id)).toEqual([
       "calendar",
     ]);
-    expect(calendarQuote).toHaveBeenCalledTimes(1);
+    expect(calendarDiscover).toHaveBeenCalledTimes(1);
     expect(customerResolve).not.toHaveBeenCalled();
-    expect(codeQuote).not.toHaveBeenCalled();
+    expect(codeRevalidate).not.toHaveBeenCalled();
   });
 
   test.each([
-    ["discover_advertised_discounts", "quote"],
+    ["discover_advertised_discounts", "discover"],
     ["affirm_advertisement", "revalidate"],
   ] as const)("omits a failed Calendar source during %s and logs safely", async (operation, providerOperation) => {
     const failure = new DiscountProviderError({
@@ -501,7 +501,6 @@ describe("DiscountService", () => {
       }),
       CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
       CodeDiscountProviderMock({
-        quote: () => Effect.succeed([]),
         revalidate: () => Effect.succeed([]),
       })
     );
@@ -589,12 +588,12 @@ describe("DiscountService", () => {
     const customerResolve = mock(() =>
       Effect.succeed([percentage("customer", 500, "customer")])
     );
-    const calendarQuote = mock(() => Effect.succeed([]));
-    const codeQuote = mock(() => Effect.succeed([]));
+    const calendarDiscover = mock(() => Effect.succeed([]));
+    const codeRevalidate = mock(() => Effect.succeed([]));
     const providers = Layer.mergeAll(
-      CalendarDiscountProviderMock({ quote: calendarQuote }),
+      CalendarDiscountProviderMock({ discover: calendarDiscover }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({ quote: codeQuote })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
     const affirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make({
       product,
@@ -632,8 +631,8 @@ describe("DiscountService", () => {
     ]);
     expect(result.discountedSubtotal.value).toBe(8550);
     expect(customerResolve).toHaveBeenCalledTimes(1);
-    expect(calendarQuote).not.toHaveBeenCalled();
-    expect(codeQuote).not.toHaveBeenCalled();
+    expect(calendarDiscover).not.toHaveBeenCalled();
+    expect(codeRevalidate).not.toHaveBeenCalled();
   });
 
   test.each(
@@ -663,7 +662,7 @@ describe("DiscountService", () => {
     operation,
     gates,
   }) => {
-    const calendarQuote = mock(() =>
+    const calendarDiscover = mock(() =>
       Effect.succeed([percentage("calendar", 1000, "calendar")])
     );
     const calendarRevalidate = mock(() =>
@@ -672,23 +671,17 @@ describe("DiscountService", () => {
     const customerResolve = mock(() =>
       Effect.succeed([percentage("customer", 1000, "customer")])
     );
-    const codeQuote = mock(() =>
-      Effect.succeed([percentage("code", 1000, "code")])
-    );
     const codeRevalidate = mock(() =>
       Effect.succeed([percentage("code", 1000, "code")])
     );
     const evaluate = mock(() => Effect.succeed(gates));
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({
-        quote: calendarQuote,
+        discover: calendarDiscover,
         revalidate: calendarRevalidate,
       }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
-      CodeDiscountProviderMock({
-        quote: codeQuote,
-        revalidate: codeRevalidate,
-      })
+      CodeDiscountProviderMock({ revalidate: codeRevalidate })
     );
 
     const appliedIds = await runWithProviders(
@@ -730,7 +723,7 @@ describe("DiscountService", () => {
 
     expect(evaluate).toHaveBeenCalledTimes(1);
     expect(evaluate).toHaveBeenCalledWith({ operation });
-    expect(calendarQuote).toHaveBeenCalledTimes(
+    expect(calendarDiscover).toHaveBeenCalledTimes(
       operation === "discover_advertised_discounts" && gates.calendarSales
         ? 1
         : 0
@@ -749,7 +742,6 @@ describe("DiscountService", () => {
         ? 1
         : 0
     );
-    expect(codeQuote).not.toHaveBeenCalled();
     expect(codeRevalidate).toHaveBeenCalledTimes(
       operation === "affirm_displayed_discounts" && gates.discountCodes ? 1 : 0
     );
@@ -779,7 +771,8 @@ describe("DiscountService", () => {
     );
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({
-        quote: () => Effect.succeed([percentage("calendar", 1000, "calendar")]),
+        discover: () =>
+          Effect.succeed([percentage("calendar", 1000, "calendar")]),
         revalidate: () =>
           Effect.succeed([percentage("calendar", 1000, "calendar")]),
       }),

@@ -10,7 +10,7 @@ import { NextResponse } from "next/server";
 import { env } from "@/env";
 import {
   defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
@@ -124,7 +124,7 @@ export const POST = defineWorkspaceRoute(
       }),
       Effect.provide(CloudinaryWebhookVerifierLive),
       Effect.mapError(
-        mapWorkspaceInternalRouteFailure("Cloudinary webhook processing failed")
+        WorkspaceRouteFailure.internal("Cloudinary webhook processing failed")
       )
     )
 );

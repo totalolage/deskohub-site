@@ -8,7 +8,7 @@ import {
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import {
   defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 
 const nexiWebhookProcessingErrorStatuses = {
@@ -138,7 +138,7 @@ export const POST = defineWorkspaceRoute(
         )
       ),
       Effect.mapError(
-        mapWorkspaceInternalRouteFailure("Nexi webhook processing failed")
+        WorkspaceRouteFailure.internal("Nexi webhook processing failed")
       )
     )
 );

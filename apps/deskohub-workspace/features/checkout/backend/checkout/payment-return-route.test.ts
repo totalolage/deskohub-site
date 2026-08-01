@@ -24,13 +24,19 @@ const invoke = (refreshStatus: ICheckoutStatusService["refreshStatus"]) => {
     makeStatusServiceLayer(refreshStatus)
   );
 
-  return GET(
+  return invokeGet(GET);
+};
+
+const invokeGet = (
+  GET: ReturnType<typeof makeCheckoutPaymentReturnGet>,
+  params = { locale: "en-US", orderId: "order-id" }
+) =>
+  GET(
     new Request(
       "https://deskohub.test/en-US/checkout/pay/return/order-id?outcome=success"
     ),
-    { params: Promise.resolve({ locale: "en-US", orderId: "order-id" }) }
+    { params: Promise.resolve(params) }
   );
-};
 
 describe("checkout pay return route", () => {
   test("refreshes the provider state and redirects to reservation status", async () => {
@@ -97,5 +103,23 @@ describe("checkout pay return route", () => {
     const defect = new Error("unexpected defect");
 
     await expect(invoke(() => Effect.die(defect))).rejects.toBe(defect);
+  });
+
+  test("rejects invalid params before acquiring the status service", async () => {
+    let acquisitions = 0;
+    const GET = makeCheckoutPaymentReturnGet(
+      Layer.sync(CheckoutStatusService, () => {
+        acquisitions += 1;
+        return {
+          getStatus: () => Effect.die("unused"),
+          refreshStatus: () => Effect.die("unused"),
+        };
+      })
+    );
+
+    const response = await invokeGet(GET, { locale: "en-US", orderId: "" });
+
+    expect(response.status).toBe(404);
+    expect(acquisitions).toBe(0);
   });
 });

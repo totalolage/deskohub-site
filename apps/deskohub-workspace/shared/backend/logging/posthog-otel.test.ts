@@ -1,9 +1,9 @@
-import { describe, expect, mock, spyOn, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { LoggerProvider } from "@opentelemetry/api-logs";
 import {
   createPostHogLoggerProvider,
+  flushPostHogLogs,
   getPostHogLogsEndpoint,
-  schedulePostHogLogsFlush,
 } from "./posthog-otel";
 
 describe("PostHog OTel logs", () => {
@@ -34,25 +34,16 @@ describe("PostHog OTel logs", () => {
     await provider?.shutdown();
   });
 
-  test("bounds a scheduled flush when the logger provider does not settle", async () => {
-    let scheduledTask: (() => Promise<void>) | undefined;
-    const schedule = mock((task: () => Promise<void>) => {
-      scheduledTask = task;
-    });
+  test("bounds a flush when the logger provider does not settle", async () => {
     const provider = {
       forceFlush: () => new Promise<void>(() => undefined),
     } as Pick<LoggerProvider, "forceFlush">;
     const warn = spyOn(console, "warn").mockImplementation(() => undefined);
 
-    schedulePostHogLogsFlush(schedule, { provider, timeoutMs: 5 });
-
-    expect(schedule).toHaveBeenCalledTimes(1);
-    const task = scheduledTask;
-    expect(task).toBeDefined();
-    if (!task) throw new Error("Expected a scheduled PostHog flush task");
-
     const result = await Promise.race([
-      task().then(() => "completed" as const),
+      flushPostHogLogs({ provider, timeoutMs: 5 }).then(
+        () => "completed" as const
+      ),
       new Promise<"still-pending">((resolve) =>
         setTimeout(() => resolve("still-pending"), 100)
       ),

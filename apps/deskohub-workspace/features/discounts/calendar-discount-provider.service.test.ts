@@ -92,9 +92,9 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
-const quote = Effect.gen(function* () {
+const discover = Effect.gen(function* () {
   const provider = yield* CalendarDiscountProvider;
-  return yield* provider.quote({
+  return yield* provider.discover({
     locale: "en-US",
     product: basicProduct,
     reservationDate: "2026-07-14",
@@ -176,12 +176,12 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const basic = yield* provider.quote({
+        const basic = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-        const plus = yield* provider.quote({
+        const plus = yield* provider.discover({
           locale: "en-US",
           product: { kind: "cowork", tier: "plus" },
           reservationDate: "2026-07-20",
@@ -242,7 +242,7 @@ describe("CalendarDiscountProvider", () => {
   test("ignores cancelled events and events without a description", async () => {
     const loadById = mock(defaultLoadById);
     const result = await runWithProvider(
-      quote,
+      discover,
       () =>
         Effect.succeed([
           saleEvent({ status: "cancelled" }),
@@ -268,7 +268,7 @@ describe("CalendarDiscountProvider", () => {
     ],
     ["paragraph-wrapped UUID", `<p>${discountIdA}</p>`],
   ])("omits a malformed %s event", async (_label, description) => {
-    const result = await runWithProvider(quote, () =>
+    const result = await runWithProvider(discover, () =>
       Effect.succeed([saleEvent({ description })])
     );
 
@@ -279,7 +279,7 @@ describe("CalendarDiscountProvider", () => {
     const loadById = mock(defaultLoadById);
 
     await runWithProvider(
-      quote,
+      discover,
       () =>
         Effect.succeed([saleEvent({ description: discountIdA.toUpperCase() })]),
       loadById
@@ -290,7 +290,7 @@ describe("CalendarDiscountProvider", () => {
 
   for (const [label, event] of invalidEventCases) {
     test(`omits a referenced ${label}`, async () => {
-      const result = await runWithProvider(quote, () =>
+      const result = await runWithProvider(discover, () =>
         Effect.succeed([saleEvent(event)])
       );
 
@@ -299,7 +299,7 @@ describe("CalendarDiscountProvider", () => {
   }
 
   test("keeps valid sales when another calendar event is malformed", async () => {
-    const result = await runWithProvider(quote, () =>
+    const result = await runWithProvider(discover, () =>
       Effect.succeed([
         saleEvent({ id: "valid-sale" }),
         saleEvent({ id: "malformed-sale", description: "not-a-discount-id" }),
@@ -318,7 +318,7 @@ describe("CalendarDiscountProvider", () => {
       message: "Not found",
     });
     const result = await runWithProvider(
-      quote,
+      discover,
       () => Effect.succeed([saleEvent()]),
       () => Effect.fail(cause)
     );
@@ -333,7 +333,7 @@ describe("CalendarDiscountProvider", () => {
       cause: new Error("database unavailable"),
     });
     const result = await runWithProvider(
-      quote,
+      discover,
       () => Effect.succeed([saleEvent()]),
       () => Effect.fail(cause)
     );
@@ -354,7 +354,7 @@ describe("CalendarDiscountProvider", () => {
           : Effect.succeed(definition(discountId))
     );
     const result = await runWithProvider(
-      quote,
+      discover,
       () =>
         Effect.succeed([
           saleEvent({ id: "valid-sale", description: discountIdA }),
@@ -378,7 +378,7 @@ describe("CalendarDiscountProvider", () => {
       cause: new Error("provider unavailable"),
     });
 
-    const result = await runWithProvider(quote.pipe(Effect.result), () =>
+    const result = await runWithProvider(discover.pipe(Effect.result), () =>
       Effect.fail(cause)
     );
 
@@ -493,7 +493,7 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("falls back to the iCal UID and occurrence date when event ID is absent", async () => {
-    const result = await runWithProvider(quote, () =>
+    const result = await runWithProvider(discover, () =>
       Effect.succeed([
         saleEvent({
           id: undefined,
@@ -526,7 +526,7 @@ describe("CalendarDiscountProvider", () => {
   test("loads one definition for overlapping occurrences that share it", async () => {
     const loadById = mock(defaultLoadById);
     const result = await runWithProvider(
-      quote,
+      discover,
       () =>
         Effect.succeed([
           saleEvent({ id: "sale-a" }),
@@ -547,12 +547,12 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const english = yield* provider.quote({
+        const english = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-        const czech = yield* provider.quote({
+        const czech = yield* provider.discover({
           locale: "cs-CZ",
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -613,7 +613,7 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const first = yield* provider.quote({
+        const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -622,7 +622,7 @@ describe("CalendarDiscountProvider", () => {
           "en-US": "Edited database sale",
           "cs-CZ": "Upravená databázová sleva",
         };
-        const cached = yield* provider.quote({
+        const cached = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -633,7 +633,7 @@ describe("CalendarDiscountProvider", () => {
           reservationDate: "2026-07-20",
         });
         yield* TestClock.adjust("61 seconds");
-        const afterTtl = yield* provider.quote({
+        const afterTtl = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -661,13 +661,13 @@ describe("CalendarDiscountProvider", () => {
           Temporal.Instant.from("2026-08-01T21:59:59.500Z").epochMilliseconds
         );
         const provider = yield* CalendarDiscountProvider;
-        const beforeExpiry = yield* provider.quote({
+        const beforeExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
         yield* TestClock.adjust("1 second");
-        const cachedAfterExpiry = yield* provider.quote({
+        const cachedAfterExpiry = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -689,7 +689,7 @@ describe("CalendarDiscountProvider", () => {
     expect(listEvents).toHaveBeenCalledTimes(2);
   });
 
-  test("keeps the quote cache across separate process-lifetime layer builds", async () => {
+  test("keeps the discovery cache across separate process-lifetime layer builds", async () => {
     let currentLabels = {
       "en-US": "Initial database sale",
       "cs-CZ": "Počáteční databázová sleva",
@@ -718,7 +718,7 @@ describe("CalendarDiscountProvider", () => {
     );
     const quoteForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;
-      return yield* provider.quote({
+      return yield* provider.discover({
         locale: "en-US",
         product: basicProduct,
         reservationDate: "2026-07-20",
@@ -788,12 +788,12 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const first = yield* provider.quote({
+        const first = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-        const second = yield* provider.quote({
+        const second = yield* provider.discover({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",

@@ -94,6 +94,7 @@ export type PaymentTerminalScenario = {
 
 export type WorkspaceE2ECase = {
   readonly id: string;
+  readonly runAfterParallel?: boolean;
   readonly timeoutMs: number;
   readonly execute: (context: {
     readonly runStep: WorkspaceE2EStepRunner;

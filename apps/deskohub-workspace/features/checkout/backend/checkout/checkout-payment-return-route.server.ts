@@ -1,5 +1,6 @@
 import { Effect, type Layer, Option, Ref, Schedule, Schema } from "effect";
 import { NextResponse } from "next/server";
+import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
@@ -14,6 +15,12 @@ import { getReservationStatusPath } from "./reservation-status-url";
 
 type LocalizedCheckoutPaymentRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
+};
+
+type CheckoutPaymentReturn = {
+  readonly locale: Locale;
+  readonly orderId: string;
+  readonly outcome: CheckoutStatusRefreshInput["returnOutcome"];
 };
 
 const decodeCheckoutPaymentParams = getParamsDecoder({
@@ -66,7 +73,7 @@ const refreshCheckoutStatusWithBriefRetry = Effect.fn(
   );
 });
 
-const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
+const decodeCheckoutPaymentReturn = Effect.fn("decodeCheckoutPaymentReturn")(
   function* (
     request: Request,
     { params }: LocalizedCheckoutPaymentRouteContext
@@ -75,7 +82,7 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       yield* Effect.promise(() => params)
     );
     const routeParams = Option.getOrUndefined(decodedParams);
-    if (!routeParams) return new NextResponse(null, { status: 404 });
+    if (!routeParams) return Option.none<CheckoutPaymentReturn>();
 
     const { locale, orderId } = routeParams;
     const { outcome } = Option.getOrElse(
@@ -85,17 +92,23 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       () => ({ outcome: "unknown" as const })
     );
 
+    return Option.some({ locale, orderId, outcome });
+  }
+);
+
+const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
+  function* (request: Request, input: CheckoutPaymentReturn) {
     yield* refreshCheckoutStatusWithBriefRetry({
-      orderId,
-      returnOutcome: outcome,
+      orderId: input.orderId,
+      returnOutcome: input.outcome,
     });
 
     return NextResponse.redirect(
       new URL(
         getReservationStatusPath({
-          locale,
-          orderId,
-          outcome,
+          locale: input.locale,
+          orderId: input.orderId,
+          outcome: input.outcome,
           setBypassCookie: true,
         }),
         request.url
@@ -113,15 +126,23 @@ export const makeCheckoutPaymentReturnGet = (
       cancellation: "continue-after-disconnect",
     },
     (request, context: LocalizedCheckoutPaymentRouteContext) =>
-      handleCheckoutPaymentReturn(request, context).pipe(
-        Effect.provide(statusServiceLayer),
-        Effect.mapError(
-          (cause) =>
-            new WorkspaceRouteFailure({
-              statusCode: 500,
-              publicMessage: "Checkout status could not be refreshed",
-              cause,
-            })
+      decodeCheckoutPaymentReturn(request, context).pipe(
+        Effect.flatMap((decoded) =>
+          decoded.pipe(
+            Option.map((input) =>
+              handleCheckoutPaymentReturn(request, input).pipe(
+                Effect.provide(statusServiceLayer),
+                Effect.mapError(
+                  WorkspaceRouteFailure.internal(
+                    "Checkout status could not be refreshed"
+                  )
+                )
+              )
+            ),
+            Option.getOrElse(() =>
+              Effect.succeed(new NextResponse(null, { status: 404 }))
+            )
+          )
         )
       )
   );

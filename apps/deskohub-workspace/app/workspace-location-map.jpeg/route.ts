@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
   defineWorkspaceRoute,
-  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
 } from "@/shared/backend/workspace-route";
 
 export const GET = defineWorkspaceRoute(
@@ -24,7 +24,7 @@ export const GET = defineWorkspaceRoute(
           })
       ),
       Effect.mapError(
-        mapWorkspaceInternalRouteFailure(
+        WorkspaceRouteFailure.internal(
           "Workspace location map could not be generated."
         )
       )
