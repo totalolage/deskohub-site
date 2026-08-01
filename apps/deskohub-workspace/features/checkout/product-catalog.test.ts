@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import { defaultWorkspaceCurrency } from "@/shared/money/currencies";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceProductTier,
   workspaceCoworkProductCatalog,
   workspaceMeetingRoomCatalog,
+  workspaceMeetingRoomProductsByDurationKey,
+  workspaceProductCoffeePrice,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "./product-catalog";
@@ -21,6 +26,8 @@ describe("workspace product catalog", () => {
     expect(
       workspaceCoworkProductCatalog.map((product) => product.tier)
     ).toEqual(["basic", "plus", "profi"]);
+    expect(isWorkspaceProductTier("basic")).toBe(true);
+    expect(isWorkspaceProductTier("toString")).toBe(false);
   });
 
   test("exposes approved meeting room duration prices", () => {
@@ -52,6 +59,27 @@ describe("workspace product catalog", () => {
       exponent: 2,
       currency: "CZK",
     });
+  });
+
+  test("derives duration keys and currency metadata from the catalog", () => {
+    expect(Object.keys(workspaceMeetingRoomProductsByDurationKey)).toEqual(
+      workspaceMeetingRoomCatalog.map(({ duration }) =>
+        getMeetingRoomReservationDurationKey(duration)
+      )
+    );
+
+    const prices = [
+      ...workspaceCoworkProductCatalog.map(({ price }) => price),
+      ...workspaceMeetingRoomCatalog.map(({ price }) => price),
+      workspaceProductCoffeePrice,
+    ];
+
+    for (const price of prices) {
+      expect(price).toMatchObject({
+        currency: defaultWorkspaceCurrency.code,
+        exponent: defaultWorkspaceCurrency.exponent,
+      });
+    }
   });
 
   test("pluralizes meeting room duration titles by locale", () => {

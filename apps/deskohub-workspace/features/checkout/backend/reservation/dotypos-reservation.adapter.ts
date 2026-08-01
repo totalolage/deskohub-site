@@ -9,17 +9,16 @@ import {
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
+import {
+  getWorkspaceMeetingRoomDurationLabel,
+  getWorkspaceMeetingRoomProductTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import {
-  isMeetingRoomWholeDayReservationDuration,
-  type MeetingRoomReservationDuration,
-} from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getReservationDate,
   getReservationIntervalNormalization,
@@ -137,8 +136,9 @@ export const formatWorkspaceReservationNote = (
             timeZone: workspaceSiteConstants.location.timeZone,
           })}`,
           `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
-          `Duration: ${formatMeetingRoomDurationForNote(
-            meetingRoomReservation.duration
+          `Duration: ${getWorkspaceMeetingRoomDurationLabel(
+            meetingRoomReservation.duration,
+            checkoutDetails.locale
           )}`,
         ],
       }),
@@ -163,13 +163,6 @@ export const formatWorkspaceReservationNote = (
   ];
 
   return lines.filter((line) => line !== null).join("\n");
-};
-
-const formatMeetingRoomDurationForNote = (
-  duration: MeetingRoomReservationDuration
-) => {
-  if (isMeetingRoomWholeDayReservationDuration(duration)) return "whole day";
-  return `${duration.amount} ${duration.amount === 1 ? "hour" : "hours"}`;
 };
 
 const getReservationLogAnnotations = (

@@ -1,5 +1,6 @@
 import { Data, Effect, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 
 export type WorkspaceMoney = {
   readonly value: number;
@@ -82,6 +83,15 @@ export const workspaceMoneyWithValue = (
   value,
   exponent: template.exponent,
   currency: template.currency,
+});
+
+export const workspaceMoneyFromCurrency = (
+  value: number,
+  currency: Pick<WorkspaceCurrencyDefinition, "code" | "exponent">
+): WorkspaceMoney => ({
+  value,
+  exponent: currency.exponent,
+  currency: currency.code,
 });
 
 export class WorkspaceMoneyError extends Data.TaggedError(

@@ -1,52 +1,11 @@
-import { Effect } from "effect";
-import {
-  CheckoutError,
-  CheckoutService,
-} from "@/features/checkout/backend/checkout";
+import { Effect, Match } from "effect";
+import { CheckoutService } from "@/features/checkout/backend/checkout";
 import { m } from "@/features/i18n";
 import type { SubmitReservationInput } from "@/features/reservation/actions/submit-reservation-input";
 import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
-import {
-  BotDetectedError,
-  BotProtectionService,
-} from "@/shared/backend/bot-protection/bot-protection.service";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-
-const getSubmitReservationErrorMessage = (
-  error: { readonly message: string },
-  input: SubmitReservationInput
-) => {
-  if (error instanceof BotDetectedError) {
-    return m.reservationRateLimitMessage({}, { locale: input.locale });
-  }
-
-  if (
-    error instanceof CheckoutError &&
-    error.code === "meeting_room_reservation_ended"
-  ) {
-    return m.reservationValidationMeetingRoomEnded(
-      {},
-      { locale: input.locale }
-    );
-  }
-
-  const unavailableCause =
-    error instanceof CheckoutError &&
-    error.cause instanceof WorkspaceTableUnavailableError
-      ? error.cause
-      : undefined;
-
-  if (!unavailableCause) {
-    return m.reservationErrorMessage({}, { locale: input.locale });
-  }
-
-  return getReservationAvailabilityUnavailableMessage({
-    date: unavailableCause.date,
-    locale: input.locale,
-    reservation: unavailableCause.reservation,
-  });
-};
 
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
@@ -81,7 +40,43 @@ export const submitWorkspaceReservation = Effect.fn(
       Effect.mapError(
         (error) =>
           new PublicSafeActionError({
-            message: getSubmitReservationErrorMessage(error, input),
+            message: Match.value(error).pipe(
+              Match.discriminatorsExhaustive("_tag")({
+                BotDetectedError: () =>
+                  m.reservationRateLimitMessage({}, { locale: input.locale }),
+                BotVerificationError: () =>
+                  m.reservationErrorMessage({}, { locale: input.locale }),
+                CheckoutError: (checkoutError) =>
+                  Match.value(checkoutError.code).pipe(
+                    Match.when("meeting_room_reservation_ended", () =>
+                      m.reservationValidationMeetingRoomEnded(
+                        {},
+                        { locale: input.locale }
+                      )
+                    ),
+                    Match.when("checkout_failed", () =>
+                      Match.value(checkoutError.cause).pipe(
+                        Match.when(
+                          Match.instanceOf(WorkspaceTableUnavailableError),
+                          (unavailable) =>
+                            getReservationAvailabilityUnavailableMessage({
+                              date: unavailable.date,
+                              locale: input.locale,
+                              reservation: unavailable.reservation,
+                            })
+                        ),
+                        Match.orElse(() =>
+                          m.reservationErrorMessage(
+                            {},
+                            { locale: input.locale }
+                          )
+                        )
+                      )
+                    ),
+                    Match.exhaustive
+                  ),
+              })
+            ),
             cause: error,
           })
       )

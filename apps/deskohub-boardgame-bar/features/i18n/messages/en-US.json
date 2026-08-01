@@ -405,21 +405,21 @@
   "timeUnits": {
     "hour": [
       {
-        "declarations": ["input count"],
-        "selectors": [],
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
         "match": {
-          "count=1": "hour",
-          "*": "hours"
+          "countPlural=one": "hour",
+          "countPlural=other": "hours"
         }
       }
     ],
     "minute": [
       {
-        "declarations": ["input count"],
-        "selectors": [],
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
         "match": {
-          "count=1": "minute",
-          "*": "minutes"
+          "countPlural=one": "minute",
+          "countPlural=other": "minutes"
         }
       }
     ]

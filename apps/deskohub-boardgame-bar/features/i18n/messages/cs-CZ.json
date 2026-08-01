@@ -416,27 +416,23 @@
   "timeUnits": {
     "hour": [
       {
-        "declarations": ["input count"],
-        "selectors": [],
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
         "match": {
-          "count=1": "hodina",
-          "count=2": "hodiny",
-          "count=3": "hodiny",
-          "count=4": "hodiny",
-          "*": "hodin"
+          "countPlural=one": "hodina",
+          "countPlural=few": "hodiny",
+          "countPlural=other": "hodin"
         }
       }
     ],
     "minute": [
       {
-        "declarations": ["input count"],
-        "selectors": [],
+        "declarations": ["input count", "local countPlural = count: plural"],
+        "selectors": ["countPlural"],
         "match": {
-          "count=1": "minuta",
-          "count=2": "minuty",
-          "count=3": "minuty",
-          "count=4": "minuty",
-          "*": "minut"
+          "countPlural=one": "minuta",
+          "countPlural=few": "minuty",
+          "countPlural=other": "minut"
         }
       }
     ]

@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  type EmailMessage,
   type EmailSendResult,
   EmailServiceError,
   EmailServiceTag,
@@ -30,11 +31,15 @@ const sent = (id: string): EmailSendResult => ({
   timestamp: new Date("2026-06-20T12:00:00.000Z"),
 });
 
-const runSubmit = (send: ReturnType<typeof mock>) =>
+const runSubmit = (
+  send: ReturnType<typeof mock>,
+  locale = "en-US",
+  duration = input.duration
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* TrainingReservationService;
-      return yield* service.submit(input, "en-US");
+      return yield* service.submit({ ...input, duration }, locale);
     }).pipe(
       Effect.provide(
         TrainingReservationServiceLive.pipe(
@@ -72,5 +77,20 @@ describe("TrainingReservationService", () => {
 
     expect(result).toMatchObject({ ...input, locale: "en-US" });
     expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  test("uses the same localized duration in text and HTML emails", async () => {
+    const send = mock((_message: EmailMessage) =>
+      Effect.succeed(sent("email"))
+    );
+
+    await runSubmit(send, "en-US", 2);
+
+    const business = send.mock.calls[0]?.[0] as EmailMessage;
+    const customer = send.mock.calls[1]?.[0] as EmailMessage;
+    expect(business.text).toContain("Doba trvání: 2 hodiny");
+    expect(business.html).toContain("2 hodiny");
+    expect(customer.text).toContain("Duration: 2 hours");
+    expect(customer.html).toContain("2 hours");
   });
 });

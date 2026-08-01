@@ -71,6 +71,29 @@ describe("Workspace actions", () => {
     });
   });
 
+  test("does not expose a public error nested inside an internal failure", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const { PublicSafeActionError } = await import(
+      "../utils/safe-action-client"
+    );
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.internal-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () =>
+        Effect.fail(
+          new Error("Internal failure", {
+            cause: new PublicSafeActionError({ message: "Nested secret" }),
+          })
+        )
+    );
+
+    await expect(action("input")).resolves.toEqual({
+      serverError: "Something went wrong while executing the operation.",
+    });
+  });
+
   test("supports stateful form actions explicitly", async () => {
     const { defineWorkspaceStateAction } = await import("./workspace-action");
     const action = defineWorkspaceStateAction(

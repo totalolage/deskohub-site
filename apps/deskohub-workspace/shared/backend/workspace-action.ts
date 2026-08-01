@@ -14,8 +14,8 @@ import type { Locale } from "@/features/i18n";
 import { formatError } from "../utils/error-formatting";
 import {
   actionClient,
-  getPublicSafeActionErrorMessage,
   PublicSafeActionError,
+  type SafeActionFailure,
 } from "../utils/safe-action-client";
 import { BotProtectionService } from "./bot-protection/bot-protection.service";
 import {
@@ -48,7 +48,11 @@ export interface WorkspaceActionContext<S extends StandardSchemaV1> {
   readonly locale: Locale;
 }
 
-export const defineWorkspaceAction = <S extends StandardSchemaV1, A, E>(
+export const defineWorkspaceAction = <
+  S extends StandardSchemaV1,
+  A,
+  E extends SafeActionFailure,
+>(
   options: WorkspaceActionOptions<S>,
   handler: (
     input: StandardSchemaV1.InferOutput<S>,
@@ -65,7 +69,11 @@ export const defineWorkspaceAction = <S extends StandardSchemaV1, A, E>(
       )
     );
 
-export const defineWorkspaceStateAction = <S extends StandardSchemaV1, A, E>(
+export const defineWorkspaceStateAction = <
+  S extends StandardSchemaV1,
+  A,
+  E extends SafeActionFailure,
+>(
   options: WorkspaceActionOptions<S>,
   handler: (
     input: StandardSchemaV1.InferOutput<S>,
@@ -83,7 +91,11 @@ export const defineWorkspaceStateAction = <S extends StandardSchemaV1, A, E>(
       )
     );
 
-const prepareWorkspaceAction = <S extends StandardSchemaV1, A, E>(
+const prepareWorkspaceAction = <
+  S extends StandardSchemaV1,
+  A,
+  E extends SafeActionFailure,
+>(
   args: WorkspaceActionArgs<S>,
   options: Pick<WorkspaceActionOptions<S>, "logInput">,
   handler: () => Effect.Effect<A, E, BotProtectionService>
@@ -138,10 +150,9 @@ const readActionHeaders = Effect.tryPromise({
   catch: (cause) => cause,
 }).pipe(Effect.orDie);
 
-const mapSafeActionFailure = (error: unknown) => {
-  const publicMessage = getPublicSafeActionErrorMessage(error);
-  if (publicMessage) {
-    return new PublicSafeActionError({ message: publicMessage, cause: error });
+const mapSafeActionFailure = (error: SafeActionFailure) => {
+  if (error instanceof PublicSafeActionError) {
+    return error;
   }
 
   const formatted = formatError(error);

@@ -14,6 +14,9 @@ export const workspaceCurrencyDefinitions = [
 export type WorkspaceCurrencyCode =
   (typeof workspaceCurrencyDefinitions)[number]["code"];
 
+export type WorkspaceCurrencyDefinition =
+  (typeof workspaceCurrencyDefinitions)[number];
+
 export const defaultWorkspaceCurrency = workspaceCurrencyDefinitions[0];
 
 export const findWorkspaceCurrencyDefinition = (code: string) =>

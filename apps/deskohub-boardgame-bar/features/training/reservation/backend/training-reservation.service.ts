@@ -1,7 +1,9 @@
 import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { Context, Effect, Layer } from "effect";
+import type { Locale } from "@/features/i18n";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatDurationMinutes } from "@/shared/utils/date-formatting";
 import {
   renderBusinessTrainingReservationEmailHtml,
   renderTrainingReservationConfirmationEmailHtml,
@@ -28,11 +30,6 @@ export interface TrainingReservationService {
     locale?: string
   ) => Effect.Effect<TrainingRoomReservation, StorageError>;
 }
-
-const getCzechDurationLabel = (duration: number) => {
-  if (duration === 1) return "hodina";
-  return duration < 5 ? "hodiny" : "hodin";
-};
 
 export const TrainingReservationService =
   Context.Service<TrainingReservationService>("TrainingReservationService");
@@ -80,7 +77,15 @@ export const TrainingReservationServiceLive = Layer.effect(
           });
 
           const formattedTime = data.time;
-          const duration = data.duration;
+          const customerLocale: Locale = locale === "cs-CZ" ? "cs-CZ" : "en-US";
+          const businessFormattedDuration = formatDurationMinutes(
+            data.duration * 60,
+            "cs-CZ"
+          );
+          const customerFormattedDuration = formatDurationMinutes(
+            data.duration * 60,
+            customerLocale
+          );
 
           // Create email content for the business
           const displayName =
@@ -97,7 +102,7 @@ export const TrainingReservationServiceLive = Layer.effect(
               phone: data.phone,
               formattedDate,
               formattedTime,
-              duration,
+              formattedDuration: businessFormattedDuration,
               specialRequirements: data.specialRequirements,
             }),
             text: `
@@ -110,7 +115,7 @@ ${fullName ? `- Jméno: ${fullName}\n` : ""}${data.company ? `- Společnost: ${d
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${getCzechDurationLabel(duration)}
+- Doba trvání: ${businessFormattedDuration}
 
 ${data.specialRequirements ? `Speciální požadavky:\n${data.specialRequirements}` : ""}
 
@@ -205,7 +210,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
               locale,
               formattedDate,
               formattedTime,
-              duration,
+              formattedDuration: customerFormattedDuration,
             }),
             text:
               locale === "cs-CZ"
@@ -220,7 +225,7 @@ Co bude následovat:
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${getCzechDurationLabel(duration)}
+- Doba trvání: ${customerFormattedDuration}
 
 Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.
 
@@ -239,7 +244,7 @@ What's next:
 Reservation Details:
 - Date: ${formattedDate}
 - Time: ${formattedTime}
-- Duration: ${duration} ${duration === 1 ? "hour" : "hours"}
+- Duration: ${customerFormattedDuration}
 
 If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.
 

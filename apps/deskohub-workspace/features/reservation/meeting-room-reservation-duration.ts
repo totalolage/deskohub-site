@@ -1,19 +1,13 @@
 import { Schema } from "effect";
+import {
+  type WorkspaceMeetingRoomDurationKey,
+  workspaceMeetingRoomCatalog,
+  workspaceMeetingRoomProductsByDurationKey,
+} from "@/features/checkout/meeting-room-product-catalog";
 
-const meetingRoomHourlyReservationDurationSchema = Schema.Struct({
-  unit: Schema.Literal("hour"),
-  amount: Schema.Literals([1, 4]),
-});
-
-const meetingRoomWholeDayReservationDurationSchema = Schema.Struct({
-  unit: Schema.Literal("day"),
-  amount: Schema.Literal(1),
-});
-
-export const meetingRoomReservationDurationSchema = Schema.Union([
-  meetingRoomHourlyReservationDurationSchema,
-  meetingRoomWholeDayReservationDurationSchema,
-]).annotate({
+export const meetingRoomReservationDurationSchema = Schema.Union(
+  workspaceMeetingRoomCatalog.map(({ durationSchema }) => durationSchema)
+).annotate({
   identifier: "MeetingRoomReservationDuration",
   description:
     "A purchasable meeting-room period, preserving calendar-day semantics separately from elapsed hours.",
@@ -22,30 +16,19 @@ export const meetingRoomReservationDurationSchema = Schema.Union([
 export type MeetingRoomReservationDuration =
   typeof meetingRoomReservationDurationSchema.Type;
 
-export const meetingRoomReservationDurationKeys = [
-  "hour:1",
-  "hour:4",
-  "day:1",
-] as const;
+export const meetingRoomReservationDurationKeys = Object.keys(
+  workspaceMeetingRoomProductsByDurationKey
+) as [WorkspaceMeetingRoomDurationKey, ...WorkspaceMeetingRoomDurationKey[]];
 
 export const meetingRoomReservationDurationKeySchema = Schema.Literals(
   meetingRoomReservationDurationKeys
 );
 
-export type MeetingRoomReservationDurationKey =
-  typeof meetingRoomReservationDurationKeySchema.Type;
+export type MeetingRoomReservationDurationKey = WorkspaceMeetingRoomDurationKey;
 
-const durationsByKey = {
-  "hour:1": { unit: "hour", amount: 1 },
-  "hour:4": { unit: "hour", amount: 4 },
-  "day:1": { unit: "day", amount: 1 },
-} as const satisfies Record<
-  MeetingRoomReservationDurationKey,
-  MeetingRoomReservationDuration
->;
-
-export const meetingRoomReservationDurations =
-  meetingRoomReservationDurationKeys.map((key) => durationsByKey[key]);
+export const meetingRoomReservationDurations = workspaceMeetingRoomCatalog.map(
+  ({ duration }) => duration
+);
 
 export const getMeetingRoomReservationDurationKey = ({
   amount,
@@ -55,7 +38,8 @@ export const getMeetingRoomReservationDurationKey = ({
 
 export const getMeetingRoomReservationDuration = (
   key: MeetingRoomReservationDurationKey
-): MeetingRoomReservationDuration => durationsByKey[key];
+): MeetingRoomReservationDuration =>
+  workspaceMeetingRoomProductsByDurationKey[key].duration;
 
 export const isMeetingRoomWholeDayReservationDuration = (
   duration: MeetingRoomReservationDuration

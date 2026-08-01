@@ -30,11 +30,9 @@ import {
 type CoworkTableAssignmentReservation = StoredCoworkReservationDetails &
   Pick<CoworkReservationDetails, "date">;
 
-type MeetingRoomTableAssignmentReservation = MeetingRoomReservationDetails;
-
 export type WorkspaceTableAssignmentReservation =
   | CoworkTableAssignmentReservation
-  | MeetingRoomTableAssignmentReservation;
+  | MeetingRoomReservationDetails;
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (

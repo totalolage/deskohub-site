@@ -11,21 +11,7 @@ import {
   discountAdminMutationStandardSchema,
 } from "./contracts";
 import { DiscountAdministrationLive } from "./discount-administration.runtime";
-import {
-  DiscountAdminAudienceError,
-  DiscountAdministration,
-  DiscountAdminNotFoundError,
-} from "./discount-administration.service";
-
-const getDiscountAdminMutationErrorMessage = (cause: unknown) => {
-  if (
-    cause instanceof DiscountAdminNotFoundError ||
-    cause instanceof DiscountAdminAudienceError
-  ) {
-    return cause.message;
-  }
-  return "The change could not be saved. Check the values and any existing references, then try again.";
-};
+import { DiscountAdministration } from "./discount-administration.service";
 
 const executeDiscountAdminMutation = Effect.fn(
   "DiscountAdministration.executeMutation"
@@ -94,7 +80,14 @@ const discountAdminMutationAction = defineWorkspaceAction(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: getDiscountAdminMutationErrorMessage(cause),
+            message: Match.value(cause).pipe(
+              Match.tag("DiscountAdminNotFoundError", ({ message }) => message),
+              Match.tag("DiscountAdminAudienceError", ({ message }) => message),
+              Match.orElse(
+                () =>
+                  "The change could not be saved. Check the values and any existing references, then try again."
+              )
+            ),
             cause,
           })
       )

@@ -22,15 +22,6 @@ const hrStyle = {
 } as const;
 const footerStyle = { color: "#999", fontSize: "12px" } as const;
 
-const durationLabel = (duration: number, locale?: string) => {
-  if (locale === "cs-CZ") {
-    if (duration === 1) return "hodina";
-    return duration < 5 ? "hodiny" : "hodin";
-  }
-
-  return duration === 1 ? "hour" : "hours";
-};
-
 const TrainingEmailContainer = ({
   children,
 }: {
@@ -45,7 +36,7 @@ export const renderBusinessTrainingReservationEmailHtml = ({
   phone,
   formattedDate,
   formattedTime,
-  duration,
+  formattedDuration,
   specialRequirements,
 }: {
   readonly fullName: string;
@@ -55,7 +46,7 @@ export const renderBusinessTrainingReservationEmailHtml = ({
   readonly phone: string;
   readonly formattedDate: string;
   readonly formattedTime: string;
-  readonly duration: number;
+  readonly formattedDuration: string;
   readonly specialRequirements?: string;
 }) =>
   renderBoardgameEmailHtml(
@@ -116,7 +107,7 @@ export const renderBusinessTrainingReservationEmailHtml = ({
           />
           <BoardgameEmailRow
             label="Doba trvání:"
-            value={`${duration} ${durationLabel(duration, "cs-CZ")}`}
+            value={formattedDuration}
             cellStyle={cellStyle}
           />
         </tbody>
@@ -168,12 +159,12 @@ export const renderTrainingReservationConfirmationEmailHtml = ({
   locale,
   formattedDate,
   formattedTime,
-  duration,
+  formattedDuration,
 }: {
   readonly locale?: string;
   readonly formattedDate: string;
   readonly formattedTime: string;
-  readonly duration: number;
+  readonly formattedDuration: string;
 }) =>
   renderBoardgameEmailHtml(
     <TrainingEmailContainer>
@@ -225,7 +216,7 @@ export const renderTrainingReservationConfirmationEmailHtml = ({
           />
           <BoardgameEmailRow
             label={locale === "cs-CZ" ? "Doba trvání:" : "Duration:"}
-            value={`${duration} ${durationLabel(duration, locale)}`}
+            value={formattedDuration}
             cellStyle={cellStyle}
           />
         </tbody>
