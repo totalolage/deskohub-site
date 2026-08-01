@@ -756,6 +756,8 @@ export const CheckoutServiceLive = Layer.effect(
             return { status: "in_progress" as const };
           }
 
+          // An existing provider session can settle independently. Returning its
+          // matching URL is idempotent recovery, not new payment initiation.
           if (reservation.activePaymentAttemptId) {
             yield* Effect.logDebug(
               "Hosted payment checkout active payment attempt lookup started"
