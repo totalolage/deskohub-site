@@ -11,8 +11,11 @@ describe("workspace product identities", () => {
       "cowork:basic"
     );
     expect(
-      getWorkspaceProductKey({ kind: "meeting-room", durationMinutes: 60 })
-    ).toBe("meeting-room:60");
+      getWorkspaceProductKey({
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      })
+    ).toBe("meeting-room:hour:1");
   });
 
   test("rejects non-canonical product keys", () => {
@@ -21,5 +24,6 @@ describe("workspace product identities", () => {
     expect(() => decode("cowork:enterprise")).toThrow();
     expect(() => decode("meeting-room:4")).toThrow();
     expect(() => decode("meeting-room:240-minutes")).toThrow();
+    expect(() => decode("meeting-room:1440")).toThrow();
   });
 });

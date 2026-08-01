@@ -128,6 +128,31 @@ describe("discount persistence contracts", () => {
     );
   });
 
+  test("migrates meeting-room discount identities to semantic durations", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260801094540_semantic_meeting_room_durations/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain(
+      "'duration', CASE \"product_identity\" ->> 'durationMinutes'"
+    );
+    expect(migration).toContain(
+      "WHEN '1440' THEN jsonb_build_object('unit', 'day', 'amount', 1)"
+    );
+    expect(migration).toContain('UPDATE "workspace_reservations"');
+    expect(migration).toContain(
+      `SET "reservation_details" = jsonb_build_object('kind', 'meeting-room')`
+    );
+    expect(migration).toContain('DELETE FROM "discount_product_targets"');
+    expect(migration).toContain('UPDATE "discount_applications"');
+    expect(migration).toContain(
+      "Cannot migrate an unknown legacy meeting-room duration"
+    );
+  });
+
   test("removes the superseded scalar discount label", async () => {
     const migration = await Bun.file(
       new URL(

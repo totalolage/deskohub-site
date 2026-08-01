@@ -1,4 +1,8 @@
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
+import { meetingRoomReservationDurations } from "@/features/reservation/meeting-room-reservation-duration";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import {
   localDateTimeToTemporalInstantString,
@@ -93,13 +97,21 @@ const readOptionalNumber = (formData: FormData, field: string) => {
   return value === null ? null : Number(value);
 };
 
+const workspaceProductIdentities = [
+  { kind: "cowork", tier: "basic" },
+  { kind: "cowork", tier: "plus" },
+  { kind: "cowork", tier: "profi" },
+  ...meetingRoomReservationDurations.map((duration) => ({
+    kind: "meeting-room" as const,
+    duration,
+  })),
+] as const satisfies readonly WorkspaceProductIdentity[];
+
 const productIdentities: Readonly<
   Record<string, readonly WorkspaceProductIdentity[]>
-> = {
-  "cowork:basic": [{ kind: "cowork", tier: "basic" }],
-  "cowork:plus": [{ kind: "cowork", tier: "plus" }],
-  "cowork:profi": [{ kind: "cowork", tier: "profi" }],
-  "meeting-room:60": [{ kind: "meeting-room", durationMinutes: 60 }],
-  "meeting-room:240": [{ kind: "meeting-room", durationMinutes: 240 }],
-  "meeting-room:1440": [{ kind: "meeting-room", durationMinutes: 1440 }],
-};
+> = Object.fromEntries(
+  workspaceProductIdentities.map((product) => [
+    getWorkspaceProductKey(product),
+    [product],
+  ])
+);

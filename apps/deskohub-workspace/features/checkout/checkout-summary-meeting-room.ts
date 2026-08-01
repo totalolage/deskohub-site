@@ -21,7 +21,7 @@ export const getMeetingRoomCheckoutSummary = (
   const [item] = quote.items;
   const product: WorkspaceProductIdentity = {
     kind: item.type,
-    durationMinutes: item.durationMinutes,
+    duration: item.duration,
   };
   const key = `product:${getWorkspaceProductKey(product)}` as const;
   const summaryDiscounts = quote.payment.discounts.map(({ amount, discount }) =>

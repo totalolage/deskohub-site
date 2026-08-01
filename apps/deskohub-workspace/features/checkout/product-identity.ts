@@ -41,9 +41,9 @@ export const getCanonicalWorkspaceProductIdentity = (
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("kind")({
       cowork: ({ kind, tier }) => ({ kind, tier }),
-      "meeting-room": ({ durationMinutes, kind }) => ({
+      "meeting-room": ({ duration, kind }) => ({
         kind,
-        durationMinutes,
+        duration,
       }),
     })
   );

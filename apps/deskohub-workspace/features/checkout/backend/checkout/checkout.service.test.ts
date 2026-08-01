@@ -1020,7 +1020,10 @@ describe("CheckoutService", () => {
       subtotalAfter: money(145_000),
     };
     const acceptedDiscountQuote: DiscountQuote = {
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+      },
       discountableSubtotal: money(155_000),
       discounts: [meetingRoomApplication],
       totalDiscount: money(10_000),
@@ -1081,7 +1084,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: ["order", "total"],
-      itemKeys: ["product:meeting-room:240", "total:final"],
+      itemKeys: ["product:meeting-room:hour:4", "total:final"],
     });
     const freshToken = new URL(
       result.freshPayUrl,

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
-import { getWorkspaceMeetingRoomReservationDuration } from "@/features/checkout/product-catalog";
+import type { MeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getAssertPrefilledReservationScript,
@@ -17,14 +17,13 @@ import {
 } from "./checkout/data";
 
 const workspaceTemporal = globalThis.Temporal;
+const oneHourMeetingRoomDuration = { unit: "hour", amount: 1 } as const;
+const fourHourMeetingRoomDuration = { unit: "hour", amount: 4 } as const;
+const wholeDayMeetingRoomDuration = { unit: "day", amount: 1 } as const;
 const getTestMeetingRoomInterval = (
   startDateTime: string,
-  durationMinutes: 60 | 240 | 1440
-) =>
-  getMeetingRoomReservationInterval(
-    startDateTime,
-    getWorkspaceMeetingRoomReservationDuration(durationMinutes)
-  );
+  duration: MeetingRoomReservationDuration
+) => getMeetingRoomReservationInterval(startDateTime, duration);
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(
@@ -206,13 +205,16 @@ test("accepts an already-prepared prefilled Profi price", async () => {
 });
 
 test("drives meeting-room date, time, duration, and consent controls", () => {
-  const interval = getTestMeetingRoomInterval("2099-09-01T10:00", 240);
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-01T10:00",
+    fourHourMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-09-01",
-      durationMinutes: 240,
+      duration: fourHourMeetingRoomDuration,
       startDateTime: "2099-09-01T10:00",
       ...interval!,
     },
@@ -242,13 +244,16 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
 });
 
 test("waits through delayed meeting-room availability readiness", async () => {
-  const interval = getTestMeetingRoomInterval("2099-09-02T10:00", 60);
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-02T10:00",
+    oneHourMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-09-02",
-      durationMinutes: 60,
+      duration: oneHourMeetingRoomDuration,
       startDateTime: "2099-09-02T10:00",
       ...interval!,
     },
@@ -321,13 +326,16 @@ test("waits through delayed meeting-room availability readiness", async () => {
 });
 
 test("waits for the meeting-room calendar to render the next month", async () => {
-  const interval = getTestMeetingRoomInterval("2099-10-01T10:00", 60);
+  const interval = getTestMeetingRoomInterval(
+    "2099-10-01T10:00",
+    oneHourMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-10-01",
-      durationMinutes: 60,
+      duration: oneHourMeetingRoomDuration,
       startDateTime: "2099-10-01T10:00",
       ...interval!,
     },
@@ -400,13 +408,16 @@ test("waits for the meeting-room calendar to render the next month", async () =>
 });
 
 test("waits for the date-only meeting-room state before editing time", async () => {
-  const interval = getTestMeetingRoomInterval("2099-10-02T10:00", 240);
+  const interval = getTestMeetingRoomInterval(
+    "2099-10-02T10:00",
+    fourHourMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-10-02",
-      durationMinutes: 240,
+      duration: fourHourMeetingRoomDuration,
       startDateTime: "2099-10-02T10:00",
       ...interval!,
     },
@@ -492,13 +503,16 @@ test("waits for the date-only meeting-room state before editing time", async () 
 });
 
 test("follows the current meeting-room duration control after rerender", async () => {
-  const interval = getTestMeetingRoomInterval("2099-10-03T10:00", 240);
+  const interval = getTestMeetingRoomInterval(
+    "2099-10-03T10:00",
+    fourHourMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-10-03",
-      durationMinutes: 240,
+      duration: fourHourMeetingRoomDuration,
       startDateTime: "2099-10-03T10:00",
       ...interval!,
     },
@@ -579,13 +593,16 @@ test("follows the current meeting-room duration control after rerender", async (
 });
 
 test("asserts restored whole-day meeting-room state and reset legal consent", async () => {
-  const interval = getTestMeetingRoomInterval("2099-09-01T00:00", 1440);
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-01T00:00",
+    wholeDayMeetingRoomDuration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData(
     "https://workspace.example.test",
     {
       date: "2099-09-01",
-      durationMinutes: 1440,
+      duration: wholeDayMeetingRoomDuration,
       startDateTime: "2099-09-01T00:00",
       ...interval!,
     },

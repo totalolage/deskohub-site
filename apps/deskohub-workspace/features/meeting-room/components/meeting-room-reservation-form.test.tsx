@@ -20,10 +20,7 @@ import { Schema } from "effect";
 import type { ComponentProps } from "react";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
-  getWorkspaceMeetingRoomDurationMinutes,
   getWorkspaceMeetingRoomPriceForDuration,
-  getWorkspaceMeetingRoomReservationDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
   workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -31,7 +28,10 @@ import {
   meetingRoomReservationDefaultValues,
   normalizedMeetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDurationKey,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import {
   workspaceRouterPush as push,
@@ -83,7 +83,7 @@ const meetingRoomQuote = {
   items: [
     {
       type: "meeting-room" as const,
-      durationMinutes: 60 as const,
+      duration: { unit: "hour" as const, amount: 1 as const },
       amount: money(47_500),
     },
   ] as const,
@@ -102,9 +102,8 @@ const advertisedPriceResponse = {
 };
 
 const getDiscountedAdvertisedPriceResponse = (
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes
+  duration: MeetingRoomReservationDuration
 ) => {
-  const duration = getWorkspaceMeetingRoomReservationDuration(durationMinutes);
   const interval = getMeetingRoomReservationInterval(
     "2099-07-30T10:00",
     duration
@@ -112,15 +111,15 @@ const getDiscountedAdvertisedPriceResponse = (
   if (!interval) {
     throw new Error("Expected a valid meeting-room interval");
   }
-  const originalPrice =
-    getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+  const originalPrice = getWorkspaceMeetingRoomPriceForDuration(duration);
+  const durationKey = getMeetingRoomReservationDurationKey(duration);
   const discountedPrice = money(originalPrice.value / 2);
   const quote = {
-    fingerprint: `meeting-room-${durationMinutes}-sale`,
+    fingerprint: `meeting-room-${durationKey}-sale`,
     items: [
       {
         type: "meeting-room" as const,
-        durationMinutes,
+        duration,
         amount: originalPrice,
       },
     ] as const,
@@ -149,7 +148,7 @@ const getDiscountedAdvertisedPriceResponse = (
     kind: "meeting-room" as const,
     quote,
     summary: getMeetingRoomCheckoutSummary(quote),
-    advertisedPriceToken: `sealed-advertised-price-${durationMinutes}`,
+    advertisedPriceToken: `sealed-advertised-price-${durationKey}`,
   };
 };
 
@@ -225,7 +224,7 @@ describe("MeetingRoomReservationForm", () => {
   test("renders every server-loaded duration quote on the first paint without refetching", () => {
     getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
     const initialAdvertisedPrices = workspaceMeetingRoomCatalog.map(
-      ({ duration, durationMinutes }) => {
+      ({ duration }) => {
         return {
           request: {
             locale: "en-US" as const,
@@ -238,8 +237,7 @@ describe("MeetingRoomReservationForm", () => {
               },
             },
           },
-          advertisedPrice:
-            getDiscountedAdvertisedPriceResponse(durationMinutes),
+          advertisedPrice: getDiscountedAdvertisedPriceResponse(duration),
         };
       }
     );
@@ -393,7 +391,10 @@ describe("MeetingRoomReservationForm", () => {
       return Promise.resolve(jsonResponse(availabilityResponse));
     }) as typeof fetch;
     getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
-    const advertisedPrice = getDiscountedAdvertisedPriceResponse(1440);
+    const advertisedPrice = getDiscountedAdvertisedPriceResponse({
+      unit: "day",
+      amount: 1,
+    });
     const view = renderForm({
       initialAdvertisedPrices: [
         {
@@ -774,10 +775,9 @@ describe("MeetingRoomReservationForm", () => {
   test("advertises a sale on every duration before it is selected", async () => {
     getAdvertisedPrice.mockImplementation((input) => {
       const duration = input.reservation.details.duration;
-      const durationMinutes = getWorkspaceMeetingRoomDurationMinutes(duration);
 
       return Promise.resolve({
-        data: getDiscountedAdvertisedPriceResponse(durationMinutes),
+        data: getDiscountedAdvertisedPriceResponse(duration),
       });
     });
     globalThis.fetch = mock(() =>

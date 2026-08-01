@@ -36,26 +36,27 @@ describe("meetingRoomReservationSchema", () => {
     expect(
       getWorkspaceMeetingRoomProductKey({
         kind: "meeting-room",
-        durationMinutes: 60,
+        duration: { unit: "hour", amount: 1 },
       })
-    ).toBe("meeting-room:60");
+    ).toBe("meeting-room:hour:1");
     expect(
       getWorkspaceMeetingRoomProductKey({
         kind: "meeting-room",
-        durationMinutes: 240,
+        duration: { unit: "hour", amount: 4 },
       })
-    ).toBe("meeting-room:240");
+    ).toBe("meeting-room:hour:4");
     expect(
       getWorkspaceMeetingRoomProductKey({
         kind: "meeting-room",
-        durationMinutes: 1440,
+        duration: { unit: "day", amount: 1 },
       })
-    ).toBe("meeting-room:1440");
+    ).toBe("meeting-room:day:1");
     const decodeProductKey = Schema.decodeUnknownSync(
       workspaceMeetingRoomProductKeySchema
     );
     expect(() => decodeProductKey("meeting-room:4")).toThrow();
     expect(() => decodeProductKey("meeting-room:240-minutes")).toThrow();
+    expect(() => decodeProductKey("meeting-room:1440")).toThrow();
   });
 
   test("rejects an empty meeting-room start without throwing", () => {
@@ -134,7 +135,7 @@ describe("meetingRoomReservationSchema", () => {
     });
   });
 
-  test("persists the selected meeting-room duration", () => {
+  test("keeps Dotypos-owned meeting-room facts out of local persistence", () => {
     expect(
       getStoredMeetingRoomReservationDetails({
         kind: "meeting-room",
@@ -142,11 +143,15 @@ describe("meetingRoomReservationSchema", () => {
       })
     ).toEqual({
       kind: "meeting-room",
-      duration: { unit: "day", amount: 1 },
     });
 
     expect(
-      Result.isSuccess(storedDetailsParser.safeParse({ kind: "meeting-room" }))
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+        })
+      )
     ).toBe(true);
   });
 

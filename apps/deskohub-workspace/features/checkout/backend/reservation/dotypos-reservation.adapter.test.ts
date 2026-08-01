@@ -78,6 +78,8 @@ describe("createWorkspaceDotyposReservation", () => {
   test("uses the meeting-room reservation for assignment and creation", async () => {
     const reservation = {
       kind: "meeting-room" as const,
+      duration: { unit: "hour" as const, amount: 4 as const },
+      reservationDate: "2099-06-10",
       startsAt: decodeInstant("2099-06-10T08:00:00Z"),
       endsAt: decodeInstant("2099-06-10T12:00:00Z"),
     };
@@ -124,6 +126,8 @@ describe("createWorkspaceDotyposReservation", () => {
       checkoutDetails,
       reservation: {
         kind: "meeting-room",
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2026-03-29",
         startsAt: decodeInstant("2026-03-28T23:00:00Z"),
         endsAt: decodeInstant("2026-03-29T22:00:00Z"),
       },

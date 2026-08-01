@@ -15,7 +15,7 @@ export const storedWorkspaceReservationDetailsSchema = Schema.Union([
 ]).annotate({
   identifier: "StoredWorkspaceReservationDetails",
   description:
-    "App-owned product intent persisted for a Workspace reservation.",
+    "App-owned reservation-family details persisted without provider-owned facts.",
 });
 
 export type StoredWorkspaceReservationDetails =

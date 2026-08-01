@@ -10,10 +10,7 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
-import {
-  getWorkspaceMeetingRoomDurationMinutes,
-  getWorkspaceMeetingRoomPriceForDuration,
-} from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import {
   buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
   type CoworkReservationQuote,
@@ -464,12 +461,14 @@ const runMeetingRoomNewHoldScenario = async (
   );
   const attachHold = mock(() => Effect.void);
   const enqueueCleanup = mock(() => Effect.void);
-  const durationMinutes = getWorkspaceMeetingRoomDurationMinutes(
+  const price = getWorkspaceMeetingRoomPriceForDuration(
     meetingRoomReservation.duration
   );
-  const price = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
-    product: { kind: "meeting-room", durationMinutes },
+    product: {
+      kind: "meeting-room",
+      duration: meetingRoomReservation.duration,
+    },
     discountableSubtotal: price,
     discounts: [],
     totalDiscount: basicMoney(0),
@@ -609,15 +608,12 @@ describe("prepareWorkspacePayState", () => {
       expect.objectContaining({
         checkoutSessionKey: expect.stringMatching(/^[a-f0-9]{64}$/),
         checkoutAttemptKey: expect.stringMatching(/^[a-f0-9]{64}$/),
-        reservationDetails: {
-          kind: "meeting-room",
-          duration: { unit: "hour", amount: 4 },
-        },
+        reservationDetails: { kind: "meeting-room" },
       })
     );
     const persistedDraft = scenario.createDraft.mock.calls[0]?.[0];
     expect(JSON.stringify(persistedDraft?.reservationDetails)).toBe(
-      '{"kind":"meeting-room","duration":{"unit":"hour","amount":4}}'
+      '{"kind":"meeting-room"}'
     );
     expect(scenario.assignTableId).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -636,7 +632,10 @@ describe("prepareWorkspacePayState", () => {
     );
     expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({
-        product: { kind: "meeting-room", durationMinutes: 240 },
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
         reservationDate: "2099-06-10",
         locale: "en-US",
         advertisedDiscountIds: [],
@@ -675,7 +674,7 @@ describe("prepareWorkspacePayState", () => {
       items: [
         {
           type: "meeting-room",
-          durationMinutes: 240,
+          duration: { unit: "hour", amount: 4 },
           amount: { value: 155_000, exponent: 2, currency: "CZK" },
         },
       ],

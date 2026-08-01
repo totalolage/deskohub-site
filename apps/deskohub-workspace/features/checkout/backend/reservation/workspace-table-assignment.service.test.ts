@@ -58,6 +58,8 @@ const makeMeetingRoomReservation = (
   overrides: { readonly startsAt?: string; readonly endsAt?: string } = {}
 ): WorkspaceTableAssignmentReservation => ({
   kind: "meeting-room",
+  duration: { unit: "hour", amount: 1 },
+  reservationDate: "2099-06-10",
   startsAt: "2099-06-10T07:00:00Z",
   endsAt: "2099-06-10T08:00:00Z",
   ...overrides,

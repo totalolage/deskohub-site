@@ -9,20 +9,17 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import { returnToPrefilledReservation } from "./reservation-reuse";
 
 test("waits for the meeting-room consent control before checking restored state", async () => {
-  const interval = getMeetingRoomReservationInterval(
-    "2099-09-01T10:00",
-    { unit: "hour", amount: 1 }
-  );
+  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", {
+    unit: "hour",
+    amount: 1,
+  });
   expect(interval).toBeDefined();
-  const data = makeMeetingRoomCheckoutData(
-    "https://workspace.example.test",
-    {
-      date: "2099-09-01",
-      durationMinutes: 60,
-      startDateTime: "2099-09-01T10:00",
-      ...interval!,
-    }
-  );
+  const data = makeMeetingRoomCheckoutData("https://workspace.example.test", {
+    date: "2099-09-01",
+    duration: { unit: "hour", amount: 1 },
+    startDateTime: "2099-09-01T10:00",
+    ...interval!,
+  });
   const calls: string[][] = [];
   const run: Runner = async (_command, args) => {
     calls.push(args);

@@ -3,11 +3,13 @@ import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
   WorkspaceCoworkProductTier,
-  WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomReservationDuration } from "@/features/checkout/product-catalog";
-import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationDate,
@@ -27,7 +29,7 @@ import type { CheckoutData, CheckoutFlow } from "../types";
 
 export type MeetingRoomCheckoutSlot = {
   readonly date: string;
-  readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
+  readonly duration: MeetingRoomReservationDuration;
   readonly endsAt: ReservationInterval["endsAt"];
   readonly startDateTime: string;
   readonly startsAt: ReservationInterval["startsAt"];
@@ -119,7 +121,9 @@ export const reuseCoworkCheckoutContact = (
 export const makeMeetingRoomCheckoutData = (
   checkoutBaseUrl: string,
   slot: MeetingRoomCheckoutSlot,
-  flowId = `meeting-room-${slot.durationMinutes}`
+  flowId = `meeting-room-${getMeetingRoomReservationDurationKey(
+    slot.duration
+  ).replace(":", "-")}`
 ): CheckoutData => {
   const contact = makeCheckoutContact(flowId);
   return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, contact);
@@ -144,18 +148,14 @@ const makeMeetingRoomCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-  const duration = getWorkspaceMeetingRoomReservationDuration(
-    slot.durationMinutes
-  );
-
   return {
     checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
     date: slot.date,
     email: contact.email,
-    expectedReservationDetails: { kind: "meeting-room", duration },
+    expectedReservationDetails: { kind: "meeting-room" },
     locale,
     meetingRoom: {
-      durationMinutes: slot.durationMinutes,
+      duration: slot.duration,
       endsAt: slot.endsAt,
       startDateTime: slot.startDateTime,
       startsAt: slot.startsAt,
@@ -334,7 +334,7 @@ export const selectAvailableCoworkDates = (
 
 export const selectAvailableMeetingRoomSlots = (
   config: WorkspaceE2EConfig,
-  durations: readonly WorkspaceMeetingRoomDurationMinutes[]
+  durations: readonly MeetingRoomReservationDuration[]
 ): Effect.Effect<
   readonly MeetingRoomCheckoutSlot[],
   WorkspaceE2EError,
@@ -344,10 +344,8 @@ export const selectAvailableMeetingRoomSlots = (
     const slots: MeetingRoomCheckoutSlot[] = [];
     const reservedDates = new Set<string>();
 
-    for (const durationMinutes of durations) {
+    for (const duration of durations) {
       let selected: MeetingRoomCheckoutSlot | undefined;
-      const duration =
-        getWorkspaceMeetingRoomReservationDuration(durationMinutes);
 
       for (let offset = 14; offset <= 90; offset += 1) {
         const date = futureIsoDate(offset);
@@ -369,7 +367,7 @@ export const selectAvailableMeetingRoomSlots = (
         );
         const slot = {
           date: getMeetingRoomReservationDate(interval),
-          durationMinutes,
+          duration,
           endsAt: interval.endsAt,
           startDateTime,
           startsAt: interval.startsAt,
@@ -389,7 +387,9 @@ export const selectAvailableMeetingRoomSlots = (
 
       if (!selected) {
         return yield* workspaceE2EError(
-          `No available ${durationMinutes}-minute meeting-room checkout slot found`,
+          `No available ${getMeetingRoomReservationDurationKey(
+            duration
+          )} meeting-room checkout slot found`,
           { operation: "select available meeting-room checkout slots" }
         );
       }
@@ -397,7 +397,9 @@ export const selectAvailableMeetingRoomSlots = (
       slots.push(selected);
       for (const date of getTouchedDates(selected)) reservedDates.add(date);
       log(
-        `Selected available ${durationMinutes}-minute meeting-room slot ${selected.startDateTime}`
+        `Selected available ${getMeetingRoomReservationDurationKey(
+          duration
+        )} meeting-room slot ${selected.startDateTime}`
       );
     }
 

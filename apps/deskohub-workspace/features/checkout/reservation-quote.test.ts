@@ -310,7 +310,7 @@ describe("reservation quotes", () => {
     expect(oneHour.items).toEqual([
       {
         type: "meeting-room",
-        durationMinutes: 60,
+        duration: { unit: "hour", amount: 1 },
         amount: { value: 47_500, exponent: 2, currency: "CZK" },
       },
     ]);
@@ -330,7 +330,10 @@ describe("reservation quotes", () => {
     });
     const quote = buildQuote(reservation, {
       discountQuote: {
-        product: { kind: "meeting-room", durationMinutes: 240 },
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
         discountableSubtotal: money(155_000),
         discounts: [application],
         totalDiscount: money(10_000),
@@ -356,7 +359,7 @@ describe("reservation quotes", () => {
     expect(quote.items).toEqual([
       {
         type: "meeting-room",
-        durationMinutes: 1440,
+        duration: { unit: "day", amount: 1 },
         amount: money(232_000),
       },
     ]);

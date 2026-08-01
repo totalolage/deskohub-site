@@ -79,36 +79,21 @@ export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
 export const workspaceProductCatalog = workspaceCoworkCatalog;
 export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
 
-export const workspaceMeetingRoomCatalog = [
-  {
-    duration: meetingRoomReservationDurations[0],
-    durationMinutes: 60,
-    price: { value: 47_500, exponent: 2, currency: "CZK" },
-  },
-  {
-    duration: meetingRoomReservationDurations[1],
-    durationMinutes: 240,
-    price: { value: 155_000, exponent: 2, currency: "CZK" },
-  },
-  {
-    duration: meetingRoomReservationDurations[2],
-    durationMinutes: 1440,
-    price: { value: 232_000, exponent: 2, currency: "CZK" },
-  },
-] as const satisfies readonly {
-  readonly duration: MeetingRoomReservationDuration;
-  readonly durationMinutes: number;
-  readonly price: WorkspaceMoney;
-}[];
+const workspaceMeetingRoomPrices = {
+  "hour:1": { value: 47_500, exponent: 2, currency: "CZK" },
+  "hour:4": { value: 155_000, exponent: 2, currency: "CZK" },
+  "day:1": { value: 232_000, exponent: 2, currency: "CZK" },
+} as const satisfies Record<MeetingRoomReservationDurationKey, WorkspaceMoney>;
 
-export const workspaceMeetingRoomDurationOptions = [
-  workspaceMeetingRoomCatalog[0].durationMinutes,
-  workspaceMeetingRoomCatalog[1].durationMinutes,
-  workspaceMeetingRoomCatalog[2].durationMinutes,
-] as const;
-
-export type WorkspaceMeetingRoomDurationMinutes =
-  (typeof workspaceMeetingRoomDurationOptions)[number];
+export const workspaceMeetingRoomCatalog = meetingRoomReservationDurations.map(
+  (duration) => ({
+    duration,
+    price:
+      workspaceMeetingRoomPrices[
+        getMeetingRoomReservationDurationKey(duration)
+      ],
+  })
+);
 
 export const workspaceProductCoffeePrice: WorkspaceMoney = {
   value: 5000,
@@ -134,27 +119,13 @@ const meetingRoomProductsByDuration = new Map<
   ])
 );
 
-const meetingRoomProductsByDurationMinutes = new Map<
-  WorkspaceMeetingRoomDurationMinutes,
-  WorkspaceMeetingRoomCatalogItem
->(
-  workspaceMeetingRoomCatalog.map((product) => [
-    product.durationMinutes,
-    product,
-  ])
-);
-
 if (productsByTier.size !== workspaceProductTiers.length) {
   throw new Error(
     "Workspace product catalog must cover every reservation tier"
   );
 }
 
-if (
-  meetingRoomProductsByDuration.size !== workspaceMeetingRoomCatalog.length ||
-  meetingRoomProductsByDurationMinutes.size !==
-    workspaceMeetingRoomCatalog.length
-) {
+if (meetingRoomProductsByDuration.size !== workspaceMeetingRoomCatalog.length) {
   throw new Error(
     "Workspace meeting-room catalog must contain unique duration products"
   );
@@ -169,20 +140,6 @@ function getWorkspaceMeetingRoomProductByDuration(
 
   if (!product) {
     throw new Error("Unknown workspace meeting-room duration");
-  }
-
-  return product;
-}
-
-function getWorkspaceMeetingRoomProductByDurationMinutes(
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes
-) {
-  const product = meetingRoomProductsByDurationMinutes.get(durationMinutes);
-
-  if (!product) {
-    throw new Error(
-      `Unknown workspace meeting-room duration: ${durationMinutes} minutes`
-    );
   }
 
   return product;
@@ -212,14 +169,6 @@ export function isWorkspaceCoworkProductTier(
   return (
     value !== undefined &&
     workspaceCoworkProductTiers.includes(value as WorkspaceCoworkProductTier)
-  );
-}
-
-export function isWorkspaceMeetingRoomDuration(
-  durationMinutes: number
-): durationMinutes is WorkspaceMeetingRoomDurationMinutes {
-  return workspaceMeetingRoomDurationOptions.includes(
-    durationMinutes as WorkspaceMeetingRoomDurationMinutes
   );
 }
 
@@ -253,20 +202,7 @@ export function getWorkspaceProductCoffeeLinePriceForTier(
 }
 
 export function getWorkspaceMeetingRoomPriceForDuration(
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes
-) {
-  return getWorkspaceMeetingRoomProductByDurationMinutes(durationMinutes).price;
-}
-
-export function getWorkspaceMeetingRoomDurationMinutes(
   duration: MeetingRoomReservationDuration
-): WorkspaceMeetingRoomDurationMinutes {
-  return getWorkspaceMeetingRoomProductByDuration(duration).durationMinutes;
-}
-
-export function getWorkspaceMeetingRoomReservationDuration(
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes
-): MeetingRoomReservationDuration {
-  return getWorkspaceMeetingRoomProductByDurationMinutes(durationMinutes)
-    .duration;
+) {
+  return getWorkspaceMeetingRoomProductByDuration(duration).price;
 }

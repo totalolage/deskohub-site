@@ -107,22 +107,23 @@ export const executeZeroTotalCheckout = ({
       timeoutMs: config.timeouts.datasource,
     });
     state.checkoutRow = checkoutRow;
+    const dotyposReservation = yield* runStep({
+      execute: validateDotypos(datasourceConfig, data, checkoutRow),
+      id: "validate-zero-total-dotypos",
+      timeoutMs: config.timeouts.datasource,
+    });
     yield* runStep({
       execute: assertFulfilledStatusPage({
         checkoutRow,
         config,
         data,
+        dotyposReservation,
         orderId,
         run,
         session,
       }),
       id: "assert-zero-total-fulfilled-status",
       timeoutMs: config.timeouts.uiTransition,
-    });
-    yield* runStep({
-      execute: validateDotypos(datasourceConfig, data, checkoutRow),
-      id: "validate-zero-total-dotypos",
-      timeoutMs: config.timeouts.datasource,
     });
     log(`zero-total checkout e2e passed for order ${orderId}`);
   });

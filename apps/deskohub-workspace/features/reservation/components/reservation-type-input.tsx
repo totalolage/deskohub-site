@@ -15,7 +15,7 @@ import {
 } from "react";
 import { cn } from "@/shared/utils";
 
-type ReservationTypeValue = string | number;
+type ReservationTypeValue = string;
 
 type ReservationTypeInputContextValue = {
   readonly idPrefix: string;

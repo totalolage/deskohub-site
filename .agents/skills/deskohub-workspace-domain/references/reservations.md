@@ -19,7 +19,7 @@ Model the purchasable meeting-room duration as the exact semantic union
 `{ unit: "hour", amount: 1 | 4 } | { unit: "day", amount: 1 }`. Carry that
 intent, together with the selected Prague calendar date, through form decoding,
 advertised pricing, normalized reservations, quote fingerprints, checkout
-details, and new stored reservation details.
+details, and external reservation creation.
 
 A day is a calendar period, not 1,440 elapsed minutes. Project the semantic
 duration into an interval in one time-domain boundary:
@@ -28,18 +28,23 @@ duration into an interval in one time-domain boundary:
 - the day product starts at the selected date's Prague midnight and ends at the
   next Prague midnight, including 23- and 25-hour DST days.
 
-Do not infer a meeting-room product or presentation from an interval, and do not
-normalize a rolling 24-hour interval into a calendar day. `Temporal.PlainDate`
-and `Temporal.ZonedDateTime` are the arithmetic bridge; do not expose
+Do not infer a meeting-room product identity or quoted price from an interval,
+and do not normalize a rolling 24-hour interval into a calendar day. Confirmed
+reservation presentation may classify the provider-owned interval as whole day
+only when it spans consecutive Prague midnights. `Temporal.PlainDate` and
+`Temporal.ZonedDateTime` are the arithmetic bridge; do not expose
 `Temporal.Duration` as the serialized product identity because it does not
 encode the required midnight anchor.
 
-The existing numeric meeting-room product identity and discount keys remain a
-compatibility boundary. Convert semantic duration to `durationMinutes` only in
-the product catalog, then reuse the existing `meeting-room:${durationMinutes}`
-identity for pricing, discount targeting, and external integrations. Keep one
-explicit legacy decoder for stored meeting-room details that predate semantic
-duration persistence.
+Use semantic meeting-room durations as the only catalog, quote, summary,
+discount, checkout, and integration identity. Do not retain or derive a
+minute-count product identity. Meeting-room product keys use
+`meeting-room:hour:1`, `meeting-room:hour:4`, and `meeting-room:day:1`.
+
+Local stored meeting-room details contain only the reservation-family
+discriminator. Dotypos owns actual reservation facts, while transient signed
+checkout details carry semantic duration into pricing and hold creation. Do not
+persist duration merely to duplicate that provider-owned state.
 
 Cowork compatibility-field enrichment owns its field contract and complete partial family match in the cowork domain. Make the enricher generic over a reservation carrying decoded family details, project cowork details there, and return empty cowork fields for every non-cowork family. Generic repositories compose family enrichers in one concrete composition function and derive the aggregate return type from that function instead of importing or redeclaring family-specific field types. Identify that composition point for adding future family enrichments.
 
@@ -48,12 +53,10 @@ Cowork compatibility-field enrichment owns its field contract and complete parti
 A product key must encode the complete product identity, including its reservation family. Never use a cowork tier or meeting-room duration by itself as a product key.
 
 - Cowork identities use `{ kind: "cowork", tier }` and keys use `cowork:${tier}`.
-- Meeting-room identities use `{ kind: "meeting-room", durationMinutes }` and keys use `meeting-room:${durationMinutes}`.
+- Meeting-room identities use `{ kind: "meeting-room", duration }` and keys use `meeting-room:${unit}:${amount}`.
 - Checkout summary item keys add the presentation prefix, for example `product:cowork:basic`.
 
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.
-
-Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
 
 Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
 

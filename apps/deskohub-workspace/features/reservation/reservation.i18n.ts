@@ -2,11 +2,8 @@ import { Match } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
-import {
-  formatReservationDisplayTimeRange,
-  formatReservationInputDate,
-} from "@/features/reservation/reservation-date";
-import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval";
+import { formatMeetingRoomReservationDisplayTimeValue } from "@/features/reservation/meeting-room-reservation-display-time";
+import { formatReservationInputDate } from "@/features/reservation/reservation-date";
 
 export const formatMeetingRoomReservationDisplayTime = (
   interval: {
@@ -15,13 +12,11 @@ export const formatMeetingRoomReservationDisplayTime = (
   },
   locale: Locale
 ) =>
-  isSingleDayReservationInterval(interval)
-    ? m.reservationMeetingRoomDurationWholeDay({}, { locale })
-    : formatReservationDisplayTimeRange(
-        interval.startsAt,
-        interval.endsAt,
-        locale
-      );
+  formatMeetingRoomReservationDisplayTimeValue(
+    interval,
+    locale,
+    m.reservationMeetingRoomDurationWholeDay({}, { locale })
+  );
 
 export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;

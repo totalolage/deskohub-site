@@ -267,7 +267,7 @@ export function MeetingRoomReservationForm({
                     product.duration
                   );
                   const durationTitle = getWorkspaceMeetingRoomDurationTitle(
-                    product.durationMinutes,
+                    product.duration,
                     locale
                   );
                   const advertisedProductItem = advertisedPricesByDuration
@@ -277,7 +277,9 @@ export function MeetingRoomReservationForm({
                       (item) =>
                         "product" in item &&
                         item.product.kind === "meeting-room" &&
-                        item.product.durationMinutes === product.durationMinutes
+                        getMeetingRoomReservationDurationKey(
+                          item.product.duration
+                        ) === durationKey
                     );
                   const advertisedDiscounts =
                     advertisedProductItem &&
@@ -340,7 +342,7 @@ export function MeetingRoomReservationForm({
                       }
                       priceReady={Boolean(advertisedProductItem)}
                       title={getWorkspaceMeetingRoomDurationLabel(
-                        product.durationMinutes,
+                        product.duration,
                         locale
                       )}
                       value={durationKey}

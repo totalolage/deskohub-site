@@ -27,6 +27,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomDurationLabel } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
@@ -987,7 +989,11 @@ const productOptions = [
   { key: "cowork:basic", label: "Cowork Basic" },
   { key: "cowork:plus", label: "Cowork Plus" },
   { key: "cowork:profi", label: "Cowork Profi" },
-  { key: "meeting-room:60", label: "Meeting room · 60 min" },
-  { key: "meeting-room:240", label: "Meeting room · 240 min" },
-  { key: "meeting-room:1440", label: "Meeting room · full day" },
-] as const;
+  ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
+    key: getWorkspaceProductKey({ kind: "meeting-room", duration }),
+    label: `Meeting room · ${getWorkspaceMeetingRoomDurationLabel(
+      duration,
+      "en-US"
+    )}`,
+  })),
+];

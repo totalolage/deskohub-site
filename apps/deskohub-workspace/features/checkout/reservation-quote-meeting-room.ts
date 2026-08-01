@@ -1,18 +1,15 @@
 import { Effect, Schema } from "effect";
-import {
-  getWorkspaceMeetingRoomDurationMinutes,
-  getWorkspaceMeetingRoomPriceForDuration,
-  workspaceMeetingRoomDurationOptions,
-} from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
 import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
+import { meetingRoomReservationDurationSchema } from "@/features/reservation/meeting-room-reservation-duration";
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
-  durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
+  duration: meetingRoomReservationDurationSchema,
   amount: workspaceMoneyCodec,
 });
 
@@ -48,10 +45,7 @@ export const getMeetingRoomReservationQuote = (
   },
   ReservationQuoteError
 > => {
-  const durationMinutes = getWorkspaceMeetingRoomDurationMinutes(
-    reservation.duration
-  );
-  const amount = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+  const amount = getWorkspaceMeetingRoomPriceForDuration(reservation.duration);
   const discounts = options.discountQuote?.discounts ?? [];
   const expectedPrice = options.discountQuote?.discountedSubtotal ?? amount;
 
@@ -59,7 +53,7 @@ export const getMeetingRoomReservationQuote = (
     items: [
       {
         type: "meeting-room",
-        durationMinutes,
+        duration: reservation.duration,
         amount,
       },
     ],

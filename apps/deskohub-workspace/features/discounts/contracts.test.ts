@@ -44,21 +44,20 @@ describe("discount contracts", () => {
   });
 
   test("decodes every meeting-room product identity", () => {
+    const products = [
+      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
+      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
+      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
+    ] as const;
+
     expect(
-      [60, 240, 1440].map((durationMinutes) =>
-        decodeStandardSchema(discountProductIdentitySchema, {
-          kind: "meeting-room",
-          durationMinutes,
-        })
+      products.map((product) =>
+        decodeStandardSchema(discountProductIdentitySchema, product)
       )
-    ).toEqual([
-      { kind: "meeting-room", durationMinutes: 60 },
-      { kind: "meeting-room", durationMinutes: 240 },
-      { kind: "meeting-room", durationMinutes: 1440 },
-    ]);
+    ).toEqual(products);
   });
 
-  test("strictly rejects unknown product kinds, tiers, and fields", () => {
+  test("strictly rejects unknown product kinds, tiers, durations, and fields", () => {
     expect(
       decodeStandardSchema(discountProductIdentitySchema, {
         kind: "event",
@@ -68,7 +67,7 @@ describe("discount contracts", () => {
     expect(
       decodeStandardSchema(discountProductIdentitySchema, {
         kind: "meeting-room",
-        durationMinutes: 120,
+        duration: { unit: "hour", amount: 2 },
       })
     ).toBeUndefined();
     expect(

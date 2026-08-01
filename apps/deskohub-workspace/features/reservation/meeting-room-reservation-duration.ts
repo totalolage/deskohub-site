@@ -22,37 +22,36 @@ export const meetingRoomReservationDurationSchema = Schema.Union([
 export type MeetingRoomReservationDuration =
   typeof meetingRoomReservationDurationSchema.Type;
 
-export const meetingRoomReservationDurations = [
-  { unit: "hour", amount: 1 },
-  { unit: "hour", amount: 4 },
-  { unit: "day", amount: 1 },
-] as const satisfies readonly MeetingRoomReservationDuration[];
-
-export const meetingRoomReservationDurationKeySchema = Schema.Literals([
+export const meetingRoomReservationDurationKeys = [
   "hour:1",
   "hour:4",
   "day:1",
-]);
+] as const;
+
+export const meetingRoomReservationDurationKeySchema = Schema.Literals(
+  meetingRoomReservationDurationKeys
+);
 
 export type MeetingRoomReservationDurationKey =
   typeof meetingRoomReservationDurationKeySchema.Type;
 
 const durationsByKey = {
-  "hour:1": meetingRoomReservationDurations[0],
-  "hour:4": meetingRoomReservationDurations[1],
-  "day:1": meetingRoomReservationDurations[2],
+  "hour:1": { unit: "hour", amount: 1 },
+  "hour:4": { unit: "hour", amount: 4 },
+  "day:1": { unit: "day", amount: 1 },
 } as const satisfies Record<
   MeetingRoomReservationDurationKey,
   MeetingRoomReservationDuration
 >;
 
+export const meetingRoomReservationDurations =
+  meetingRoomReservationDurationKeys.map((key) => durationsByKey[key]);
+
 export const getMeetingRoomReservationDurationKey = ({
   amount,
   unit,
-}: MeetingRoomReservationDuration): MeetingRoomReservationDurationKey => {
-  if (unit === "day") return "day:1";
-  return amount === 1 ? "hour:1" : "hour:4";
-};
+}: MeetingRoomReservationDuration): MeetingRoomReservationDurationKey =>
+  `${unit}:${amount}` as MeetingRoomReservationDurationKey;
 
 export const getMeetingRoomReservationDuration = (
   key: MeetingRoomReservationDurationKey

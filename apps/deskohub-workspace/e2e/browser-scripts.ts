@@ -1,11 +1,9 @@
+import {
+  getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData } from "./types";
-
-const getMeetingRoomDurationKey = (durationMinutes: 60 | 240 | 1440) => {
-  if (durationMinutes === 60) return "hour:1";
-  if (durationMinutes === 240) return "hour:4";
-  return "day:1";
-};
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
@@ -78,13 +76,17 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationKey: getMeetingRoomDurationKey(data.meetingRoom.durationMinutes),
+    durationKey: getMeetingRoomReservationDurationKey(
+      data.meetingRoom.duration
+    ),
     email: data.email,
     message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
-    wholeDay: data.meetingRoom.durationMinutes === 1440,
+    wholeDay: isMeetingRoomWholeDayReservationDuration(
+      data.meetingRoom.duration
+    ),
   })};
   const fail = (field) => {
     throw new Error('restored meeting-room ' + field + ' did not match');
@@ -256,13 +258,17 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 (async () => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationKey: getMeetingRoomDurationKey(data.meetingRoom.durationMinutes),
+    durationKey: getMeetingRoomReservationDurationKey(
+      data.meetingRoom.duration
+    ),
     email: data.email,
     message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
-    wholeDay: data.meetingRoom.durationMinutes === 1440,
+    wholeDay: isMeetingRoomWholeDayReservationDuration(
+      data.meetingRoom.duration
+    ),
   })};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {

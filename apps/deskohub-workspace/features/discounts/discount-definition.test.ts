@@ -87,7 +87,7 @@ describe("stored discount definitions", () => {
               discountId,
               productIdentity: {
                 kind: "meeting-room",
-                durationMinutes: 240,
+                duration: { unit: "hour", amount: 4 },
               },
             },
           ],
@@ -96,7 +96,7 @@ describe("stored discount definitions", () => {
     );
 
     expect(result.products).toEqual([
-      { kind: "meeting-room", durationMinutes: 240 },
+      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
     ]);
   });
 

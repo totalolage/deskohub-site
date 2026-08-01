@@ -96,7 +96,7 @@ const getMeetingRoomPricingContext = Effect.fn(
     discountInput: {
       product: {
         kind: "meeting-room" as const,
-        durationMinutes: productItem.durationMinutes,
+        duration: productItem.duration,
       },
       discountableSubtotal: productItem.amount,
       reservationDate: reservation.reservationDate,

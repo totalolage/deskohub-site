@@ -17,11 +17,13 @@ import {
 } from "@/features/checkout/workspace-money";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import {
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import {
   getReservationDate,
   getReservationIntervalNormalization,
-  isSingleDayReservationInterval,
 } from "@/features/reservation/reservation-interval";
-import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
@@ -135,11 +137,9 @@ export const formatWorkspaceReservationNote = (
             timeZone: workspaceSiteConstants.location.timeZone,
           })}`,
           `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
-          `Duration: ${
-            isSingleDayReservationInterval(meetingRoomReservation)
-              ? "whole day"
-              : `${getDurationMinutes(meetingRoomReservation)} minutes`
-          }`,
+          `Duration: ${formatMeetingRoomDurationForNote(
+            meetingRoomReservation.duration
+          )}`,
         ],
       }),
     })
@@ -163,6 +163,13 @@ export const formatWorkspaceReservationNote = (
   ];
 
   return lines.filter((line) => line !== null).join("\n");
+};
+
+const formatMeetingRoomDurationForNote = (
+  duration: MeetingRoomReservationDuration
+) => {
+  if (isMeetingRoomWholeDayReservationDuration(duration)) return "whole day";
+  return `${duration.amount} ${duration.amount === 1 ? "hour" : "hours"}`;
 };
 
 const getReservationLogAnnotations = (

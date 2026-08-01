@@ -86,8 +86,11 @@ describe("checkout summary schemas", () => {
   test("keeps meeting-room presentation out of the family-neutral product item", () => {
     expect(() =>
       decodeFamilyNeutralProductItem({
-        key: "product:meeting-room:1440",
-        product: { kind: "meeting-room", durationMinutes: 1440 },
+        key: "product:meeting-room:day:1",
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+        },
         meetingRoomDurationPresentation: "whole-day",
         amount: money(232_000),
       })
@@ -95,8 +98,11 @@ describe("checkout summary schemas", () => {
 
     expect(() =>
       decodeOrderItem({
-        key: "product:meeting-room:1440",
-        product: { kind: "meeting-room", durationMinutes: 1440 },
+        key: "product:meeting-room:day:1",
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+        },
         meetingRoomDurationPresentation: "whole-day",
         amount: money(232_000),
       })
@@ -104,8 +110,11 @@ describe("checkout summary schemas", () => {
 
     expect(
       decodeOrderItem({
-        key: "product:meeting-room:1440",
-        product: { kind: "meeting-room", durationMinutes: 1440 },
+        key: "product:meeting-room:day:1",
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+        },
         amount: money(232_000),
       })
     ).not.toHaveProperty("meetingRoomDurationPresentation");
