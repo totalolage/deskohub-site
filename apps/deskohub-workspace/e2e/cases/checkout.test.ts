@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
+import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 
 const customer: Customer = {
@@ -35,6 +36,15 @@ const wholeDayData = {
 } as const;
 
 describe("whole-day meeting-room checkout proof", () => {
+  test("keeps the deployed runner independent of app-bound persistence decoders", async () => {
+    const source = await Bun.file(
+      fileURLToPath(new URL("./checkout.ts", import.meta.url))
+    ).text();
+
+    expect(source).not.toContain("persistence-contracts");
+    expect(source).not.toContain("@/features/i18n");
+  });
+
   test("renders both shared email detail projections from the confirmed DST calendar day", async () => {
     const { assertWholeDayMeetingRoomEmailPreviews } = await import(
       "./checkout"
@@ -75,5 +85,31 @@ describe("whole-day meeting-room checkout proof", () => {
     ).rejects.toThrow(
       "confirmed Dotypos reservation is not one Prague calendar day"
     );
+  });
+
+  test("rejects legacy meeting-room details in local persistence", async () => {
+    const { assertWholeDayMeetingRoomEmailPreviews } = await import(
+      "./checkout"
+    );
+
+    await expect(
+      Effect.runPromise(
+        assertWholeDayMeetingRoomEmailPreviews({
+          checkoutRow: {
+            ...checkoutRow,
+            reservation_details: {
+              kind: "meeting-room",
+              duration: { unit: "day", amount: 1 },
+            },
+          },
+          data: wholeDayData,
+          dotyposReservation: {
+            customer,
+            reservedFrom: Temporal.Instant.from("2027-03-27T23:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2027-03-28T22:00:00Z"),
+          },
+        })
+      )
+    ).rejects.toThrow();
   });
 });

@@ -3,7 +3,6 @@ import { HttpClient } from "effect/unstable/http";
 import { createWorkspaceMeetingRoomEmailDetailRows } from "@/features/checkout/backend/fulfillment/workspace-meeting-room-email-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
-import { storedWorkspaceReservationDetailsSchema } from "@/features/reservation/persistence-contracts";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayTimeRange,
@@ -53,6 +52,11 @@ import type {
   WorkspaceE2EStepRunner,
 } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
+
+const decodeStoredMeetingRoomReservationDetails = Schema.decodeUnknownSync(
+  Schema.Struct({ kind: Schema.Literal("meeting-room") }),
+  { onExcessProperty: "error" }
+);
 
 export const executeCheckoutFlow = ({
   config,
@@ -363,12 +367,8 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
           "Dotypos reservation id missing from checkout row"
         );
 
-        const reservationDetails = Schema.decodeUnknownSync(
-          storedWorkspaceReservationDetailsSchema
-        )(checkoutRow.reservation_details);
-        assert(
-          reservationDetails.kind === "meeting-room",
-          "stored reservation is not a meeting-room reservation"
+        decodeStoredMeetingRoomReservationDetails(
+          checkoutRow.reservation_details
         );
 
         return {
