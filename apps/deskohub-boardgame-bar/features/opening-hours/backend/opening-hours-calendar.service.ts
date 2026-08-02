@@ -2,6 +2,8 @@ import type {
   GoogleCalendarError,
   GoogleCalendarEvent,
   GoogleCalendarEventQuery,
+  GoogleCalendarWatchChannel,
+  GoogleCalendarWatchEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Temporal } from "@js-temporal/polyfill";
@@ -33,10 +35,18 @@ export type OpeningHoursExceptionQuery = GoogleCalendarEventQuery & {
   readonly now: string;
 };
 
+export type OpeningHoursCalendarWatchInput = Omit<
+  GoogleCalendarWatchEventsInput,
+  "calendarId"
+>;
+
 export interface IOpeningHoursCalendarService {
   readonly listExceptions: (
     query: OpeningHoursExceptionQuery
   ) => Effect.Effect<readonly OpeningHoursException[], GoogleCalendarError>;
+  readonly watchChanges: (
+    input: OpeningHoursCalendarWatchInput
+  ) => Effect.Effect<GoogleCalendarWatchChannel, GoogleCalendarError>;
 }
 
 export class OpeningHoursCalendarService extends Context.Service<
@@ -100,7 +110,13 @@ export class OpeningHoursCalendarService extends Context.Service<
           )
       );
 
-      return { listExceptions };
+      const watchChanges = Effect.fn(
+        "OpeningHoursCalendarService.watchChanges"
+      )((input: OpeningHoursCalendarWatchInput) =>
+        calendar.watchEvents({ ...input, calendarId })
+      );
+
+      return { listExceptions, watchChanges };
     })
   );
 }

@@ -21,7 +21,7 @@ media, i18n, and Effect-based backend services.
 | `@deskohub/cloudinary-image` | Cloudinary image URL and React/Next rendering helpers. |
 | `@deskohub/dotypos` | Dotypos API client, Effect service, table map UI, and generated OpenAPI bindings. |
 | `@deskohub/email` | Provider-independent email service with Resend and console providers. |
-| `@deskohub/google-calendar` | Google Calendar Effect service and config for Workspace availability constraints. |
+| `@deskohub/google-calendar` | Google Calendar Effect service for event queries and push-notification channels. |
 | `@deskohub/i18n` | Locale, pathname, translatable value, Next.js, and next-safe-action helpers. |
 | `@deskohub/nexi` | Nexi payment API client, Effect service, webhook/payment interpretation, and generated OpenAPI bindings. |
 | `@deskohub/next-effect` | Helpers for running Effect programs from Next.js/server-action boundaries. |
@@ -114,8 +114,9 @@ developer-only secrets in app-local ignored files such as
 
 Important integration groups:
 
-- Boardgame Bar: Dotypos credentials, Dotypos webhook secret, Cloudinary,
-  optional Resend `EMAIL_API_KEY`, and public domain/analytics settings.
+- Boardgame Bar: Dotypos credentials, Dotypos webhook secret, Google Calendar
+  opening-hours settings, `CRON_SECRET`, Cloudinary, optional Resend
+  `EMAIL_API_KEY`, and public domain/analytics settings.
 - Workspace: Postgres `DATABASE_URL`, Nexi sandbox/production API settings,
   Dotypos fulfillment credentials, Google Calendar service-account settings,
   email provider settings, Cloudinary, PostHog, checkout token secrets, and

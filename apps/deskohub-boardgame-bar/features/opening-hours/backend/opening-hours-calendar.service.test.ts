@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import type {
   GoogleCalendarEvent,
   GoogleCalendarListEventsInput,
+  GoogleCalendarWatchEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { Effect, Layer } from "effect";
@@ -58,6 +59,55 @@ const runWithEvents = async (
 };
 
 describe("OpeningHoursCalendarService", () => {
+  test("watches the configured opening-hours calendar", async () => {
+    const watchInputs: GoogleCalendarWatchEventsInput[] = [];
+    const [{ OpeningHoursCalendarConfig }, { OpeningHoursCalendarService }] =
+      await Promise.all([
+        import("./opening-hours-calendar.config"),
+        import("./opening-hours-calendar.service"),
+      ]);
+
+    const channel = await Effect.gen(function* () {
+      const service = yield* OpeningHoursCalendarService;
+      return yield* service.watchChanges({
+        channelId: "channel-id",
+        webhookUrl: "https://bar.example.test/webhook",
+        webhookToken: "derived-token",
+        ttlSeconds: 259_200,
+      });
+    }).pipe(
+      Effect.provide(
+        OpeningHoursCalendarService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              GoogleCalendarServiceMock({
+                watchEvents: mock((input) => {
+                  watchInputs.push(input);
+                  return Effect.succeed({ channelId: input.channelId });
+                }),
+              }),
+              Layer.succeed(OpeningHoursCalendarConfig, {
+                calendarId: "opening-hours-calendar",
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(watchInputs).toEqual([
+      {
+        calendarId: "opening-hours-calendar",
+        channelId: "channel-id",
+        webhookUrl: "https://bar.example.test/webhook",
+        webhookToken: "derived-token",
+        ttlSeconds: 259_200,
+      },
+    ]);
+    expect(channel).toEqual({ channelId: "channel-id" });
+  });
+
   test("loads the configured resource and translates marked events", async () => {
     const inputs: GoogleCalendarListEventsInput[] = [];
     const exceptions = await runWithEvents(

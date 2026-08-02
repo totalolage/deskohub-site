@@ -17,6 +17,7 @@ import { cacheTag } from "next/cache";
 const NAMESPACES = {
   cloudinary: "cdn",
   menu: "menu",
+  openingHours: "opening-hours",
 } as const;
 
 /**
@@ -68,4 +69,8 @@ export const dotyposTags = {
       return tags;
     },
   },
+};
+
+export const openingHoursTags = {
+  exceptions: () => `${NAMESPACES.openingHours}:exceptions`,
 };

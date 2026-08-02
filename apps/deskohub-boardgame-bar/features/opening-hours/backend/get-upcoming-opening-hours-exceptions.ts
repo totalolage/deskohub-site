@@ -3,6 +3,7 @@ import "server-only";
 import { Temporal } from "@js-temporal/polyfill";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
+import { applyCacheTags, openingHoursTags } from "@/shared/utils/cache-tags";
 import { siteConstants } from "@/shared/utils/constants";
 import { OpeningHoursCalendarServiceLive } from "./opening-hours-calendar.runtime";
 import {
@@ -18,11 +19,8 @@ export async function getUpcomingOpeningHoursExceptions(): Promise<
 > {
   "use cache";
 
-  cacheLife({
-    stale: 300,
-    revalidate: 300,
-    expire: 3600,
-  });
+  cacheLife({ stale: Infinity, revalidate: Infinity, expire: Infinity });
+  applyCacheTags(openingHoursTags.exceptions());
 
   const now = Temporal.Now.instant();
   const today = now

@@ -9,6 +9,7 @@ export const setBoardgameTestEnv = () => {
 
   process.env.CLOUDINARY_API_KEY = "key";
   process.env.CLOUDINARY_API_SECRET = "secret";
+  process.env.CRON_SECRET = "test-cron-secret";
   process.env.DOTYPOS_API_URL = "https://api.dotykacka.cz";
   process.env.DOTYPOS_BRANCH_ID = "branch-id";
   process.env.DOTYPOS_CLIENT_ID = "client-id";

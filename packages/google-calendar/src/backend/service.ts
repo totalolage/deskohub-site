@@ -10,6 +10,8 @@ import type {
   GoogleCalendarEvent,
   GoogleCalendarEventDateTime,
   GoogleCalendarListEventsInput,
+  GoogleCalendarWatchChannel,
+  GoogleCalendarWatchEventsInput,
 } from "../types";
 
 const calendarReadonlyScope =
@@ -20,6 +22,9 @@ export interface IGoogleCalendarService {
   readonly listEvents: (
     input: GoogleCalendarListEventsInput
   ) => Effect.Effect<readonly GoogleCalendarEvent[], GoogleCalendarError>;
+  readonly watchEvents: (
+    input: GoogleCalendarWatchEventsInput
+  ) => Effect.Effect<GoogleCalendarWatchChannel, GoogleCalendarError>;
 }
 
 export class GoogleCalendarService extends Context.Service<
@@ -73,6 +78,44 @@ export class GoogleCalendarService extends Context.Service<
           )
       );
 
+      const watchEvents = Effect.fn("GoogleCalendarService.watchEvents")(
+        (input: GoogleCalendarWatchEventsInput) =>
+          Effect.tryPromise({
+            try: () =>
+              client.events
+                .watch({
+                  calendarId: input.calendarId,
+                  requestBody: {
+                    address: input.webhookUrl,
+                    id: input.channelId,
+                    params: { ttl: input.ttlSeconds.toString() },
+                    token: input.webhookToken,
+                    type: "web_hook",
+                  },
+                })
+                .then(({ data }) => toGoogleCalendarWatchChannel(data, input)),
+            catch: (cause) =>
+              new GoogleCalendarAPIError({
+                operation: "events.watch",
+                statusCode: getGoogleStatusCode(cause),
+                message: getGoogleErrorMessage(cause),
+                cause,
+              }),
+          }),
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              calendarId: input.calendarId,
+              channelId: input.channelId,
+              ttlSeconds: input.ttlSeconds,
+              webhookUrl: input.webhookUrl,
+            }),
+            Effect.tapError((cause) =>
+              Effect.logError("Google Calendar events watch failed", { cause })
+            )
+          )
+      );
+
       const loadEventPages = (input: {
         readonly calendarId: string;
         readonly timeMax: string;
@@ -119,7 +162,7 @@ export class GoogleCalendarService extends Context.Service<
             }),
         });
 
-      return { listEvents };
+      return { listEvents, watchEvents };
     })
   );
 }
@@ -160,6 +203,16 @@ const toGoogleCalendarEventDateTime = (
   ...(input.date && { date: input.date }),
   ...(input.dateTime && { dateTime: input.dateTime }),
   ...(input.timeZone && { timeZone: input.timeZone }),
+});
+
+const toGoogleCalendarWatchChannel = (
+  channel: calendar_v3.Schema$Channel,
+  input: GoogleCalendarWatchEventsInput
+): GoogleCalendarWatchChannel => ({
+  channelId: channel.id ?? input.channelId,
+  ...(channel.resourceId && { resourceId: channel.resourceId }),
+  ...(channel.resourceUri && { resourceUri: channel.resourceUri }),
+  ...(channel.expiration && { expiration: Number(channel.expiration) }),
 });
 
 const addDays = (date: string, days: number) => {

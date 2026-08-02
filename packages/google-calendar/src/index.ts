@@ -9,4 +9,6 @@ export type {
   GoogleCalendarEventDateTime,
   GoogleCalendarEventQuery,
   GoogleCalendarListEventsInput,
+  GoogleCalendarWatchChannel,
+  GoogleCalendarWatchEventsInput,
 } from "./types";

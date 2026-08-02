@@ -30,6 +30,9 @@ export const boardgameBarServerSchema = {
   GOOGLE_CALENDAR_OPENING_HOURS_ID: nonEmptyStringSchema,
   GOOGLE_CALENDAR_PRIVATE_KEY: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
+  CRON_SECRET: Schema.toStandardSchemaV1(
+    Schema.optional(Schema.NonEmptyString)
+  ),
   VERCEL_PROJECT_PRODUCTION_URL: z.url().optional(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
@@ -66,6 +69,7 @@ export const env = createEnv({
     GOOGLE_CALENDAR_PRIVATE_KEY: process.env.GOOGLE_CALENDAR_PRIVATE_KEY,
     GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL:
       process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
+    CRON_SECRET: process.env.CRON_SECRET,
     VERCEL_PROJECT_PRODUCTION_URL: normalizeOptionalUrl(
       process.env.VERCEL_PROJECT_PRODUCTION_URL
     ),
