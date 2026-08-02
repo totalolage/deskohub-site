@@ -31,7 +31,11 @@
   },
   "hours": {
     "weekdays": "MON - FRI",
-    "weekends": "SAT - SUN"
+    "weekends": "SAT - SUN",
+    "exceptionsTitle": "Upcoming opening-hours changes",
+    "closed": "Closed",
+    "ongoing": "Happening now",
+    "nextDay": "next day"
   },
   "about": {
     "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",

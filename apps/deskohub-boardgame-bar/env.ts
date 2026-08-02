@@ -1,6 +1,10 @@
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { createEnv } from "@t3-oss/env-nextjs";
+import { Schema } from "effect";
 import { z } from "zod";
 import { siteConstants } from "@/shared/utils/constants";
+
+const nonEmptyStringSchema = Schema.toStandardSchemaV1(Schema.NonEmptyString);
 
 const normalizeOptionalUrl = (
   input: string | undefined
@@ -23,6 +27,9 @@ export const boardgameBarServerSchema = {
   DOTYPOS_API_TIMEOUT: z.coerce.number().int().positive().default(30000),
   DOTYPOS_WEBHOOK_SECRET: z.uuid(),
   EMAIL_API_KEY: z.string().optional(),
+  GOOGLE_CALENDAR_OPENING_HOURS_ID: nonEmptyStringSchema,
+  GOOGLE_CALENDAR_PRIVATE_KEY: nonEmptyStringSchema,
+  GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: z.url().optional(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
@@ -54,6 +61,11 @@ export const env = createEnv({
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_WEBHOOK_SECRET: process.env.DOTYPOS_WEBHOOK_SECRET,
     EMAIL_API_KEY: process.env.EMAIL_API_KEY,
+    GOOGLE_CALENDAR_OPENING_HOURS_ID:
+      process.env.GOOGLE_CALENDAR_OPENING_HOURS_ID,
+    GOOGLE_CALENDAR_PRIVATE_KEY: process.env.GOOGLE_CALENDAR_PRIVATE_KEY,
+    GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL:
+      process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL,
     VERCEL_PROJECT_PRODUCTION_URL: normalizeOptionalUrl(
       process.env.VERCEL_PROJECT_PRODUCTION_URL
     ),
@@ -93,14 +105,20 @@ export const env = createEnv({
   },
 });
 
+type EnvSchemaOutput<S> = S extends StandardSchemaV1
+  ? StandardSchemaV1.InferOutput<S>
+  : S extends z.ZodType
+    ? z.output<S>
+    : never;
+
 export type BoardgameBarServerEnv = {
-  [K in keyof typeof boardgameBarServerSchema]: z.infer<
+  [K in keyof typeof boardgameBarServerSchema]: EnvSchemaOutput<
     (typeof boardgameBarServerSchema)[K]
   >;
 };
 
 export type BoardgameBarClientEnv = {
-  [K in keyof typeof boardgameBarClientSchema]: z.infer<
+  [K in keyof typeof boardgameBarClientSchema]: EnvSchemaOutput<
     (typeof boardgameBarClientSchema)[K]
   >;
 };

@@ -17,6 +17,9 @@ export const setBoardgameTestEnv = () => {
   process.env.DOTYPOS_EMPLOYEE_ID = "employee-id";
   process.env.DOTYPOS_REFRESH_TOKEN = "refresh-token";
   process.env.DOTYPOS_WEBHOOK_SECRET = webhookSecret;
+  process.env.GOOGLE_CALENDAR_OPENING_HOURS_ID = "opening-hours-calendar";
+  process.env.GOOGLE_CALENDAR_PRIVATE_KEY = "test-private-key";
+  process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL = "calendar@example.test";
   process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME = "cloud";
   process.env.NEXT_PUBLIC_VERCEL_ENV = "production";
   process.env.NEXT_PUBLIC_VERCEL_URL = "https://bar.example.test";
