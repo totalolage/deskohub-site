@@ -14,6 +14,7 @@ export const workspaceE2ETimeouts = {
   localeCase: 3 * MINUTE,
   paymentTerminalCase: 4 * MINUTE,
   providerTransition: 90 * SECOND,
+  reservationPreparation: 90 * SECOND,
   uiTransition: 45 * SECOND,
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;

@@ -15,6 +15,7 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
 } from "./checkout/data";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 const workspaceTemporal = globalThis.Temporal;
 const oneHourMeetingRoomDuration = { unit: "hour", amount: 1 } as const;
@@ -226,6 +227,9 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   expect(prepare).toContain('button[aria-label="Meeting room start date"]');
   expect(prepare).toContain("'[data-day=\"' + expected.date");
   expect(prepare).toContain('input[aria-label="Meeting room start time"]');
+  expect(prepare).toContain(
+    `Date.now() + ${workspaceE2ETimeouts.reservationPreparation}`
+  );
   expect(prepare).toContain("meeting-room-duration-");
   expect(prepare).toContain('"date":"2099-09-01"');
   expect(prepare).toContain('"time":"10:00"');
