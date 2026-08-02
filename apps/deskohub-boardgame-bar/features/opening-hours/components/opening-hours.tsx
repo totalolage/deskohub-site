@@ -1,6 +1,7 @@
 import { CalendarClock } from "lucide-react";
 import { Suspense } from "react";
 import { getLocale, m } from "@/features/i18n";
+import { GlassCard } from "@/shared/components/ui/glass-card";
 import { formatDate } from "@/shared/utils/date-formatting";
 import {
   getWeekdayHours,
@@ -16,18 +17,24 @@ export function OpeningHours() {
   return (
     <>
       <div className="mt-12 flex flex-col items-center justify-center gap-4 md:flex-row md:gap-8">
-        <div className="rounded-lg bg-white/10 p-4 backdrop-blur-sm">
+        <GlassCard
+          className="min-w-38 rounded-2xl border border-white/25 bg-black/60 px-6 py-4 shadow-[0_18px_48px_-24px_rgba(0,0,0,0.9)]"
+          optics={{ frost: 2 }}
+        >
           <div className="text-sm text-green-400">{m["hours.weekdays"]()}</div>
           <div className="text-lg font-semibold">
             {weekdayHours.open}-{weekdayHours.close}
           </div>
-        </div>
-        <div className="rounded-lg bg-white/10 p-4 backdrop-blur-sm">
+        </GlassCard>
+        <GlassCard
+          className="min-w-38 rounded-2xl border border-white/25 bg-black/60 px-6 py-4 shadow-[0_18px_48px_-24px_rgba(0,0,0,0.9)]"
+          optics={{ frost: 2 }}
+        >
           <div className="text-sm text-green-400">{m["hours.weekends"]()}</div>
           <div className="text-lg font-semibold">
             {weekendHours.open}-{weekendHours.close}
           </div>
-        </div>
+        </GlassCard>
       </div>
       <Suspense fallback={null}>
         <UpcomingOpeningHoursExceptions />
@@ -44,8 +51,16 @@ async function UpcomingOpeningHoursExceptions() {
   }
 
   return (
-    <section className="mx-auto mt-5 max-w-3xl rounded-xl border border-amber-200/30 bg-black/40 p-4 text-left backdrop-blur-sm">
-      <h2 className="flex items-center justify-center gap-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.14em]">
+    <GlassCard
+      aria-labelledby="opening-hours-exceptions-title"
+      className="mx-auto mt-5 max-w-3xl rounded-2xl border border-amber-100/30 bg-black/70 p-4 text-left shadow-[0_24px_64px_-32px_rgba(0,0,0,0.95)]"
+      optics={{ frost: 2 }}
+      role="region"
+    >
+      <h2
+        className="flex items-center justify-center gap-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.14em]"
+        id="opening-hours-exceptions-title"
+      >
         <CalendarClock aria-hidden="true" className="size-4" />
         {m["hours.exceptionsTitle"]()}
       </h2>
@@ -63,7 +78,7 @@ async function UpcomingOpeningHoursExceptions() {
           </li>
         ))}
       </ul>
-    </section>
+    </GlassCard>
   );
 }
 
@@ -82,15 +97,15 @@ function OpeningHoursExceptionValue({
 
   return (
     <span className="text-white/90">
-      {exception.ongoing ? (
+      {exception.ongoing && (
         <span className="mr-2 font-semibold text-green-400">
           {m["hours.ongoing"]()}
         </span>
-      ) : null}
+      )}
       {exception.opensAt}-{exception.closesAt}
-      {exception.closesNextDay ? (
+      {exception.closesNextDay && (
         <span className="ml-1 text-white/60">({m["hours.nextDay"]()})</span>
-      ) : null}
+      )}
     </span>
   );
 }
