@@ -1,5 +1,6 @@
+import "@/shared/polyfills/temporal";
+
 import { describe, expect, test } from "bun:test";
-import { Temporal } from "@js-temporal/polyfill";
 import { isOpeningHoursCalendarMaintenanceTime } from "./opening-hours-calendar-maintenance";
 
 describe("opening-hours calendar maintenance time", () => {

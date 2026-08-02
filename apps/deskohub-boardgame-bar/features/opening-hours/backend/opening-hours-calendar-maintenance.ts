@@ -1,4 +1,3 @@
-import type { Temporal } from "@js-temporal/polyfill";
 import { siteConstants } from "@/shared/utils/constants";
 
 export const isOpeningHoursCalendarMaintenanceTime = (

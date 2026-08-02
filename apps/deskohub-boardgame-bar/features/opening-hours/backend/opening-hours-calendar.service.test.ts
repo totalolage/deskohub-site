@@ -316,6 +316,18 @@ describe("OpeningHoursCalendarService", () => {
         end: { dateTime: "2026-08-05T13:00:00+02:00" },
       },
       {
+        id: "invalid-all-day-date",
+        description: "[bar:closed]",
+        start: { date: "not-a-date" },
+        end: { date: "2026-08-07" },
+      },
+      {
+        id: "invalid-timed-date",
+        description: "[bar:hours]",
+        start: { dateTime: "not-a-date-time" },
+        end: { dateTime: "2026-08-07T20:00:00+02:00" },
+      },
+      {
         description: "[bar:closed]",
         start: { date: "2026-08-06" },
         end: { date: "2026-08-07" },

@@ -1,9 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { Temporal } from "@js-temporal/polyfill";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { env } from "@/env";
-import { OpeningHoursCalendarServiceLive } from "@/features/opening-hours/backend/opening-hours-calendar.runtime";
 import { OpeningHoursCalendarService } from "@/features/opening-hours/backend/opening-hours-calendar.service";
 import { isOpeningHoursCalendarMaintenanceTime } from "@/features/opening-hours/backend/opening-hours-calendar-maintenance";
 import { deriveOpeningHoursCalendarWebhookToken } from "@/features/opening-hours/backend/opening-hours-calendar-webhook-auth";
@@ -69,7 +67,7 @@ export async function GET(request: Request): Promise<Response> {
       ...(channel.expiration && { expiration: channel.expiration }),
     });
   }).pipe(
-    Effect.provide(OpeningHoursCalendarServiceLive),
+    Effect.provide(OpeningHoursCalendarService.LiveWithDependencies),
     Effect.tapError((cause) =>
       Effect.logError("Opening-hours midnight maintenance failed", { cause })
     ),

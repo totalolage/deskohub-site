@@ -6,8 +6,8 @@ import type {
   GoogleCalendarWatchEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Temporal } from "@js-temporal/polyfill";
 import { Context, Data, Effect, Layer } from "effect";
+import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import { siteConstants } from "@/shared/utils/constants";
 import { OpeningHoursCalendarConfig } from "./opening-hours-calendar.config";
 
@@ -72,18 +72,9 @@ export class OpeningHoursCalendarService extends Context.Service<
             from: query.from,
             to: query.to,
           });
-          const eventExceptions = yield* Effect.forEach(events, (event) =>
-            normalizeEvent(event, query).pipe(
-              Effect.catch((error) =>
-                Effect.logWarning(
-                  "Ignoring invalid Google Calendar opening-hours event",
-                  {
-                    reason: error.reason,
-                    sourceEventReference: error.sourceEventReference,
-                  }
-                ).pipe(Effect.as([] as readonly OpeningHoursException[]))
-              )
-            )
+          const eventExceptions = yield* Effect.all(
+            events.map((event) => normalizeEvent(event, query)),
+            { concurrency: "inherit" }
           );
           const exceptions = resolveDateConflicts(eventExceptions.flat());
 
@@ -119,6 +110,11 @@ export class OpeningHoursCalendarService extends Context.Service<
       return { listExceptions, watchChanges };
     })
   );
+
+  static LiveWithDependencies = this.Live.pipe(
+    Layer.provide(GoogleCalendarServiceLive),
+    Layer.provide(OpeningHoursCalendarConfig.Live)
+  );
 }
 
 class InvalidOpeningHoursEvent extends Data.TaggedError(
@@ -127,7 +123,22 @@ class InvalidOpeningHoursEvent extends Data.TaggedError(
   readonly reason: string;
   readonly sourceEventReference: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static invalidDateRange =
+    (sourceEventReference: string) => (cause: unknown) =>
+      new InvalidOpeningHoursEvent({
+        sourceEventReference,
+        reason: "all-day event has an invalid date range",
+        cause,
+      });
+
+  static invalidDateTime = (sourceEventReference: string) => (cause: unknown) =>
+    new InvalidOpeningHoursEvent({
+      sourceEventReference,
+      reason: "timed event has an invalid date or time",
+      cause,
+    });
+}
 
 const normalizeEvent = Effect.fn("normalizeOpeningHoursCalendarEvent")(
   function* (event: GoogleCalendarEvent, query: OpeningHoursExceptionQuery) {
@@ -162,7 +173,19 @@ const normalizeEvent = Effect.fn("normalizeOpeningHoursCalendarEvent")(
     return yield* isClosed
       ? normalizeClosedEvent(event, sourceEventReference, query)
       : normalizeSpecialHoursEvent(event, sourceEventReference, query);
-  }
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.catch((error) =>
+        Effect.logWarning(
+          "Ignoring invalid Google Calendar opening-hours event",
+          {
+            reason: error.reason,
+            sourceEventReference: error.sourceEventReference,
+          }
+        ).pipe(Effect.as([] as readonly OpeningHoursException[]))
+      )
+    )
 );
 
 const normalizeClosedEvent = Effect.fn("normalizeClosedOpeningHoursEvent")(
@@ -181,14 +204,10 @@ const normalizeClosedEvent = Effect.fn("normalizeClosedOpeningHoursEvent")(
       );
     }
 
-    const dates = yield* Effect.try({
-      try: () => getDateRange(start, end),
-      catch: (cause) =>
-        new InvalidOpeningHoursEvent({
-          sourceEventReference,
-          reason: "all-day event has an invalid date range",
-          cause,
-        }),
+    const dates = yield* getDateRange({
+      start,
+      exclusiveEnd: end,
+      sourceEventReference,
     });
 
     if (dates.length === 0) {
@@ -223,18 +242,21 @@ const normalizeSpecialHoursEvent = Effect.fn(
     );
   }
 
-  const { start, end, now } = yield* Effect.try({
-    try: () => ({
-      start: toBarZonedDateTime(startValue, event.start?.timeZone),
-      end: toBarZonedDateTime(endValue, event.end?.timeZone),
-      now: Temporal.Instant.from(query.now),
+  const { start, end, now } = yield* Effect.all({
+    start: toBarZonedDateTime({
+      dateTime: startValue,
+      timeZone: event.start?.timeZone,
+      sourceEventReference,
     }),
-    catch: (cause) =>
-      new InvalidOpeningHoursEvent({
-        sourceEventReference,
-        reason: "timed event has an invalid date or time",
-        cause,
-      }),
+    end: toBarZonedDateTime({
+      dateTime: endValue,
+      timeZone: event.end?.timeZone,
+      sourceEventReference,
+    }),
+    now: toOpeningHoursInstant({
+      dateTime: query.now,
+      sourceEventReference,
+    }),
   });
 
   if (Temporal.ZonedDateTime.compare(end, start) <= 0) {
@@ -293,30 +315,69 @@ const normalizeSpecialHoursEvent = Effect.fn(
 const invalidEvent = (sourceEventReference: string, reason: string) =>
   Effect.fail(new InvalidOpeningHoursEvent({ sourceEventReference, reason }));
 
-const toBarZonedDateTime = (dateTime: string, timeZone?: string) =>
-  hasExplicitOffset(dateTime)
-    ? Temporal.Instant.from(dateTime).toZonedDateTimeISO(
-        siteConstants.workingHours.timezone
-      )
-    : Temporal.PlainDateTime.from(dateTime)
-        .toZonedDateTime(timeZone ?? siteConstants.workingHours.timezone)
-        .withTimeZone(siteConstants.workingHours.timezone);
+const toBarZonedDateTime = Effect.fn("toBarZonedDateTime")(
+  (input: {
+    readonly dateTime: string;
+    readonly timeZone: string | undefined;
+    readonly sourceEventReference: string;
+  }) =>
+    Effect.try({
+      try: () =>
+        hasExplicitOffset(input.dateTime)
+          ? Temporal.Instant.from(input.dateTime).toZonedDateTimeISO(
+              siteConstants.workingHours.timezone
+            )
+          : Temporal.PlainDateTime.from(input.dateTime)
+              .toZonedDateTime(
+                input.timeZone ?? siteConstants.workingHours.timezone
+              )
+              .withTimeZone(siteConstants.workingHours.timezone),
+      catch: InvalidOpeningHoursEvent.invalidDateTime(
+        input.sourceEventReference
+      ),
+    })
+);
+
+const toOpeningHoursInstant = Effect.fn("toOpeningHoursInstant")(
+  (input: {
+    readonly dateTime: string;
+    readonly sourceEventReference: string;
+  }) =>
+    Effect.try({
+      try: () => Temporal.Instant.from(input.dateTime),
+      catch: InvalidOpeningHoursEvent.invalidDateTime(
+        input.sourceEventReference
+      ),
+    })
+);
 
 const hasExplicitOffset = (dateTime: string) =>
   /(?:Z|[+-]\d{2}:\d{2})$/u.test(dateTime);
 
-const getDateRange = (start: string, exclusiveEnd: string) => {
-  const dates: string[] = [];
-  let cursor = Temporal.PlainDate.from(start);
-  const end = Temporal.PlainDate.from(exclusiveEnd);
+const getDateRange = Effect.fn("getOpeningHoursDateRange")(
+  (input: {
+    readonly start: string;
+    readonly exclusiveEnd: string;
+    readonly sourceEventReference: string;
+  }) =>
+    Effect.try({
+      try: () => {
+        const dates: string[] = [];
+        let cursor = Temporal.PlainDate.from(input.start);
+        const end = Temporal.PlainDate.from(input.exclusiveEnd);
 
-  while (Temporal.PlainDate.compare(cursor, end) < 0) {
-    dates.push(cursor.toString());
-    cursor = cursor.add({ days: 1 });
-  }
+        while (Temporal.PlainDate.compare(cursor, end) < 0) {
+          dates.push(cursor.toString());
+          cursor = cursor.add({ days: 1 });
+        }
 
-  return dates;
-};
+        return dates;
+      },
+      catch: InvalidOpeningHoursEvent.invalidDateRange(
+        input.sourceEventReference
+      ),
+    })
+);
 
 const toTime = (dateTime: Temporal.ZonedDateTime) =>
   `${dateTime.hour.toString().padStart(2, "0")}:${dateTime.minute

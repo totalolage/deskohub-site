@@ -1,11 +1,9 @@
 import "server-only";
 
-import { Temporal } from "@js-temporal/polyfill";
 import { Effect } from "effect";
 import { cacheLife } from "next/cache";
 import { applyCacheTags, openingHoursTags } from "@/shared/utils/cache-tags";
 import { siteConstants } from "@/shared/utils/constants";
-import { OpeningHoursCalendarServiceLive } from "./opening-hours-calendar.runtime";
 import {
   OpeningHoursCalendarService,
   type OpeningHoursException,
@@ -36,7 +34,7 @@ export async function getUpcomingOpeningHoursExceptions(): Promise<
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
     return yield* openingHoursCalendar.listExceptions(query);
   }).pipe(
-    Effect.provide(OpeningHoursCalendarServiceLive),
+    Effect.provide(OpeningHoursCalendarService.LiveWithDependencies),
     Effect.catch((cause) =>
       Effect.logError(
         "Upcoming opening-hours exceptions are unavailable; using regular hours",

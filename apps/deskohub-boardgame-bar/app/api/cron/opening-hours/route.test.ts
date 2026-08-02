@@ -28,17 +28,12 @@ beforeAll(async () => {
     "@/features/opening-hours/backend/opening-hours-calendar.service"
   );
 
-  mock.module(
-    "@/features/opening-hours/backend/opening-hours-calendar.runtime",
-    () => ({
-      OpeningHoursCalendarServiceLive: Layer.succeed(
-        OpeningHoursCalendarService,
-        {
-          listExceptions: () => Effect.succeed([]),
-          watchChanges,
-        }
-      ),
-    })
+  OpeningHoursCalendarService.LiveWithDependencies = Layer.succeed(
+    OpeningHoursCalendarService,
+    {
+      listExceptions: () => Effect.succeed([]),
+      watchChanges,
+    }
   );
 
   ({ GET } = await import("./route"));
