@@ -159,10 +159,15 @@ describe("CalendarDiscountProvider", () => {
     });
     expect(result).toEqual([
       expect.objectContaining({
-        label: "Databázová sleva",
-        adjustment: {
-          kind: "fixed",
-          amount: { value: 5000, exponent: 2, currency: "CZK" },
+        discount: {
+          id: expect.any(String),
+          label: "Databázová sleva",
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 5000, exponent: 2, currency: "CZK" },
+          },
+          countdownStartsAt: expect.any(String),
+          expiresAt: expect.any(String),
         },
         products,
       }),
@@ -872,7 +877,6 @@ describe("CalendarDiscountProvider", () => {
         reservationDate: "2026-07-20",
       });
     });
-
     const first = await quoteForDate.pipe(
       Effect.provide(testLayer),
       Effect.runPromise

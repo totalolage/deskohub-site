@@ -84,7 +84,8 @@ export type Discount = {
   readonly countdownStartsAt?: string;
 };
 
-export type ActiveSale = Discount & {
+export type ActiveSale = {
+  readonly discount: Discount;
   readonly products: readonly WorkspaceProductIdentity[];
 };
 

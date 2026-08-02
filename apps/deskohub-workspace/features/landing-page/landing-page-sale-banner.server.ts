@@ -2,7 +2,7 @@ import "server-only";
 import { Clock, Effect } from "effect";
 import { type ActiveSale, DiscountService } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
 import { getLandingPageSaleBannerContent } from "./landing-page-sale-banner-content";
@@ -13,7 +13,7 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
   Effect.succeed(input).pipe(
     Effect.bind("at", () => Clock.currentTimeMillis),
     Effect.let("reservationDate", ({ at }) =>
-      getCurrentPragueDate(Temporal.Instant.fromEpochMilliseconds(at))
+      getCurrentWorkspaceDate(Temporal.Instant.fromEpochMilliseconds(at))
     ),
     Effect.bind("activeSales", ({ locale, reservationDate }) =>
       Effect.flatMap(DiscountService, (discounts) =>
@@ -49,8 +49,8 @@ const toLandingPageSaleBannerContent = (input: {
     locale: input.locale,
     reservationKind: getBannerReservationKind(input.sale),
     sale: {
-      title: input.sale.label,
-      adjustment: input.sale.adjustment,
+      title: input.sale.discount.label,
+      adjustment: input.sale.discount.adjustment,
       products: input.sale.products,
     },
   });

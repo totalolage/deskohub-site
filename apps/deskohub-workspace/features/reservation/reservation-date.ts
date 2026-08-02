@@ -7,14 +7,14 @@ import {
   temporalPlainDateToDate,
 } from "@/shared/utils/temporal";
 
-export const getCurrentPragueDate = (now = Temporal.Now.instant()) =>
+export const getCurrentWorkspaceDate = (now = Temporal.Now.instant()) =>
   now
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
 
-export const isTodayOrFuturePragueDate = (date: string) =>
-  date >= getCurrentPragueDate();
+export const isTodayOrFutureWorkspaceDate = (date: string) =>
+  date >= getCurrentWorkspaceDate();
 
 const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",

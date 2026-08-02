@@ -9,6 +9,7 @@ import {
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
   reservationIntervalSchema,
@@ -18,7 +19,6 @@ import {
   coworkReservationKind,
   meetingRoomReservationKind,
 } from "@/features/reservation/reservation-kind";
-import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseFields = {
@@ -108,23 +108,6 @@ const workspaceAvailabilityIntervalSchema = Schema.toStandardSchemaV1(
   reservationIntervalSchema
 );
 
-const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: workspaceSiteConstants.location.timeZone,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const getCurrentPragueDate = (date: Date) => {
-  const dateParts = Object.fromEntries(
-    pragueDateFormatter
-      .formatToParts(date)
-      .map((part) => [part.type, part.value])
-  );
-
-  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
-};
-
 const getDateParam = (searchParams: URLSearchParams, key: string) => {
   const value = searchParams.get(key)?.trim();
   if (!value || !isCanonicalPlainDate(value)) return undefined;
@@ -167,7 +150,9 @@ export const parseWorkspaceAvailabilityQuery = (
   searchParams: URLSearchParams,
   now = new Date()
 ): WorkspaceAvailabilityQuery => {
-  const today = getCurrentPragueDate(now);
+  const today = getCurrentWorkspaceDate(
+    Temporal.Instant.fromEpochMilliseconds(now.getTime())
+  );
   const from = getDateParam(searchParams, "from") ?? today;
   const to =
     getDateParam(searchParams, "to") ??

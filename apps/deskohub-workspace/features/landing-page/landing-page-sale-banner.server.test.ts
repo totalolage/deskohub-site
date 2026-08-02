@@ -6,7 +6,12 @@ import { TestClock } from "effect/testing";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { getActiveLandingPageSaleBanner } from "./landing-page-sale-banner.server";
+
+mock.module("server-only", () => ({}));
+
+const { getActiveLandingPageSaleBanner } = await import(
+  "./landing-page-sale-banner.server"
+);
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const coworkProduct = {
@@ -22,9 +27,11 @@ const sale = (
   products: readonly WorkspaceProductIdentity[],
   id = "summer-focus"
 ): ActiveSale => ({
-  id: discountId(id),
-  label: "Summer focus",
-  adjustment: { kind: "percentage", basisPoints: 2000 },
+  discount: {
+    id: discountId(id),
+    label: "Summer focus",
+    adjustment: { kind: "percentage", basisPoints: 2000 },
+  },
   products,
 });
 

@@ -286,13 +286,15 @@ const toActiveCalendarSales = (input: {
       ({ sale }) => Temporal.Instant.compare(input.at, sale.expiresAt) < 0
     )
     .map((resolvedSale) => ({
-      ...toCalendarDiscountCandidate({
+      discount: toCalendarDiscountCandidate({
         locale: input.locale,
         resolvedSale,
       }).discount,
       products: resolvedSale.definition.products,
     }))
-    .toSorted((left, right) => left.id.localeCompare(right.id));
+    .toSorted((left, right) =>
+      left.discount.id.localeCompare(right.discount.id)
+    );
 
 const toCalendarDiscountCandidate = (input: {
   readonly locale: CalendarDiscountProviderInput["locale"];

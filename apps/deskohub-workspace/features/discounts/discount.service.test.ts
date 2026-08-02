@@ -92,9 +92,11 @@ const percentage = (
 ) => candidate(id, { kind: "percentage", basisPoints }, providerNamespace);
 
 const activeSale: ActiveSale = {
-  id: discountId("active-sale"),
-  label: "Summer focus",
-  adjustment: { kind: "percentage", basisPoints: 2000 },
+  discount: {
+    id: discountId("active-sale"),
+    label: "Summer focus",
+    adjustment: { kind: "percentage", basisPoints: 2000 },
+  },
   products: [product],
 };
 

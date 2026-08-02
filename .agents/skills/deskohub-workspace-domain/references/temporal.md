@@ -4,6 +4,8 @@ Reuse the Workspace timezone and Temporal schemas and formatters from [site cons
 
 Reference `workspaceSiteConstants.location.timeZone` directly instead of exporting feature-level timezone aliases.
 
+Name site-local date helpers for their Workspace role rather than the current city, and always derive their timezone from `workspaceSiteConstants.location.timeZone`.
+
 Use the ambient `Temporal.*` types. Keep the polyfill namespace exposed generically through the global alias in `types/temporal.d.ts`; do not manually redeclare individual Temporal types or export/import utility aliases for types provided by that namespace.
 
 Keep formatting APIs typed to the domain representation they format. Actual
