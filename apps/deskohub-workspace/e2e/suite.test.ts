@@ -289,6 +289,11 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(String(Cause.squash(exit.cause))).toContain(
+        "intentional case failure"
+      );
+    }
     expect(siblingInterrupted).toBe(true);
     expect(cleanupCallCount).toBe(2);
     expect(maximumActiveCleanupCount).toBe(2);
@@ -307,6 +312,73 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
         }),
       ])
     );
+  } finally {
+    await rm(artifactRoot, { force: true, recursive: true });
+  }
+});
+
+test("retains the genuine failure while interrupted siblings finalize", async () => {
+  const artifactRoot = await mkdtemp(
+    resolve(tmpdir(), "workspace-e2e-failure-cause-")
+  );
+  const caseCount = 30;
+  let startedCaseCount = 0;
+  let releaseCases: () => void = () => undefined;
+  const allCasesStarted = new Promise<void>((resolveStarted) => {
+    releaseCases = resolveStarted;
+  });
+  const reachStartGate = Effect.promise(async () => {
+    startedCaseCount += 1;
+    if (startedCaseCount === caseCount) releaseCases();
+    await allCasesStarted;
+  });
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: caseCount },
+    (_, index) => ({
+      execute: () =>
+        reachStartGate.pipe(
+          Effect.andThen(
+            index === 0
+              ? Effect.fail(workspaceE2EError("genuine case failure"))
+              : Effect.never
+          )
+        ),
+      checkoutStates: [],
+      id: index === 0 ? "genuine-failure" : `interrupted-sibling-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+  const run: Runner = async (_command, args) => {
+    if (args.includes("eval")) {
+      await new Promise<void>((resolveCapture) =>
+        setTimeout(resolveCapture, 250)
+      );
+    }
+    return {
+      exitCode: args.includes("har") && args.includes("start") ? 1 : 0,
+      stderr: "",
+      stdout: "",
+    };
+  };
+
+  try {
+    const exit = await Effect.runPromiseExit(
+      runWorkspaceE2ECases({
+        artifactRoot,
+        cases,
+        datasourceConfig: testDatasourceConfig,
+        run,
+        sessionPrefix: "workspace-e2e-failure-cause",
+        timeouts: workspaceE2ETimeouts,
+      }).pipe(Effect.provide(makeTestSuiteLayer()))
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(String(Cause.squash(exit.cause))).toContain(
+        "genuine case failure"
+      );
+    }
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
   }

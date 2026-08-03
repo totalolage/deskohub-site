@@ -85,8 +85,8 @@ export const runWorkspaceE2ECases = ({
       const runCaseEntry = (
         [caseIndex, testCase]: (typeof indexedCases)[number],
         failureSignal?: Deferred.Deferred<number>
-      ) =>
-        telemetry.traceCase({
+      ) => {
+        const tracedCase = telemetry.traceCase({
           caseId: testCase.id,
           effect: Effect.acquireUseRelease(
             Effect.sync(
@@ -143,6 +143,29 @@ export const runWorkspaceE2ECases = ({
           ),
           timeoutMs: testCase.timeoutMs,
         });
+
+        if (!failureSignal) return tracedCase;
+
+        return tracedCase.pipe(
+          Effect.catchCause((cause) => {
+            if (!Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
+
+            return Deferred.isDone(failureSignal).pipe(
+              Effect.flatMap((isDone) =>
+                isDone
+                  ? Deferred.await(failureSignal).pipe(
+                      Effect.flatMap((failingCaseIndex) =>
+                        failingCaseIndex === caseIndex
+                          ? Effect.failCause(cause)
+                          : Effect.void
+                      )
+                    )
+                  : Effect.failCause(cause)
+              )
+            );
+          })
+        );
+      };
 
       log(
         `Running ${parallelCases.length} workspace e2e cases in parallel: ${parallelCases
