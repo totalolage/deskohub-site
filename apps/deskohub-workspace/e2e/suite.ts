@@ -81,9 +81,11 @@ export const runWorkspaceE2ECases = ({
       );
       const indexedCases = [...cases.entries()];
       const independentFailure = yield* Deferred.make<number>();
-      const parallelCases = indexedCases.filter(
-        ([, testCase]) => !testCase.runAfterParallel
-      );
+      const parallelCases = indexedCases
+        .filter(([, testCase]) => !testCase.runAfterParallel)
+        .sort(
+          ([, left], [, right]) => left.timeoutMs - right.timeoutMs
+        );
       const sharedFixtureCases = indexedCases.filter(
         ([, testCase]) => testCase.runAfterParallel
       );

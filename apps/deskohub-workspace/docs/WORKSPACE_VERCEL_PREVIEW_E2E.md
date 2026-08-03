@@ -270,9 +270,12 @@ showed provider-backed availability responses queueing beyond the existing UI
 boundary in different cases; the narrow boundary keeps those full Dotypos and
 Calendar inventory loads below that observed saturation point. It releases
 before hosted payment, webhook, fulfillment, assertions, and cleanup, which all
-remain parallel. Direct database assertions share one runner-owned pool capped
-at ten connections. Before allowing three concurrent runs, revalidate the
-aggregate eighteen-start ceiling in the required soak and lower the per-run
+remain parallel. Independent cases are launched in ascending case-watchdog
+order so shorter terminal scenarios acquire permits before longer checkout
+scenarios. All case fibers still launch immediately and participate in the same
+fail-fast aggregate. Direct database assertions share one runner-owned pool
+capped at ten connections. Before allowing three concurrent runs, revalidate
+the aggregate eighteen-start ceiling in the required soak and lower the per-run
 limit if provider p95 or throttling regresses. Do not make an edge case mutate a
 fixture consumed by another case.
 

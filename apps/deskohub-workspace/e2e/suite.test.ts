@@ -122,11 +122,12 @@ test("runs all independent preview cases concurrently", async () => {
   expect(maximumActiveCaseCount).toBe(12);
 });
 
-test("bounds reservation starts without serializing independent cases", async () => {
+test("bounds reservation starts and admits shorter case deadlines first", async () => {
   const caseCount = workspaceE2EReservationStartConcurrency + 1;
   let activeReservationStarts = 0;
   let maximumActiveReservationStarts = 0;
   let reservationStartCount = 0;
+  const admittedCaseIds: string[] = [];
   let releaseFirstWave: () => void = () => undefined;
   let signalCapacityReached: () => void = () => undefined;
   const firstWaveRelease = new Promise<void>((resolve) => {
@@ -145,6 +146,7 @@ test("bounds reservation starts without serializing independent cases", async ()
             Effect.sync(() => {
               activeReservationStarts += 1;
               reservationStartCount += 1;
+              admittedCaseIds.push(`reservation-start-${index}`);
               maximumActiveReservationStarts = Math.max(
                 maximumActiveReservationStarts,
                 activeReservationStarts
@@ -167,7 +169,7 @@ test("bounds reservation starts without serializing independent cases", async ()
         }),
       checkoutStates: [],
       id: `reservation-start-${index}`,
-      timeoutMs: 10_000,
+      timeoutMs: index === caseCount - 1 ? 9_000 : 10_000,
     })
   );
 
@@ -192,6 +194,9 @@ test("bounds reservation starts without serializing independent cases", async ()
   expect(maximumActiveReservationStarts).toBe(
     workspaceE2EReservationStartConcurrency
   );
+  expect(
+    admittedCaseIds.slice(0, workspaceE2EReservationStartConcurrency)
+  ).toContain(`reservation-start-${caseCount - 1}`);
   expect(reservationStartCount).toBe(caseCount);
 });
 
