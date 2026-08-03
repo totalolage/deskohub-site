@@ -186,10 +186,10 @@ export class CalendarDiscountProvider extends Context.Service<
           Effect.succeed(input).pipe(
             Effect.let(
               "cacheKey",
-              ({ reservationDate }) =>
+              ({ currentDate }) =>
                 new CalendarSalesCacheKey({
                   calendarId: salesCalendarId,
-                  reservationDate,
+                  reservationDate: currentDate.toString(),
                 })
             ),
             Effect.bind("resolvedSales", ({ cacheKey }) =>

@@ -12,12 +12,12 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
 )((input: { readonly locale: Locale }) =>
   Effect.succeed(input).pipe(
     Effect.bind("at", () => Clock.currentTimeMillis),
-    Effect.let("reservationDate", ({ at }) =>
+    Effect.let("currentDate", ({ at }) =>
       getCurrentWorkspaceDate(Temporal.Instant.fromEpochMilliseconds(at))
     ),
-    Effect.bind("activeSales", ({ locale, reservationDate }) =>
+    Effect.bind("activeSales", ({ currentDate, locale }) =>
       Effect.flatMap(DiscountService, (discounts) =>
-        discounts.discoverActiveSales({ locale, reservationDate })
+        discounts.discoverActiveSales({ currentDate, locale })
       )
     ),
     Effect.tap(logAmbiguousActiveSales),

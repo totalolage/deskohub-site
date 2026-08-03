@@ -91,7 +91,7 @@ export type ActiveSale = {
 
 export type ActiveSaleDiscoveryInput = {
   readonly locale: Locale;
-  readonly reservationDate: string;
+  readonly currentDate: Temporal.PlainDate;
 };
 
 export const discountCodec = Schema.Struct({

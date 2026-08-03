@@ -39,7 +39,10 @@ export const coworkReservationPage = createReservationPage({
       : getReservationDefaultValuesFromSearchParams(searchParams);
     const initialValues = restoredOrQueryValues.date
       ? restoredOrQueryValues
-      : { ...restoredOrQueryValues, date: getCurrentWorkspaceDate() };
+      : {
+          ...restoredOrQueryValues,
+          date: getCurrentWorkspaceDate().toString(),
+        };
     const initialAdvertisedPriceRequests = initialValues.date
       ? [
           ...getCoworkTierAdvertisedPriceRequests({

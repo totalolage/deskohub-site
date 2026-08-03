@@ -84,8 +84,8 @@ describe("getActiveLandingPageSaleBanner", () => {
       label: expect.stringContaining("Summer focus"),
     });
     expect(discoverActiveSales).toHaveBeenCalledWith({
+      currentDate: Temporal.PlainDate.from("2026-07-20"),
       locale: "en-US",
-      reservationDate: "2026-07-20",
     });
   });
 

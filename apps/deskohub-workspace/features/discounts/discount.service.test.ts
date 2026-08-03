@@ -153,8 +153,8 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
+          currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
-          reservationDate: "2026-07-20",
         });
       }),
       providers,
@@ -198,8 +198,8 @@ describe("DiscountService", () => {
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
         return yield* discounts.discoverActiveSales({
+          currentDate: Temporal.PlainDate.from("2026-07-20"),
           locale: "en-US",
-          reservationDate: "2026-07-20",
         });
       }).pipe(Effect.provide(Logger.layer([logger]))),
       providers

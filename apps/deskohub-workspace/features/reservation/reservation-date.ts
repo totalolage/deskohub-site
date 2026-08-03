@@ -10,11 +10,10 @@ import {
 export const getCurrentWorkspaceDate = (now = Temporal.Now.instant()) =>
   now
     .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
-    .toPlainDate()
-    .toString();
+    .toPlainDate();
 
 export const isTodayOrFutureWorkspaceDate = (date: string) =>
-  date >= getCurrentWorkspaceDate();
+  date >= getCurrentWorkspaceDate().toString();
 
 const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",

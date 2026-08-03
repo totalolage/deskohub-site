@@ -153,10 +153,9 @@ export const parseWorkspaceAvailabilityQuery = (
   const today = getCurrentWorkspaceDate(
     Temporal.Instant.fromEpochMilliseconds(now.getTime())
   );
-  const from = getDateParam(searchParams, "from") ?? today;
+  const from = getDateParam(searchParams, "from") ?? today.toString();
   const to =
-    getDateParam(searchParams, "to") ??
-    Temporal.PlainDate.from(today).add({ months: 6 }).toString();
+    getDateParam(searchParams, "to") ?? today.add({ months: 6 }).toString();
   const date = getDateParam(searchParams, "date");
   const reservationKind = getReservationKindParam(searchParams);
   const entryTier =
