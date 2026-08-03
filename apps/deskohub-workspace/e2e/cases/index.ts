@@ -59,35 +59,32 @@ export const makeWorkspaceE2ECases = ({
   Effect.gen(function* () {
     const telemetry = yield* E2ETelemetryService;
     log(`Using workspace e2e ${formatWorkspaceE2EAllocation(allocation)}`);
-    const preparation = yield* Effect.all(
-      {
-        availability: Effect.all(
-          {
-            discounts: telemetry.tracePhase({
-              effect: prepareDiscountE2E(config, datasourceConfig, allocation),
-              phaseId: "cowork-availability-preparation",
-            }),
-            meetingRoom: telemetry.tracePhase({
-              effect: prepareMeetingRoomE2E(config, allocation),
-              phaseId: "meeting-room-availability-preparation",
-            }),
-          },
-          { concurrency: "unbounded" }
-        ),
-        fixtures: telemetry.tracePhase({
-          effect: seedDiscountE2EFixtures,
-          phaseId: "fixture-seeding",
-        }),
-      },
-      { concurrency: "unbounded" }
-    );
+    const preparation = yield* sequenceWorkspaceE2EPreparation({
+      availability: Effect.all(
+        {
+          discounts: telemetry.tracePhase({
+            effect: prepareDiscountE2E(config, datasourceConfig, allocation),
+            phaseId: "cowork-availability-preparation",
+          }),
+          meetingRoom: telemetry.tracePhase({
+            effect: prepareMeetingRoomE2E(config, allocation),
+            phaseId: "meeting-room-availability-preparation",
+          }),
+        },
+        { concurrency: "unbounded" }
+      ),
+      fixtures: telemetry.tracePhase({
+        effect: seedDiscountE2EFixtures,
+        phaseId: "fixture-seeding",
+      }),
+    });
 
     return yield* telemetry.tracePhase({
       effect: Effect.gen(function* () {
         const httpClient = yield* HttpClient.HttpClient;
         const terminalScenarios = getPaymentTerminalScenarios();
         const checkoutDates = yield* selectCoworkDates(
-          preparation.availability.discounts.availableBasicDates,
+          preparation.discounts.availableBasicDates,
           checkoutFlows.length + terminalScenarios.length + 2,
           {
             allocation,
@@ -270,7 +267,7 @@ export const makeWorkspaceE2ECases = ({
             config,
             datasourceConfig,
             flowStates,
-            preparation: preparation.availability.meetingRoom,
+            preparation: preparation.meetingRoom,
             run,
           }))
         );
@@ -282,7 +279,7 @@ export const makeWorkspaceE2ECases = ({
             datasourceConfig,
             excludedDates: new Set(checkoutDates),
             flowStates,
-            preparation: preparation.availability.discounts,
+            preparation: preparation.discounts,
             run,
           }))
         );
@@ -292,6 +289,28 @@ export const makeWorkspaceE2ECases = ({
       phaseId: "case-construction",
     });
   });
+
+export const sequenceWorkspaceE2EPreparation = <
+  A,
+  FixtureError,
+  AvailabilityError,
+  FixtureRequirements,
+  AvailabilityRequirements,
+>({
+  availability,
+  fixtures,
+}: {
+  readonly availability: Effect.Effect<
+    A,
+    AvailabilityError,
+    AvailabilityRequirements
+  >;
+  readonly fixtures: Effect.Effect<void, FixtureError, FixtureRequirements>;
+}): Effect.Effect<
+  A,
+  FixtureError | AvailabilityError,
+  FixtureRequirements | AvailabilityRequirements
+> => fixtures.pipe(Effect.andThen(availability));
 
 const trackCheckoutState = (
   flowStates: CheckoutFlowState[],

@@ -406,6 +406,10 @@ watchdog still bounds the complete queued and active lifetime. This keeps a
 healthy provider operation from losing its full timeout merely because another
 case is using the documented provider-capacity boundary.
 
+Fixture seeding completes before availability preparation because Calendar
+availability resolves the seeded discount definition. Once that transaction
+commits, cowork and meeting-room availability preparation run concurrently.
+
 The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
 `ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:
 `workflow_dispatch` is `manual`, while the automatic
