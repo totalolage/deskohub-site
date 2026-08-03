@@ -6,7 +6,10 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import { checkoutDetailsSchema } from "@/features/checkout/schemas/checkout-details";
 import { instantStringSchema } from "@/shared/utils/temporal";
-import { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
+import {
+  createWorkspaceDotyposReservation,
+  formatWorkspaceReservationNote,
+} from "./dotypos-reservation.adapter";
 import {
   type IWorkspaceTableAssignmentService,
   WorkspaceTableAssignmentService,
@@ -75,6 +78,8 @@ describe("createWorkspaceDotyposReservation", () => {
   test("uses the meeting-room reservation for assignment and creation", async () => {
     const reservation = {
       kind: "meeting-room" as const,
+      duration: { unit: "hour" as const, amount: 4 as const },
+      reservationDate: "2099-06-10",
       startsAt: decodeInstant("2099-06-10T08:00:00Z"),
       endsAt: decodeInstant("2099-06-10T12:00:00Z"),
     };
@@ -113,5 +118,41 @@ describe("createWorkspaceDotyposReservation", () => {
         ),
       })
     );
+  });
+
+  test("labels a DST calendar-day reservation as whole day in the note", () => {
+    const note = formatWorkspaceReservationNote({
+      paymentOrderId: "payment-order-id",
+      checkoutDetails,
+      reservation: {
+        kind: "meeting-room",
+        duration: { unit: "day", amount: 1 },
+        reservationDate: "2026-03-29",
+        startsAt: decodeInstant("2026-03-28T23:00:00Z"),
+        endsAt: decodeInstant("2026-03-29T22:00:00Z"),
+      },
+    });
+
+    expect(note).toContain("Duration: whole day");
+    expect(note).not.toContain("Duration: 1380 minutes");
+  });
+
+  test.each([
+    [{ unit: "hour", amount: 4 }, "Duration: 4 hodiny"],
+    [{ unit: "day", amount: 1 }, "Duration: celý den"],
+  ] as const)("localizes a Czech meeting-room %s duration in the note", (duration, expected) => {
+    const note = formatWorkspaceReservationNote({
+      paymentOrderId: "payment-order-id",
+      checkoutDetails: { ...checkoutDetails, locale: "cs-CZ" },
+      reservation: {
+        kind: "meeting-room",
+        duration,
+        reservationDate: "2026-03-29",
+        startsAt: decodeInstant("2026-03-28T23:00:00Z"),
+        endsAt: decodeInstant("2026-03-29T22:00:00Z"),
+      },
+    });
+
+    expect(note).toContain(expected);
   });
 });

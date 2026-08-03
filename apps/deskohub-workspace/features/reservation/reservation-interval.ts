@@ -6,21 +6,18 @@ import {
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import {
-  isWorkspaceMeetingRoomDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
-  workspaceMeetingRoomDurationOptions,
-} from "@/features/checkout/product-catalog";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import {
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-import {
-  getDurationMinutes,
-  normalizeReservationIntervalFields,
-} from "@/features/reservation/reservation-interval-normalization";
-import { toPlainDateTime } from "@/features/reservation/reservation-interval-parser";
+import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import { normalizeReservationIntervalFields } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
@@ -33,6 +30,7 @@ export type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
+export { isSingleDayReservationInterval };
 
 export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
@@ -73,74 +71,31 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
   )
 );
 
-export const isSingleDayReservationInterval = (
-  interval: ReservationInterval
-) => {
-  const start = toPlainDateTime(
-    interval.startsAt,
-    workspaceSiteConstants.location.timeZone
-  );
-  const end = toPlainDateTime(
-    interval.endsAt,
-    workspaceSiteConstants.location.timeZone
-  );
-
-  return (
-    isMidnight(start) &&
-    isMidnight(end) &&
-    end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
-  );
-};
-
 const getMeetingRoomDurationMessage = (
-  duration: WorkspaceMeetingRoomDurationMinutes
-) => m.reservationMeetingRoomDurationHours({ count: duration / 60 });
+  duration: MeetingRoomReservationDuration
+) => {
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return m.reservationMeetingRoomDurationWholeDay();
+  }
+
+  return m.reservationMeetingRoomDurationHours({ count: duration.amount });
+};
 
 export const getMeetingRoomDurationValidationMessage = () =>
   m.reservationValidationMeetingRoomDuration({
-    durations: workspaceMeetingRoomDurationOptions
-      .map(getMeetingRoomDurationMessage)
+    durations: workspaceMeetingRoomCatalog
+      .map(({ duration }) => getMeetingRoomDurationMessage(duration))
       .join(", "),
   });
 
 export const wholeHourReservationInstantSchema =
   makeWholeHourInstantStringSchema(workspaceSiteConstants.location.timeZone);
 
-export const meetingRoomReservationDurationMinutesSchema = Schema.Finite.check(
-  Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
-    message: getMeetingRoomDurationValidationMessage(),
-  })
-);
-
-const isWholeHourReservationInstant = Schema.is(
-  wholeHourReservationInstantSchema
-);
-const isMeetingRoomReservationDuration = Schema.is(
-  meetingRoomReservationDurationMinutesSchema
-);
-
 export const coworkReservationIntervalSchema = reservationIntervalSchema.check(
   Schema.makeFilter(isSingleDayReservationInterval, {
     message: "Cowork reservations must use the full-day duration.",
   })
 );
-
-export const meetingRoomReservationIntervalSchema =
-  reservationIntervalSchema.check(
-    Schema.makeFilter(
-      (interval) =>
-        isMeetingRoomReservationDuration(getDurationMinutes(interval)),
-      {
-        message: getMeetingRoomDurationValidationMessage(),
-      }
-    ),
-    Schema.makeFilter(
-      (interval) => isWholeHourReservationInstant(interval.startsAt),
-      {
-        message: m.reservationValidationMeetingRoomStartWholeHour(),
-      }
-    )
-  );
 
 export const getReservationIntervalValidationIssue = (
   interval: ReservationIntervalInput
@@ -176,6 +131,11 @@ export const normalizeReservationInterval = Effect.fn(
   );
 });
 
+export const hasReservationIntervalEnded = (
+  interval: Pick<ReservationInterval, "endsAt">,
+  now = Temporal.Now.instant()
+) => Temporal.Instant.compare(Temporal.Instant.from(interval.endsAt), now) < 0;
+
 export const getReservationDate = ({
   interval,
   timeZone,
@@ -187,12 +147,6 @@ export const getReservationDate = ({
     instant: Temporal.Instant.from(interval.startsAt),
     timeZone,
   }).toString();
-
-const isMidnight = (dateTime: ReturnType<typeof toPlainDateTime>) =>
-  dateTime.hour === 0 &&
-  dateTime.minute === 0 &&
-  dateTime.second === 0 &&
-  dateTime.millisecond === 0;
 
 const toSchemaIssue = (
   input: unknown,

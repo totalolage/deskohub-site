@@ -9,7 +9,7 @@ import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/prod
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
   getReservationDate,
   type ReservationInterval,
@@ -30,12 +30,9 @@ import {
 type CoworkTableAssignmentReservation = StoredCoworkReservationDetails &
   Pick<CoworkReservationDetails, "date">;
 
-type MeetingRoomTableAssignmentReservation =
-  StoredMeetingRoomReservationDetails & ReservationInterval;
-
 export type WorkspaceTableAssignmentReservation =
   | CoworkTableAssignmentReservation
-  | MeetingRoomTableAssignmentReservation;
+  | MeetingRoomReservationDetails;
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (

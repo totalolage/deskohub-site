@@ -12,10 +12,9 @@ import type {
 } from "@/features/discounts";
 import type {
   MeetingRoomAdvertisedPriceReservation,
-  MeetingRoomReservationDetails,
+  MeetingRoomReservationPricingInput,
   NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
-import { getMeetingRoomReservationDate } from "@/features/reservation/meeting-room-reservation-time";
 import {
   type ReservationAdvertisementAffirmation,
   type ReservationAdvertisementAffirmationInput,
@@ -88,7 +87,7 @@ export type MeetingRoomDiscountCodePriceResult =
 
 const getMeetingRoomPricingContext = Effect.fn(
   "MeetingRoomCheckoutPricing.getPricingContext"
-)(function* (reservation: MeetingRoomReservationDetails) {
+)(function* (reservation: MeetingRoomReservationPricingInput) {
   const undiscountedQuote = yield* getMeetingRoomReservationQuote(reservation);
   const [productItem] = undiscountedQuote.items;
 
@@ -97,10 +96,10 @@ const getMeetingRoomPricingContext = Effect.fn(
     discountInput: {
       product: {
         kind: "meeting-room" as const,
-        durationMinutes: productItem.durationMinutes,
+        duration: productItem.duration,
       },
       discountableSubtotal: productItem.amount,
-      reservationDate: getMeetingRoomReservationDate(reservation),
+      reservationDate: reservation.reservationDate,
     },
   };
 });
@@ -130,7 +129,7 @@ const buildMeetingRoomQuote = Effect.fn(
 });
 
 export const meetingRoomCheckoutPricing = reservationCheckoutPricing<
-  MeetingRoomReservationDetails,
+  MeetingRoomReservationPricingInput,
   MeetingRoomAdvertisedPriceReservation,
   NormalizedMeetingRoomReservationOrder,
   MeetingRoomPricingContext,

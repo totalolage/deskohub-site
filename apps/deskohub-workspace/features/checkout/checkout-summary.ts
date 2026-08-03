@@ -1,68 +1,21 @@
 import { Schema } from "effect";
 import {
-  getWorkspaceProductKey,
-  workspaceProductIdentitySchema,
-  workspaceProductKeySchema,
-} from "@/features/checkout/product-identity";
+  coworkCheckoutSummaryDiscountedProductItemSchema,
+  coworkCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-cowork-item";
+import {
+  meetingRoomCheckoutSummaryDiscountedProductItemSchema,
+  meetingRoomCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-meeting-room-item";
 import {
   nonNegativeWorkspaceMoneyCodec,
-  positiveWorkspaceMoneyCodec,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
-import type { AppliedDiscount } from "@/features/discounts/contracts";
-import { appliedDiscountCodec } from "@/features/discounts/contracts";
 
-export type CheckoutSummaryDiscount = Pick<
-  AppliedDiscount,
-  "discount" | "amount"
->;
-
-export const checkoutSummaryDiscountSchema: Schema.Codec<
-  CheckoutSummaryDiscount,
-  Pick<typeof appliedDiscountCodec.Encoded, "discount" | "amount">
-> = Schema.Struct({
-  discount: appliedDiscountCodec.fields.discount,
-  amount: appliedDiscountCodec.fields.amount,
-});
-
-const checkoutSummaryProductItemKeySchema = Schema.TemplateLiteral([
-  "product:",
-  workspaceProductKeySchema,
-]);
-
-const checkoutSummaryProductItemBaseSchema = Schema.Struct({
-  key: checkoutSummaryProductItemKeySchema,
-  product: workspaceProductIdentitySchema,
-  amount: nonNegativeWorkspaceMoneyCodec,
-});
-
-export const checkoutSummaryProductItemSchema = Schema.Struct({
-  ...checkoutSummaryProductItemBaseSchema.fields,
-  originalAmount: Schema.optionalKey(Schema.Never),
-  discounts: Schema.optionalKey(Schema.Never),
-}).check(
-  Schema.makeFilter(
-    ({ key, product }) =>
-      key === `product:${getWorkspaceProductKey(product)}` || {
-        path: ["key"],
-        issue: "product summary key must match the product identity",
-      }
-  )
-);
-
-export const checkoutSummaryDiscountedProductItemSchema = Schema.Struct({
-  ...checkoutSummaryProductItemBaseSchema.fields,
-  originalAmount: positiveWorkspaceMoneyCodec,
-  discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
-}).check(
-  Schema.makeFilter(
-    ({ key, product }) =>
-      key === `product:${getWorkspaceProductKey(product)}` || {
-        path: ["key"],
-        issue: "product summary key must match the product identity",
-      }
-  )
-);
+export {
+  type CheckoutSummaryDiscount,
+  checkoutSummaryDiscountSchema,
+} from "@/features/checkout/checkout-summary-product-item";
 
 export const checkoutSummaryAddOnItemSchema = Schema.Struct({
   key: Schema.Union([
@@ -73,8 +26,10 @@ export const checkoutSummaryAddOnItemSchema = Schema.Struct({
 });
 
 export const checkoutSummaryOrderItemSchema = Schema.Union([
-  checkoutSummaryDiscountedProductItemSchema,
-  checkoutSummaryProductItemSchema,
+  meetingRoomCheckoutSummaryDiscountedProductItemSchema,
+  meetingRoomCheckoutSummaryProductItemSchema,
+  coworkCheckoutSummaryDiscountedProductItemSchema,
+  coworkCheckoutSummaryProductItemSchema,
   checkoutSummaryAddOnItemSchema,
 ]);
 

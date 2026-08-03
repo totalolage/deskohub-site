@@ -27,6 +27,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomDurationLabel } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
@@ -330,17 +332,11 @@ function AdminDataTable<T>({
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const sorted = header.column.getIsSorted();
+                let ariaSort: "ascending" | "descending" | "none" = "none";
+                if (sorted === "asc") ariaSort = "ascending";
+                else if (sorted === "desc") ariaSort = "descending";
                 return (
-                  <TableHead
-                    aria-sort={
-                      sorted === "asc"
-                        ? "ascending"
-                        : sorted === "desc"
-                          ? "descending"
-                          : "none"
-                    }
-                    key={header.id}
-                  >
+                  <TableHead aria-sort={ariaSort} key={header.id}>
                     <button
                       className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
                       onClick={header.column.getToggleSortingHandler()}
@@ -993,7 +989,11 @@ const productOptions = [
   { key: "cowork:basic", label: "Cowork Basic" },
   { key: "cowork:plus", label: "Cowork Plus" },
   { key: "cowork:profi", label: "Cowork Profi" },
-  { key: "meeting-room:60", label: "Meeting room · 60 min" },
-  { key: "meeting-room:240", label: "Meeting room · 240 min" },
-  { key: "meeting-room:1440", label: "Meeting room · full day" },
-] as const;
+  ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
+    key: getWorkspaceProductKey({ kind: "meeting-room", duration }),
+    label: `Meeting room · ${getWorkspaceMeetingRoomDurationLabel(
+      duration,
+      "en-US"
+    )}`,
+  })),
+];

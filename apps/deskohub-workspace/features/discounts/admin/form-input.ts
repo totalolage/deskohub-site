@@ -1,4 +1,8 @@
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+  workspaceProductIdentities,
+} from "@/features/checkout/product-identity";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import {
   localDateTimeToTemporalInstantString,
@@ -95,11 +99,9 @@ const readOptionalNumber = (formData: FormData, field: string) => {
 
 const productIdentities: Readonly<
   Record<string, readonly WorkspaceProductIdentity[]>
-> = {
-  "cowork:basic": [{ kind: "cowork", tier: "basic" }],
-  "cowork:plus": [{ kind: "cowork", tier: "plus" }],
-  "cowork:profi": [{ kind: "cowork", tier: "profi" }],
-  "meeting-room:60": [{ kind: "meeting-room", durationMinutes: 60 }],
-  "meeting-room:240": [{ kind: "meeting-room", durationMinutes: 240 }],
-  "meeting-room:1440": [{ kind: "meeting-room", durationMinutes: 1440 }],
-};
+> = Object.fromEntries(
+  workspaceProductIdentities.map((product) => [
+    getWorkspaceProductKey(product),
+    [product],
+  ])
+);

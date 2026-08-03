@@ -86,7 +86,10 @@ const definitions: readonly DiscountDefinitionFixture[] = [
     products: [
       { kind: "cowork", tier: "plus" },
       { kind: "cowork", tier: "profi" },
-      { kind: "meeting-room", durationMinutes: 60 },
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      },
     ],
   },
   {
@@ -119,7 +122,10 @@ const definitions: readonly DiscountDefinitionFixture[] = [
     },
     products: [
       { kind: "cowork", tier: "basic" },
-      { kind: "meeting-room", durationMinutes: 240 },
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+      },
     ],
   },
 ];

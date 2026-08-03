@@ -9,7 +9,7 @@ import {
   getCanonicalMeetingRoomReservation,
 } from "@/features/checkout/reservation-quote-meeting-room";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
-import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
 
 type AppliedDiscount = ReservationQuote["payment"]["discounts"][number];
 type CanonicalAppliedDiscount = {
@@ -30,7 +30,7 @@ type CanonicalReservation =
 type ReservationQuoteFingerprintReservation =
   | CoworkReservationDetails
   | CoworkReservationPricingInput
-  | MeetingRoomReservationDetails;
+  | MeetingRoomReservationPricingInput;
 
 const getCanonicalAppliedDiscount = (
   application: AppliedDiscount

@@ -195,6 +195,16 @@ export const isFuturePlainDateTime = ({
     now.toZonedDateTimeISO(timeZone).toPlainDateTime()
   ) > 0;
 
+export const isMidnight = (
+  value: Temporal.PlainDateTime | Temporal.ZonedDateTime
+) =>
+  value.hour === 0 &&
+  value.minute === 0 &&
+  value.second === 0 &&
+  value.millisecond === 0 &&
+  value.microsecond === 0 &&
+  value.nanosecond === 0;
+
 export const makeWholeHourInstantStringSchema = (timeZone: string) =>
   instantStringSchema.check(
     Schema.makeFilter((value) => {

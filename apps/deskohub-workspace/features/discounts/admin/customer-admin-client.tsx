@@ -23,6 +23,21 @@ import type {
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
+const customerSearchLabels = {
+  id: "Dotypos customer ID",
+  email: "Email",
+  phone: "Phone",
+} as const satisfies Record<DiscountAdminCustomerSearch["kind"], string>;
+
+const getCustomerSearch = (
+  kind: DiscountAdminCustomerSearch["kind"],
+  value: string
+): DiscountAdminCustomerSearch => {
+  if (kind === "id") return { kind, customerId: value as DotyposCustomerId };
+  if (kind === "email") return { kind, email: value };
+  return { kind, phone: value };
+};
+
 export function CustomerSearch() {
   const [kind, setKind] = useState<DiscountAdminCustomerSearch["kind"]>("id");
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
@@ -63,13 +78,7 @@ export function CustomerSearch() {
             ?.toString()
             .trim();
           if (!value) return;
-          execute(
-            kind === "id"
-              ? { kind, customerId: value as DotyposCustomerId }
-              : kind === "email"
-                ? { kind, email: value }
-                : { kind, phone: value }
-          );
+          execute(getCustomerSearch(kind, value));
         }}
       >
         <div className="grid gap-1.5">
@@ -92,11 +101,7 @@ export function CustomerSearch() {
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="customer-search-query">
-            {kind === "id"
-              ? "Dotypos customer ID"
-              : kind === "email"
-                ? "Email"
-                : "Phone"}
+            {customerSearchLabels[kind]}
           </Label>
           <Input
             autoComplete="off"

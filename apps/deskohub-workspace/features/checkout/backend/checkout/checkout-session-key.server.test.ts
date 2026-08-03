@@ -39,12 +39,16 @@ describe("checkout attempt key", () => {
     const meetingRoom = decodeReservation({
       kind: "meeting-room",
       ...contact,
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-10T08:00:00Z",
       endsAt: "2099-06-10T12:00:00Z",
     });
     const laterMeetingRoom = decodeReservation({
       kind: "meeting-room",
       ...contact,
+      duration: { unit: "hour", amount: 4 },
+      reservationDate: "2099-06-10",
       startsAt: "2099-06-10T09:00:00Z",
       endsAt: "2099-06-10T13:00:00Z",
     });

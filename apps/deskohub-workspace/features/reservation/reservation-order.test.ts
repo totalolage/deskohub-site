@@ -12,6 +12,8 @@ const reservationOrderSchema = makeSchemaParser(reservationOrderDefinition);
 
 const validMeetingRoomReservation = {
   kind: "meeting-room",
+  duration: { unit: "hour", amount: 1 },
+  reservationDate: "2099-06-10",
   startsAt: "2099-06-10T07:00:00Z",
   endsAt: "2099-06-10T08:00:00Z",
   name: "Ada Lovelace",
@@ -89,7 +91,12 @@ describe("reservation schema", () => {
         coffee: true,
       })
     ).toBe(true);
-    expect(getReservationProductCoffee({ kind: "meeting-room" })).toBe(false);
+    expect(
+      getReservationProductCoffee({
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      })
+    ).toBe(false);
     expect(
       getReservationProductMonitorOption({
         kind: "cowork",
@@ -99,7 +106,10 @@ describe("reservation schema", () => {
       })
     ).toBe("2x27-qhd");
     expect(
-      getReservationProductMonitorOption({ kind: "meeting-room" })
+      getReservationProductMonitorOption({
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      })
     ).toBeUndefined();
   });
 

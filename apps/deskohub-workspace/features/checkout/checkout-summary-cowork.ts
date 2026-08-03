@@ -1,13 +1,15 @@
 import {
   type CheckoutSummary,
   type CheckoutSummaryOrderItem,
-  checkoutSummaryDiscountedProductItemSchema,
   checkoutSummaryDiscountSchema,
   checkoutSummaryOrderSectionSchema,
-  checkoutSummaryProductItemSchema,
   checkoutSummarySchema,
   checkoutSummaryTotalSectionSchema,
 } from "@/features/checkout/checkout-summary";
+import {
+  coworkCheckoutSummaryDiscountedProductItemSchema,
+  coworkCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-cowork-item";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
@@ -33,14 +35,14 @@ export const getCoworkCheckoutSummary = (
     quote.payment.discounts.at(-1)?.subtotalAfter ?? productQuoteItem.amount;
   const productItem =
     summaryDiscounts.length > 0
-      ? checkoutSummaryDiscountedProductItemSchema.make({
+      ? coworkCheckoutSummaryDiscountedProductItemSchema.make({
           key: productKey,
           product,
           amount: discountedProductPrice,
           originalAmount: productQuoteItem.amount,
           discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
         })
-      : checkoutSummaryProductItemSchema.make({
+      : coworkCheckoutSummaryProductItemSchema.make({
           key: productKey,
           product,
           amount: productQuoteItem.amount,

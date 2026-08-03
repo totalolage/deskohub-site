@@ -4,9 +4,7 @@ import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail";
-import {
-  getMeetingRoomReservationInterval,
-} from "@/features/reservation/meeting-room-reservation-time";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -124,11 +122,15 @@ test("reuses customer identity for a later reservation", () => {
 });
 
 test("builds minimal meeting-room persistence data with transient timing", () => {
-  const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", 240);
+  const duration = { unit: "hour", amount: 4 } as const;
+  const interval = getMeetingRoomReservationInterval(
+    "2099-09-01T10:00",
+    duration
+  );
   expect(interval).toBeDefined();
   const data = makeMeetingRoomCheckoutData("https://workspace.example.com", {
     date: "2099-09-01",
-    durationMinutes: 240,
+    duration,
     startDateTime: "2099-09-01T10:00",
     ...interval!,
   });
@@ -136,33 +138,34 @@ test("builds minimal meeting-room persistence data with transient timing", () =>
   expect(new URL(data.checkoutUrl).pathname).toBe(
     "/en-US/reservation/meeting-room"
   );
-  expect(data.expectedReservationDetails).toEqual({ kind: "meeting-room" });
+  expect(data.expectedReservationDetails).toEqual({
+    kind: "meeting-room",
+  });
   expect(data.meetingRoom).toEqual({
-    durationMinutes: 240,
+    duration,
     endsAt: interval!.endsAt,
     startDateTime: "2099-09-01T10:00",
     startsAt: interval!.startsAt,
   });
   expect(data.expectedReservationDetails).not.toHaveProperty("startsAt");
-  expect(data.expectedReservationDetails).not.toHaveProperty("durationMinutes");
 });
 
 test("reuses a meeting-room customer while changing the interval", () => {
-  const firstInterval = getMeetingRoomReservationInterval(
-    "2099-09-01T10:00",
-    60
-  );
-  const secondInterval = getMeetingRoomReservationInterval(
-    "2099-09-02T10:00",
-    240
-  );
+  const firstInterval = getMeetingRoomReservationInterval("2099-09-01T10:00", {
+    unit: "hour",
+    amount: 1,
+  });
+  const secondInterval = getMeetingRoomReservationInterval("2099-09-02T10:00", {
+    unit: "hour",
+    amount: 4,
+  });
   expect(firstInterval).toBeDefined();
   expect(secondInterval).toBeDefined();
   const first = makeMeetingRoomCheckoutData(
     "https://workspace.example.com",
     {
       date: "2099-09-01",
-      durationMinutes: 60,
+      duration: { unit: "hour", amount: 1 },
       startDateTime: "2099-09-01T10:00",
       ...firstInterval!,
     },
@@ -172,7 +175,7 @@ test("reuses a meeting-room customer while changing the interval", () => {
     "https://workspace.example.com",
     {
       date: "2099-09-02",
-      durationMinutes: 240,
+      duration: { unit: "hour", amount: 4 },
       startDateTime: "2099-09-02T10:00",
       ...secondInterval!,
     },
@@ -190,7 +193,7 @@ test("reuses a meeting-room customer while changing the interval", () => {
     name: first.name,
     phone: first.phone,
   });
-  expect(second.meetingRoom?.durationMinutes).toBe(240);
+  expect(second.meetingRoom?.duration).toEqual({ unit: "hour", amount: 4 });
   expect(second.meetingRoom?.startsAt).toBe(secondInterval!.startsAt);
 });
 
@@ -287,39 +290,41 @@ test("selects non-overlapping meeting-room slots for every duration", async () =
   );
 
   const slots = await Effect.runPromise(
-    selectAvailableMeetingRoomSlots(makeConfig(), [60, 240, 1440]).pipe(
-      Effect.provide(httpClientLayer)
-    )
+    selectAvailableMeetingRoomSlots(makeConfig(), [
+      { unit: "hour", amount: 1 },
+      { unit: "hour", amount: 4 },
+      { unit: "day", amount: 1 },
+    ]).pipe(Effect.provide(httpClientLayer))
   );
 
   expect(
-    slots.map(({ date, durationMinutes, startDateTime }) => ({
+    slots.map(({ date, duration, startDateTime }) => ({
       date,
-      durationMinutes,
+      duration,
       startDateTime,
     }))
   ).toEqual([
     {
       date: "2099-07-31",
-      durationMinutes: 60,
+      duration: { unit: "hour", amount: 1 },
       startDateTime: "2099-07-31T10:00",
     },
     {
       date: "2099-08-03",
-      durationMinutes: 240,
+      duration: { unit: "hour", amount: 4 },
       startDateTime: "2099-08-03T10:00",
     },
     {
       date: "2099-08-04",
-      durationMinutes: 1440,
-      startDateTime: "2099-08-04T10:00",
+      duration: { unit: "day", amount: 1 },
+      startDateTime: "2099-08-04T00:00",
     },
   ]);
   expect(requests).toHaveLength(3);
   expect(requests[0]?.url).toContain("kind=meeting-room");
   expect(requests[0]?.url).not.toContain("_tag");
   expect(requests[2]?.url).toContain("from=2099-08-04");
-  expect(requests[2]?.url).toContain("to=2099-08-05");
+  expect(requests[2]?.url).toContain("to=2099-08-04");
   expect(requests[2]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );
@@ -352,13 +357,13 @@ test("rejects meeting-room slots that touch an unavailable date", async () => {
   );
 
   const slots = await Effect.runPromise(
-    selectAvailableMeetingRoomSlots(makeConfig(), [1440]).pipe(
-      Effect.provide(httpClientLayer)
-    )
+    selectAvailableMeetingRoomSlots(makeConfig(), [
+      { unit: "day", amount: 1 },
+    ]).pipe(Effect.provide(httpClientLayer))
   );
 
   expect(requests).toHaveLength(2);
-  expect(slots[0]?.startDateTime).toBe("2099-08-03T10:00");
+  expect(slots[0]?.startDateTime).toBe("2099-08-03T00:00");
 });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

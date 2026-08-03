@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 import {
+  activateBrowserElement,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
@@ -44,6 +45,7 @@ const reservationStartRetryableErrorMessages = [
   "Platbu se nepodařilo spustit.",
 ] as const;
 const reservationSubmitAttemptCount = 2;
+const reservationSubmitSelector = "#reservation-submit";
 const hostedPaymentFieldFillAttemptCount = 3;
 
 const runBrowserCommand = (
@@ -232,6 +234,12 @@ const submitReservationAndWaitForPayPage = ({
             input: submitReservationScript,
             logOutput: false,
           }
+        );
+        yield* activateBrowserElement(
+          run,
+          session,
+          reservationSubmitSelector,
+          { timeoutMs }
         );
 
         const result = yield* waitForReservationStart(run, session, timeoutMs);
@@ -810,9 +818,10 @@ const findHostedPaymentFrames = (
     frames.set(ref, { exact, ref });
   }
 
-  return [...frames.values()].sort((left, right) =>
-    left.exact === right.exact ? 0 : left.exact ? -1 : 1
-  );
+  return [...frames.values()].sort((left, right) => {
+    if (left.exact === right.exact) return 0;
+    return left.exact ? -1 : 1;
+  });
 };
 
 type HostedPaymentClickTarget = {

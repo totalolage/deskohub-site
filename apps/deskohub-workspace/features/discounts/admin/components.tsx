@@ -220,6 +220,34 @@ function CalendarSection({
 }: {
   readonly calendar: DiscountAdminDashboard["calendar"];
 }) {
+  let calendarContent = (
+    <Table aria-label="Calendar sales" className="min-w-[760px]">
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          <TableHead>Event</TableHead>
+          <TableHead>Dates</TableHead>
+          <TableHead>Calendar status</TableHead>
+          <TableHead>Association</TableHead>
+          <TableHead className="text-right">Action</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {calendar.events.map((event) => (
+          <CalendarSaleRow event={event} key={event.eventReference} />
+        ))}
+      </TableBody>
+    </Table>
+  );
+  if (calendar.unavailable) {
+    calendarContent = (
+      <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
+    );
+  } else if (calendar.events.length === 0) {
+    calendarContent = (
+      <EmptyState message="No Calendar events found in this window." />
+    );
+  }
+
   return (
     <section>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
@@ -236,28 +264,7 @@ function CalendarSection({
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          {calendar.unavailable ? (
-            <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
-          ) : calendar.events.length === 0 ? (
-            <EmptyState message="No Calendar events found in this window." />
-          ) : (
-            <Table aria-label="Calendar sales" className="min-w-[760px]">
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Event</TableHead>
-                  <TableHead>Dates</TableHead>
-                  <TableHead>Calendar status</TableHead>
-                  <TableHead>Association</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {calendar.events.map((event) => (
-                  <CalendarSaleRow event={event} key={event.eventReference} />
-                ))}
-              </TableBody>
-            </Table>
-          )}
+          {calendarContent}
         </div>
 
         <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-4 lg:sticky lg:top-4">

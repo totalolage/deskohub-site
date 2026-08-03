@@ -10,6 +10,7 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import {
   buildCoworkReservationQuote as buildCoworkReservationQuoteEffect,
   type CoworkReservationQuote,
@@ -26,6 +27,7 @@ import { discountIdSchema } from "@/features/discounts/contracts";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 mock.module("server-only", () => ({}));
 
@@ -86,8 +88,10 @@ const buildAdvertisedPriceToken = async (
 };
 
 const buildMeetingRoomAdvertisedPriceToken = async (input: {
-  readonly startsAt: string;
-  readonly endsAt: string;
+  readonly duration:
+    | { readonly unit: "hour"; readonly amount: 1 | 4 }
+    | { readonly unit: "day"; readonly amount: 1 };
+  readonly reservationDate: string;
 }) => {
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
@@ -98,8 +102,8 @@ const buildMeetingRoomAdvertisedPriceToken = async (input: {
     kind: "meeting-room",
     details: {
       kind: "meeting-room",
-      startsAt: input.startsAt,
-      endsAt: input.endsAt,
+      duration: input.duration,
+      reservationDate: input.reservationDate,
     },
   });
   const quoteWithoutFingerprint = Effect.runSync(
@@ -400,7 +404,18 @@ const runReusableReservationScenario = async (input: {
   };
 };
 
-const runMeetingRoomNewHoldScenario = async () => {
+const runMeetingRoomNewHoldScenario = async (
+  meetingRoomReservation = {
+    kind: "meeting-room" as const,
+    duration: { unit: "hour" as const, amount: 4 as const },
+    reservationDate: "2099-06-10",
+    startsAt: "2099-06-10T08:00:00Z",
+    endsAt: "2099-06-10T12:00:00Z",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  }
+) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { CheckoutPricingService } = await import(
     "@/features/checkout/backend/checkout/checkout-pricing.service"
@@ -430,14 +445,6 @@ const runMeetingRoomNewHoldScenario = async () => {
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
 
-  const meetingRoomReservation = {
-    kind: "meeting-room" as const,
-    startsAt: "2099-06-10T08:00:00Z",
-    endsAt: "2099-06-10T12:00:00Z",
-    name: "Ada Lovelace",
-    email: "ada@example.com",
-    phone: "+420 777 777 777",
-  };
   const ensureAvailable = mock(() => Effect.void);
   const createDraft = mock((input) =>
     Effect.succeed({
@@ -454,12 +461,18 @@ const runMeetingRoomNewHoldScenario = async () => {
   );
   const attachHold = mock(() => Effect.void);
   const enqueueCleanup = mock(() => Effect.void);
+  const price = getWorkspaceMeetingRoomPriceForDuration(
+    meetingRoomReservation.duration
+  );
   const advertisementQuote = discountAdvertisementQuoteCodec.make({
-    product: { kind: "meeting-room", durationMinutes: 240 },
-    discountableSubtotal: basicMoney(60_000),
+    product: {
+      kind: "meeting-room",
+      duration: meetingRoomReservation.duration,
+    },
+    discountableSubtotal: price,
     discounts: [],
     totalDiscount: basicMoney(0),
-    discountedSubtotal: basicMoney(60_000),
+    discountedSubtotal: price,
   });
   const affirmedAdvertisement =
     affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
@@ -564,6 +577,8 @@ describe("prepareWorkspacePayState", () => {
       advertisedPriceToken: "meeting-room-advertised-price-token",
       reservation: {
         kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+        reservationDate: "2099-06-10",
         startsAt: "2099-06-10T08:00:00Z",
         endsAt: "2099-06-10T12:00:00Z",
         name: "Ada Lovelace",
@@ -600,11 +615,13 @@ describe("prepareWorkspacePayState", () => {
     expect(JSON.stringify(persistedDraft?.reservationDetails)).toBe(
       '{"kind":"meeting-room"}'
     );
-    expect(scenario.assignTableId).toHaveBeenCalledWith({
-      kind: "meeting-room",
-      startsAt,
-      endsAt,
-    });
+    expect(scenario.assignTableId).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "meeting-room",
+        startsAt,
+        endsAt,
+      })
+    );
     expect(scenario.createReservation).toHaveBeenCalledWith(
       expect.objectContaining({
         startDate: new Date(startsAt),
@@ -615,7 +632,10 @@ describe("prepareWorkspacePayState", () => {
     );
     expect(scenario.affirmAdvertisement).toHaveBeenCalledWith(
       expect.objectContaining({
-        product: { kind: "meeting-room", durationMinutes: 240 },
+        product: {
+          kind: "meeting-room",
+          duration: { unit: "hour", amount: 4 },
+        },
         reservationDate: "2099-06-10",
         locale: "en-US",
         advertisedDiscountIds: [],
@@ -654,14 +674,44 @@ describe("prepareWorkspacePayState", () => {
       items: [
         {
           type: "meeting-room",
-          durationMinutes: 240,
-          amount: { value: 60_000, exponent: 2, currency: "CZK" },
+          duration: { unit: "hour", amount: 4 },
+          amount: { value: 155_000, exponent: 2, currency: "CZK" },
         },
       ],
       payment: {
-        expectedPrice: { value: 60_000, exponent: 2, currency: "CZK" },
+        expectedPrice: { value: 155_000, exponent: 2, currency: "CZK" },
       },
     });
+  });
+
+  test("allows an already-started calendar-day submission before its end", async () => {
+    const localToday = Temporal.Now.zonedDateTimeISO(
+      workspaceSiteConstants.location.timeZone
+    ).toPlainDate();
+    const startsAt = localToday
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant();
+    const endsAt = localToday
+      .add({ days: 1 })
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant();
+    const wholeDayReservation = {
+      kind: "meeting-room" as const,
+      duration: { unit: "day" as const, amount: 1 as const },
+      reservationDate: localToday.toString(),
+      startsAt: startsAt.toString(),
+      endsAt: endsAt.toString(),
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    };
+    const scenario = await runMeetingRoomNewHoldScenario(wholeDayReservation);
+
+    expect(scenario.result.status).toBe("ready");
+    expect(scenario.affirmAdvertisement).toHaveBeenCalled();
+    expect(scenario.createReservation).toHaveBeenCalled();
   });
 
   test("creates a held reservation and returns an openable pay state", async () => {

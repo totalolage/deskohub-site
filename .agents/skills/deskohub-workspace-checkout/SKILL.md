@@ -19,6 +19,15 @@ Preserve the three price boundaries documented in the checkout lifecycle:
 - signed order-summary state containing the authoritative quote;
 - freshly affirmed payment amount.
 
+Meeting-room checkout remains eligible after the reservation start while its
+exclusive end has not passed. Apply end-time validation at reservation
+submission and final payment initiation; do not reject a booking merely because
+its start is in the past. Reusing an already-created provider session is
+idempotent recovery, not payment initiation: the provider can still settle that
+session independently, so return a valid matching active session before the end
+check. Never use recovery to create a replacement session, and retain the final
+end check immediately before creating any internal or provider payment attempt.
+
 Any change to price facts accepted at the immediately preceding boundary returns `pricing_changed` with the affected product keys. Never introduce a newly available anonymously discoverable automatic discount retrospectively. Discount-code entry is a separate order-summary form whose field errors leave the existing summary payable. Never create a durable payment attempt or external provider session unless the freshly affirmed fingerprint and total exactly match the signed summary and all application/claim mutations commit atomically.
 
 Reservation-page advertisement evaluates only anonymously discoverable automatic discounts, currently Calendar sales. Customer-specific pricing is outside that boundary by contract; do not add an inert snapshot field merely to restate that it was not evaluated. After advertised discounts are affirmed on reservation submission, the customer discount may first appear in the signed summary following Dotypos identity resolution without `pricing_changed`. This is the only automatic-discount exception at that boundary. Once shown, the customer discount follows the normal affirmation and `pricing_changed` rules.

@@ -1,5 +1,5 @@
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
-import type { DiscountGroup } from "@deskohub/dotypos/generated";
+import type { Customer, DiscountGroup } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
@@ -17,6 +17,12 @@ import type { CheckoutData, CheckoutRow } from "../types";
 export interface E2EDotyposDiscountGroup {
   readonly basisPoints: number;
   readonly id: string;
+}
+
+export interface ValidatedDotyposReservation {
+  readonly customer: Customer;
+  readonly reservedFrom: Temporal.Instant;
+  readonly reservedUntil: Temporal.Instant;
 }
 
 const maximumE2ECustomerDiscountBasisPoints = 9000;
@@ -91,7 +97,7 @@ export const validateDotypos = (
   config: DatasourceConfig,
   data: CheckoutData,
   row: CheckoutRow
-): Effect.Effect<void, WorkspaceE2EError> =>
+): Effect.Effect<ValidatedDotyposReservation, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotyposReservationId = yield* tryWorkspaceE2ESync(
       "assert Dotypos validation row",
@@ -176,9 +182,7 @@ export const validateDotypos = (
           "Dotypos meeting-room table is not active and visible"
         );
         assert(
-          assignedTable.tags?.includes(
-            workspaceMeetingRoomReservationTableTag
-          ),
+          assignedTable.tags?.includes(workspaceMeetingRoomReservationTableTag),
           "Dotypos reservation is not assigned to a meeting-room table"
         );
       } else {
@@ -193,6 +197,15 @@ export const validateDotypos = (
       }
     });
     log("Dotypos reservation state validated");
+
+    return yield* tryWorkspaceE2ESync(
+      "read validated Dotypos reservation details",
+      () => ({
+        customer: result.customer,
+        reservedFrom: parseDotyposInstant(result.reservation.startDate),
+        reservedUntil: parseDotyposInstant(result.reservation.endDate),
+      })
+    );
   });
 
 export const waitForConfirmedDotyposReservation = <
@@ -331,6 +344,12 @@ const dotyposDateCovers = (
 
 const parseDotyposTimestamp = (value: string) =>
   /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
+
+const parseDotyposInstant = (value: string) => {
+  const epochMilliseconds = parseDotyposTimestamp(value);
+  assert(Number.isSafeInteger(epochMilliseconds), "invalid Dotypos timestamp");
+  return Temporal.Instant.fromEpochMilliseconds(epochMilliseconds);
+};
 
 export const dotyposTimestampMatches = (actual: string, expected: string) =>
   parseDotyposTimestamp(actual) === new Date(expected).getTime();

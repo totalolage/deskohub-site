@@ -169,6 +169,12 @@ export function CustomerAdministrationDetailPage({
   const currentGroup = profile.discountGroups.find(
     ({ id }) => id === profile.customer.discountGroupId
   );
+  let currentGroupLabel = "None";
+  if (currentGroup) {
+    currentGroupLabel = `${currentGroup.name} (${currentGroup.basisPoints / 100}%)`;
+  } else if (profile.customer.discountGroupId) {
+    currentGroupLabel = `Unavailable (${profile.customer.discountGroupId})`;
+  }
   return (
     <AdminPageShell
       activeSection="customers"
@@ -191,16 +197,7 @@ export function CustomerAdministrationDetailPage({
               value={profile.customer.id}
               mono
             />
-            <CustomerFact
-              label="Current group"
-              value={
-                currentGroup
-                  ? `${currentGroup.name} (${currentGroup.basisPoints / 100}%)`
-                  : profile.customer.discountGroupId
-                    ? `Unavailable (${profile.customer.discountGroupId})`
-                    : "None"
-              }
-            />
+            <CustomerFact label="Current group" value={currentGroupLabel} />
           </dl>
         </section>
 
@@ -234,39 +231,42 @@ export function CustomerAdministrationDetailPage({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {profile.codes.map((code) => (
-                  <TableRow key={code.id}>
-                    <TableCell>
-                      <Link
-                        className="font-mono font-semibold underline underline-offset-4"
-                        href={`/admin/codes/${code.id}`}
-                      >
-                        {code.code}
-                      </Link>
-                    </TableCell>
-                    <TableCell>{code.discountLabel}</TableCell>
-                    <TableCell>
-                      {code.audienceSize === 0
-                        ? "Unrestricted"
-                        : `${code.audienceSize} customers`}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={code.eligible ? "default" : "subtle"}>
-                        {code.eligible
-                          ? "Allowlisted"
-                          : code.audienceSize === 0
-                            ? "Eligible"
-                            : "Not eligible"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <CustomerCodeAction
-                        code={code}
-                        customerId={profile.customer.id}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {profile.codes.map((code) => {
+                  let eligibilityLabel = "Not eligible";
+                  if (code.eligible) eligibilityLabel = "Allowlisted";
+                  else if (code.audienceSize === 0)
+                    eligibilityLabel = "Eligible";
+
+                  return (
+                    <TableRow key={code.id}>
+                      <TableCell>
+                        <Link
+                          className="font-mono font-semibold underline underline-offset-4"
+                          href={`/admin/codes/${code.id}`}
+                        >
+                          {code.code}
+                        </Link>
+                      </TableCell>
+                      <TableCell>{code.discountLabel}</TableCell>
+                      <TableCell>
+                        {code.audienceSize === 0
+                          ? "Unrestricted"
+                          : `${code.audienceSize} customers`}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={code.eligible ? "default" : "subtle"}>
+                          {eligibilityLabel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <CustomerCodeAction
+                          code={code}
+                          customerId={profile.customer.id}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </div>

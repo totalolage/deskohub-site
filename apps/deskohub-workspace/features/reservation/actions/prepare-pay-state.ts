@@ -628,6 +628,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
     const advertisement = yield* prepareAdvertisement(input);
+    const reservation = advertisement.reservation;
 
     const checkoutSessionKey = deriveCheckoutSessionKey(
       input.checkoutSessionId
@@ -635,11 +636,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
-      reservation: input.reservation,
+      reservation,
     });
     yield* Effect.annotateLogsScoped({
       locale: input.locale,
-      reservationKind: input.reservation.kind,
+      reservationKind: reservation.kind,
       checkoutSessionKey,
       checkoutAttemptKey,
     });
@@ -683,12 +684,12 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
 
-    const customerName = splitCustomerName(input.reservation.name);
+    const customerName = splitCustomerName(reservation.name);
     const customer = yield* dotypos.findOrCreateCustomer(
       {
         ...customerName,
-        email: input.reservation.email,
-        phone: input.reservation.phone,
+        email: reservation.email,
+        phone: reservation.phone,
       },
       { lookupFields: ["email"] }
     );
@@ -711,13 +712,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
-      reservation: input.reservation,
+      reservation,
       draft: {
         dotyposCustomerId,
         customerAccessCode,
-        reservationDetails: getStoredWorkspaceReservationDetails(
-          input.reservation
-        ),
+        reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
         reservationHoldExpiresAt: holdExpiresAt,
       },
@@ -732,9 +731,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       );
       yield* reservations.updateReservationDetails({
         id: reservationDraft.id,
-        reservationDetails: getStoredWorkspaceReservationDetails(
-          input.reservation
-        ),
+        reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -781,9 +778,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
         yield* reservations.updateReservationDetails({
           id: claimConflictReservation.id,
-          reservationDetails: getStoredWorkspaceReservationDetails(
-            input.reservation
-          ),
+          reservationDetails: getStoredWorkspaceReservationDetails(reservation),
           locale: input.locale,
         });
         yield* legalEvents.recordMany(

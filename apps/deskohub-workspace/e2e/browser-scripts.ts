@@ -1,3 +1,8 @@
+import {
+  getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData } from "./types";
 
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
@@ -62,9 +67,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
 `;
 };
 
-const getAssertPrefilledMeetingRoomReservationScript = (
-  data: CheckoutData
-) => {
+const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   if (!data.meetingRoom) {
     throw new Error("Meeting-room backfill assertions require interval data");
   }
@@ -73,12 +76,17 @@ const getAssertPrefilledMeetingRoomReservationScript = (
 (() => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationMinutes: data.meetingRoom.durationMinutes,
+    durationKey: getMeetingRoomReservationDurationKey(
+      data.meetingRoom.duration
+    ),
     email: data.email,
     message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
+    wholeDay: isMeetingRoomWholeDayReservationDuration(
+      data.meetingRoom.duration
+    ),
   })};
   const fail = (field) => {
     throw new Error('restored meeting-room ' + field + ' did not match');
@@ -90,9 +98,14 @@ const getAssertPrefilledMeetingRoomReservationScript = (
   };
 
   if (value('input[name="startDateTime"]', 'start date') !== expected.date) fail('start date');
-  if (value('input[aria-label="Meeting room start time"]', 'start time') !== expected.time) fail('start time');
+  const time = document.querySelector('input[aria-label="Meeting room start time"]');
+  if (expected.wholeDay) {
+    if (time !== null) fail('hidden start time');
+  } else if (!(time instanceof HTMLInputElement) || time.value !== expected.time) {
+    fail('start time');
+  }
   const duration = document.querySelector('input[id^="meeting-room-duration-"]:checked');
-  if (!(duration instanceof HTMLInputElement) || duration.value !== String(expected.durationMinutes)) fail('duration');
+  if (!(duration instanceof HTMLInputElement) || duration.value !== expected.durationKey) fail('duration');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
@@ -156,7 +169,7 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
   const desiredMonitorOption = ${JSON.stringify(desiredMonitorOption)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + ${workspaceE2ETimeouts.uiTransition};
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
@@ -245,16 +258,21 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 (async () => {
   const expected = ${JSON.stringify({
     date: data.date,
-    durationMinutes: data.meetingRoom.durationMinutes,
+    durationKey: getMeetingRoomReservationDurationKey(
+      data.meetingRoom.duration
+    ),
     email: data.email,
     message: data.message,
     name: data.name,
     phone: data.phone,
     time: data.meetingRoom.startDateTime.slice(11),
+    wholeDay: isMeetingRoomWholeDayReservationDuration(
+      data.meetingRoom.duration
+    ),
   })};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
+    const deadline = Date.now() + ${workspaceE2ETimeouts.uiTransition};
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
@@ -335,12 +353,14 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
     );
   }, 'meeting-room date did not update');
 
-  setField('input[aria-label="Meeting room start time"]', expected.time);
-  const duration = document.querySelector('#meeting-room-duration-' + expected.durationMinutes);
+  const duration = document.querySelector('[id="meeting-room-duration-' + expected.durationKey + '"]');
   if (!(duration instanceof HTMLInputElement)) {
     throw new Error('meeting-room duration control not found');
   }
   if (!duration.checked) (duration.closest('label') ?? duration).click();
+  if (!expected.wholeDay) {
+    setField('input[aria-label="Meeting room start time"]', expected.time);
+  }
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
   setField('input[name="name"]', expected.name);
@@ -349,13 +369,18 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     const time = document.querySelector('input[aria-label="Meeting room start time"]');
+    const selectedDuration = document.querySelector(
+      '[id="meeting-room-duration-' + expected.durationKey + '"]'
+    );
     const submit = document.querySelector('button[type="submit"]');
     return (
       hiddenStart instanceof HTMLInputElement &&
       hiddenStart.value === expected.date &&
-      time instanceof HTMLInputElement &&
-      time.value === expected.time &&
-      duration.checked &&
+      (expected.wholeDay
+        ? time === null
+        : time instanceof HTMLInputElement && time.value === expected.time) &&
+      selectedDuration instanceof HTMLInputElement &&
+      selectedDuration.checked &&
       submit instanceof HTMLButtonElement &&
       !submit.disabled
     );
@@ -393,7 +418,6 @@ const getSubmitPreparedReservationScript = (consentSelector: string) => `
   const button = form.querySelector('button[type="submit"]');
   if (!(button instanceof HTMLButtonElement)) throw new Error('reservation submit button not found');
   await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
-  setTimeout(() => button.click(), 0);
   return location.href;
 })()
 `;

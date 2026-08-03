@@ -145,7 +145,7 @@ describe("ReservationDateTimePicker", () => {
     expect(onChange).toHaveBeenCalledWith("2099-06-10T17:30");
   });
 
-  test("clamps an existing value when the minimum moves forward", () => {
+  test("does not mutate controlled state when the minimum moves forward", () => {
     const onChange = mock(() => undefined);
     const view = render(
       <ReservationDateTimePicker
@@ -167,6 +167,52 @@ describe("ReservationDateTimePicker", () => {
       />
     );
 
-    expect(onChange).toHaveBeenCalledWith("2099-06-10T17:00");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("hides time without mutating the selected date-time", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        minimum="2099-06-10T15:00"
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        showTime={false}
+        value="2099-06-10T16:00"
+      />
+    );
+
+    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("restores the preserved clock when time is shown again", () => {
+    const onChange = mock(() => undefined);
+    const view = render(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        showTime={false}
+        value="2099-06-11T16:00"
+      />
+    );
+
+    expect(onChange).not.toHaveBeenCalled();
+    view.rerender(
+      <ReservationDateTimePicker
+        dateLabel="Meeting room date"
+        onChange={onChange}
+        timeLabel="Meeting room start time"
+        showTime
+        value="2099-06-11T16:00"
+      />
+    );
+
+    expect(
+      (view.getByLabelText("Meeting room start time") as HTMLInputElement).value
+    ).toBe("16:00");
+    expect(onChange).not.toHaveBeenCalled();
   });
 });

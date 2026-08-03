@@ -1,0 +1,16 @@
+engine biome(1.0)
+language js(typescript)
+
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/features/(?:.*/backend/.*\.ts|.*(?:service|adapter|repository|runtime|catalog)\.ts)$",
+  not $name <: r".*\.(?:test|test-utils)\.ts$",
+  $body <: contains bubble {
+    `throw $value` as $statement where {
+      register_diagnostic(
+        span = $statement,
+        message = "Workspace Effect modules must model failures in the typed Effect channel; make closed lookups total instead of throwing.",
+        severity = "error"
+      )
+    }
+  }
+}

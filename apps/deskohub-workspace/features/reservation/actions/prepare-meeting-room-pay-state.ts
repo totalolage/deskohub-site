@@ -67,9 +67,10 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
     });
   }
 
+  const reservation = input.reservation;
   const pricing = yield* CheckoutPricingService;
   const affirmed = yield* pricing.affirmAdvertisement({
-    reservation: state.reservation,
+    reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
   });
@@ -82,7 +83,7 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
 
   return {
     kind: input.reservation.kind,
-    reservation: input.reservation,
+    reservation,
     discountQuote: affirmed.discountQuote,
     ...(changed && {
       changedKeys: getCheckoutSummaryChangedKeys(

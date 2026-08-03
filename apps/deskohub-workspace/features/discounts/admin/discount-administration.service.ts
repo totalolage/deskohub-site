@@ -558,13 +558,11 @@ export class DiscountAdministration extends Context.Service<
           },
           { lookupFields: [lookupField] }
         );
+        let kind: AdminCustomerSearchResult["kind"] = "not-found";
+        if (result._tag === "Matched") kind = "matched";
+        else if (result._tag === "Ambiguous") kind = "ambiguous";
         return {
-          kind:
-            result._tag === "Matched"
-              ? "matched"
-              : result._tag === "Ambiguous"
-                ? "ambiguous"
-                : "not-found",
+          kind,
           customers: result.matches
             .filter((customer) => customer.id && !customer.deleted)
             .map(toAdminDotyposCustomer),
@@ -1054,6 +1052,20 @@ const toAdminCalendarSale = (input: {
     ? (normalizedId as StoredDiscountId)
     : undefined;
   const matchedDiscount = input.discounts.find(({ id }) => id === discountId);
+  let association: AdminCalendarSale["association"] = {
+    kind: "missing-description",
+  };
+  if (description.length > 0 && !discountId) {
+    association = { kind: "invalid-description" };
+  } else if (discountId && matchedDiscount) {
+    association = {
+      kind: "associated",
+      discountId: matchedDiscount.id,
+      discountLabel: matchedDiscount.labels["en-US"],
+    };
+  } else if (discountId) {
+    association = { kind: "missing-discount", discountId };
+  }
 
   return {
     eventReference: input.event.id ?? input.event.iCalUID ?? "unknown",
@@ -1064,17 +1076,6 @@ const toAdminCalendarSale = (input: {
     end: input.event.end?.date ?? input.event.end?.dateTime ?? "Unknown end",
     status: input.event.status ?? "unknown",
     eventUrl: input.event.htmlLink ?? input.calendarUrl,
-    association:
-      description.length === 0
-        ? { kind: "missing-description" }
-        : !discountId
-          ? { kind: "invalid-description" }
-          : matchedDiscount
-            ? {
-                kind: "associated",
-                discountId: matchedDiscount.id,
-                discountLabel: matchedDiscount.labels["en-US"],
-              }
-            : { kind: "missing-discount", discountId },
+    association,
   };
 };

@@ -1,9 +1,14 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { createWorkspaceMeetingRoomEmailDetailRows } from "@/features/checkout/backend/fulfillment/workspace-meeting-room-email-details";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
+import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import { renderEmailRowsText } from "@/shared/backend/email/rendering";
 import {
   activateHydratedBrowserElement,
   evalBrowserScript,
@@ -21,7 +26,7 @@ import {
   submitReservationForPayPage,
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import type { WorkspaceE2EError } from "../errors";
+import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import {
   type ExpectedDiscountApplication,
   markFulfillmentFailedForE2E,
@@ -32,17 +37,26 @@ import {
   waitForWebhookReplayRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
-import { validateDotypos } from "../integrations/dotypos";
+import {
+  type ValidatedDotyposReservation,
+  validateDotypos,
+} from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { log, parseUrl } from "../runtime";
+import { assert, log, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlow,
   CheckoutFlowState,
+  CheckoutRow,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
+
+const decodeStoredMeetingRoomReservationDetails = Schema.decodeUnknownSync(
+  Schema.Struct({ kind: Schema.Literal("meeting-room") }),
+  { onExcessProperty: "error" }
+);
 
 export const executeCheckoutFlow = ({
   config,
@@ -161,10 +175,17 @@ export const executeCheckoutFlow = ({
         timeoutMs: config.timeouts.datasource,
       });
     }
+    const dotyposReservation = yield* runStep({
+      execute: validateDotypos(datasourceConfig, data, checkoutRow),
+      id: "validate-dotypos-reservation",
+      timeoutMs: config.timeouts.datasource,
+    });
     yield* runStep({
       execute: assertFulfilledStatusPage({
+        checkoutRow,
         config,
         data,
+        dotyposReservation,
         orderId,
         run,
         session,
@@ -172,11 +193,20 @@ export const executeCheckoutFlow = ({
       id: "assert-fulfilled-status-page",
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* runStep({
-      execute: validateDotypos(datasourceConfig, data, checkoutRow),
-      id: "validate-dotypos-reservation",
-      timeoutMs: config.timeouts.datasource,
-    });
+    if (
+      data.meetingRoom &&
+      isMeetingRoomWholeDayReservationDuration(data.meetingRoom.duration)
+    ) {
+      yield* runStep({
+        execute: assertWholeDayMeetingRoomEmailPreviews({
+          checkoutRow,
+          data,
+          dotyposReservation,
+        }),
+        id: "assert-whole-day-reservation-email-previews",
+        timeoutMs: config.timeouts.datasource,
+      });
+    }
     yield* runStep({
       execute: assertFulfillmentFailedSupportPath({
         config,
@@ -207,19 +237,44 @@ const waitForCheckoutStatusPage = (
   }).pipe(Effect.asVoid);
 
 export const assertFulfilledStatusPage = ({
+  checkoutRow,
   config,
   data,
+  dotyposReservation,
   orderId,
   run,
   session,
 }: {
+  checkoutRow: CheckoutRow;
   config: WorkspaceE2EConfig;
   data: CheckoutData;
+  dotyposReservation: ValidatedDotyposReservation;
   orderId: string;
   run: Runner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
+    const expectedPaymentPrice = yield* tryWorkspaceE2ESync(
+      "read checkout payment amount for status assertion",
+      () => {
+        if (
+          checkoutRow.amount_value === null ||
+          checkoutRow.amount_exponent === null ||
+          checkoutRow.currency === null
+        ) {
+          throw new Error("checkout payment amount is incomplete");
+        }
+
+        return formatWorkspaceMoney(
+          {
+            value: checkoutRow.amount_value,
+            exponent: checkoutRow.amount_exponent,
+            currency: checkoutRow.currency,
+          },
+          data.locale
+        );
+      }
+    );
     yield* openBrowserPage(
       config,
       run,
@@ -227,19 +282,30 @@ export const assertFulfilledStatusPage = ({
       `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`,
       { timeoutMs: config.timeouts.browserNavigation }
     );
-    const expectedMeetingRoomText = data.meetingRoom
-      ? [
-          formatReservationDisplayDate(
-            Temporal.Instant.from(data.meetingRoom.startsAt),
-            data.locale
-          ),
-          formatReservationDisplayTimeRange(
-            Temporal.Instant.from(data.meetingRoom.startsAt),
-            Temporal.Instant.from(data.meetingRoom.endsAt),
-            data.locale
-          ),
-        ]
-      : [];
+    const expectedMeetingRoomText = yield* tryWorkspaceE2ESync(
+      "read confirmed reservation interval for status assertion",
+      () =>
+        data.meetingRoom
+          ? (() => {
+              const interval = {
+                startsAt: dotyposReservation.reservedFrom,
+                endsAt: dotyposReservation.reservedUntil,
+              };
+
+              return [
+                formatReservationDisplayDate(interval.startsAt, data.locale),
+                isSingleDayReservationInterval(interval)
+                  ? "whole day"
+                  : formatReservationDisplayTimeRange(
+                      interval.startsAt,
+                      interval.endsAt,
+                      data.locale
+                    ),
+                expectedPaymentPrice,
+              ];
+            })()
+          : []
+    );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
       matches: (text) =>
@@ -260,6 +326,135 @@ export const assertFulfilledStatusPage = ({
       }
     );
     log("Checkout status page validated");
+  });
+
+type WholeDayEmailCheckoutRow = Pick<
+  CheckoutRow,
+  "dotypos_customer_id" | "dotypos_reservation_id" | "reservation_details"
+>;
+
+export const assertWholeDayMeetingRoomEmailPreviews = ({
+  checkoutRow,
+  data,
+  dotyposReservation,
+}: {
+  checkoutRow: WholeDayEmailCheckoutRow;
+  data: Pick<CheckoutData, "meetingRoom">;
+  dotyposReservation: ValidatedDotyposReservation;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const reservation = yield* tryWorkspaceE2ESync(
+      "build whole-day reservation email preview",
+      () => {
+        assert(
+          data.meetingRoom &&
+            isMeetingRoomWholeDayReservationDuration(data.meetingRoom.duration),
+          "whole-day meeting-room checkout data missing"
+        );
+        assert(
+          isSingleDayReservationInterval({
+            startsAt: dotyposReservation.reservedFrom,
+            endsAt: dotyposReservation.reservedUntil,
+          }),
+          "confirmed Dotypos reservation is not one Prague calendar day"
+        );
+        assert(
+          checkoutRow.dotypos_customer_id,
+          "Dotypos customer id missing from checkout row"
+        );
+        assert(
+          checkoutRow.dotypos_reservation_id,
+          "Dotypos reservation id missing from checkout row"
+        );
+
+        decodeStoredMeetingRoomReservationDetails(
+          checkoutRow.reservation_details
+        );
+
+        return {
+          reservedFrom: dotyposReservation.reservedFrom,
+          reservedUntil: dotyposReservation.reservedUntil,
+        };
+      }
+    );
+    const customerRows = createWorkspaceMeetingRoomEmailDetailRows(
+      reservation,
+      "en-US",
+      {
+        reservationLabel: "Reservation",
+        reservationTitle: "Meeting Room",
+        dateLabel: "Reservation date",
+        timeLabel: "Reservation time",
+        wholeDay: "whole day",
+      }
+    );
+    const internalRows = createWorkspaceMeetingRoomEmailDetailRows(
+      reservation,
+      "cs-CZ",
+      {
+        reservationLabel: "Rezervace",
+        reservationTitle: "Zasedací místnost",
+        dateLabel: "Datum rezervace",
+        timeLabel: "Čas rezervace",
+        wholeDay: "celý den",
+      }
+    );
+    const customerText = renderEmailRowsText(customerRows).join("\n");
+    const internalText = renderEmailRowsText(internalRows).join("\n");
+
+    yield* tryWorkspaceE2ESync(
+      "assert whole-day reservation email previews",
+      () => {
+        const customerDate = formatReservationDisplayDate(
+          reservation.reservedFrom,
+          "en-US"
+        );
+        const internalDate = formatReservationDisplayDate(
+          reservation.reservedFrom,
+          "cs-CZ"
+        );
+        const customerTimeRange = formatReservationDisplayTimeRange(
+          reservation.reservedFrom,
+          reservation.reservedUntil,
+          "en-US"
+        );
+        const internalTimeRange = formatReservationDisplayTimeRange(
+          reservation.reservedFrom,
+          reservation.reservedUntil,
+          "cs-CZ"
+        );
+
+        assert(
+          customerRows[1]?.[1] === customerDate &&
+            customerRows[2]?.[1] === "whole day",
+          "customer email detail rows do not match the confirmed calendar day"
+        );
+        assert(
+          internalRows[1]?.[1] === internalDate &&
+            internalRows[2]?.[1] === "celý den",
+          "internal email detail rows do not match the confirmed calendar day"
+        );
+        assert(
+          customerText.includes(customerDate) &&
+            customerText.includes("whole day"),
+          "customer email does not present the confirmed calendar day"
+        );
+        assert(
+          internalText.includes(internalDate) &&
+            internalText.includes("celý den"),
+          "internal email does not present the confirmed calendar day"
+        );
+        assert(
+          !customerText.includes(customerTimeRange),
+          "customer email exposes the whole-day midnight time range"
+        );
+        assert(
+          !internalText.includes(internalTimeRange),
+          "internal email exposes the whole-day midnight time range"
+        );
+      }
+    );
+    log("Whole-day reservation email previews validated");
   });
 
 const assertFulfillmentFailedSupportPath = ({

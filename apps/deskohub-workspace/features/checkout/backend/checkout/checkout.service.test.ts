@@ -24,7 +24,9 @@ import { DiscountClaimError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { IPaymentLifecycleRepository } from "../repositories/payment-lifecycle.repository";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
@@ -78,6 +80,8 @@ const meetingRoomReservationData = Schema.decodeUnknownSync(
   reservationOrderSchema
 )({
   kind: "meeting-room",
+  duration: { unit: "hour", amount: 4 },
+  reservationDate: "2099-06-20",
   startsAt: "2099-06-20T08:00:00Z",
   endsAt: "2099-06-20T12:00:00Z",
   name: "Ada Lovelace",
@@ -208,9 +212,12 @@ const buildPayStateToken = (input: {
     })
   );
 
-const buildMeetingRoomQuote = (discountQuote?: DiscountQuote) => {
+const buildMeetingRoomQuote = (
+  discountQuote?: DiscountQuote,
+  reservation = meetingRoomReservationData
+) => {
   const quoteWithoutFingerprint = Effect.runSync(
-    getMeetingRoomReservationQuote(meetingRoomReservationData, {
+    getMeetingRoomReservationQuote(reservation, {
       discountQuote,
     })
   );
@@ -218,7 +225,7 @@ const buildMeetingRoomQuote = (discountQuote?: DiscountQuote) => {
   return {
     ...quoteWithoutFingerprint,
     fingerprint: getReservationQuoteFingerprint(
-      meetingRoomReservationData,
+      reservation,
       quoteWithoutFingerprint
     ),
   };
@@ -228,14 +235,16 @@ const buildMeetingRoomPayStateToken = (input: {
   readonly orderId: string;
   readonly checkoutSessionId?: string;
   readonly quote?: ReturnType<typeof buildMeetingRoomQuote>;
+  readonly reservation?: typeof meetingRoomReservationData;
   readonly submittedCode?: CanonicalDiscountCode;
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
+      const reservation = input.reservation ?? meetingRoomReservationData;
       const state = yield* buildSignedPayState({
         locale: "en-US",
-        reservation: meetingRoomReservationData,
-        quote: input.quote ?? buildMeetingRoomQuote(),
+        reservation,
+        quote: input.quote ?? buildMeetingRoomQuote(undefined, reservation),
         orderId: input.orderId,
         checkoutSessionId:
           input.checkoutSessionId ?? "meeting-room-checkout-session-id",
@@ -248,6 +257,59 @@ const buildMeetingRoomPayStateToken = (input: {
       return yield* sealPayState(state);
     })
   );
+
+const buildStartedWholeDayReservation = () => {
+  const today = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  ).toPlainDate();
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+    kind: "meeting-room",
+    duration: { unit: "day", amount: 1 },
+    reservationDate: today.toString(),
+    startsAt: today
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant()
+      .toString(),
+    endsAt: today
+      .add({ days: 1 })
+      .toPlainDateTime()
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+      .toInstant()
+      .toString(),
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+  if (reservation.kind !== "meeting-room") {
+    throw new Error("Expected meeting-room reservation");
+  }
+
+  return reservation;
+};
+
+const buildEndedMeetingRoomReservation = () => {
+  const yesterday = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  )
+    .toPlainDate()
+    .subtract({ days: 1 });
+  const startsAt = yesterday
+    .toPlainDateTime({ hour: 12 })
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .toInstant();
+
+  return normalizedMeetingRoomReservationOrderSchema.make({
+    kind: "meeting-room",
+    duration: { unit: "hour", amount: 1 },
+    reservationDate: yesterday.toString(),
+    startsAt: startsAt.toString(),
+    endsAt: startsAt.add({ hours: 1 }).toString(),
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+};
 
 const makeAttempt = (input: {
   readonly id: string;
@@ -953,16 +1015,19 @@ describe("CheckoutService", () => {
     const submittedCode = canonicalCode("ROOM50");
     const meetingRoomApplication = {
       ...application,
-      subtotalBefore: money(60_000),
+      subtotalBefore: money(155_000),
       amount: money(10_000),
-      subtotalAfter: money(50_000),
+      subtotalAfter: money(145_000),
     };
     const acceptedDiscountQuote: DiscountQuote = {
-      product: { kind: "meeting-room", durationMinutes: 240 },
-      discountableSubtotal: money(60_000),
+      product: {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 4 },
+      },
+      discountableSubtotal: money(155_000),
       discounts: [meetingRoomApplication],
       totalDiscount: money(10_000),
-      discountedSubtotal: money(50_000),
+      discountedSubtotal: money(145_000),
     };
     const freshDiscountQuote: DiscountQuote = {
       ...acceptedDiscountQuote,
@@ -970,11 +1035,11 @@ describe("CheckoutService", () => {
         {
           ...meetingRoomApplication,
           amount: money(20_000),
-          subtotalAfter: money(40_000),
+          subtotalAfter: money(135_000),
         },
       ],
       totalDiscount: money(20_000),
-      discountedSubtotal: money(40_000),
+      discountedSubtotal: money(135_000),
     };
     const affirm = mock(() =>
       Effect.succeed({
@@ -1019,7 +1084,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: ["order", "total"],
-      itemKeys: ["product:meeting-room:240", "total:final"],
+      itemKeys: ["product:meeting-room:hour:4", "total:final"],
     });
     const freshToken = new URL(
       result.freshPayUrl,
@@ -1030,6 +1095,209 @@ describe("CheckoutService", () => {
     expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe(submittedCode);
     expect(freshState.submittedCodeDiscountId).toBe(application.discount.id);
+  });
+
+  test("allows payment for a started whole day before its end", async () => {
+    const wholeDayReservation = buildStartedWholeDayReservation();
+    const orderId = "meeting-room-started-whole-day";
+    const quote = buildMeetingRoomQuote(undefined, wholeDayReservation);
+    const affirm = mock(() =>
+      Effect.succeed({
+        quote,
+        commitment: emptyCommitment,
+      })
+    );
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: wholeDayReservation,
+        quote,
+      }),
+      affirm,
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/hosted",
+    });
+    expect(harness.requireCurrent).toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).toHaveBeenCalled();
+  });
+
+  test("rejects payment after a meeting-room reservation ends", async () => {
+    const endedReservation = buildEndedMeetingRoomReservation();
+    const orderId = "meeting-room-ended";
+    const quote = buildMeetingRoomQuote(undefined, endedReservation);
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: endedReservation,
+        quote,
+      }),
+      affirm: mock(() =>
+        Effect.succeed({
+          quote,
+          commitment: emptyCommitment,
+        })
+      ),
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      message: "Meeting-room reservation has already ended.",
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("recovers an active provider session after the meeting-room reservation ends", async () => {
+    const endedReservation = buildEndedMeetingRoomReservation();
+    const orderId = "meeting-room-ended-active-payment";
+    const quote = buildMeetingRoomQuote(undefined, endedReservation);
+    const activeAttempt = {
+      ...makeAttempt({
+        id: "meeting-room-active-attempt",
+        orderId,
+        state: "pending",
+        securityToken: "active-security-token",
+        providerRedirectUrl: "https://payments.example/existing",
+      }),
+      amount: money(47_500),
+    };
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: endedReservation,
+        quote,
+      }),
+      activeAttempt,
+      reservationOverrides: {
+        activePaymentAttemptId: activeAttempt.id,
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://payments.example/existing",
+    });
+    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("rechecks the meeting-room end immediately before starting payment", async () => {
+    const originalNow = Temporal.Now.instant;
+    let now = Temporal.Instant.from("2099-06-10T11:59:00Z");
+    Temporal.Now.instant = () => now;
+    const reservation = normalizedMeetingRoomReservationOrderSchema.make({
+      kind: "meeting-room",
+      duration: { unit: "hour", amount: 1 },
+      reservationDate: "2099-06-10",
+      startsAt: "2099-06-10T11:00:00Z",
+      endsAt: "2099-06-10T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+    const orderId = "meeting-room-ends-during-payment-preparation";
+    const quote = buildMeetingRoomQuote(undefined, reservation);
+    const affirm = mock(() => {
+      now = Temporal.Instant.from("2099-06-10T12:00:00.001Z");
+      return Effect.succeed({
+        quote,
+        commitment: emptyCommitment,
+      });
+    });
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId,
+        payStateToken: buildMeetingRoomPayStateToken({
+          orderId,
+          reservation,
+          quote,
+        }),
+        affirm,
+        reservationOverrides: {
+          productTier: null,
+          productCoffee: false,
+          productMonitorOption: null,
+          reservationDetails: { kind: "meeting-room" },
+        },
+      });
+
+      const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+      expect(error).toMatchObject({
+        _tag: "CheckoutError",
+        message: "Meeting-room reservation has already ended.",
+      });
+      expect(harness.affirm).toHaveBeenCalled();
+      expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+      expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+    } finally {
+      Temporal.Now.instant = originalNow;
+    }
+  });
+
+  test("recovers an already-paid whole day after its start", async () => {
+    const wholeDayReservation = buildStartedWholeDayReservation();
+    const orderId = "meeting-room-paid-whole-day";
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildMeetingRoomPayStateToken({
+        orderId,
+        reservation: wholeDayReservation,
+      }),
+      reservationOverrides: {
+        paymentState: "paid",
+        paidAt: testInstant(),
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "meeting-room" },
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl:
+        "/en-US/reservation/status/meeting-room-paid-whole-day?outcome=success",
+    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {

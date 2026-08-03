@@ -30,7 +30,7 @@ describe("ReservationTypeInput", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("keeps numeric values controlled and forwards radio field behavior", () => {
+  test("keeps semantic values controlled and forwards radio field behavior", () => {
     const inputRef = mock(() => undefined);
     const onBlur = mock(() => undefined);
     const onChange = mock(() => undefined);
@@ -38,39 +38,46 @@ describe("ReservationTypeInput", () => {
       <ReservationTypeInput
         idPrefix="duration"
         inputRef={inputRef}
-        name="durationMinutes"
+        name="duration"
         onBlur={onBlur}
         onChange={onChange}
-        value={60}
+        value="hour:1"
       >
-        <ReservationTypeOption price="CZK 300" title="One hour" value={60} />
-        <ReservationTypeOption price="CZK 600" title="Four hours" value={240} />
+        <ReservationTypeOption
+          price="CZK 300"
+          title="One hour"
+          value="hour:1"
+        />
+        <ReservationTypeOption
+          price="CZK 600"
+          title="Four hours"
+          value="hour:4"
+        />
         <ReservationTypeOption
           disabled
           price="CZK 1,000"
-          title="One day"
-          value={1440}
+          title="Whole day"
+          value="day:1"
         />
       </ReservationTypeInput>
     );
     const oneHour = view.container.querySelector(
-      "#duration-60"
+      "#duration-hour\\:1"
     ) as HTMLInputElement;
     const fourHours = view.container.querySelector(
-      "#duration-240"
+      "#duration-hour\\:4"
     ) as HTMLInputElement;
     const oneDay = view.container.querySelector(
-      "#duration-1440"
+      "#duration-day\\:1"
     ) as HTMLInputElement;
 
     expect(oneHour.checked).toBe(true);
     expect(fourHours.checked).toBe(false);
-    expect(oneHour.name).toBe("durationMinutes");
+    expect(oneHour.name).toBe("duration");
     expect(inputRef).toHaveBeenCalled();
 
     fireEvent.click(fourHours);
-    expect(onChange).toHaveBeenCalledWith(240);
-    expect(typeof onChange.mock.calls[0]?.[0]).toBe("number");
+    expect(onChange).toHaveBeenCalledWith("hour:4");
 
     fireEvent.blur(fourHours);
     expect(onBlur).toHaveBeenCalledTimes(1);
@@ -79,7 +86,7 @@ describe("ReservationTypeInput", () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     expect(oneDay.disabled).toBe(true);
     expect(
-      view.container.querySelector('[data-reservation-type-option="1440"]')
+      view.container.querySelector('[data-reservation-type-option="day:1"]')
         ?.className
     ).toContain("cursor-not-allowed");
   });

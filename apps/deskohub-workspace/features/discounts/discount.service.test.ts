@@ -745,22 +745,20 @@ describe("DiscountService", () => {
     expect(codeRevalidate).toHaveBeenCalledTimes(
       operation === "affirm_displayed_discounts" && gates.discountCodes ? 1 : 0
     );
-    expect(appliedIds).toEqual(
+    let expectedAppliedIds = [
+      gates.calendarSales ? "calendar" : undefined,
+      gates.customerDiscounts ? "customer" : undefined,
+      gates.discountCodes ? "code" : undefined,
+    ].filter((id): id is string => id !== undefined);
+    if (
       operation === "discover_advertised_discounts" ||
-        operation === "affirm_advertisement"
-        ? gates.calendarSales
-          ? ["calendar"]
-          : []
-        : operation === "apply_customer_discount"
-          ? gates.customerDiscounts
-            ? ["customer"]
-            : []
-          : [
-              gates.calendarSales ? "calendar" : undefined,
-              gates.customerDiscounts ? "customer" : undefined,
-              gates.discountCodes ? "code" : undefined,
-            ].filter((id): id is string => id !== undefined)
-    );
+      operation === "affirm_advertisement"
+    ) {
+      expectedAppliedIds = gates.calendarSales ? ["calendar"] : [];
+    } else if (operation === "apply_customer_discount") {
+      expectedAppliedIds = gates.customerDiscounts ? ["customer"] : [];
+    }
+    expect(appliedIds).toEqual(expectedAppliedIds);
   });
 
   test("observes a Calendar gate disabled between advertisement and affirmation", async () => {

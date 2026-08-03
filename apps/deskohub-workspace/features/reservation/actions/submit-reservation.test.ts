@@ -13,6 +13,7 @@ const input = {
 };
 
 const runSubmitReservation = async (options?: {
+  readonly locale?: "cs-CZ" | "en-US";
   readonly verifyHuman?: ReturnType<typeof mock>;
   readonly createHostedPaymentCheckout?: ReturnType<typeof mock>;
 }) => {
@@ -36,7 +37,10 @@ const runSubmitReservation = async (options?: {
       })
     );
 
-  const effect = submitWorkspaceReservation(input).pipe(
+  const effect = submitWorkspaceReservation({
+    ...input,
+    locale: options?.locale ?? input.locale,
+  }).pipe(
     Effect.provide(
       Layer.mergeAll(
         BotProtectionServiceMock({ verifyHuman }),
@@ -149,6 +153,7 @@ describe("submitWorkspaceReservation", () => {
     const createHostedPaymentCheckout = mock(() =>
       Effect.fail(
         new CheckoutError({
+          code: "checkout_failed",
           message: "workspace_table_unavailable",
           cause: new WorkspaceTableUnavailableError({
             date: "2099-07-30",
@@ -184,6 +189,7 @@ describe("submitWorkspaceReservation", () => {
     const createHostedPaymentCheckout = mock(() =>
       Effect.fail(
         new CheckoutError({
+          code: "checkout_failed",
           message: "workspace_table_unavailable",
           cause: new WorkspaceTableUnavailableError({
             date: "2099-07-30",
@@ -201,6 +207,35 @@ describe("submitWorkspaceReservation", () => {
     expect(error).toMatchObject({
       _tag: "PublicSafeActionError",
       message: m.reservationMeetingRoomUnavailable({}, { locale: "en-US" }),
+    });
+  });
+
+  test.each([
+    "en-US",
+    "cs-CZ",
+  ] as const)("localizes an ended meeting-room reservation in %s", async (locale) => {
+    const { CheckoutError } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const { m } = await import("@/features/i18n");
+    const createHostedPaymentCheckout = mock(() =>
+      Effect.fail(
+        new CheckoutError({
+          code: "meeting_room_reservation_ended",
+          message: "internal diagnostic",
+        })
+      )
+    );
+    const scenario = await runSubmitReservation({
+      createHostedPaymentCheckout,
+      locale,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationValidationMeetingRoomEnded({}, { locale }),
     });
   });
 });

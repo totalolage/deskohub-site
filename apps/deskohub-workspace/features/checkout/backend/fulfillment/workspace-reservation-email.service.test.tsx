@@ -3,9 +3,24 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type { Customer } from "@deskohub/dotypos/generated";
+import type {
+  EmailMessage,
+  EmailProviderConfig,
+  EmailSendResult,
+} from "@deskohub/email";
+import type { EmailService } from "@deskohub/email/backend/service";
+import { Effect, Layer } from "effect";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 mock.module("server-only", () => ({}));
+mock.module("osm", () => ({
+  generateStaticMapImage: mock(() =>
+    Effect.succeed(Buffer.from("workspace-location-map"))
+  ),
+  generateSvgPngBuffer: mock(() =>
+    Promise.resolve(Buffer.from("workspace-table-map"))
+  ),
+}));
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -37,6 +52,13 @@ const makeReservation = (
   reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
   reservedUntil: Temporal.Instant.from("2026-06-12T11:00:00Z"),
   ...overrides,
+});
+
+const sentResult = (id: string): EmailSendResult => ({
+  id,
+  status: "sent",
+  provider: "test",
+  timestamp: new Date(),
 });
 
 describe("workspace reservation email details", () => {
@@ -106,5 +128,81 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).toContain("9:00–13:00");
     expect(internalHtml).not.toContain("Káva");
     expect(internalHtml).not.toContain("Monitory");
+  });
+
+  test("renders a DST whole-day meeting-room reservation as the calendar day", async () => {
+    const { createReservationRows, WorkspaceReservationEmailService } =
+      await import("./workspace-reservation-email.service");
+    const { EmailConfigTag, EmailServiceTag } = await import(
+      "@deskohub/email/backend/service"
+    );
+    const { WorkspaceCheckoutNetworkDetailsService } = await import(
+      "./network-details.service"
+    );
+    const reservation = makeReservation({
+      reservationDetails: { kind: "meeting-room" },
+      reservedFrom: Temporal.Instant.from("2027-03-27T23:00:00Z"),
+      reservedUntil: Temporal.Instant.from("2027-03-28T22:00:00Z"),
+    });
+
+    expect(createReservationRows(reservation, "en-US")).toEqual([
+      ["Reservation", "Meeting Room"],
+      ["Reservation date", "Sunday, March 28, 2027"],
+      ["Reservation time", "whole day"],
+      ["Reservation reference", "dotypos-reservation-id"],
+      ["Order reference", "reservation-id"],
+    ]);
+
+    const sentMessages: EmailMessage[] = [];
+    const emailService: EmailService = {
+      send: mock((message: EmailMessage) => {
+        sentMessages.push(message);
+        return Effect.succeed(sentResult(`email-${sentMessages.length}`));
+      }),
+      sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
+      verify: Effect.succeed(true),
+    };
+    const emailConfig: EmailProviderConfig = {
+      provider: "console",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub Workspace",
+      },
+    };
+
+    await Effect.gen(function* () {
+      const service = yield* WorkspaceReservationEmailService;
+      yield* service.sendPaidReservationEmails({ reservation });
+    }).pipe(
+      Effect.provide(
+        WorkspaceReservationEmailService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailServiceTag, emailService),
+              Layer.succeed(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Live
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(sentMessages).toHaveLength(2);
+    const customerMessage = sentMessages[0];
+    expect(customerMessage?.html).toContain("Sunday, March 28, 2027");
+    expect(customerMessage?.html).toContain("whole day");
+    expect(customerMessage?.text).toContain("Sunday, March 28, 2027");
+    expect(customerMessage?.text).toContain("whole day");
+    expect(customerMessage?.html).not.toContain("12:00 AM");
+    expect(customerMessage?.text).not.toContain("12:00 AM");
+
+    const internalMessage = sentMessages[1];
+    expect(internalMessage?.html).toContain("neděle 28. března 2027");
+    expect(internalMessage?.html).toContain("celý den");
+    expect(internalMessage?.text).toContain("neděle 28. března 2027");
+    expect(internalMessage?.text).toContain("celý den");
+    expect(internalMessage?.html).not.toContain("0:00");
+    expect(internalMessage?.text).not.toContain("0:00");
   });
 });

@@ -66,12 +66,9 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [queryInitialValues, setQueryInitialValues] =
     useState<ContactFormInitialValues>();
-  const fieldValues =
-    state.status === "success"
-      ? undefined
-      : state.status === "error"
-        ? state.values
-        : (initialValues ?? queryInitialValues);
+  let fieldValues = initialValues ?? queryInitialValues;
+  if (state.status === "error") fieldValues = state.values;
+  else if (state.status === "success") fieldValues = undefined;
   const fieldRemountKey = fieldValues
     ? [
         fieldValues.name ?? "",

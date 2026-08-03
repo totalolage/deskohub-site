@@ -18,7 +18,12 @@ import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer
 import { normalizeMeetingRoomReservationOrder } from "@/features/reservation/meeting-room-reservation";
 import { meetingRoomCheckoutPricing } from "./meeting-room-checkout-pricing";
 
-const money = getWorkspaceMeetingRoomPriceForDuration(240);
+const meetingRoomDuration = { unit: "hour", amount: 4 } as const;
+const meetingRoomProduct = {
+  kind: "meeting-room",
+  duration: meetingRoomDuration,
+} as const;
+const money = getWorkspaceMeetingRoomPriceForDuration(meetingRoomDuration);
 const discountId = Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
@@ -28,7 +33,7 @@ const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
 );
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
-  product: { kind: "meeting-room", durationMinutes: 240 },
+  product: meetingRoomProduct,
   discountableSubtotal: money,
   discounts: [
     {
@@ -50,6 +55,8 @@ const affirmedAdvertisement =
 
 const reservation = await normalizeMeetingRoomReservationOrder({
   kind: "meeting-room",
+  duration: meetingRoomDuration,
+  reservationDate: "2099-06-10",
   startsAt: "2099-06-10T10:00",
   endsAt: "2099-06-10T14:00",
   name: "Ada Lovelace",
@@ -60,8 +67,8 @@ const advertisedReservation = {
   kind: "meeting-room" as const,
   details: {
     kind: reservation.kind,
-    startsAt: reservation.startsAt,
-    endsAt: reservation.endsAt,
+    duration: reservation.duration,
+    reservationDate: reservation.reservationDate,
   },
 };
 
@@ -88,7 +95,7 @@ describe("meeting-room checkout pricing", () => {
     );
 
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: meetingRoomProduct,
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       locale: "en-US",
@@ -129,7 +136,7 @@ describe("meeting-room checkout pricing", () => {
     );
 
     expect(affirmAdvertisement).toHaveBeenCalledWith({
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: meetingRoomProduct,
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       locale: "en-US",
@@ -198,7 +205,7 @@ describe("meeting-room checkout pricing", () => {
     );
 
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: meetingRoomProduct,
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       dotyposCustomerId,
@@ -283,7 +290,7 @@ describe("meeting-room checkout pricing", () => {
     );
 
     expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: meetingRoomProduct,
       discountableSubtotal: money,
       reservationDate: "2099-06-10",
       dotyposCustomerId,
@@ -311,7 +318,7 @@ describe("meeting-room checkout pricing", () => {
   test("returns pricing_changed before resolving a submitted code", async () => {
     const commitment = { applications: [] } as unknown as DiscountCommitment;
     const affirmedWithoutDiscounts = discountQuoteCodec.make({
-      product: { kind: "meeting-room", durationMinutes: 240 },
+      product: meetingRoomProduct,
       discountableSubtotal: money,
       discounts: [],
       totalDiscount: { ...money, value: 0 },
@@ -358,7 +365,7 @@ describe("meeting-room checkout pricing", () => {
     expect(result).toMatchObject({
       status: "pricing_changed",
       changedKeys: {
-        itemKeys: ["product:meeting-room:240", "total:final"],
+        itemKeys: ["product:meeting-room:hour:4", "total:final"],
         sectionKeys: ["order", "total"],
       },
     });

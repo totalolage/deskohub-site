@@ -1,4 +1,4 @@
-import { m } from "@/features/i18n";
+import { getLocale, type Locale, m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 
 /**
@@ -33,7 +33,7 @@ export function formatDate(
  */
 export function formatDurationMinutes(
   totalMinutes: number,
-  locale?: string
+  locale: Locale = getLocale()
 ): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
@@ -47,36 +47,49 @@ export function formatDurationMinutes(
 
   const formattedHours = numberFormatter.format(hours);
   const formattedMinutes = numberFormatter.format(minutes);
-  const hourLabel = m["timeUnits.hour"]({ count: hours });
-  const minuteLabel = m["timeUnits.minute"]({ count: minutes });
+  const messageOptions = { locale };
+  const hourLabel = m["timeUnits.hour"]({ count: hours }, messageOptions);
+  const minuteLabel = m["timeUnits.minute"]({ count: minutes }, messageOptions);
 
   // Use i18n patterns to allow locale-specific formatting and ordering
   if (hours > 0 && minutes > 0) {
-    return m["duration.hoursAndMinutes"]({
-      hours: formattedHours,
-      hourLabel,
-      minutes: formattedMinutes,
-      minuteLabel,
-    });
+    return m["duration.hoursAndMinutes"](
+      {
+        hours: formattedHours,
+        hourLabel,
+        minutes: formattedMinutes,
+        minuteLabel,
+      },
+      messageOptions
+    );
   }
 
   if (hours > 0) {
-    return m["duration.hoursOnly"]({
-      hours: formattedHours,
-      hourLabel,
-    });
+    return m["duration.hoursOnly"](
+      {
+        hours: formattedHours,
+        hourLabel,
+      },
+      messageOptions
+    );
   }
 
   if (minutes > 0) {
-    return m["duration.minutesOnly"]({
-      minutes: formattedMinutes,
-      minuteLabel,
-    });
+    return m["duration.minutesOnly"](
+      {
+        minutes: formattedMinutes,
+        minuteLabel,
+      },
+      messageOptions
+    );
   }
 
   // Edge case: 0 minutes
-  return m["duration.minutesOnly"]({
-    minutes: numberFormatter.format(0),
-    minuteLabel: m["timeUnits.minute"]({ count: 0 }),
-  });
+  return m["duration.minutesOnly"](
+    {
+      minutes: numberFormatter.format(0),
+      minuteLabel: m["timeUnits.minute"]({ count: 0 }, messageOptions),
+    },
+    messageOptions
+  );
 }

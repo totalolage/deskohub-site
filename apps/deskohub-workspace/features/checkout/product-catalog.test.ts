@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
+import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceProductTier,
   workspaceCoworkProductCatalog,
-  workspaceMeetingRoomDurationOptions,
+  workspaceMeetingRoomCatalog,
+  workspaceMeetingRoomProductsByDurationKey,
+  workspaceProductCoffeePrice,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "./product-catalog";
@@ -21,43 +25,81 @@ describe("workspace product catalog", () => {
     expect(
       workspaceCoworkProductCatalog.map((product) => product.tier)
     ).toEqual(["basic", "plus", "profi"]);
+    expect(isWorkspaceProductTier("basic")).toBe(true);
+    expect(isWorkspaceProductTier("toString")).toBe(false);
   });
 
   test("exposes approved meeting room duration prices", () => {
-    expect([...workspaceMeetingRoomDurationOptions]).toEqual([60, 240, 1440]);
-    expect(getWorkspaceMeetingRoomPriceForDuration(60)).toEqual({
-      value: 30_000,
+    expect(workspaceMeetingRoomCatalog.map(({ duration }) => duration)).toEqual(
+      [
+        { unit: "hour", amount: 1 },
+        { unit: "hour", amount: 4 },
+        { unit: "day", amount: 1 },
+      ]
+    );
+    expect(
+      getWorkspaceMeetingRoomPriceForDuration({ unit: "hour", amount: 1 })
+    ).toEqual({
+      value: 47_500,
       exponent: 2,
       currency: "CZK",
     });
-    expect(getWorkspaceMeetingRoomPriceForDuration(240)).toEqual({
-      value: 60_000,
+    expect(
+      getWorkspaceMeetingRoomPriceForDuration({ unit: "hour", amount: 4 })
+    ).toEqual({
+      value: 155_000,
       exponent: 2,
       currency: "CZK",
     });
-    expect(getWorkspaceMeetingRoomPriceForDuration(1440)).toEqual({
-      value: 100_000,
+    expect(
+      getWorkspaceMeetingRoomPriceForDuration({ unit: "day", amount: 1 })
+    ).toEqual({
+      value: 232_000,
       exponent: 2,
       currency: "CZK",
     });
   });
 
+  test("keeps duration keys aligned and catalog prices in CZK", () => {
+    expect(Object.keys(workspaceMeetingRoomProductsByDurationKey)).toEqual(
+      workspaceMeetingRoomCatalog.map(({ duration }) =>
+        getMeetingRoomReservationDurationKey(duration)
+      )
+    );
+
+    const prices = [
+      ...workspaceCoworkProductCatalog.map(({ price }) => price),
+      ...workspaceMeetingRoomCatalog.map(({ price }) => price),
+      workspaceProductCoffeePrice,
+    ];
+
+    for (const price of prices) {
+      expect(price).toMatchObject({
+        currency: "CZK",
+        exponent: 2,
+      });
+    }
+  });
+
   test("pluralizes meeting room duration titles by locale", () => {
-    expect(getWorkspaceMeetingRoomDurationTitle(60, "en-US")).toBe(
-      "Meeting room - 1 hour"
-    );
-    expect(getWorkspaceMeetingRoomDurationTitle(240, "en-US")).toBe(
-      "Meeting room - 4 hours"
-    );
-    expect(getWorkspaceMeetingRoomDurationTitle(60, "cs-CZ")).toBe(
-      "Zasedací místnost - 1 hodina"
-    );
-    expect(getWorkspaceMeetingRoomDurationTitle(240, "cs-CZ")).toBe(
-      "Zasedací místnost - 4 hodiny"
-    );
-    expect(getWorkspaceMeetingRoomDurationTitle(1440, "cs-CZ")).toBe(
-      "Zasedací místnost - 24 hodin"
-    );
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "hour", amount: 1 }, "en-US")
+    ).toBe("Meeting room - 1 hour");
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "hour", amount: 4 }, "en-US")
+    ).toBe("Meeting room - 4 hours");
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "day", amount: 1 }, "en-US")
+    ).toBe("Meeting room - whole day");
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "hour", amount: 1 }, "cs-CZ")
+    ).toBe("Zasedací místnost - 1 hodina");
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "hour", amount: 4 }, "cs-CZ")
+    ).toBe("Zasedací místnost - 4 hodiny");
+    expect(
+      getWorkspaceMeetingRoomDurationTitle({ unit: "day", amount: 1 }, "cs-CZ")
+    ).toBe("Zasedací místnost - celý den");
   });
 
   test("uses the shared coffee line price contract", () => {

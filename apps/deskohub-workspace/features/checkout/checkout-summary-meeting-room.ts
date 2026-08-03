@@ -1,12 +1,14 @@
 import {
   type CheckoutSummary,
-  checkoutSummaryDiscountedProductItemSchema,
   checkoutSummaryDiscountSchema,
   checkoutSummaryOrderSectionSchema,
-  checkoutSummaryProductItemSchema,
   checkoutSummarySchema,
   checkoutSummaryTotalSectionSchema,
 } from "@/features/checkout/checkout-summary";
+import {
+  meetingRoomCheckoutSummaryDiscountedProductItemSchema,
+  meetingRoomCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-meeting-room-item";
 import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
@@ -19,7 +21,7 @@ export const getMeetingRoomCheckoutSummary = (
   const [item] = quote.items;
   const product: WorkspaceProductIdentity = {
     kind: item.type,
-    durationMinutes: item.durationMinutes,
+    duration: item.duration,
   };
   const key = `product:${getWorkspaceProductKey(product)}` as const;
   const summaryDiscounts = quote.payment.discounts.map(({ amount, discount }) =>
@@ -27,14 +29,14 @@ export const getMeetingRoomCheckoutSummary = (
   );
   const productItem =
     summaryDiscounts.length > 0
-      ? checkoutSummaryDiscountedProductItemSchema.make({
+      ? meetingRoomCheckoutSummaryDiscountedProductItemSchema.make({
           key,
           product,
           amount: quote.payment.expectedPrice,
           originalAmount: quote.payment.undiscountedPrice,
           discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
         })
-      : checkoutSummaryProductItemSchema.make({
+      : meetingRoomCheckoutSummaryProductItemSchema.make({
           key,
           product,
           amount: quote.payment.undiscountedPrice,

@@ -40,6 +40,15 @@ if (typecheck) {
     () => TestService.pipe(Effect.provide(TestServiceLive))
   );
 
+  defineWorkspaceAction(
+    {
+      operation: "type.action-typed-error",
+      schema: Schema.toStandardSchemaV1(Schema.String),
+    },
+    // @ts-expect-error Action failures must be typed errors.
+    () => Effect.fail("untyped failure")
+  );
+
   defineWorkspaceRoute(
     // @ts-expect-error Routes must declare disconnect cancellation semantics.
     { operation: "type.route" },

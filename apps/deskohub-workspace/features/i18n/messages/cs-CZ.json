@@ -279,6 +279,7 @@
       }
     }
   ],
+  "reservationMeetingRoomDurationWholeDay": "celý den",
   "reservationTierProfiBulletDesk": "Vlastní pracovní stanice s monitorovým setupem",
   "reservationTierPerkAllBasic": "všechny výhody tarifu Basic",
   "reservationTierPerkAllCowork": "všechny výhody tarifu Cowork Plus",
@@ -287,7 +288,7 @@
   "reservationDateLabel": "Datum rezervace",
   "reservationDatePlaceholder": "Vyber datum",
   "reservationMeetingRoomMetadataTitle": "Rezervace zasedací místnosti | Deskohub Workspace",
-  "reservationMeetingRoomMetadataDescription": "Rezervuj si zasedací místnost v Deskohub Workspace na 1 hodinu, 4 hodiny nebo 24 hodin.",
+  "reservationMeetingRoomMetadataDescription": "Rezervuj si zasedací místnost v Deskohub Workspace na 1 hodinu, 4 hodiny nebo celý den.",
   "reservationMeetingRoomFormTitle": "Rezervuj zasedací místnost.",
   "reservationMeetingRoomFormDescription": "Vyber datum a čas začátku, délku rezervace a pokračuj k bezpečné platbě.",
   "reservationMeetingRoomStartLabel": "Datum a čas začátku",

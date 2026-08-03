@@ -32,6 +32,7 @@ export function ReservationSubmitSection({
       <Button
         className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
         disabled={disabled}
+        id="reservation-submit"
         type="submit"
       >
         <ArrowRight className="h-4 w-4" />

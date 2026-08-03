@@ -29,13 +29,31 @@ describe("advertised price contract", () => {
         kind: "meeting-room",
         details: {
           kind: "meeting-room",
-          startsAt: "2099-06-10T08:00:00Z",
-          endsAt: "2099-06-10T12:00:00Z",
+          duration: { unit: "hour", amount: 4 },
+          reservationDate: "2099-06-10",
         },
       },
     });
 
     expect(Option.isSome(decoded)).toBe(true);
+  });
+
+  test("rejects interval data outside meeting-room pricing inputs", () => {
+    const decoded = decodeRequest({
+      locale: "en-US",
+      reservation: {
+        kind: "meeting-room",
+        details: {
+          kind: "meeting-room",
+          duration: { unit: "day", amount: 1 },
+          reservationDate: "2099-06-10",
+          startsAt: "2099-06-10T08:00:00Z",
+          endsAt: "2099-06-11T08:00:00Z",
+        },
+      },
+    });
+
+    expect(Option.isNone(decoded)).toBe(true);
   });
 
   test("strictly rejects contact details at the anonymous request boundary", () => {

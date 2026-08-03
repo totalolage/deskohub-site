@@ -38,6 +38,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -102,9 +103,29 @@ const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
 );
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
+  readonly code: "checkout_failed" | "meeting_room_reservation_ended";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
+
+const ensureMeetingRoomReservationHasNotEnded = Effect.fn(
+  "checkout.ensureMeetingRoomReservationHasNotEnded"
+)(function* (reservation: SignedPayState["reservation"]) {
+  if (
+    reservation.kind !== "meeting-room" ||
+    !hasReservationIntervalEnded(reservation)
+  ) {
+    return;
+  }
+
+  yield* Effect.logInfo(
+    "Hosted payment checkout rejected: reservation already ended"
+  );
+  return yield* new CheckoutError({
+    code: "meeting_room_reservation_ended",
+    message: "Meeting-room reservation has already ended.",
+  });
+});
 
 export interface CheckoutService {
   readonly createHostedPaymentCheckout: (
@@ -135,7 +156,13 @@ const generateNexiOrderId = () =>
     .toUpperCase()}`;
 
 const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
-  Effect.fail(new CheckoutError({ message: cause.message, cause }));
+  Effect.fail(
+    new CheckoutError({
+      code: "checkout_failed",
+      message: cause.message,
+      cause,
+    })
+  );
 
 const getCheckoutPayReturnUrl: (
   locale: Locale,
@@ -159,6 +186,7 @@ const getCheckoutPayReturnUrl: (
       },
       catch: (cause) =>
         new CheckoutError({
+          code: "checkout_failed",
           message: "Payment checkout return URL could not be created.",
           cause,
         }),
@@ -178,6 +206,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
       },
       catch: (cause) =>
         new CheckoutError({
+          code: "checkout_failed",
           message: "Payment checkout notification URL could not be created.",
           cause,
         }),
@@ -196,6 +225,7 @@ const getCheckoutLegalAcceptanceSnapshot: (
     Effect.mapError(
       (cause) =>
         new CheckoutError({
+          code: "checkout_failed",
           message: "Legal acceptance snapshot could not be created.",
           cause,
         })
@@ -282,6 +312,7 @@ const openFinalPayState: (
     Effect.mapError(
       (cause) =>
         new CheckoutError({
+          code: "checkout_failed",
           message:
             "Pay state is invalid or expired. Please review checkout again.",
           cause,
@@ -291,6 +322,7 @@ const openFinalPayState: (
 
   if (state.locale !== locale) {
     return yield* new CheckoutError({
+      code: "checkout_failed",
       message: "Pay state locale does not match this checkout session.",
     });
   }
@@ -306,6 +338,7 @@ const getFreshPayUrl: (
       Effect.mapError(
         (cause) =>
           new CheckoutError({
+            code: "checkout_failed",
             message: "A refreshed Pay state could not be created.",
             cause,
           })
@@ -329,6 +362,7 @@ const mapCheckoutFailure = (cause: unknown) => {
         "WorkspaceTableUnavailableError",
         (error) =>
           new CheckoutError({
+            code: "checkout_failed",
             message: "workspace_table_unavailable",
             cause: error,
           })
@@ -338,6 +372,7 @@ const mapCheckoutFailure = (cause: unknown) => {
   }
 
   return new CheckoutError({
+    code: "checkout_failed",
     message:
       "Payment checkout could not be started. Please review your details and try again.",
     cause,
@@ -459,6 +494,7 @@ export const CheckoutServiceLive = Layer.effect(
           Effect.mapError(
             (cause) =>
               new CheckoutError({
+                code: "checkout_failed",
                 message: "Unsupported payment amount.",
                 cause,
               })
@@ -486,6 +522,7 @@ export const CheckoutServiceLive = Layer.effect(
         });
         if (!isNexiPaymentAttempt(attempt)) {
           return yield* new CheckoutError({
+            code: "checkout_failed",
             message: "Nexi payment attempt configuration is invalid.",
           });
         }
@@ -634,6 +671,7 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
             return yield* new CheckoutError({
+              code: "checkout_failed",
               message: "Legal consent is required before checkout.",
             });
           }
@@ -718,6 +756,8 @@ export const CheckoutServiceLive = Layer.effect(
             return { status: "in_progress" as const };
           }
 
+          // An existing provider session can settle independently. Returning its
+          // matching URL is idempotent recovery, not new payment initiation.
           if (reservation.activePaymentAttemptId) {
             yield* Effect.logDebug(
               "Hosted payment checkout active payment attempt lookup started"
@@ -755,6 +795,8 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
+          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
+
           if (state.changedKeys) {
             yield* Effect.logInfo(
               "Hosted payment checkout returned existing pricing_changed review"
@@ -779,6 +821,7 @@ export const CheckoutServiceLive = Layer.effect(
             Effect.mapError(
               (cause) =>
                 new CheckoutError({
+                  code: "checkout_failed",
                   message: "Reservation customer identity is invalid.",
                   cause,
                 })
@@ -879,6 +922,7 @@ export const CheckoutServiceLive = Layer.effect(
           const dotyposReservationId = reservation.dotyposReservationId;
           if (!dotyposReservationId) {
             return yield* new CheckoutError({
+              code: "checkout_failed",
               message:
                 "Held reservation is missing its Dotypos reservation ID.",
             });
@@ -896,6 +940,7 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout Dotypos reservation note updated"
           );
 
+          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
           const expectedPrice = prepared.quote.payment.expectedPrice;
           const startPayment =
             expectedPrice.value === 0

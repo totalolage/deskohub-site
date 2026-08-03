@@ -22,10 +22,8 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import {
-  formatReservationDisplayDate,
-  formatReservationDisplayTimeRange,
-} from "@/features/reservation/reservation-date";
+import { formatMeetingRoomReservationDisplayTime } from "@/features/reservation/reservation.i18n";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
@@ -193,9 +191,11 @@ const getMeetingRoomSummaryRows = (
   },
   {
     label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
-    value: formatReservationDisplayTimeRange(
-      summary.reservedFrom,
-      summary.reservedUntil,
+    value: formatMeetingRoomReservationDisplayTime(
+      {
+        startsAt: summary.reservedFrom,
+        endsAt: summary.reservedUntil,
+      },
       locale
     ),
   },

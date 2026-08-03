@@ -90,4 +90,5 @@ test("uses the checked-in timeout configuration", () => {
 
   expect(config.dotypos.apiTimeout).toBe(5_000);
   expect(config.timeouts).toBe(workspaceE2ETimeouts);
+  expect(config.timeouts.localeCase).toBe(3 * 60_000);
 });

@@ -9,7 +9,10 @@ import {
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
+import {
+  getWorkspaceMeetingRoomDurationLabel,
+  getWorkspaceMeetingRoomProductTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
@@ -20,7 +23,6 @@ import {
   getReservationDate,
   getReservationIntervalNormalization,
 } from "@/features/reservation/reservation-interval";
-import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
@@ -134,7 +136,10 @@ export const formatWorkspaceReservationNote = (
             timeZone: workspaceSiteConstants.location.timeZone,
           })}`,
           `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
-          `Duration: ${getDurationMinutes(meetingRoomReservation)} minutes`,
+          `Duration: ${getWorkspaceMeetingRoomDurationLabel(
+            meetingRoomReservation.duration,
+            checkoutDetails.locale
+          )}`,
         ],
       }),
     })

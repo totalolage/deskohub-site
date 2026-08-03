@@ -8,7 +8,8 @@ import {
   getMeetingRoomReservationDefaultValues,
   meetingRoomReservationDefaultValues,
 } from "@/features/reservation/meeting-room-reservation";
-import { getEarliestSelectableMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
+import { getMeetingRoomReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import { getEarliestMeetingRoomStartDateTime } from "@/features/reservation/meeting-room-reservation-time";
 import { meetingRoomReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -24,12 +25,18 @@ export const meetingRoomReservationPage = createReservationPage({
     description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
   }),
   render: async ({ checkoutSessionId, initialReservation, locale }) => {
-    const initialValues = initialReservation
+    const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
+      getMeetingRoomReservationDuration(
+        meetingRoomReservationDefaultValues.duration
+      )
+    );
+    const restoredInitialValues = initialReservation
       ? getMeetingRoomReservationDefaultValues(initialReservation)
-      : {
-          ...meetingRoomReservationDefaultValues,
-          startDateTime: getEarliestSelectableMeetingRoomStartDateTime(),
-        };
+      : undefined;
+    const initialValues = restoredInitialValues ?? {
+      ...meetingRoomReservationDefaultValues,
+      startDateTime: minimumStartDateTime,
+    };
     const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
       getMeetingRoomDurationAdvertisedPriceRequests({
         locale,
@@ -47,7 +54,9 @@ export const meetingRoomReservationPage = createReservationPage({
         <MeetingRoomReservationForm
           checkoutSessionId={checkoutSessionId}
           initialAdvertisedPrices={initialAdvertisedPrices}
-          initialReservation={initialReservation}
+          initialReservation={
+            restoredInitialValues ? initialReservation : undefined
+          }
           initialValues={initialValues}
           locale={locale}
         />

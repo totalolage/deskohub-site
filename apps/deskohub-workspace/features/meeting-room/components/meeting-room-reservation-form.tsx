@@ -10,8 +10,11 @@ import {
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
-import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomDurationTitle } from "@/features/checkout/product-catalog.i18n";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceMeetingRoomDurationLabel,
+  getWorkspaceMeetingRoomDurationTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
@@ -40,7 +43,13 @@ import {
   type NormalizedMeetingRoomReservationOrder,
 } from "@/features/reservation/meeting-room-reservation";
 import {
-  getEarliestSelectableMeetingRoomStartDateTime,
+  getMeetingRoomReservationDuration,
+  getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDurationKey,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  getEarliestMeetingRoomStartDateTime,
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationDate,
   getMeetingRoomReservationInterval,
@@ -76,13 +85,18 @@ export function MeetingRoomReservationForm({
   initialValues,
   locale,
 }: MeetingRoomReservationFormProps) {
+  const restoredInitialValues = useMemo(
+    () =>
+      initialReservation
+        ? getMeetingRoomReservationDefaultValues(initialReservation)
+        : undefined,
+    [initialReservation]
+  );
   const defaultValues = useMemo(
     () =>
       initialValues ??
-      (initialReservation
-        ? getMeetingRoomReservationDefaultValues(initialReservation)
-        : { ...meetingRoomReservationDefaultValues }),
-    [initialReservation, initialValues]
+      restoredInitialValues ?? { ...meetingRoomReservationDefaultValues },
+    [initialValues, restoredInitialValues]
   );
   const form = useForm<
     MeetingRoomReservationInput,
@@ -94,22 +108,22 @@ export function MeetingRoomReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [selectedStartDateTime, selectedDurationMinutes] = useWatch({
+  const [selectedStartDateTime, selectedDurationKey] = useWatch({
     control: form.control,
-    name: ["startDateTime", "durationMinutes"],
+    name: ["startDateTime", "duration"],
   });
+  const selectedDuration =
+    getMeetingRoomReservationDuration(selectedDurationKey);
+  const isWholeDaySelected =
+    isMeetingRoomWholeDayReservationDuration(selectedDuration);
   const selectedInterval = useMemo(
     () =>
       getMeetingRoomReservationInterval(
         selectedStartDateTime,
-        selectedDurationMinutes
+        selectedDuration
       ),
-    [selectedDurationMinutes, selectedStartDateTime]
+    [selectedDuration, selectedStartDateTime]
   );
-  const preservesRestoredStart =
-    Boolean(initialReservation) &&
-    selectedStartDateTime === defaultValues.startDateTime &&
-    selectedDurationMinutes === defaultValues.durationMinutes;
   const availabilityQuery = useMemo(
     (): MeetingRoomWorkspaceAvailabilityQuery | undefined =>
       selectedInterval
@@ -143,7 +157,7 @@ export function MeetingRoomReservationForm({
     initialAdvertisedPrices
   );
   const advertisedPricesByDuration = new Map<
-    (typeof workspaceMeetingRoomDurationOptions)[number],
+    MeetingRoomReservationDurationKey,
     Extract<AdvertisedPrice, { readonly kind: "meeting-room" }>
   >();
 
@@ -155,17 +169,21 @@ export function MeetingRoomReservationForm({
       queryResult.data &&
       isMeetingRoomAdvertisedPrice(queryResult.data)
     ) {
-      advertisedPricesByDuration.set(request.duration, queryResult.data);
+      advertisedPricesByDuration.set(
+        getMeetingRoomReservationDurationKey(request.duration),
+        queryResult.data
+      );
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ duration }) => duration === selectedDurationMinutes
+    ({ duration }) =>
+      getMeetingRoomReservationDurationKey(duration) === selectedDurationKey
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];
   const advertisedPrice =
-    advertisedPricesByDuration.get(selectedDurationMinutes) ?? null;
+    advertisedPricesByDuration.get(selectedDurationKey) ?? null;
 
   return (
     <ReservationCheckoutForm
@@ -196,19 +214,27 @@ export function MeetingRoomReservationForm({
         render={({ field, fieldState }) => (
           <FormItem>
             <ReservationFormLabel required>
-              {m.reservationMeetingRoomStartLabel({}, { locale })}
+              {isWholeDaySelected
+                ? m.reservationDateLabel({}, { locale })
+                : m.reservationMeetingRoomStartLabel({}, { locale })}
             </ReservationFormLabel>
             <ReservationDateTimePicker
-              className="grid-cols-1 sm:grid-cols-2"
+              className={
+                isWholeDaySelected
+                  ? "grid-cols-1"
+                  : "grid-cols-1 sm:grid-cols-2"
+              }
               dateLabel={m.reservationMeetingRoomDateLabel({}, { locale })}
               locale={locale}
-              minimum={getEarliestSelectableMeetingRoomStartDateTime}
+              minimum={() =>
+                getEarliestMeetingRoomStartDateTime(selectedDuration)
+              }
               name={field.name}
               onBlur={field.onBlur}
               onChange={field.onChange}
               placeholder={m.reservationDatePlaceholder({}, { locale })}
-              preserveValueBeforeMinimum={preservesRestoredStart}
               timeLabel={m.reservationMeetingRoomTimeLabel({}, { locale })}
+              showTime={!isWholeDaySelected}
               timeStepMinutes={60}
               value={field.value}
               variant={fieldState.error ? "error" : "default"}
@@ -220,7 +246,7 @@ export function MeetingRoomReservationForm({
 
       <FormField
         control={form.control}
-        name="durationMinutes"
+        name="duration"
         render={({ field }) => (
           <FormItem>
             <ReservationFormLabel required>
@@ -236,19 +262,24 @@ export function MeetingRoomReservationForm({
                 onChange={field.onChange}
                 value={field.value}
               >
-                {workspaceMeetingRoomDurationOptions.map((duration) => {
+                {workspaceMeetingRoomCatalog.map((product) => {
+                  const durationKey = getMeetingRoomReservationDurationKey(
+                    product.duration
+                  );
                   const durationTitle = getWorkspaceMeetingRoomDurationTitle(
-                    duration,
+                    product.duration,
                     locale
                   );
                   const advertisedProductItem = advertisedPricesByDuration
-                    .get(duration)
+                    .get(durationKey)
                     ?.summary.sections.find(({ key }) => key === "order")
                     ?.items.find(
                       (item) =>
                         "product" in item &&
                         item.product.kind === "meeting-room" &&
-                        item.product.durationMinutes === duration
+                        getMeetingRoomReservationDurationKey(
+                          item.product.duration
+                        ) === durationKey
                     );
                   const advertisedDiscounts =
                     advertisedProductItem &&
@@ -267,13 +298,13 @@ export function MeetingRoomReservationForm({
 
                   return (
                     <ReservationTypeOption
-                      key={duration}
+                      key={durationKey}
                       className={`pb-4 ${
                         {
-                          60: "sm:col-start-1 lg:col-start-1",
-                          240: "sm:col-start-2 lg:col-start-2",
-                          1440: "sm:col-start-3 lg:col-start-3",
-                        }[duration]
+                          "hour:1": "sm:col-start-1 lg:col-start-1",
+                          "hour:4": "sm:col-start-2 lg:col-start-2",
+                          "day:1": "sm:col-start-3 lg:col-start-3",
+                        }[durationKey]
                       }`}
                       discount={
                         hasAdvertisedDiscounts && advertisedDiscounts
@@ -310,11 +341,11 @@ export function MeetingRoomReservationForm({
                         )
                       }
                       priceReady={Boolean(advertisedProductItem)}
-                      title={m.reservationMeetingRoomDurationHours(
-                        { count: duration / 60 },
-                        { locale }
+                      title={getWorkspaceMeetingRoomDurationLabel(
+                        product.duration,
+                        locale
                       )}
-                      value={duration}
+                      value={durationKey}
                     />
                   );
                 })}

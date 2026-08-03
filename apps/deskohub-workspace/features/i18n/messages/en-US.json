@@ -278,6 +278,7 @@
       }
     }
   ],
+  "reservationMeetingRoomDurationWholeDay": "whole day",
   "reservationTierProfiBulletDesk": "Own workstation with monitor setup",
   "reservationTierPerkAllBasic": "all perks from Basic",
   "reservationTierPerkAllCowork": "all perks from Cowork Plus",
@@ -286,7 +287,7 @@
   "reservationDateLabel": "Reservation date",
   "reservationDatePlaceholder": "Choose a date",
   "reservationMeetingRoomMetadataTitle": "Meeting room reservation | Deskohub Workspace",
-  "reservationMeetingRoomMetadataDescription": "Reserve the Deskohub Workspace meeting room for 1 hour, 4 hours, or 24 hours.",
+  "reservationMeetingRoomMetadataDescription": "Reserve the Deskohub Workspace meeting room for 1 hour, 4 hours, or a whole day.",
   "reservationMeetingRoomFormTitle": "Reserve the meeting room.",
   "reservationMeetingRoomFormDescription": "Choose the start date and time, pick a duration, and continue to secure payment.",
   "reservationMeetingRoomStartLabel": "Start date and time",

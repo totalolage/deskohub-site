@@ -1,10 +1,12 @@
 "use client";
 
+import { Option, Schema } from "effect";
 import { Clock } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { localDateTimeSchema, localTimeSchema } from "@/shared/utils/temporal";
 import { ReservationDatePicker } from "./reservation-date-picker";
 
 type ReservationDateTimePickerProps = {
@@ -16,7 +18,7 @@ type ReservationDateTimePickerProps = {
   readonly onBlur?: () => void;
   readonly onChange?: (value: string) => void;
   readonly placeholder?: string;
-  readonly preserveValueBeforeMinimum?: boolean;
+  readonly showTime?: boolean;
   readonly timeStepMinutes?: number;
   readonly timeLabel: string;
   readonly value?: string;
@@ -24,16 +26,14 @@ type ReservationDateTimePickerProps = {
 };
 
 const defaultTime = workspaceSiteConstants.reservation.defaultStartTime;
+const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
+const decodeLocalTime = Schema.decodeUnknownOption(localTimeSchema);
 
-const parsePlainDateTime = (value: string | undefined) => {
-  if (!value) return undefined;
-
-  try {
-    return Temporal.PlainDateTime.from(value);
-  } catch {
-    return undefined;
-  }
-};
+const parsePlainDateTime = (value: string | undefined) =>
+  decodeLocalDateTime(value).pipe(
+    Option.map((dateTime) => Temporal.PlainDateTime.from(dateTime)),
+    Option.getOrUndefined
+  );
 
 const resolveMinimumDateTime = (
   minimum: ReservationDateTimePickerProps["minimum"]
@@ -41,7 +41,7 @@ const resolveMinimumDateTime = (
 
 const getMinimumTimeForDate = (
   date: Temporal.PlainDate | undefined,
-  minimum: ReturnType<typeof Temporal.PlainDateTime.from> | undefined
+  minimum: Temporal.PlainDateTime | undefined
 ) =>
   date &&
   minimum &&
@@ -60,6 +60,24 @@ const formatDateTimeValue = ({
 const getFormatterDate = (date: Temporal.PlainDate) =>
   new Date(Date.UTC(date.year, date.month - 1, date.day, 12));
 
+const getAcceptedTime = ({
+  minimum,
+  stepMinutes,
+  value,
+}: {
+  readonly minimum: string | undefined;
+  readonly stepMinutes: number;
+  readonly value: string;
+}) =>
+  decodeLocalTime(value).pipe(
+    Option.filter((time) => {
+      const parsed = Temporal.PlainTime.from(time);
+      return (parsed.hour * 60 + parsed.minute) % stepMinutes === 0;
+    }),
+    Option.filter((time) => minimum === undefined || time >= minimum),
+    Option.getOrUndefined
+  );
+
 export function ReservationDateTimePicker({
   className,
   dateLabel,
@@ -69,14 +87,18 @@ export function ReservationDateTimePicker({
   onBlur,
   onChange,
   placeholder = "Pick date and time",
-  preserveValueBeforeMinimum = false,
+  showTime = true,
   timeStepMinutes = 1,
   timeLabel,
   value,
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
-  const [pendingTime, setPendingTime] = useState<string>(defaultTime);
+  const [pendingTime, setPendingTime] = useState(
+    () =>
+      dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
+      defaultTime
+  );
   const minimumDateTime = resolveMinimumDateTime(minimum);
   const selectedDate = dateTime?.toPlainDate();
   const selectedTime =
@@ -100,17 +122,39 @@ export function ReservationDateTimePicker({
     ? dateFormatter.format(getFormatterDate(selectedDate))
     : placeholder;
 
-  useEffect(() => {
-    const currentMinimum = resolveMinimumDateTime(minimum);
-    if (
-      dateTime &&
-      currentMinimum &&
-      !preserveValueBeforeMinimum &&
-      Temporal.PlainDateTime.compare(dateTime, currentMinimum) < 0
-    ) {
-      onChange?.(currentMinimum.toString({ smallestUnit: "minute" }));
+  const handleDateChange = (date: string) => {
+    const nextDate = Temporal.PlainDate.from(date);
+    const minimumTime = showTime
+      ? getMinimumTimeForDate(nextDate, resolveMinimumDateTime(minimum))
+      : undefined;
+    const isBeforeMinimumTime =
+      minimumTime !== undefined && selectedTime < minimumTime;
+    const nextTime = isBeforeMinimumTime ? minimumTime : selectedTime;
+    onChange?.(formatDateTimeValue({ date: nextDate, time: nextTime }));
+  };
+
+  const handleTimeInput = (event: FormEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const acceptedTime = getAcceptedTime({
+      minimum: getMinimumTimeForDate(
+        selectedDate,
+        resolveMinimumDateTime(minimum)
+      ),
+      stepMinutes: resolvedTimeStepMinutes,
+      value: input.value,
+    });
+    if (!acceptedTime) {
+      input.value = selectedTime;
+      return;
     }
-  }, [dateTime, minimum, onChange, preserveValueBeforeMinimum]);
+
+    setPendingTime(acceptedTime);
+    if (selectedDate) {
+      onChange?.(
+        formatDateTimeValue({ date: selectedDate, time: acceptedTime })
+      );
+    }
+  };
 
   return (
     <div className={cn("grid gap-3", className)}>
@@ -120,71 +164,27 @@ export function ReservationDateTimePicker({
         locale={locale}
         minimum={minimumDateTime?.toPlainDate().toString()}
         name={name}
-        onChange={(date) => {
-          const plainDate = Temporal.PlainDate.from(date);
-          const currentMinimumDateTime = resolveMinimumDateTime(minimum);
-          const minimumTime = getMinimumTimeForDate(
-            plainDate,
-            currentMinimumDateTime
-          );
-          const time =
-            minimumTime && selectedTime < minimumTime
-              ? minimumTime
-              : selectedTime;
-
-          onChange?.(formatDateTimeValue({ date: plainDate, time }));
-        }}
+        onChange={handleDateChange}
         placeholder={placeholder}
         value={selectedDate?.toString()}
         variant={variant}
       />
-      <div className="relative">
-        <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
-        <Input
-          aria-label={timeLabel}
-          className="pl-11"
-          onBlur={onBlur}
-          onInput={(event) => {
-            const input = event.currentTarget;
-            const restoreSelectedTime = () => {
-              input.value = selectedTime;
-            };
-
-            try {
-              const time = Temporal.PlainTime.from(input.value).toString({
-                smallestUnit: "minute",
-              });
-              const parsedTime = Temporal.PlainTime.from(time);
-              const minutesFromMidnight =
-                parsedTime.hour * 60 + parsedTime.minute;
-              if (minutesFromMidnight % resolvedTimeStepMinutes !== 0) {
-                restoreSelectedTime();
-                return;
-              }
-              const currentMinimumTime = getMinimumTimeForDate(
-                selectedDate,
-                resolveMinimumDateTime(minimum)
-              );
-              if (currentMinimumTime && time < currentMinimumTime) {
-                restoreSelectedTime();
-                return;
-              }
-
-              setPendingTime(time);
-              if (selectedDate) {
-                onChange?.(formatDateTimeValue({ date: selectedDate, time }));
-              }
-            } catch {
-              restoreSelectedTime();
-            }
-          }}
-          min={selectedDateMinimumTime}
-          step={resolvedTimeStepMinutes * 60}
-          type="time"
-          value={selectedTime}
-          variant={variant}
-        />
-      </div>
+      {showTime && (
+        <div className="relative">
+          <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
+          <Input
+            aria-label={timeLabel}
+            className="pl-11"
+            min={selectedDateMinimumTime}
+            onBlur={onBlur}
+            onInput={handleTimeInput}
+            step={resolvedTimeStepMinutes * 60}
+            type="time"
+            value={selectedTime}
+            variant={variant}
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -3,9 +3,13 @@ import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type {
   WorkspaceCoworkProductTier,
-  WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import {
+  getMeetingRoomReservationDurationKey,
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationDate,
@@ -25,7 +29,7 @@ import type { CheckoutData, CheckoutFlow } from "../types";
 
 export type MeetingRoomCheckoutSlot = {
   readonly date: string;
-  readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
+  readonly duration: MeetingRoomReservationDuration;
   readonly endsAt: ReservationInterval["endsAt"];
   readonly startDateTime: string;
   readonly startsAt: ReservationInterval["startsAt"];
@@ -117,14 +121,12 @@ export const reuseCoworkCheckoutContact = (
 export const makeMeetingRoomCheckoutData = (
   checkoutBaseUrl: string,
   slot: MeetingRoomCheckoutSlot,
-  flowId = `meeting-room-${slot.durationMinutes}`
+  flowId = `meeting-room-${getMeetingRoomReservationDurationKey(
+    slot.duration
+  ).replace(":", "-")}`
 ): CheckoutData => {
   const contact = makeCheckoutContact(flowId);
-  return makeMeetingRoomCheckoutDataWithContact(
-    checkoutBaseUrl,
-    slot,
-    contact
-  );
+  return makeMeetingRoomCheckoutDataWithContact(checkoutBaseUrl, slot, contact);
 };
 
 export const reuseMeetingRoomCheckoutContact = (
@@ -146,7 +148,6 @@ const makeMeetingRoomCheckoutDataWithContact = (
   contact: ReturnType<typeof makeCheckoutContact>
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-
   return {
     checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
     date: slot.date,
@@ -154,7 +155,7 @@ const makeMeetingRoomCheckoutDataWithContact = (
     expectedReservationDetails: { kind: "meeting-room" },
     locale,
     meetingRoom: {
-      durationMinutes: slot.durationMinutes,
+      duration: slot.duration,
       endsAt: slot.endsAt,
       startDateTime: slot.startDateTime,
       startsAt: slot.startsAt,
@@ -333,7 +334,7 @@ export const selectAvailableCoworkDates = (
 
 export const selectAvailableMeetingRoomSlots = (
   config: WorkspaceE2EConfig,
-  durations: readonly WorkspaceMeetingRoomDurationMinutes[]
+  durations: readonly MeetingRoomReservationDuration[]
 ): Effect.Effect<
   readonly MeetingRoomCheckoutSlot[],
   WorkspaceE2EError,
@@ -343,20 +344,22 @@ export const selectAvailableMeetingRoomSlots = (
     const slots: MeetingRoomCheckoutSlot[] = [];
     const reservedDates = new Set<string>();
 
-    for (const durationMinutes of durations) {
+    for (const duration of durations) {
       let selected: MeetingRoomCheckoutSlot | undefined;
 
       for (let offset = 14; offset <= 90; offset += 1) {
         const date = futureIsoDate(offset);
         if (!isWeekday(date) || reservedDates.has(date)) continue;
 
-        const startDateTime = `${date}T10:00`;
+        const startDateTime = `${date}T${
+          isMeetingRoomWholeDayReservationDuration(duration) ? "00:00" : "10:00"
+        }`;
         const interval = yield* tryWorkspaceE2ESync(
           "create meeting-room checkout interval",
           () => {
             const value = getMeetingRoomReservationInterval(
               startDateTime,
-              durationMinutes
+              duration
             );
             assert(value, "meeting-room test interval could not be created");
             return value;
@@ -364,7 +367,7 @@ export const selectAvailableMeetingRoomSlots = (
         );
         const slot = {
           date: getMeetingRoomReservationDate(interval),
-          durationMinutes,
+          duration,
           endsAt: interval.endsAt,
           startDateTime,
           startsAt: interval.startsAt,
@@ -384,7 +387,9 @@ export const selectAvailableMeetingRoomSlots = (
 
       if (!selected) {
         return yield* workspaceE2EError(
-          `No available ${durationMinutes}-minute meeting-room checkout slot found`,
+          `No available ${getMeetingRoomReservationDurationKey(
+            duration
+          )} meeting-room checkout slot found`,
           { operation: "select available meeting-room checkout slots" }
         );
       }
@@ -392,7 +397,9 @@ export const selectAvailableMeetingRoomSlots = (
       slots.push(selected);
       for (const date of getTouchedDates(selected)) reservedDates.add(date);
       log(
-        `Selected available ${durationMinutes}-minute meeting-room slot ${selected.startDateTime}`
+        `Selected available ${getMeetingRoomReservationDurationKey(
+          duration
+        )} meeting-room slot ${selected.startDateTime}`
       );
     }
 
@@ -447,25 +454,22 @@ export const loadMeetingRoomAvailability = (
       readonly unavailableDates?: unknown;
     };
 
-    return yield* tryWorkspaceE2ESync(
-      "parse meeting-room availability",
-      () => {
-        assert(
-          typeof availability.meetingRoomUnavailable === "boolean",
-          "availability response missing meetingRoomUnavailable"
-        );
-        assert(
-          Array.isArray(availability.unavailableDates),
-          "availability response missing unavailableDates"
-        );
-        return {
-          meetingRoomUnavailable: availability.meetingRoomUnavailable,
-          unavailableDates: availability.unavailableDates.filter(
-            (date): date is string => typeof date === "string"
-          ),
-        };
-      }
-    );
+    return yield* tryWorkspaceE2ESync("parse meeting-room availability", () => {
+      assert(
+        typeof availability.meetingRoomUnavailable === "boolean",
+        "availability response missing meetingRoomUnavailable"
+      );
+      assert(
+        Array.isArray(availability.unavailableDates),
+        "availability response missing unavailableDates"
+      );
+      return {
+        meetingRoomUnavailable: availability.meetingRoomUnavailable,
+        unavailableDates: availability.unavailableDates.filter(
+          (date): date is string => typeof date === "string"
+        ),
+      };
+    });
   });
 
 const futureIsoDate = (offsetDays: number) => {

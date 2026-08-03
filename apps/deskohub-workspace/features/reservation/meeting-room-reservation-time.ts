@@ -1,8 +1,8 @@
 import { Option, Schema } from "effect";
 import {
-  isWorkspaceMeetingRoomDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
-} from "@/features/checkout/product-catalog";
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
@@ -14,7 +14,7 @@ import {
 const decodeInstant = Schema.decodeUnknownOption(instantStringSchema);
 const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
-  (startDateTime: LocalDateTime) =>
+  (startDateTime: LocalDateTime | Temporal.PlainDateTime) =>
     Temporal.PlainDateTime.from(startDateTime)
       .toZonedDateTime(workspaceSiteConstants.location.timeZone, {
         disambiguation: "reject",
@@ -37,37 +37,56 @@ const roundUpToWholePragueHour = (instant: Temporal.Instant) => {
   return dateTime.equals(wholeHour) ? wholeHour : wholeHour.add({ hours: 1 });
 };
 
-export const getEarliestSelectableMeetingRoomStartDateTime = (
-  now = Temporal.Now.instant()
-) =>
-  roundUpToWholePragueHour(now)
-    .toPlainDateTime()
-    .toString({ smallestUnit: "minute" });
-
 export const getEarliestMeetingRoomStartDateTime = (
-  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
+  duration: MeetingRoomReservationDuration,
   now = Temporal.Now.instant()
 ) => {
-  return roundUpToWholePragueHour(now.subtract({ minutes: durationMinutes }))
+  if (isMeetingRoomWholeDayReservationDuration(duration)) {
+    return now
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+      .toPlainDate()
+      .toPlainDateTime()
+      .toString({ smallestUnit: "minute" });
+  }
+
+  return roundUpToWholePragueHour(now.subtract({ hours: duration.amount }))
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
 };
 
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
-  durationMinutes: number
+  duration: MeetingRoomReservationDuration
 ): ReservationInterval | null => {
-  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
+  const isWholeDay = isMeetingRoomWholeDayReservationDuration(duration);
 
   return decodeLocalDateTime(startDateTime).pipe(
-    Option.flatMap(localDateTimeToMeetingRoomStartInstant),
-    Option.flatMap((startInstant) => {
-      const endInstant = startInstant.add({ minutes: durationMinutes });
+    Option.flatMap((selectedStartDateTime) => {
+      const selectedPlainDateTime = Temporal.PlainDateTime.from(
+        selectedStartDateTime
+      );
+      const startDateTime = isWholeDay
+        ? selectedPlainDateTime.toPlainDate().toPlainDateTime()
+        : selectedPlainDateTime;
 
-      return Option.all({
-        startsAt: decodeInstant(startInstant.toString()),
-        endsAt: decodeInstant(endInstant.toString()),
-      }).pipe(Option.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })));
+      return localDateTimeToMeetingRoomStartInstant(startDateTime).pipe(
+        Option.flatMap((startInstant) => {
+          const endInstant = isWholeDay
+            ? localDateTimeToMeetingRoomStartInstant(
+                startDateTime.add({ days: 1 })
+              )
+            : Option.some(startInstant.add({ hours: duration.amount }));
+
+          return endInstant.pipe(
+            Option.flatMap((end) =>
+              Option.all({
+                startsAt: decodeInstant(startInstant.toString()),
+                endsAt: decodeInstant(end.toString()),
+              })
+            )
+          );
+        })
+      );
     }),
     Option.getOrNull
   );

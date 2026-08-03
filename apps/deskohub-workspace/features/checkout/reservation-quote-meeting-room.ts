@@ -1,19 +1,15 @@
 import { Effect, Schema } from "effect";
-import {
-  getWorkspaceMeetingRoomPriceForDuration,
-  isWorkspaceMeetingRoomDuration,
-  workspaceMeetingRoomDurationOptions,
-} from "@/features/checkout/product-catalog";
-import { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
+import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
+import type { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
 import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
-import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
-import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
+import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
+import { meetingRoomReservationDurationSchema } from "@/features/reservation/meeting-room-reservation-duration";
 
 export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("meeting-room"),
-  durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
+  duration: meetingRoomReservationDurationSchema,
   amount: workspaceMoneyCodec,
 });
 
@@ -29,12 +25,12 @@ export type MeetingRoomReservationQuote =
 
 export type CanonicalMeetingRoomReservation = {
   readonly kind: "meeting-room";
-  readonly startsAt: MeetingRoomReservationDetails["startsAt"];
-  readonly endsAt: MeetingRoomReservationDetails["endsAt"];
+  readonly duration: MeetingRoomReservationPricingInput["duration"];
+  readonly reservationDate: MeetingRoomReservationPricingInput["reservationDate"];
 };
 
 export const getMeetingRoomReservationQuote = (
-  reservation: MeetingRoomReservationDetails,
+  reservation: MeetingRoomReservationPricingInput,
   options: {
     readonly discountQuote?: DiscountQuote;
   } = {}
@@ -49,17 +45,7 @@ export const getMeetingRoomReservationQuote = (
   },
   ReservationQuoteError
 > => {
-  const durationMinutes = getDurationMinutes(reservation);
-
-  if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
-    return Effect.fail(
-      new ReservationQuoteError({
-        message: "Meeting room checkout pricing requires an approved duration.",
-      })
-    );
-  }
-
-  const amount = getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+  const amount = getWorkspaceMeetingRoomPriceForDuration(reservation.duration);
   const discounts = options.discountQuote?.discounts ?? [];
   const expectedPrice = options.discountQuote?.discountedSubtotal ?? amount;
 
@@ -67,7 +53,7 @@ export const getMeetingRoomReservationQuote = (
     items: [
       {
         type: "meeting-room",
-        durationMinutes,
+        duration: reservation.duration,
         amount,
       },
     ],
@@ -80,9 +66,9 @@ export const getMeetingRoomReservationQuote = (
 };
 
 export const getCanonicalMeetingRoomReservation = (
-  reservation: MeetingRoomReservationDetails
+  reservation: MeetingRoomReservationPricingInput
 ): CanonicalMeetingRoomReservation => ({
   kind: "meeting-room" as const,
-  startsAt: reservation.startsAt,
-  endsAt: reservation.endsAt,
+  duration: reservation.duration,
+  reservationDate: reservation.reservationDate,
 });

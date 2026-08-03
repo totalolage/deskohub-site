@@ -37,8 +37,8 @@ const getSummaryItemLabel = (
     return Match.value(item.product).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
-        "meeting-room": ({ durationMinutes }) =>
-          getWorkspaceMeetingRoomDurationTitle(durationMinutes, locale),
+        "meeting-room": ({ duration }) =>
+          getWorkspaceMeetingRoomDurationTitle(duration, locale),
       })
     );
   }

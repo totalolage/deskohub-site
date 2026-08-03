@@ -22,7 +22,6 @@ import {
   workspaceTableMapLabelWidth,
 } from "@/features/checkout/components/workspace-table-map-view";
 import {
-  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
@@ -30,10 +29,7 @@ import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map"
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import {
-  formatReservationDisplayDate,
-  formatReservationDisplayTimeRange,
-} from "@/features/reservation/reservation-date";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -54,6 +50,7 @@ import {
   WorkspaceCheckoutNetworkDetailsService,
   workspaceCheckoutPlaceholderNetworkDetails,
 } from "./network-details.service";
+import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-room-email-details";
 
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
@@ -336,28 +333,6 @@ const createCoworkReservationDetailRows = (
   ),
 ];
 
-const createMeetingRoomReservationDetailRows = (
-  reservation: WorkspaceReservationDetails,
-  locale: Locale
-): EmailDetailRow[] => [
-  [
-    m.reservationEmailReservationLabel({}, { locale }),
-    getWorkspaceMeetingRoomProductTitle(locale),
-  ],
-  [
-    m.reservationEmailDateLabel({}, { locale }),
-    formatReservationDisplayDate(reservation.reservedFrom, locale),
-  ],
-  [
-    m.reservationEmailTimeLabel({}, { locale }),
-    formatReservationDisplayTimeRange(
-      reservation.reservedFrom,
-      reservation.reservedUntil,
-      locale
-    ),
-  ],
-];
-
 const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
   locale: Locale
@@ -367,7 +342,13 @@ const createReservationDetailRows = (
       cowork: (details) =>
         createCoworkReservationDetailRows(reservation, details, locale),
       "meeting-room": () =>
-        createMeetingRoomReservationDetailRows(reservation, locale),
+        createWorkspaceMeetingRoomEmailDetailRows(reservation, locale, {
+          reservationLabel: m.reservationEmailReservationLabel({}, { locale }),
+          reservationTitle: m.reservationTierMeetingRoomTitle({}, { locale }),
+          dateLabel: m.reservationEmailDateLabel({}, { locale }),
+          timeLabel: m.reservationEmailTimeLabel({}, { locale }),
+          wholeDay: m.reservationMeetingRoomDurationWholeDay({}, { locale }),
+        }),
     })
   );
 

@@ -1,10 +1,13 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  type EmailMessage,
   type EmailSendResult,
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email";
 import { Effect, Layer } from "effect";
+import { type Locale, locales } from "@/features/i18n";
+import { formatDurationMinutes } from "@/shared/utils/date-formatting";
 import {
   TrainingReservationService,
   TrainingReservationServiceLive,
@@ -30,11 +33,15 @@ const sent = (id: string): EmailSendResult => ({
   timestamp: new Date("2026-06-20T12:00:00.000Z"),
 });
 
-const runSubmit = (send: ReturnType<typeof mock>) =>
+const runSubmit = (
+  send: ReturnType<typeof mock>,
+  locale: Locale = "en-US",
+  duration = input.duration
+) =>
   Effect.runPromise(
     Effect.gen(function* () {
       const service = yield* TrainingReservationService;
-      return yield* service.submit(input, "en-US");
+      return yield* service.submit({ ...input, duration }, locale);
     }).pipe(
       Effect.provide(
         TrainingReservationServiceLive.pipe(
@@ -73,4 +80,34 @@ describe("TrainingReservationService", () => {
     expect(result).toMatchObject({ ...input, locale: "en-US" });
     expect(send).toHaveBeenCalledTimes(2);
   });
+
+  test("uses the same localized duration in text and HTML emails", async () => {
+    const send = mock((_message: EmailMessage) =>
+      Effect.succeed(sent("email"))
+    );
+
+    await runSubmit(send, "en-US", 2);
+
+    const business = send.mock.calls[0]?.[0] as EmailMessage;
+    const customer = send.mock.calls[1]?.[0] as EmailMessage;
+    expect(business.text).toContain("Doba trvání: 2 hodiny");
+    expect(business.html).toContain("2 hodiny");
+    expect(customer.text).toContain("Duration: 2 hours");
+    expect(customer.html).toContain("2 hours");
+  });
+
+  for (const locale of locales) {
+    test(`formats customer email duration with the generated ${locale} locale`, async () => {
+      const send = mock((_message: EmailMessage) =>
+        Effect.succeed(sent("email"))
+      );
+
+      await runSubmit(send, locale, 2);
+
+      const customer = send.mock.calls[1]?.[0] as EmailMessage;
+      const expectedDuration = formatDurationMinutes(120, locale);
+      expect(customer.text).toContain(expectedDuration);
+      expect(customer.html).toContain(expectedDuration);
+    });
+  }
 });
