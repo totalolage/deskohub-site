@@ -122,8 +122,11 @@ cannot shift a date between shards. Interleaving the fixed candidates also
 avoids starving one run when unavailable dates cluster in a contiguous part of
 the range. The PR identity selects the preferred shard; the
 allocator selects the next free shard when that preference is already leased.
-Only commit-status leases belonging to queued or active Workspace E2E workflow
-runs count as occupied, so interrupted-run statuses cannot strand capacity. An
+Three fixed status contexts on a stable main-history anchor record the owning
+workflow run, so force-pushing a PR cannot hide its previous active lease. Only
+leases belonging to queued or active Workspace E2E workflow runs count as
+occupied, and finalization releases a context only when it still belongs to the
+same run, so interrupted or superseded statuses cannot strand capacity. An
 exhausted three-shard pool fails in allocation with the supported-concurrency
 context instead of allowing cases to race. The checked-out runner receives the
 leased one-based shard through `WORKSPACE_E2E_ALLOCATION_SHARD`; its identity

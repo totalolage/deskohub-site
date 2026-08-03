@@ -57,8 +57,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Lease one partition of the fixed 14-to-90-day candidate range before
   constructing cases. Serialize only the short GitHub lease operation, use the
   run identity for the preferred shard, and choose another free shard when that
-  preference is already leased. Publish the lease as a safe commit status,
-  ignore leases whose workflow run is no longer active, and fail before setup
+  preference is already leased. Record each shard in a fixed status context on
+  a stable main-history anchor so a PR head update cannot hide the old run's
+  lease. Publish the target commit's safe diagnostic status separately, ignore
+  leases whose workflow run is no longer active, release only a context still
+  owned by the finalizing run, and fail before setup
   when all supported shards are occupied. The runner may retain its deterministic
   identity fallback only while the global Dotypos lock makes collisions
   impossible; never release or partition that lock unless CI supplies a
