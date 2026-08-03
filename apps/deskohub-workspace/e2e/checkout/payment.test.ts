@@ -153,7 +153,9 @@ test("detaches long reservation preparation from the CDP evaluation", async () =
       }
       if (options.input?.includes("__deskohubWorkspaceE2EPreparation")) {
         preparationStateReads += 1;
-        return success(JSON.stringify({ status: "ready" }));
+        return success(
+          serializeAgentBrowserStateResult(options.input, { status: "ready" })
+        );
       }
     }
 
@@ -414,6 +416,14 @@ test("activates hosted-payment targets and recognizes the reservation status ret
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
+
+const serializeAgentBrowserStateResult = (
+  script: string | undefined,
+  state: unknown
+) =>
+  JSON.stringify(
+    script?.includes("JSON.stringify(") ? JSON.stringify(state) : state
+  );
 
 const makeConfig = (): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",

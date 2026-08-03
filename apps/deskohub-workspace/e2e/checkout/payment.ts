@@ -351,9 +351,7 @@ const readReservationPreparationState = (
 ): Effect.Effect<ReservationPreparationState, WorkspaceE2EError> => {
   const stateKey = JSON.stringify(reservationPreparationStateKey);
   const stateScript = `
-(() => JSON.stringify(
-  globalThis[${stateKey}] ?? { status: 'pending' }
-))()
+(() => globalThis[${stateKey}] ?? { status: 'pending' })()
 `;
 
   return Effect.gen(function* () {
