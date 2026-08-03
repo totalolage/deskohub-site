@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { Data, Effect } from "effect";
+import { Data, Effect, Exit } from "effect";
 import { revalidateTag } from "next/cache";
 import { env } from "@/env";
 import { OpeningHoursCalendarService } from "@/features/opening-hours/backend/opening-hours-calendar.service";
@@ -44,17 +44,24 @@ export async function GET(request: Request): Promise<Response> {
   const maintainOpeningHours = Effect.gen(function* () {
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
 
-    const channel = yield* openingHoursCalendar.watchChanges({
-      channelId: randomUUID(),
-      webhookToken: deriveOpeningHoursCalendarWebhookToken(cronSecret),
-      webhookUrl,
-      ttlSeconds: watchTtlSeconds,
-    });
+    const watchExit = yield* Effect.exit(
+      openingHoursCalendar.watchChanges({
+        channelId: randomUUID(),
+        webhookToken: deriveOpeningHoursCalendarWebhookToken(cronSecret),
+        webhookUrl,
+        ttlSeconds: watchTtlSeconds,
+      })
+    );
 
     yield* Effect.try({
       try: () => revalidateTag(openingHoursTags.exceptions(), { expire: 0 }),
       catch: (cause) => new OpeningHoursCacheInvalidationError({ cause }),
     });
+
+    if (Exit.isFailure(watchExit)) {
+      return yield* Effect.failCause(watchExit.cause);
+    }
+    const channel = watchExit.value;
 
     yield* Effect.logInfo("Opening-hours midnight maintenance completed", {
       channelId: channel.channelId,

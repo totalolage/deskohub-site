@@ -12,7 +12,7 @@ import {
 const upcomingWindowDays = 90;
 const maximumDisplayedExceptions = 6;
 
-export async function getUpcomingOpeningHoursExceptions(): Promise<
+async function loadUpcomingOpeningHoursExceptions(): Promise<
   readonly OpeningHoursException[]
 > {
   "use cache";
@@ -34,14 +34,24 @@ export async function getUpcomingOpeningHoursExceptions(): Promise<
     return yield* openingHoursCalendar.listExceptions(query);
   }).pipe(
     Effect.provide(OpeningHoursCalendarService.LiveWithDependencies),
-    Effect.catch((cause) =>
-      Effect.logError(
-        "Upcoming opening-hours exceptions are unavailable; using regular hours",
-        { cause }
-      ).pipe(Effect.as([] as readonly OpeningHoursException[]))
-    ),
     Effect.map((exceptions) => exceptions.slice(0, maximumDisplayedExceptions))
   );
 
   return Effect.runPromise(loadExceptions);
+}
+
+export async function getUpcomingOpeningHoursExceptions(): Promise<
+  readonly OpeningHoursException[]
+> {
+  try {
+    return await loadUpcomingOpeningHoursExceptions();
+  } catch (cause) {
+    await Effect.runPromise(
+      Effect.logError(
+        "Upcoming opening-hours exceptions are unavailable; using regular hours",
+        { cause }
+      )
+    );
+    return [];
+  }
 }

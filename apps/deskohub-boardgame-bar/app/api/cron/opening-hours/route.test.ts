@@ -102,16 +102,22 @@ describe("opening-hours midnight maintenance cron", () => {
   });
 
   test("reports provider registration failures", async () => {
-    watchChanges.mockImplementationOnce(() =>
-      Effect.fail(new GoogleCalendarAPIError({ operation: "events.watch" }))
-    );
+    watchChanges.mockImplementationOnce(() => {
+      maintenanceOperations.push("watch");
+      return Effect.fail(
+        new GoogleCalendarAPIError({ operation: "events.watch" })
+      );
+    });
 
     const response = await GET(
       makeRequest(`Bearer ${process.env.CRON_SECRET}`)
     );
 
     expect(response.status).toBe(500);
-    expect(revalidateTag).not.toHaveBeenCalled();
+    expect(revalidateTag).toHaveBeenCalledWith(openingHoursTags.exceptions(), {
+      expire: 0,
+    });
+    expect(maintenanceOperations).toEqual(["watch", "invalidate"]);
   });
 
   test("reports cache invalidation failures", async () => {
