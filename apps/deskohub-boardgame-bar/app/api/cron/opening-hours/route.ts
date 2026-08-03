@@ -44,16 +44,16 @@ export async function GET(request: Request): Promise<Response> {
   const maintainOpeningHours = Effect.gen(function* () {
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
 
-    yield* Effect.try({
-      try: () => revalidateTag(openingHoursTags.exceptions(), { expire: 0 }),
-      catch: (cause) => new OpeningHoursCacheInvalidationError({ cause }),
-    });
-
     const channel = yield* openingHoursCalendar.watchChanges({
       channelId: randomUUID(),
       webhookToken: deriveOpeningHoursCalendarWebhookToken(cronSecret),
       webhookUrl,
       ttlSeconds: watchTtlSeconds,
+    });
+
+    yield* Effect.try({
+      try: () => revalidateTag(openingHoursTags.exceptions(), { expire: 0 }),
+      catch: (cause) => new OpeningHoursCacheInvalidationError({ cause }),
     });
 
     yield* Effect.logInfo("Opening-hours midnight maintenance completed", {

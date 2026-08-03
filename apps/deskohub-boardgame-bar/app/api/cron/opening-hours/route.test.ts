@@ -9,17 +9,21 @@ setBoardgameTestEnv();
 
 mock.module("server-only", () => ({}));
 
-const revalidateTag = mock(() => undefined);
+const maintenanceOperations: string[] = [];
+const revalidateTag = mock(() => {
+  maintenanceOperations.push("invalidate");
+});
 mock.module("next/cache", () => ({ revalidateTag }));
 
 type WatchChanges = IOpeningHoursCalendarService["watchChanges"];
 
-const watchChanges = mock<WatchChanges>((input) =>
-  Effect.succeed({
+const watchChanges = mock<WatchChanges>((input) => {
+  maintenanceOperations.push("watch");
+  return Effect.succeed({
     channelId: input.channelId,
     expiration: 1_785_902_400_000,
-  })
-);
+  });
+});
 
 let GET: typeof import("./route").GET;
 
@@ -46,15 +50,19 @@ const makeRequest = (authorization?: string) =>
 
 describe("opening-hours midnight maintenance cron", () => {
   beforeEach(() => {
+    maintenanceOperations.length = 0;
     revalidateTag.mockClear();
-    revalidateTag.mockImplementation(() => undefined);
+    revalidateTag.mockImplementation(() => {
+      maintenanceOperations.push("invalidate");
+    });
     watchChanges.mockClear();
-    watchChanges.mockImplementation((input) =>
-      Effect.succeed({
+    watchChanges.mockImplementation((input) => {
+      maintenanceOperations.push("watch");
+      return Effect.succeed({
         channelId: input.channelId,
         expiration: 1_785_902_400_000,
-      })
-    );
+      });
+    });
   });
 
   test("rejects requests without the Vercel cron secret", async () => {
@@ -90,6 +98,7 @@ describe("opening-hours midnight maintenance cron", () => {
     expect(revalidateTag).toHaveBeenCalledWith(openingHoursTags.exceptions(), {
       expire: 0,
     });
+    expect(maintenanceOperations).toEqual(["watch", "invalidate"]);
   });
 
   test("reports provider registration failures", async () => {
@@ -102,9 +111,7 @@ describe("opening-hours midnight maintenance cron", () => {
     );
 
     expect(response.status).toBe(500);
-    expect(revalidateTag).toHaveBeenCalledWith(openingHoursTags.exceptions(), {
-      expire: 0,
-    });
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   test("reports cache invalidation failures", async () => {
