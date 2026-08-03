@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit, Semaphore } from "effect";
+import { Cause, Deferred, Effect, Exit } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -42,6 +42,21 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
 
 export const workspaceE2EReservationStartConcurrency = 6;
 
+type ReservationStartPermit = {
+  readonly deferred: Deferred.Deferred<void>;
+  granted: boolean;
+  readonly priority: number;
+  released: boolean;
+  readonly sequence: number;
+};
+
+interface ReservationStartPermitPool {
+  readonly withPermit: <A, E, R>(
+    priority: number,
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+}
+
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
   browserHarStarted: boolean;
@@ -76,7 +91,7 @@ export const runWorkspaceE2ECases = ({
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
       const cleanup = yield* WorkspaceE2ECleanupService;
-      const reservationStartSemaphore = yield* Semaphore.make(
+      const reservationStartPermitPool = yield* makeReservationStartPermitPool(
         workspaceE2EReservationStartConcurrency
       );
       const indexedCases = [...cases.entries()];
@@ -111,7 +126,7 @@ export const runWorkspaceE2ECases = ({
                 run,
                 telemetry,
                 timeouts,
-                reservationStartSemaphore
+                reservationStartPermitPool
               ).pipe(
                 Effect.tapCause((cause) =>
                   failureSignal && !Cause.hasInterruptsOnly(cause)
@@ -222,13 +237,14 @@ const runCase = (
   run: Runner,
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts,
-  reservationStartSemaphore: Semaphore.Semaphore
+  reservationStartPermitPool: ReservationStartPermitPool
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
     runtime.testCase.id,
     telemetry,
-    reservationStartSemaphore
+    reservationStartPermitPool,
+    runtime.testCase.timeoutMs
   );
 
   return Effect.gen(function* () {
@@ -278,7 +294,8 @@ const makeStepRunner =
   (
     caseId: string,
     telemetry: E2ETelemetry,
-    reservationStartSemaphore: Semaphore.Semaphore
+    reservationStartPermitPool: ReservationStartPermitPool,
+    caseTimeoutMs: number
   ): WorkspaceE2EStepRunner =>
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
     const operation = `${caseId}/${id}`;
@@ -296,7 +313,7 @@ const makeStepRunner =
     );
     const capacityLimitedExecution =
       capacity === "reservation-start"
-        ? reservationStartSemaphore.withPermit(timedExecution)
+        ? reservationStartPermitPool.withPermit(caseTimeoutMs, timedExecution)
         : timedExecution;
 
     return telemetry.traceStep({
@@ -323,6 +340,104 @@ const makeStepRunner =
       timeoutMs,
     });
   };
+
+export const makeReservationStartPermitPool = (
+  capacity: number
+): Effect.Effect<ReservationStartPermitPool> =>
+  Effect.sync(() => {
+    let activePermits = 0;
+    let nextSequence = 0;
+    const waiters: ReservationStartPermit[] = [];
+
+    const releaseSlot = (): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const next = yield* Effect.sync(() => {
+          if (waiters.length === 0) {
+            activePermits -= 1;
+            return undefined;
+          }
+
+          let nextIndex = 0;
+          for (let index = 1; index < waiters.length; index += 1) {
+            const candidate = waiters[index]!;
+            const selected = waiters[nextIndex]!;
+            if (
+              candidate.priority < selected.priority ||
+              (candidate.priority === selected.priority &&
+                candidate.sequence < selected.sequence)
+            ) {
+              nextIndex = index;
+            }
+          }
+
+          const [selected] = waiters.splice(nextIndex, 1);
+          selected!.granted = true;
+          return selected;
+        });
+
+        if (next) yield* Deferred.succeed(next.deferred, undefined);
+      });
+
+    const releasePermit = (
+      permit: ReservationStartPermit
+    ): Effect.Effect<void> =>
+      Effect.gen(function* () {
+        const granted = yield* Effect.sync(() => {
+          if (permit.released) return false;
+          permit.released = true;
+          if (permit.granted) return true;
+
+          const index = waiters.indexOf(permit);
+          if (index >= 0) waiters.splice(index, 1);
+          return false;
+        });
+
+        if (granted) yield* releaseSlot();
+      });
+
+    const acquirePermit = (
+      priority: number
+    ): Effect.Effect<ReservationStartPermit> =>
+      Effect.gen(function* () {
+        const deferred = yield* Deferred.make<void>();
+        const permit: ReservationStartPermit = {
+          deferred,
+          granted: false,
+          priority,
+          released: false,
+          sequence: nextSequence,
+        };
+        nextSequence += 1;
+        const granted = yield* Effect.sync(() => {
+          if (activePermits < capacity) {
+            activePermits += 1;
+            permit.granted = true;
+            return true;
+          }
+
+          waiters.push(permit);
+          return false;
+        });
+
+        if (!granted) {
+          yield* Deferred.await(deferred).pipe(
+            Effect.onInterrupt(() => releasePermit(permit))
+          );
+        }
+        return permit;
+      });
+
+    return {
+      withPermit: (priority, effect) =>
+        Effect.uninterruptibleMask((restore) =>
+          restore(acquirePermit(priority)).pipe(
+            Effect.flatMap((permit) =>
+              restore(effect).pipe(Effect.ensuring(releasePermit(permit)))
+            )
+          )
+        ),
+    };
+  });
 
 const captureFailureArtifacts = (
   runtime: WorkspaceE2ECaseRuntime,

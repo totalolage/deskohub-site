@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import type { DatasourceConfig } from "./config";
 import { workspaceE2EError } from "./errors";
 import type { Runner } from "./runtime";
@@ -12,6 +12,7 @@ import {
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
 import {
+  makeReservationStartPermitPool,
   runWorkspaceE2ECases,
   workspaceE2EReservationStartConcurrency,
 } from "./suite";
@@ -122,8 +123,9 @@ test("runs all independent preview cases concurrently", async () => {
   expect(maximumActiveCaseCount).toBe(12);
 });
 
-test("bounds reservation starts and admits shorter case deadlines first", async () => {
-  const caseCount = workspaceE2EReservationStartConcurrency + 1;
+test("bounds reservation starts and prioritizes a late shorter deadline", async () => {
+  const caseCount = workspaceE2EReservationStartConcurrency + 2;
+  const shortCaseIndex = caseCount - 1;
   let activeReservationStarts = 0;
   let maximumActiveReservationStarts = 0;
   let reservationStartCount = 0;
@@ -140,36 +142,39 @@ test("bounds reservation starts and admits shorter case deadlines first", async 
     { length: caseCount },
     (_, index) => ({
       execute: ({ runStep }) =>
-        runStep({
-          capacity: "reservation-start",
-          execute: Effect.acquireUseRelease(
-            Effect.sync(() => {
-              activeReservationStarts += 1;
-              reservationStartCount += 1;
-              admittedCaseIds.push(`reservation-start-${index}`);
-              maximumActiveReservationStarts = Math.max(
-                maximumActiveReservationStarts,
-                activeReservationStarts
-              );
-              if (
-                activeReservationStarts ===
-                workspaceE2EReservationStartConcurrency
-              ) {
-                signalCapacityReached();
-              }
-            }),
-            () => Effect.promise(() => firstWaveRelease),
-            () =>
+        Effect.gen(function* () {
+          if (index === shortCaseIndex) yield* Effect.sleep("10 millis");
+          yield* runStep({
+            capacity: "reservation-start",
+            execute: Effect.acquireUseRelease(
               Effect.sync(() => {
-                activeReservationStarts -= 1;
-              })
-          ),
-          id: "prepare-checkout-pay-page",
-          timeoutMs: 10_000,
+                activeReservationStarts += 1;
+                reservationStartCount += 1;
+                admittedCaseIds.push(`reservation-start-${index}`);
+                maximumActiveReservationStarts = Math.max(
+                  maximumActiveReservationStarts,
+                  activeReservationStarts
+                );
+                if (
+                  activeReservationStarts ===
+                  workspaceE2EReservationStartConcurrency
+                ) {
+                  signalCapacityReached();
+                }
+              }),
+              () => Effect.promise(() => firstWaveRelease),
+              () =>
+                Effect.sync(() => {
+                  activeReservationStarts -= 1;
+                })
+            ),
+            id: "prepare-checkout-pay-page",
+            timeoutMs: 10_000,
+          });
         }),
       checkoutStates: [],
       id: `reservation-start-${index}`,
-      timeoutMs: index === caseCount - 1 ? 9_000 : 10_000,
+      timeoutMs: index === shortCaseIndex ? 9_000 : 10_000,
     })
   );
 
@@ -196,8 +201,202 @@ test("bounds reservation starts and admits shorter case deadlines first", async 
   );
   expect(
     admittedCaseIds.slice(0, workspaceE2EReservationStartConcurrency)
-  ).toContain(`reservation-start-${caseCount - 1}`);
+  ).not.toContain(`reservation-start-${shortCaseIndex}`);
+  expect(
+    admittedCaseIds.at(workspaceE2EReservationStartConcurrency)
+  ).toBe(`reservation-start-${shortCaseIndex}`);
   expect(reservationStartCount).toBe(caseCount);
+});
+
+test("interrupts queued reservation starts without leaking permits", async () => {
+  const artifactRoot = await mkdtemp(
+    resolve(tmpdir(), "workspace-e2e-priority-permits-")
+  );
+  const siblingCount = workspaceE2EReservationStartConcurrency + 2;
+  let activeReservationStarts = 0;
+  let maximumActiveReservationStarts = 0;
+  let reservationStartCount = 0;
+  let signalCapacityReached: () => void = () => undefined;
+  const capacityReached = new Promise<void>((resolveReached) => {
+    signalCapacityReached = resolveReached;
+  });
+  const cases: readonly WorkspaceE2ECase[] = [
+    {
+      execute: () =>
+        Effect.promise(() => capacityReached).pipe(
+          Effect.andThen(
+            Effect.fail(workspaceE2EError("priority permit failure"))
+          )
+        ),
+      checkoutStates: [],
+      id: "priority-permit-failure",
+      timeoutMs: 9_000,
+    },
+    ...Array.from({ length: siblingCount }, (_, index) => ({
+      execute: ({ runStep }) =>
+        runStep({
+          capacity: "reservation-start",
+          execute: Effect.acquireUseRelease(
+            Effect.sync(() => {
+              activeReservationStarts += 1;
+              reservationStartCount += 1;
+              maximumActiveReservationStarts = Math.max(
+                maximumActiveReservationStarts,
+                activeReservationStarts
+              );
+              if (
+                activeReservationStarts ===
+                workspaceE2EReservationStartConcurrency
+              ) {
+                signalCapacityReached();
+              }
+            }),
+            () => Effect.never,
+            () =>
+              Effect.sync(() => {
+                activeReservationStarts -= 1;
+              })
+          ),
+          id: "prepare-interrupted-reservation",
+          timeoutMs: 10_000,
+        }),
+      checkoutStates: [],
+      id: `priority-permit-sibling-${index}`,
+      timeoutMs: 10_000,
+    })),
+  ];
+
+  try {
+    const exit = await Effect.runPromiseExit(
+      runWorkspaceE2ECases({
+        artifactRoot,
+        cases,
+        datasourceConfig: testDatasourceConfig,
+        run: makeTestRunner(),
+        sessionPrefix: "workspace-e2e-priority-permits",
+        timeouts: workspaceE2ETimeouts,
+      }).pipe(Effect.provide(makeTestSuiteLayer()))
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      expect(String(Cause.squash(exit.cause))).toContain(
+        "priority permit failure"
+      );
+    }
+    expect(maximumActiveReservationStarts).toBe(
+      workspaceE2EReservationStartConcurrency
+    );
+    expect(reservationStartCount).toBeLessThanOrEqual(siblingCount);
+    expect(activeReservationStarts).toBe(0);
+  } finally {
+    await rm(artifactRoot, { force: true, recursive: true });
+  }
+});
+
+test("reservation start permits survive queued and granted interruptions", async () => {
+  const admissionOrder: string[] = [];
+  let activePermits = 0;
+  let maximumActivePermits = 0;
+
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const pool = yield* makeReservationStartPermitPool(2);
+      const holderAReady = yield* Deferred.make<void>();
+      const holderBReady = yield* Deferred.make<void>();
+      const followerAReady = yield* Deferred.make<void>();
+      const followerBReady = yield* Deferred.make<void>();
+      const followerCReady = yield* Deferred.make<void>();
+      const holderARelease = yield* Deferred.make<void>();
+      const holderBRelease = yield* Deferred.make<void>();
+      const followerARelease = yield* Deferred.make<void>();
+      const followerBRelease = yield* Deferred.make<void>();
+      const followerCRelease = yield* Deferred.make<void>();
+
+      const holdPermit = (
+        id: string,
+        ready: Deferred.Deferred<void>,
+        release: Deferred.Deferred<void>
+      ) =>
+        Effect.acquireUseRelease(
+          Effect.sync(() => {
+            admissionOrder.push(id);
+            activePermits += 1;
+            maximumActivePermits = Math.max(
+              maximumActivePermits,
+              activePermits
+            );
+          }).pipe(Effect.andThen(Deferred.succeed(ready, undefined))),
+          () => Deferred.await(release),
+          () =>
+            Effect.sync(() => {
+              activePermits -= 1;
+            })
+        );
+
+      const holderA = yield* Effect.forkChild(
+        pool.withPermit(10_000, holdPermit("holder-a", holderAReady, holderARelease))
+      );
+      const holderB = yield* Effect.forkChild(
+        pool.withPermit(10_000, holdPermit("holder-b", holderBReady, holderBRelease))
+      );
+      yield* Deferred.await(holderAReady);
+      yield* Deferred.await(holderBReady);
+
+      const queuedVictim = yield* Effect.forkChild(
+        pool.withPermit(10_000, Effect.never)
+      );
+      yield* Effect.yieldNow;
+      const followerA = yield* Effect.forkChild(
+        pool.withPermit(
+          10_000,
+          holdPermit("follower-a", followerAReady, followerARelease)
+        )
+      );
+      yield* Effect.yieldNow;
+      const followerB = yield* Effect.forkChild(
+        pool.withPermit(
+          10_000,
+          holdPermit("follower-b", followerBReady, followerBRelease)
+        )
+      );
+      yield* Effect.yieldNow;
+
+      yield* Fiber.interrupt(queuedVictim);
+      yield* Deferred.succeed(holderARelease, undefined);
+      yield* Deferred.succeed(holderBRelease, undefined);
+      yield* Deferred.await(followerAReady);
+      yield* Deferred.await(followerBReady);
+
+      const followerC = yield* Effect.forkChild(
+        pool.withPermit(
+          10_000,
+          holdPermit("follower-c", followerCReady, followerCRelease)
+        )
+      );
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(followerA);
+      yield* Deferred.await(followerCReady);
+
+      expect(activePermits).toBe(2);
+      yield* Deferred.succeed(followerBRelease, undefined);
+      yield* Deferred.succeed(followerCRelease, undefined);
+      yield* Fiber.join(holderA);
+      yield* Fiber.join(holderB);
+      yield* Fiber.join(followerB);
+      yield* Fiber.join(followerC);
+    })
+  );
+
+  expect(admissionOrder).toEqual([
+    "holder-a",
+    "holder-b",
+    "follower-a",
+    "follower-b",
+    "follower-c",
+  ]);
+  expect(maximumActivePermits).toBe(2);
+  expect(activePermits).toBe(0);
 });
 
 test("runs shared-fixture cases after the independent parallel phase", async () => {
