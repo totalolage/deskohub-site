@@ -16,6 +16,7 @@ const checkoutUrl =
 
 test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
+  const reservationSubmitOptions: Parameters<Runner>[2][] = [];
   let hostedPaymentStarted = false;
   const activatedRefs: string[] = [];
   const clickedRefs: string[] = [];
@@ -45,6 +46,7 @@ test("retries a transient reservation preparation failure with the same checkout
       options.input === submitReservationScript
     ) {
       reservationSubmitAttempts += 1;
+      reservationSubmitOptions.push(options);
       return success();
     }
 
@@ -116,6 +118,24 @@ test("retries a transient reservation preparation failure with the same checkout
 
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
+  expect(reservationSubmitOptions).toEqual([
+    expect.objectContaining({
+      env: {
+        AGENT_BROWSER_DEFAULT_TIMEOUT: String(
+          workspaceE2ETimeouts.checkoutStart
+        ),
+      },
+      timeoutMs: workspaceE2ETimeouts.checkoutStart,
+    }),
+    expect.objectContaining({
+      env: {
+        AGENT_BROWSER_DEFAULT_TIMEOUT: String(
+          workspaceE2ETimeouts.checkoutStart
+        ),
+      },
+      timeoutMs: workspaceE2ETimeouts.checkoutStart,
+    }),
+  ]);
   expect(clickedRefs).toEqual([]);
   expect(activatedRefs).toEqual([
     "#reservation-submit",
