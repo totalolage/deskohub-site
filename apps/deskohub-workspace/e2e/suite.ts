@@ -34,6 +34,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   passed: "PASS",
   timed_out: "TIMEOUT",
 };
+const parallelCaseConcurrency = 6;
 
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
@@ -99,12 +100,12 @@ export const runWorkspaceE2ECases = ({
         });
 
       log(
-        `Running ${parallelCases.length} workspace e2e cases in parallel: ${parallelCases
+        `Running ${parallelCases.length} workspace e2e cases with up to ${parallelCaseConcurrency} in parallel: ${parallelCases
           .map(([, testCase]) => testCase.id)
           .join(", ")}`
       );
       yield* Effect.forEach(parallelCases, runCaseEntry, {
-        concurrency: "unbounded",
+        concurrency: parallelCaseConcurrency,
         discard: true,
       });
       if (sharedFixtureCases.length > 0) {

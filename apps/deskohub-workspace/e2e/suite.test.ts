@@ -70,7 +70,7 @@ test("runs checkout and terminal cases", async () => {
   );
 });
 
-test("runs all independent preview cases concurrently", async () => {
+test("bounds independent preview case concurrency", async () => {
   let activeCaseCount = 0;
   let maximumActiveCaseCount = 0;
   const cases: readonly WorkspaceE2ECase[] = Array.from(
@@ -109,7 +109,7 @@ test("runs all independent preview cases concurrently", async () => {
     }).pipe(Effect.provide(makeE2ETelemetryMock([])))
   );
 
-  expect(maximumActiveCaseCount).toBe(cases.length);
+  expect(maximumActiveCaseCount).toBe(6);
 });
 
 test("runs shared-fixture cases after the independent parallel phase", async () => {
