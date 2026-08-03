@@ -24,16 +24,13 @@ export type OpeningHoursException = Data.TaggedEnum<{
     readonly opensAt: string;
     readonly closesAt: string;
     readonly closesNextDay: boolean;
-    readonly ongoing: boolean;
     readonly sourceEventReference: string;
   };
 }>;
 
 export const OpeningHoursException = Data.taggedEnum<OpeningHoursException>();
 
-export type OpeningHoursExceptionQuery = GoogleCalendarEventQuery & {
-  readonly now: string;
-};
+export type OpeningHoursExceptionQuery = GoogleCalendarEventQuery;
 
 export type OpeningHoursCalendarWatchInput = Omit<
   GoogleCalendarWatchEventsInput,
@@ -242,7 +239,7 @@ const normalizeSpecialHoursEvent = Effect.fn(
     );
   }
 
-  const { start, end, now } = yield* Effect.all({
+  const { start, end } = yield* Effect.all({
     start: toBarZonedDateTime({
       dateTime: startValue,
       timeZone: event.start?.timeZone,
@@ -251,10 +248,6 @@ const normalizeSpecialHoursEvent = Effect.fn(
     end: toBarZonedDateTime({
       dateTime: endValue,
       timeZone: event.end?.timeZone,
-      sourceEventReference,
-    }),
-    now: toOpeningHoursInstant({
-      dateTime: query.now,
       sourceEventReference,
     }),
   });
@@ -277,18 +270,9 @@ const normalizeSpecialHoursEvent = Effect.fn(
     );
   }
 
-  const startInstant = start.toInstant();
-  const endInstant = end.toInstant();
-  const ongoing =
-    Temporal.Instant.compare(startInstant, now) <= 0 &&
-    Temporal.Instant.compare(endInstant, now) > 0;
   const date = startDate.toString();
 
-  if (
-    Temporal.Instant.compare(endInstant, now) <= 0 ||
-    date > query.to ||
-    (date < query.from && !ongoing)
-  ) {
+  if (date < query.from || date > query.to) {
     return [];
   }
 
@@ -306,7 +290,6 @@ const normalizeSpecialHoursEvent = Effect.fn(
       opensAt,
       closesAt,
       closesNextDay,
-      ongoing,
       sourceEventReference,
     }),
   ];
@@ -332,19 +315,6 @@ const toBarZonedDateTime = Effect.fn("toBarZonedDateTime")(
                 input.timeZone ?? siteConstants.workingHours.timezone
               )
               .withTimeZone(siteConstants.workingHours.timezone),
-      catch: InvalidOpeningHoursEvent.invalidDateTime(
-        input.sourceEventReference
-      ),
-    })
-);
-
-const toOpeningHoursInstant = Effect.fn("toOpeningHoursInstant")(
-  (input: {
-    readonly dateTime: string;
-    readonly sourceEventReference: string;
-  }) =>
-    Effect.try({
-      try: () => Temporal.Instant.from(input.dateTime),
       catch: InvalidOpeningHoursEvent.invalidDateTime(
         input.sourceEventReference
       ),

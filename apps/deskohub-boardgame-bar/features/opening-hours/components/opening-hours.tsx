@@ -97,11 +97,6 @@ function OpeningHoursExceptionValue({
 
   return (
     <span className="text-white/90">
-      {exception.ongoing && (
-        <span className="mr-2 font-semibold text-green-400">
-          {m["hours.ongoing"]()}
-        </span>
-      )}
       {exception.opensAt}-{exception.closesAt}
       {exception.closesNextDay && (
         <span className="ml-1 text-white/60">({m["hours.nextDay"]()})</span>

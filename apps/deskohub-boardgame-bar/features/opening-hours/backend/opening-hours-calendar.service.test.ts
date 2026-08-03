@@ -13,13 +13,11 @@ setBoardgameTestEnv();
 type OpeningHoursExceptionQuery = {
   readonly from: string;
   readonly to: string;
-  readonly now: string;
 };
 
 const defaultQuery = {
   from: "2026-08-02",
   to: "2026-08-10",
-  now: "2026-08-02T10:00:00Z",
 } satisfies OpeningHoursExceptionQuery;
 
 const runWithEvents = async (
@@ -172,7 +170,6 @@ describe("OpeningHoursCalendarService", () => {
         opensAt: "12:00",
         closesAt: "20:30",
         closesNextDay: false,
-        ongoing: false,
         sourceEventReference: "special-hours",
       },
     ]);
@@ -207,7 +204,6 @@ describe("OpeningHoursCalendarService", () => {
         opensAt: "00:30",
         closesAt: "05:00",
         closesNextDay: false,
-        ongoing: false,
         sourceEventReference: "offset-crosses-date",
       },
       {
@@ -216,7 +212,6 @@ describe("OpeningHoursCalendarService", () => {
         opensAt: "20:00",
         closesAt: "02:00",
         closesNextDay: true,
-        ongoing: false,
         sourceEventReference: "floating-time",
       },
     ]);
@@ -235,7 +230,6 @@ describe("OpeningHoursCalendarService", () => {
       {
         from: "2026-03-29",
         to: "2026-03-29",
-        now: "2026-03-28T10:00:00Z",
       }
     );
 
@@ -246,28 +240,26 @@ describe("OpeningHoursCalendarService", () => {
         opensAt: "01:30",
         closesAt: "04:30",
         closesNextDay: false,
-        ongoing: false,
         sourceEventReference: "dst-transition",
       },
     ]);
   });
 
-  test("keeps ongoing hours and removes ended or padded events", async () => {
+  test("keeps exceptions inside the local start-date window", async () => {
     const query = {
       from: "2026-08-09",
       to: "2026-08-10",
-      now: "2026-08-08T22:30:00Z",
     } satisfies OpeningHoursExceptionQuery;
     const exceptions = await runWithEvents(
       [
         {
-          id: "ongoing",
+          id: "before-window",
           description: "[bar:hours]",
           start: { dateTime: "2026-08-08T20:00:00+02:00" },
           end: { dateTime: "2026-08-09T02:00:00+02:00" },
         },
         {
-          id: "ended",
+          id: "inside-window",
           description: "[bar:hours]",
           start: { dateTime: "2026-08-09T00:00:00+02:00" },
           end: { dateTime: "2026-08-09T00:15:00+02:00" },
@@ -285,14 +277,40 @@ describe("OpeningHoursCalendarService", () => {
     expect(exceptions).toEqual([
       {
         _tag: "SpecialHours",
-        date: "2026-08-08",
-        opensAt: "20:00",
-        closesAt: "02:00",
-        closesNextDay: true,
-        ongoing: true,
-        sourceEventReference: "ongoing",
+        date: "2026-08-09",
+        opensAt: "00:00",
+        closesAt: "00:15",
+        closesNextDay: false,
+        sourceEventReference: "inside-window",
       },
     ]);
+  });
+
+  test("keeps same-day exceptions stable after their end time", async () => {
+    const exceptions = await runWithEvents(
+      [
+        {
+          id: "same-day-ended",
+          description: "[bar:hours]",
+          start: { dateTime: "2026-08-09T00:00:00+02:00" },
+          end: { dateTime: "2026-08-09T00:15:00+02:00" },
+        },
+      ],
+      {
+        from: "2026-08-09",
+        to: "2026-08-10",
+      }
+    );
+
+    expect(exceptions).toHaveLength(1);
+    expect(exceptions[0]).toMatchObject({
+      _tag: "SpecialHours",
+      date: "2026-08-09",
+      opensAt: "00:00",
+      closesAt: "00:15",
+      closesNextDay: false,
+      sourceEventReference: "same-day-ended",
+    });
   });
 
   test("ignores no-op and malformed events without dropping valid events", async () => {
@@ -347,7 +365,6 @@ describe("OpeningHoursCalendarService", () => {
         opensAt: "10:00",
         closesAt: "18:00",
         closesNextDay: false,
-        ongoing: false,
         sourceEventReference: "valid",
       },
     ]);

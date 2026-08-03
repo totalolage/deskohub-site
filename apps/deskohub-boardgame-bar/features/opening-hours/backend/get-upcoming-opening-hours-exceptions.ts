@@ -27,7 +27,6 @@ export async function getUpcomingOpeningHoursExceptions(): Promise<
   const query = {
     from: today.toString(),
     to: today.add({ days: upcomingWindowDays }).toString(),
-    now: now.toString(),
   };
 
   const loadExceptions = Effect.gen(function* () {
