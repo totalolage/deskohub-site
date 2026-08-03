@@ -1,5 +1,10 @@
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
-import type { Customer, DiscountGroup } from "@deskohub/dotypos/generated";
+import type {
+  Customer,
+  DiscountGroup,
+  Reservation,
+  Table,
+} from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
@@ -310,6 +315,31 @@ export const changeDotyposCustomerDiscount = (
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("change Dotypos customer discount", cause)
+    )
+  );
+
+export const loadDotyposCapacityInventory = (
+  config: DatasourceConfig
+): Effect.Effect<
+  {
+    readonly reservations: readonly Reservation[];
+    readonly tables: readonly Table[];
+  },
+  WorkspaceE2EError
+> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* Effect.all(
+      {
+        reservations: dotypos.listReservations(),
+        tables: dotypos.getTables(),
+      },
+      { concurrency: "unbounded" }
+    );
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("load aggregate Dotypos capacity inventory", cause)
     )
   );
 

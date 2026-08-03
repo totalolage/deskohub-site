@@ -5,10 +5,14 @@ description: Address Deskohub pull-request review feedback, review-raised bugs, 
 
 # Deskohub PR review
 
-Use `codex review --base <base-ref>` for iterative automated review. Do not
-depend on GitHub `@codex review` comments, bot reactions, or their delivery as
-the completion signal. Iterate on every actionable Codex CLI finding until a
-fresh CLI review reports no findings.
+Before invoking the Codex CLI for a branch review, commit the complete intended
+change and review that commit against the target base branch. Use `codex review
+--base <base-ref>`; do not use `codex review --uncommitted` for the PR review
+loop, and do not depend on GitHub `@codex review` comments, bot reactions, or
+their delivery as the completion signal. Commit each subsequent actionable
+reviewer fix before rerunning the review against the same base so the reviewer
+always evaluates the publishable branch. Iterate until a fresh Codex CLI review
+reports no findings.
 
 When fixing a bug raised by review, first add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
 

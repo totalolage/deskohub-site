@@ -11,6 +11,7 @@ import {
   createCensoredOtelSpanExporter,
 } from "../../shared/backend/logging/censorship";
 import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
+import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
 import { workspaceE2ETimeoutError } from "../errors";
 import {
@@ -26,6 +27,9 @@ describe("E2E run context", () => {
     expect(
       makeE2ERunContext(makeTestE2EEnvironment(), () => "local-run")
     ).toEqual({
+      allocation: makeWorkspaceE2EDateAllocation({
+        runId: "manual-local-run",
+      }),
       executionContext: "manual",
       runId: "manual-local-run",
     });
@@ -44,6 +48,10 @@ describe("E2E run context", () => {
         })
       )
     ).toEqual({
+      allocation: makeWorkspaceE2EDateAllocation({
+        prNumber: 124,
+        runId: "12345-2",
+      }),
       executionContext: "ci",
       githubRunAttempt: 2,
       githubRunId: "12345",
@@ -79,6 +87,10 @@ test("builds bounded searchable span attributes", () => {
   expect(
     toE2ESpanAttributes(
       {
+        allocation: makeWorkspaceE2EDateAllocation({
+          prNumber: 120,
+          runId: "987-3",
+        }),
         executionContext: "ci",
         githubRunAttempt: 3,
         githubRunId: "987",
@@ -94,6 +106,8 @@ test("builds bounded searchable span attributes", () => {
       }
     )
   ).toEqual({
+    "e2e.allocation.shard": 1,
+    "e2e.allocation.shards": 3,
     "e2e.case.id": "checkout-cowork-basic",
     "e2e.execution_context": "ci",
     "e2e.run.id": "987-3",
@@ -104,6 +118,36 @@ test("builds bounded searchable span attributes", () => {
     "github.pull_request.number": 120,
     "github.run.attempt": 3,
     "github.run.id": "987",
+  });
+});
+
+test("builds bounded phase span attributes", () => {
+  expect(
+    toE2ESpanAttributes(
+      {
+        allocation: {
+          fromOffsetDays: 14,
+          shardCount: 3,
+          shardIndex: 0,
+          toOffsetDays: 39,
+        },
+        executionContext: "ci",
+        runId: "987-3",
+      },
+      {
+        caseId: "checkout-cowork-basic",
+        phaseId: "case-finalization",
+        scope: "phase",
+      }
+    )
+  ).toEqual({
+    "e2e.allocation.shard": 1,
+    "e2e.allocation.shards": 3,
+    "e2e.case.id": "checkout-cowork-basic",
+    "e2e.execution_context": "ci",
+    "e2e.phase.id": "case-finalization",
+    "e2e.run.id": "987-3",
+    "e2e.scope": "phase",
   });
 });
 
@@ -130,7 +174,7 @@ test("maps success, errors, defects, timeouts, and interruption to closed result
   });
 });
 
-test("exports one run trace with nested case and step spans", async () => {
+test("exports one run trace with nested phase, case, and step spans", async () => {
   const { exporter, layer, provider } = makeTestTelemetry();
 
   try {
@@ -138,15 +182,18 @@ test("exports one run trace with nested case and step spans", async () => {
       Effect.gen(function* () {
         const telemetry = yield* E2ETelemetryService;
         yield* telemetry.traceRun(
-          telemetry.traceCase({
-            caseId: "checkout-cowork-basic",
-            effect: telemetry.traceStep({
+          telemetry.tracePhase({
+            effect: telemetry.traceCase({
               caseId: "checkout-cowork-basic",
-              effect: Effect.sleep("5 millis"),
-              stepId: "complete-hosted-payment",
-              timeoutMs: 45_000,
+              effect: telemetry.traceStep({
+                caseId: "checkout-cowork-basic",
+                effect: Effect.sleep("5 millis"),
+                stepId: "complete-hosted-payment",
+                timeoutMs: 45_000,
+              }),
+              timeoutMs: 120_000,
             }),
-            timeoutMs: 120_000,
+            phaseId: "independent-case-phase",
           })
         );
       }).pipe(Effect.provide(layer))
@@ -154,14 +201,18 @@ test("exports one run trace with nested case and step spans", async () => {
 
     const spans = exporter.getFinishedSpans();
     const runSpan = findSpan(spans, "e2e.run");
+    const phaseSpan = findSpan(spans, "e2e.phase");
     const caseSpan = findSpan(spans, "e2e.case");
     const stepSpan = findSpan(spans, "e2e.step");
 
-    expect(spans).toHaveLength(3);
+    expect(spans).toHaveLength(4);
+    expect(phaseSpan.parentSpanContext?.spanId).toBe(
+      runSpan.spanContext().spanId
+    );
     expect(caseSpan.spanContext().traceId).toBe(runSpan.spanContext().traceId);
     expect(stepSpan.spanContext().traceId).toBe(runSpan.spanContext().traceId);
     expect(caseSpan.parentSpanContext?.spanId).toBe(
-      runSpan.spanContext().spanId
+      phaseSpan.spanContext().spanId
     );
     expect(stepSpan.parentSpanContext?.spanId).toBe(
       caseSpan.spanContext().spanId

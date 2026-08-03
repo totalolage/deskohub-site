@@ -2,9 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
+import type { DatasourceConfig } from "./config";
 import { workspaceE2EError } from "./errors";
 import type { Runner } from "./runtime";
+import { WorkspaceE2ECleanupService } from "./services/cleanup";
 import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
@@ -22,6 +24,7 @@ test("runs checkout and terminal cases", async () => {
         Effect.sync(() => {
           startedSessions.push(session);
         }),
+      checkoutStates: [],
       id: "payment-failed",
       timeoutMs: 10_000,
     },
@@ -30,6 +33,7 @@ test("runs checkout and terminal cases", async () => {
         Effect.sync(() => {
           startedSessions.push(session);
         }),
+      checkoutStates: [],
       id: "checkout-cowork",
       timeoutMs: 10_000,
     },
@@ -40,10 +44,11 @@ test("runs checkout and terminal cases", async () => {
     runWorkspaceE2ECases({
       artifactRoot: "/tmp/workspace-e2e-test-artifacts",
       cases,
+      datasourceConfig: testDatasourceConfig,
       run,
       sessionPrefix: "workspace-e2e-scheduling",
       timeouts: workspaceE2ETimeouts,
-    }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
+    }).pipe(Effect.provide(makeTestSuiteLayer(telemetryEvents)))
   );
 
   expect(startedSessions).toContain("workspace-e2e-scheduling-0");
@@ -94,6 +99,7 @@ test("runs all independent preview cases concurrently", async () => {
               activeCaseCount -= 1;
             })
         ),
+      checkoutStates: [],
       id: `concurrent-${index}`,
       timeoutMs: 10_000,
     })
@@ -103,13 +109,14 @@ test("runs all independent preview cases concurrently", async () => {
     runWorkspaceE2ECases({
       artifactRoot: "/tmp/workspace-e2e-concurrency-test",
       cases,
+      datasourceConfig: testDatasourceConfig,
       run: makeTestRunner(),
       sessionPrefix: "workspace-e2e-concurrency",
       timeouts: workspaceE2ETimeouts,
-    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
   );
 
-  expect(maximumActiveCaseCount).toBe(cases.length);
+  expect(maximumActiveCaseCount).toBe(12);
 });
 
 test("runs shared-fixture cases after the independent parallel phase", async () => {
@@ -124,6 +131,7 @@ test("runs shared-fixture cases after the independent parallel phase", async () 
             })
           )
         ),
+      checkoutStates: [],
       id,
       timeoutMs: 10_000,
     })),
@@ -132,6 +140,7 @@ test("runs shared-fixture cases after the independent parallel phase", async () 
         Effect.sync(() => {
           completedCases.push("shared-fixture");
         }),
+      checkoutStates: [],
       id: "shared-fixture",
       runAfterParallel: true,
       timeoutMs: 10_000,
@@ -142,10 +151,11 @@ test("runs shared-fixture cases after the independent parallel phase", async () 
     runWorkspaceE2ECases({
       artifactRoot: "/tmp/workspace-e2e-shared-fixture-test",
       cases,
+      datasourceConfig: testDatasourceConfig,
       run: makeTestRunner(),
       sessionPrefix: "workspace-e2e-shared-fixture",
       timeouts: workspaceE2ETimeouts,
-    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
   );
 
   expect(new Set(completedCases.slice(0, 2))).toEqual(
@@ -162,6 +172,7 @@ test("keeps browser session names independent of descriptive case ids", async ()
         Effect.sync(() => {
           startedSessions.push(session);
         }),
+      checkoutStates: [],
       id: "discount-code-expires-after-the-customer-reaches-the-payment-page",
       timeoutMs: 10_000,
     },
@@ -171,21 +182,27 @@ test("keeps browser session names independent of descriptive case ids", async ()
     runWorkspaceE2ECases({
       artifactRoot: "/tmp/workspace-e2e-session-name-test",
       cases,
+      datasourceConfig: testDatasourceConfig,
       run: makeTestRunner(),
       sessionPrefix: "workspace-e2e-30212233344-1",
       timeouts: workspaceE2ETimeouts,
-    }).pipe(Effect.provide(makeE2ETelemetryMock([])))
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
   );
 
   expect(startedSessions).toEqual(["workspace-e2e-30212233344-1-0"]);
 });
 
-test("cancels sibling cases when the first case fails", async () => {
+test("case failure interrupts siblings while their cleanup and browser finalizers overlap", async () => {
   const artifactRoot = await mkdtemp(
     resolve(tmpdir(), "workspace-e2e-fail-fast-")
   );
   let startedCaseCount = 0;
+  let activeCleanupCount = 0;
+  let cleanupCallCount = 0;
+  let maximumActiveCleanupCount = 0;
+  let closedBrowserCount = 0;
   let releaseCases: () => void = () => undefined;
+  let releaseCleanup: () => void = () => undefined;
   let siblingInterrupted = false;
   const bothCasesStarted = new Promise<void>((resolveStarted) => {
     releaseCases = resolveStarted;
@@ -195,6 +212,29 @@ test("cancels sibling cases when the first case fails", async () => {
     if (startedCaseCount === 2) releaseCases();
     await bothCasesStarted;
   });
+  const bothCleanupsStarted = new Promise<void>((resolveStarted) => {
+    releaseCleanup = resolveStarted;
+  });
+  const cleanupLayer = Layer.succeed(WorkspaceE2ECleanupService, {
+    cleanupCheckoutStates: () => Effect.succeed(undefined),
+    cleanupOwnedCheckoutStates: () =>
+      Effect.acquireUseRelease(
+        Effect.sync(() => {
+          cleanupCallCount += 1;
+          activeCleanupCount += 1;
+          maximumActiveCleanupCount = Math.max(
+            maximumActiveCleanupCount,
+            activeCleanupCount
+          );
+          if (cleanupCallCount === 2) releaseCleanup();
+        }),
+        () => Effect.promise(() => bothCleanupsStarted),
+        () =>
+          Effect.sync(() => {
+            activeCleanupCount -= 1;
+          })
+      ).pipe(Effect.as(undefined)),
+  });
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: () =>
@@ -203,6 +243,7 @@ test("cancels sibling cases when the first case fails", async () => {
             Effect.fail(workspaceE2EError("intentional case failure"))
           )
         ),
+      checkoutStates: [],
       id: "first-failure",
       timeoutMs: 10_000,
     },
@@ -216,10 +257,19 @@ test("cancels sibling cases when the first case fails", async () => {
             })
           )
         ),
+      checkoutStates: [],
       id: "cancelled-sibling",
       timeoutMs: 10_000,
     },
   ];
+  const run: Runner = async (_command, args) => {
+    if (args.includes("close")) closedBrowserCount += 1;
+    return {
+      exitCode: args.includes("har") && args.includes("start") ? 1 : 0,
+      stderr: "",
+      stdout: "",
+    };
+  };
 
   try {
     const telemetryEvents: E2ETelemetryObservation[] = [];
@@ -227,14 +277,22 @@ test("cancels sibling cases when the first case fails", async () => {
       runWorkspaceE2ECases({
         artifactRoot,
         cases,
-        run: makeTestRunner(),
+        datasourceConfig: testDatasourceConfig,
+        run,
         sessionPrefix: "workspace-e2e-fail-fast",
         timeouts: workspaceE2ETimeouts,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
+      }).pipe(
+        Effect.provide(
+          Layer.merge(makeE2ETelemetryMock(telemetryEvents), cleanupLayer)
+        )
+      )
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(siblingInterrupted).toBe(true);
+    expect(cleanupCallCount).toBe(2);
+    expect(maximumActiveCleanupCount).toBe(2);
+    expect(closedBrowserCount).toBe(2);
     expect(telemetryEvents).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -266,6 +324,7 @@ test("reports the semantic step that timed out", async () => {
           id: "wait-for-provider",
           timeoutMs: 20,
         }),
+      checkoutStates: [],
       id: "checkout-timeout",
       timeoutMs: 1_000,
     },
@@ -277,10 +336,11 @@ test("reports the semantic step that timed out", async () => {
       runWorkspaceE2ECases({
         artifactRoot,
         cases,
+        datasourceConfig: testDatasourceConfig,
         run: makeTestRunner(),
         sessionPrefix: "workspace-e2e-timeout",
         timeouts: workspaceE2ETimeouts,
-      }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
+      }).pipe(Effect.provide(makeTestSuiteLayer(telemetryEvents)))
     );
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -318,6 +378,7 @@ test("propagates browser finalizer failures", async () => {
   const cases: readonly WorkspaceE2ECase[] = [
     {
       execute: () => Effect.void,
+      checkoutStates: [],
       id: "finalizer-failure",
       timeoutMs: 1_000,
     },
@@ -330,10 +391,11 @@ test("propagates browser finalizer failures", async () => {
     runWorkspaceE2ECases({
       artifactRoot: "/tmp/workspace-e2e-finalizer-test",
       cases,
+      datasourceConfig: testDatasourceConfig,
       run,
       sessionPrefix: "workspace-e2e-finalizer",
       timeouts: workspaceE2ETimeouts,
-    }).pipe(Effect.provide(makeE2ETelemetryMock(telemetryEvents)))
+    }).pipe(Effect.provide(makeTestSuiteLayer(telemetryEvents)))
   );
 
   expect(Exit.isFailure(exit)).toBe(true);
@@ -356,3 +418,11 @@ const makeTestRunner = (): Runner => async (_command, args) => ({
   stderr: "",
   stdout: "",
 });
+
+const testDatasourceConfig = {} as DatasourceConfig;
+
+const makeTestSuiteLayer = (telemetryEvents: E2ETelemetryObservation[] = []) =>
+  Layer.merge(
+    makeE2ETelemetryMock(telemetryEvents),
+    WorkspaceE2ECleanupService.Live
+  );

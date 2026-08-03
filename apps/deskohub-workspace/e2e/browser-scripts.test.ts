@@ -15,6 +15,7 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
 } from "./checkout/data";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 const workspaceTemporal = globalThis.Temporal;
 const oneHourMeetingRoomDuration = { unit: "hour", amount: 1 } as const;
@@ -41,6 +42,9 @@ test("keeps advertised-price preparation separable from form submission", () => 
     "advertised price did not refresh after monitor selection"
   );
   expect(prepare).toContain("new MutationObserver");
+  expect(prepare).toContain(
+    `Date.now() + ${workspaceE2ETimeouts.uiTransition}`
+  );
   expect(prepare).not.toContain("reservation-privacy-consent");
   expect(submitPreparedCoworkReservationScript).toContain(
     "reservation-privacy-consent"
@@ -227,6 +231,9 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   expect(prepare).toContain("'[data-day=\"' + expected.date");
   expect(prepare).toContain('input[aria-label="Meeting room start time"]');
   expect(prepare).toContain("meeting-room-duration-");
+  expect(prepare).toContain(
+    `Date.now() + ${workspaceE2ETimeouts.uiTransition}`
+  );
   expect(prepare).toContain('"date":"2099-09-01"');
   expect(prepare).toContain('"time":"10:00"');
   expect(prepare).not.toContain("setField('input[name=\"startDateTime\"]'");

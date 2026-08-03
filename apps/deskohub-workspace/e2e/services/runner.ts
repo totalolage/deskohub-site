@@ -7,8 +7,8 @@ import {
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
-import type { CheckoutFlowState } from "../types";
 import { E2EDatabase } from "../integrations/database.service";
+import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
@@ -52,8 +52,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               sessionPrefix
             );
             const flowStates: CheckoutFlowState[] = [];
-            const datasourceConfig =
-              yield* configService.getDatasourceConfig;
+            const datasourceConfig = yield* configService.getDatasourceConfig;
             yield* configService.assertDatasourceSafety(datasourceConfig);
             yield* configService.assertNexiSandbox(
               datasourceConfig.nexiApiOrigin
@@ -61,9 +60,13 @@ export class WorkspaceE2ERunnerService extends Context.Service<
 
             yield* Effect.gen(function* () {
               const workflow = Effect.gen(function* () {
-                yield* previewReadiness.assertEndpoints(config);
+                yield* telemetry.tracePhase({
+                  effect: previewReadiness.assertEndpoints(config),
+                  phaseId: "preview-readiness",
+                });
 
                 const e2eCases = yield* cases.makeCases({
+                  allocation: runContext.allocation,
                   config,
                   datasourceConfig,
                   flowStates,
@@ -73,6 +76,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                 yield* cases.runCases({
                   artifactRoot,
                   cases: e2eCases,
+                  datasourceConfig,
                   run,
                   sessionPrefix,
                   timeouts: config.timeouts,
@@ -83,11 +87,30 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               const workflowError = Exit.isFailure(workflowExit)
                 ? Cause.squash(workflowExit.cause)
                 : undefined;
-              const cleanupError = yield* cleanup.cleanupCheckoutStates({
-                datasourceConfig,
-                flowStates,
-                workflowError,
-              });
+              const cleanupExit = yield* Effect.exit(
+                telemetry.tracePhase({
+                  effect: cleanup
+                    .cleanupCheckoutStates({
+                      datasourceConfig,
+                      flowStates: flowStates.filter(
+                        (state) => !state.cleanupComplete
+                      ),
+                      workflowError,
+                    })
+                    .pipe(
+                      Effect.flatMap((cleanupError) =>
+                        cleanupError ? Effect.fail(cleanupError) : Effect.void
+                      )
+                    ),
+                  phaseId: "suite-cleanup",
+                })
+              );
+              const cleanupError = Exit.isFailure(cleanupExit)
+                ? toWorkspaceE2EError(
+                    "clean up workspace e2e suite",
+                    Cause.squash(cleanupExit.cause)
+                  )
+                : undefined;
 
               if (Exit.isFailure(workflowExit)) {
                 const workflowFailure = toWorkspaceE2EError(

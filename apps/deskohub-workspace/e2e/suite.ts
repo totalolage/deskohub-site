@@ -1,16 +1,21 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Deferred, Effect, Exit } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
   startBrowserDiagnostics,
   stopBrowserHar,
 } from "./browser";
+import type { DatasourceConfig } from "./config";
 import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
+import {
+  type WorkspaceE2ECleanup,
+  WorkspaceE2ECleanupService,
+} from "./services/cleanup";
 import {
   type E2EOutcome,
   type E2EResult,
@@ -49,30 +54,38 @@ type WorkspaceE2ECaseRuntime = {
 export const runWorkspaceE2ECases = ({
   artifactRoot,
   cases,
+  datasourceConfig,
   run,
   sessionPrefix,
   timeouts,
 }: {
   artifactRoot: string;
   cases: readonly WorkspaceE2ECase[];
+  datasourceConfig: DatasourceConfig;
   run: Runner;
   sessionPrefix: string;
   timeouts: WorkspaceE2ETimeouts;
-}): Effect.Effect<void, WorkspaceE2EError, E2EDatabase | E2ETelemetryService> =>
+}): Effect.Effect<
+  void,
+  WorkspaceE2EError,
+  E2EDatabase | E2ETelemetryService | WorkspaceE2ECleanupService
+> =>
   Effect.scoped(
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
+      const cleanup = yield* WorkspaceE2ECleanupService;
       const indexedCases = [...cases.entries()];
+      const independentFailure = yield* Deferred.make<number>();
       const parallelCases = indexedCases.filter(
         ([, testCase]) => !testCase.runAfterParallel
       );
       const sharedFixtureCases = indexedCases.filter(
         ([, testCase]) => testCase.runAfterParallel
       );
-      const runCaseEntry = ([
-        caseIndex,
-        testCase,
-      ]: (typeof indexedCases)[number]) =>
+      const runCaseEntry = (
+        [caseIndex, testCase]: (typeof indexedCases)[number],
+        failureSignal?: Deferred.Deferred<number>
+      ) =>
         telemetry.traceCase({
           caseId: testCase.id,
           effect: Effect.acquireUseRelease(
@@ -85,15 +98,48 @@ export const runWorkspaceE2ECases = ({
                 testCase,
               })
             ),
-            (runtime) =>
-              runCase(runtime, run, telemetry, timeouts).pipe(
+            (runtime) => {
+              const execution = runCase(runtime, run, telemetry, timeouts).pipe(
+                Effect.tapCause((cause) =>
+                  failureSignal && !Cause.hasInterruptsOnly(cause)
+                    ? Deferred.succeed(failureSignal, caseIndex).pipe(
+                        Effect.asVoid
+                      )
+                    : Effect.void
+                ),
                 Effect.tapCause(() =>
                   runtime.failureCause
                     ? captureFailureArtifacts(runtime, run, timeouts)
                     : Effect.void
                 )
-              ),
-            (runtime) => finalizeCaseRuntime(runtime, run, timeouts)
+              );
+
+              if (!failureSignal) return execution;
+
+              const interruptOnSiblingFailure = Deferred.await(
+                failureSignal
+              ).pipe(
+                Effect.flatMap((failingCaseIndex) =>
+                  failingCaseIndex === caseIndex
+                    ? Effect.never
+                    : Effect.interrupt
+                )
+              );
+
+              return Effect.raceFirst(execution, interruptOnSiblingFailure);
+            },
+            (runtime) =>
+              telemetry.tracePhase({
+                caseId: testCase.id,
+                effect: finalizeCaseRuntime(
+                  runtime,
+                  run,
+                  timeouts,
+                  cleanup,
+                  datasourceConfig
+                ),
+                phaseId: "case-finalization",
+              })
           ),
           timeoutMs: testCase.timeoutMs,
         });
@@ -103,9 +149,16 @@ export const runWorkspaceE2ECases = ({
           .map(([, testCase]) => testCase.id)
           .join(", ")}`
       );
-      yield* Effect.forEach(parallelCases, runCaseEntry, {
-        concurrency: "unbounded",
-        discard: true,
+      yield* telemetry.tracePhase({
+        effect: Effect.forEach(
+          parallelCases,
+          (entry) => runCaseEntry(entry, independentFailure),
+          {
+            concurrency: "unbounded",
+            discard: true,
+          }
+        ),
+        phaseId: "independent-case-phase",
       });
       if (sharedFixtureCases.length > 0) {
         log(
@@ -113,9 +166,16 @@ export const runWorkspaceE2ECases = ({
             .map(([, testCase]) => testCase.id)
             .join(", ")}`
         );
-        yield* Effect.forEach(sharedFixtureCases, runCaseEntry, {
-          concurrency: 1,
-          discard: true,
+        yield* telemetry.tracePhase({
+          effect: Effect.forEach(
+            sharedFixtureCases,
+            (entry) => runCaseEntry(entry),
+            {
+              concurrency: 1,
+              discard: true,
+            }
+          ),
+          phaseId: "shared-fixture-phase",
         });
       }
     })
@@ -176,36 +236,38 @@ const runCase = (
 const makeStepRunner =
   (caseId: string, telemetry: E2ETelemetry): WorkspaceE2EStepRunner =>
   <A, R>({ execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
-    const startedAt = Date.now();
     const operation = `${caseId}/${id}`;
-
     return telemetry.traceStep({
       caseId,
-      effect: Effect.sync(() => log(`STEP START ${operation}`)).pipe(
-        Effect.andThen(
-          execute.pipe(
-            Effect.timeoutOrElse({
-              duration: `${timeoutMs} millis`,
-              orElse: () =>
-                Effect.fail(
-                  workspaceE2ETimeoutError(
-                    `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
-                    { operation }
-                  )
-                ),
+      effect: Effect.suspend(() => {
+        const startedAt = Date.now();
+
+        return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
+          Effect.andThen(
+            execute.pipe(
+              Effect.timeoutOrElse({
+                duration: `${timeoutMs} millis`,
+                orElse: () =>
+                  Effect.fail(
+                    workspaceE2ETimeoutError(
+                      `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
+                      { operation }
+                    )
+                  ),
+              })
+            )
+          ),
+          Effect.onExit((exit) =>
+            Effect.sync(() => {
+              const durationMs = Date.now() - startedAt;
+              const elapsed = formatWorkspaceE2EDuration(durationMs);
+              const { outcome } = toE2EResult(exit);
+              const status = e2eOutcomeStatus[outcome];
+              log(`STEP ${status} ${operation} (${elapsed})`);
             })
           )
-        ),
-        Effect.onExit((exit) =>
-          Effect.sync(() => {
-            const durationMs = Date.now() - startedAt;
-            const elapsed = formatWorkspaceE2EDuration(durationMs);
-            const { outcome } = toE2EResult(exit);
-            const status = e2eOutcomeStatus[outcome];
-            log(`STEP ${status} ${operation} (${elapsed})`);
-          })
-        )
-      ),
+        );
+      }),
       stepId: id,
       timeoutMs,
     });
@@ -250,10 +312,33 @@ const captureFailureArtifacts = (
 const finalizeCaseRuntime = (
   runtime: WorkspaceE2ECaseRuntime,
   run: Runner,
-  timeouts: WorkspaceE2ETimeouts
-): Effect.Effect<void, never> =>
+  timeouts: WorkspaceE2ETimeouts,
+  cleanup: WorkspaceE2ECleanup,
+  datasourceConfig: DatasourceConfig
+): Effect.Effect<void, never, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: unknown[] = [];
+    yield* collectFinalizerFailure(
+      failures,
+      `${runtime.testCase.id} reservation cleanup`,
+      runFinalizer(
+        `${runtime.testCase.id} reservation cleanup`,
+        cleanup
+          .cleanupOwnedCheckoutStates({
+            datasourceConfig,
+            flowStates: runtime.testCase.checkoutStates,
+            workflowError: runtime.failureCause
+              ? Cause.squash(runtime.failureCause)
+              : undefined,
+          })
+          .pipe(
+            Effect.flatMap((cleanupError) =>
+              cleanupError ? Effect.fail(cleanupError) : Effect.void
+            )
+          ),
+        timeouts
+      )
+    );
     if (runtime.browserHarStarted && !runtime.browserHarStopped) {
       yield* collectFinalizerFailure(
         failures,
@@ -295,11 +380,11 @@ const finalizeCaseRuntime = (
       );
   });
 
-const runFinalizer = <A>(
+const runFinalizer = <A, R>(
   operation: string,
-  effect: Effect.Effect<A, WorkspaceE2EError>,
+  effect: Effect.Effect<A, WorkspaceE2EError, R>,
   timeouts: WorkspaceE2ETimeouts
-): Effect.Effect<void, WorkspaceE2EError> =>
+): Effect.Effect<void, WorkspaceE2EError, R> =>
   effect.pipe(
     Effect.timeoutOrElse({
       duration: `${timeouts.cleanupAction} millis`,
@@ -313,11 +398,11 @@ const runFinalizer = <A>(
     Effect.asVoid
   );
 
-const collectFinalizerFailure = (
+const collectFinalizerFailure = <R>(
   failures: unknown[],
   operation: string,
-  effect: Effect.Effect<void, WorkspaceE2EError>
-) =>
+  effect: Effect.Effect<void, WorkspaceE2EError, R>
+): Effect.Effect<void, never, R> =>
   Effect.exit(effect).pipe(
     Effect.tap((exit) =>
       Effect.sync(() => {

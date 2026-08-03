@@ -2,11 +2,16 @@ import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import { getWorkspaceMeetingRoomPriceForDuration } from "@/features/checkout/product-catalog";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
+import {
+  isMeetingRoomWholeDayReservationDuration,
+  type MeetingRoomReservationDuration,
+} from "@/features/reservation/meeting-room-reservation-duration";
+import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { waitForBrowserText } from "../browser";
 import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
 import {
   loadMeetingRoomAvailability,
+  type MeetingRoomCheckoutSlot,
   makeMeetingRoomCheckoutData,
   reuseMeetingRoomCheckoutContact,
   selectAvailableMeetingRoomSlots,
@@ -35,15 +40,44 @@ import {
 } from "./payment-terminal";
 import { assertReservationReplacement } from "./reservation-reuse";
 
+const meetingRoomE2EDurations = [
+  { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 4 },
+  { unit: "hour", amount: 1 },
+  { unit: "hour", amount: 4 },
+  { unit: "hour", amount: 1 },
+  { unit: "day", amount: 1 },
+] as const satisfies readonly MeetingRoomReservationDuration[];
+
+export type MeetingRoomE2EPreparation = {
+  readonly slots: readonly MeetingRoomCheckoutSlot[];
+};
+
+export const prepareMeetingRoomE2E = (
+  config: WorkspaceE2EConfig,
+  allocation: WorkspaceE2EDateAllocation
+): Effect.Effect<
+  MeetingRoomE2EPreparation,
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  selectAvailableMeetingRoomSlots(
+    config,
+    meetingRoomE2EDurations,
+    allocation
+  ).pipe(Effect.map((slots) => ({ slots })));
+
 export const makeMeetingRoomE2ECases = ({
   config,
   datasourceConfig,
   flowStates,
+  preparation,
   run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
+  readonly preparation: MeetingRoomE2EPreparation;
   readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
@@ -52,14 +86,7 @@ export const makeMeetingRoomE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const slots = yield* selectAvailableMeetingRoomSlots(config, [
-      { unit: "hour", amount: 1 },
-      { unit: "hour", amount: 4 },
-      { unit: "hour", amount: 1 },
-      { unit: "hour", amount: 4 },
-      { unit: "hour", amount: 1 },
-      { unit: "day", amount: 1 },
-    ]);
+    const { slots } = preparation;
     const [
       paidSlot,
       zeroTotalSlot,
@@ -125,6 +152,7 @@ export const makeMeetingRoomE2ECases = ({
 
     return [
       {
+        checkoutStates: [paidState],
         execute: ({ runStep, session }) =>
           executeCheckoutFlow({
             config,
@@ -156,6 +184,7 @@ export const makeMeetingRoomE2ECases = ({
         timeoutMs: config.timeouts.checkoutCase,
       },
       {
+        checkoutStates: [zeroTotalState],
         execute: ({ runStep, session }) =>
           executeZeroTotalCheckout({
             config,
@@ -180,6 +209,7 @@ export const makeMeetingRoomE2ECases = ({
         timeoutMs: config.timeouts.zeroTotalCheckoutCase,
       },
       {
+        checkoutStates: [replacementState],
         execute: ({ runStep, session }) =>
           assertReservationReplacement({
             config,
@@ -212,6 +242,7 @@ export const makeMeetingRoomE2ECases = ({
         timeoutMs: config.timeouts.checkoutCase,
       },
       {
+        checkoutStates: [cancelledState],
         execute: ({ runStep, session }) =>
           assertPaymentTerminalPath({
             config,
@@ -237,6 +268,7 @@ export const makeMeetingRoomE2ECases = ({
         timeoutMs: config.timeouts.paymentTerminalCase,
       },
       {
+        checkoutStates: [dayState],
         execute: ({ runStep, session }) =>
           executeCheckoutFlow({
             config,

@@ -4,6 +4,7 @@ import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   assertPreviewEndpointReady,
+  assertPreviewEndpointsReady,
   assertPreviewJpegReady,
 } from "./preview-readiness";
 import { workspaceE2ETimeouts } from "./timeouts";
@@ -63,6 +64,34 @@ test("checks that the generated map endpoint returns a JPEG payload", async () =
   );
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test("starts all preview readiness requests before any request completes", async () => {
+  let startedRequestCount = 0;
+  let releaseRequests: () => void = () => undefined;
+  const allRequestsStarted = new Promise<void>((resolve) => {
+    releaseRequests = resolve;
+  });
+  const fetchMock = mock(async (input: URL | RequestInfo) => {
+    startedRequestCount += 1;
+    if (startedRequestCount === 3) releaseRequests();
+    await allRequestsStarted;
+
+    return String(input).endsWith(".jpeg")
+      ? new Response(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9]), {
+          headers: { "content-type": "image/jpeg" },
+          status: 200,
+        })
+      : new Response(null, { status: 200 });
+  });
+
+  await Effect.runPromise(
+    assertPreviewEndpointsReady(makeConfig()).pipe(
+      Effect.provide(makeFetchHttpClientLayer(fetchMock))
+    )
+  );
+
+  expect(startedRequestCount).toBe(3);
 });
 
 test("rejects an HTML error document returned by the generated map endpoint", async () => {

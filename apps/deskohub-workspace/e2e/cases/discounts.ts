@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
   focusBrowserElement,
@@ -14,11 +15,13 @@ import {
   getSubmitCoworkReservationScript,
   submitPreparedCoworkReservationScript,
 } from "../browser-scripts";
+import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
+  loadAvailableCoworkDates,
   makeCoworkCheckoutData,
   requireCheckoutDate,
   reuseCoworkCheckoutContact,
-  selectAvailableCoworkDates,
+  selectCoworkDates,
 } from "../checkout/data";
 import {
   applyDiscountCode,
@@ -47,6 +50,7 @@ import {
 } from "../integrations/discount-fixtures";
 import {
   changeDotyposCustomerDiscount,
+  type E2EDotyposDiscountGroup,
   prepareDotyposCustomerDiscount,
   resolveE2EDotyposDiscountGroup,
 } from "../integrations/dotypos";
@@ -80,17 +84,54 @@ const unavailableCodeScenarios = [
   },
 ] as const;
 
+export type DiscountE2EPreparation = {
+  readonly availableBasicDates: readonly string[];
+  readonly availablePlusDates: readonly string[];
+  readonly availableProfiDates: readonly string[];
+  readonly customerDiscountGroup: E2EDotyposDiscountGroup;
+};
+
+export const prepareDiscountE2E = (
+  config: WorkspaceE2EConfig,
+  datasourceConfig: DatasourceConfig,
+  allocation: WorkspaceE2EDateAllocation
+): Effect.Effect<
+  DiscountE2EPreparation,
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
+  Effect.all(
+    {
+      availableBasicDates: loadAvailableCoworkDates(config, { allocation }),
+      availablePlusDates: loadAvailableCoworkDates(config, {
+        allocation,
+        entryTier: "plus",
+      }),
+      availableProfiDates: loadAvailableCoworkDates(config, {
+        allocation,
+        entryTier: "profi",
+        monitorOption: "2x27-qhd",
+      }),
+      customerDiscountGroup: resolveE2EDotyposDiscountGroup(datasourceConfig),
+    },
+    { concurrency: "unbounded" }
+  );
+
 export const makeDiscountE2ECases = ({
   config,
   datasourceConfig,
   excludedDates,
   flowStates,
+  allocation,
+  preparation,
   run,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly excludedDates: ReadonlySet<string>;
   readonly flowStates: CheckoutFlowState[];
+  readonly allocation: WorkspaceE2EDateAllocation;
+  readonly preparation: DiscountE2EPreparation;
   readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
@@ -99,31 +140,41 @@ export const makeDiscountE2ECases = ({
 > =>
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
-    const customerDiscountGroup =
-      yield* resolveE2EDotyposDiscountGroup(datasourceConfig);
+    const { customerDiscountGroup } = preparation;
     const customerDiscountExpectation = makeCustomerDiscountExpectation(
       customerDiscountGroup.basisPoints
     );
-    const checkoutDates = yield* selectAvailableCoworkDates(
-      config,
+    const checkoutDates = yield* selectCoworkDates(
+      preparation.availableBasicDates,
       unavailableCodeScenarios.length + 9,
-      { excludedDates }
+      {
+        allocation,
+        excludedDates,
+        maximumReservationsPerDate:
+          workspaceE2EMaximumSameDateCoworkReservations.basic,
+        selectionLabel: "tier:basic",
+      }
     );
-    const calendarCheckoutDates = yield* selectAvailableCoworkDates(config, 4, {
-      entryTier: "plus",
-      excludedDates: new Set([...excludedDates, ...checkoutDates]),
-    });
-    const transientCalendarDates = yield* selectAvailableCoworkDates(
-      config,
+    const calendarCheckoutDates = yield* selectCoworkDates(
+      preparation.availablePlusDates,
+      4,
+      {
+        allocation,
+        excludedDates: new Set([...excludedDates, ...checkoutDates]),
+        selectionLabel: "tier:plus",
+      }
+    );
+    const transientCalendarDates = yield* selectCoworkDates(
+      preparation.availableProfiDates,
       2,
       {
-        entryTier: "profi",
-        monitorOption: "2x27-qhd",
+        allocation,
         excludedDates: new Set([
           ...excludedDates,
           ...checkoutDates,
           ...calendarCheckoutDates,
         ]),
+        selectionLabel: "tier:profi with monitor:2x27-qhd",
       }
     );
     const cases: WorkspaceE2ECase[] = [];
@@ -137,6 +188,7 @@ export const makeDiscountE2ECases = ({
     nextDateIndex += 1;
     const codeCheckoutState = trackCheckoutState(flowStates, codeCheckoutData);
     cases.push({
+      checkoutStates: [codeCheckoutState],
       execute: ({ runStep, session }) =>
         executeDiscountCheckout({
           config,
@@ -167,13 +219,13 @@ export const makeDiscountE2ECases = ({
     nextDateIndex += 1;
     const expiringCodeState = trackCheckoutState(flowStates, expiringCodeData);
     cases.push({
+      checkoutStates: [expiringCodeState],
       execute: ({ runStep, session }) =>
         executeDiscountCodeExpiresBeforePayment({
           code: discountCodeFixtures.expiresBeforePayment.code,
           codeId: discountCodeFixtures.expiresBeforePayment.id,
           config,
           data: expiringCodeData,
-          datasourceConfig,
           run,
           runStep,
           session,
@@ -198,6 +250,7 @@ export const makeDiscountE2ECases = ({
       calendarCheckoutData
     );
     cases.push({
+      checkoutStates: [calendarCheckoutState],
       execute: ({ runStep, session }) =>
         executeDiscountCheckout({
           config,
@@ -230,6 +283,7 @@ export const makeDiscountE2ECases = ({
       combinedCheckoutData
     );
     cases.push({
+      checkoutStates: [combinedCheckoutState],
       execute: ({ runStep, session }) =>
         executeDiscountCheckout({
           config,
@@ -276,12 +330,12 @@ export const makeDiscountE2ECases = ({
       paymentChangeData
     );
     cases.push({
+      checkoutStates: [quoteChangeState, paymentChangeState],
       execute: ({ runStep, session }) =>
         withE2ECalendarSaleProfiEligibility(
           executeCalendarSaleDisappearsBeforeQuote({
             config,
             data: quoteChangeData,
-            datasourceConfig,
             run,
             runStep,
             session,
@@ -293,7 +347,6 @@ export const makeDiscountE2ECases = ({
               executeCalendarSaleDisappearsBeforePayment({
                 config,
                 data: paymentChangeData,
-                datasourceConfig,
                 run,
                 runStep,
                 session,
@@ -370,6 +423,7 @@ export const makeDiscountE2ECases = ({
     for (const scenario of customerScenarios) {
       const state = trackCheckoutState(flowStates, scenario.data);
       cases.push({
+        checkoutStates: [state],
         execute: ({ runStep, session }) =>
           Effect.gen(function* () {
             yield* runStep({
@@ -416,6 +470,7 @@ export const makeDiscountE2ECases = ({
       changingCustomerDiscountData
     );
     cases.push({
+      checkoutStates: [changingCustomerDiscountState],
       execute: ({ runStep, session }) =>
         executeCustomerDiscountChangesBeforePayment({
           config,
@@ -448,12 +503,12 @@ export const makeDiscountE2ECases = ({
       nextDateIndex += 1;
       const state = trackCheckoutState(flowStates, data);
       cases.push({
+        checkoutStates: [state],
         execute: ({ runStep, session }) =>
           executeUnavailableDiscountCode({
             code: scenario.code,
             config,
             data,
-            datasourceConfig,
             run,
             runStep,
             session,
@@ -492,6 +547,7 @@ export const makeDiscountE2ECases = ({
       capacityContenderData
     );
     cases.push({
+      checkoutStates: [capacityOwnerState, capacityContenderState],
       execute: ({ runStep, session }) =>
         executeConsumedDiscountCode({
           code: discountCodeFixtures.capacityOne.code,
@@ -535,6 +591,7 @@ export const makeDiscountE2ECases = ({
       redemptionContenderData
     );
     cases.push({
+      checkoutStates: [redemptionOwnerState, redemptionContenderState],
       execute: ({ runStep, session }) =>
         executeConsumedDiscountCode({
           code: discountCodeFixtures.onePerCustomer.code,
@@ -563,7 +620,6 @@ export const makeDiscountE2ECases = ({
 const executeCalendarSaleDisappearsBeforeQuote = ({
   config,
   data,
-  datasourceConfig,
   run,
   runStep,
   session,
@@ -571,7 +627,6 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly datasourceConfig: DatasourceConfig;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -632,7 +687,6 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
 const executeCalendarSaleDisappearsBeforePayment = ({
   config,
   data,
-  datasourceConfig,
   run,
   runStep,
   session,
@@ -640,7 +694,6 @@ const executeCalendarSaleDisappearsBeforePayment = ({
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly datasourceConfig: DatasourceConfig;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -839,7 +892,6 @@ const executeConsumedDiscountCode = ({
       code,
       config,
       data: contenderData,
-      datasourceConfig,
       run,
       runStep,
       session,
@@ -922,7 +974,6 @@ export const executeUnavailableDiscountCode = ({
   code,
   config,
   data,
-  datasourceConfig,
   run,
   runStep,
   session,
@@ -931,7 +982,6 @@ export const executeUnavailableDiscountCode = ({
   readonly code: string;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly datasourceConfig: DatasourceConfig;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -1005,7 +1055,6 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   codeId,
   config,
   data,
-  datasourceConfig,
   run,
   runStep,
   session,
@@ -1015,7 +1064,6 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   readonly codeId: string;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
-  readonly datasourceConfig: DatasourceConfig;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;

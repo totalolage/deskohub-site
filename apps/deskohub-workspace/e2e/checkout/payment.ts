@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 import {
-  activateBrowserElement,
+  activateHydratedBrowserElement,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
@@ -226,7 +226,7 @@ const submitReservationAndWaitForPayPage = ({
     ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
       Effect.gen(function* () {
         yield* runBrowserCommand(
-          "submit checkout reservation",
+          "prepare checkout reservation",
           run,
           session,
           ["eval", "--stdin"],
@@ -235,11 +235,11 @@ const submitReservationAndWaitForPayPage = ({
             logOutput: false,
           }
         );
-        yield* activateBrowserElement(
+        yield* activateHydratedBrowserElement(
           run,
           session,
           reservationSubmitSelector,
-          { timeoutMs }
+          { timeoutMs: timeouts.browserAction }
         );
 
         const result = yield* waitForReservationStart(run, session, timeoutMs);

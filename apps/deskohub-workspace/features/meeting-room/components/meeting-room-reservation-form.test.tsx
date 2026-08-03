@@ -710,6 +710,33 @@ describe("MeetingRoomReservationForm", () => {
     }
   });
 
+  test("collapses rapid interval edits into one availability request", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+
+    const view = renderForm();
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.input(
+      view.container.querySelector(
+        'input[aria-label="Meeting room start time"]'
+      ) as HTMLInputElement,
+      { target: { value: "11:00" } }
+    );
+    fireEvent.click(
+      view.container.querySelector(
+        'input[type="radio"][value="hour:4"]'
+      ) as HTMLInputElement
+    );
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    expect(String(globalThis.fetch.mock.calls[1]?.[0])).toContain(
+      "startsAt=2099-07-30T09%3A00%3A00Z&endsAt=2099-07-30T13%3A00%3A00Z"
+    );
+  });
+
   test("renders the selected advertised discount without adding a price card", async () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,

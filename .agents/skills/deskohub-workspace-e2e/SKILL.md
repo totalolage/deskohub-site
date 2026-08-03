@@ -38,13 +38,32 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep Vercel Deployment Protection enabled. Use its automation-bypass cookie/header/query flow for browser navigation, preview callbacks, readiness checks, and webhook replays. BotID is a separate production-only application concern; read the BotID skill before changing that boundary.
 - Use ordinary document links for cross-locale switching rather than Next.js client-router links. Locale is server-owned global context and the Workspace proxy persists its cookie for localized requests; cross-locale RSC prefetches and client transitions can race or fail to commit the selected locale. Keep this invariant shared across full, mobile, and minimal headers rather than fixing one presentation in isolation.
 - For dynamically rendered forms, wait for the relevant framework handler to be hydrated before interacting; do not use network idle as the readiness signal because analytics traffic can keep it open. Then use browser-native fill commands and semantic accessibility locators so framework handlers receive trusted interactions. Select the actual control by accessibility role rather than a wrapping `LabelText`, and parse its snapshot reference independently of attribute order because state such as `checked` may precede `ref`. Prefer a stable app-owned id or form-scoped selector for critical activation when one exists: parallel browser sessions can invalidate an accessibility reference between snapshot capture and activation. Focus that stable selector and activate it with the native keyboard because agent-browser's combined `click` can return successfully without emitting a form submission. When no stable selector exists, capture a fresh accessibility snapshot after hydration, immediately focus that reference, and activate it with the native keyboard. Do not capture references before hydration or reuse them after intervening DOM changes, and do not replace native form submission or link navigation with an evaluated DOM click.
-- Run independent E2E cases with raw fail-fast Effect concurrency. Do not convert case effects to `Exit` before the parallel aggregate; doing so makes failures look successful to the parent and prevents sibling interruption.
+- Keep evaluated browser scripts that prepare navigation-producing forms side-effect free with respect to submission. An evaluated DOM click can navigate successfully while leaving the driver command blocked on the destroyed execution context. Return from preparation first, then focus the hydrated form-scoped submit control and activate it with a separate native keyboard command before polling the destination URL.
+- Run every independent E2E case with raw, fail-fast Effect concurrency. Do not convert case effects to `Exit` before the parallel aggregate; doing so makes failures look successful to the parent and prevents sibling interruption. Keep read-only case preparation concurrent as well: availability discovery loads the same Dotypos and Calendar inventory on every request, so serial preparation can cost several minutes before browser cases even start. Deduplicate cleanup targets and cancel independent Dotypos reservations concurrently while collecting every cleanup exit. A provider failure from one isolated hosted-payment request is not evidence that concurrent starts caused it; preserve parallel payment coverage unless exact-run evidence demonstrates a concurrency-specific failure.
+- Signal the first independent-case failure before that case enters its finalizer,
+  so sibling browser and provider work is interrupted promptly and case
+  finalizers can overlap. Each case owns the `CheckoutFlowState` values it
+  creates and may cancel only captured reservation IDs or an exact-order lookup
+  in its finalizer. Never run the broad locale/product/time fallback while
+  sibling cases are active; reserve it for suite reconciliation after the case
+  aggregate, including interrupted states that did not capture an order ID.
+- Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before parallel cases start. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, mark the top-level case to run after the independent parallel phase, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
+- Partition the fixed 14-to-90-day candidate range by the run identity before
+  constructing cases. Keep the supported cross-run target finite and report
+  allocation exhaustion with the safe tag/slot, shard, and supported-run
+  context. Validate every selected date through the deployed availability
+  route; do not add an application query parameter or runner capacity mutation.
+  Keep the global Dotypos workflow lock until aggregate pool provisioning and
+  five successful concurrent soaks prove the documented target. If rollout
+  evidence is incomplete, retain the lock and document the external gate.
 - Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one
-  root run span, one child span for every case, and one child span for every
-  semantic step. Use fixed low-cardinality span names, native span duration,
+  root run span, fixed phase spans, one child span for every case, and one child
+  span for every semantic step. Phase IDs cover readiness, fixture seeding,
+  cowork and meeting-room availability preparation, case construction, independent/shared phases,
+  per-case finalization, and suite cleanup. Use fixed low-cardinality span names, native span duration,
   the configured timeout as a numeric attribute, closed outcome/failure-kind
   values, and the same shared censoring boundary as normal Workspace logs. Keep
   the execution context a closed `manual | ci` value, use only code-owned

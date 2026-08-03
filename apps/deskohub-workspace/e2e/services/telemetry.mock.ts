@@ -14,6 +14,12 @@ export const makeE2ETelemetryMock = (observations: E2ETelemetryObservation[]) =>
       observeE2EEffect(observations, { caseId, scope: "case", timeoutMs })(
         effect
       ),
+    tracePhase: ({ caseId, effect, phaseId }) =>
+      observeE2EEffect(observations, {
+        ...(caseId ? { caseId } : {}),
+        phaseId,
+        scope: "phase",
+      })(effect),
     traceRun: observeE2EEffect(observations, { scope: "run" }),
     traceStep: ({ caseId, effect, stepId, timeoutMs }) =>
       observeE2EEffect(observations, {

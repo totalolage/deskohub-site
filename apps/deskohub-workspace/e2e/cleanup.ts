@@ -28,19 +28,36 @@ export const cleanupCheckoutFlowStates = (
 ): Effect.Effect<WorkspaceE2EError | undefined, never, E2EDatabase> =>
   Effect.gen(function* () {
     const cleanupErrors: WorkspaceE2EError[] = [];
-    const checkoutRows: CheckoutRow[] = [];
+    const checkoutRows: CheckoutRow[] = flowStates.flatMap((state) =>
+      state.checkoutRow ? [state.checkoutRow] : []
+    );
 
-    for (const state of flowStates) {
-      if (state.checkoutRow) checkoutRows.push(state.checkoutRow);
-      if (
-        datasourceConfig &&
-        !state.checkoutRow?.dotypos_reservation_id &&
-        state.orderId
-      ) {
-        const orderId = state.orderId;
-        const rowExit = yield* Effect.exit(
-          dependencies.readCheckoutRow(orderId)
-        );
+    if (datasourceConfig) {
+      const lookupResults = yield* Effect.all(
+        {
+          fallbackRows: Effect.all(
+            getFallbackCleanupQueries(flowStates).map(({ data, startedAt }) =>
+              Effect.exit(dependencies.readCleanupCheckoutRows(startedAt, data))
+            ),
+            { concurrency: "unbounded" }
+          ),
+          rowsByOrder: Effect.all(
+            flowStates.flatMap((state) =>
+              !state.checkoutRow?.dotypos_reservation_id && state.orderId
+                ? [
+                    Effect.exit(
+                      dependencies.readCheckoutRow(state.orderId)
+                    ).pipe(Effect.map((exit) => ({ exit, state }))),
+                  ]
+                : []
+            ),
+            { concurrency: "unbounded" }
+          ),
+        },
+        { concurrency: "unbounded" }
+      );
+
+      for (const { exit: rowExit, state } of lookupResults.rowsByOrder) {
         if (Exit.isSuccess(rowExit)) {
           state.checkoutRow = rowExit.value;
           if (rowExit.value) checkoutRows.push(rowExit.value);
@@ -53,13 +70,8 @@ export const cleanupCheckoutFlowStates = (
             log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
         }
       }
-    }
 
-    if (datasourceConfig) {
-      for (const { data, startedAt } of getFallbackCleanupQueries(flowStates)) {
-        const rowExit = yield* Effect.exit(
-          dependencies.readCleanupCheckoutRows(startedAt, data)
-        );
+      for (const rowExit of lookupResults.fallbackRows) {
         if (Exit.isSuccess(rowExit)) {
           checkoutRows.push(...rowExit.value);
         } else {
@@ -76,22 +88,26 @@ export const cleanupCheckoutFlowStates = (
     }
 
     if (datasourceConfig) {
-      const seenDotyposReservationIds = new Set<string>();
-      for (const row of checkoutRows) {
-        const dotyposReservationId = row.dotypos_reservation_id;
-        if (
-          !dotyposReservationId ||
-          seenDotyposReservationIds.has(dotyposReservationId)
-        ) {
-          continue;
-        }
-        seenDotyposReservationIds.add(dotyposReservationId);
-        const cleanupExit = yield* Effect.exit(
-          dependencies.cancelDotyposReservation(
-            datasourceConfig,
-            dotyposReservationId
+      const dotyposReservationIds = [
+        ...new Set(
+          checkoutRows.flatMap(({ dotypos_reservation_id }) =>
+            dotypos_reservation_id ? [dotypos_reservation_id] : []
           )
-        );
+        ),
+      ];
+      const cleanupExits = yield* Effect.all(
+        dotyposReservationIds.map((dotyposReservationId) =>
+          Effect.exit(
+            dependencies.cancelDotyposReservation(
+              datasourceConfig,
+              dotyposReservationId
+            )
+          )
+        ),
+        { concurrency: "unbounded" }
+      );
+
+      for (const cleanupExit of cleanupExits) {
         if (Exit.isFailure(cleanupExit)) {
           const cause = Cause.squash(cleanupExit.cause);
           cleanupErrors.push(
@@ -103,12 +119,89 @@ export const cleanupCheckoutFlowStates = (
       }
     }
 
-    if (cleanupErrors.length === 0) return undefined;
-    if (cleanupErrors.length === 1) return cleanupErrors[0];
-    return workspaceE2EError("Workspace e2e cleanup failed", {
-      causes: cleanupErrors,
-      operation: "workspace e2e cleanup",
-    });
+    return toCleanupError(cleanupErrors);
+  });
+
+export const cleanupOwnedCheckoutFlowStates = (
+  {
+    datasourceConfig,
+    flowStates,
+    workflowError,
+  }: {
+    readonly datasourceConfig: DatasourceConfig;
+    readonly flowStates: readonly CheckoutFlowState[];
+    readonly workflowError: unknown;
+  },
+  dependencies: OwnedCleanupDependencies = liveCleanupDependencies
+): Effect.Effect<WorkspaceE2EError | undefined, never, E2EDatabase> =>
+  Effect.gen(function* () {
+    const cleanupErrors: WorkspaceE2EError[] = [];
+    const reservationOwners = new Map<string, CheckoutFlowState[]>();
+    const lookupResults = yield* Effect.all(
+      flowStates.map((state) => {
+        if (state.checkoutRow?.dotypos_reservation_id || !state.orderId) {
+          return Effect.succeed({
+            exit: Exit.succeed(state.checkoutRow),
+            state,
+          });
+        }
+
+        return Effect.exit(dependencies.readCheckoutRow(state.orderId)).pipe(
+          Effect.map((exit) => ({ exit, state }))
+        );
+      }),
+      { concurrency: "unbounded" }
+    );
+
+    for (const { exit: rowExit, state } of lookupResults) {
+      if (Exit.isFailure(rowExit)) {
+        const cause = Cause.squash(rowExit.cause);
+        cleanupErrors.push(
+          toWorkspaceE2EError("read case-owned checkout cleanup row", cause)
+        );
+        if (workflowError)
+          log(
+            `Case-owned Dotypos cleanup row lookup failed: ${redact(String(cause))}`
+          );
+        continue;
+      }
+
+      const row = rowExit.value;
+      if (row) state.checkoutRow = row;
+      const reservationId = row?.dotypos_reservation_id;
+      if (reservationId) {
+        const owners = reservationOwners.get(reservationId);
+        if (owners) owners.push(state);
+        else reservationOwners.set(reservationId, [state]);
+      } else if (!state.startedAt) {
+        state.cleanupComplete = true;
+      }
+    }
+
+    const cancellationResults = yield* Effect.all(
+      [...reservationOwners].map(([reservationId, owners]) =>
+        Effect.exit(
+          dependencies.cancelDotyposReservation(datasourceConfig, reservationId)
+        ).pipe(Effect.map((exit) => ({ exit, owners })))
+      ),
+      { concurrency: "unbounded" }
+    );
+
+    for (const { exit: cleanupExit, owners } of cancellationResults) {
+      if (Exit.isSuccess(cleanupExit)) {
+        for (const state of owners) state.cleanupComplete = true;
+        continue;
+      }
+
+      const cause = Cause.squash(cleanupExit.cause);
+      cleanupErrors.push(
+        toWorkspaceE2EError("cancel case-owned Dotypos reservation", cause)
+      );
+      if (workflowError)
+        log(`Case-owned Dotypos cleanup failed: ${redact(String(cause))}`);
+    }
+
+    return toCleanupError(cleanupErrors);
   });
 
 interface CleanupDependencies {
@@ -116,6 +209,11 @@ interface CleanupDependencies {
   readonly readCheckoutRow: typeof readCheckoutRow;
   readonly readCleanupCheckoutRows: typeof readCleanupCheckoutRows;
 }
+
+type OwnedCleanupDependencies = Pick<
+  CleanupDependencies,
+  "cancelDotyposReservation" | "readCheckoutRow"
+>;
 
 const liveCleanupDependencies: CleanupDependencies = {
   cancelDotyposReservation,
@@ -148,4 +246,15 @@ const getFallbackCleanupQueries = (
   }
 
   return [...queries.values()];
+};
+
+const toCleanupError = (
+  cleanupErrors: readonly WorkspaceE2EError[]
+): WorkspaceE2EError | undefined => {
+  if (cleanupErrors.length === 0) return undefined;
+  if (cleanupErrors.length === 1) return cleanupErrors[0];
+  return workspaceE2EError("Workspace e2e cleanup failed", {
+    causes: cleanupErrors,
+    operation: "workspace e2e cleanup",
+  });
 };

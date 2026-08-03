@@ -75,6 +75,97 @@ and notification URLs when configured. Browser navigation establishes the
 bypass cookie, readiness checks use the bypass header, and direct Nexi webhook
 replays send the `x-vercel-protection-bypass` header.
 
+## Parallel execution contract and rollout state
+
+The initial timing baseline is exact-SHA run
+[`30841881638`](https://github.com/totalolage/deskohub-site/actions/runs/30841881638)
+at `549e3f34696d3b1ae2c46da139c89f8c2902b475`. `Run checkout E2E` took
+`4m50.783s`; 30 independent cases overlapped for about `2.6m`, the serialized
+Calendar pricing-change case added about `1.3m`, and preparation, readiness,
+finalization, and cleanup accounted for the remainder. The full job took
+`5m45s`, about `55s` of which was setup. This is the comparison point for phase
+spans and the workflow timing summary.
+
+The in-run contract is:
+
+- preview readiness requests, read-only availability preparation, discount
+  fixture seeding, cleanup discovery, and independent cancellations overlap;
+- the first case failure signals siblings before its own finalizer, so sibling
+  browser and provider work is interrupted promptly;
+- every case owns its checkout states and cancels captured Dotypos reservations
+  in its finalizer using only a captured reservation ID or an exact order
+  lookup; HAR stop still precedes browser close;
+- suite cleanup reconciles interrupted or incompletely captured states and is
+  the only place allowed to use the broader locale/product/time lookup;
+- Calendar pricing-change scenarios remain one serialized tail until two
+  separate immutable operational events and separate preview-owned definitions
+  have been provisioned for quote-change and payment-change. The regression
+  suite proves distinct event identities and dates do not share transient cache
+  mutations, but that does not replace provisioning the real Preview fixtures
+  and an exact-SHA parallel run.
+
+Customer-discount cases mutate only their unique customer's group assignment;
+they never mutate the selected Dotypos discount-group definition. Nexi order
+and idempotency identities remain unique per checkout, and there is no
+suite-wide hosted-payment semaphore without evidence of a provider-specific
+concurrency failure.
+
+Cross-run concurrency has a target of three simultaneous healthy exact-SHA
+runs. The runner deterministically partitions the 14-to-90-day candidate range
+into three contiguous shards using the PR identity, or the manual run identity
+when there is no PR. Cowork and meeting-room candidates remain validated
+through the deployed availability route. Basic cases deliberately use at most
+four same-date reservations; Plus and every monitor-specific Profi pool use at
+most one. Calendar-sensitive Plus and Profi dates remain distinct from the
+Basic dates and from one another. Meeting-room cases use distinct dates within
+the run's shard, including the dates touched by a 24-hour reservation.
+
+The job-level `workspace-e2e-dotypos-sandbox` lock is intentionally still
+present. Do not remove or partition it until the capacity checklist below is
+complete and five three-way concurrent soaks pass. The code allocation and
+capacity validator make that rollout testable; they do not prove the shared
+sandbox has been provisioned.
+
+### Dotypos capacity checklist
+
+Run the read-only aggregate validator only against the dedicated testing cloud
+from an environment that already satisfies the Workspace E2E environment
+contract:
+
+```bash
+bun --cwd apps/deskohub-workspace e2e:capacity
+```
+
+The command uses the generated Dotypos table and reservation contracts and
+prints no table, reservation, customer, or provider identifiers. It reports
+active-visible and assignable table counts, the sorted seat-count multiset,
+total seats, and active overlapping reservation totals for these groups:
+
+- `tier:basic`: at least 16 aggregate seats;
+- `tier:plus`: at least 4 aggregate seats;
+- every `tier:profi` monitor-tag combination: at least 4 aggregate seats for
+  each exact tag set; a generic Profi table does not satisfy a specific set;
+- `reservation:meeting-room`: at least two active visible assignable tables.
+
+The cowork budgets cover the supported three runs plus one run of inventory
+headroom. Meeting-room seat counts do not increase concurrency because normal
+assignment requires an empty table; date sharding supplies the primary
+isolation and the second room supplies failure/cleanup headroom. The repository
+Dotypos contract exposes table reads, not a runner-owned capacity mutation.
+Change testing-table seats or provision rooms operationally, then rerun the
+validator. Never change shared table capacity from the test runner.
+
+Before changing the workflow lock:
+
+1. Confirm the validator passes and investigate any active overlapping
+   reservations using safe aggregate diagnostics only.
+2. Start three exact-SHA previews simultaneously and repeat the concurrent soak
+   at least five times while the ordinary CI lock remains unchanged.
+3. Verify every run passes, cleanup converges to zero active E2E reservations,
+   no allocation shard exhausts, and provider/function p95 does not regress.
+4. Only then partition or remove the global lock. If one mutable resource
+   remains, lock only that resource rather than the whole job.
+
 ## Preview database identity and migration
 
 The Neon/Vercel integration owns the preview database branch for the Git branch
@@ -148,11 +239,13 @@ zero-total checkout, then exercise a second customer or reservation against
 the consumed code. Capacity limits advance from retained active audit history
 on reruns; the suite never deletes application or redemption records.
 
-Every case uses a unique customer and reservation date. Basic and Plus date
-sets are selected independently and made disjoint. The suite runs independent
-cases with uncapped fail-fast Effect concurrency. Direct database assertions
-share one runner-owned pool capped at ten connections. Do not make an edge case
-mutate a fixture consumed by another case.
+Every case uses a unique customer. Dates come from the run's deterministic
+allocation shard. Basic cases may share a date up to the documented capacity
+of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
+another. The suite runs independent cases with uncapped fail-fast Effect
+concurrency. Direct database assertions share one runner-owned pool capped at
+ten connections. Do not make an edge case mutate a fixture consumed by another
+case.
 
 ### Discount coverage matrix
 
@@ -250,17 +343,22 @@ For a real run, record only non-secret evidence:
     its obsolete preview branch without a repository cleanup workflow.
 
 Failure artifacts remain available for seven days. The suite must retain
-fail-fast bounded-concurrency aggregation, scoped browser sessions,
+fail-fast concurrency, scoped browser sessions,
 cancellation propagation, bounded finalizers, case watchdogs, and discrete
 semantic-step timeouts.
 
 ## Suite telemetry
 
 The Bun E2E process exports an OTLP trace to PostHog under its own
-`deskohub-workspace-e2e` service name. One root `e2e.run` span contains an
-`e2e.case` child for every case, and every semantic step is an `e2e.step` child
-of its case. Span names are fixed and low-cardinality; code-owned case and step
-IDs are attributes.
+`deskohub-workspace-e2e` service name. One root `e2e.run` span contains fixed
+`e2e.phase` spans for preview readiness, fixture seeding, cowork/meeting-room
+availability preparation, case construction, the independent and
+shared-fixture phases, per-case finalization, and suite cleanup. It also
+contains an `e2e.case` child for every case, and every semantic step is an
+`e2e.step` child of its case. Span names are fixed and low-cardinality; phase,
+case, and step IDs are code-owned attributes. The allocation shard and shard
+count are bounded numeric attributes; provider identifiers, selected dates,
+and preview URLs are not trace attributes.
 
 PostHog's native span duration is the authoritative elapsed time. Case and step
 spans also record their configured `e2e.timeout_ms`, which allows actual
@@ -322,7 +420,12 @@ to explain the failure.
 
 Failures before the E2E process starts—target resolution, dependency
 installation, preview-database resolution, or migration—do not produce suite
-spans. Diagnose those from the responsible GitHub Actions step.
+spans. Diagnose those from the responsible GitHub Actions step. The workflow
+adds a setup timing table to its Actions summary for Bun setup, repository
+dependencies, Neon resolution, migration, the pinned `agent-browser` CLI, and
+browser/system dependencies. These operations remain sequential until a
+supported prepared runner image or cache can overlap them without background
+shell jobs, shared-install locks, or hidden failures.
 
 For scripted inspection, authenticate `posthog-cli` to the EU Workspace
 project with a personal API key granting `tracing:read`. The public project

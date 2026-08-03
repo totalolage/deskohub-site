@@ -81,6 +81,7 @@ export type CheckoutFlow = {
 
 export type CheckoutFlowState = {
   checkoutRow?: CheckoutRow;
+  cleanupComplete?: boolean;
   data: CheckoutData;
   orderId?: string;
   startedAt?: Date;
@@ -93,6 +94,7 @@ export type PaymentTerminalScenario = {
 };
 
 export type WorkspaceE2ECase = {
+  readonly checkoutStates: readonly CheckoutFlowState[];
   readonly id: string;
   readonly runAfterParallel?: boolean;
   readonly timeoutMs: number;
