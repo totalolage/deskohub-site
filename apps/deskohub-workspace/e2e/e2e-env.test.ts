@@ -12,6 +12,7 @@ describe("Workspace E2E environment", () => {
       GITHUB_RUN_ID: "12345",
       TARGET_SHA: "a".repeat(40),
       WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
+      WORKSPACE_E2E_ALLOCATION_SHARD: "2",
       WORKSPACE_E2E_POSTHOG_HOST: "https://us.i.posthog.com",
       WORKSPACE_E2E_PR_NUMBER: "127",
     });
@@ -20,6 +21,7 @@ describe("Workspace E2E environment", () => {
     expect(environment.GITHUB_RUN_ID).toBe("12345");
     expect(environment.TARGET_SHA).toBe("a".repeat(40));
     expect(environment.WORKSPACE_E2E_EXECUTION_CONTEXT).toBe("ci");
+    expect(environment.WORKSPACE_E2E_ALLOCATION_SHARD).toBe(2);
     expect(environment.WORKSPACE_E2E_POSTHOG_HOST).toBe(
       "https://us.i.posthog.com"
     );
@@ -61,6 +63,7 @@ describe("Workspace E2E environment", () => {
   test.each([
     { TARGET_SHA: "not-a-sha" },
     { WORKSPACE_E2E_EXECUTION_CONTEXT: "scheduled" },
+    { WORKSPACE_E2E_ALLOCATION_SHARD: "4" },
     { WORKSPACE_E2E_POSTHOG_HOST: "not-a-url" },
     { WORKSPACE_E2E_PR_NUMBER: "0" },
   ])("rejects invalid E2E configuration", (runtimeEnvironment) => {

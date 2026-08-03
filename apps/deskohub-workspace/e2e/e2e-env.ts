@@ -13,6 +13,13 @@ const optionalPositiveInteger = toEnvironmentSchema(
     Schema.FiniteFromString.check(Schema.isInt()).check(Schema.isGreaterThan(0))
   )
 );
+const optionalAllocationShard = toEnvironmentSchema(
+  Schema.optional(
+    Schema.FiniteFromString.check(Schema.isInt())
+      .check(Schema.isGreaterThan(0))
+      .check(Schema.isLessThanOrEqualTo(3))
+  )
+);
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
@@ -50,6 +57,7 @@ export const e2eEnvironmentSchema = Schema.Struct({
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
   WORKSPACE_E2E_BASE_URL: url,
+  WORKSPACE_E2E_ALLOCATION_SHARD: optionalAllocationShard,
   WORKSPACE_E2E_DATABASE_ALLOWLIST: nonEmptyString,
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
@@ -89,6 +97,8 @@ export const makeE2EEnvironment = (
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
+      WORKSPACE_E2E_ALLOCATION_SHARD:
+        runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,
       WORKSPACE_E2E_DATABASE_ALLOWLIST:
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
       WORKSPACE_E2E_DATABASE_URL_UNPOOLED:

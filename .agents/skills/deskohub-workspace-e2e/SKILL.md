@@ -49,14 +49,21 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   aggregate, including interrupted states that did not capture an order ID.
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before parallel cases start. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, mark the top-level case to run after the independent parallel phase, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
-- Partition the fixed 14-to-90-day candidate range by the run identity before
-  constructing cases. Keep the supported cross-run target finite and report
-  allocation exhaustion with the safe tag/slot, shard, and supported-run
-  context. Validate every selected date through the deployed availability
-  route; do not add an application query parameter or runner capacity mutation.
-  Keep the global Dotypos workflow lock until aggregate pool provisioning and
-  five successful concurrent soaks prove the documented target. If rollout
-  evidence is incomplete, retain the lock and document the external gate.
+- Lease one partition of the fixed 14-to-90-day candidate range before
+  constructing cases. Serialize only the short GitHub lease operation, use the
+  run identity for the preferred shard, and choose another free shard when that
+  preference is already leased. Publish the lease as a safe commit status,
+  ignore leases whose workflow run is no longer active, and fail before setup
+  when all supported shards are occupied. The runner may retain its deterministic
+  identity fallback only while the global Dotypos lock makes collisions
+  impossible; never release or partition that lock unless CI supplies a
+  coordinated shard. Report allocation exhaustion with the safe tag/slot,
+  shard, and supported-run context. Validate every selected date through the
+  deployed availability route; do not add an application query parameter or
+  runner capacity mutation. Keep the global Dotypos workflow lock until
+  aggregate pool provisioning and five successful concurrent soaks prove the
+  documented target. If rollout evidence is incomplete, retain the lock and
+  document the external gate.
 - Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one

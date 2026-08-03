@@ -111,19 +111,30 @@ suite-wide hosted-payment semaphore without evidence of a provider-specific
 concurrency failure.
 
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
-runs. The runner deterministically partitions the 14-to-90-day candidate range
-into three contiguous shards using the PR identity, or the manual run identity
-when there is no PR. Cowork and meeting-room candidates remain validated
-through the deployed availability route. Basic cases deliberately use at most
-four same-date reservations; Plus and every monitor-specific Profi pool use at
-most one. Calendar-sensitive Plus and Profi dates remain distinct from the
-Basic dates and from one another. Meeting-room cases use distinct dates within
-the run's shard, including the dates touched by a 24-hour reservation.
+runs. A short `workspace-e2e-shard-allocation` GitHub concurrency group leases
+one of three contiguous partitions of the 14-to-90-day candidate range before
+provider setup begins. The PR identity selects the preferred shard; the
+allocator selects the next free shard when that preference is already leased.
+Only commit-status leases belonging to queued or active Workspace E2E workflow
+runs count as occupied, so interrupted-run statuses cannot strand capacity. An
+exhausted three-shard pool fails in allocation with the supported-concurrency
+context instead of allowing cases to race. The checked-out runner receives the
+leased one-based shard through `WORKSPACE_E2E_ALLOCATION_SHARD`; its identity
+fallback exists only for first-rollout compatibility while the global Dotypos
+lock still prevents overlap.
+
+Cowork and meeting-room candidates remain validated through the deployed
+availability route. Basic cases deliberately use at most four same-date
+reservations; Plus and every monitor-specific Profi pool use at most one.
+Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
+and from one another. Meeting-room cases use distinct dates within the run's
+shard, including the dates touched by a whole-day reservation.
 
 The job-level `workspace-e2e-dotypos-sandbox` lock is intentionally still
-present. Do not remove or partition it until the capacity checklist below is
-complete and five three-way concurrent soaks pass. The code allocation and
-capacity validator make that rollout testable; they do not prove the shared
+present. The narrow allocator already guarantees distinct leases, but do not
+replace the global lock with shard-scoped execution until the capacity
+checklist below is complete and five three-way concurrent soaks pass. The lease
+and capacity validator make that rollout testable; they do not prove the shared
 sandbox has been provisioned.
 
 ### Dotypos capacity checklist

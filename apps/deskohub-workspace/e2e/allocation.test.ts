@@ -47,3 +47,19 @@ test("uses the run identity deterministically when no PR number is available", (
     makeWorkspaceE2EDateAllocation({ runId: "manual-run" })
   );
 });
+
+test("uses coordinated leases to separate colliding PR identities", () => {
+  const first = makeWorkspaceE2EDateAllocation({
+    prNumber: 100,
+    runId: "first-run",
+    shardIndex: 0,
+  });
+  const second = makeWorkspaceE2EDateAllocation({
+    prNumber: 103,
+    runId: "second-run",
+    shardIndex: 1,
+  });
+
+  expect(first.shardIndex).not.toBe(second.shardIndex);
+  expect(first.toOffsetDays).toBeLessThan(second.fromOffsetDays);
+});

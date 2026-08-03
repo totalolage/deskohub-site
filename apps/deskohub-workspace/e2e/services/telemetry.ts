@@ -155,7 +155,13 @@ export const makeE2ERunContext = (
       : `manual-${makeManualRunId()}`;
 
   return {
-    allocation: makeWorkspaceE2EDateAllocation({ prNumber, runId }),
+    allocation: makeWorkspaceE2EDateAllocation({
+      prNumber,
+      runId,
+      ...(environment.WORKSPACE_E2E_ALLOCATION_SHARD
+        ? { shardIndex: environment.WORKSPACE_E2E_ALLOCATION_SHARD - 1 }
+        : {}),
+    }),
     executionContext,
     ...(githubRunAttempt ? { githubRunAttempt } : {}),
     ...(githubRunId ? { githubRunId } : {}),

@@ -18,13 +18,25 @@ export const workspaceE2EFullDateAllocation: WorkspaceE2EDateAllocation = {
 export const makeWorkspaceE2EDateAllocation = ({
   prNumber,
   runId,
+  shardIndex: leasedShardIndex,
 }: {
   readonly prNumber?: number;
   readonly runId: string;
+  readonly shardIndex?: number;
 }): WorkspaceE2EDateAllocation => {
   const shardCount = workspaceE2EConcurrentRunTarget;
   const allocationKey = prNumber ?? hashAllocationKey(runId);
-  const shardIndex = Math.abs(allocationKey) % shardCount;
+  const shardIndex =
+    leasedShardIndex ?? Math.abs(allocationKey) % shardCount;
+  if (
+    !Number.isSafeInteger(shardIndex) ||
+    shardIndex < 0 ||
+    shardIndex >= shardCount
+  ) {
+    throw new Error(
+      `Workspace E2E allocation shard must be between 0 and ${shardCount - 1}`
+    );
+  }
   const candidateCount =
     workspaceE2EFullDateAllocation.toOffsetDays -
     workspaceE2EFullDateAllocation.fromOffsetDays +

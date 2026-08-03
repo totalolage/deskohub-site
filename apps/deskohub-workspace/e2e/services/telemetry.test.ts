@@ -44,6 +44,7 @@ describe("E2E run context", () => {
           GITHUB_RUN_ID: "12345",
           TARGET_SHA: "a".repeat(40),
           WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
+          WORKSPACE_E2E_ALLOCATION_SHARD: "3",
           WORKSPACE_E2E_PR_NUMBER: "124",
         })
       )
@@ -51,6 +52,7 @@ describe("E2E run context", () => {
       allocation: makeWorkspaceE2EDateAllocation({
         prNumber: 124,
         runId: "12345-2",
+        shardIndex: 2,
       }),
       executionContext: "ci",
       githubRunAttempt: 2,
