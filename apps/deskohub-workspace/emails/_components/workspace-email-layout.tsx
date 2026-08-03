@@ -42,14 +42,19 @@ export function WorkspaceEmailLayout({
           },
         }}
       >
-        <Head />
+        <Head>
+          <meta
+            content="width=device-width, initial-scale=1.0"
+            name="viewport"
+          />
+        </Head>
         <Preview>{preview}</Preview>
         <Body
-          className="m-0 bg-cream px-3 py-8 text-navy"
+          className="m-0 bg-cream px-2 py-4 text-navy sm:px-3 sm:py-8"
           style={{ fontFamily: "Arial, Helvetica, sans-serif" }}
         >
           <Container className="mx-auto w-full max-w-[600px]">
-            <Section className="rounded-t-[24px] bg-navy px-8 py-7">
+            <Section className="rounded-t-[24px] bg-navy px-5 py-6 sm:px-8 sm:py-7">
               <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.6px] text-aquamarine uppercase">
                 Deskohub
               </Text>
@@ -57,7 +62,7 @@ export function WorkspaceEmailLayout({
                 Workspace
               </Text>
             </Section>
-            <Section className="rounded-b-[24px] border border-[#e6ded2] border-t-0 bg-white px-8 py-8">
+            <Section className="rounded-b-[24px] border border-[#e6ded2] border-t-0 bg-white px-5 py-6 sm:px-8 sm:py-8">
               {children}
             </Section>
             <Text className="m-0 px-5 pt-5 text-center text-[12px] leading-[18px] text-[#666983]">

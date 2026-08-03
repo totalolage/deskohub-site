@@ -34,6 +34,10 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).toContain(
       customerReservationPreviewProps.accessCode
     );
+    expect(customerReservation).toContain(
+      'content="width=device-width, initial-scale=1.0" name="viewport"'
+    );
+    expect(customerReservation).not.toContain("Where to sit");
     expect(customerReservation).not.toContain("customer@example.com");
     expect(staffNotification).toContain("customer@example.com");
     expect(staffNotification).not.toContain(

@@ -9,6 +9,10 @@ import {
 } from "./_components/workspace-email-layout";
 import { customerReservationPreviewProps } from "./_fixtures/preview-props";
 
+// Table-map rendering is intentionally omitted. The legacy implementation lives
+// in features/checkout/backend/fulfillment/workspace-reservation-email.service.tsx
+// (createWorkspaceTableMapPng/createWorkspaceTableMapAttachment); port that
+// image-generation and attachment flow before re-enabling table maps.
 export type CustomerReservationEmailProps = {
   readonly locale: WorkspaceEmailLocale;
   readonly preview: string;
@@ -19,7 +23,6 @@ export type CustomerReservationEmailProps = {
     readonly location: string;
     readonly directions: string;
     readonly table: string;
-    readonly tableMapAlt: string;
     readonly network: string;
     readonly networkName: string;
     readonly networkPassword: string;
@@ -31,7 +34,6 @@ export type CustomerReservationEmailProps = {
   };
   readonly table?: {
     readonly name: string;
-    readonly mapImageSrc?: string;
   };
   readonly network?: {
     readonly ssid: string;
@@ -56,16 +58,16 @@ export function CustomerReservationEmail({
 }: CustomerReservationEmailProps) {
   return (
     <WorkspaceEmailLayout locale={locale} preview={preview}>
-      <Heading className="m-0 text-[30px] font-bold leading-[38px] text-navy">
+      <Heading className="m-0 text-[26px] font-bold leading-[34px] text-navy sm:text-[30px] sm:leading-[38px]">
         {heading}
       </Heading>
 
       <Section className="mt-6 overflow-hidden rounded-[22px] border border-[#d8d9e4]">
-        <Section className="bg-navy px-6 py-6 text-center">
+        <Section className="bg-navy px-4 py-6 text-center sm:px-6">
           <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.4px] text-aquamarine uppercase">
             {labels.accessCode}
           </Text>
-          <Text className="m-0 mt-2 text-[58px] font-bold leading-[64px] tracking-[6px] text-white">
+          <Text className="m-0 mt-2 text-[50px] font-bold leading-[56px] tracking-[4px] text-white sm:text-[58px] sm:leading-[64px] sm:tracking-[6px]">
             {accessCode}
           </Text>
         </Section>
@@ -77,14 +79,6 @@ export function CustomerReservationEmail({
             <Text className="m-0 mt-1 text-[48px] font-bold leading-[54px] text-navy">
               {table.name}
             </Text>
-            {table.mapImageSrc && (
-              <Img
-                alt={labels.tableMapAlt}
-                className="mt-4 h-auto w-full rounded-xl border border-[#d9e7df] bg-white"
-                src={table.mapImageSrc}
-                width="500"
-              />
-            )}
           </Section>
         )}
       </Section>
@@ -122,7 +116,7 @@ export function CustomerReservationEmail({
       {network && (
         <Section className="mt-6 rounded-2xl border border-[#cfe6f8] bg-sky px-5 py-5">
           <Row>
-            <Column className="align-middle">
+            <Column className="block w-full align-middle sm:table-cell">
               <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2px] text-green uppercase">
                 {labels.network}
               </Text>
@@ -138,10 +132,10 @@ export function CustomerReservationEmail({
               </Text>
             </Column>
             {network.qrImageSrc && (
-              <Column className="w-[168px] pl-5 text-right align-middle">
+              <Column className="block w-full pt-4 text-center align-middle sm:table-cell sm:w-[168px] sm:pt-0 sm:pl-5 sm:text-right">
                 <Img
                   alt={labels.network}
-                  className="inline-block h-auto rounded-xl border border-[#d8edf8] bg-white p-2"
+                  className="mx-auto block h-auto rounded-xl border border-[#d8edf8] bg-white p-2 sm:mr-0 sm:ml-auto"
                   src={network.qrImageSrc}
                   width="144"
                 />

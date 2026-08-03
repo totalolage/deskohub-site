@@ -9,19 +9,6 @@ const customerMessage =
 const workspaceLocationMapUrl =
   "https://workspace.deskohub.cz/workspace-location-map.jpeg";
 
-const previewTableMapImageSrc = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
-  <svg xmlns="http://www.w3.org/2000/svg" width="1000" height="500" viewBox="0 0 1000 500">
-    <rect width="1000" height="500" rx="28" fill="#f4f1ea"/>
-    <text x="70" y="76" font-family="Arial" font-size="30" font-weight="700" fill="#00024f">Main room</text>
-    <rect x="120" y="145" width="280" height="170" rx="22" fill="#ffffff" stroke="#d4d5e0" stroke-width="5"/>
-    <text x="260" y="246" text-anchor="middle" font-family="Arial" font-size="54" font-weight="700" fill="#00024f">11</text>
-    <rect x="585" y="145" width="280" height="170" rx="22" fill="#e9fff6" stroke="#00df99" stroke-width="10"/>
-    <text x="725" y="246" text-anchor="middle" font-family="Arial" font-size="54" font-weight="800" fill="#00024f">12</text>
-    <circle cx="725" cy="378" r="18" fill="#00df99"/>
-    <text x="755" y="388" font-family="Arial" font-size="28" font-weight="700" fill="#006b55">Your table</text>
-  </svg>
-`)}`;
-
 export const contactBusinessPreviewProps = {
   locale: "cs-CZ",
   preview: "Nová zpráva od Ada Lovelace",
@@ -56,7 +43,6 @@ export const customerReservationPreviewProps = {
     location: "Where to go",
     directions: "Open route in Google Maps",
     table: "Table",
-    tableMapAlt: "Where to sit",
     network: "Wi-Fi",
     networkName: "Network name",
     networkPassword: "Password",
@@ -69,7 +55,6 @@ export const customerReservationPreviewProps = {
   },
   table: {
     name: "12",
-    mapImageSrc: previewTableMapImageSrc,
   },
   network: {
     ssid: "Deskohub Workspace",

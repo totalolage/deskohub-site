@@ -26,7 +26,7 @@ export function WorkspaceEmailDetails({
             </Text>
           </Column>
           <Column className="px-4 py-3 align-top">
-            <Text className="m-0 break-words text-[14px] leading-[20px] text-navy">
+            <Text className="m-0 break-all text-[14px] leading-[20px] text-navy sm:break-words">
               {detail.value}
             </Text>
           </Column>
