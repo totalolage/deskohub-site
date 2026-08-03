@@ -66,6 +66,7 @@ export const assertPaymentTerminalPath = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: startCheckoutPaymentAttempt({
         config,
         data,

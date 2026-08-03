@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit } from "effect";
+import { Cause, Deferred, Effect, Exit, Semaphore } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -40,6 +40,8 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   timed_out: "TIMEOUT",
 };
 
+export const workspaceE2EReservationStartConcurrency = 6;
+
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
   browserHarStarted: boolean;
@@ -74,6 +76,9 @@ export const runWorkspaceE2ECases = ({
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
       const cleanup = yield* WorkspaceE2ECleanupService;
+      const reservationStartSemaphore = yield* Semaphore.make(
+        workspaceE2EReservationStartConcurrency
+      );
       const indexedCases = [...cases.entries()];
       const independentFailure = yield* Deferred.make<number>();
       const parallelCases = indexedCases.filter(
@@ -99,7 +104,13 @@ export const runWorkspaceE2ECases = ({
               })
             ),
             (runtime) => {
-              const execution = runCase(runtime, run, telemetry, timeouts).pipe(
+              const execution = runCase(
+                runtime,
+                run,
+                telemetry,
+                timeouts,
+                reservationStartSemaphore
+              ).pipe(
                 Effect.tapCause((cause) =>
                   failureSignal && !Cause.hasInterruptsOnly(cause)
                     ? Deferred.succeed(failureSignal, caseIndex).pipe(
@@ -208,10 +219,15 @@ const runCase = (
   runtime: WorkspaceE2ECaseRuntime,
   run: Runner,
   telemetry: E2ETelemetry,
-  timeouts: WorkspaceE2ETimeouts
+  timeouts: WorkspaceE2ETimeouts,
+  reservationStartSemaphore: Semaphore.Semaphore
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
-  const runStep = makeStepRunner(runtime.testCase.id, telemetry);
+  const runStep = makeStepRunner(
+    runtime.testCase.id,
+    telemetry,
+    reservationStartSemaphore
+  );
 
   return Effect.gen(function* () {
     log(`CASE START ${runtime.testCase.id}`);
@@ -257,9 +273,30 @@ const runCase = (
 };
 
 const makeStepRunner =
-  (caseId: string, telemetry: E2ETelemetry): WorkspaceE2EStepRunner =>
-  <A, R>({ execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
+  (
+    caseId: string,
+    telemetry: E2ETelemetry,
+    reservationStartSemaphore: Semaphore.Semaphore
+  ): WorkspaceE2EStepRunner =>
+  <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
     const operation = `${caseId}/${id}`;
+    const timedExecution = execute.pipe(
+      Effect.timeoutOrElse({
+        duration: `${timeoutMs} millis`,
+        orElse: () =>
+          Effect.fail(
+            workspaceE2ETimeoutError(
+              `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
+              { operation }
+            )
+          ),
+      })
+    );
+    const capacityLimitedExecution =
+      capacity === "reservation-start"
+        ? reservationStartSemaphore.withPermit(timedExecution)
+        : timedExecution;
+
     return telemetry.traceStep({
       caseId,
       effect: Effect.suspend(() => {
@@ -267,18 +304,7 @@ const makeStepRunner =
 
         return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
           Effect.andThen(
-            execute.pipe(
-              Effect.timeoutOrElse({
-                duration: `${timeoutMs} millis`,
-                orElse: () =>
-                  Effect.fail(
-                    workspaceE2ETimeoutError(
-                      `Timed out running ${operation} after ${formatWorkspaceE2EDuration(timeoutMs)}`,
-                      { operation }
-                    )
-                  ),
-              })
-            )
+            capacityLimitedExecution
           ),
           Effect.onExit((exit) =>
             Effect.sync(() => {

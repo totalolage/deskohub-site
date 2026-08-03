@@ -263,10 +263,18 @@ on reruns; the suite never deletes application or redemption records.
 Every case uses a unique customer. Dates come from the run's deterministic
 allocation shard. Basic cases may share a date up to the documented capacity
 of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
-another. The suite runs independent cases with uncapped fail-fast Effect
-concurrency. Direct database assertions share one runner-owned pool capped at
-ten connections. Do not make an edge case mutate a fixture consumed by another
-case.
+another. The suite runs independent case fibers with uncapped fail-fast Effect
+concurrency. Reservation-start steps alone share six runner-owned permits from
+navigation through pay-page arrival. Two exact-SHA runs with unbounded starts
+showed provider-backed availability responses queueing beyond the existing UI
+boundary in different cases; the narrow boundary keeps those full Dotypos and
+Calendar inventory loads below that observed saturation point. It releases
+before hosted payment, webhook, fulfillment, assertions, and cleanup, which all
+remain parallel. Direct database assertions share one runner-owned pool capped
+at ten connections. Before allowing three concurrent runs, revalidate the
+aggregate eighteen-start ceiling in the required soak and lower the per-run
+limit if provider p95 or throttling regresses. Do not make an edge case mutate a
+fixture consumed by another case.
 
 ### Discount coverage matrix
 
@@ -388,6 +396,12 @@ attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
 `cancelled`, plus the closed failure kinds `error`, `defect`, and `timeout`.
 The exact target SHA and GitHub run correlation values are included when
 available.
+
+A reservation-start step's span includes time waiting for one of the six
+runner permits. Its semantic step timeout begins only after admission; the case
+watchdog still bounds the complete queued and active lifetime. This keeps a
+healthy provider operation from losing its full timeout merely because another
+case is using the documented provider-capacity boundary.
 
 The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
 `ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:

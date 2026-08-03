@@ -702,6 +702,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -783,6 +784,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
     });
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -990,6 +992,7 @@ export const executeUnavailableDiscountCode = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -1072,6 +1075,7 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,

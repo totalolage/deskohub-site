@@ -11,7 +11,10 @@ import {
   type E2ETelemetryObservation,
   makeE2ETelemetryMock,
 } from "./services/telemetry.mock";
-import { runWorkspaceE2ECases } from "./suite";
+import {
+  runWorkspaceE2ECases,
+  workspaceE2EReservationStartConcurrency,
+} from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { WorkspaceE2ECase } from "./types";
 
@@ -117,6 +120,79 @@ test("runs all independent preview cases concurrently", async () => {
   );
 
   expect(maximumActiveCaseCount).toBe(12);
+});
+
+test("bounds reservation starts without serializing independent cases", async () => {
+  const caseCount = workspaceE2EReservationStartConcurrency + 1;
+  let activeReservationStarts = 0;
+  let maximumActiveReservationStarts = 0;
+  let reservationStartCount = 0;
+  let releaseFirstWave: () => void = () => undefined;
+  let signalCapacityReached: () => void = () => undefined;
+  const firstWaveRelease = new Promise<void>((resolve) => {
+    releaseFirstWave = resolve;
+  });
+  const capacityReached = new Promise<void>((resolve) => {
+    signalCapacityReached = resolve;
+  });
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: caseCount },
+    (_, index) => ({
+      execute: ({ runStep }) =>
+        runStep({
+          capacity: "reservation-start",
+          execute: Effect.acquireUseRelease(
+            Effect.sync(() => {
+              activeReservationStarts += 1;
+              reservationStartCount += 1;
+              maximumActiveReservationStarts = Math.max(
+                maximumActiveReservationStarts,
+                activeReservationStarts
+              );
+              if (
+                activeReservationStarts ===
+                workspaceE2EReservationStartConcurrency
+              ) {
+                signalCapacityReached();
+              }
+            }),
+            () => Effect.promise(() => firstWaveRelease),
+            () =>
+              Effect.sync(() => {
+                activeReservationStarts -= 1;
+              })
+          ),
+          id: "prepare-checkout-pay-page",
+          timeoutMs: 10_000,
+        }),
+      checkoutStates: [],
+      id: `reservation-start-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+
+  const suiteRun = Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-reservation-start-capacity-test",
+      cases,
+      datasourceConfig: testDatasourceConfig,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-reservation-start-capacity",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
+  );
+
+  await capacityReached;
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  const startsBeforeRelease = reservationStartCount;
+  releaseFirstWave();
+  await suiteRun;
+
+  expect(startsBeforeRelease).toBe(workspaceE2EReservationStartConcurrency);
+  expect(maximumActiveReservationStarts).toBe(
+    workspaceE2EReservationStartConcurrency
+  );
+  expect(reservationStartCount).toBe(caseCount);
 });
 
 test("runs shared-fixture cases after the independent parallel phase", async () => {
@@ -237,26 +313,36 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
   });
   const cases: readonly WorkspaceE2ECase[] = [
     {
-      execute: () =>
-        reachStartGate.pipe(
-          Effect.andThen(
-            Effect.fail(workspaceE2EError("intentional case failure"))
-          )
-        ),
+      execute: ({ runStep }) =>
+        runStep({
+          capacity: "reservation-start",
+          execute: reachStartGate.pipe(
+            Effect.andThen(
+              Effect.fail(workspaceE2EError("intentional case failure"))
+            )
+          ),
+          id: "prepare-failing-reservation",
+          timeoutMs: 10_000,
+        }),
       checkoutStates: [],
       id: "first-failure",
       timeoutMs: 10_000,
     },
     {
-      execute: () =>
-        reachStartGate.pipe(
-          Effect.andThen(Effect.never),
-          Effect.onInterrupt(() =>
-            Effect.sync(() => {
-              siblingInterrupted = true;
-            })
-          )
-        ),
+      execute: ({ runStep }) =>
+        runStep({
+          capacity: "reservation-start",
+          execute: reachStartGate.pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                siblingInterrupted = true;
+              })
+            )
+          ),
+          id: "prepare-interrupted-reservation",
+          timeoutMs: 10_000,
+        }),
       checkoutStates: [],
       id: "cancelled-sibling",
       timeoutMs: 10_000,
