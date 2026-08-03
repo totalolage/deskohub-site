@@ -2,6 +2,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 import type { E2EEnvironment } from "./e2e-env";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
@@ -29,10 +30,7 @@ export const makeRunner =
 
     const child = Bun.spawn([command, ...args], {
       cwd: options.cwd,
-      env: {
-        ...baseChildEnv(environment),
-        ...options.env,
-      },
+      env: getRunnerCommandEnvironment(environment, command, options.env),
       stderr: "pipe",
       stdin: options.input ? "pipe" : "ignore",
       stdout: "pipe",
@@ -90,6 +88,22 @@ const baseChildEnv = (environment: E2EEnvironment) =>
       return value ? [[key, value]] : [];
     })
   );
+
+export const getRunnerCommandEnvironment = (
+  environment: E2EEnvironment,
+  command: string,
+  overrides: Readonly<Record<string, string | undefined>> = {}
+) => ({
+  ...baseChildEnv(environment),
+  ...overrides,
+  ...(command === "agent-browser"
+    ? {
+        AGENT_BROWSER_DEFAULT_TIMEOUT: String(
+          workspaceE2ETimeouts.checkoutStart
+        ),
+      }
+    : {}),
+});
 
 export type Runner = ReturnType<typeof makeRunner>;
 

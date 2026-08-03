@@ -118,24 +118,11 @@ test("retries a transient reservation preparation failure with the same checkout
 
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
-  expect(reservationSubmitOptions).toEqual([
-    expect.objectContaining({
-      env: {
-        AGENT_BROWSER_DEFAULT_TIMEOUT: String(
-          workspaceE2ETimeouts.checkoutStart
-        ),
-      },
-      timeoutMs: workspaceE2ETimeouts.checkoutStart,
-    }),
-    expect.objectContaining({
-      env: {
-        AGENT_BROWSER_DEFAULT_TIMEOUT: String(
-          workspaceE2ETimeouts.checkoutStart
-        ),
-      },
-      timeoutMs: workspaceE2ETimeouts.checkoutStart,
-    }),
-  ]);
+  expect(reservationSubmitOptions).toHaveLength(2);
+  for (const options of reservationSubmitOptions) {
+    expect(options.timeoutMs).toBe(workspaceE2ETimeouts.checkoutStart);
+    expect(options.env).toBeUndefined();
+  }
   expect(clickedRefs).toEqual([]);
   expect(activatedRefs).toEqual([
     "#reservation-submit",

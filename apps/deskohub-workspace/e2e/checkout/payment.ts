@@ -231,9 +231,6 @@ const submitReservationAndWaitForPayPage = ({
           session,
           ["eval", "--stdin"],
           {
-            env: {
-              AGENT_BROWSER_DEFAULT_TIMEOUT: String(timeoutMs),
-            },
             input: submitReservationScript,
             logOutput: false,
             timeoutMs,
