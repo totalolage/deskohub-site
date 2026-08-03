@@ -8,20 +8,22 @@ import {
   calendarDiscountExpectation,
 } from "./discounts";
 
-test("waits for the discount trigger to hydrate before hovering it", async () => {
-  let triggerHydrated = false;
+test("waits for the discount trigger pointer handler before hovering it", async () => {
+  let pointerHandlerReady = false;
   let triggerOpened = false;
   const calls: string[][] = [];
   const run: Runner = async (_command, args) => {
     calls.push(args);
     const [operation, value] = args.slice(2);
     if (operation === "wait" && value === "--fn") {
-      triggerHydrated = args.at(4)?.includes("__reactProps$") ?? false;
+      const script = args.at(4) ?? "";
+      pointerHandlerReady =
+        script.includes("__reactProps$") && script.includes('"onPointerMove"');
     }
-    if (operation === "hover" && !triggerHydrated) {
+    if (operation === "hover" && !pointerHandlerReady) {
       return {
         exitCode: 1,
-        stderr: "discount trigger is not hydrated",
+        stderr: "discount trigger pointer handler is not ready",
         stdout: "",
       };
     }

@@ -91,6 +91,36 @@ export const waitForBrowserReactHydration = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserReactHandler = (
+  run: Runner,
+  session: string,
+  selector: string,
+  handler: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const selectorLiteral = JSON.stringify(selector);
+  const handlerLiteral = JSON.stringify(handler);
+  const handlerCheck = `(() => {
+    const element = document.querySelector(${selectorLiteral});
+    const reactPropsKey = element === null
+      ? undefined
+      : Object.keys(element).find((key) => key.startsWith("__reactProps$"));
+    const reactProps = reactPropsKey === undefined ? undefined : element[reactPropsKey];
+    return typeof reactProps?.[${handlerLiteral}] === "function";
+  })()`;
+
+  return runBrowserCommand(
+    `wait for browser React ${handler} handler`,
+    run,
+    session,
+    ["wait", "--fn", handlerCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const waitForBrowserCondition = (
   run: Runner,
   session: string,

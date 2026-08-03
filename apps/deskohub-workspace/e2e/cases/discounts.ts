@@ -7,7 +7,7 @@ import {
   hoverBrowserElement,
   openBrowserPage,
   waitForBrowserCondition,
-  waitForBrowserReactHydration,
+  waitForBrowserReactHandler,
   waitForBrowserTextContent,
 } from "../browser";
 import {
@@ -1166,9 +1166,13 @@ export const assertDisplayedDiscounts = ({
     const triggerSelector = tier
       ? `[data-reservation-type-option="${tier}"] button[aria-label^="Show discounts applied to"]`
       : 'button[aria-label^="Show discounts applied to"]';
-    yield* waitForBrowserReactHydration(run, session, triggerSelector, {
-      timeoutMs: config.timeouts.uiTransition,
-    });
+    yield* waitForBrowserReactHandler(
+      run,
+      session,
+      triggerSelector,
+      "onPointerMove",
+      { timeoutMs: config.timeouts.uiTransition }
+    );
     yield* hoverBrowserElement(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
