@@ -9,6 +9,14 @@ type WorkspaceEmailPreviewLayoutProps = {
 
 const previewLinks = [
   {
+    href: "contact-business",
+    label: "Contact business notification",
+  },
+  {
+    href: "contact-confirmation",
+    label: "Contact confirmation",
+  },
+  {
     href: "customer-reservation",
     label: "Customer reservation",
   },

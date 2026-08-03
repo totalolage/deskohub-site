@@ -412,7 +412,7 @@ const createEmailHtml = (input: {
   readonly networkQrImageSrc?: string;
   readonly tableName?: string;
   readonly tableMapImageSrc?: string;
-  readonly locationMapContentId?: string;
+  readonly locationMapImageSrc?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
 }) =>
@@ -466,7 +466,7 @@ const createEmailHtml = (input: {
               {workspaceFormattedAddress}
             </a>
           </div>
-          {input.locationMapContentId && (
+          {input.locationMapImageSrc && (
             <>
               {/* biome-ignore lint/performance/noImgElement: Email HTML needs a plain image tag. */}
               <img
@@ -474,7 +474,7 @@ const createEmailHtml = (input: {
                   {},
                   { locale: input.locale }
                 )}
-                src={`cid:${input.locationMapContentId}`}
+                src={input.locationMapImageSrc}
                 style={{
                   border: 0,
                   display: "block",
@@ -808,7 +808,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
         tableMapImageSrc: tableMapPng
           ? `data:image/png;base64,${tableMapPng.toString("base64")}`
           : undefined,
-        locationMapContentId: workspaceLocationMapContentId,
+        locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
         rows,
         followUp: m.reservationEmailCustomerFollowUp(
           { email: workspaceSiteConstants.contact.infoEmail },
@@ -989,7 +989,9 @@ export class WorkspaceReservationEmailService extends Context.Service<
                 tableMapImageSrc: tableMapAttachment
                   ? `cid:${tableMapAttachment.contentId}`
                   : undefined,
-                locationMapContentId: locationMapAttachment?.contentId,
+                locationMapImageSrc: locationMapAttachment
+                  ? `cid:${locationMapAttachment.contentId}`
+                  : undefined,
                 rows: customerRows,
                 followUp,
               }),
