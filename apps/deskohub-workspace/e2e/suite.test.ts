@@ -109,7 +109,7 @@ test("bounds independent preview case concurrency", async () => {
     }).pipe(Effect.provide(makeE2ETelemetryMock([])))
   );
 
-  expect(maximumActiveCaseCount).toBe(6);
+  expect(maximumActiveCaseCount).toBe(3);
 });
 
 test("runs shared-fixture cases after the independent parallel phase", async () => {

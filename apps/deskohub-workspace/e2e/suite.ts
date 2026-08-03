@@ -34,7 +34,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   passed: "PASS",
   timed_out: "TIMEOUT",
 };
-const parallelCaseConcurrency = 6;
+const parallelCaseConcurrency = 3;
 
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
