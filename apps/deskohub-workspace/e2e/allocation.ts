@@ -26,8 +26,7 @@ export const makeWorkspaceE2EDateAllocation = ({
 }): WorkspaceE2EDateAllocation => {
   const shardCount = workspaceE2EConcurrentRunTarget;
   const allocationKey = prNumber ?? hashAllocationKey(runId);
-  const shardIndex =
-    leasedShardIndex ?? Math.abs(allocationKey) % shardCount;
+  const shardIndex = leasedShardIndex ?? Math.abs(allocationKey) % shardCount;
   if (
     !Number.isSafeInteger(shardIndex) ||
     shardIndex < 0 ||
@@ -37,25 +36,33 @@ export const makeWorkspaceE2EDateAllocation = ({
       `Workspace E2E allocation shard must be between 0 and ${shardCount - 1}`
     );
   }
-  const candidateCount =
-    workspaceE2EFullDateAllocation.toOffsetDays -
-    workspaceE2EFullDateAllocation.fromOffsetDays +
-    1;
-  const minimumShardSize = Math.floor(candidateCount / shardCount);
-  const largerShardCount = candidateCount % shardCount;
-  const shardSize = minimumShardSize + (shardIndex < largerShardCount ? 1 : 0);
-  const precedingLargerShards = Math.min(shardIndex, largerShardCount);
-  const fromOffsetDays =
-    workspaceE2EFullDateAllocation.fromOffsetDays +
-    shardIndex * minimumShardSize +
-    precedingLargerShards;
-
   return {
-    fromOffsetDays,
+    fromOffsetDays: workspaceE2EFullDateAllocation.fromOffsetDays,
     shardCount,
     shardIndex,
-    toOffsetDays: fromOffsetDays + shardSize - 1,
+    toOffsetDays: workspaceE2EFullDateAllocation.toOffsetDays,
   };
+};
+
+export const isWorkspaceE2EAllocatedWeekday = (
+  isoDate: string,
+  allocation: WorkspaceE2EDateAllocation
+) => {
+  const millisecondsPerDay = 86_400_000;
+  const mondayEpochDay = 4;
+  const epochDay = Math.floor(
+    Date.parse(`${isoDate}T00:00:00.000Z`) / millisecondsPerDay
+  );
+  const daysSinceMondayEpoch = epochDay - mondayEpochDay;
+  const weekdayIndex = positiveModulo(daysSinceMondayEpoch, 7);
+  if (weekdayIndex >= 5) return false;
+
+  const weekdayOrdinal =
+    Math.floor(daysSinceMondayEpoch / 7) * 5 + weekdayIndex;
+  return (
+    positiveModulo(weekdayOrdinal, allocation.shardCount) ===
+    allocation.shardIndex
+  );
 };
 
 export const formatWorkspaceE2EAllocation = (
@@ -72,3 +79,6 @@ const hashAllocationKey = (value: string) => {
 
   return hash >>> 0;
 };
+
+const positiveModulo = (value: number, divisor: number) =>
+  ((value % divisor) + divisor) % divisor;

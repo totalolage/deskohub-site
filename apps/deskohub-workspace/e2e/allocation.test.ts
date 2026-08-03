@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import {
+  isWorkspaceE2EAllocatedWeekday,
   makeWorkspaceE2EDateAllocation,
   workspaceE2EConcurrentRunTarget,
   workspaceE2EFullDateAllocation,
@@ -14,27 +15,35 @@ test("partitions the candidate range into deterministic disjoint shards", () => 
         runId: `run-${shardIndex}`,
       })
   );
-  const allocatedOffsets = allocations.flatMap((allocation) =>
-    Array.from(
-      {
-        length: allocation.toOffsetDays - allocation.fromOffsetDays + 1,
-      },
-      (_, index) => allocation.fromOffsetDays + index
-    )
-  );
-
-  expect(new Set(allocatedOffsets).size).toBe(allocatedOffsets.length);
-  expect(allocatedOffsets.toSorted((left, right) => left - right)).toEqual(
-    Array.from(
-      {
-        length:
-          workspaceE2EFullDateAllocation.toOffsetDays -
+  const candidateDates = Array.from(
+    {
+      length:
+        workspaceE2EFullDateAllocation.toOffsetDays -
+        workspaceE2EFullDateAllocation.fromOffsetDays +
+        1,
+    },
+    (_, index) => {
+      const date = new Date("2099-07-17T00:00:00.000Z");
+      date.setUTCDate(
+        date.getUTCDate() +
           workspaceE2EFullDateAllocation.fromOffsetDays +
-          1,
-      },
-      (_, index) => workspaceE2EFullDateAllocation.fromOffsetDays + index
+          index
+      );
+      return date.toISOString().slice(0, 10);
+    }
+  );
+  const allocatedDates = allocations.flatMap((allocation) =>
+    candidateDates.filter((date) =>
+      isWorkspaceE2EAllocatedWeekday(date, allocation)
     )
   );
+  const weekdays = candidateDates.filter((date) => {
+    const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+    return day !== 0 && day !== 6;
+  });
+
+  expect(new Set(allocatedDates).size).toBe(allocatedDates.length);
+  expect(allocatedDates.toSorted()).toEqual(weekdays);
   expect(
     makeWorkspaceE2EDateAllocation({ prNumber: 2, runId: "ignored" })
   ).toEqual(
@@ -61,5 +70,21 @@ test("uses coordinated leases to separate colliding PR identities", () => {
   });
 
   expect(first.shardIndex).not.toBe(second.shardIndex);
-  expect(first.toOffsetDays).toBeLessThan(second.fromOffsetDays);
+  const candidates = [
+    "2099-07-31",
+    "2099-08-03",
+    "2099-08-04",
+    "2099-08-05",
+    "2099-08-06",
+    "2099-08-07",
+  ];
+  const firstCandidates = candidates.filter((date) =>
+    isWorkspaceE2EAllocatedWeekday(date, first)
+  );
+  const secondCandidates = candidates.filter((date) =>
+    isWorkspaceE2EAllocatedWeekday(date, second)
+  );
+  expect(
+    firstCandidates.some((candidate) => secondCandidates.includes(candidate))
+  ).toBe(false);
 });

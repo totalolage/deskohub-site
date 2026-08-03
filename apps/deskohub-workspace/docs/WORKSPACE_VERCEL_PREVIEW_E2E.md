@@ -96,7 +96,10 @@ The in-run contract is:
   in its finalizer using only a captured reservation ID or an exact order
   lookup; HAR stop still precedes browser close;
 - suite cleanup reconciles interrupted or incompletely captured states and is
-  the only place allowed to use the broader locale/product/time lookup;
+  the only place allowed to use the broader locale/product/time lookup. It
+  waits for every successfully cancelled reservation to leave Dotypos active
+  inventory before releasing the sandbox lock, including reservations already
+  cancelled by case finalizers;
 - Calendar pricing-change scenarios remain one serialized tail until two
   separate immutable operational events and separate preview-owned definitions
   have been provisioned for quote-change and payment-change. The regression
@@ -112,8 +115,12 @@ concurrency failure.
 
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
 runs. A short `workspace-e2e-shard-allocation` GitHub concurrency group leases
-one of three contiguous partitions of the 14-to-90-day candidate range before
-provider setup begins. The PR identity selects the preferred shard; the
+one of three static absolute round-robin weekday sequences from the 14-to-90-day
+candidate range before provider setup begins. Assign weekday ownership before
+filtering the deployed availability response so changing provider snapshots
+cannot shift a date between shards. Interleaving the fixed candidates also
+avoids starving one run when unavailable dates cluster in a contiguous part of
+the range. The PR identity selects the preferred shard; the
 allocator selects the next free shard when that preference is already leased.
 Only commit-status leases belonging to queued or active Workspace E2E workflow
 runs count as occupied, so interrupted-run statuses cannot strand capacity. An

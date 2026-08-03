@@ -5,6 +5,7 @@ import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
   waitForConfirmedDotyposReservation,
+  waitForDotyposCancellationConvergence,
 } from "./dotypos";
 
 test("selects an active partial Dotypos discount deterministically", () => {
@@ -62,18 +63,33 @@ test("waits for Dotypos to expose the confirmed reservation state", async () => 
   expect(reads).toBe(3);
 });
 
+test("waits for cancelled reservations to leave active inventory", async () => {
+  let reads = 0;
+  await Effect.runPromise(
+    waitForDotyposCancellationConvergence(
+      Effect.sync(() => {
+        reads += 1;
+        return [
+          {
+            id: "target-reservation",
+            status: reads < 3 ? "CONFIRMED" : "CANCELLED",
+          },
+        ];
+      }),
+      ["target-reservation"],
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(reads).toBe(3);
+});
+
 test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {
   expect(
-    dotyposTimestampMatches(
-      "2099-09-01T08:00:00.000Z",
-      "2099-09-01T08:00:00Z"
-    )
+    dotyposTimestampMatches("2099-09-01T08:00:00.000Z", "2099-09-01T08:00:00Z")
   ).toBe(true);
   expect(
-    dotyposTimestampMatches(
-      "2099-09-01T09:00:00.000Z",
-      "2099-09-01T08:00:00Z"
-    )
+    dotyposTimestampMatches("2099-09-01T09:00:00.000Z", "2099-09-01T08:00:00Z")
   ).toBe(false);
 });
 

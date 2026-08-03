@@ -40,6 +40,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - For dynamically rendered forms, wait for the relevant framework handler to be hydrated before interacting; do not use network idle as the readiness signal because analytics traffic can keep it open. Then use browser-native fill commands and semantic accessibility locators so framework handlers receive trusted interactions. Select the actual control by accessibility role rather than a wrapping `LabelText`, and parse its snapshot reference independently of attribute order because state such as `checked` may precede `ref`. Prefer a stable app-owned id or form-scoped selector for critical activation when one exists: parallel browser sessions can invalidate an accessibility reference between snapshot capture and activation. Focus that stable selector and activate it with the native keyboard because agent-browser's combined `click` can return successfully without emitting a form submission. When no stable selector exists, capture a fresh accessibility snapshot after hydration, immediately focus that reference, and activate it with the native keyboard. Do not capture references before hydration or reuse them after intervening DOM changes, and do not replace native form submission or link navigation with an evaluated DOM click.
 - Keep evaluated browser scripts that prepare navigation-producing forms side-effect free with respect to submission. An evaluated DOM click can navigate successfully while leaving the driver command blocked on the destroyed execution context. Return from preparation first, then focus the hydrated form-scoped submit control and activate it with a separate native keyboard command before polling the destination URL.
 - Run every independent E2E case with raw, fail-fast Effect concurrency. Do not convert case effects to `Exit` before the parallel aggregate; doing so makes failures look successful to the parent and prevents sibling interruption. Keep read-only case preparation concurrent as well: availability discovery loads the same Dotypos and Calendar inventory on every request, so serial preparation can cost several minutes before browser cases even start. Deduplicate cleanup targets and cancel independent Dotypos reservations concurrently while collecting every cleanup exit. A provider failure from one isolated hosted-payment request is not evidence that concurrent starts caused it; preserve parallel payment coverage unless exact-run evidence demonstrates a concurrency-specific failure.
+- Treat a successful Dotypos cancellation response as issued, not converged.
+  Before suite cleanup releases the sandbox boundary, poll the same active
+  reservation inventory consumed by availability until every successfully
+  cancelled ID is absent or cancelled. Include case-finalizer cancellations in
+  this bounded convergence check without cancelling them a second time.
 - Signal the first independent-case failure before that case enters its finalizer,
   so sibling browser and provider work is interrupted promptly and case
   finalizers can overlap. Each case owns the `CheckoutFlowState` values it
@@ -64,6 +69,13 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   aggregate pool provisioning and five successful concurrent soaks prove the
   documented target. If rollout evidence is incomplete, retain the lock and
   document the external gate.
+- Partition the canonical weekday candidate sequence by shard before filtering
+  provider availability. Keep that ownership static when availability changes;
+  partitioning the returned available dates can reindex a later date into a
+  different shard during concurrent snapshots. Base ownership on the absolute
+  date so runs crossing midnight retain the same owner. Use round-robin weekday
+  sequences rather than contiguous date bands so clustered unavailability does
+  not starve a run that the full candidate range could support.
 - Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one

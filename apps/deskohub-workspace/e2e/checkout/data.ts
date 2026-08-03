@@ -18,6 +18,7 @@ import {
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   formatWorkspaceE2EAllocation,
+  isWorkspaceE2EAllocatedWeekday,
   type WorkspaceE2EDateAllocation,
   workspaceE2EConcurrentRunTarget,
   workspaceE2EFullDateAllocation,
@@ -348,17 +349,19 @@ export const loadAvailableCoworkDates = (
       }
     );
 
-    const dates: string[] = [];
+    const allocatedDates: string[] = [];
     for (
       let offset = allocation.fromOffsetDays;
       offset <= allocation.toOffsetDays;
       offset += 1
     ) {
       const date = futureIsoDate(offset);
-      if (isWeekday(date) && !unavailable.has(date)) dates.push(date);
+      if (isWorkspaceE2EAllocatedWeekday(date, allocation)) {
+        allocatedDates.push(date);
+      }
     }
 
-    return dates;
+    return allocatedDates.filter((date) => !unavailable.has(date));
   });
 
 export const selectCoworkDates = (
@@ -424,7 +427,13 @@ export const selectAvailableMeetingRoomSlots = (
       durations.map((duration, index) => [index, duration])
     );
     const reservedDates = new Set<string>();
-    let nextOffset = allocation.fromOffsetDays;
+    const allocatedDates = Array.from(
+      {
+        length: allocation.toOffsetDays - allocation.fromOffsetDays + 1,
+      },
+      (_, index) => futureIsoDate(allocation.fromOffsetDays + index)
+    ).filter((date) => isWorkspaceE2EAllocatedWeekday(date, allocation));
+    let nextDateIndex = 0;
 
     while (pendingDurations.size > 0) {
       const roundDates = new Set(reservedDates);
@@ -436,10 +445,10 @@ export const selectAvailableMeetingRoomSlots = (
       for (const [index, duration] of pendingDurations) {
         let slot: MeetingRoomCheckoutSlot | undefined;
 
-        while (nextOffset <= allocation.toOffsetDays && !slot) {
-          const date = futureIsoDate(nextOffset);
-          nextOffset += 1;
-          if (!isWeekday(date)) continue;
+        while (nextDateIndex < allocatedDates.length && !slot) {
+          const date = allocatedDates[nextDateIndex];
+          nextDateIndex += 1;
+          if (!date) continue;
 
           const candidate = yield* makeMeetingRoomCheckoutSlot(date, duration);
           if (getTouchedDates(candidate).some((day) => roundDates.has(day))) {
@@ -586,11 +595,6 @@ const futureIsoDate = (offsetDays: number) => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
   return date.toISOString().slice(0, 10);
-};
-
-const isWeekday = (date: string) => {
-  const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-  return day !== 0 && day !== 6;
 };
 
 const makeCoworkSelectionLabel = (

@@ -5,6 +5,7 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import isEmail from "validator/lib/isEmail";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
+import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
@@ -298,8 +299,78 @@ test("loads only the deterministic allocation shard through availability", async
     }).pipe(Effect.provide(httpClientLayer))
   );
 
-  expect(dates).toEqual(["2099-08-26"]);
+  expect(dates).toEqual(["2099-08-27"]);
   expect(requests[0]?.url).toContain("from=2099-08-26&to=2099-09-20");
+});
+
+test("spreads sparse availability across deterministic allocation shards", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const candidateDates = Array.from({ length: 77 }, (_, index) => {
+    const date = new Date("2099-07-17T00:00:00.000Z");
+    date.setUTCDate(date.getUTCDate() + index + 14);
+    return date.toISOString().slice(0, 10);
+  });
+  const availableDates = new Set(
+    candidateDates
+      .filter((date) => {
+        const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+        return day !== 0 && day !== 6;
+      })
+      .slice(0, 18)
+  );
+  const unavailableDates = candidateDates.filter(
+    (date) => !availableDates.has(date)
+  );
+  const fetchMock = mock(async () => Response.json({ unavailableDates }));
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const datesByShard = await Promise.all(
+    Array.from({ length: 3 }, (_, shardIndex) =>
+      Effect.runPromise(
+        Effect.gen(function* () {
+          const allocation = makeWorkspaceE2EDateAllocation({
+            runId: `sparse-availability-${shardIndex}`,
+            shardIndex,
+          });
+          const initialDates = yield* selectAvailableCoworkDates(
+            makeConfig(),
+            5,
+            {
+              allocation,
+              maximumReservationsPerDate: 4,
+            }
+          );
+          const discountDates = yield* selectAvailableCoworkDates(
+            makeConfig(),
+            16,
+            {
+              allocation,
+              excludedDates: new Set(initialDates),
+              maximumReservationsPerDate: 4,
+            }
+          );
+
+          return [...initialDates, ...discountDates];
+        }).pipe(Effect.provide(httpClientLayer))
+      )
+    )
+  );
+
+  for (const dates of datesByShard) {
+    const counts = Map.groupBy(dates, (date) => date);
+    expect(new Set(dates).size).toBe(6);
+    expect(Math.max(...[...counts.values()].map(({ length }) => length))).toBe(
+      4
+    );
+  }
+  expect(new Set(datesByShard.flat()).size).toBe(18);
 });
 
 test("allocates non-overlapping dates from concurrently loaded availability", async () => {
@@ -425,6 +496,41 @@ test("selects non-overlapping meeting-room slots for every duration", async () =
   expect(requests[2]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );
+});
+
+test("keeps meeting-room dates disjoint across allocation shards", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const fetchMock = mock(async () =>
+    Response.json({
+      meetingRoomUnavailable: false,
+      unavailableDates: [],
+    })
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const slotsByShard = await Promise.all(
+    Array.from({ length: 3 }, (_, shardIndex) =>
+      Effect.runPromise(
+        selectAvailableMeetingRoomSlots(
+          makeConfig(),
+          [{ unit: "hour", amount: 1 }],
+          makeWorkspaceE2EDateAllocation({
+            runId: `meeting-room-${shardIndex}`,
+            shardIndex,
+          })
+        ).pipe(Effect.provide(httpClientLayer))
+      )
+    )
+  );
+
+  expect(new Set(slotsByShard.flat().map(({ date }) => date)).size).toBe(3);
 });
 
 test("rejects meeting-room slots that touch an unavailable date", async () => {

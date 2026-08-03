@@ -5,6 +5,7 @@ import {
   type WorkspaceE2EDateAllocation,
 } from "../allocation";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
+import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,
@@ -90,6 +91,8 @@ export const makeWorkspaceE2ECases = ({
           checkoutFlows.length + terminalScenarios.length + 2,
           {
             allocation,
+            maximumReservationsPerDate:
+              workspaceE2EMaximumSameDateCoworkReservations.basic,
             selectionLabel: "tier:basic",
           }
         );

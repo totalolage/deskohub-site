@@ -206,6 +206,38 @@ test("case-owned cleanup leaves failed cancellations for suite reconciliation", 
   expect(state.cleanupComplete).toBeUndefined();
 });
 
+test("waits for case cancellations to leave active inventory", async () => {
+  const state: CheckoutFlowState = {
+    checkoutRow: checkoutRow("dotypos-reservation-1"),
+    cleanupComplete: true,
+    data: checkoutData(),
+  };
+  const cancelDotyposReservation = mock(() => Effect.void);
+  const waitForCancelledDotyposReservations = mock(() => Effect.void);
+
+  const cleanupError = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig: {} as DatasourceConfig,
+        flowStates: [state],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () => Effect.succeed([]),
+        waitForCancelledDotyposReservations,
+      }
+    )
+  );
+
+  expect(cleanupError).toBeUndefined();
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+  expect(waitForCancelledDotyposReservations).toHaveBeenCalledWith({}, [
+    "dotypos-reservation-1",
+  ]);
+});
+
 const checkoutData = () =>
   ({
     expectedReservationDetails: {

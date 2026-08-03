@@ -10,7 +10,10 @@ import {
   readCleanupCheckoutRows,
 } from "./integrations/database";
 import type { E2EDatabase } from "./integrations/database.service";
-import { cancelDotyposReservation } from "./integrations/dotypos";
+import {
+  cancelDotyposReservation,
+  waitForCancelledDotyposReservations,
+} from "./integrations/dotypos";
 import { log, redact } from "./runtime";
 import type { CheckoutData, CheckoutFlowState, CheckoutRow } from "./types";
 
@@ -95,26 +98,59 @@ export const cleanupCheckoutFlowStates = (
           )
         ),
       ];
+      const completedReservationIds = new Set(
+        flowStates.flatMap((state) => {
+          const reservationId = state.checkoutRow?.dotypos_reservation_id;
+          return state.cleanupComplete && reservationId ? [reservationId] : [];
+        })
+      );
       const cleanupExits = yield* Effect.all(
-        dotyposReservationIds.map((dotyposReservationId) =>
-          Effect.exit(
-            dependencies.cancelDotyposReservation(
-              datasourceConfig,
-              dotyposReservationId
-            )
+        dotyposReservationIds
+          .filter(
+            (dotyposReservationId) =>
+              !completedReservationIds.has(dotyposReservationId)
           )
-        ),
+          .map((dotyposReservationId) =>
+            Effect.exit(
+              dependencies.cancelDotyposReservation(
+                datasourceConfig,
+                dotyposReservationId
+              )
+            ).pipe(Effect.map((exit) => ({ dotyposReservationId, exit })))
+          ),
         { concurrency: "unbounded" }
       );
+      const convergingReservationIds = new Set(completedReservationIds);
 
-      for (const cleanupExit of cleanupExits) {
-        if (Exit.isFailure(cleanupExit)) {
+      for (const { dotyposReservationId, exit: cleanupExit } of cleanupExits) {
+        if (Exit.isSuccess(cleanupExit)) {
+          convergingReservationIds.add(dotyposReservationId);
+        } else {
           const cause = Cause.squash(cleanupExit.cause);
           cleanupErrors.push(
             toWorkspaceE2EError("cancel Dotypos checkout reservation", cause)
           );
           if (workflowError)
             log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+        }
+      }
+
+      if (
+        convergingReservationIds.size > 0 &&
+        dependencies.waitForCancelledDotyposReservations
+      ) {
+        const convergenceExit = yield* Effect.exit(
+          dependencies.waitForCancelledDotyposReservations(datasourceConfig, [
+            ...convergingReservationIds,
+          ])
+        );
+        if (Exit.isFailure(convergenceExit)) {
+          const cause = Cause.squash(convergenceExit.cause);
+          cleanupErrors.push(
+            toWorkspaceE2EError("wait for Dotypos cleanup convergence", cause)
+          );
+          if (workflowError)
+            log(`Dotypos cleanup convergence failed: ${redact(String(cause))}`);
         }
       }
     }
@@ -208,6 +244,7 @@ interface CleanupDependencies {
   readonly cancelDotyposReservation: typeof cancelDotyposReservation;
   readonly readCheckoutRow: typeof readCheckoutRow;
   readonly readCleanupCheckoutRows: typeof readCleanupCheckoutRows;
+  readonly waitForCancelledDotyposReservations?: typeof waitForCancelledDotyposReservations;
 }
 
 type OwnedCleanupDependencies = Pick<
@@ -219,6 +256,7 @@ const liveCleanupDependencies: CleanupDependencies = {
   cancelDotyposReservation,
   readCheckoutRow,
   readCleanupCheckoutRows,
+  waitForCancelledDotyposReservations,
 };
 
 const getFallbackCleanupQueries = (

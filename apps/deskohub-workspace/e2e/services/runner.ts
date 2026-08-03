@@ -92,9 +92,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                   effect: cleanup
                     .cleanupCheckoutStates({
                       datasourceConfig,
-                      flowStates: flowStates.filter(
-                        (state) => !state.cleanupComplete
-                      ),
+                      flowStates,
                       workflowError,
                     })
                     .pipe(

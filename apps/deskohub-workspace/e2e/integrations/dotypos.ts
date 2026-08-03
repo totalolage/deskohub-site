@@ -256,6 +256,59 @@ export const cancelDotyposReservation = (
     )
   );
 
+export const waitForCancelledDotyposReservations = (
+  config: DatasourceConfig,
+  dotyposReservationIds: readonly string[]
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    yield* waitForDotyposCancellationConvergence(
+      dotypos.listReservations(),
+      dotyposReservationIds,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
+    log("Dotypos reservation cancellations converged");
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("wait for Dotypos cancellation convergence", cause)
+    )
+  );
+
+export const waitForDotyposCancellationConvergence = <E, R>(
+  readReservations: Effect.Effect<readonly Reservation[], E, R>,
+  dotyposReservationIds: readonly string[],
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<void, E | WorkspaceE2EError, R> => {
+  const reservationIds = new Set(dotyposReservationIds);
+
+  return pollUntil(
+    readReservations.pipe(
+      Effect.map((reservations) =>
+        reservations.some(
+          (reservation) =>
+            reservation.id &&
+            reservationIds.has(reservation.id) &&
+            reservation.status !== "CANCELLED"
+        )
+          ? undefined
+          : true
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "cancelled Dotypos reservations to leave active inventory",
+      timeoutMs: options.timeoutMs,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: string
