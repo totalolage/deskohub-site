@@ -8,8 +8,9 @@ import {
   calendarDiscountExpectation,
 } from "./discounts";
 
-test("waits for the discount trigger to hydrate before focusing it", async () => {
+test("waits for the discount trigger to hydrate before hovering it", async () => {
   let triggerHydrated = false;
+  let triggerOpened = false;
   const calls: string[][] = [];
   const run: Runner = async (_command, args) => {
     calls.push(args);
@@ -17,10 +18,23 @@ test("waits for the discount trigger to hydrate before focusing it", async () =>
     if (operation === "wait" && value === "--fn") {
       triggerHydrated = args.at(4)?.includes("__reactProps$") ?? false;
     }
-    if (operation === "focus" && !triggerHydrated) {
+    if (operation === "hover" && !triggerHydrated) {
       return {
         exitCode: 1,
         stderr: "discount trigger is not hydrated",
+        stdout: "",
+      };
+    }
+    if (operation === "hover") triggerOpened = true;
+    if (
+      operation === "wait" &&
+      value === "--fn" &&
+      args.at(4)?.includes('[role="tooltip"]') &&
+      !triggerOpened
+    ) {
+      return {
+        exitCode: 1,
+        stderr: "discount tooltip is not open",
         stdout: "",
       };
     }
@@ -38,7 +52,7 @@ test("waits for the discount trigger to hydrate before focusing it", async () =>
     })
   );
 
-  expect(calls.map((args) => args.at(2))).toEqual(["wait", "focus", "wait"]);
+  expect(calls.map((args) => args.at(2))).toEqual(["wait", "hover", "wait"]);
   expect(calls.at(2)?.at(4)).toContain(
     "document.querySelectorAll('[role=\"tooltip\"] li')"
   );

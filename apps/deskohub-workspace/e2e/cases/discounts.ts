@@ -4,7 +4,7 @@ import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-cat
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
-  focusBrowserElement,
+  hoverBrowserElement,
   openBrowserPage,
   waitForBrowserCondition,
   waitForBrowserReactHydration,
@@ -1169,7 +1169,7 @@ export const assertDisplayedDiscounts = ({
     yield* waitForBrowserReactHydration(run, session, triggerSelector, {
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* focusBrowserElement(run, session, triggerSelector, {
+    yield* hoverBrowserElement(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
     for (const { basisPoints, label } of discounts) {
