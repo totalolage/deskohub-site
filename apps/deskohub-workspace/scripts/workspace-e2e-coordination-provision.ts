@@ -4,6 +4,7 @@ import { Effect, Redacted, Schema } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 
 const allocatorRoleName = "workspace_e2e_allocator";
+const providerPermitRoleName = "workspace_e2e_provider_permit";
 
 const Environment = Schema.Struct({
   WORKSPACE_E2E_COORDINATOR_ADMIN_DATABASE_URL: Schema.NonEmptyString,
@@ -13,11 +14,22 @@ interface CurrentDatabaseRow {
   readonly databaseName: string;
 }
 
+interface ProviderPermitRoleSecurityRow {
+  readonly canBypassRowSecurity: boolean;
+  readonly canCreateDatabase: boolean;
+  readonly canCreateRole: boolean;
+  readonly canLogin: boolean;
+  readonly hasMemberships: boolean;
+  readonly isReplicationRole: boolean;
+  readonly isSuperuser: boolean;
+}
+
 const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
   Effect.flatMap((environment) =>
     Effect.gen(function* () {
       const sql = yield* PgClient.PgClient;
       const allocatorRole = sql(allocatorRoleName);
+      const providerPermitRole = sql(providerPermitRoleName);
       const currentDatabases = yield* sql<CurrentDatabaseRow>`
         select current_database() as "databaseName"
       `;
@@ -76,6 +88,60 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
             "grant allocation sequence access",
             sql`grant usage, select on sequence workspace_e2e_coordination.allocation_requests_queue_position_seq to ${allocatorRole}`
           );
+          yield* provisionStep(
+            "reset provider permit database grants",
+            sql`revoke all privileges on database ${database} from ${providerPermitRole}`
+          );
+          yield* provisionStep(
+            "reset provider permit schema grants",
+            sql`revoke all on schema workspace_e2e_coordination from ${providerPermitRole}`
+          );
+          yield* provisionStep(
+            "reset provider permit table grants",
+            sql`revoke all on all tables in schema workspace_e2e_coordination from ${providerPermitRole}`
+          );
+          yield* provisionStep(
+            "reset provider permit sequence grants",
+            sql`revoke all on all sequences in schema workspace_e2e_coordination from ${providerPermitRole}`
+          );
+          yield* provisionStep(
+            "grant provider permit database connect",
+            sql`grant connect on database ${database} to ${providerPermitRole}`
+          );
+          const providerPermitRoles = yield* provisionStep(
+            "verify provider permit role isolation",
+            sql<ProviderPermitRoleSecurityRow>`
+              select
+                role.rolbypassrls as "canBypassRowSecurity",
+                role.rolcreatedb as "canCreateDatabase",
+                role.rolcreaterole as "canCreateRole",
+                role.rolcanlogin as "canLogin",
+                exists (
+                  select 1
+                  from pg_auth_members membership
+                  where membership.member = role.oid
+                ) as "hasMemberships",
+                role.rolreplication as "isReplicationRole",
+                role.rolsuper as "isSuperuser"
+              from pg_roles role
+              where role.rolname = ${providerPermitRoleName}
+            `
+          );
+          const providerPermitRoleSecurity = providerPermitRoles[0];
+          if (
+            providerPermitRoles.length !== 1 ||
+            !providerPermitRoleSecurity?.canLogin ||
+            providerPermitRoleSecurity.canBypassRowSecurity ||
+            providerPermitRoleSecurity.canCreateDatabase ||
+            providerPermitRoleSecurity.canCreateRole ||
+            providerPermitRoleSecurity.hasMemberships ||
+            providerPermitRoleSecurity.isReplicationRole ||
+            providerPermitRoleSecurity.isSuperuser
+          ) {
+            return yield* Effect.fail(
+              new Error("The provider permit role is not isolated.")
+            );
+          }
         })
       );
     }).pipe(

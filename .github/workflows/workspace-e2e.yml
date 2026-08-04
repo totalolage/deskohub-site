@@ -421,6 +421,8 @@ jobs:
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"
+          WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: ${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}
           DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
           DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
           DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}

@@ -140,11 +140,11 @@ cannot release a rerun. A later acquisition reconciles any terminal owner left
 by an interrupted finalizer. A bounded fourth contender waits in FIFO order
 until a shard is released or its preparation deadline expires.
 
-The runtime role can connect, use the coordination schema, read and row-lock
+The allocation role can connect, use the coordination schema, read and row-lock
 the fixed pool row, and read/write allocation requests and their identity
 sequence. The pool's `UPDATE` grant is required by PostgreSQL for `SELECT ...
-FOR UPDATE`; the allocator does not change the pool definition. It cannot
-perform DDL. Only its direct TLS connection URL is stored as the
+FOR UPDATE`; the allocator does not change the pool definition. Only its direct
+TLS connection URL is stored as the
 `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` secret in the
 `workspace-checkout-e2e` GitHub environment; the administrator URL and Neon API
 credentials are absent from CI. Allocator jobs require `actions: read`,
@@ -155,6 +155,26 @@ bundle, rebuilt with:
 ```bash
 bun --cwd apps/deskohub-workspace e2e:coordination:build-action
 ```
+
+Exact-SHA checkout code receives a different direct URL through the
+`WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` environment secret. Its dedicated
+SQL-created role has database connectivity only. It has no schema, table,
+sequence, write, DDL, elevated-role membership, or administrative access. The
+workflow secret is constructed from the exact coordination project, primary
+branch, and database, smoke-tested with the advisory lock, and then stored
+without printing it. Do not create
+this role through the Neon Console, CLI, or API because those paths inherit
+`neon_superuser`; create it through a trusted SQL admin session, strip all role
+memberships there, and then run the checked provisioner. The provisioner resets
+object grants and refuses to commit unless the provider permit role has no
+elevated flags or memberships. The allocator URL, administrator URL, and Neon API
+credentials remain unavailable to exact-SHA code.
+The allocator secret is consumed only by the action checked out from the trusted
+default-workflow SHA; it is never passed to exact-SHA checkout code. The
+coordination project's current role quota prevents adding another SQL-created
+allocator without deleting an administrative role, so replacing that trusted
+action identity remains an operational hardening task rather than a prerequisite
+for the narrow exact-SHA permit.
 
 Provision or migrate the dedicated database from a trusted operations session
 with the administrator URL available only to that process:
@@ -180,11 +200,15 @@ shard, including the dates touched by a whole-day reservation.
 
 The job-level `workspace-e2e-dotypos-sandbox` lock remains the default because
 the external sandbox capacity and cross-run fixture isolation have not yet
-passed the required concurrent soak. It is no longer needed for coordinator
-atomicity. A controlled `workflow_dispatch` soak may set `allow_concurrent` to
-exercise the transactional allocator without changing ordinary CI. Remove the
-default lock only after the capacity checklist and five three-way concurrent
-soaks pass.
+passed the required concurrent soak. It is no longer needed for shard
+allocator atomicity. It is still the compatibility authority when an automatic
+repository dispatch uses the old default-branch workflow, which cannot pass a
+new secret added only by the exact-SHA PR. A controlled branch
+`workflow_dispatch` soak may set `allow_concurrent`; that workflow sets
+`WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the narrow provider
+permit URL, and fails closed if the URL or connection is missing.
+Remove the default lock only after the capacity checklist and five three-way
+concurrent soaks pass with the distributed permit enabled.
 
 ### Dotypos capacity checklist
 
@@ -424,15 +448,25 @@ connection strings out of logs and artifacts.
 
 Concurrent exact-SHA soaks showed repeated Nexi connection failures when many
 cases from three suites reached that authoritative replay verification at once.
-The suite therefore admits one synthetic `replay-payment-webhook` step at a
-time with an interruption-safe Effect semaphore. This is a suite-local narrow
-boundary: at the supported three-run limit, at most three synthetic replay
-verifications overlap across runs. Hosted payment, genuine webhook delivery,
-fulfillment, and unrelated provider work remain parallel. Permit wait is
-included in the step trace duration, the semantic step timeout begins after
-admission, and the case watchdog bounds the complete wait and execution. Keep
-the global workflow lock until five successful three-run soaks verify this
-aggregate boundary under load.
+Two three-way rounds passed with a suite-local Effect semaphore, but the next
+round failed all three runs on synthetic webhook replay: suite-local capacity
+one still allowed aggregate capacity three. The runner therefore admits one
+synthetic `replay-payment-webhook` step globally with a transaction-scoped
+PostgreSQL advisory lock in the coordination database. A suite-local semaphore
+allows only one blocked lock query per process, while the dedicated direct SQL
+pool retains a second connection for interruption cancellation. Transaction
+commit, rollback, interruption, or connection loss releases the lock.
+
+Hosted payment, genuine webhook delivery, fulfillment, and unrelated provider
+work remain parallel. Permit wait is included in the step trace duration, the
+semantic step timeout begins after admission, and the case watchdog bounds the
+complete wait and execution. SQL connection and acquisition failures prevent the
+replay from starting and fail the run. The boundary is load control rather than
+provider-side fencing: a coordinator connection loss during an in-flight HTTP
+request can release the lock before commit reports the failure, while Nexi's
+unique order and idempotency identities continue to protect the operation.
+Keep the global workflow lock until five successful three-run soaks verify the
+distributed boundary under load.
 
 ## Verification
 
@@ -478,6 +512,9 @@ contains an `e2e.case` child for every case, and every semantic step is an
 case, and step IDs are code-owned attributes. The allocation shard and shard
 count are bounded numeric attributes; provider identifiers, selected dates,
 and preview URLs are not trace attributes.
+The shared exporter censors SQL-client `server.address` and `db.namespace`
+attributes, while the process redactor registers the permit URL, host, database
+name, user, and password before SQL Layer initialization.
 
 PostHog's native span duration is the authoritative elapsed time. Case and step
 spans also record their configured `e2e.timeout_ms`, which allows actual

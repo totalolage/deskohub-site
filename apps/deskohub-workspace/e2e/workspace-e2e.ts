@@ -1,11 +1,11 @@
 import { Effect } from "effect";
-import type { E2EEnvironment } from "./e2e-env";
+import type { WorkspaceE2EEnvironment } from "./e2e-env";
 import {
   makeWorkspaceE2ELive,
   WorkspaceE2ERunnerService,
 } from "./services/runner";
 
-export const makeWorkspaceE2E = (environment: E2EEnvironment) =>
+export const makeWorkspaceE2E = (environment: WorkspaceE2EEnvironment) =>
   Effect.gen(function* () {
     const runner = yield* WorkspaceE2ERunnerService;
     yield* runner.run;
