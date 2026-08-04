@@ -1332,6 +1332,61 @@ describe("DotyposService reservation listing", () => {
     expect(requestedPages).toEqual(["1", "2"]);
   });
 
+  test("filters reservations with domain-shaped options", async () => {
+    const requestedQueries: URLSearchParams[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        requestedQueries.push(url.searchParams);
+        return Response.json({ data: [] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations({
+          customerId: "customer-id",
+          startsAtOrAfter: "2026-08-04T00:00:00+02:00",
+          startsBefore: "2026-08-05T00:00:00+02:00",
+          order: "startDateDescending",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(requestedQueries).toHaveLength(1);
+    expect(requestedQueries[0]?.get("filter")).toBe(
+      "_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00+02:00;startDate|lt|2026-08-05T00:00:00+02:00"
+    );
+    expect(requestedQueries[0]?.get("sort")).toBe("-startDate");
+  });
+
+  test("rejects reservation filter delimiters", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .listReservations({ customerId: "customer|eq|other" })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ValidationError" },
+    });
+  });
+
   test("preserves a later-page 404 as an API error", async () => {
     const firstReservation = reservation({ id: "reservation-1" });
     const requestedPages: string[] = [];

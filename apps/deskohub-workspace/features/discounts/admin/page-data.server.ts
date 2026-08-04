@@ -88,6 +88,35 @@ export const loadDiscountAdminCustomerPageData = async (
   };
 };
 
+export const loadOptionalDiscountAdminCustomerPageData = async (
+  customerId: DotyposCustomerId,
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+
+  const profile = await Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCustomerProfile({ customerId });
+  }).pipe(
+    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
+    Effect.catch((cause) =>
+      Effect.logWarning("Customer administration details unavailable", {
+        cause,
+        customerId,
+      }).pipe(Effect.as(null))
+    ),
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-customer-optional", {
+      boundary: "route",
+    })
+  );
+
+  return {
+    profile,
+    notice: await loadNotice(searchParams),
+  };
+};
+
 export const authorizeDiscountAdminPage = async () => {
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),

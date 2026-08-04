@@ -9,6 +9,7 @@ import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer"
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
 import type {
@@ -38,7 +39,11 @@ const getCustomerSearch = (
   return { kind, phone: value };
 };
 
-export function CustomerSearch() {
+export function CustomerSearch({
+  compact = false,
+}: {
+  readonly compact?: boolean;
+}) {
   const [kind, setKind] = useState<DiscountAdminCustomerSearch["kind"]>("id");
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +73,12 @@ export function CustomerSearch() {
   return (
     <div className="space-y-4">
       <form
-        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[11rem_minmax(0,1fr)_auto] md:items-end"
+        className={cn(
+          "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:items-end",
+          compact
+            ? "md:grid-cols-[9rem_minmax(0,1fr)_auto]"
+            : "md:grid-cols-[11rem_minmax(0,1fr)_auto]"
+        )}
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);
@@ -154,7 +164,7 @@ export function CustomerSearch() {
                           .filter(Boolean)
                           .join(" · ") || "No contact details"}
                       </p>
-                      <code className="mt-1 block text-xs text-navy-blue/55">
+                      <code className="mt-1 block text-xs text-navy-blue/65">
                         {customer.id}
                       </code>
                     </div>

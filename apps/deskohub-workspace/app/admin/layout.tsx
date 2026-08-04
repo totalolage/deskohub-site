@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
+import "@xyflow/react/dist/style.css";
+import { AdminShell } from "@/features/administration/admin-shell";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -17,7 +19,7 @@ const sculpin = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "Discount administration · Deskohub Workspace",
+  title: "Administration · Deskohub Workspace",
   robots: {
     index: false,
     follow: false,
@@ -30,8 +32,10 @@ export default function AdminLayout({
   readonly children: ReactNode;
 }) {
   return (
-    <html lang="en" className={sculpin.variable}>
-      <body>{children}</body>
+    <html lang="en" className={sculpin.variable} data-scroll-behavior="smooth">
+      <body>
+        <AdminShell>{children}</AdminShell>
+      </body>
     </html>
   );
 }

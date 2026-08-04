@@ -19,7 +19,11 @@ import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/ba
 
 export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/admin")) {
+    const isSyntheticLocalPreview =
+      process.env.NODE_ENV === "development" &&
+      env.ADMIN_PREVIEW_FIXTURES === "true";
     if (
+      !isSyntheticLocalPreview &&
       !isDiscountAdminAuthorizationValid(
         request.headers.get("authorization"),
         env.ADMIN_BASIC_AUTH_SHA256
@@ -31,7 +35,7 @@ export function proxy(request: NextRequest) {
           "Cache-Control": "private, no-store",
           Vary: "Authorization",
           "WWW-Authenticate":
-            'Basic realm="Deskohub discount administration", charset="UTF-8"',
+            'Basic realm="Deskohub administration", charset="UTF-8"',
         },
       });
     }

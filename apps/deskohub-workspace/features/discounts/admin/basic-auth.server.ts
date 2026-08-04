@@ -14,24 +14,27 @@ export class DiscountAdminUnauthorizedError extends Data.TaggedError(
 export const requireDiscountAdminAuthorization = Effect.fn(
   "DiscountAdmin.requireAuthorization"
 )(() =>
-  Effect.tryPromise({
-    try: () => headers(),
-    catch: () =>
-      new DiscountAdminUnauthorizedError({
-        message: "Administrator authentication is required.",
-      }),
-  }).pipe(
-    Effect.filterOrFail(
-      (requestHeaders) =>
-        isDiscountAdminAuthorizationValid(
-          requestHeaders.get("authorization"),
-          env.ADMIN_BASIC_AUTH_SHA256
+  process.env.NODE_ENV === "development" &&
+  env.ADMIN_PREVIEW_FIXTURES === "true"
+    ? Effect.void
+    : Effect.tryPromise({
+        try: () => headers(),
+        catch: () =>
+          new DiscountAdminUnauthorizedError({
+            message: "Administrator authentication is required.",
+          }),
+      }).pipe(
+        Effect.filterOrFail(
+          (requestHeaders) =>
+            isDiscountAdminAuthorizationValid(
+              requestHeaders.get("authorization"),
+              env.ADMIN_BASIC_AUTH_SHA256
+            ),
+          () =>
+            new DiscountAdminUnauthorizedError({
+              message: "Administrator authentication is required.",
+            })
         ),
-      () =>
-        new DiscountAdminUnauthorizedError({
-          message: "Administrator authentication is required.",
-        })
-    ),
-    Effect.asVoid
-  )
+        Effect.asVoid
+      )
 );

@@ -1,4 +1,12 @@
 import Link from "next/link";
+import type { AdministrationReservationPage } from "@/features/administration/administration.service";
+import {
+  AdministrationNoticeBanner,
+  AdministrationPage,
+  AdministrationPageHeader,
+  Pagination,
+  ReservationTable,
+} from "@/features/administration/components";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -125,7 +133,7 @@ export function CodeAdministrationDetailPage({
                       Remove
                     </AdminMutationButton>
                   ) : (
-                    <span className="text-xs text-navy-blue/55">
+                    <span className="text-xs text-navy-blue/65">
                       Use Make unrestricted
                     </span>
                   )}
@@ -162,9 +170,11 @@ export function CodeAdministrationDetailPage({
 export function CustomerAdministrationDetailPage({
   notice,
   profile,
+  reservations,
 }: {
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
+  readonly reservations: AdministrationReservationPage;
 }) {
   const currentGroup = profile.discountGroups.find(
     ({ id }) => id === profile.customer.discountGroupId
@@ -176,108 +186,150 @@ export function CustomerAdministrationDetailPage({
     currentGroupLabel = `Unavailable (${profile.customer.discountGroupId})`;
   }
   return (
-    <AdminPageShell
-      activeSection="customers"
-      count={profile.codes.filter(({ eligible }) => eligible).length}
-      notice={notice}
-      title={profile.customer.displayName}
-    >
-      <Button asChild className="mb-4" size="sm" variant="ghost">
-        <Link href="/admin/customers">← Back to customer search</Link>
-      </Button>
+    <AdministrationPage>
+      <AdministrationPageHeader
+        description="Customer details, associated reservations, and discount access."
+        eyebrow="Customer"
+        title={profile.customer.displayName}
+      />
+      <AdministrationNoticeBanner notice={notice} />
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="font-semibold">Dotypos customer</h2>
-          <dl className="mt-4 grid gap-4 text-sm sm:grid-cols-2">
-            <CustomerFact label="Email" value={profile.customer.email ?? "—"} />
-            <CustomerFact label="Phone" value={profile.customer.phone ?? "—"} />
-            <CustomerFact
-              label="Customer ID"
-              value={profile.customer.id}
-              mono
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="min-w-0 space-y-7">
+          <section>
+            <div className="mb-3 flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl">Reservations</h2>
+                <p className="mt-1 text-sm text-navy-blue/65">
+                  Reservations associated with this customer.
+                </p>
+              </div>
+              <span className="text-sm text-navy-blue/65">
+                {reservations.total} total
+              </span>
+            </div>
+            <ReservationTable
+              emptyMessage="This customer has no reservations."
+              reservations={reservations.items}
             />
-            <CustomerFact label="Current group" value={currentGroupLabel} />
-          </dl>
-        </section>
+            <Pagination
+              basePath={`/admin/customers/${profile.customer.id}`}
+              page={reservations.page}
+              pageCount={reservations.pageCount}
+              pageParam="reservationsPage"
+            />
+          </section>
 
-        <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-          <h2 className="mb-4 font-semibold">Discount group</h2>
-          <CustomerDiscountGroupForm
-            currentGroupId={profile.customer.discountGroupId}
-            customerId={profile.customer.id}
-            discountGroups={profile.discountGroups}
-          />
-        </section>
-      </div>
-
-      <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Code eligibility</h2>
-        {profile.codes.length === 0 ? (
-          <EmptyState message="No discount codes exist." />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
-            <Table
-              aria-label="Customer code eligibility"
-              className="min-w-[720px]"
-            >
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Discount</TableHead>
-                  <TableHead>Audience</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {profile.codes.map((code) => {
-                  let eligibilityLabel = "Not eligible";
-                  if (code.eligible) eligibilityLabel = "Allowlisted";
-                  else if (code.audienceSize === 0)
-                    eligibilityLabel = "Eligible";
-
-                  return (
-                    <TableRow key={code.id}>
-                      <TableCell>
-                        <Link
-                          className="font-mono font-semibold underline underline-offset-4"
-                          href={`/admin/codes/${code.id}`}
-                        >
-                          {code.code}
-                        </Link>
-                      </TableCell>
-                      <TableCell>{code.discountLabel}</TableCell>
-                      <TableCell>
-                        {code.audienceSize === 0
-                          ? "Unrestricted"
-                          : `${code.audienceSize} customers`}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={code.eligible ? "default" : "subtle"}>
-                          {eligibilityLabel}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <CustomerCodeAction
-                          code={code}
-                          customerId={profile.customer.id}
-                        />
-                      </TableCell>
+          <section>
+            <h2 className="mb-3 text-xl">Discount codes</h2>
+            {profile.codes.length === 0 ? (
+              <EmptyState message="No discount codes exist." />
+            ) : (
+              <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+                <Table
+                  aria-label="Customer code eligibility"
+                  className="min-w-[720px]"
+                >
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Discount</TableHead>
+                      <TableHead>Audience</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Action</TableHead>
                     </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-      </section>
+                  </TableHeader>
+                  <TableBody>
+                    {profile.codes.map((code) => {
+                      let eligibilityLabel = "Not eligible";
+                      if (code.eligible) eligibilityLabel = "Allowlisted";
+                      else if (code.audienceSize === 0)
+                        eligibilityLabel = "Eligible";
 
-      <section className="mt-5">
-        <h2 className="mb-3 font-semibold">Claim history</h2>
-        <ClaimHistory claims={profile.claims} showCode />
-      </section>
-    </AdminPageShell>
+                      return (
+                        <TableRow key={code.id}>
+                          <TableCell>
+                            <Link
+                              className="font-mono font-semibold underline underline-offset-4"
+                              href={`/admin/codes/${code.id}`}
+                            >
+                              {code.code}
+                            </Link>
+                          </TableCell>
+                          <TableCell>{code.discountLabel}</TableCell>
+                          <TableCell>
+                            {code.audienceSize === 0
+                              ? "Unrestricted"
+                              : `${code.audienceSize} customers`}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={code.eligible ? "default" : "subtle"}
+                            >
+                              {eligibilityLabel}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">
+                            <CustomerCodeAction
+                              code={code}
+                              customerId={profile.customer.id}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Discount code history</h2>
+            <ClaimHistory claims={profile.claims} showCode />
+          </section>
+        </div>
+
+        <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
+          <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
+            <h2 className="font-semibold">Contact</h2>
+            <dl className="mt-4 grid gap-4 text-sm">
+              <CustomerFact
+                label="Email"
+                value={profile.customer.email ?? "—"}
+              />
+              <CustomerFact
+                label="Phone"
+                value={profile.customer.phone ?? "—"}
+              />
+              <CustomerFact label="Current group" value={currentGroupLabel} />
+            </dl>
+          </section>
+
+          <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
+            <h2 className="mb-4 font-semibold">Discount group</h2>
+            <CustomerDiscountGroupForm
+              currentGroupId={profile.customer.discountGroupId}
+              customerId={profile.customer.id}
+              discountGroups={profile.discountGroups}
+            />
+          </section>
+
+          <details className="rounded-xl border border-navy-blue/10 bg-white">
+            <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
+              Reference
+            </summary>
+            <div className="border-t border-navy-blue/10 px-5 py-4">
+              <CustomerFact
+                label="Customer ID"
+                value={profile.customer.id}
+                mono
+              />
+            </div>
+          </details>
+        </aside>
+      </div>
+    </AdministrationPage>
   );
 }
 
@@ -368,7 +420,7 @@ function SummaryFact({
 }) {
   return (
     <div className="bg-white px-4 py-3">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/55">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/65">
         {label}
       </dt>
       <dd className="mt-1 font-semibold">{value}</dd>
@@ -387,7 +439,7 @@ function CustomerFact({
 }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/55">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/65">
         {label}
       </dt>
       <dd className={mono ? "mt-1 break-all font-mono text-xs" : "mt-1"}>
@@ -413,8 +465,11 @@ function ClaimHistory({
       <Table aria-label="Discount code claim history" className="min-w-[820px]">
         <TableHeader>
           <TableRow>
-            {showCode && <TableHead>Code ID</TableHead>}
-            <TableHead>Customer ID</TableHead>
+            {showCode ? (
+              <TableHead>Code</TableHead>
+            ) : (
+              <TableHead>Customer</TableHead>
+            )}
             <TableHead>State</TableHead>
             <TableHead>Reserved</TableHead>
             <TableHead>Completed</TableHead>
@@ -424,32 +479,34 @@ function ClaimHistory({
         <TableBody>
           {claims.map((claim) => (
             <TableRow key={claim.id}>
-              {showCode && (
+              {showCode ? (
                 <TableCell>
                   <Link
-                    className="font-mono text-xs underline underline-offset-4"
+                    className="font-semibold underline underline-offset-4"
                     href={`/admin/codes/${claim.codeId}`}
                   >
-                    {claim.codeId}
+                    View code
+                  </Link>
+                </TableCell>
+              ) : (
+                <TableCell>
+                  <Link
+                    className="font-semibold underline underline-offset-4"
+                    href={`/admin/customers/${claim.dotyposCustomerId}`}
+                  >
+                    View customer
                   </Link>
                 </TableCell>
               )}
               <TableCell>
-                <Link
-                  className="font-mono text-xs underline underline-offset-4"
-                  href={`/admin/customers/${claim.dotyposCustomerId}`}
-                >
-                  {claim.dotyposCustomerId}
-                </Link>
-              </TableCell>
-              <TableCell>
                 <Badge
                   variant={claim.state === "released" ? "subtle" : "default"}
                 >
-                  {claim.state}
+                  {claim.state[0]?.toUpperCase()}
+                  {claim.state.slice(1)}
                 </Badge>
                 {claim.releaseReason && (
-                  <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/55">
+                  <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
                     {claim.releaseReason}
                   </p>
                 )}
@@ -461,7 +518,12 @@ function ClaimHistory({
                 {formatInstant(claim.redeemedAt ?? claim.releasedAt)}
               </TableCell>
               <TableCell>
-                <code className="text-xs">{claim.workspaceReservationId}</code>
+                <Link
+                  className="font-semibold underline underline-offset-4"
+                  href={`/admin/reservations/${claim.workspaceReservationId}`}
+                >
+                  Open reservation
+                </Link>
               </TableCell>
             </TableRow>
           ))}

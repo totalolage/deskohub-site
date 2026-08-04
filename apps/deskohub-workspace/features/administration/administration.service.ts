@@ -1,0 +1,806 @@
+import { DotyposService } from "@deskohub/dotypos";
+import type {
+  Customer as DotyposCustomer,
+  Reservation as DotyposReservation,
+} from "@deskohub/dotypos/generated";
+import {
+  and,
+  count,
+  countDistinct,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  max,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
+import { Context, Effect, Layer } from "effect";
+import { WorkspaceDatabase } from "@/db/database.service";
+import {
+  discountApplications,
+  paymentAttempts,
+  type WorkspaceReservation,
+  workspaceReservations,
+} from "@/db/schema";
+import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
+import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  mergeReservationHistory,
+  PostHogReservationHistory,
+} from "./posthog-reservation-history";
+import type { AdministrationStatusGroup } from "./reservation-status";
+import { getAdministrationReservationStatus } from "./reservation-status";
+
+const reservationPageSize = 24;
+const customerPageSize = 24;
+const customerReservationPageSize = 10;
+
+const paymentAttemptStateLabels = {
+  created: "Started",
+  pending: "Pending",
+  paid: "Paid",
+  failed: "Unsuccessful",
+  cancelled: "Unsuccessful",
+  expired: "Unsuccessful",
+} as const;
+
+export type AdministrationReservationListInput = {
+  readonly date?: string;
+  readonly page?: number;
+  readonly query?: string;
+  readonly status?: AdministrationStatusGroup;
+  readonly type?: "cowork" | "meeting-room";
+};
+
+type ReservationListInput = AdministrationReservationListInput & {
+  readonly pageSize?: number;
+};
+
+export type AdministrationCustomerListInput = {
+  readonly page?: number;
+};
+
+export type AdministrationCustomer = {
+  readonly id: string;
+  readonly displayName: string;
+  readonly email: string | null;
+  readonly phone: string | null;
+};
+
+export type AdministrationReservationSummary = {
+  readonly id: string;
+  readonly customerId: string;
+  readonly customer: AdministrationCustomer | null;
+  readonly liveDetailsAvailable: boolean;
+  readonly startsAt: string | null;
+  readonly endsAt: string | null;
+  readonly date: string | null;
+  readonly type: "cowork" | "meeting-room";
+  readonly typeLabel: string;
+  readonly status: ReturnType<typeof getAdministrationReservationStatus>;
+  readonly updatedAt: string;
+};
+
+export type AdministrationReservationPage = {
+  readonly items: readonly AdministrationReservationSummary[];
+  readonly page: number;
+  readonly pageCount: number;
+  readonly total: number;
+};
+
+export type AdministrationPaymentAttempt = {
+  readonly id: string;
+  readonly providerLabel: string;
+  readonly stateLabel: string;
+  readonly amount: {
+    readonly value: number;
+    readonly exponent: number;
+    readonly currency: string;
+  };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+};
+
+export type AdministrationDiscountApplication = {
+  readonly id: string;
+  readonly label: string;
+  readonly amount: {
+    readonly value: number;
+    readonly exponent: number;
+    readonly currency: string;
+  };
+};
+
+export type AdministrationTimelineItem = {
+  readonly id: string;
+  readonly title: string;
+  readonly description: string;
+  readonly occurredAt: string;
+  readonly tone: "neutral" | "positive" | "warning";
+};
+
+export type AdministrationReservationDetail = {
+  readonly reservation: AdministrationReservationSummary;
+  readonly timeline: readonly AdministrationTimelineItem[];
+  readonly historyAvailability: "available" | "unavailable";
+  readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
+  readonly discounts: readonly AdministrationDiscountApplication[];
+  readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
+  readonly sameDateReservations: readonly AdministrationReservationSummary[];
+  readonly references: {
+    readonly workspaceReservationId: string;
+    readonly dotyposReservationId: string | null;
+    readonly customerId: string;
+  };
+};
+
+export type AdministrationCustomerSummary = {
+  readonly customer: AdministrationCustomer | null;
+  readonly customerId: string;
+  readonly reservationCount: number;
+  readonly lastActivityAt: string;
+};
+
+type SafeReservationRow = Pick<
+  WorkspaceReservation,
+  | "id"
+  | "dotyposCustomerId"
+  | "dotyposReservationId"
+  | "reservationState"
+  | "paymentState"
+  | "fulfillmentState"
+  | "reservationDetails"
+  | "reservationCreatedAt"
+  | "reservationConfirmedAt"
+  | "reservationCancelledAt"
+  | "paidAt"
+  | "fulfilledAt"
+  | "fulfillmentFailedAt"
+  | "createdAt"
+  | "updatedAt"
+>;
+
+const safeReservationSelection = {
+  id: workspaceReservations.id,
+  dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+  dotyposReservationId: workspaceReservations.dotyposReservationId,
+  reservationState: workspaceReservations.reservationState,
+  paymentState: workspaceReservations.paymentState,
+  fulfillmentState: workspaceReservations.fulfillmentState,
+  reservationDetails: workspaceReservations.reservationDetails,
+  reservationCreatedAt: workspaceReservations.reservationCreatedAt,
+  reservationConfirmedAt: workspaceReservations.reservationConfirmedAt,
+  reservationCancelledAt: workspaceReservations.reservationCancelledAt,
+  paidAt: workspaceReservations.paidAt,
+  fulfilledAt: workspaceReservations.fulfilledAt,
+  fulfillmentFailedAt: workspaceReservations.fulfillmentFailedAt,
+  createdAt: workspaceReservations.createdAt,
+  updatedAt: workspaceReservations.updatedAt,
+} as const;
+
+const toIsoString = (instant: Temporal.Instant) => instant.toString();
+
+const toCustomer = (
+  customer: DotyposCustomer,
+  fallbackId: string
+): AdministrationCustomer => {
+  const personalName = [customer.firstName, customer.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return {
+    id: customer.id ?? fallbackId,
+    displayName:
+      personalName || customer.companyName?.trim() || "Unnamed customer",
+    email: customer.email?.trim() || null,
+    phone: customer.phone?.trim() || null,
+  };
+};
+
+const getReservationTypeLabel = (row: SafeReservationRow) => {
+  if (row.reservationDetails.kind === "meeting-room") return "Meeting room";
+  const tier = row.reservationDetails.entryTier;
+  return `${tier[0]?.toUpperCase()}${tier.slice(1)} coworking`;
+};
+
+const getReservationDate = (startsAt: string) =>
+  Temporal.Instant.from(startsAt)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate()
+    .toString();
+
+const toReservationSummary = ({
+  live,
+  row,
+}: {
+  readonly live: {
+    readonly reservation: DotyposReservation;
+    readonly customer: DotyposCustomer;
+  } | null;
+  readonly row: SafeReservationRow;
+}): AdministrationReservationSummary => {
+  return {
+    id: row.id,
+    customerId: row.dotyposCustomerId,
+    customer: live ? toCustomer(live.customer, row.dotyposCustomerId) : null,
+    liveDetailsAvailable: Boolean(live),
+    startsAt: live?.reservation.startDate ?? null,
+    endsAt: live?.reservation.endDate ?? null,
+    date: live ? getReservationDate(live.reservation.startDate) : null,
+    type: row.reservationDetails.kind,
+    typeLabel: getReservationTypeLabel(row),
+    status: getAdministrationReservationStatus({
+      fulfillmentState: row.fulfillmentState,
+      paymentState: row.paymentState,
+      reservationState: row.reservationState,
+    }),
+    updatedAt: toIsoString(row.updatedAt),
+  };
+};
+
+const getDateBounds = (date: string) => {
+  const plainDate = Temporal.PlainDate.from(date);
+  const start = plainDate.toZonedDateTime({
+    plainTime: Temporal.PlainTime.from("00:00"),
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
+  return {
+    startsAtOrAfter: start.toInstant().toString(),
+    startsBefore: start.add({ days: 1 }).toInstant().toString(),
+  };
+};
+
+const statusCondition = (status: AdministrationStatusGroup): SQL => {
+  if (status === "attention") {
+    return or(
+      eq(workspaceReservations.fulfillmentState, "failed"),
+      eq(workspaceReservations.reservationState, "cancellation_failed")
+    )!;
+  }
+  if (status === "complete") {
+    return and(
+      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
+      eq(workspaceReservations.fulfillmentState, "fulfilled")
+    )!;
+  }
+  if (status === "cancelled") {
+    return and(
+      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+      sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
+      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
+      or(
+        eq(workspaceReservations.reservationState, "cancelled"),
+        eq(workspaceReservations.reservationState, "hold_expired"),
+        eq(workspaceReservations.paymentState, "expired")
+      )
+    )!;
+  }
+  return and(
+    sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+    sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
+    sql`${workspaceReservations.reservationState} not in ('cancelled', 'hold_expired', 'cancellation_failed')`,
+    sql`${workspaceReservations.paymentState} <> 'expired'`
+  )!;
+};
+
+const buildTimeline = (row: SafeReservationRow) => {
+  const items: AdministrationTimelineItem[] = [
+    {
+      id: "workflow-created",
+      title: "Checkout started",
+      description: "The customer began checkout.",
+      occurredAt: toIsoString(row.createdAt),
+      tone: "neutral",
+    },
+  ];
+  const add = (
+    id: string,
+    title: string,
+    description: string,
+    occurredAt: Temporal.Instant | null,
+    tone: AdministrationTimelineItem["tone"]
+  ) => {
+    if (occurredAt) {
+      items.push({
+        id,
+        title,
+        description,
+        occurredAt: toIsoString(occurredAt),
+        tone,
+      });
+    }
+  };
+  add(
+    "reservation-created",
+    "Reservation held",
+    "The booking was held for the customer.",
+    row.reservationCreatedAt,
+    "neutral"
+  );
+  add(
+    "payment-paid",
+    "Payment received",
+    "The reservation payment completed.",
+    row.paidAt,
+    "positive"
+  );
+  add(
+    "reservation-confirmed",
+    "Reservation confirmed",
+    "The reservation was confirmed.",
+    row.reservationConfirmedAt,
+    "positive"
+  );
+  add(
+    "fulfilled",
+    "Customer access sent",
+    "The customer confirmation was delivered.",
+    row.fulfilledAt,
+    "positive"
+  );
+  add(
+    "fulfillment-failed",
+    "Customer confirmation needs attention",
+    "The confirmation could not be completed.",
+    row.fulfillmentFailedAt,
+    "warning"
+  );
+  add(
+    "cancelled",
+    "Reservation cancelled",
+    "The held reservation was cancelled.",
+    row.reservationCancelledAt,
+    "warning"
+  );
+  return items.toSorted((left, right) =>
+    left.occurredAt.localeCompare(right.occurredAt)
+  );
+};
+
+export class AdministrationService extends Context.Service<
+  AdministrationService,
+  {
+    readonly loadOverview: () => Effect.Effect<
+      {
+        readonly counts: {
+          readonly reservations: number;
+          readonly customers: number;
+          readonly attention: number;
+        };
+        readonly recent: readonly AdministrationReservationSummary[];
+        readonly today: readonly AdministrationReservationSummary[];
+        readonly todayUnavailable: boolean;
+        readonly attention: readonly AdministrationReservationSummary[];
+      },
+      unknown
+    >;
+    readonly listReservations: (
+      input: AdministrationReservationListInput
+    ) => Effect.Effect<
+      AdministrationReservationPage & {
+        readonly dateFilterUnavailable: boolean;
+      },
+      unknown
+    >;
+    readonly loadReservation: (
+      id: string
+    ) => Effect.Effect<AdministrationReservationDetail | null, unknown>;
+    readonly listCustomers: (
+      input: AdministrationCustomerListInput
+    ) => Effect.Effect<
+      {
+        readonly items: readonly AdministrationCustomerSummary[];
+        readonly page: number;
+        readonly pageCount: number;
+        readonly total: number;
+      },
+      unknown
+    >;
+    readonly loadCustomerReservations: (input: {
+      readonly customerId: string;
+      readonly page?: number;
+    }) => Effect.Effect<AdministrationReservationPage, unknown>;
+  }
+>()("@deskohub-workspace/administration/AdministrationService") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const { db } = yield* WorkspaceDatabase;
+      const dotypos = yield* DotyposService;
+      const reservationHistory = yield* PostHogReservationHistory;
+
+      const loadLiveReservation = Effect.fn(
+        "AdministrationService.loadLiveReservation"
+      )((row: SafeReservationRow) =>
+        row.dotyposReservationId
+          ? dotypos.getReservation(row.dotyposReservationId).pipe(
+              Effect.catch((cause) =>
+                Effect.logWarning("Live reservation details unavailable", {
+                  cause,
+                  workspaceReservationId: row.id,
+                }).pipe(Effect.as(null))
+              )
+            )
+          : Effect.succeed(null)
+      );
+
+      const enrichRows = (rows: readonly SafeReservationRow[]) =>
+        Effect.all(
+          rows.map((row) =>
+            loadLiveReservation(row).pipe(
+              Effect.map((live) => toReservationSummary({ live, row }))
+            )
+          ),
+          { concurrency: 5 }
+        );
+
+      const loadDateReservationMap = (date?: string) => {
+        if (!date) return Effect.succeed(undefined);
+        return Effect.try({
+          try: () => getDateBounds(date),
+          catch: () => undefined,
+        }).pipe(
+          Effect.flatMap((bounds) =>
+            bounds
+              ? dotypos
+                  .listReservations({
+                    ...bounds,
+                    order: "startDateAscending",
+                  })
+                  .pipe(
+                    Effect.map(
+                      (reservations) =>
+                        new Map(
+                          reservations.flatMap((reservation) =>
+                            reservation.id
+                              ? [[reservation.id, reservation] as const]
+                              : []
+                          )
+                        )
+                    ),
+                    Effect.catch((cause) =>
+                      Effect.logWarning("Reservation date filter unavailable", {
+                        cause,
+                        date,
+                      }).pipe(Effect.as(null))
+                    )
+                  )
+              : Effect.succeed(null)
+          )
+        );
+      };
+
+      const listReservations = Effect.fn(
+        "AdministrationService.listReservations"
+      )(function* (input: ReservationListInput) {
+        const page = Math.max(1, input.page ?? 1);
+        const pageSize = input.pageSize ?? reservationPageSize;
+        const dateReservations = yield* loadDateReservationMap(input.date);
+        const conditions: SQL[] = [];
+        const query = input.query?.trim();
+        if (query) {
+          conditions.push(
+            or(
+              ilike(workspaceReservations.id, `%${query}%`),
+              ilike(workspaceReservations.dotyposReservationId, `%${query}%`)
+            )!
+          );
+        }
+        if (input.status) conditions.push(statusCondition(input.status));
+        if (input.type) {
+          conditions.push(
+            sql`${workspaceReservations.reservationDetails}->>'kind' = ${input.type}`
+          );
+        }
+        if (input.date) {
+          const ids = dateReservations ? [...dateReservations.keys()] : [];
+          conditions.push(
+            ids.length > 0
+              ? inArray(workspaceReservations.dotyposReservationId, ids)
+              : sql`false`
+          );
+        }
+        const where = conditions.length > 0 ? and(...conditions) : undefined;
+        const { countRows, rows } = yield* Effect.all(
+          {
+            countRows: db
+              .select({ value: count() })
+              .from(workspaceReservations)
+              .where(where),
+            rows: db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(where)
+              .orderBy(desc(workspaceReservations.updatedAt))
+              .limit(pageSize)
+              .offset((page - 1) * pageSize),
+          },
+          { concurrency: 2 }
+        );
+        const total = Number(countRows[0]?.value ?? 0);
+        return {
+          items: yield* enrichRows(rows),
+          page,
+          pageCount: Math.max(1, Math.ceil(total / pageSize)),
+          total,
+          dateFilterUnavailable: Boolean(
+            input.date && dateReservations === null
+          ),
+        };
+      });
+
+      const loadReservation = Effect.fn(
+        "AdministrationService.loadReservation"
+      )(function* (id: string) {
+        const [row] = yield* db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id))
+          .limit(1);
+        if (!row) return null;
+
+        const { applicationRows, attemptRows, history, live, otherRows } =
+          yield* Effect.all(
+            {
+              applicationRows: db
+                .select({
+                  id: discountApplications.id,
+                  label: discountApplications.label,
+                  appliedAmountValue: discountApplications.appliedAmountValue,
+                  appliedAmountExponent:
+                    discountApplications.appliedAmountExponent,
+                  appliedAmountCurrency:
+                    discountApplications.appliedAmountCurrency,
+                })
+                .from(discountApplications)
+                .where(eq(discountApplications.workspaceReservationId, row.id))
+                .orderBy(discountApplications.sequence),
+              attemptRows: db
+                .select({
+                  id: paymentAttempts.id,
+                  provider: paymentAttempts.provider,
+                  state: paymentAttempts.state,
+                  amountValue: paymentAttempts.amountValue,
+                  amountExponent: paymentAttempts.amountExponent,
+                  currency: paymentAttempts.currency,
+                  createdAt: paymentAttempts.createdAt,
+                  updatedAt: paymentAttempts.updatedAt,
+                })
+                .from(paymentAttempts)
+                .where(eq(paymentAttempts.workspaceReservationId, row.id))
+                .orderBy(paymentAttempts.createdAt),
+              history: reservationHistory.load(row.id),
+              live: loadLiveReservation(row),
+              otherRows: db
+                .select(safeReservationSelection)
+                .from(workspaceReservations)
+                .where(
+                  and(
+                    eq(
+                      workspaceReservations.dotyposCustomerId,
+                      row.dotyposCustomerId
+                    ),
+                    sql`${workspaceReservations.id} <> ${row.id}`
+                  )
+                )
+                .orderBy(desc(workspaceReservations.updatedAt))
+                .limit(4),
+            },
+            { concurrency: 5 }
+          );
+
+        let sameDateRows: readonly SafeReservationRow[] = [];
+        if (live) {
+          const date = getReservationDate(live.reservation.startDate);
+          const dateReservations = yield* loadDateReservationMap(date);
+          const reservationIds = dateReservations
+            ? [...dateReservations.keys()].filter(
+                (reservationId) => reservationId !== row.dotyposReservationId
+              )
+            : [];
+          if (reservationIds.length > 0) {
+            sameDateRows = yield* db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(
+                inArray(
+                  workspaceReservations.dotyposReservationId,
+                  reservationIds
+                )
+              )
+              .orderBy(desc(workspaceReservations.updatedAt))
+              .limit(4);
+          }
+        }
+
+        const { otherCustomerReservations, sameDateReservations } =
+          yield* Effect.all(
+            {
+              otherCustomerReservations: enrichRows(otherRows),
+              sameDateReservations: enrichRows(sameDateRows),
+            },
+            { concurrency: 2 }
+          );
+
+        return {
+          reservation: toReservationSummary({ live, row }),
+          timeline: mergeReservationHistory({
+            durable: buildTimeline(row),
+            history,
+          }),
+          historyAvailability: history.kind,
+          paymentAttempts: attemptRows.map((attempt) => ({
+            id: attempt.id,
+            providerLabel:
+              attempt.provider === "internal" ? "Included" : "Online payment",
+            stateLabel: paymentAttemptStateLabels[attempt.state],
+            amount: {
+              value: attempt.amountValue,
+              exponent: attempt.amountExponent,
+              currency: attempt.currency,
+            },
+            createdAt: toIsoString(attempt.createdAt),
+            updatedAt: toIsoString(attempt.updatedAt),
+          })),
+          discounts: applicationRows.map((application) => ({
+            id: application.id,
+            label: application.label,
+            amount: {
+              value: application.appliedAmountValue,
+              exponent: application.appliedAmountExponent,
+              currency: application.appliedAmountCurrency,
+            },
+          })),
+          otherCustomerReservations,
+          sameDateReservations,
+          references: {
+            workspaceReservationId: row.id,
+            dotyposReservationId: row.dotyposReservationId,
+            customerId: row.dotyposCustomerId,
+          },
+        } satisfies AdministrationReservationDetail;
+      });
+
+      const listCustomers = Effect.fn("AdministrationService.listCustomers")(
+        function* (input: AdministrationCustomerListInput) {
+          const page = Math.max(1, input.page ?? 1);
+          const { countRows, rows } = yield* Effect.all(
+            {
+              countRows: db
+                .select({
+                  value: countDistinct(workspaceReservations.dotyposCustomerId),
+                })
+                .from(workspaceReservations),
+              rows: db
+                .select({
+                  customerId: workspaceReservations.dotyposCustomerId,
+                  reservationCount: count(),
+                  lastActivityAt: max(workspaceReservations.updatedAt),
+                })
+                .from(workspaceReservations)
+                .groupBy(workspaceReservations.dotyposCustomerId)
+                .orderBy(desc(max(workspaceReservations.updatedAt)))
+                .limit(customerPageSize)
+                .offset((page - 1) * customerPageSize),
+            },
+            { concurrency: 2 }
+          );
+          const total = Number(countRows[0]?.value ?? 0);
+          const items = yield* Effect.all(
+            rows.map((row) =>
+              dotypos.getCustomer(row.customerId).pipe(
+                Effect.map((customer) => toCustomer(customer, row.customerId)),
+                Effect.catch(() => Effect.succeed(null)),
+                Effect.map((customer) => ({
+                  customer,
+                  customerId: row.customerId,
+                  reservationCount: Number(row.reservationCount),
+                  lastActivityAt: row.lastActivityAt
+                    ? toIsoString(row.lastActivityAt)
+                    : Temporal.Instant.fromEpochMilliseconds(0).toString(),
+                }))
+              )
+            ),
+            { concurrency: 5 }
+          );
+          return {
+            items,
+            page,
+            pageCount: Math.max(1, Math.ceil(total / customerPageSize)),
+            total,
+          };
+        }
+      );
+
+      const loadCustomerReservations = Effect.fn(
+        "AdministrationService.loadCustomerReservations"
+      )(function* (input: {
+        readonly customerId: string;
+        readonly page?: number;
+      }) {
+        const page = Math.max(1, input.page ?? 1);
+        const where = eq(
+          workspaceReservations.dotyposCustomerId,
+          input.customerId
+        );
+        const { countRows, rows } = yield* Effect.all(
+          {
+            countRows: db
+              .select({ value: count() })
+              .from(workspaceReservations)
+              .where(where),
+            rows: db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(where)
+              .orderBy(desc(workspaceReservations.updatedAt))
+              .limit(customerReservationPageSize)
+              .offset((page - 1) * customerReservationPageSize),
+          },
+          { concurrency: 2 }
+        );
+        const total = Number(countRows[0]?.value ?? 0);
+        return {
+          items: yield* enrichRows(rows),
+          page,
+          pageCount: Math.max(
+            1,
+            Math.ceil(total / customerReservationPageSize)
+          ),
+          total,
+        };
+      });
+
+      const loadOverview = Effect.fn("AdministrationService.loadOverview")(
+        function* () {
+          const { attention, customerCountRows, recent, today } =
+            yield* Effect.all(
+              {
+                attention: listReservations({
+                  page: 1,
+                  pageSize: 6,
+                  status: "attention",
+                }),
+                customerCountRows: db
+                  .select({
+                    value: countDistinct(
+                      workspaceReservations.dotyposCustomerId
+                    ),
+                  })
+                  .from(workspaceReservations),
+                recent: listReservations({ page: 1, pageSize: 6 }),
+                today: listReservations({
+                  date: getCurrentPragueDate(),
+                  page: 1,
+                  pageSize: 6,
+                }),
+              },
+              { concurrency: 4 }
+            );
+          return {
+            counts: {
+              reservations: recent.total,
+              customers: Number(customerCountRows[0]?.value ?? 0),
+              attention: attention.total,
+            },
+            recent: recent.items.slice(0, 6),
+            today: today.items.slice(0, 6),
+            todayUnavailable: today.dateFilterUnavailable,
+            attention: attention.items.slice(0, 6),
+          };
+        }
+      );
+
+      return {
+        loadOverview,
+        listReservations,
+        loadReservation,
+        listCustomers,
+        loadCustomerReservations,
+      };
+    })
+  );
+}
