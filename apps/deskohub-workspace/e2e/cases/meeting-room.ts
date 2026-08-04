@@ -34,7 +34,7 @@ import {
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import {
   loadDotyposCapacityInventory,
-  validateDotypos,
+  dotyposTimestampMatches,
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
@@ -325,13 +325,23 @@ const assertHeldMeetingRoomSlotAvailability = (
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    yield* validateDotypos(datasourceConfig, data, row);
     const slot = yield* getMeetingRoomSlot(data);
-    const dotyposReservationId = yield* tryWorkspaceE2ESync(
-      "read held meeting-room Dotypos reservation id",
+    const expected = yield* tryWorkspaceE2ESync(
+      "read held meeting-room Dotypos identity",
       () => {
-        assert(row.dotypos_reservation_id, "held meeting-room Dotypos id missing");
-        return row.dotypos_reservation_id;
+        assert(
+          row.dotypos_reservation_id,
+          "held meeting-room Dotypos reservation id missing"
+        );
+        assert(
+          row.dotypos_customer_id,
+          "held meeting-room Dotypos customer id missing"
+        );
+        return {
+          customerId: row.dotypos_customer_id,
+          reservationId: row.dotypos_reservation_id,
+          workspaceReservationId: row.reservation_id,
+        };
       }
     );
     const inventory = yield* pollUntil(
@@ -341,7 +351,7 @@ const assertHeldMeetingRoomSlotAvailability = (
       }).pipe(
         Effect.map((result) =>
           result.reservations.some(
-            (reservation) => reservation.id === dotyposReservationId
+            (reservation) => reservation.id === expected.reservationId
           )
             ? result
             : undefined
@@ -352,6 +362,16 @@ const assertHeldMeetingRoomSlotAvailability = (
         label: "held meeting-room reservation inventory",
         timeoutMs: config.timeouts.datasource,
       }
+    );
+    yield* tryWorkspaceE2ESync(
+      "assert held meeting-room Dotypos reservation",
+      () =>
+        assertHeldMeetingRoomReservation({
+          expected,
+          reservations: inventory.reservations,
+          slot,
+          tables: inventory.tables,
+        })
     );
     const expectedUnavailable = isMeetingRoomUnavailableFromInventory({
       reservations: inventory.reservations,
@@ -398,6 +418,57 @@ export const assertMeetingRoomSlotAvailability = (
     );
     log("Held meeting-room slot availability matches aggregate capacity");
   });
+
+export const assertHeldMeetingRoomReservation = ({
+  expected,
+  reservations,
+  slot,
+  tables,
+}: {
+  readonly expected: {
+    readonly customerId: string;
+    readonly reservationId: string;
+    readonly workspaceReservationId: string;
+  };
+  readonly reservations: readonly Reservation[];
+  readonly slot: MeetingRoomCheckoutSlot;
+  readonly tables: readonly Table[];
+}) => {
+  const reservation = reservations.find(
+    ({ id }) => id === expected.reservationId
+  );
+  assert(reservation, "held Dotypos meeting-room reservation missing");
+  assert(
+    reservation.status === "NEW",
+    "held Dotypos meeting-room reservation is not pending"
+  );
+  assert(
+    reservation._customerId === expected.customerId,
+    "held Dotypos meeting-room customer mismatch"
+  );
+  assert(
+    reservation.seats === "1",
+    "held Dotypos meeting-room reservation seats should be 1"
+  );
+  assert(
+    reservation.note?.includes(expected.workspaceReservationId),
+    "held Dotypos meeting-room note missing workspace reservation id"
+  );
+  assert(
+    dotyposTimestampMatches(reservation.startDate, slot.startsAt) &&
+      dotyposTimestampMatches(reservation.endDate, slot.endsAt),
+    "held Dotypos meeting-room interval mismatch"
+  );
+  const assignedTable = tables.find(({ id }) => id === reservation._tableId);
+  assert(
+    assignedTable?.enabled === true && assignedTable.display === true,
+    "held Dotypos meeting-room table is not active and visible"
+  );
+  assert(
+    assignedTable.tags?.includes(workspaceMeetingRoomReservationTableTag),
+    "held Dotypos reservation is not assigned to a meeting-room table"
+  );
+};
 
 export const isMeetingRoomUnavailableFromInventory = ({
   reservations,

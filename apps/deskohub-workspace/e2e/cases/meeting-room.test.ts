@@ -10,6 +10,7 @@ import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
 import {
+  assertHeldMeetingRoomReservation,
   assertMeetingRoomSlotAvailability,
   isMeetingRoomUnavailableFromInventory,
 } from "./meeting-room";
@@ -40,6 +41,29 @@ test("keeps a held interval available while another meeting-room table is empty"
   expect(
     isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
   ).toBe(false);
+});
+
+test("validates an unpaid meeting-room hold without waiting for confirmation", () => {
+  const slot = {
+    date: "2099-09-01",
+    duration: { unit: "hour", amount: 1 } as const,
+    endsAt: "2099-09-01T09:00:00Z",
+    startDateTime: "2099-09-01T10:00",
+    startsAt: "2099-09-01T08:00:00Z",
+  };
+
+  expect(() =>
+    assertHeldMeetingRoomReservation({
+      expected: {
+        customerId: "customer-a",
+        reservationId: "reservation-a",
+        workspaceReservationId: "workspace-reservation-a",
+      },
+      reservations: [makeMeetingRoomReservation("room-a")],
+      slot,
+      tables: [makeMeetingRoomTable("room-a")],
+    })
+  ).not.toThrow();
 });
 
 test("treats a held interval as unavailable when every meeting room is occupied", () => {
@@ -118,9 +142,12 @@ const makeMeetingRoomTable = (id: string): Table => ({
 });
 
 const makeMeetingRoomReservation = (tableId: string): Reservation => ({
+  _customerId: "customer-a",
   _tableId: tableId,
   endDate: "2099-09-01T09:00:00Z",
+  id: "reservation-a",
+  note: "Workspace reservation workspace-reservation-a",
   seats: "1",
   startDate: "2099-09-01T08:00:00Z",
-  status: "CONFIRMED",
+  status: "NEW",
 });
