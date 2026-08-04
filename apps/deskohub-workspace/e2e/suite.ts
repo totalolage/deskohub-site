@@ -40,7 +40,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   timed_out: "TIMEOUT",
 };
 
-export const workspaceE2EReservationStartConcurrency = 6;
+export const workspaceE2EReservationStartConcurrency = 4;
 
 type ReservationStartPermit = {
   readonly deferred: Deferred.Deferred<void>;
