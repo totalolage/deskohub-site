@@ -8,6 +8,7 @@ import type {
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import { getWorkspaceE2ECapacityInterval } from "../capacity";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -20,10 +21,7 @@ import {
   reconcileStaleWorkspaceE2EReservations,
   type WorkspaceE2EStaleReservationReport,
 } from "../stale-reservations";
-import {
-  workspaceE2EPollIntervalMs,
-  workspaceE2ETimeouts,
-} from "../timeouts";
+import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, CheckoutRow } from "../types";
 
 export interface E2EDotyposDiscountGroup {
@@ -270,7 +268,9 @@ export const waitForCancelledDotyposReservations = (
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     yield* waitForDotyposCancellationConvergence(
-      dotypos.listReservations(),
+      dotypos.listActiveReservationsOverlapping(
+        getWorkspaceE2ECapacityInterval()
+      ),
       dotyposReservationIds,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
@@ -329,7 +329,7 @@ export const reconcileStaleDotyposReservations = (
       loadReservation: dotypos.getReservation,
       waitForCancellationConvergence: (reservationIds) =>
         waitForDotyposCancellationConvergence(
-          dotypos.listReservations(),
+          dotypos.listActiveReservationsOverlapping(interval),
           reservationIds,
           {
             intervalMs: workspaceE2EPollIntervalMs.datasource,
