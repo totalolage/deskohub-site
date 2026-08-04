@@ -40,11 +40,17 @@ test("holds the provider lock for the complete shard lease lifetime", async () =
 
   expect(testJob).toContain("concurrency:");
   const lockIndex = testJob.indexOf("concurrency:");
+  const targetCheckoutIndex = testJob.indexOf("Checkout exact target");
+  const coordinatorCheckoutIndex = testJob.indexOf(
+    "Checkout allocation action"
+  );
   const leaseIndex = testJob.indexOf("Lease an available date shard");
   const runIndex = testJob.indexOf("Run checkout E2E");
   const releaseIndex = testJob.indexOf("Release date shard");
 
-  expect(lockIndex).toBeLessThan(leaseIndex);
+  expect(lockIndex).toBeLessThan(targetCheckoutIndex);
+  expect(targetCheckoutIndex).toBeLessThan(coordinatorCheckoutIndex);
+  expect(coordinatorCheckoutIndex).toBeLessThan(leaseIndex);
   expect(leaseIndex).toBeLessThan(runIndex);
   expect(runIndex).toBeLessThan(releaseIndex);
 });

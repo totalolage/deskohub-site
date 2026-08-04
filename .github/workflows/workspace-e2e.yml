@@ -149,7 +149,25 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact target
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-target.outputs.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Confirm checked-out commit
+        run: |
+          set -euo pipefail
+          actual_sha="$(git rev-parse HEAD)"
+          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
+            echo "Checked-out commit does not match the deployment SHA" >&2
+            exit 1
+          fi
+          echo "Checked out exact deployment SHA $actual_sha"
+
+      - name: Checkout allocation action
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.workflow_sha }}
           path: .workspace-e2e-coordinator
@@ -201,22 +219,6 @@ jobs:
             -f description='Protected preview E2E is running' \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-target.outputs.sha }}
-          fetch-depth: 2
-          persist-credentials: false
-
-      - name: Confirm checked-out commit
-        run: |
-          set -euo pipefail
-          actual_sha="$(git rev-parse HEAD)"
-          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
-            echo "Checked-out commit does not match the deployment SHA" >&2
-            exit 1
-          fi
-          echo "Checked out exact deployment SHA $actual_sha"
 
       - name: Start setup timing
         id: setup-clock
