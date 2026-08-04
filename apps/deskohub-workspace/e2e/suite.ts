@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit } from "effect";
+import { Cause, Deferred, Effect, Exit, Option } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -13,7 +13,11 @@ import {
   WorkspaceE2EProviderVerificationPermitService,
   workspaceE2EProviderVerificationConcurrency,
 } from "./coordination/provider-verification-permit.service";
-import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
+import {
+  type WorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
@@ -66,6 +70,7 @@ interface ReservationStartPermitPool {
 
 export type WorkspaceE2EFailureDiagnostic = {
   readonly caseId: string;
+  readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
   readonly failureKind: E2EFailureKind;
   readonly outcome: "failed" | "timed_out";
   readonly stepId?: string;
@@ -211,9 +216,16 @@ export const runWorkspaceE2ECases = ({
                     result.outcome !== "timed_out"
                   )
                     return;
+                  const error = Cause.findErrorOption(cause);
+                  const diagnosticCode =
+                    Option.isSome(error) &&
+                    error.value instanceof WorkspaceE2EError
+                      ? error.value.diagnosticCode
+                      : undefined;
                   try {
                     reportFailure({
                       caseId: testCase.id,
+                      ...(diagnosticCode ? { diagnosticCode } : {}),
                       failureKind: result.failureKind,
                       outcome: result.outcome,
                       ...(caseRuntime?.terminalStepId

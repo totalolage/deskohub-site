@@ -701,7 +701,11 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
           capacity: "reservation-start",
           execute: reachStartGate.pipe(
             Effect.andThen(
-              Effect.fail(workspaceE2EError("intentional case failure"))
+              Effect.fail(
+                workspaceE2EError("intentional case failure", {
+                  diagnosticCode: "nexi_webhook_internal_error",
+                })
+              )
             )
           ),
           id: "prepare-failing-reservation",
@@ -775,6 +779,7 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
     expect(failureDiagnostics).toEqual([
       {
         caseId: "first-failure",
+        diagnosticCode: "nexi_webhook_internal_error",
         failureKind: "error",
         outcome: "failed",
         stepId: "prepare-failing-reservation",
