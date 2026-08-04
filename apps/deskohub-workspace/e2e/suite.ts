@@ -40,7 +40,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   timed_out: "TIMEOUT",
 };
 
-export const workspaceE2EReservationStartConcurrency = 4;
+export const workspaceE2EReservationStartConcurrency = 6;
 
 type ReservationStartPermit = {
   readonly deferred: Deferred.Deferred<void>;
@@ -98,9 +98,7 @@ export const runWorkspaceE2ECases = ({
       const independentFailure = yield* Deferred.make<number>();
       const parallelCases = indexedCases
         .filter(([, testCase]) => !testCase.runAfterParallel)
-        .sort(
-          ([, left], [, right]) => left.timeoutMs - right.timeoutMs
-        );
+        .sort(([, left], [, right]) => left.timeoutMs - right.timeoutMs);
       const sharedFixtureCases = indexedCases.filter(
         ([, testCase]) => testCase.runAfterParallel
       );
@@ -322,9 +320,7 @@ const makeStepRunner =
         const startedAt = Date.now();
 
         return Effect.sync(() => log(`STEP START ${operation}`)).pipe(
-          Effect.andThen(
-            capacityLimitedExecution
-          ),
+          Effect.andThen(capacityLimitedExecution),
           Effect.onExit((exit) =>
             Effect.sync(() => {
               const durationMs = Date.now() - startedAt;

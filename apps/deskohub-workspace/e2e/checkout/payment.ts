@@ -138,15 +138,13 @@ export const startCheckoutPaymentAttempt = ({
   submitReservationScript: string;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-      timeoutMs: config.timeouts.browserNavigation,
-    });
-    const orderId = yield* submitReservationForPayPage({
+    const orderId = yield* prepareCheckoutPaymentAttempt({
+      config,
+      data,
       onOrderId,
       run,
       session,
       submitReservationScript,
-      timeouts: config.timeouts,
     });
     yield* submitPaymentAndWaitForHostedPage({
       run,
@@ -155,6 +153,34 @@ export const startCheckoutPaymentAttempt = ({
     });
     log(`Started hosted payment attempt for order ${orderId}`);
     return orderId;
+  });
+
+export const prepareCheckoutPaymentAttempt = ({
+  config,
+  data,
+  onOrderId,
+  run,
+  session,
+  submitReservationScript,
+}: {
+  config: WorkspaceE2EConfig;
+  data: CheckoutData;
+  onOrderId?: (orderId: string) => void;
+  run: Runner;
+  session: string;
+  submitReservationScript: string;
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+      timeoutMs: config.timeouts.browserNavigation,
+    });
+    return yield* submitReservationForPayPage({
+      onOrderId,
+      run,
+      session,
+      submitReservationScript,
+      timeouts: config.timeouts,
+    });
   });
 
 export const submitReservationForPayPage = ({

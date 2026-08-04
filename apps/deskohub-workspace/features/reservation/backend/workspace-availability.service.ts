@@ -1,4 +1,5 @@
 import {
+  type DotyposReservationInterval,
   DotyposService,
   type ExternalAPIError,
   type NetworkError,
@@ -112,14 +113,20 @@ const implementation = Effect.gen(function* () {
   const calendarLimitations = yield* GoogleCalendarWorkspaceLimitationsService;
 
   const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
-    function* (query: Pick<WorkspaceAvailabilityQuery, "from" | "to">) {
+    function* (
+      query: Pick<WorkspaceAvailabilityQuery, "from" | "to"> & {
+        readonly reservationInterval: DotyposReservationInterval;
+      }
+    ) {
       yield* Effect.logInfo("Workspace availability inventory load started");
 
       const [tables, reservations, limitations, expiredDotyposReservationIds] =
         yield* Effect.all(
           [
             dotypos.getTables(),
-            dotypos.listReservations(),
+            dotypos.listActiveReservationsOverlapping(
+              query.reservationInterval
+            ),
             calendarLimitations.listLimitations({
               from: query.from,
               to: query.to,
@@ -170,6 +177,7 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logInfo("Workspace availability computation started");
 
       const dates = yield* getDateRange(query.from, query.to);
+      const reservationInterval = getDateRangeReservationInterval(dates);
       const reservation = yield* getAvailabilityReservation(query);
       const selectedDate = reservation
         ? getReservationDate({
@@ -181,6 +189,7 @@ const implementation = Effect.gen(function* () {
 
       const { tables, reservations, limitations } = yield* loadInventory({
         from: query.from,
+        reservationInterval,
         to: query.to,
       });
       const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
@@ -500,6 +509,23 @@ const getDateRange = (from: string, to: string) =>
 
     return dates;
   });
+
+const getDateRangeReservationInterval = (
+  dates: readonly Temporal.PlainDate[]
+): DotyposReservationInterval => {
+  const timeZone = workspaceSiteConstants.location.timeZone;
+  const firstDate = dates[0]!;
+  const lastDate = dates.at(-1)!;
+  return {
+    startDate: new Date(
+      firstDate.toZonedDateTime(timeZone).toInstant().epochMilliseconds
+    ),
+    endDate: new Date(
+      lastDate.add({ days: 1 }).toZonedDateTime(timeZone).toInstant()
+        .epochMilliseconds
+    ),
+  };
+};
 
 const parsePlainDate = (date: string) =>
   Effect.try({

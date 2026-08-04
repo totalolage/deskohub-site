@@ -268,20 +268,22 @@ Every case uses a unique customer. Dates come from the run's deterministic
 allocation shard. Basic cases may share a date up to the documented capacity
 of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
 another. The suite runs independent case fibers with uncapped fail-fast Effect
-concurrency. Reservation-start steps alone share four runner-owned permits from
+concurrency. Reservation-start steps alone share six runner-owned permits from
 navigation through pay-page arrival. Two exact-SHA runs with unbounded starts
 showed provider-backed availability responses queueing beyond the existing UI
-boundary in different cases. A later exact-SHA run with six admitted starts
-still left a meeting-room form's provider-backed availability or advertised
-price pending past its existing readiness boundary, so the checked-in limit is
-four. The narrow boundary releases before hosted payment, webhook, fulfillment,
-assertions, and cleanup, which all remain parallel. The permit pool prioritizes
-queued starts by the owning case watchdog and keeps equal deadlines FIFO, so
-shorter terminal scenarios cannot be stranded behind longer checkout cases
-when browser diagnostics make them reach the pool later. All case fibers still
-launch immediately and participate in the same fail-fast aggregate. Direct
-database assertions share one runner-owned pool capped at ten connections.
-Before allowing three concurrent runs, revalidate the aggregate twelve-start
+boundary in different cases. Reducing the boundary from six to four repeated
+the same pre-submit meeting-room readiness failure while leaving fourteen cases
+queued after 4.8 minutes, so four did not improve reliability and could not meet
+the existing case watchdogs. The checked-in limit is therefore six. The narrow
+boundary releases at pay-page arrival, before hosted payment, webhook,
+fulfillment, assertions, and cleanup, which all remain parallel. The permit
+pool prioritizes queued starts by the owning case watchdog and keeps equal
+deadlines FIFO, so shorter terminal scenarios cannot be stranded behind longer
+checkout cases when browser diagnostics make them reach the pool later. All
+case fibers still launch immediately and participate in the same fail-fast
+aggregate. Direct database assertions share one runner-owned pool capped at ten
+connections.
+Before allowing three concurrent runs, revalidate the aggregate eighteen-start
 ceiling in the required soak and lower the per-run limit if provider p95 or
 throttling regresses. Do not make an edge case mutate a fixture consumed by
 another case.
@@ -407,7 +409,7 @@ attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
 The exact target SHA and GitHub run correlation values are included when
 available.
 
-A reservation-start step's span includes time waiting for one of the four
+A reservation-start step's span includes time waiting for one of the six
 runner permits. Its semantic step timeout begins only after admission; the case
 watchdog still bounds the complete queued and active lifetime. This keeps a
 healthy provider operation from losing its full timeout merely because another

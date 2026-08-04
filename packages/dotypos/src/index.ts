@@ -17,6 +17,7 @@ export {
 export type { Reservation } from "./generated";
 export type {
   CreateDotyposReservationInput,
+  DotyposReservationInterval,
   DotyposReservationStatus,
   UpdateDotyposReservationInput,
 } from "./types";

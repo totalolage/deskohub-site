@@ -108,6 +108,11 @@ paths:
           schema:
             type: string
           description: Cloud ID
+        - name: filter
+          in: query
+          description: Filter reservations using the Dotypos filter syntax
+          schema:
+            type: string
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:

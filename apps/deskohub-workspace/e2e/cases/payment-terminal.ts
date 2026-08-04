@@ -6,7 +6,10 @@ import {
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import { startCheckoutPaymentAttempt } from "../checkout/payment";
+import {
+  prepareCheckoutPaymentAttempt,
+  submitPaymentAndWaitForHostedPage,
+} from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
@@ -67,7 +70,7 @@ export const assertPaymentTerminalPath = ({
     state.startedAt = new Date();
     const orderId = yield* runStep({
       capacity: "reservation-start",
-      execute: startCheckoutPaymentAttempt({
+      execute: prepareCheckoutPaymentAttempt({
         config,
         data,
         onOrderId: (startedOrderId) => {
@@ -77,10 +80,20 @@ export const assertPaymentTerminalPath = ({
         session,
         submitReservationScript,
       }),
-      id: "start-checkout-payment",
+      id: "prepare-checkout-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
+    yield* runStep({
+      execute: submitPaymentAndWaitForHostedPage({
+        run,
+        session,
+        timeouts: config.timeouts,
+      }),
+      id: "start-hosted-payment",
+      timeoutMs: config.timeouts.providerTransition,
+    });
+    log(`Started hosted payment attempt for order ${orderId}`);
     yield* runStep({
       execute: preparePaymentTerminalState({
         datasourceConfig,
@@ -149,16 +162,10 @@ const restartReservation = (
   timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    yield* activateStatusReserveAgain(
-      run,
-      session,
-      reservationPath,
-      timeouts
-    );
+    yield* activateStatusReserveAgain(run, session, reservationPath, timeouts);
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
-      matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === reservationPath,
+      matches: (url) => (parseUrl(url)?.pathname ?? "") === reservationPath,
       run,
       session,
       timeoutMs: timeouts.uiTransition,

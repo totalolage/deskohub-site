@@ -1098,6 +1098,65 @@ describe("DotyposService customer discounts", () => {
 });
 
 describe("DotyposService reservation listing", () => {
+  test("filters active reservations by half-open overlap", async () => {
+    const interval = {
+      startDate: new Date("2026-06-20T10:00:00.000Z"),
+      endDate: new Date("2026-06-20T12:00:00.000Z"),
+    };
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json({ data: [reservation()] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listActiveReservationsOverlapping(interval);
+      }),
+      fetchMock
+    );
+
+    expect(result).toHaveLength(1);
+    const request = fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .find((url) => url.pathname === "/clouds/cloud-id/reservations");
+    expect(request?.searchParams.get("filter")).toBe(
+      [
+        "status|in|NEW,CONFIRMED",
+        `startDate|lt|${interval.endDate.getTime()}`,
+        `endDate|gt|${interval.startDate.getTime()}`,
+      ].join(";")
+    );
+  });
+
+  test("keeps the default reservation listing unfiltered", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json({ data: [] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    const request = fetchMock.mock.calls
+      .map((call) => new URL(getUrl(call as FetchCall)))
+      .find((url) => url.pathname === "/clouds/cloud-id/reservations");
+    expect(request?.searchParams.has("filter")).toBe(false);
+  });
+
   test("treats a first-page 404 as an empty reservation list", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);

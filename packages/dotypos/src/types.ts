@@ -2,10 +2,14 @@ import type { CreateReservationRequest } from "./generated";
 
 export type DotyposReservationStatus = CreateReservationRequest["status"];
 
-export interface CreateDotyposReservationInput {
-  readonly customerId: string;
+export interface DotyposReservationInterval {
   readonly startDate: Date;
   readonly endDate: Date;
+}
+
+export interface CreateDotyposReservationInput
+  extends DotyposReservationInterval {
+  readonly customerId: string;
   readonly seats: number;
   readonly tableId: string;
   readonly status: DotyposReservationStatus;

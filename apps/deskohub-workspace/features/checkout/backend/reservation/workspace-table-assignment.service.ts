@@ -18,6 +18,7 @@ import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeExpiredLocalHolds,
+  getWorkspaceReservationIntervalDates,
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "./workspace-table-occupancy";
@@ -52,11 +53,12 @@ export class WorkspaceTableAssignmentService extends Context.Service<
 
       const loadInventory = Effect.fn(
         "WorkspaceTableAssignmentService.loadInventory"
-      )(() =>
+      )((reservationInterval) =>
         Effect.all(
           {
             tables: dotypos.getTables(),
-            reservations: dotypos.listReservations(),
+            reservations:
+              dotypos.listActiveReservationsOverlapping(reservationInterval),
             expiredDotyposReservationIds: workspaceReservations
               .selectExpiredHoldDotyposReservationIds({
                 now: Temporal.Now.instant(),
@@ -87,7 +89,12 @@ export class WorkspaceTableAssignmentService extends Context.Service<
               requiredTags: assignment.requiredTags,
             })
           ),
-          Effect.bind("inventory", loadInventory),
+          Effect.bind("occupancyInput", ({ reservation }) =>
+            getReservationOccupancyInput(reservation)
+          ),
+          Effect.bind("inventory", ({ occupancyInput }) =>
+            loadInventory(getWorkspaceReservationIntervalDates(occupancyInput))
+          ),
           Effect.let("activeReservations", ({ inventory }) =>
             excludeExpiredLocalHolds(
               inventory.reservations,
@@ -100,17 +107,10 @@ export class WorkspaceTableAssignmentService extends Context.Service<
               tableCount: inventory.tables.length,
             })
           ),
-          Effect.bind(
+          Effect.let(
             "occupancyByTableId",
-            ({ activeReservations, reservation }) =>
-              getReservationOccupancyInput(reservation).pipe(
-                Effect.map((occupancyInput) =>
-                  getWorkspaceTableOccupancyById(
-                    activeReservations,
-                    occupancyInput
-                  )
-                )
-              )
+            ({ activeReservations, occupancyInput }) =>
+              getWorkspaceTableOccupancyById(activeReservations, occupancyInput)
           ),
           Effect.tap(({ occupancyByTableId }) =>
             Effect.logDebug("Workspace table occupancy calculated", {

@@ -23,6 +23,7 @@ import type {
 } from "../generated/effect.gen";
 import type {
   CreateDotyposReservationInput,
+  DotyposReservationInterval,
   UpdateDotyposReservationInput,
 } from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
@@ -81,6 +82,42 @@ const catchUnexpectedDotyposError = (operation: string) =>
             cause: error,
           })
         )
+  );
+
+const validateReservationInterval = (
+  interval: DotyposReservationInterval
+): Effect.Effect<void, ValidationError> => {
+  const startDate = interval.startDate.getTime();
+  const endDate = interval.endDate.getTime();
+
+  if (Number.isNaN(startDate) || Number.isNaN(endDate)) {
+    return Effect.fail(
+      new ValidationError({ message: "Reservation dates must be valid" })
+    );
+  }
+
+  if (endDate <= startDate) {
+    return Effect.fail(
+      new ValidationError({
+        message: "Reservation end date must be after start date",
+      })
+    );
+  }
+
+  return Effect.void;
+};
+
+const getActiveReservationOverlapFilter = (
+  interval: DotyposReservationInterval
+) =>
+  validateReservationInterval(interval).pipe(
+    Effect.as(
+      [
+        "status|in|NEW,CONFIRMED",
+        `startDate|lt|${interval.endDate.getTime()}`,
+        `endDate|gt|${interval.startDate.getTime()}`,
+      ].join(";")
+    )
   );
 
 const getNextDotyposPageNumber = (input: {
@@ -378,20 +415,7 @@ const makeDotyposService = Effect.gen(function* () {
         });
       }
 
-      if (
-        Number.isNaN(input.startDate.getTime()) ||
-        Number.isNaN(input.endDate.getTime())
-      ) {
-        return yield* new ValidationError({
-          message: "Reservation dates must be valid",
-        });
-      }
-
-      if (input.endDate <= input.startDate) {
-        return yield* new ValidationError({
-          message: "Reservation end date must be after start date",
-        });
-      }
+      yield* validateReservationInterval(input);
 
       const note = input.note?.trim();
       const request: CreateReservationRequest = {
@@ -1069,13 +1093,13 @@ const makeDotyposService = Effect.gen(function* () {
     }).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"))
   );
 
-  const listReservations = Effect.fn("listReservations")(() =>
+  const listReservationsByFilter = (filter?: string) =>
     loadAllDotyposPages({
       operation: "listReservations",
       loadPage: (page) =>
         runDotyposRequest(
           client.listReservations(config.cloudId, {
-            params: { limit: 100, page },
+            params: { filter, limit: 100, page },
           }),
           "listReservations"
         ).pipe(
@@ -1088,8 +1112,18 @@ const makeDotyposService = Effect.gen(function* () {
     }).pipe(
       Effect.retry(retryPolicy),
       catchUnexpectedDotyposError("listReservations")
-    )
+    );
+
+  const listReservations = Effect.fn("listReservations")(() =>
+    listReservationsByFilter()
   );
+
+  const listActiveReservationsOverlapping = Effect.fn(
+    "listActiveReservationsOverlapping"
+  )(function* (interval: DotyposReservationInterval) {
+    const filter = yield* getActiveReservationOverlapFilter(interval);
+    return yield* listReservationsByFilter(filter);
+  });
 
   const getProducts = Effect.fn("getProducts")(function* (options: {
     categoryId?: string;
@@ -1143,6 +1177,7 @@ const makeDotyposService = Effect.gen(function* () {
     findOrCreateCustomer,
     getTables,
     listReservations,
+    listActiveReservationsOverlapping,
     getProducts,
     getCategories,
   };

@@ -174,7 +174,8 @@ export const getPrepareCoworkAdvertisedPriceScript = (data: CheckoutData) => {
       if (predicate()) return;
       await wait(250);
     }
-    throw new Error(label);
+    if (predicate()) return;
+    throw new Error(typeof label === 'function' ? label() : label);
   };
   const selectTierThroughPrice = async (tier, waitForAdvertisedPrice = true) => {
     const price = document.querySelector('[data-reservation-type-price="' + tier + '"]');
@@ -277,7 +278,8 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       if (predicate()) return;
       await wait(250);
     }
-    throw new Error(label);
+    if (predicate()) return;
+    throw new Error(typeof label === 'function' ? label() : label);
   };
   const setField = (selector, value) => {
     const field = document.querySelector(selector);
@@ -366,6 +368,7 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
   setField('input[name="name"]', expected.name);
   setField('textarea[name="message"]', expected.message);
 
+  let priceRetryAttempted = false;
   await waitUntil(() => {
     const hiddenStart = document.querySelector('input[name="startDateTime"]');
     const time = document.querySelector('input[aria-label="Meeting room start time"]');
@@ -373,6 +376,15 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       '[id="meeting-room-duration-' + expected.durationKey + '"]'
     );
     const submit = document.querySelector('button[type="submit"]');
+    const priceRetry = document.querySelector('#reservation-advertised-price-retry');
+    if (
+      !priceRetryAttempted &&
+      priceRetry instanceof HTMLButtonElement &&
+      !priceRetry.disabled
+    ) {
+      priceRetryAttempted = true;
+      priceRetry.click();
+    }
     return (
       hiddenStart instanceof HTMLInputElement &&
       hiddenStart.value === expected.date &&
@@ -384,7 +396,23 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
       submit instanceof HTMLButtonElement &&
       !submit.disabled
     );
-  }, 'meeting-room availability or advertised price did not become ready');
+  }, () => {
+    const submit = document.querySelector('button[type="submit"]');
+    const priceRetry = document.querySelector('#reservation-advertised-price-retry');
+    const value = (name) =>
+      submit instanceof HTMLButtonElement ? submit.dataset[name] ?? 'unknown' : 'missing';
+    return [
+      'meeting-room availability or advertised price did not become ready',
+      'availability_loading=' + value('reservationAvailabilityLoading'),
+      'price_error=' + value('reservationPriceError'),
+      'price_loading=' + value('reservationPriceLoading'),
+      'unavailable=' + value('reservationUnavailable'),
+      'price_retry_available=' + String(
+        priceRetry instanceof HTMLButtonElement && !priceRetry.disabled
+      ),
+      'price_retry_attempted=' + String(priceRetryAttempted),
+    ].join('; ');
+  });
   return location.href;
 })()
 `;
