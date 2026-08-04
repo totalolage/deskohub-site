@@ -7,9 +7,13 @@ inputs:
     required: true
   preferred-shard:
     description: One-based preferred allocation shard
-    required: true
+    required: false
+    default: "1"
   token:
-    description: GitHub token with actions read and contents write permissions
+    description: GitHub token with actions read permission
+    required: true
+  database-url:
+    description: Dedicated Workspace E2E coordination database URL
     required: true
   wait-seconds:
     description: Maximum time to wait for a shard
@@ -31,4 +35,5 @@ runs:
         WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD: ${{ inputs.preferred-shard }}
         WORKSPACE_E2E_ALLOCATION_TOKEN: ${{ inputs.token }}
         WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS: ${{ inputs.wait-seconds }}
-      run: node "$GITHUB_ACTION_PATH/index.cjs"
+        WORKSPACE_E2E_COORDINATOR_DATABASE_URL: ${{ inputs.database-url }}
+      run: node "$GITHUB_ACTION_PATH/index.mjs"

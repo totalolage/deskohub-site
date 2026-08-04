@@ -1,0 +1,317 @@
+{
+  "version": "8",
+  "dialect": "postgres",
+  "id": "370f8644-048e-4462-8d3b-5cdf5765f90b",
+  "prevIds": ["00000000-0000-0000-0000-000000000000"],
+  "ddl": [
+    {
+      "name": "workspace_e2e_coordination",
+      "entityType": "schemas"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "allocation_pools",
+      "entityType": "tables",
+      "schema": "workspace_e2e_coordination"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "allocation_requests",
+      "entityType": "tables",
+      "schema": "workspace_e2e_coordination"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "name",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_pools"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "shard_count",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_pools"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "pool_name",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "repository",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "run_id",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "run_attempt",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "preferred_shard",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "bigint",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": {
+        "type": "always",
+        "name": "allocation_requests_queue_position_seq",
+        "increment": "1",
+        "startWith": "1",
+        "minValue": "1",
+        "maxValue": "9223372036854775807",
+        "cache": 1,
+        "cycle": false
+      },
+      "name": "queue_position",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "smallint",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "allocated_shard",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "requested_at",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "acquired_at",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "last_observed_at",
+      "entityType": "columns",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "pool_name",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "queue_position",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "allocation_requests_pool_queue_unique_idx",
+      "entityType": "indexes",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
+          "value": "pool_name",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "allocated_shard",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": "\"allocated_shard\" is not null",
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "allocation_requests_one_owner_per_shard_idx",
+      "entityType": "indexes",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "nameExplicit": false,
+      "columns": ["pool_name"],
+      "schemaTo": "workspace_e2e_coordination",
+      "tableTo": "allocation_pools",
+      "columnsTo": ["name"],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "allocation_requests_pool_name_allocation_pools_name_fkey",
+      "entityType": "fks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "columns": ["pool_name", "repository", "run_id", "run_attempt"],
+      "nameExplicit": false,
+      "name": "allocation_requests_pkey",
+      "entityType": "pks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "columns": ["name"],
+      "nameExplicit": false,
+      "name": "allocation_pools_pkey",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_pools",
+      "entityType": "pks"
+    },
+    {
+      "value": "\"shard_count\" = 3",
+      "name": "allocation_pools_shard_count_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_pools"
+    },
+    {
+      "value": "\"run_id\" > 0",
+      "name": "allocation_requests_run_id_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "value": "\"run_attempt\" > 0",
+      "name": "allocation_requests_run_attempt_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "value": "\"preferred_shard\" between 1 and 3",
+      "name": "allocation_requests_preferred_shard_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "value": "\"allocated_shard\" is null or \"allocated_shard\" between 1 and 3",
+      "name": "allocation_requests_allocated_shard_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    },
+    {
+      "value": "(\"allocated_shard\" is null) = (\"acquired_at\" is null)",
+      "name": "allocation_requests_acquired_state_check",
+      "entityType": "checks",
+      "schema": "workspace_e2e_coordination",
+      "table": "allocation_requests"
+    }
+  ],
+  "renames": []
+}

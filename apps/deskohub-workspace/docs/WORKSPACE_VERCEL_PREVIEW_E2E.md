@@ -116,22 +116,51 @@ concurrency failure.
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
 runs. Before provider setup begins, an isolated coordinator leases one of three
 static absolute round-robin weekday sequences from the 14-to-90-day candidate
-range. One fixed Git ref stores the three owners and FIFO queue in a linear
-commit history. Each transaction appends to the exact observed tip and moves the
-ref without force. When contenders write from the same parent, only one update
-can fast-forward; the others reload the winner and retry. This is the atomic
-authority. Fixed commit-status contexts remain safe diagnostics only.
+range. A separate long-lived Neon project named `workspace-e2e-coordination`
+owns the coordination database. It has no Vercel integration and is not an
+application production, development, or preview database.
 
-The owner token contains the workflow run ID and attempt. Allocation reclaims
-an owner only after the Actions API reports that exact attempt terminal, and
-finalization removes only its own token. Interrupted or superseded workflows
-therefore cannot strand capacity, and a delayed finalizer cannot release a
-replacement owner. The allocator has `contents: write` only in isolated jobs
-that check out the workflow-owned action with persisted credentials disabled.
-The exact-SHA application checkout and test job retain read-only contents
-permission. The PR identity selects the preferred shard; the allocator chooses
-another free shard when necessary and preserves a fourth contender in FIFO
-order until a shard is released or its bounded preparation wait expires.
+The database stores one fixed three-shard pool and one request row per
+repository, workflow run, and exact attempt. A generated identity is the true
+FIFO ticket. Each state transition opens a serializable transaction, locks the
+pool row, removes only owners already confirmed terminal, preserves an existing
+assignment for the same owner, and assigns free shards in queue order while
+preferring the PR-derived shard. The partial unique index on pool and allocated
+shard is the collision backstop. Transaction serialization failures are the
+only state-changing operation retried; a checkout is never retried by this
+coordinator.
+
+The owner token contains the repository, workflow run ID, and exact attempt.
+Allocation checks `/actions/runs/{run_id}/attempts/{attempt}` and reclaims an
+owner only when that exact attempt reports `completed`. Missing or failed API
+lookups fail closed and do not free capacity; timestamps are diagnostics, never
+TTL lease authority, because Dotypos does not provide a fencing token.
+Finalization deletes only its own complete owner key, so a delayed finalizer
+cannot release a rerun. A later acquisition reconciles any terminal owner left
+by an interrupted finalizer. A bounded fourth contender waits in FIFO order
+until a shard is released or its preparation deadline expires.
+
+The runtime role can connect, use the coordination schema, read the pool, and
+read/write allocation requests and their identity sequence. It cannot perform
+DDL. Only its direct TLS connection URL is stored as the
+`WORKSPACE_E2E_COORDINATOR_DATABASE_URL` secret in the
+`workspace-checkout-e2e` GitHub environment; the administrator URL and Neon API
+credentials are absent from CI. Allocator jobs require `actions: read`,
+`contents: read`, and status publication only. The authored implementation is
+TypeScript and Effect; the early job executes its committed dependency-free ESM
+bundle, rebuilt with:
+
+```bash
+bun --cwd apps/deskohub-workspace e2e:coordination:build-action
+```
+
+Provision or migrate the dedicated database from a trusted operations session
+with the administrator URL available only to that process:
+
+```bash
+WORKSPACE_E2E_COORDINATOR_ADMIN_DATABASE_URL='…' \
+  bun --cwd apps/deskohub-workspace e2e:coordination:provision
+```
 
 Assign weekday ownership before filtering the deployed availability response so
 changing provider snapshots cannot shift a date between shards. Interleaving
@@ -147,11 +176,13 @@ Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
 and from one another. Meeting-room cases use distinct dates within the run's
 shard, including the dates touched by a whole-day reservation.
 
-The job-level `workspace-e2e-dotypos-sandbox` lock remains the default while
-rollout evidence is collected. A controlled `workflow_dispatch` soak may set
-`allow_concurrent` to exercise the atomic allocator without changing ordinary
-CI. Remove the default lock only after the capacity checklist and five three-way
-concurrent soaks pass.
+The job-level `workspace-e2e-dotypos-sandbox` lock remains the default because
+the external sandbox capacity and cross-run fixture isolation have not yet
+passed the required concurrent soak. It is no longer needed for coordinator
+atomicity. A controlled `workflow_dispatch` soak may set `allow_concurrent` to
+exercise the transactional allocator without changing ordinary CI. Remove the
+default lock only after the capacity checklist and five three-way concurrent
+soaks pass.
 
 ### Dotypos capacity checklist
 
@@ -172,10 +203,11 @@ total seats, active reservation totals, peak overlapping seat/table occupancy,
 and remaining capacity for these groups:
 
 - `tier:basic`: at least 16 aggregate seats;
-- `tier:plus`: at least 4 aggregate seats;
+- `tier:plus`: at least 4 aggregate seats, with 16 currently provisioned;
 - every `tier:profi` monitor-tag combination: at least 4 aggregate seats for
   each exact tag set; a generic Profi table does not satisfy a specific set;
-- `reservation:meeting-room`: at least two active visible assignable tables.
+- `reservation:meeting-room`: at least four active visible assignable tables,
+  covering three supported runs plus one room of failure/cleanup headroom.
 
 The testing-cloud inventory was operationally provisioned on 2026-08-04 with
 16 Basic seats, 16 Plus seats, four seats for every exact Profi monitor option,
@@ -187,7 +219,8 @@ in this document or the validator output.
 The cowork budgets cover the supported three runs plus one run of inventory
 headroom. Meeting-room seat counts do not increase concurrency because normal
 assignment requires an empty table; date sharding supplies the primary
-isolation and the second room supplies failure/cleanup headroom. The repository
+isolation while four rooms cover the three-run contract plus one room of
+failure/cleanup headroom. The repository
 Dotypos contract exposes table reads, not a runner-owned capacity mutation.
 Change testing-table seats or provision rooms operationally, then rerun the
 validator. Never change shared table capacity from the test runner.

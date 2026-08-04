@@ -13,9 +13,12 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
   expect(workflow).toContain("inputs.allow_concurrent");
   expect(workflow).toContain("persist-credentials: false");
-  expect(workflow.indexOf("contents: write")).toBeLessThan(
-    workflow.indexOf("  test-e2e:")
+  expect(workflow).not.toContain("contents: write");
+  expect(workflow).toContain(
+    `database-url: \${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}`
   );
+  expect(workflow).toContain(`group: \${{ github.event_name ==`);
+  expect(workflow).toContain("'workspace-e2e-dotypos-sandbox'");
   const testJob = workflow.slice(
     workflow.indexOf("  test-e2e:"),
     workflow.indexOf("  publish-final-status:")

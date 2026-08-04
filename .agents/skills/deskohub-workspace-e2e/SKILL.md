@@ -58,20 +58,26 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before availability preparation and parallel cases start. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed transaction commits, cowork and meeting-room availability preparation may overlap. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, mark the top-level case to run after the independent parallel phase, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before
-  constructing cases. Coordinate owners through one fixed Git ref whose commit
-  history stores the three slots and FIFO queue. Update it only by appending a
-  commit to the exact observed tip and moving the ref without force; concurrent
-  siblings from one parent make one fast-forward winner and force every loser
-  to reload, so allocation is atomic without an Actions concurrency mutex that
-  can cancel pending contenders. Key ownership by run ID and attempt, reclaim an
-  owner only after the Actions API reports it terminal, and release only the
-  exact finalizing owner. Use commit statuses for safe diagnostics, never as the
-  lease authority. Keep allocator `contents: write` permission in isolated jobs
-  that check out only the workflow-owned action with persisted credentials
-  disabled; exact-SHA application code receives read-only contents permission.
-  Use the PR identity for the preferred shard and choose another free shard when
-  needed. A bounded fourth contender may wait in FIFO order and must fail before
-  setup with supported-concurrency context if the wait expires. The runner may
+  constructing cases. Coordinate owners through the dedicated long-lived Neon
+  coordination database, never an application production, development, or
+  integration-owned preview database. Serialize state transitions by locking
+  the fixed pool row in a serializable transaction; retain a partial unique
+  index as the one-owner-per-shard collision backstop. Persist a generated queue
+  identity as the true FIFO ticket, preserve an existing assignment for the
+  same repository/run/attempt owner, and retry only classified transaction
+  serialization failures. Query the exact GitHub workflow attempt endpoint,
+  reclaim only attempts confirmed `completed`, and fail closed on missing or
+  failed status lookups. Never use a TTL as lease authority because Dotypos has
+  no fencing token. Release only the exact finalizing owner; later acquisitions
+  reconcile terminal owners left by interruption. Keep only the least-privilege
+  direct runtime URL in the `workspace-checkout-e2e` environment, with no admin
+  URL or Neon API credential in CI. Allocator jobs need `actions: read` and
+  `contents: read`, not repository writes. Author the action in TypeScript and
+  Effect and commit its dependency-free ESM bundle so allocation can run before
+  repository dependency setup. Use the PR identity for the preferred shard and
+  choose another free shard when needed. A bounded fourth contender may wait in
+  FIFO order and must fail before setup with supported-concurrency context if
+  the wait expires. The runner may
   retain its deterministic identity fallback only for rollout compatibility;
   concurrent CI must supply a coordinated shard. Validate every selected date
   through the deployed availability route; do not add an application query

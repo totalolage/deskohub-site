@@ -127,9 +127,10 @@ jobs:
     if: needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    environment: workspace-checkout-e2e
     permissions:
       actions: read
-      contents: write
+      contents: read
       statuses: write
     outputs:
       shard: ${{ steps.lease.outputs.shard }}
@@ -154,24 +155,15 @@ jobs:
           mode: acquire
           preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
           token: ${{ github.token }}
+          database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
       - name: Publish allocation status
         env:
           ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
           GH_TOKEN: ${{ github.token }}
-          LEASE_ANCHOR_SHA: 7ff11c3b550458a2036f87cdf6ef912b00fad760
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           lease_target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/statuses/$LEASE_ANCHOR_SHA" \
-            -f state=pending \
-            -f context="Workspace E2E allocation shard $ALLOCATION_SHARD" \
-            -f description="Shard $ALLOCATION_SHARD of 3 allocated" \
-            -f target_url="$lease_target_url" \
-            >/dev/null
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
@@ -435,9 +427,10 @@ jobs:
     needs: [resolve-target, allocate-shard, test-e2e]
     if: always() && needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
+    environment: workspace-checkout-e2e
     permissions:
       actions: read
-      contents: write
+      contents: read
       statuses: write
     steps:
       - uses: actions/checkout@v4
@@ -447,18 +440,12 @@ jobs:
           persist-credentials: false
           sparse-checkout: .github/actions/workspace-e2e-allocation
 
-      - name: Select preferred date shard
-        id: preferred-shard
-        env:
-          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-        run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
-
       - name: Release date shard
         uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
         with:
           mode: release
-          preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
           token: ${{ github.token }}
+          database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
       - name: Publish final commit status
         if: always()
@@ -466,7 +453,6 @@ jobs:
           ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
           ALLOCATION_DESCRIPTION: ${{ needs.allocate-shard.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
           GH_TOKEN: ${{ github.token }}
-          LEASE_ANCHOR_SHA: 7ff11c3b550458a2036f87cdf6ef912b00fad760
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
@@ -484,27 +470,6 @@ jobs:
             -f description="$description" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
-          if [[ "$ALLOCATION_SHARD" =~ ^[1-3]$ ]]; then
-            lease_context="Workspace E2E allocation shard $ALLOCATION_SHARD"
-            lease_target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            current_lease="$(gh api \
-              "repos/$GITHUB_REPOSITORY/commits/$LEASE_ANCHOR_SHA/statuses?per_page=100" \
-              --jq "[.[] | select(.context == \"$lease_context\")][0] // empty")"
-            if [[ \
-              "$(jq -r '.state // ""' <<<"$current_lease")" == "pending" && \
-              "$(jq -r '.target_url // ""' <<<"$current_lease")" == "$lease_target_url" \
-            ]]; then
-              gh api \
-                --method POST \
-                -H "Accept: application/vnd.github+json" \
-                "repos/$GITHUB_REPOSITORY/statuses/$LEASE_ANCHOR_SHA" \
-                -f state="$STATUS_STATE" \
-                -f context="$lease_context" \
-                -f description="$ALLOCATION_DESCRIPTION" \
-                -f target_url="$lease_target_url" \
-                >/dev/null
-            fi
-          fi
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
