@@ -7,6 +7,7 @@ import {
 } from "@/features/checkout/product-catalog";
 import {
   workspaceE2EConcurrentRunTarget,
+  workspaceE2EFullDateAllocation,
   workspaceE2EProviderHeadroomRuns,
 } from "./allocation";
 
@@ -18,6 +19,20 @@ export const workspaceE2EMaximumSameDateCoworkReservations = {
   plus: 1,
   profi: 1,
 } as const;
+
+export const getWorkspaceE2ECapacityInterval = (now = new Date()) => {
+  const startDate = new Date(now);
+  startDate.setUTCDate(
+    startDate.getUTCDate() + workspaceE2EFullDateAllocation.fromOffsetDays
+  );
+  startDate.setUTCHours(0, 0, 0, 0);
+  const endDate = new Date(now);
+  endDate.setUTCDate(
+    endDate.getUTCDate() + workspaceE2EFullDateAllocation.toOffsetDays + 1
+  );
+  endDate.setUTCHours(0, 0, 0, 0);
+  return { endDate, startDate };
+};
 
 type CapacityGroup = {
   readonly id: string;

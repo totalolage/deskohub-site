@@ -1,5 +1,8 @@
 import { Cause, Effect, Exit } from "effect";
-import { makeWorkspaceE2ECapacityReport } from "../e2e/capacity";
+import {
+  getWorkspaceE2ECapacityInterval,
+  makeWorkspaceE2ECapacityReport,
+} from "../e2e/capacity";
 import { getDatasourceConfig } from "../e2e/config";
 import { makeE2EEnvironment } from "../e2e/e2e-env";
 import { formatWorkspaceE2EFailure } from "../e2e/errors";
@@ -8,10 +11,7 @@ import { runStandaloneWorkspaceEffect } from "../shared/backend/standalone-works
 
 const environment = makeE2EEnvironment();
 const datasourceConfig = getDatasourceConfig(environment);
-const from = new Date();
-from.setUTCDate(from.getUTCDate() + 14);
-const to = new Date();
-to.setUTCDate(to.getUTCDate() + 91);
+const { endDate: to, startDate: from } = getWorkspaceE2ECapacityInterval();
 const inventoryExit = await loadDotyposCapacityInventory(datasourceConfig, {
   endDate: to,
   startDate: from,

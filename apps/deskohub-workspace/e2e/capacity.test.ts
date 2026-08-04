@@ -2,7 +2,21 @@ import { expect, test } from "bun:test";
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
-import { makeWorkspaceE2ECapacityReport } from "./capacity";
+import {
+  getWorkspaceE2ECapacityInterval,
+  makeWorkspaceE2ECapacityReport,
+} from "./capacity";
+
+test("covers whole UTC dates at both candidate-range boundaries", () => {
+  expect(
+    getWorkspaceE2ECapacityInterval(
+      new Date("2026-08-04T17:45:00.000Z")
+    )
+  ).toEqual({
+    endDate: new Date("2026-11-03T00:00:00.000Z"),
+    startDate: new Date("2026-08-18T00:00:00.000Z"),
+  });
+});
 
 test("reports only aggregate capacity for every workspace table pool", () => {
   const tables: Table[] = [

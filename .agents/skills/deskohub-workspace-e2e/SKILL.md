@@ -81,7 +81,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   incomplete, retain the lock and document the external gate. Capacity
   preflight must check both physical inventory and capacity remaining after
   peak overlapping active reservations; never sum reservations on unrelated
-  dates or treat meeting-room seats as room concurrency.
+  dates or treat meeting-room seats as room concurrency. Query the whole first
+  and last candidate dates instead of preserving the preflight's current clock
+  time at either boundary.
 - Partition the canonical weekday candidate sequence by shard before filtering
   provider availability. Keep that ownership static when availability changes;
   partitioning the returned available dates can reindex a later date into a

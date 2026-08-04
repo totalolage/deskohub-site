@@ -164,7 +164,8 @@ bun --cwd apps/deskohub-workspace e2e:capacity
 ```
 
 The command uses the generated Dotypos table and reservation contracts, bounds
-the reservation lookup to active overlaps in the candidate interval, and
+the reservation lookup to active overlaps across the whole first and last
+candidate dates, and
 prints no table, reservation, customer, or provider identifiers. It reports
 active-visible and assignable table counts, the sorted seat-count multiset,
 total seats, active reservation totals, peak overlapping seat/table occupancy,
