@@ -3,6 +3,7 @@ import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { makeWorkspaceE2ECases } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
 import type { WorkspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -43,6 +44,8 @@ export class WorkspaceE2ECaseService extends Context.Service<
     Effect.gen(function* () {
       const httpClient = yield* HttpClient.HttpClient;
       const cleanup = yield* WorkspaceE2ECleanupService;
+      const providerVerificationPermit =
+        yield* WorkspaceE2EProviderVerificationPermitService;
       const telemetry = yield* E2ETelemetryService;
       return {
         makeCases: (input) =>
@@ -53,6 +56,10 @@ export class WorkspaceE2ECaseService extends Context.Service<
         runCases: (input) =>
           runWorkspaceE2ECases(input).pipe(
             Effect.provideService(WorkspaceE2ECleanupService, cleanup),
+            Effect.provideService(
+              WorkspaceE2EProviderVerificationPermitService,
+              providerVerificationPermit
+            ),
             Effect.provideService(E2ETelemetryService, telemetry)
           ),
       };

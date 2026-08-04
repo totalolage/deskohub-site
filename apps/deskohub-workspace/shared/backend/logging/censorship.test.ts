@@ -62,6 +62,8 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("db.namespace")).toBe(true);
+    expect(isSensitiveLogKey("server.address")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -540,7 +542,9 @@ describe("createCensoredOtelSpanExporter", () => {
       Effect.fail(new Error(privateValue)).pipe(
         Effect.withSpan("safe.operation", {
           attributes: {
+            "db.namespace": "private-coordination-database",
             email: privateValue,
+            "server.address": "private-provider-endpoint",
             sessionDuration: 123,
           },
         }),
@@ -556,7 +560,9 @@ describe("createCensoredOtelSpanExporter", () => {
 
     const [span] = exporter.getFinishedSpans();
     expect(span?.attributes).toMatchObject({
+      "db.namespace": CENSORED_LOG_VALUE,
       email: CENSORED_LOG_VALUE,
+      "server.address": CENSORED_LOG_VALUE,
       sessionDuration: 123,
     });
     expect(span?.events[0]?.name).toBe("exception");

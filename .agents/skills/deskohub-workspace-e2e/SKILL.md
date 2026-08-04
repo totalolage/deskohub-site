@@ -42,7 +42,38 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep evaluated browser scripts that prepare navigation-producing forms side-effect free with respect to submission. An evaluated DOM click can navigate successfully while leaving the driver command blocked on the destroyed execution context. Return from preparation first, then focus the hydrated form-scoped submit control and activate it with a separate native keyboard command before polling the destination URL. A bounded preparation script may activate the existing production advertised-price retry control when that selected-query error control is rendered: the retry is read-only, must not reset the preparation deadline, and must never become a retry of reservation submission or another state-creating operation.
 - For client-rendered hover or focus interactions, wait for the specific React event handler used by the component, not merely for a React props marker. A partially hydrated element can expose React metadata before Radix or another composed primitive has installed the handler that opens its transient content.
 - Do not await a long UI- or provider-backed preparation promise inside one `agent-browser eval`: agent-browser's CDP `Runtime.evaluate` response can time out before the semantic E2E deadline. Start only side-effect-free preparation in a short synchronous evaluation, retain its bounded status in the page, poll that status with short evaluations under the existing semantic timeout, and perform the state-creating native activation only after preparation succeeds. Agent-browser JSON-serializes structured evaluation results, so return the state object directly and parse stdout once; returning `JSON.stringify(state)` double-encodes it. Preserve preparation errors and do not increase timeouts or retry checkout/payment creation to hide a CDP transport limit.
-- Run every independent E2E case with raw, fail-fast Effect concurrency. Do not convert case effects to `Exit` before the parallel aggregate; doing so makes failures look successful to the parent and prevents sibling interruption. Expected interrupt-only sibling exits must remain cancelled in telemetry but must not become the parallel aggregate's failure while the genuine failing case is still capturing artifacts or finalizing; recover only those signalled sibling exits outside the case trace and let the failure owner propagate its original cause. Keep read-only case preparation concurrent as well: availability discovery loads the same Dotypos and Calendar inventory on every request, so serial preparation can cost several minutes before browser cases even start. Reservation page navigation through pay-page arrival is one measured in-run capacity boundary: exact runs showed unbounded browser starts queue full provider-backed inventory loads past the existing UI boundary, so admit the checked-in number of starts with one suite-owned interruption-safe priority permit pool, beginning before navigation and releasing before hosted payment. Prioritize queued starts by the case watchdog, not fiber launch order: variable browser diagnostics can make a four-minute case reach the pool after longer cases even when its fiber was launched first. Keep equal-deadline starts FIFO, remove interrupted waiters, and release a granted permit when interruption races admission. The synthetic `replay-payment-webhook` step is the other measured boundary: concurrent exact-SHA soaks showed repeated Nexi connection failures when parallel cases from three suites replayed notifications together. Admit one replay per suite with Effect's interruption-safe semaphore; at the supported three-run limit this caps aggregate verification concurrency at three, not one globally. Do not include hosted-page payment, genuine webhook delivery, fulfillment, or unrelated provider work in that boundary. For both boundaries, the semantic step timeout begins after admission while its trace duration includes permit wait and the case watchdog bounds both. Do not key either boundary from step-name strings, expand it to later checkout stages, or change its capacity without exact-run evidence; revalidate its aggregate across the supported cross-run count before releasing the global lock. Deduplicate cleanup targets and cancel independent Dotypos reservations concurrently while collecting every cleanup exit. A provider failure from one isolated hosted-payment request is not evidence that concurrent starts caused it; preserve parallel payment coverage unless exact-run evidence demonstrates a concurrency-specific failure.
+- Run every independent E2E case with raw, fail-fast Effect concurrency. Do not
+  convert case effects to `Exit` before the parallel aggregate; doing so makes
+  failures look successful to the parent and prevents sibling interruption.
+  Expected interrupt-only sibling exits must remain cancelled in telemetry but
+  must not become the aggregate's failure while the genuine failing case is
+  capturing artifacts or finalizing. Keep read-only case preparation concurrent.
+  Reservation page navigation through pay-page arrival is one measured in-run
+  capacity boundary: admit the checked-in number of starts with one suite-owned
+  interruption-safe priority permit pool, beginning before navigation and
+  releasing before hosted payment. Prioritize queued starts by the case watchdog,
+  keep equal-deadline starts FIFO, remove interrupted waiters, and release a
+  granted permit when interruption races admission. The synthetic
+  `replay-payment-webhook` step is the other measured boundary. A three-way
+  exact-SHA round failed all runs when a suite-local semaphore still allowed
+  three aggregate Nexi replays, so admit one replay globally with a
+  transaction-scoped PostgreSQL advisory lock in the dedicated coordination
+  database. Keep a suite-local Effect semaphore so only one lock query per
+  process can block and a second SQL-pool connection remains available for
+  interruption cancellation. Use a separate direct URL whose SQL-created role
+  has database connectivity only and no schema or table privileges;
+  never expose the allocator URL or role to exact-SHA code. During rollout, the
+  old default-branch workflow retains the global job lock and may use the local
+  compatibility permit; controlled branch soaks must set the permit-required
+  flag and fail closed without its URL. Do not include hosted-page payment,
+  genuine webhook delivery, fulfillment, or unrelated provider work in that
+  boundary. For both boundaries, the semantic step timeout begins after
+  admission while its trace duration includes permit wait and the case watchdog
+  bounds both. Do not key either boundary from step-name strings, expand it to
+  later checkout stages, or change its capacity without exact-run evidence.
+  Deduplicate cleanup targets and cancel independent Dotypos reservations
+  concurrently while collecting every cleanup exit. Preserve parallel payment
+  coverage unless exact-run evidence demonstrates a concurrency-specific failure.
 - Treat a successful Dotypos cancellation response as issued, not converged.
   Before suite cleanup releases the sandbox boundary, poll the same active
   reservation inventory consumed by availability until every successfully
@@ -92,6 +123,13 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   dates or treat meeting-room seats as room concurrency. Query the whole first
   and last candidate dates instead of preserving the preflight's current clock
   time at either boundary.
+- Suppress database and provider identity in E2E output at both boundaries:
+  register the complete coordinator URL plus host, database name, user, and
+  password with the process redactor before building its SQL Layer, and censor
+  `server.address` and `db.namespace` in exported OpenTelemetry attributes.
+  SQL-created coordination roles must have no elevated role memberships; Neon
+  Console/CLI/API-created roles inherit elevated membership and are unsuitable
+  for the exact-SHA provider-permit capability.
 - Partition the canonical weekday candidate sequence by shard before filtering
   provider availability. Keep that ownership static when availability changes;
   partitioning the returned available dates can reindex a later date into a
