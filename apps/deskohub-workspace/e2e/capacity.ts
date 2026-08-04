@@ -86,7 +86,7 @@ const capacityGroups: readonly CapacityGroup[] = [
   {
     id: workspaceMeetingRoomReservationTableTag,
     requiredAvailableTableCount: 1,
-    requiredTableCount: 2,
+    requiredTableCount: provisionedRunCapacity,
     requiredTags: [workspaceMeetingRoomReservationTableTag],
   },
 ];

@@ -10,6 +10,11 @@ on:
         required: false
         default: false
         type: boolean
+      cleanup_stale_e2e_reservations:
+        description: Cancel strictly identified stale E2E reservations before validation
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -137,7 +142,7 @@ jobs:
     concurrency:
       # Controlled workflow-dispatch soaks exercise the atomic allocator while
       # ordinary CI retains the provider lock until five three-way soaks pass.
-      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
+      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && !inputs.cleanup_stale_e2e_reservations && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
       cancel-in-progress: false
     env:
       NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
@@ -324,6 +329,21 @@ jobs:
             echo "direct_url=$direct_url"
             echo "pooled_url=$pooled_url"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Reconcile stale Workspace E2E reservations
+        if: github.event_name == 'workflow_dispatch' && inputs.cleanup_stale_e2e_reservations
+        env:
+          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.branch_name }}
+          DOTYPOS_API_URL: ${{ secrets.DOTYPOS_API_URL }}
+          DOTYPOS_CLIENT_ID: ${{ secrets.DOTYPOS_CLIENT_ID }}
+          DOTYPOS_CLIENT_SECRET: ${{ secrets.DOTYPOS_CLIENT_SECRET }}
+          DOTYPOS_REFRESH_TOKEN: ${{ secrets.DOTYPOS_REFRESH_TOKEN }}
+          DOTYPOS_CLOUD_ID: ${{ secrets.DOTYPOS_CLOUD_ID }}
+          DOTYPOS_BRANCH_ID: ${{ secrets.DOTYPOS_BRANCH_ID }}
+          DOTYPOS_EMPLOYEE_ID: ${{ secrets.DOTYPOS_EMPLOYEE_ID }}
+        run: bun --cwd apps/deskohub-workspace e2e:cleanup-stale --apply
 
       - name: Validate aggregate Dotypos capacity
         env:
