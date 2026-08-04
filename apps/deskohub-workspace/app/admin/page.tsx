@@ -6,6 +6,7 @@ import {
 } from "@/features/administration/components";
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
+import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
 export const dynamic = "force-dynamic";
@@ -34,11 +35,12 @@ export default async function AdminPage() {
             Find a record
           </h2>
           <p className="mt-1 text-sm text-navy-blue/65">
-            Search reservations and customers by customer name or email.
+            Paste an associated ID to open a reservation, or search for a
+            customer by name or email.
           </p>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <CustomerSearch destination="reservations" />
+          <ReservationLookup />
           <CustomerSearch />
         </div>
       </section>

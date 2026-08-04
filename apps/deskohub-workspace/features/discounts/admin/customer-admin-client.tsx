@@ -20,11 +20,7 @@ import type {
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
-export function CustomerSearch({
-  destination = "customer",
-}: {
-  readonly destination?: "customer" | "reservations";
-}) {
+export function CustomerSearch() {
   const queryId = useId();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -81,12 +77,7 @@ export function CustomerSearch({
         </div>
         <Button disabled={isExecuting} type="submit">
           <Search aria-hidden className="size-4" />
-          {isExecuting
-            ? "Searching…"
-            : {
-                customer: "Find customer",
-                reservations: "Find reservations",
-              }[destination]}
+          {isExecuting ? "Searching…" : "Find customer"}
         </Button>
       </form>
 
@@ -105,7 +96,7 @@ export function CustomerSearch({
         >
           {result.customers.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-navy-blue/65">
-              No active Dotypos customer matched.
+              No customer matched.
             </p>
           ) : (
             <>
@@ -129,20 +120,8 @@ export function CustomerSearch({
                       </p>
                     </div>
                     <Button asChild size="sm" variant="secondary">
-                      <Link
-                        href={
-                          {
-                            customer: `/admin/customers/${customer.id}`,
-                            reservations: `/admin/reservations?customerId=${encodeURIComponent(customer.id)}`,
-                          }[destination]
-                        }
-                      >
-                        {
-                          {
-                            customer: "Open customer",
-                            reservations: "View reservations",
-                          }[destination]
-                        }
+                      <Link href={`/admin/customers/${customer.id}`}>
+                        Open customer
                       </Link>
                     </Button>
                   </li>

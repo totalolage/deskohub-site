@@ -116,7 +116,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Dotypos customer search is temporarily unavailable.",
+            message: "Customer search is temporarily unavailable.",
             cause,
           })
       )

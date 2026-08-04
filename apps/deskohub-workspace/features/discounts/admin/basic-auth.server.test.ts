@@ -78,6 +78,9 @@ describe("discount administration server authorization", () => {
     const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
       "./actions"
     );
+    const { getAdministrationReservation } = await import(
+      "@/features/administration/actions"
+    );
 
     const mutation = await mutateDiscountAdmin({
       kind: "delete-discount",
@@ -86,10 +89,15 @@ describe("discount administration server authorization", () => {
     const search = await searchDiscountAdminCustomers({
       query: "attacker-controlled-name",
     });
+    const reservation = await getAdministrationReservation({
+      identifier: "attacker-controlled-id",
+    });
 
     expect(mutation).toHaveProperty("serverError");
     expect(mutation).not.toHaveProperty("data");
     expect(search).toHaveProperty("serverError");
     expect(search).not.toHaveProperty("data");
+    expect(reservation).toHaveProperty("serverError");
+    expect(reservation).not.toHaveProperty("data");
   });
 });

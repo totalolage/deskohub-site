@@ -19,8 +19,10 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   discountApplications,
+  legalEvidenceEvents,
   paymentAttempts,
   type WorkspaceReservation,
+  webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
 import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
@@ -30,6 +32,7 @@ import {
   mergeReservationHistory,
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
+import { getUniqueReservationId } from "./reservation-lookup.server";
 import type { AdministrationStatusGroup } from "./reservation-status";
 import { getAdministrationReservationStatus } from "./reservation-status";
 
@@ -381,6 +384,9 @@ export class AdministrationService extends Context.Service<
     readonly loadReservation: (
       id: string
     ) => Effect.Effect<AdministrationReservationDetail | null, unknown>;
+    readonly findReservationId: (
+      identifier: string
+    ) => Effect.Effect<string | null, unknown>;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
@@ -651,6 +657,95 @@ export class AdministrationService extends Context.Service<
         } satisfies AdministrationReservationDetail;
       });
 
+      const findReservationId = Effect.fn(
+        "AdministrationService.findReservationId"
+      )(function* (identifier: string) {
+        const {
+          applicationRows,
+          evidenceRows,
+          paymentRows,
+          reservationRows,
+          webhookRows,
+        } = yield* Effect.all(
+          {
+            reservationRows: db
+              .selectDistinct({ reservationId: workspaceReservations.id })
+              .from(workspaceReservations)
+              .where(
+                or(
+                  eq(workspaceReservations.id, identifier),
+                  eq(workspaceReservations.checkoutSessionKey, identifier),
+                  eq(workspaceReservations.checkoutAttemptKey, identifier),
+                  eq(workspaceReservations.correlationId, identifier),
+                  eq(workspaceReservations.dotyposReservationId, identifier),
+                  eq(workspaceReservations.activePaymentAttemptId, identifier)
+                )
+              )
+              .limit(2),
+            paymentRows: db
+              .selectDistinct({
+                reservationId: paymentAttempts.workspaceReservationId,
+              })
+              .from(paymentAttempts)
+              .where(
+                or(
+                  eq(paymentAttempts.id, identifier),
+                  eq(paymentAttempts.providerOrderId, identifier),
+                  eq(paymentAttempts.lastWebhookEventId, identifier),
+                  eq(paymentAttempts.lastProviderOperationId, identifier)
+                )
+              )
+              .limit(2),
+            applicationRows: db
+              .selectDistinct({
+                reservationId: discountApplications.workspaceReservationId,
+              })
+              .from(discountApplications)
+              .where(sql`${discountApplications.id} = ${identifier}`)
+              .limit(2),
+            evidenceRows: db
+              .selectDistinct({
+                reservationId: legalEvidenceEvents.workspaceReservationId,
+              })
+              .from(legalEvidenceEvents)
+              .where(eq(legalEvidenceEvents.id, identifier))
+              .limit(2),
+            webhookRows: db
+              .selectDistinct({
+                reservationId: paymentAttempts.workspaceReservationId,
+              })
+              .from(webhookEvents)
+              .innerJoin(
+                paymentAttempts,
+                or(
+                  eq(webhookEvents.paymentAttemptId, paymentAttempts.id),
+                  eq(
+                    webhookEvents.providerOrderId,
+                    paymentAttempts.providerOrderId
+                  )
+                )
+              )
+              .where(
+                or(
+                  eq(webhookEvents.id, identifier),
+                  eq(webhookEvents.eventId, identifier),
+                  eq(webhookEvents.providerOrderId, identifier)
+                )
+              )
+              .limit(2),
+          },
+          { concurrency: 5 }
+        );
+
+        return getUniqueReservationId([
+          ...reservationRows.map(({ reservationId }) => reservationId),
+          ...paymentRows.map(({ reservationId }) => reservationId),
+          ...applicationRows.map(({ reservationId }) => reservationId),
+          ...evidenceRows.map(({ reservationId }) => reservationId),
+          ...webhookRows.map(({ reservationId }) => reservationId),
+        ]);
+      });
+
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
           const countRows = yield* db
@@ -770,6 +865,7 @@ export class AdministrationService extends Context.Service<
         loadOverview,
         listReservations,
         loadReservation,
+        findReservationId,
         listCustomers,
         loadCustomerReservations,
       };

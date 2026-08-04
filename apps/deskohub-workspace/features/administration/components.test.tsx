@@ -2,11 +2,17 @@ import {
   afterAll,
   afterEach,
   beforeAll,
+  beforeEach,
   describe,
   expect,
+  mock,
   test,
 } from "bun:test";
-import { cleanup, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  workspaceRouterPush,
+  workspaceUseAction,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -15,8 +21,16 @@ import { AdministrationBreadcrumbs } from "./admin-shell";
 import { ReservationTable, ReservationTimeline } from "./components";
 import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
 
+mock.module("./actions", () => ({
+  getAdministrationReservation: mock(),
+}));
+
 describe("administration reservation components", () => {
   beforeAll(() => registerWorkspaceComponentTestEnv());
+  beforeEach(() => {
+    workspaceRouterPush.mockClear();
+    workspaceUseAction.mockReset();
+  });
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
@@ -71,5 +85,38 @@ describe("administration reservation components", () => {
       />
     );
     expect(view.getByText("Cowork Basic")).toBeDefined();
+  });
+
+  test("gets one reservation from any associated unique ID", async () => {
+    const execute = mock();
+    let onSuccess:
+      | ((result: {
+          readonly data?: { readonly reservationId: string | null };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      onSuccess = (
+        options as {
+          readonly onSuccess?: (result: {
+            readonly data?: { readonly reservationId: string | null };
+          }) => void;
+        }
+      ).onSuccess;
+      return { execute, isExecuting: false };
+    });
+    const { ReservationLookup } = await import("./reservation-lookup");
+    const view = render(<ReservationLookup />);
+
+    fireEvent.input(
+      view.getByRole("searchbox", { name: "Reservation or payment ID" }),
+      { target: { value: "  payment-123  " } }
+    );
+    fireEvent.submit(view.getByRole("button", { name: "Get reservation" }));
+
+    expect(execute).toHaveBeenCalledWith({ identifier: "payment-123" });
+    onSuccess?.({ data: { reservationId: "reservation-456" } });
+    expect(workspaceRouterPush).toHaveBeenCalledWith(
+      "/admin/reservations/reservation-456"
+    );
   });
 });

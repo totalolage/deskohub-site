@@ -9,7 +9,7 @@ import {
   type AdministrationSearchParams,
   loadAdministrationReservations,
 } from "@/features/administration/page-data.server";
-import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
+import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
 export const dynamic = "force-dynamic";
@@ -33,7 +33,7 @@ export default async function ReservationsAdministrationPage({
       />
 
       <div className="mb-5">
-        <CustomerSearch destination="reservations" />
+        <ReservationLookup />
       </div>
 
       {input.customerId && (
