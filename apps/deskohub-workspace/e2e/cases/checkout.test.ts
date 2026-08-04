@@ -1,9 +1,20 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import type { Customer } from "@deskohub/dotypos/generated";
 import { fileURLToPath } from "node:url";
-import { Effect } from "effect";
+import type { Customer } from "@deskohub/dotypos/generated";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import type { Runner } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
+import type {
+  CheckoutData,
+  CheckoutFlowState,
+  CheckoutRow,
+  WorkspaceE2EStepRunner,
+} from "../types";
+import { executeCheckoutFlow } from "./checkout";
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -112,4 +123,72 @@ describe("whole-day meeting-room checkout proof", () => {
       )
     ).rejects.toThrow();
   });
+});
+
+test("limits capacity only around reservation start and provider verification", async () => {
+  const observedSteps: Array<{
+    readonly capacity:
+      | "provider-verification"
+      | "reservation-start"
+      | undefined;
+    readonly id: string;
+  }> = [];
+  const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
+  const replayRow = {} as CheckoutRow;
+  const runStep = ((step) => {
+    observedSteps.push({ capacity: step.capacity, id: step.id });
+    if (step.id === "prepare-checkout-pay-page") {
+      return Effect.succeed(orderId);
+    }
+    if (
+      step.id === "wait-for-webhook-row" ||
+      step.id === "validate-postgres-state"
+    ) {
+      return Effect.succeed(replayRow);
+    }
+    if (step.id === "validate-dotypos-reservation") {
+      return Effect.succeed({});
+    }
+    return Effect.void;
+  }) as WorkspaceE2EStepRunner;
+  const data = {} as CheckoutData;
+  const state: CheckoutFlowState = { data };
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(FetchHttpClient.Fetch, (() =>
+        Promise.reject(
+          new Error("HTTP must not execute in the step contract test")
+        )) as typeof globalThis.fetch)
+    )
+  );
+
+  await Effect.runPromise(
+    executeCheckoutFlow({
+      config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
+      data,
+      datasourceConfig: {} as DatasourceConfig,
+      flow: {
+        id: "checkout-capacity-contract",
+        submitReservationScript: () => "unused",
+      },
+      run: (() =>
+        Promise.reject(new Error("runner must not execute"))) as Runner,
+      runStep,
+      session: "checkout-capacity-contract",
+      state,
+    }).pipe(Effect.provide(httpClientLayer)) as Effect.Effect<void>
+  );
+
+  expect(
+    observedSteps.filter(({ capacity }) => capacity !== undefined)
+  ).toEqual([
+    {
+      capacity: "reservation-start",
+      id: "prepare-checkout-pay-page",
+    },
+    {
+      capacity: "provider-verification",
+      id: "replay-payment-webhook",
+    },
+  ]);
 });
