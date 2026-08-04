@@ -65,6 +65,30 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(workflow).not.toContain("pulls?state=open");
 });
 
+test("binds the manual target origin to a successful exact-SHA Workspace deployment", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const resolveTargetStep = workflow.slice(
+    workflow.indexOf("- name: Resolve eligible PR and immutable preview"),
+    workflow.indexOf("  test-e2e:")
+  );
+
+  expect(resolveTargetStep).toContain('"repos/$GITHUB_REPOSITORY/deployments"');
+  expect(resolveTargetStep).toContain('-f sha="$TARGET_SHA"');
+  expect(resolveTargetStep).toContain(
+    "-f environment='Preview – deskohub-workspace-site'"
+  );
+  expect(resolveTargetStep).toContain(
+    '"repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses"'
+  );
+  expect(resolveTargetStep).toContain('--arg target "$normalized_url"');
+  expect(resolveTargetStep).toContain('.state == "success"');
+  expect(resolveTargetStep).toContain(
+    "No successful exact-SHA Workspace deployment matches the target URL"
+  );
+});
+
 test("holds the provider lock for the complete shard lease lifetime", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")

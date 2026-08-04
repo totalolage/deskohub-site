@@ -90,6 +90,37 @@ jobs:
             exit 1
           }
 
+          deployments="$(gh api \
+            --method GET \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/deployments" \
+            -f sha="$TARGET_SHA" \
+            -f environment='Preview – deskohub-workspace-site' \
+            -f per_page=100)"
+          deployment_matches_target=false
+          while IFS= read -r deployment_id; do
+            if [[ -z "$deployment_id" ]]; then
+              continue
+            fi
+            deployment_statuses="$(gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
+            if jq -e \
+              --arg target "$normalized_url" \
+              'any(.[];
+                .state == "success" and
+                (((.environment_url? // "") | rtrimstr("/")) == $target)
+              )' \
+              <<<"$deployment_statuses" >/dev/null; then
+              deployment_matches_target=true
+              break
+            fi
+          done < <(jq -r '.[].id' <<<"$deployments")
+          if [[ "$deployment_matches_target" != "true" ]]; then
+            echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
+            exit 1
+          fi
+
           pulls="$(gh api \
             -H "Accept: application/vnd.github+json" \
             "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls")"
