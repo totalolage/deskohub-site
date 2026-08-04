@@ -703,7 +703,7 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
             Effect.andThen(
               Effect.fail(
                 workspaceE2EError("intentional case failure", {
-                  diagnosticCode: "nexi_webhook_internal_error",
+                  diagnosticCode: "nexi_webhook_fulfillment_failed",
                 })
               )
             )
@@ -779,7 +779,7 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
     expect(failureDiagnostics).toEqual([
       {
         caseId: "first-failure",
-        diagnosticCode: "nexi_webhook_internal_error",
+        diagnosticCode: "nexi_webhook_fulfillment_failed",
         failureKind: "error",
         outcome: "failed",
         stepId: "prepare-failing-reservation",
