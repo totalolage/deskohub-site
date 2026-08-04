@@ -146,6 +146,7 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
+      capacity: "provider-verification",
       execute: replayNexiWebhook(config, replayRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),

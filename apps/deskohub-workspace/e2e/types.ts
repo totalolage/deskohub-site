@@ -105,7 +105,7 @@ export type WorkspaceE2ECase = {
 };
 
 export type WorkspaceE2EStep<A, R = never> = {
-  readonly capacity?: "reservation-start";
+  readonly capacity?: "provider-verification" | "reservation-start";
   readonly execute: Effect.Effect<A, WorkspaceE2EError, R>;
   readonly id: string;
   readonly timeoutMs: number;

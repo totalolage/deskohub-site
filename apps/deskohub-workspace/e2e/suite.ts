@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit } from "effect";
+import { Cause, Deferred, Effect, Exit, Semaphore } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -41,6 +41,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
 };
 
 export const workspaceE2EReservationStartConcurrency = 6;
+export const workspaceE2EProviderVerificationConcurrency = 1;
 
 type ReservationStartPermit = {
   readonly deferred: Deferred.Deferred<void>;
@@ -94,6 +95,9 @@ export const runWorkspaceE2ECases = ({
       const reservationStartPermitPool = yield* makeReservationStartPermitPool(
         workspaceE2EReservationStartConcurrency
       );
+      const providerVerificationSemaphore = yield* Semaphore.make(
+        workspaceE2EProviderVerificationConcurrency
+      );
       const indexedCases = [...cases.entries()];
       const independentFailure = yield* Deferred.make<number>();
       const parallelCases = indexedCases
@@ -124,7 +128,8 @@ export const runWorkspaceE2ECases = ({
                 run,
                 telemetry,
                 timeouts,
-                reservationStartPermitPool
+                reservationStartPermitPool,
+                providerVerificationSemaphore
               ).pipe(
                 Effect.tapCause((cause) =>
                   failureSignal && !Cause.hasInterruptsOnly(cause)
@@ -235,13 +240,15 @@ const runCase = (
   run: Runner,
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts,
-  reservationStartPermitPool: ReservationStartPermitPool
+  reservationStartPermitPool: ReservationStartPermitPool,
+  providerVerificationSemaphore: Semaphore.Semaphore
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
     runtime.testCase.id,
     telemetry,
     reservationStartPermitPool,
+    providerVerificationSemaphore,
     runtime.testCase.timeoutMs
   );
 
@@ -293,6 +300,7 @@ const makeStepRunner =
     caseId: string,
     telemetry: E2ETelemetry,
     reservationStartPermitPool: ReservationStartPermitPool,
+    providerVerificationSemaphore: Semaphore.Semaphore,
     caseTimeoutMs: number
   ): WorkspaceE2EStepRunner =>
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
@@ -309,10 +317,18 @@ const makeStepRunner =
           ),
       })
     );
-    const capacityLimitedExecution =
-      capacity === "reservation-start"
-        ? reservationStartPermitPool.withPermit(caseTimeoutMs, timedExecution)
-        : timedExecution;
+    const capacityLimitedExecution = (() => {
+      if (capacity === "reservation-start") {
+        return reservationStartPermitPool.withPermit(
+          caseTimeoutMs,
+          timedExecution
+        );
+      }
+      if (capacity === "provider-verification") {
+        return providerVerificationSemaphore.withPermit(timedExecution);
+      }
+      return timedExecution;
+    })();
 
     return telemetry.traceStep({
       caseId,
