@@ -4,9 +4,9 @@ import { Effect } from "effect";
 import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
-  waitForDotyposCustomerDiscountGroup,
   waitForConfirmedDotyposReservation,
   waitForDotyposCancellationConvergence,
+  waitForDotyposCustomerDiscountGroup,
 } from "./dotypos";
 
 test("selects an active partial Dotypos discount deterministically", () => {
@@ -71,10 +71,9 @@ test("waits for cancelled reservations to leave active inventory", async () => {
       Effect.sync(() => {
         reads += 1;
         return [
-          {
-            id: "target-reservation",
-            status: reads < 3 ? "CONFIRMED" : "CANCELLED",
-          },
+          ...(reads < 3
+            ? [{ id: "target-reservation", status: "CONFIRMED" as const }]
+            : []),
         ];
       }),
       ["target-reservation"],
@@ -83,6 +82,20 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   );
 
   expect(reads).toBe(3);
+});
+
+test("uses the active-overlap read model for cleanup convergence", async () => {
+  const source = await Bun.file(
+    new URL("./dotypos.ts", import.meta.url)
+  ).text();
+
+  expect(source).toContain(
+    "dotypos.listActiveReservationsOverlapping(\n        getWorkspaceE2ECapacityInterval()"
+  );
+  expect(source).toContain(
+    "dotypos.listActiveReservationsOverlapping(interval)"
+  );
+  expect(source).not.toContain("dotypos.listReservations(),");
 });
 
 test("waits for a customer discount-group change to become readable", async () => {
