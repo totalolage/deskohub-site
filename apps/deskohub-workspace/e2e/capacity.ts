@@ -24,31 +24,39 @@ export const workspaceE2EMaximumSameDateCoworkReservations = {
   profi: 1,
 } as const;
 
-export const getWorkspaceE2ECapacityInterval = (now = new Date()) => {
+export const getWorkspaceE2EDateInterval = ({
+  fromDate,
+  toDate,
+}: {
+  readonly fromDate: string;
+  readonly toDate: string;
+}) => {
   const timeZone = workspaceSiteConstants.location.timeZone;
   const midnight = Temporal.PlainTime.from("00:00");
   const startDate = temporalPlainDateToDate({
-    date: Temporal.PlainDate.from(
-      getWorkspaceE2ECandidateDate(
-        workspaceE2EFullDateAllocation.fromOffsetDays,
-        now
-      )
-    ),
+    date: Temporal.PlainDate.from(fromDate),
     plainTime: midnight,
     timeZone,
   });
   const endDate = temporalPlainDateToDate({
-    date: Temporal.PlainDate.from(
-      getWorkspaceE2ECandidateDate(
-        workspaceE2EFullDateAllocation.toOffsetDays + 1,
-        now
-      )
-    ),
+    date: Temporal.PlainDate.from(toDate).add({ days: 1 }),
     plainTime: midnight,
     timeZone,
   });
   return { endDate, startDate };
 };
+
+export const getWorkspaceE2ECapacityInterval = (now = new Date()) =>
+  getWorkspaceE2EDateInterval({
+    fromDate: getWorkspaceE2ECandidateDate(
+      workspaceE2EFullDateAllocation.fromOffsetDays,
+      now
+    ),
+    toDate: getWorkspaceE2ECandidateDate(
+      workspaceE2EFullDateAllocation.toOffsetDays,
+      now
+    ),
+  });
 
 type CapacityGroup = {
   readonly id: string;

@@ -89,12 +89,9 @@ test("uses the active-overlap read model for cleanup convergence", async () => {
     new URL("./dotypos.ts", import.meta.url)
   ).text();
 
-  expect(source).toContain(
-    "dotypos.listActiveReservationsOverlapping(\n        getWorkspaceE2ECapacityInterval()"
-  );
-  expect(source).toContain(
-    "dotypos.listActiveReservationsOverlapping(interval)"
-  );
+  expect(
+    source.match(/dotypos\.listActiveReservationsOverlapping\(interval\)/g)
+  ).toHaveLength(3);
   expect(source).not.toContain("dotypos.listReservations(),");
 });
 
