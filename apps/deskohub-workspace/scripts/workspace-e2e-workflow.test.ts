@@ -12,6 +12,8 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   );
   expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
   expect(workflow).toContain("inputs.allow_concurrent");
+  expect(workflow).toContain("inputs.cleanup_stale_e2e_reservations");
+  expect(workflow).toContain("!inputs.cleanup_stale_e2e_reservations");
   expect(workflow).toContain("persist-credentials: false");
   expect(workflow).not.toContain("contents: write");
   expect(workflow).toContain(
@@ -26,6 +28,8 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(testJob).toContain("contents: read");
   expect(testJob).not.toContain("contents: write");
   expect(workflow).toContain("Validate aggregate Dotypos capacity");
+  expect(workflow).toContain("Reconcile stale Workspace E2E reservations");
+  expect(workflow).toContain("e2e:cleanup-stale --apply");
   expect(workflow).not.toContain("pulls?state=open");
 });
 
