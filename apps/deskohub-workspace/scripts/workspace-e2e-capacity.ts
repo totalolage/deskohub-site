@@ -1,3 +1,5 @@
+import "../shared/polyfills/temporal";
+
 import { Cause, Effect, Exit } from "effect";
 import {
   getWorkspaceE2ECapacityInterval,

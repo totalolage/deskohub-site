@@ -18,6 +18,7 @@ import {
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   formatWorkspaceE2EAllocation,
+  getWorkspaceE2ECandidateDate,
   isWorkspaceE2EAllocatedWeekday,
   type WorkspaceE2EDateAllocation,
   workspaceE2EConcurrentRunTarget,
@@ -300,8 +301,8 @@ export const loadAvailableCoworkDates = (
   }: CoworkAvailabilitySelection = {}
 ): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
-    const from = futureIsoDate(allocation.fromOffsetDays);
-    const to = futureIsoDate(allocation.toOffsetDays);
+    const from = getWorkspaceE2ECandidateDate(allocation.fromOffsetDays);
+    const to = getWorkspaceE2ECandidateDate(allocation.toOffsetDays);
     const params = new URLSearchParams({ entryTier, from, to });
     if (monitorOption) params.set("monitorOption", monitorOption);
     const httpClient = yield* HttpClient.HttpClient;
@@ -355,7 +356,7 @@ export const loadAvailableCoworkDates = (
       offset <= allocation.toOffsetDays;
       offset += 1
     ) {
-      const date = futureIsoDate(offset);
+      const date = getWorkspaceE2ECandidateDate(offset);
       if (isWorkspaceE2EAllocatedWeekday(date, allocation)) {
         allocatedDates.push(date);
       }
@@ -431,7 +432,8 @@ export const selectAvailableMeetingRoomSlots = (
       {
         length: allocation.toOffsetDays - allocation.fromOffsetDays + 1,
       },
-      (_, index) => futureIsoDate(allocation.fromOffsetDays + index)
+      (_, index) =>
+        getWorkspaceE2ECandidateDate(allocation.fromOffsetDays + index)
     ).filter((date) => isWorkspaceE2EAllocatedWeekday(date, allocation));
     let nextDateIndex = 0;
 
@@ -590,12 +592,6 @@ export const loadMeetingRoomAvailability = (
       };
     });
   });
-
-const futureIsoDate = (offsetDays: number) => {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
-};
 
 const makeCoworkSelectionLabel = (
   entryTier: WorkspaceCoworkProductTier,
