@@ -200,10 +200,13 @@ Stale reservation reconciliation is available only through a manual protected
 workflow dispatch. The script boundary is dry-run by default and applies
 cancellations only when every active candidate can be inspected and both the
 `Workspace E2E ` customer-name prefix and the `delivered+…@resend.dev` email
-shape match. It reports aggregate counts only, collects every detail-read and
-cancellation result, and waits for cancellation convergence. Use the workflow
-input `cleanup_stale_e2e_reservations` with the ordinary provider lock; do not
-combine it with `allow_concurrent` or run it during a controlled soak.
+shape match. The timestamp embedded in that customer name must also be at least
+two hours old, beyond the workflow's 50-minute job timeout, so an active healthy
+run cannot be swept. It reports aggregate counts only, collects every
+detail-read and cancellation result, and waits for cancellation convergence.
+Use the workflow input `cleanup_stale_e2e_reservations` with the ordinary
+provider lock; do not combine it with `allow_concurrent` or run it during a
+controlled soak.
 
 The command uses the generated Dotypos table and reservation contracts, bounds
 the reservation lookup to active overlaps across the whole first and last

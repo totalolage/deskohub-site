@@ -30,6 +30,14 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(workflow).toContain("Validate aggregate Dotypos capacity");
   expect(workflow).toContain("Reconcile stale Workspace E2E reservations");
   expect(workflow).toContain("e2e:cleanup-stale --apply");
+  const staleCleanupStep = workflow.slice(
+    workflow.indexOf("Reconcile stale Workspace E2E reservations"),
+    workflow.indexOf("Validate aggregate Dotypos capacity")
+  );
+  expect(staleCleanupStep).toContain(
+    "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
+  );
+  expect(staleCleanupStep).not.toContain("secrets.DOTYPOS_CLIENT_SECRET");
   expect(workflow).not.toContain("pulls?state=open");
 });
 
