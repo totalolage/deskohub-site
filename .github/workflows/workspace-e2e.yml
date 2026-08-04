@@ -390,14 +390,21 @@ jobs:
           echo "| agent-browser CLI installation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: Install browser and system dependencies
+      - name: Verify hosted browser runtime
         run: |
           started_at=$SECONDS
-          set +e
-          agent-browser install --with-deps
-          status=$?
-          set -e
-          echo "| Browser and system dependency setup | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
+          browser_path="$(command -v google-chrome || command -v chromium || true)"
+          status=0
+          if [[ -z "$browser_path" || ! -x "$browser_path" ]]; then
+            echo "The hosted runner does not provide a supported browser" >&2
+            status=1
+          else
+            "$browser_path" --version || status=$?
+          fi
+          if [[ "$status" == "0" ]]; then
+            echo "AGENT_BROWSER_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
+          fi
+          echo "| Hosted browser verification | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
       - name: Record setup critical path
