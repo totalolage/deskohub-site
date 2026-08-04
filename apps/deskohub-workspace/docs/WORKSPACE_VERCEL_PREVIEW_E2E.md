@@ -28,7 +28,9 @@ The normal repository-dispatch trigger works only after the workflow exists on
 the default branch. Before then, dispatch `.github/workflows/workspace-e2e.yml`
 manually with the exact 40-character SHA, immutable HTTPS deployment URL, and
 internal PR head ref. The workflow applies the same open, internal, non-draft,
-non-Dependabot PR guards to manual runs.
+non-Dependabot PR guards to manual runs and confirms through GitHub deployment
+metadata that the supplied origin is a successful Workspace deployment for that
+exact SHA before the test job can allocate or mutate shared state.
 
 Never scrape a Vercel PR comment or use a branch URL. The E2E target must be the
 immutable `.vercel.app` deployment origin emitted for the exact SHA.
