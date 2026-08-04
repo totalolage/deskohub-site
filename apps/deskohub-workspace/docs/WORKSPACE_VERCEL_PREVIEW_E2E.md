@@ -422,6 +422,18 @@ handler must still fetch authoritative order state from Nexi before applying a
 payment transition. Keep raw payloads, credentials, customer data, and
 connection strings out of logs and artifacts.
 
+Concurrent exact-SHA soaks showed repeated Nexi connection failures when many
+cases from three suites reached that authoritative replay verification at once.
+The suite therefore admits one synthetic `replay-payment-webhook` step at a
+time with an interruption-safe Effect semaphore. This is a suite-local narrow
+boundary: at the supported three-run limit, at most three synthetic replay
+verifications overlap across runs. Hosted payment, genuine webhook delivery,
+fulfillment, and unrelated provider work remain parallel. Permit wait is
+included in the step trace duration, the semantic step timeout begins after
+admission, and the case watchdog bounds the complete wait and execution. Keep
+the global workflow lock until five successful three-run soaks verify this
+aggregate boundary under load.
+
 ## Verification
 
 Run from the repository root:

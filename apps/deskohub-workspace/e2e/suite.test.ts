@@ -14,6 +14,7 @@ import {
 import {
   makeReservationStartPermitPool,
   runWorkspaceE2ECases,
+  workspaceE2EProviderVerificationConcurrency,
   workspaceE2EReservationStartConcurrency,
 } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
@@ -121,6 +122,99 @@ test("runs all independent preview cases concurrently", async () => {
   );
 
   expect(maximumActiveCaseCount).toBe(12);
+});
+
+test("serializes provider verification while independent cases stay concurrent", async () => {
+  let activeProviderVerifications = 0;
+  let maximumActiveProviderVerifications = 0;
+  let providerVerificationCount = 0;
+  let readyCaseCount = 0;
+  let releaseReadyCases: () => void = () => undefined;
+  let releaseFirstVerification: () => void = () => undefined;
+  let signalReadyCases: () => void = () => undefined;
+  let signalFirstVerification: () => void = () => undefined;
+  const readyCasesRelease = new Promise<void>((resolve) => {
+    releaseReadyCases = resolve;
+  });
+  const readyCases = new Promise<void>((resolve) => {
+    signalReadyCases = resolve;
+  });
+  const firstVerificationRelease = new Promise<void>((resolve) => {
+    releaseFirstVerification = resolve;
+  });
+  const firstVerificationStarted = new Promise<void>((resolve) => {
+    signalFirstVerification = resolve;
+  });
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: 2 },
+    (_, index) => ({
+      execute: ({ runStep }) =>
+        Effect.gen(function* () {
+          yield* Effect.sync(() => {
+            readyCaseCount += 1;
+            if (readyCaseCount === 2) signalReadyCases();
+          });
+          yield* Effect.promise(() => readyCasesRelease);
+          yield* runStep({
+            capacity: "provider-verification",
+            execute: Effect.acquireUseRelease(
+              Effect.sync(() => {
+                const isFirstVerification = providerVerificationCount === 0;
+                providerVerificationCount += 1;
+                activeProviderVerifications += 1;
+                maximumActiveProviderVerifications = Math.max(
+                  maximumActiveProviderVerifications,
+                  activeProviderVerifications
+                );
+                if (isFirstVerification) signalFirstVerification();
+                return isFirstVerification;
+              }),
+              (isFirstVerification) =>
+                isFirstVerification
+                  ? Effect.promise(() => firstVerificationRelease)
+                  : Effect.void,
+              () =>
+                Effect.sync(() => {
+                  activeProviderVerifications -= 1;
+                })
+            ),
+            id: `provider-verification-${index}`,
+            timeoutMs: 10_000,
+          });
+        }),
+      checkoutStates: [],
+      id: `provider-verification-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+
+  const suiteRun = Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-provider-verification-test",
+      cases,
+      datasourceConfig: testDatasourceConfig,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-provider-verification",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
+  );
+
+  await readyCases;
+  expect(readyCaseCount).toBe(2);
+  releaseReadyCases();
+  await firstVerificationStarted;
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  const verificationsBeforeRelease = providerVerificationCount;
+  releaseFirstVerification();
+  await suiteRun;
+
+  expect(verificationsBeforeRelease).toBe(
+    workspaceE2EProviderVerificationConcurrency
+  );
+  expect(maximumActiveProviderVerifications).toBe(
+    workspaceE2EProviderVerificationConcurrency
+  );
+  expect(providerVerificationCount).toBe(2);
 });
 
 test("bounds reservation starts and prioritizes a late shorter deadline", async () => {
