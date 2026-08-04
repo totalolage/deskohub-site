@@ -172,9 +172,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   responsible GitHub Actions step.
 - Emit one GitHub check annotation for the genuine failed or timed-out case
   after its finalizer completes. Include only the code-owned case ID, terminal
-  semantic step ID when known, and the closed outcome/failure-kind values.
-  Never annotate interrupted siblings, raw errors, provider data, customer
-  data, URLs, or identifiers that fail the checked low-cardinality format.
+  semantic step ID when known, the closed outcome/failure-kind values, and an
+  optional failure code from the fixed application-owned diagnostic allowlist.
+  Never annotate interrupted siblings, unknown diagnostic values, raw errors,
+  provider data, customer data, URLs, or identifiers that fail the checked
+  low-cardinality format.
 - Configure the public PostHog project ingest token and ingest host as
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.

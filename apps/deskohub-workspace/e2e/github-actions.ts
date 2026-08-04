@@ -1,3 +1,4 @@
+import { isWorkspaceE2EDiagnosticCode } from "./errors";
 import type {
   WorkspaceE2EFailureDiagnostic,
   WorkspaceE2EFailureReporter,
@@ -13,6 +14,9 @@ export const formatWorkspaceE2EFailureAnnotation = (
     `case=${safeDiagnosticIdentifier(diagnostic.caseId)}`,
     ...(diagnostic.stepId
       ? [`step=${safeDiagnosticIdentifier(diagnostic.stepId)}`]
+      : []),
+    ...(isWorkspaceE2EDiagnosticCode(diagnostic.diagnosticCode)
+      ? [`diagnostic_code=${diagnostic.diagnosticCode}`]
       : []),
     `outcome=${diagnostic.outcome}`,
     `failure_kind=${diagnostic.failureKind}`,
