@@ -27,6 +27,10 @@ import {
 import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
+  getAdministrationPagination,
+  getReservationSearchPattern,
+} from "./listing";
+import {
   mergeReservationHistory,
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
@@ -476,16 +480,16 @@ export class AdministrationService extends Context.Service<
       const listReservations = Effect.fn(
         "AdministrationService.listReservations"
       )(function* (input: ReservationListInput) {
-        const page = Math.max(1, input.page ?? 1);
         const pageSize = input.pageSize ?? reservationPageSize;
         const dateReservations = yield* loadDateReservationMap(input.date);
         const conditions: SQL[] = [];
         const query = input.query?.trim();
         if (query) {
+          const pattern = getReservationSearchPattern(query);
           conditions.push(
             or(
-              ilike(workspaceReservations.id, `%${query}%`),
-              ilike(workspaceReservations.dotyposReservationId, `%${query}%`)
+              ilike(workspaceReservations.id, pattern),
+              ilike(workspaceReservations.dotyposReservationId, pattern)
             )!
           );
         }
@@ -504,27 +508,27 @@ export class AdministrationService extends Context.Service<
           );
         }
         const where = conditions.length > 0 ? and(...conditions) : undefined;
-        const { countRows, rows } = yield* Effect.all(
-          {
-            countRows: db
-              .select({ value: count() })
-              .from(workspaceReservations)
-              .where(where),
-            rows: db
-              .select(safeReservationSelection)
-              .from(workspaceReservations)
-              .where(where)
-              .orderBy(desc(workspaceReservations.updatedAt))
-              .limit(pageSize)
-              .offset((page - 1) * pageSize),
-          },
-          { concurrency: 2 }
-        );
+        const countRows = yield* db
+          .select({ value: count() })
+          .from(workspaceReservations)
+          .where(where);
         const total = Number(countRows[0]?.value ?? 0);
+        const pagination = getAdministrationPagination({
+          pageSize,
+          requestedPage: input.page,
+          total,
+        });
+        const rows = yield* db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(where)
+          .orderBy(desc(workspaceReservations.updatedAt))
+          .limit(pageSize)
+          .offset(pagination.offset);
         return {
           items: yield* enrichRows(rows),
-          page,
-          pageCount: Math.max(1, Math.ceil(total / pageSize)),
+          page: pagination.page,
+          pageCount: pagination.pageCount,
           total,
           dateFilterUnavailable: Boolean(
             input.date && dateReservations === null
@@ -666,29 +670,28 @@ export class AdministrationService extends Context.Service<
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
-          const page = Math.max(1, input.page ?? 1);
-          const { countRows, rows } = yield* Effect.all(
-            {
-              countRows: db
-                .select({
-                  value: countDistinct(workspaceReservations.dotyposCustomerId),
-                })
-                .from(workspaceReservations),
-              rows: db
-                .select({
-                  customerId: workspaceReservations.dotyposCustomerId,
-                  reservationCount: count(),
-                  lastActivityAt: max(workspaceReservations.updatedAt),
-                })
-                .from(workspaceReservations)
-                .groupBy(workspaceReservations.dotyposCustomerId)
-                .orderBy(desc(max(workspaceReservations.updatedAt)))
-                .limit(customerPageSize)
-                .offset((page - 1) * customerPageSize),
-            },
-            { concurrency: 2 }
-          );
+          const countRows = yield* db
+            .select({
+              value: countDistinct(workspaceReservations.dotyposCustomerId),
+            })
+            .from(workspaceReservations);
           const total = Number(countRows[0]?.value ?? 0);
+          const pagination = getAdministrationPagination({
+            pageSize: customerPageSize,
+            requestedPage: input.page,
+            total,
+          });
+          const rows = yield* db
+            .select({
+              customerId: workspaceReservations.dotyposCustomerId,
+              reservationCount: count(),
+              lastActivityAt: max(workspaceReservations.updatedAt),
+            })
+            .from(workspaceReservations)
+            .groupBy(workspaceReservations.dotyposCustomerId)
+            .orderBy(desc(max(workspaceReservations.updatedAt)))
+            .limit(customerPageSize)
+            .offset(pagination.offset);
           const items = yield* Effect.all(
             rows.map((row) =>
               dotypos.getCustomer(row.customerId).pipe(
@@ -708,8 +711,8 @@ export class AdministrationService extends Context.Service<
           );
           return {
             items,
-            page,
-            pageCount: Math.max(1, Math.ceil(total / customerPageSize)),
+            page: pagination.page,
+            pageCount: pagination.pageCount,
             total,
           };
         }
@@ -721,35 +724,31 @@ export class AdministrationService extends Context.Service<
         readonly customerId: string;
         readonly page?: number;
       }) {
-        const page = Math.max(1, input.page ?? 1);
         const where = eq(
           workspaceReservations.dotyposCustomerId,
           input.customerId
         );
-        const { countRows, rows } = yield* Effect.all(
-          {
-            countRows: db
-              .select({ value: count() })
-              .from(workspaceReservations)
-              .where(where),
-            rows: db
-              .select(safeReservationSelection)
-              .from(workspaceReservations)
-              .where(where)
-              .orderBy(desc(workspaceReservations.updatedAt))
-              .limit(customerReservationPageSize)
-              .offset((page - 1) * customerReservationPageSize),
-          },
-          { concurrency: 2 }
-        );
+        const countRows = yield* db
+          .select({ value: count() })
+          .from(workspaceReservations)
+          .where(where);
         const total = Number(countRows[0]?.value ?? 0);
+        const pagination = getAdministrationPagination({
+          pageSize: customerReservationPageSize,
+          requestedPage: input.page,
+          total,
+        });
+        const rows = yield* db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(where)
+          .orderBy(desc(workspaceReservations.updatedAt))
+          .limit(customerReservationPageSize)
+          .offset(pagination.offset);
         return {
           items: yield* enrichRows(rows),
-          page,
-          pageCount: Math.max(
-            1,
-            Math.ceil(total / customerReservationPageSize)
-          ),
+          page: pagination.page,
+          pageCount: pagination.pageCount,
           total,
         };
       });
