@@ -21,6 +21,8 @@ export const workspaceE2EMaximumSameDateCoworkReservations = {
 
 type CapacityGroup = {
   readonly id: string;
+  readonly requiredAvailableSeatCount?: number;
+  readonly requiredAvailableTableCount?: number;
   readonly requiredSeatCount?: number;
   readonly requiredTableCount?: number;
   readonly requiredTags: readonly string[];
@@ -29,6 +31,9 @@ type CapacityGroup = {
 const capacityGroups: readonly CapacityGroup[] = [
   {
     id: "tier:basic",
+    requiredAvailableSeatCount:
+      (workspaceE2EProviderHeadroomRuns + 1) *
+      workspaceE2EMaximumSameDateCoworkReservations.basic,
     requiredSeatCount:
       provisionedRunCapacity *
       workspaceE2EMaximumSameDateCoworkReservations.basic,
@@ -36,6 +41,9 @@ const capacityGroups: readonly CapacityGroup[] = [
   },
   {
     id: "tier:plus",
+    requiredAvailableSeatCount:
+      (workspaceE2EProviderHeadroomRuns + 1) *
+      workspaceE2EMaximumSameDateCoworkReservations.plus,
     requiredSeatCount:
       provisionedRunCapacity *
       workspaceE2EMaximumSameDateCoworkReservations.plus,
@@ -48,6 +56,9 @@ const capacityGroups: readonly CapacityGroup[] = [
   ...workspaceProductMonitorOptions.map(
     (monitorOption): CapacityGroup => ({
       id: `tier:profi/monitor:${monitorOption}`,
+      requiredAvailableSeatCount:
+        (workspaceE2EProviderHeadroomRuns + 1) *
+        workspaceE2EMaximumSameDateCoworkReservations.profi,
       requiredSeatCount:
         provisionedRunCapacity *
         workspaceE2EMaximumSameDateCoworkReservations.profi,
@@ -59,6 +70,7 @@ const capacityGroups: readonly CapacityGroup[] = [
   ),
   {
     id: workspaceMeetingRoomReservationTableTag,
+    requiredAvailableTableCount: 1,
     requiredTableCount: 2,
     requiredTags: [workspaceMeetingRoomReservationTableTag],
   },
@@ -69,8 +81,14 @@ export type WorkspaceE2ECapacityGroupReport = {
   readonly activeReservationCount: number;
   readonly activeReservationSeatCount: number;
   readonly assignableTableCount: number;
+  readonly availableSeatCount: number;
+  readonly availableTableCount: number;
   readonly id: string;
   readonly meetsRequiredCapacity: boolean;
+  readonly peakActiveReservationSeatCount: number;
+  readonly peakActiveReservationTableCount: number;
+  readonly requiredAvailableSeatCount?: number;
+  readonly requiredAvailableTableCount?: number;
   readonly requiredSeatCount?: number;
   readonly requiredTableCount?: number;
   readonly requiredTags: readonly string[];
@@ -127,19 +145,45 @@ export const makeWorkspaceE2ECapacityReport = ({
         total + (parsePositiveInteger(reservation.seats) ?? 0),
       0
     );
+    const {
+      peakActiveReservationSeatCount,
+      peakActiveReservationTableCount,
+    } = getPeakActiveReservationUsage(activeReservations);
+    const availableSeatCount = Math.max(
+      0,
+      totalSeatCount - peakActiveReservationSeatCount
+    );
+    const availableTableCount = Math.max(
+      0,
+      assignableTables.length - peakActiveReservationTableCount
+    );
     const meetsRequiredCapacity =
       (group.requiredSeatCount === undefined ||
         totalSeatCount >= group.requiredSeatCount) &&
       (group.requiredTableCount === undefined ||
-        assignableTables.length >= group.requiredTableCount);
+        assignableTables.length >= group.requiredTableCount) &&
+      (group.requiredAvailableSeatCount === undefined ||
+        availableSeatCount >= group.requiredAvailableSeatCount) &&
+      (group.requiredAvailableTableCount === undefined ||
+        availableTableCount >= group.requiredAvailableTableCount);
 
     return {
       activeVisibleTableCount: activeVisibleTables.length,
       activeReservationCount: activeReservations.length,
       activeReservationSeatCount,
       assignableTableCount: assignableTables.length,
+      availableSeatCount,
+      availableTableCount,
       id: group.id,
       meetsRequiredCapacity,
+      peakActiveReservationSeatCount,
+      peakActiveReservationTableCount,
+      ...(group.requiredAvailableSeatCount === undefined
+        ? {}
+        : { requiredAvailableSeatCount: group.requiredAvailableSeatCount }),
+      ...(group.requiredAvailableTableCount === undefined
+        ? {}
+        : { requiredAvailableTableCount: group.requiredAvailableTableCount }),
       ...(group.requiredSeatCount === undefined
         ? {}
         : { requiredSeatCount: group.requiredSeatCount }),
@@ -171,4 +215,68 @@ const intervalsOverlap = (reservation: Reservation, from: Date, to: Date) => {
   const startsAt = Date.parse(reservation.startDate);
   const endsAt = Date.parse(reservation.endDate);
   return startsAt < to.getTime() && endsAt > from.getTime();
+};
+
+const getPeakActiveReservationUsage = (
+  reservations: readonly Reservation[]
+) => {
+  const events = reservations.flatMap((reservation) => {
+    const tableId = reservation._tableId?.trim();
+    const seats = parsePositiveInteger(reservation.seats) ?? 0;
+    if (!tableId) return [];
+    return [
+      {
+        at: Date.parse(reservation.startDate),
+        seatDelta: seats,
+        tableDelta: 1,
+        tableId,
+      },
+      {
+        at: Date.parse(reservation.endDate),
+        seatDelta: -seats,
+        tableDelta: -1,
+        tableId,
+      },
+    ];
+  });
+  events.sort(
+    (left, right) => left.at - right.at || left.tableDelta - right.tableDelta
+  );
+
+  let activeSeatCount = 0;
+  let activeTableCount = 0;
+  let peakActiveReservationSeatCount = 0;
+  let peakActiveReservationTableCount = 0;
+  const reservationCountByTableId = new Map<string, number>();
+  for (const event of events) {
+    activeSeatCount += event.seatDelta;
+    const previousTableReservationCount =
+      reservationCountByTableId.get(event.tableId) ?? 0;
+    const tableReservationCount =
+      previousTableReservationCount + event.tableDelta;
+    if (previousTableReservationCount === 0 && tableReservationCount > 0) {
+      activeTableCount += 1;
+    }
+    if (previousTableReservationCount > 0 && tableReservationCount === 0) {
+      activeTableCount -= 1;
+    }
+    if (tableReservationCount === 0) {
+      reservationCountByTableId.delete(event.tableId);
+    } else {
+      reservationCountByTableId.set(event.tableId, tableReservationCount);
+    }
+    peakActiveReservationSeatCount = Math.max(
+      peakActiveReservationSeatCount,
+      activeSeatCount
+    );
+    peakActiveReservationTableCount = Math.max(
+      peakActiveReservationTableCount,
+      activeTableCount
+    );
+  }
+
+  return {
+    peakActiveReservationSeatCount,
+    peakActiveReservationTableCount,
+  };
 };

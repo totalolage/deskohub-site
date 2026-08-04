@@ -36,8 +36,13 @@ test("reports only aggregate capacity for every workspace table pool", () => {
     activeReservationSeatCount: 2,
     activeVisibleTableCount: 1,
     assignableTableCount: 1,
+    availableSeatCount: 14,
+    availableTableCount: 0,
     id: "tier:basic",
     meetsRequiredCapacity: true,
+    peakActiveReservationSeatCount: 2,
+    peakActiveReservationTableCount: 1,
+    requiredAvailableSeatCount: 8,
     requiredSeatCount: 16,
     requiredTags: ["tier:basic"],
     seatCounts: [16],
@@ -71,6 +76,44 @@ test("fails the aggregate contract when a monitor-specific pool is short", () =>
     meetsRequiredCapacity: false,
     requiredSeatCount: 4,
     totalSeatCount: 3,
+  });
+});
+
+test("fails when peak active reservations consume run and cleanup headroom", () => {
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [makeReservation("basic-table", 9)],
+    tables: [makeTable("basic-table", ["tier:basic"], 16)],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "tier:basic")).toMatchObject({
+    availableSeatCount: 7,
+    meetsRequiredCapacity: false,
+    peakActiveReservationSeatCount: 9,
+    requiredAvailableSeatCount: 8,
+  });
+});
+
+test("does not add reservation usage from non-overlapping dates", () => {
+  const report = makeWorkspaceE2ECapacityReport({
+    from: new Date("2099-08-01T00:00:00.000Z"),
+    reservations: [
+      makeReservation("basic-table", 5),
+      makeReservation("basic-table", 5, {
+        endDate: "2099-08-05T18:00:00+00:00",
+        startDate: "2099-08-05T08:00:00+00:00",
+      }),
+    ],
+    tables: [makeTable("basic-table", ["tier:basic"], 16)],
+    to: new Date("2099-09-01T00:00:00.000Z"),
+  });
+
+  expect(report.groups.find(({ id }) => id === "tier:basic")).toMatchObject({
+    activeReservationSeatCount: 10,
+    availableSeatCount: 11,
+    meetsRequiredCapacity: true,
+    peakActiveReservationSeatCount: 5,
   });
 });
 

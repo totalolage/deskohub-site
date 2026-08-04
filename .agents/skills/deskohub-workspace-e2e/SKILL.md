@@ -78,7 +78,10 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   parameter or runner capacity mutation. Keep the ordinary Dotypos workflow
   lock until aggregate pool provisioning and five successful controlled
   concurrent soaks prove the documented target. If rollout evidence is
-  incomplete, retain the lock and document the external gate.
+  incomplete, retain the lock and document the external gate. Capacity
+  preflight must check both physical inventory and capacity remaining after
+  peak overlapping active reservations; never sum reservations on unrelated
+  dates or treat meeting-room seats as room concurrency.
 - Partition the canonical weekday candidate sequence by shard before filtering
   provider availability. Keep that ownership static when availability changes;
   partitioning the returned available dates can reindex a later date into a

@@ -167,7 +167,8 @@ The command uses the generated Dotypos table and reservation contracts, bounds
 the reservation lookup to active overlaps in the candidate interval, and
 prints no table, reservation, customer, or provider identifiers. It reports
 active-visible and assignable table counts, the sorted seat-count multiset,
-total seats, and active overlapping reservation totals for these groups:
+total seats, active reservation totals, peak overlapping seat/table occupancy,
+and remaining capacity for these groups:
 
 - `tier:basic`: at least 16 aggregate seats;
 - `tier:plus`: at least 4 aggregate seats;
@@ -189,6 +190,13 @@ isolation and the second room supplies failure/cleanup headroom. The repository
 Dotypos contract exposes table reads, not a runner-owned capacity mutation.
 Change testing-table seats or provision rooms operationally, then rerun the
 validator. Never change shared table capacity from the test runner.
+
+The verdict requires both the provisioned totals and enough capacity after peak
+overlapping active reservations for one arriving run plus cowork cleanup
+headroom. It uses peak overlap rather than summing reservations on unrelated
+dates. Meeting-room availability requires at least one table outside the peak
+occupied set because run shards use disjoint dates; exact selected slots are
+still validated through the deployed availability route before cases start.
 
 Before changing the workflow lock:
 
