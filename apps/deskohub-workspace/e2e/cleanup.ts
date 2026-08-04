@@ -1,4 +1,5 @@
 import { Cause, Effect, Exit } from "effect";
+import { getWorkspaceE2EDateInterval } from "./capacity";
 import type { DatasourceConfig } from "./config";
 import {
   toWorkspaceE2EError,
@@ -139,10 +140,22 @@ export const cleanupCheckoutFlowStates = (
         convergingReservationIds.size > 0 &&
         dependencies.waitForCancelledDotyposReservations
       ) {
+        const reservationDates = flowStates.map(({ data }) => data.date).sort();
+        const fromDate = reservationDates[0];
+        const toDate = reservationDates.at(-1);
         const convergenceExit = yield* Effect.exit(
-          dependencies.waitForCancelledDotyposReservations(datasourceConfig, [
-            ...convergingReservationIds,
-          ])
+          fromDate && toDate
+            ? dependencies.waitForCancelledDotyposReservations(
+                datasourceConfig,
+                [...convergingReservationIds],
+                getWorkspaceE2EDateInterval({ fromDate, toDate })
+              )
+            : Effect.fail(
+                workspaceE2EError(
+                  "Dotypos cleanup reservations have no owned dates",
+                  { operation: "wait for Dotypos cleanup convergence" }
+                )
+              )
         );
         if (Exit.isFailure(convergenceExit)) {
           const cause = Cause.squash(convergenceExit.cause);

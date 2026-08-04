@@ -233,13 +233,19 @@ test("waits for case cancellations to leave active inventory", async () => {
 
   expect(cleanupError).toBeUndefined();
   expect(cancelDotyposReservation).not.toHaveBeenCalled();
-  expect(waitForCancelledDotyposReservations).toHaveBeenCalledWith({}, [
-    "dotypos-reservation-1",
-  ]);
+  expect(waitForCancelledDotyposReservations).toHaveBeenCalledWith(
+    {},
+    ["dotypos-reservation-1"],
+    {
+      endDate: new Date("2026-08-04T22:00:00.000Z"),
+      startDate: new Date("2026-08-03T22:00:00.000Z"),
+    }
+  );
 });
 
 const checkoutData = () =>
   ({
+    date: "2026-08-04",
     expectedReservationDetails: {
       kind: "cowork",
       entryTier: "basic",

@@ -5,6 +5,7 @@ import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/prod
 import {
   getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
+  getWorkspaceE2EDateInterval,
   makeWorkspaceE2ECapacityReport,
 } from "./capacity";
 
@@ -14,6 +15,18 @@ test("covers whole Prague dates at both candidate-range boundaries", () => {
   ).toEqual({
     endDate: new Date("2026-11-02T23:00:00.000Z"),
     startDate: new Date("2026-08-17T22:00:00.000Z"),
+  });
+});
+
+test("builds an owned-date interval across Prague's DST boundary", () => {
+  expect(
+    getWorkspaceE2EDateInterval({
+      fromDate: "2026-10-24",
+      toDate: "2026-10-25",
+    })
+  ).toEqual({
+    endDate: new Date("2026-10-25T23:00:00.000Z"),
+    startDate: new Date("2026-10-23T22:00:00.000Z"),
   });
 });
 
