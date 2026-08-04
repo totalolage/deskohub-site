@@ -35,6 +35,8 @@ interface StaleReservationInterval {
 }
 
 const providerConcurrency = 5;
+const staleReservationMinimumAgeMs = 2 * 60 * 60 * 1000;
+const workspaceE2ECustomerName = /^Workspace E2E .+ (\d{14}) \d{2}$/;
 
 export const reconcileStaleWorkspaceE2EReservations = <E, R>(
   interval: StaleReservationInterval,
@@ -69,7 +71,7 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
         detailResults.flatMap((result) =>
           result._tag === "Read" &&
           Exit.isSuccess(result.exit) &&
-          isWorkspaceE2ETestCustomer(result.exit.value.customer)
+          isStaleWorkspaceE2ETestCustomer(result.exit.value.customer)
             ? [result.reservationId]
             : []
         )
@@ -119,16 +121,40 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
     };
   });
 
-export const isWorkspaceE2ETestCustomer = (customer: Customer) => {
+export const isStaleWorkspaceE2ETestCustomer = (
+  customer: Customer,
+  now = new Date()
+) => {
   const name = [customer.firstName, customer.lastName]
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(" ");
   const email = customer.email?.trim().toLowerCase();
+  const createdAt = parseWorkspaceE2ECustomerTimestamp(name);
 
-  return (
-    name.startsWith("Workspace E2E ") &&
-    email?.startsWith("delivered+") === true &&
-    email.endsWith("@resend.dev")
+  return Boolean(
+    createdAt &&
+      createdAt.getTime() <= now.getTime() - staleReservationMinimumAgeMs &&
+      email?.startsWith("delivered+") === true &&
+      email.endsWith("@resend.dev")
   );
+};
+
+const parseWorkspaceE2ECustomerTimestamp = (name: string) => {
+  const timestamp = workspaceE2ECustomerName.exec(name)?.[1];
+  if (!timestamp) return undefined;
+
+  const year = Number(timestamp.slice(0, 4));
+  const month = Number(timestamp.slice(4, 6));
+  const day = Number(timestamp.slice(6, 8));
+  const hour = Number(timestamp.slice(8, 10));
+  const minute = Number(timestamp.slice(10, 12));
+  const second = Number(timestamp.slice(12, 14));
+  const createdAt = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const normalizedTimestamp = createdAt
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
+
+  return normalizedTimestamp === timestamp ? createdAt : undefined;
 };
