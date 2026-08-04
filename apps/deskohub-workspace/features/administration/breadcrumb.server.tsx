@@ -1,3 +1,5 @@
+import "server-only";
+
 import { AdministrationBreadcrumbs } from "@/features/administration/admin-shell";
 import { formatAdministrationDateTime } from "@/features/administration/components";
 import {
@@ -11,12 +13,11 @@ import {
 import { loadDiscountAdminCustomerBreadcrumbLabel } from "@/features/discounts/admin/page-data.server";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
-export default async function AdministrationBreadcrumbSlot({
-  params,
+export async function AdministrationBreadcrumb({
+  segments,
 }: {
-  readonly params: Promise<{ readonly segments: readonly string[] }>;
+  readonly segments: readonly string[];
 }) {
-  const { segments } = await params;
   let entityLabel: string | undefined;
 
   if (segments[0] === "customers" && segments[1]) {

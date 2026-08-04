@@ -316,6 +316,9 @@ export function CustomerCodeAction({
   } else if (eligible) {
     dialogTitle = `Remove ${customerName}?`;
     dialogDescription = `${customerName} will no longer be able to use ${code}.`;
+  } else if (audienceSize > 0) {
+    dialogTitle = `Add ${customerName} to ${code}?`;
+    dialogDescription = `${code} is currently limited to ${audienceSize} other customers. Adding ${customerName} will make it available to ${audienceSize + 1} customers.`;
   }
 
   return (
@@ -400,7 +403,7 @@ export function CustomerCodeAction({
             <>
               <DialogClose asChild>
                 <Button type="button" variant="secondary">
-                  Keep available to all
+                  {audienceSize > 0 ? "Cancel" : "Keep available to all"}
                 </Button>
               </DialogClose>
               <Button
@@ -415,7 +418,7 @@ export function CustomerCodeAction({
                 }
                 type="button"
               >
-                Limit to only this user
+                {audienceSize > 0 ? "Add customer" : "Limit to only this user"}
               </Button>
             </>
           )}

@@ -475,7 +475,7 @@ export class AdministrationService extends Context.Service<
     }) => Effect.Effect<AdministrationBookingPage, unknown>;
     readonly loadBooking: (
       id: string
-    ) => Effect.Effect<AdministrationBookingDetail, unknown>;
+    ) => Effect.Effect<AdministrationBookingDetail | null, unknown>;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
@@ -950,10 +950,23 @@ export class AdministrationService extends Context.Service<
 
       const loadBooking = Effect.fn("AdministrationService.loadBooking")(
         function* (id: string) {
-          const [{ customer, reservation }, tables] = yield* Effect.all(
-            [dotypos.getReservation(id), loadBookingTables()],
+          const [details, tables] = yield* Effect.all(
+            [
+              dotypos
+                .getReservation(id)
+                .pipe(
+                  Effect.catchTag("ExternalAPIError", (error) =>
+                    error.statusCode === 404
+                      ? Effect.succeed(null)
+                      : Effect.fail(error)
+                  )
+                ),
+              loadBookingTables(),
+            ],
             { concurrency: 2 }
           );
+          if (!details) return null;
+          const { customer, reservation } = details;
           const [row] = yield* db
             .select(safeReservationSelection)
             .from(workspaceReservations)

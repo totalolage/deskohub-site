@@ -146,10 +146,12 @@ export const loadAdministrationBooking = cache(async (id: string) => {
     if (!fixture) notFound();
     return fixture;
   }
-  return Effect.gen(function* () {
+  const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadBooking(id);
   }).pipe(runAdministration("administration.booking"));
+  if (!detail) notFound();
+  return detail;
 });
 
 export const loadAdministrationCustomers = async (

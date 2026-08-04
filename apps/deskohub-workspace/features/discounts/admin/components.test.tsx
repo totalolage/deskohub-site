@@ -425,6 +425,36 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  test("describes adding a customer to an existing restricted code audience", async () => {
+    const { CustomerCodeAction } = await import("./customer-admin-client");
+    const view = render(
+      <CustomerCodeAction
+        audienceSize={3}
+        code="TEAM"
+        codeId={dashboard.codes[0].id}
+        customerId="dotypos-customer"
+        customerName="Test Customer"
+        eligible={false}
+      />
+    );
+
+    fireEvent.click(
+      view.getByRole("button", {
+        name: "Add Test Customer to TEAM",
+      })
+    );
+
+    expect(
+      view.getByRole("heading", { name: "Add Test Customer to TEAM?" })
+    ).toBeDefined();
+    expect(
+      view.getByText(
+        "TEAM is currently limited to 3 other customers. Adding Test Customer will make it available to 4 customers."
+      )
+    ).toBeDefined();
+    expect(view.getByRole("button", { name: "Add customer" })).toBeDefined();
+  });
+
   test("shows calendar sales in a table with readable status badges", async () => {
     const { SalesAdministrationPage } = await import("./components");
     const view = render(<SalesAdministrationPage dashboard={dashboard} />);
