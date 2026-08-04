@@ -10,6 +10,7 @@ import {
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
+import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
 import { addDatabaseUrlRedactions } from "../runtime";
 import type { CheckoutFlowState } from "../types";
@@ -81,6 +82,9 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                   artifactRoot,
                   cases: e2eCases,
                   datasourceConfig,
+                  ...(runContext.githubRunId
+                    ? { reportFailure: writeWorkspaceE2EFailureAnnotation }
+                    : {}),
                   run,
                   sessionPrefix,
                   timeouts: config.timeouts,
