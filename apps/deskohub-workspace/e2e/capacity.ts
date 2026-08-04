@@ -133,6 +133,33 @@ export type WorkspaceE2ECapacityReport = {
   readonly supportedConcurrentRuns: number;
 };
 
+export const getWorkspaceE2ECapacityFailures = (
+  report: WorkspaceE2ECapacityReport
+) =>
+  report.groups.flatMap((group) =>
+    group.meetsRequiredCapacity
+      ? []
+      : [
+          {
+            activeReservationCount: group.activeReservationCount,
+            activeVisibleTableCount: group.activeVisibleTableCount,
+            assignableTableCount: group.assignableTableCount,
+            availableSeatCount: group.availableSeatCount,
+            availableTableCount: group.availableTableCount,
+            id: group.id,
+            peakActiveReservationSeatCount:
+              group.peakActiveReservationSeatCount,
+            peakActiveReservationTableCount:
+              group.peakActiveReservationTableCount,
+            requiredAvailableSeatCount: group.requiredAvailableSeatCount,
+            requiredAvailableTableCount: group.requiredAvailableTableCount,
+            requiredSeatCount: group.requiredSeatCount,
+            requiredTableCount: group.requiredTableCount,
+            totalSeatCount: group.totalSeatCount,
+          },
+        ]
+  );
+
 export const makeWorkspaceE2ECapacityReport = ({
   from,
   reservations,
