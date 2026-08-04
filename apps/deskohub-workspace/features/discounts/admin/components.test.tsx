@@ -22,7 +22,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import type { DiscountAdminDashboard } from "./discount-administration.service";
+import type {
+  AdminCustomerProfile,
+  DiscountAdminDashboard,
+} from "./discount-administration.service";
 
 const refresh = mock();
 
@@ -335,6 +338,91 @@ describe("discount administration pages", () => {
     ).toBeDefined();
     expect(view.queryByRole("button", { name: /release/i })).toBeNull();
     expect(view.queryByRole("button", { name: /redeem/i })).toBeNull();
+  });
+
+  test("shows only explicit and unrestricted customer codes with guarded icon actions", async () => {
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const profile: AdminCustomerProfile = {
+      customer: {
+        id: "dotypos-customer",
+        displayName: "Test Customer",
+        email: "test@example.com",
+        phone: null,
+        discountGroupId: null,
+      },
+      discountGroups: [],
+      codes: [
+        {
+          ...dashboard.codes[0],
+          code: "ONLYME",
+          audienceSize: 1,
+          discountLabel: "Only me discount",
+          eligible: true,
+        },
+        {
+          ...dashboard.codes[0],
+          id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
+          code: "OPEN",
+          audienceSize: 0,
+          discountLabel: "Open discount",
+          eligible: false,
+        },
+        {
+          ...dashboard.codes[0],
+          id: "019c91dd-c560-7e55-b9d8-c95065efd54d",
+          code: "SOMEONEELSE",
+          audienceSize: 3,
+          discountLabel: "Restricted discount",
+          eligible: false,
+        },
+      ],
+      claims: [],
+    };
+    const view = render(
+      <CustomerAdministrationDetailPage
+        profile={profile}
+        reservations={{ items: [], page: 1, pageCount: 1, total: 0 }}
+      />
+    );
+    const table = view.getByRole("table", {
+      name: "Customer code eligibility",
+    });
+
+    expect(within(table).getByText("ONLYME")).toBeDefined();
+    expect(within(table).getByText("OPEN")).toBeDefined();
+    expect(within(table).queryByText("SOMEONEELSE")).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Status" })
+    ).toBeNull();
+    expect(
+      within(table).queryByRole("columnheader", { name: "Action" })
+    ).toBeNull();
+
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "Remove Test Customer from ONLYME",
+      })
+    );
+    expect(view.getByRole("dialog")).toBeDefined();
+    expect(view.getByRole("button", { name: "Delete code" })).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Make available to all" })
+    ).toBeDefined();
+
+    fireEvent.click(view.getByRole("button", { name: "Close" }));
+    fireEvent.click(
+      within(table).getByRole("button", {
+        name: "Add Test Customer to OPEN",
+      })
+    );
+    expect(
+      view.getByRole("button", { name: "Limit to only this user" })
+    ).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Keep available to all" })
+    ).toBeDefined();
   });
 
   test("shows calendar sales in a table with readable status badges", async () => {

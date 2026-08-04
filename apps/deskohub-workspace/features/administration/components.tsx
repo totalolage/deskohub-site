@@ -13,6 +13,7 @@ import {
 } from "@/shared/components/ui/table";
 import { cn } from "@/shared/utils";
 import type {
+  AdministrationBookingSummary,
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
@@ -162,6 +163,142 @@ export const formatAdministrationMoney = ({
     currency,
     style: "currency",
   }).format(value / 10 ** exponent);
+
+export function BookingStatusBadge({
+  booking,
+}: {
+  readonly booking: Pick<
+    AdministrationBookingSummary,
+    "status" | "statusLabel"
+  >;
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
+        booking.status === "CONFIRMED" &&
+          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
+        booking.status === "NEW" &&
+          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
+        booking.status === "CANCELLED" &&
+          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
+      )}
+    >
+      {booking.statusLabel}
+    </span>
+  );
+}
+
+export function BookingTable({
+  bookings,
+  emptyMessage = "No bookings match this date.",
+}: {
+  readonly bookings: readonly AdministrationBookingSummary[];
+  readonly emptyMessage?: string;
+}) {
+  if (bookings.length === 0) return <EmptyState message={emptyMessage} />;
+  return (
+    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+      <div className="hidden overflow-x-auto md:block">
+        <Table aria-label="Bookings" className="min-w-[820px]">
+          <TableHeader>
+            <TableRow className="hover:bg-transparent">
+              <TableHead>Booking</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Table</TableHead>
+              <TableHead>Reservation</TableHead>
+              <TableHead>Status</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {bookings.map((booking) => (
+              <TableRow className="relative" key={booking.id}>
+                <TableCell>
+                  <Link
+                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
+                    href={`/admin/bookings/${booking.id}`}
+                  >
+                    {formatAdministrationDateTime(booking.startsAt)}
+                  </Link>
+                  <p className="mt-1 text-xs text-navy-blue/65">
+                    {booking.seats} {booking.seats === "1" ? "guest" : "guests"}
+                  </p>
+                </TableCell>
+                <TableCell>
+                  {booking.customer && booking.customerId ? (
+                    <Link
+                      className="relative z-10 font-medium hover:underline"
+                      href={`/admin/customers/${booking.customerId}`}
+                    >
+                      {booking.customer.displayName}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-navy-blue/65">
+                      Details unavailable
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <p className="font-medium">
+                    {booking.tableName ?? "Not assigned"}
+                  </p>
+                  {booking.tableLocation && (
+                    <p className="mt-1 text-xs text-navy-blue/65">
+                      {booking.tableLocation}
+                    </p>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {booking.linkedReservation ? (
+                    <Link
+                      className="relative z-10 font-medium hover:underline"
+                      href={`/admin/reservations/${booking.linkedReservation.id}`}
+                    >
+                      {booking.linkedReservation.label}
+                    </Link>
+                  ) : (
+                    <span className="text-sm text-navy-blue/65">
+                      Not linked
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell>
+                  <BookingStatusBadge booking={booking} />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <ul className="divide-y divide-navy-blue/10 md:hidden">
+        {bookings.map((booking) => (
+          <li key={booking.id}>
+            <Link
+              className="block px-4 py-4 hover:bg-navy-blue/[0.025]"
+              href={`/admin/bookings/${booking.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold">
+                    {formatAdministrationDateTime(booking.startsAt)}
+                  </p>
+                  <p className="mt-1 text-sm text-navy-blue/65">
+                    {booking.customer?.displayName ?? "Customer unavailable"}
+                  </p>
+                </div>
+                <BookingStatusBadge booking={booking} />
+              </div>
+              <p className="mt-3 text-xs text-navy-blue/65">
+                {booking.tableName ?? "No table assigned"} · {booking.seats}{" "}
+                {booking.seats === "1" ? "guest" : "guests"}
+              </p>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 export function ReservationTable({
   emptyMessage = "No reservations match this view.",
@@ -345,6 +482,63 @@ export function RelatedReservationLink({
         className="size-4 text-navy-blue/65 group-hover:text-navy-blue"
       />
     </Link>
+  );
+}
+
+export function ReservationReferences({
+  references,
+}: {
+  readonly references: {
+    readonly workspaceReservationId: string;
+    readonly dotyposReservationId: string | null;
+    readonly customerId: string;
+  };
+}) {
+  return (
+    <dl className="grid gap-4 border-t border-navy-blue/10 px-5 py-4 text-sm">
+      <Reference
+        label="Reservation record"
+        value={references.workspaceReservationId}
+      />
+      {references.dotyposReservationId && (
+        <Reference
+          href={`/admin/bookings/${references.dotyposReservationId}`}
+          label="Booking record"
+          value={references.dotyposReservationId}
+        />
+      )}
+      <Reference
+        href={`/admin/customers/${references.customerId}`}
+        label="Customer"
+        value={references.customerId}
+      />
+    </dl>
+  );
+}
+
+function Reference({
+  href,
+  label,
+  value,
+}: {
+  readonly href?: string;
+  readonly label: string;
+  readonly value: string;
+}) {
+  const content = <span className="break-all font-mono text-xs">{value}</span>;
+  return (
+    <div>
+      <dt className="text-navy-blue/65">{label}</dt>
+      <dd className="mt-1">
+        {href ? (
+          <Link className="underline underline-offset-4" href={href}>
+            {content}
+          </Link>
+        ) : (
+          content
+        )}
+      </dd>
+    </div>
   );
 }
 

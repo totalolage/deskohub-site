@@ -18,8 +18,17 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { AdministrationBreadcrumbs } from "./admin-shell";
-import { ReservationTable, ReservationTimeline } from "./components";
-import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
+import {
+  BookingTable,
+  ReservationReferences,
+  ReservationTable,
+  ReservationTimeline,
+} from "./components";
+import {
+  loadFixtureBookings,
+  loadFixtureReservation,
+  loadFixtureReservations,
+} from "./fixtures";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
@@ -67,6 +76,68 @@ describe("administration reservation components", () => {
     });
     expect(within(timeline).getAllByRole("listitem")).toHaveLength(5);
     expect(within(timeline).getByText("Payment started")).toBeDefined();
+  });
+
+  test("keeps the customer visible when booking details are unavailable", () => {
+    const { items } = loadFixtureReservations({});
+    const reservation = items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...reservation,
+            liveDetailsAvailable: false,
+            startsAt: null,
+            endsAt: null,
+            date: null,
+          },
+        ]}
+      />
+    );
+
+    expect(view.getAllByText("Alex Morgan")).not.toHaveLength(0);
+    expect(view.queryByText("Details unavailable")).toBeNull();
+  });
+
+  test("links reservation references to their related entities", () => {
+    const view = render(
+      <ReservationReferences
+        references={{
+          workspaceReservationId: "workspace-reservation",
+          dotyposReservationId: "dotypos-booking",
+          customerId: "dotypos-customer",
+        }}
+      />
+    );
+
+    expect(
+      view.getByRole("link", { name: "dotypos-customer" }).getAttribute("href")
+    ).toBe("/admin/customers/dotypos-customer");
+    expect(
+      view.getByRole("link", { name: "dotypos-booking" }).getAttribute("href")
+    ).toBe("/admin/bookings/dotypos-booking");
+  });
+
+  test("renders Dotypos bookings with linked customers and reservations", () => {
+    const view = render(
+      <BookingTable bookings={loadFixtureBookings().items} />
+    );
+    const table = view.getByRole("table", { name: "Bookings" });
+
+    expect(within(table).getByText("Table 4")).toBeDefined();
+    expect(
+      within(table)
+        .getAllByRole("link", { name: "Alex Morgan" })[0]
+        ?.getAttribute("href")
+    ).toBe("/admin/customers/customer-alex");
+    expect(
+      within(table)
+        .getByRole("link", { name: "Cowork Basic" })
+        .getAttribute("href")
+    ).toBe("/admin/reservations/0198-admin-fixture-complete");
   });
 
   test("identifies customer and reservation entities in breadcrumbs", () => {

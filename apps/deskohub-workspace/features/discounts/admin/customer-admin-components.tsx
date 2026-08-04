@@ -21,6 +21,7 @@ import { AdminPageShell, EmptyState } from "./components";
 import {
   AddCodeCustomerForm,
   AdminMutationButton,
+  CustomerCodeAction,
   CustomerDiscountGroupForm,
   CustomerSearch,
 } from "./customer-admin-client";
@@ -34,6 +35,14 @@ import type {
 type Notice = {
   readonly message: string;
   readonly status: "error" | "success";
+};
+
+const getCustomerCodeAvailability = (
+  code: AdminCustomerProfile["codes"][number]
+) => {
+  if (!code.eligible) return "Available to all";
+  if (code.audienceSize === 1) return "Only this customer";
+  return `${code.audienceSize} selected customers`;
 };
 
 export function CustomersAdministrationPage({
@@ -185,6 +194,13 @@ export function CustomerAdministrationDetailPage({
   } else if (profile.customer.discountGroupId) {
     currentGroupLabel = `Unavailable (${profile.customer.discountGroupId})`;
   }
+  const visibleCodes = profile.codes
+    .filter((code) => code.eligible || code.audienceSize === 0)
+    .toSorted(
+      (left, right) =>
+        Number(right.eligible) - Number(left.eligible) ||
+        left.code.localeCompare(right.code)
+    );
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -221,31 +237,33 @@ export function CustomerAdministrationDetailPage({
           </section>
 
           <section>
-            <h2 className="mb-3 text-xl">Discount codes</h2>
-            {profile.codes.length === 0 ? (
-              <EmptyState message="No discount codes exist." />
+            <div className="mb-3">
+              <h2 className="text-xl">Discount codes</h2>
+              <p className="mt-1 text-sm text-navy-blue/65">
+                Codes explicitly available to this customer, followed by codes
+                available to everyone.
+              </p>
+            </div>
+            {visibleCodes.length === 0 ? (
+              <EmptyState message="No discount codes are available to this customer." />
             ) : (
               <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
                 <Table
                   aria-label="Customer code eligibility"
-                  className="min-w-[720px]"
+                  className="min-w-[620px]"
                 >
                   <TableHeader>
                     <TableRow>
                       <TableHead>Code</TableHead>
                       <TableHead>Discount</TableHead>
-                      <TableHead>Audience</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead className="text-right">Action</TableHead>
+                      <TableHead>Availability</TableHead>
+                      <TableHead>
+                        <span className="sr-only">Manage eligibility</span>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {profile.codes.map((code) => {
-                      let eligibilityLabel = "Not eligible";
-                      if (code.eligible) eligibilityLabel = "Allowlisted";
-                      else if (code.audienceSize === 0)
-                        eligibilityLabel = "Eligible";
-
+                    {visibleCodes.map((code) => {
                       return (
                         <TableRow key={code.id}>
                           <TableCell>
@@ -258,21 +276,16 @@ export function CustomerAdministrationDetailPage({
                           </TableCell>
                           <TableCell>{code.discountLabel}</TableCell>
                           <TableCell>
-                            {code.audienceSize === 0
-                              ? "Unrestricted"
-                              : `${code.audienceSize} customers`}
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              variant={code.eligible ? "default" : "subtle"}
-                            >
-                              {eligibilityLabel}
-                            </Badge>
+                            {getCustomerCodeAvailability(code)}
                           </TableCell>
                           <TableCell className="text-right">
                             <CustomerCodeAction
-                              code={code}
+                              audienceSize={code.audienceSize}
+                              code={code.code}
+                              codeId={code.id}
                               customerId={profile.customer.id}
+                              customerName={profile.customer.displayName}
+                              eligible={code.eligible}
                             />
                           </TableCell>
                         </TableRow>
@@ -330,56 +343,6 @@ export function CustomerAdministrationDetailPage({
         </aside>
       </div>
     </AdministrationPage>
-  );
-}
-
-function CustomerCodeAction({
-  code,
-  customerId,
-}: {
-  readonly code: AdminCustomerProfile["codes"][number];
-  readonly customerId: AdminCustomerProfile["customer"]["id"];
-}) {
-  if (code.eligible && code.audienceSize === 1) {
-    return (
-      <AdminMutationButton
-        confirmation={`Make ${code.code} unrestricted? Every Dotypos customer will be eligible.`}
-        mutation={{ kind: "make-code-unrestricted", codeId: code.id }}
-      >
-        Make unrestricted
-      </AdminMutationButton>
-    );
-  }
-  if (code.eligible) {
-    return (
-      <AdminMutationButton
-        confirmation={`Remove this customer from ${code.code}?`}
-        mutation={{
-          kind: "remove-code-customer",
-          codeId: code.id,
-          customerId,
-        }}
-      >
-        Remove
-      </AdminMutationButton>
-    );
-  }
-
-  return (
-    <AdminMutationButton
-      confirmation={
-        code.audienceSize === 0
-          ? `Restrict ${code.code} to this customer?`
-          : undefined
-      }
-      mutation={{
-        kind: "add-code-customer",
-        codeId: code.id,
-        customerId,
-      }}
-    >
-      Add
-    </AdminMutationButton>
   );
 }
 

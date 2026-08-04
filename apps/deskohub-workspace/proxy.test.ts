@@ -100,6 +100,9 @@ test("limits synthetic preview bypass to fixture-backed read-only pages", () => 
     const fixturePage = proxy(
       new NextRequest("https://workspace.example/admin/reservations/example")
     );
+    const fixtureBookingPage = proxy(
+      new NextRequest("https://workspace.example/admin/bookings/example")
+    );
     const livePage = proxy(
       new NextRequest("https://workspace.example/admin/discounts")
     );
@@ -111,6 +114,7 @@ test("limits synthetic preview bypass to fixture-backed read-only pages", () => 
     );
 
     expect(fixturePage.headers.get("x-middleware-next")).toBe("1");
+    expect(fixtureBookingPage.headers.get("x-middleware-next")).toBe("1");
     expect(livePage.status).toBe(401);
     expect(mutation.status).toBe(401);
   } finally {

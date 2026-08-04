@@ -1,12 +1,22 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Minus, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -260,6 +270,158 @@ export function AdminMutationButton({
         </span>
       )}
     </>
+  );
+}
+
+export function CustomerCodeAction({
+  audienceSize,
+  code,
+  codeId,
+  customerId,
+  customerName,
+  eligible,
+}: {
+  readonly audienceSize: number;
+  readonly code: string;
+  readonly codeId: DiscountCodeId;
+  readonly customerId: DotyposCustomerId;
+  readonly customerName: string;
+  readonly eligible: boolean;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
+    actionName: "manageCustomerCodeEligibility",
+    onSuccess: () => {
+      setOpen(false);
+      router.refresh();
+    },
+    onError: ({ error: actionError }) =>
+      setError(actionError.serverError ?? "The change could not be saved."),
+    onTransportError: () =>
+      setError("The change could not be saved. Try again."),
+  });
+
+  const label = eligible
+    ? `Remove ${customerName} from ${code}`
+    : `Add ${customerName} to ${code}`;
+  const Icon = eligible ? Minus : Plus;
+  const isOnlyCustomer = eligible && audienceSize === 1;
+  let dialogTitle = `Limit ${code} to ${customerName}?`;
+  let dialogDescription = `${code} is currently available to every customer. Limiting it will make ${customerName} the only eligible customer.`;
+  if (isOnlyCustomer) {
+    dialogTitle = "Remove the only eligible customer?";
+    dialogDescription = `Removing ${customerName} would leave ${code} without an audience, which makes it available to every customer. Choose whether to delete the code or make it available to all.`;
+  } else if (eligible) {
+    dialogTitle = `Remove ${customerName}?`;
+    dialogDescription = `${customerName} will no longer be able to use ${code}.`;
+  }
+
+  return (
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        setError(null);
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <DialogTrigger asChild>
+        <Button
+          aria-label={label}
+          className="relative z-10 size-8"
+          size="icon"
+          title={label}
+          variant="ghost"
+        >
+          <Icon aria-hidden className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <DialogDescription>{dialogDescription}</DialogDescription>
+        </DialogHeader>
+        {error && (
+          <p
+            className="mt-4 text-sm font-semibold text-burned-orange-ink"
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+        <DialogFooter>
+          {isOnlyCustomer && (
+            <>
+              <Button
+                disabled={isExecuting}
+                onClick={() => execute({ kind: "delete-code", id: codeId })}
+                type="button"
+                variant="secondary"
+              >
+                Delete code
+              </Button>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({ kind: "make-code-unrestricted", codeId })
+                }
+                type="button"
+              >
+                Make available to all
+              </Button>
+            </>
+          )}
+          {!isOnlyCustomer && eligible && (
+            <>
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({
+                    kind: "remove-code-customer",
+                    codeId,
+                    customerId,
+                  })
+                }
+                type="button"
+              >
+                Remove customer
+              </Button>
+            </>
+          )}
+          {!eligible && (
+            <>
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  Keep available to all
+                </Button>
+              </DialogClose>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({
+                    kind: "add-code-customer",
+                    codeId,
+                    customerId,
+                  })
+                }
+                type="button"
+              >
+                Limit to only this user
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

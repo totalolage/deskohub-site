@@ -1,7 +1,14 @@
 import { env } from "@/env";
 import type { AdminCustomerProfile } from "@/features/discounts/admin/discount-administration.service";
+import type {
+  DiscountCodeId,
+  StoredDiscountId,
+} from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type {
+  AdministrationBookingDetail,
+  AdministrationBookingPage,
+  AdministrationBookingSummary,
   AdministrationCustomerSummary,
   AdministrationReservationDetail,
   AdministrationReservationListInput,
@@ -117,6 +124,37 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
   ];
 };
 
+const fixtureBookingStatuses = {
+  attention: { status: "CONFIRMED", statusLabel: "Confirmed" },
+  in_progress: { status: "NEW", statusLabel: "New" },
+  complete: { status: "CONFIRMED", statusLabel: "Confirmed" },
+  cancelled: { status: "CANCELLED", statusLabel: "Cancelled" },
+} as const;
+
+const makeBookings = (): readonly AdministrationBookingSummary[] =>
+  makeReservations().map((reservation, index) => ({
+    id: `live-${reservation.id}`,
+    customerId: reservation.customerId,
+    customer: reservation.customer,
+    startsAt: reservation.startsAt ?? reservation.updatedAt,
+    endsAt:
+      reservation.endsAt ??
+      Temporal.Instant.from(reservation.updatedAt).add({ hours: 2 }).toString(),
+    seats: reservation.type === "meeting-room" ? "4" : "1",
+    ...fixtureBookingStatuses[reservation.status.group],
+    tableId: `fixture-table-${index + 1}`,
+    tableName: index === 3 ? "Table 4" : `Table ${index + 1}`,
+    tableLocation: index % 2 === 0 ? "Main floor" : "Coworking area",
+    linkedReservation: {
+      id: reservation.id,
+      label: reservation.typeLabel,
+    },
+    createdAt: Temporal.Instant.from(reservation.updatedAt)
+      .subtract({ hours: 2 })
+      .toString(),
+    updatedAt: reservation.updatedAt,
+  }));
+
 export const administrationFixturesEnabled = () =>
   process.env.NODE_ENV === "development" &&
   env.ADMIN_PREVIEW_FIXTURES === "true";
@@ -137,6 +175,42 @@ export const loadFixtureReservations = (
     pageCount: 1,
     total: items.length,
     dateFilterUnavailable: false,
+  };
+};
+
+export const loadFixtureBookings = (input?: {
+  readonly date?: string;
+  readonly page?: number;
+}): AdministrationBookingPage => {
+  const items = makeBookings().filter(
+    (booking) => !input?.date || getFixtureDate(booking.startsAt) === input.date
+  );
+  return {
+    items,
+    page: input?.page ?? 1,
+    pageCount: 1,
+    total: items.length,
+  };
+};
+
+const getFixtureDate = (value: string) =>
+  Temporal.Instant.from(value)
+    .toZonedDateTimeISO(timeZone)
+    .toPlainDate()
+    .toString();
+
+export const loadFixtureBooking = (
+  id: string
+): AdministrationBookingDetail | null => {
+  const booking = makeBookings().find((item) => item.id === id);
+  if (!booking) return null;
+  return {
+    booking,
+    references: {
+      bookingId: booking.id,
+      customerId: booking.customerId,
+      workspaceReservationId: booking.linkedReservation?.id ?? null,
+    },
   };
 };
 
@@ -291,7 +365,44 @@ export const loadFixtureCustomerProfile = (
     discountGroups: [
       { id: "fixture-standard", name: "Workspace member", basisPoints: 1000 },
     ],
-    codes: [],
+    codes: [
+      {
+        id: "019c91dd-c560-7e55-b9d8-c95065efd52d" as DiscountCodeId,
+        discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
+        code: "MEMBER15",
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: null,
+        audienceSize: 1,
+        reservedUses: 0,
+        redeemedUses: 4,
+        releasedUses: 0,
+        remainingUses: null,
+        createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+        updatedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+        discountLabel: "Workspace member",
+        eligible: true,
+      },
+      {
+        id: "019c91dd-c560-7e55-b9d8-c95065efd53d" as DiscountCodeId,
+        discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
+        code: "WELCOME10",
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: 100,
+        audienceSize: 0,
+        reservedUses: 2,
+        redeemedUses: 18,
+        releasedUses: 1,
+        remainingUses: 80,
+        createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
+        updatedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
+        discountLabel: "Welcome offer",
+        eligible: false,
+      },
+    ],
     claims: [],
   };
 };

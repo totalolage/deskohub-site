@@ -1,9 +1,13 @@
 import { AdministrationBreadcrumbs } from "@/features/administration/admin-shell";
+import { formatAdministrationDateTime } from "@/features/administration/components";
 import {
   administrationFixturesEnabled,
   loadFixtureCustomerProfile,
 } from "@/features/administration/fixtures";
-import { loadAdministrationReservation } from "@/features/administration/page-data.server";
+import {
+  loadAdministrationBooking,
+  loadAdministrationReservation,
+} from "@/features/administration/page-data.server";
 import { loadDiscountAdminCustomerBreadcrumbLabel } from "@/features/discounts/admin/page-data.server";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
@@ -26,6 +30,13 @@ export default async function AdministrationBreadcrumbSlot({
   if (segments[0] === "reservations" && segments[1]) {
     const detail = await loadAdministrationReservation(segments[1]);
     entityLabel = detail.reservation.typeLabel;
+  }
+
+  if (segments[0] === "bookings" && segments[1]) {
+    const detail = await loadAdministrationBooking(segments[1]);
+    entityLabel =
+      detail.booking.tableName ??
+      formatAdministrationDateTime(detail.booking.startsAt);
   }
 
   return (

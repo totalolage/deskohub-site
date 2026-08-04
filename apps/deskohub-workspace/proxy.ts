@@ -19,6 +19,8 @@ import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/ba
 
 const isFixtureBackedAdministrationPath = (pathname: string) =>
   pathname === "/admin" ||
+  pathname === "/admin/bookings" ||
+  pathname.startsWith("/admin/bookings/") ||
   pathname === "/admin/reservations" ||
   pathname.startsWith("/admin/reservations/") ||
   pathname === "/admin/customers" ||

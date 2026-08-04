@@ -2,6 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
   Reservation as DotyposReservation,
+  Table as DotyposTable,
 } from "@deskohub/dotypos/generated";
 import {
   and,
@@ -37,6 +38,7 @@ import type { AdministrationStatusGroup } from "./reservation-status";
 import { getAdministrationReservationStatus } from "./reservation-status";
 
 const reservationPageSize = 24;
+const bookingPageSize = 24;
 const customerPageSize = 24;
 const customerReservationPageSize = 10;
 
@@ -91,6 +93,42 @@ export type AdministrationReservationPage = {
   readonly page: number;
   readonly pageCount: number;
   readonly total: number;
+};
+
+export type AdministrationBookingSummary = {
+  readonly id: string;
+  readonly customerId: string | null;
+  readonly customer: AdministrationCustomer | null;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly seats: string;
+  readonly status: "NEW" | "CONFIRMED" | "CANCELLED";
+  readonly statusLabel: string;
+  readonly tableId: string | null;
+  readonly tableName: string | null;
+  readonly tableLocation: string | null;
+  readonly linkedReservation: {
+    readonly id: string;
+    readonly label: string;
+  } | null;
+  readonly createdAt: string | null;
+  readonly updatedAt: string | null;
+};
+
+export type AdministrationBookingPage = {
+  readonly items: readonly AdministrationBookingSummary[];
+  readonly page: number;
+  readonly pageCount: number;
+  readonly total: number;
+};
+
+export type AdministrationBookingDetail = {
+  readonly booking: AdministrationBookingSummary;
+  readonly references: {
+    readonly bookingId: string;
+    readonly customerId: string | null;
+    readonly workspaceReservationId: string | null;
+  };
 };
 
 export type AdministrationPaymentAttempt = {
@@ -213,24 +251,30 @@ const getReservationDate = (startsAt: string) =>
     .toPlainDate()
     .toString();
 
+type LiveReservationDetails = {
+  readonly reservation: DotyposReservation | null;
+  readonly customer: DotyposCustomer | null;
+};
+
 const toReservationSummary = ({
   live,
   row,
 }: {
-  readonly live: {
-    readonly reservation: DotyposReservation;
-    readonly customer: DotyposCustomer;
-  } | null;
+  readonly live: LiveReservationDetails;
   readonly row: SafeReservationRow;
 }): AdministrationReservationSummary => {
   return {
     id: row.id,
     customerId: row.dotyposCustomerId,
-    customer: live ? toCustomer(live.customer, row.dotyposCustomerId) : null,
-    liveDetailsAvailable: Boolean(live),
-    startsAt: live?.reservation.startDate ?? null,
-    endsAt: live?.reservation.endDate ?? null,
-    date: live ? getReservationDate(live.reservation.startDate) : null,
+    customer: live.customer
+      ? toCustomer(live.customer, row.dotyposCustomerId)
+      : null,
+    liveDetailsAvailable: Boolean(live.reservation),
+    startsAt: live.reservation?.startDate ?? null,
+    endsAt: live.reservation?.endDate ?? null,
+    date: live.reservation
+      ? getReservationDate(live.reservation.startDate)
+      : null,
     type: row.reservationDetails.kind,
     typeLabel: getReservationTypeLabel(row),
     status: getAdministrationReservationStatus({
@@ -241,6 +285,44 @@ const toReservationSummary = ({
     updatedAt: toIsoString(row.updatedAt),
   };
 };
+
+const bookingStatusLabels = {
+  NEW: "New",
+  CONFIRMED: "Confirmed",
+  CANCELLED: "Cancelled",
+} as const;
+
+const toBookingSummary = ({
+  booking,
+  customer,
+  row,
+  table,
+}: {
+  readonly booking: DotyposReservation & { readonly id: string };
+  readonly customer: DotyposCustomer | null;
+  readonly row: SafeReservationRow | null;
+  readonly table: DotyposTable | null;
+}): AdministrationBookingSummary => ({
+  id: booking.id,
+  customerId: booking._customerId ?? null,
+  customer:
+    booking._customerId && customer
+      ? toCustomer(customer, booking._customerId)
+      : null,
+  startsAt: booking.startDate,
+  endsAt: booking.endDate,
+  seats: booking.seats,
+  status: booking.status,
+  statusLabel: bookingStatusLabels[booking.status],
+  tableId: booking._tableId ?? null,
+  tableName: table?.name ?? null,
+  tableLocation: table?.locationName ?? null,
+  linkedReservation: row
+    ? { id: row.id, label: getReservationTypeLabel(row) }
+    : null,
+  createdAt: booking.created ?? null,
+  updatedAt: booking.versionDate ?? null,
+});
 
 const getDateBounds = (date: string) => {
   const plainDate = Temporal.PlainDate.from(date);
@@ -387,6 +469,13 @@ export class AdministrationService extends Context.Service<
     readonly findReservationId: (
       identifier: string
     ) => Effect.Effect<string | null, unknown>;
+    readonly listBookings: (input: {
+      readonly date: string;
+      readonly page?: number;
+    }) => Effect.Effect<AdministrationBookingPage, unknown>;
+    readonly loadBooking: (
+      id: string
+    ) => Effect.Effect<AdministrationBookingDetail, unknown>;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
@@ -413,18 +502,39 @@ export class AdministrationService extends Context.Service<
 
       const loadLiveReservation = Effect.fn(
         "AdministrationService.loadLiveReservation"
-      )((row: SafeReservationRow) =>
-        row.dotyposReservationId
-          ? dotypos.getReservation(row.dotyposReservationId).pipe(
-              Effect.catch((cause) =>
-                Effect.logWarning("Live reservation details unavailable", {
-                  cause,
-                  workspaceReservationId: row.id,
-                }).pipe(Effect.as(null))
-              )
-            )
-          : Effect.succeed(null)
-      );
+      )((row: SafeReservationRow): Effect.Effect<LiveReservationDetails> => {
+        const loadCustomer = dotypos.getCustomer(row.dotyposCustomerId).pipe(
+          Effect.map(
+            (customer): LiveReservationDetails => ({
+              reservation: null,
+              customer,
+            })
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("Live customer details unavailable", {
+              cause,
+              workspaceReservationId: row.id,
+            }).pipe(Effect.as({ reservation: null, customer: null } as const))
+          )
+        );
+
+        if (!row.dotyposReservationId) return loadCustomer;
+
+        return dotypos.getReservation(row.dotyposReservationId).pipe(
+          Effect.map(
+            ({ customer, reservation }): LiveReservationDetails => ({
+              customer,
+              reservation,
+            })
+          ),
+          Effect.catch((cause) =>
+            Effect.logWarning("Live booking details unavailable", {
+              cause,
+              workspaceReservationId: row.id,
+            }).pipe(Effect.andThen(loadCustomer))
+          )
+        );
+      });
 
       const enrichRows = (rows: readonly SafeReservationRow[]) =>
         Effect.all(
@@ -587,7 +697,7 @@ export class AdministrationService extends Context.Service<
           );
 
         let sameDateRows: readonly SafeReservationRow[] = [];
-        if (live) {
+        if (live.reservation) {
           const date = getReservationDate(live.reservation.startDate);
           const dateReservations = yield* loadDateReservationMap(date);
           const reservationIds = dateReservations
@@ -746,6 +856,132 @@ export class AdministrationService extends Context.Service<
         ]);
       });
 
+      const loadBookingTables = () =>
+        dotypos.getTables().pipe(
+          Effect.catch((cause) =>
+            Effect.logWarning("Booking table details unavailable", {
+              cause,
+            }).pipe(Effect.as([] as const))
+          )
+        );
+
+      const listBookings = Effect.fn("AdministrationService.listBookings")(
+        function* (input: { readonly date: string; readonly page?: number }) {
+          const bookings = (yield* dotypos.listReservations({
+            ...getDateBounds(input.date),
+            order: "startDateAscending",
+          })).flatMap((booking) =>
+            booking.id ? [{ ...booking, id: booking.id }] : []
+          );
+          const pagination = getAdministrationPagination({
+            pageSize: bookingPageSize,
+            requestedPage: input.page,
+            total: bookings.length,
+          });
+          const pageBookings = bookings.slice(
+            pagination.offset,
+            pagination.offset + bookingPageSize
+          );
+          const bookingIds = pageBookings.map(({ id }) => id);
+          const { customers, rows, tables } = yield* Effect.all(
+            {
+              customers: Effect.all(
+                pageBookings.map((booking) =>
+                  booking._customerId
+                    ? dotypos.getCustomer(booking._customerId).pipe(
+                        Effect.map(
+                          (customer) => [booking.id, customer] as const
+                        ),
+                        Effect.catch(() =>
+                          Effect.succeed([booking.id, null] as const)
+                        )
+                      )
+                    : Effect.succeed([booking.id, null] as const)
+                ),
+                { concurrency: 5 }
+              ),
+              rows:
+                bookingIds.length > 0
+                  ? db
+                      .select(safeReservationSelection)
+                      .from(workspaceReservations)
+                      .where(
+                        inArray(
+                          workspaceReservations.dotyposReservationId,
+                          bookingIds
+                        )
+                      )
+                  : Effect.succeed([] as readonly SafeReservationRow[]),
+              tables: loadBookingTables(),
+            },
+            { concurrency: 3 }
+          );
+          const customersByBookingId = new Map(customers);
+          const rowsByBookingId = new Map(
+            rows.flatMap((row) =>
+              row.dotyposReservationId
+                ? [[row.dotyposReservationId, row] as const]
+                : []
+            )
+          );
+          const tablesById = new Map(
+            tables.flatMap((table) =>
+              table.id ? [[table.id, table] as const] : []
+            )
+          );
+
+          return {
+            items: pageBookings.map((booking) =>
+              toBookingSummary({
+                booking,
+                customer: customersByBookingId.get(booking.id) ?? null,
+                row: rowsByBookingId.get(booking.id) ?? null,
+                table: booking._tableId
+                  ? (tablesById.get(booking._tableId) ?? null)
+                  : null,
+              })
+            ),
+            page: pagination.page,
+            pageCount: pagination.pageCount,
+            total: bookings.length,
+          } satisfies AdministrationBookingPage;
+        }
+      );
+
+      const loadBooking = Effect.fn("AdministrationService.loadBooking")(
+        function* (id: string) {
+          const [{ customer, reservation }, tables] = yield* Effect.all(
+            [dotypos.getReservation(id), loadBookingTables()],
+            { concurrency: 2 }
+          );
+          const [row] = yield* db
+            .select(safeReservationSelection)
+            .from(workspaceReservations)
+            .where(eq(workspaceReservations.dotyposReservationId, id))
+            .limit(1);
+          const table = reservation._tableId
+            ? (tables.find(
+                ({ id: tableId }) => tableId === reservation._tableId
+              ) ?? null)
+            : null;
+          const booking = toBookingSummary({
+            booking: { ...reservation, id },
+            customer,
+            row: row ?? null,
+            table,
+          });
+
+          return {
+            booking,
+            references: {
+              bookingId: id,
+              customerId: booking.customerId,
+              workspaceReservationId: booking.linkedReservation?.id ?? null,
+            },
+          } satisfies AdministrationBookingDetail;
+        }
+      );
+
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
           const countRows = yield* db
@@ -866,6 +1102,8 @@ export class AdministrationService extends Context.Service<
         listReservations,
         loadReservation,
         findReservationId,
+        listBookings,
+        loadBooking,
         listCustomers,
         loadCustomerReservations,
       };

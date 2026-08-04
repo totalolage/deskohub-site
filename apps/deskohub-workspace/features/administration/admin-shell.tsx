@@ -2,6 +2,7 @@
 
 import {
   BadgePercent,
+  CalendarCheck2,
   CalendarRange,
   ChevronRight,
   CircleGauge,
@@ -41,6 +42,7 @@ const navigation = [
         icon: CalendarRange,
         label: "Reservations",
       },
+      { href: "/admin/bookings", icon: CalendarCheck2, label: "Bookings" },
       { href: "/admin/customers", icon: Users, label: "Customers" },
     ],
   },
@@ -116,6 +118,7 @@ function NavigationLink({
 
 const breadcrumbNames: Record<string, string> = {
   admin: "Overview",
+  bookings: "Bookings",
   codes: "Codes",
   customers: "Customers",
   discounts: "Discounts",
@@ -137,6 +140,7 @@ export function AdministrationBreadcrumbs({
       breadcrumbNames[segment] ||
       ({
         codes: "Code",
+        bookings: "Booking",
         customers: "Customer",
         reservations: "Reservation",
       }[segments[index - 1] ?? ""] ??

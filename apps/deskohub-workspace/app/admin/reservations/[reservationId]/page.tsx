@@ -7,6 +7,7 @@ import {
   formatAdministrationDateTime,
   formatAdministrationMoney,
   RelatedReservationLink,
+  ReservationReferences,
   ReservationStatusBadge,
   ReservationTimeline,
 } from "@/features/administration/components";
@@ -144,22 +145,7 @@ export default async function ReservationAdministrationDetailPage({
             <summary className="cursor-pointer px-5 py-4 text-sm font-semibold">
               References
             </summary>
-            <dl className="grid gap-4 border-t border-navy-blue/10 px-5 py-4 text-sm">
-              <Reference
-                label="Reservation record"
-                value={detail.references.workspaceReservationId}
-              />
-              {detail.references.dotyposReservationId && (
-                <Reference
-                  label="Booking record"
-                  value={detail.references.dotyposReservationId}
-                />
-              )}
-              <Reference
-                label="Customer"
-                value={detail.references.customerId}
-              />
-            </dl>
+            <ReservationReferences references={detail.references} />
           </details>
         </div>
 
@@ -240,21 +226,6 @@ function ReservationFact({
         {label}
       </dt>
       <dd className="mt-1.5 font-medium">{value}</dd>
-    </div>
-  );
-}
-
-function Reference({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-navy-blue/65">{label}</dt>
-      <dd className="mt-1 break-all font-mono text-xs">{value}</dd>
     </div>
   );
 }
