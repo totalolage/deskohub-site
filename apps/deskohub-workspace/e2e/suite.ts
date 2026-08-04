@@ -22,6 +22,7 @@ import {
   WorkspaceE2ECleanupService,
 } from "./services/cleanup";
 import {
+  type E2EFailureKind,
   type E2EOutcome,
   type E2EResult,
   type E2ETelemetry,
@@ -63,6 +64,17 @@ interface ReservationStartPermitPool {
   ) => Effect.Effect<A, E, R>;
 }
 
+export type WorkspaceE2EFailureDiagnostic = {
+  readonly caseId: string;
+  readonly failureKind: E2EFailureKind;
+  readonly outcome: "failed" | "timed_out";
+  readonly stepId?: string;
+};
+
+export type WorkspaceE2EFailureReporter = (
+  diagnostic: WorkspaceE2EFailureDiagnostic
+) => void;
+
 type WorkspaceE2ECaseRuntime = {
   readonly artifactDir: string;
   browserHarStarted: boolean;
@@ -71,6 +83,7 @@ type WorkspaceE2ECaseRuntime = {
   failureCause?: Cause.Cause<WorkspaceE2EError>;
   result?: E2EResult;
   readonly session: string;
+  terminalStepId?: string;
   readonly testCase: WorkspaceE2ECase;
 };
 
@@ -78,6 +91,7 @@ export const runWorkspaceE2ECases = ({
   artifactRoot,
   cases,
   datasourceConfig,
+  reportFailure,
   run,
   sessionPrefix,
   timeouts,
@@ -85,6 +99,7 @@ export const runWorkspaceE2ECases = ({
   artifactRoot: string;
   cases: readonly WorkspaceE2ECase[];
   datasourceConfig: DatasourceConfig;
+  reportFailure?: WorkspaceE2EFailureReporter;
   run: Runner;
   sessionPrefix: string;
   timeouts: WorkspaceE2ETimeouts;
@@ -117,18 +132,21 @@ export const runWorkspaceE2ECases = ({
         [caseIndex, testCase]: (typeof indexedCases)[number],
         failureSignal?: Deferred.Deferred<number>
       ) => {
+        let caseRuntime: WorkspaceE2ECaseRuntime | undefined;
         const tracedCase = telemetry.traceCase({
           caseId: testCase.id,
           effect: Effect.acquireUseRelease(
-            Effect.sync(
-              (): WorkspaceE2ECaseRuntime => ({
+            Effect.sync((): WorkspaceE2ECaseRuntime => {
+              const runtime: WorkspaceE2ECaseRuntime = {
                 artifactDir: resolve(artifactRoot, testCase.id),
                 browserHarStarted: false,
                 browserHarStopped: false,
                 session: `${sessionPrefix}-${caseIndex}`,
                 testCase,
-              })
-            ),
+              };
+              caseRuntime = runtime;
+              return runtime;
+            }),
             (runtime) => {
               const execution = runCase(
                 runtime,
@@ -182,9 +200,37 @@ export const runWorkspaceE2ECases = ({
           timeoutMs: testCase.timeoutMs,
         });
 
-        if (!failureSignal) return tracedCase;
+        const diagnosedCase = reportFailure
+          ? tracedCase.pipe(
+              Effect.tapCause((cause) =>
+                Effect.sync(() => {
+                  if (Cause.hasInterruptsOnly(cause)) return;
+                  const result = toE2EResult(Exit.failCause(cause));
+                  if (
+                    result.outcome !== "failed" &&
+                    result.outcome !== "timed_out"
+                  )
+                    return;
+                  try {
+                    reportFailure({
+                      caseId: testCase.id,
+                      failureKind: result.failureKind,
+                      outcome: result.outcome,
+                      ...(caseRuntime?.terminalStepId
+                        ? { stepId: caseRuntime.terminalStepId }
+                        : {}),
+                    });
+                  } catch {
+                    log("Workspace E2E failure reporter failed");
+                  }
+                })
+              )
+            )
+          : tracedCase;
 
-        return tracedCase.pipe(
+        if (!failureSignal) return diagnosedCase;
+
+        return diagnosedCase.pipe(
           Effect.catchCause((cause) => {
             if (!Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
 
@@ -252,7 +298,7 @@ const runCase = (
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
-    runtime.testCase.id,
+    runtime,
     telemetry,
     reservationStartPermitPool,
     providerVerificationPermit,
@@ -304,13 +350,14 @@ const runCase = (
 
 const makeStepRunner =
   (
-    caseId: string,
+    runtime: WorkspaceE2ECaseRuntime,
     telemetry: E2ETelemetry,
     reservationStartPermitPool: ReservationStartPermitPool,
     providerVerificationPermit: WorkspaceE2EProviderVerificationPermit,
     caseTimeoutMs: number
   ): WorkspaceE2EStepRunner =>
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
+    const caseId = runtime.testCase.id;
     const operation = `${caseId}/${id}`;
     const timedExecution = execute.pipe(
       Effect.timeoutOrElse({
@@ -349,6 +396,7 @@ const makeStepRunner =
               const durationMs = Date.now() - startedAt;
               const elapsed = formatWorkspaceE2EDuration(durationMs);
               const { outcome } = toE2EResult(exit);
+              if (outcome !== "passed") runtime.terminalStepId = id;
               const status = e2eOutcomeStatus[outcome];
               log(`STEP ${status} ${operation} (${elapsed})`);
             })

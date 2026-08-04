@@ -7,7 +7,10 @@ import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/p
 import type { WorkspaceE2EError } from "../errors";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
-import { runWorkspaceE2ECases } from "../suite";
+import {
+  runWorkspaceE2ECases,
+  type WorkspaceE2EFailureReporter,
+} from "../suite";
 import type { WorkspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 import { WorkspaceE2ECleanupService } from "./cleanup";
@@ -29,6 +32,7 @@ interface IWorkspaceE2ECaseService {
     readonly artifactRoot: string;
     readonly cases: readonly WorkspaceE2ECase[];
     readonly datasourceConfig: DatasourceConfig;
+    readonly reportFailure?: WorkspaceE2EFailureReporter;
     readonly run: Runner;
     readonly sessionPrefix: string;
     readonly timeouts: WorkspaceE2ETimeouts;
