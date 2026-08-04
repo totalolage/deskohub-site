@@ -1,3 +1,5 @@
+import "../shared/polyfills/temporal";
+
 import { Effect, Exit, Logger } from "effect";
 import { getWorkspaceE2ECapacityInterval } from "../e2e/capacity";
 import { getDatasourceConfig } from "../e2e/config";
