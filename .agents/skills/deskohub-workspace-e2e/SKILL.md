@@ -58,11 +58,16 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before availability preparation and parallel cases start. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed transaction commits, cowork and meeting-room availability preparation may overlap. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, mark the top-level case to run after the independent parallel phase, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before
-  constructing cases. Serialize only the short GitHub lease operation, use the
-  run identity for the preferred shard, and choose another free shard when that
-  preference is already leased. Record each shard in a fixed status context on
-  a stable main-history anchor so a PR head update cannot hide the old run's
-  lease. Publish the target commit's safe diagnostic status separately, ignore
+  constructing cases. While the global Dotypos job lock remains, acquire the
+  lease only after the job holds that lock. Do not use a separate GitHub Actions
+  concurrency group as a lease mutex: it retains only one pending contender and
+  cancels an older pending workflow during a burst. Before removing the global
+  lock, replace status-based acquisition with an atomic, queue-preserving
+  coordinator. Use the run identity for the preferred shard and choose another
+  free shard when that preference is already leased. Record each shard in a
+  fixed status context on a stable main-history anchor so a PR head update
+  cannot hide the old run's lease. Publish the target commit's safe diagnostic
+  status separately, ignore
   leases whose workflow run is no longer active, release only a context still
   owned by the finalizing run, and fail before setup
   when all supported shards are occupied. The runner may retain its deterministic

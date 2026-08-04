@@ -7,5 +7,10 @@ test("discovers active shard leases independently of current PR heads", async ()
   ).text();
 
   expect(workflow).toContain("commits/$lease_anchor_sha/statuses");
+  expect(workflow).not.toContain("allocate-shard:");
+  expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
+  expect(workflow.indexOf("group: workspace-e2e-dotypos-sandbox")).toBeLessThan(
+    workflow.indexOf("- name: Lease an available date shard")
+  );
   expect(workflow).not.toContain("pulls?state=open");
 });

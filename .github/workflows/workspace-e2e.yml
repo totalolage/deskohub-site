@@ -117,22 +117,34 @@ jobs:
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
-  allocate-shard:
+  test-e2e:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
-    concurrency:
-      group: workspace-e2e-shard-allocation
-      cancel-in-progress: false
+    timeout-minutes: 50
+    environment: workspace-checkout-e2e
     outputs:
       shard: ${{ steps.lease.outputs.shard }}
+    concurrency:
+      # This lock also makes lease acquisition atomic until provider capacity
+      # and a queue-preserving allocator are ready for the three-run soak.
+      group: workspace-e2e-dotypos-sandbox
+      cancel-in-progress: false
+    env:
+      NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
+      WORKSPACE_E2E_EXECUTION_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'ci' }}
+      WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+
     steps:
       - name: Lease an available date shard
         id: lease
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           set -euo pipefail
 
@@ -216,26 +228,6 @@ jobs:
             >/dev/null
           echo "shard=$allocated_shard" >> "$GITHUB_OUTPUT"
 
-  test-e2e:
-    needs: [resolve-target, allocate-shard]
-    if: needs.resolve-target.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    environment: workspace-checkout-e2e
-    concurrency:
-      group: workspace-e2e-dotypos-sandbox
-      cancel-in-progress: false
-    env:
-      NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
-      WORKSPACE_E2E_EXECUTION_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'ci' }}
-      WORKSPACE_E2E_ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
-      WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-
-    steps:
       - name: Publish pending commit status
         env:
           GH_TOKEN: ${{ github.token }}
@@ -427,6 +419,7 @@ jobs:
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
+          WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
         run: bun turbo test:e2e --filter=deskohub-workspace
 
       - uses: actions/upload-artifact@v4
@@ -438,14 +431,14 @@ jobs:
           retention-days: 7
 
   publish-final-status:
-    needs: [resolve-target, allocate-shard, test-e2e]
+    needs: [resolve-target, test-e2e]
     if: always() && needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Publish final commit status
         env:
-          ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.allocate-shard.result == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
+          ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
+          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
           GH_TOKEN: ${{ github.token }}
           LEASE_ANCHOR_SHA: 7ff11c3b550458a2036f87cdf6ef912b00fad760
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
