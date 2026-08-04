@@ -14,7 +14,7 @@ test("formats only closed Workspace E2E failure fields", () => {
   );
 });
 
-test("formats a fixed application-owned diagnostic code", () => {
+test("formats a fixed code-owned diagnostic code", () => {
   expect(
     formatWorkspaceE2EFailureAnnotation({
       caseId: "checkout-calendar-sale",
@@ -41,7 +41,7 @@ test("does not interpolate unexpected identifiers", () => {
   );
 });
 
-test("omits diagnostic codes outside the fixed application allowlist", () => {
+test("omits diagnostic codes outside the fixed code-owned allowlist", () => {
   expect(
     formatWorkspaceE2EFailureAnnotation({
       caseId: "checkout-calendar-sale",
