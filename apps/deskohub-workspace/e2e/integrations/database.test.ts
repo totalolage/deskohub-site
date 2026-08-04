@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -112,6 +112,45 @@ test("replays Nexi notification against the exact protected preview", async () =
     },
     securityToken: "test-security-token",
   });
+});
+
+test.each([
+  ["nexi_webhook_fulfillment_failed", "nexi_webhook_fulfillment_failed"],
+  ["provider-payload-value", undefined],
+] as const)("keeps webhook failure diagnostics on the fixed allowlist for %s", async (responseCode, expectedDiagnosticCode) => {
+  const fetchMock = mock(async () =>
+    Response.json(
+      { code: responseCode, payload: "provider payload must stay private" },
+      { status: 500 }
+    )
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const exit = await Effect.runPromiseExit(
+    replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
+      Effect.provide(httpClientLayer)
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  const error = Cause.squash(exit.cause);
+  expect(error).toMatchObject({
+    message: "Nexi webhook replay failed with 500",
+  });
+  expect((error as { readonly diagnosticCode?: unknown }).diagnosticCode).toBe(
+    expectedDiagnosticCode
+  );
+  expect(JSON.stringify(error)).not.toContain(
+    "provider payload must stay private"
+  );
 });
 
 test("accepts automatic discounts stacked before the redeemed zero-total code", () => {

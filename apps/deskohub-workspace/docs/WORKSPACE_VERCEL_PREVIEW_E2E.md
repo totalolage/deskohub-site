@@ -207,6 +207,14 @@ new secret added only by the exact-SHA PR. A controlled branch
 `workflow_dispatch` soak may set `allow_concurrent`; that workflow sets
 `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the narrow provider
 permit URL, and fails closed if the URL or connection is missing.
+The permit serializes only `replay-payment-webhook`, whose production route
+confirms the Dotypos hold and sends the paid-reservation notifications. It
+retains the advisory-lock transaction for a one-second quiet period after each
+success, failure, or interruption before admitting the next suite. Each
+fulfillment sends at most two sequential email API requests, so this bounds the
+sustained shared-team email rate without retrying a webhook or serializing
+hosted payment. Resend documents a per-team, per-second limit with no extra
+burst allowance: <https://resend.com/docs/api-reference/rate-limit>.
 Remove the default lock only after the capacity checklist and five three-way
 concurrent soaks pass with the distributed permit enabled.
 
@@ -521,6 +529,10 @@ spans also record their configured `e2e.timeout_ms`, which allows actual
 duration to be compared with the watchdog that governed the operation. Terminal
 attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
 `cancelled`, plus the closed failure kinds `error`, `defect`, and `timeout`.
+When the protected Nexi route returns one of its fixed application error codes,
+the failed step also records that allowlisted value as `e2e.failure.code`.
+Unknown response bodies and arbitrary provider values are discarded rather
+than attached to the span.
 The exact target SHA and GitHub run correlation values are included when
 available.
 

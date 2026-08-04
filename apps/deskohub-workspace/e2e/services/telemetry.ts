@@ -5,7 +5,7 @@ import {
   type WorkspaceE2EDateAllocation,
 } from "../allocation";
 import type { E2EEnvironment } from "../e2e-env";
-import { isWorkspaceE2ETimeout } from "../errors";
+import { isWorkspaceE2ETimeout, WorkspaceE2EError } from "../errors";
 import { log } from "../runtime";
 import { formatWorkspaceE2EDuration } from "../timeouts";
 
@@ -264,8 +264,16 @@ const toE2ETerminalSpanAttributes = <A, E>(
   exit: Exit.Exit<A, E>
 ): Record<string, string> => {
   const result = toE2EResult(exit);
+  const error = Exit.isFailure(exit)
+    ? Cause.findErrorOption(exit.cause)
+    : Option.none();
+  const diagnosticCode =
+    Option.isSome(error) && error.value instanceof WorkspaceE2EError
+      ? error.value.diagnosticCode
+      : undefined;
 
   return {
+    ...(diagnosticCode ? { "e2e.failure.code": diagnosticCode } : {}),
     ...(result.outcome === "failed" || result.outcome === "timed_out"
       ? { "e2e.failure.kind": result.failureKind }
       : {}),

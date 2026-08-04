@@ -13,7 +13,7 @@ import {
 import { createTracingLive } from "../../shared/backend/observability/otel-tracing";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import { makeTestE2EEnvironment } from "../e2e-env.test-fixture";
-import { workspaceE2ETimeoutError } from "../errors";
+import { workspaceE2EError, workspaceE2ETimeoutError } from "../errors";
 import {
   E2ERunContextService,
   E2ETelemetryService,
@@ -274,6 +274,41 @@ test("exports only closed failure facts and preserves the original failure", asy
     });
     expect(serialized).toContain(CENSORED_LOG_VALUE);
     expect(serialized).not.toContain(unsafeFailure.message);
+  } finally {
+    await provider.shutdown();
+  }
+});
+
+test("exports an allowlisted diagnostic code without raw failure details", async () => {
+  const { exporter, layer, provider } = makeTestTelemetry();
+
+  try {
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        const telemetry = yield* E2ETelemetryService;
+        yield* telemetry.traceStep({
+          caseId: "checkout-cowork-basic",
+          effect: Effect.fail(
+            workspaceE2EError("unsafe provider failure details", {
+              diagnosticCode: "nexi_webhook_fulfillment_failed",
+            })
+          ),
+          stepId: "replay-payment-webhook",
+          timeoutMs: 90_000,
+        });
+      }).pipe(Effect.provide(layer))
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    const span = findSpan(exporter.getFinishedSpans(), "e2e.step");
+    expect(span.attributes).toMatchObject({
+      "e2e.failure.code": "nexi_webhook_fulfillment_failed",
+      "e2e.failure.kind": "error",
+      "e2e.outcome": "failed",
+    });
+    expect(JSON.stringify(span)).not.toContain(
+      "unsafe provider failure details"
+    );
   } finally {
     await provider.shutdown();
   }
