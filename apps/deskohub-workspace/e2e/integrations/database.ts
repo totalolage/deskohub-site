@@ -30,10 +30,11 @@ import {
 } from "@/db/schema";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
-  isWorkspaceE2EDiagnosticCode,
+  isNexiWebhookDiagnosticCode,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  withWorkspaceE2EDiagnosticCode,
   workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
@@ -144,7 +145,7 @@ const readNexiWebhookDiagnosticCode = (
       if (!body || typeof body !== "object" || !("code" in body)) {
         return undefined;
       }
-      return isWorkspaceE2EDiagnosticCode(body.code) ? body.code : undefined;
+      return isNexiWebhookDiagnosticCode(body.code) ? body.code : undefined;
     }),
     Effect.catch(() => Effect.succeed(undefined))
   );
@@ -178,16 +179,26 @@ export const validatePostgres = (
         label: `Postgres checkout rows for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
       }
+    ).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
     );
 
-    yield* assertPostgresRow(row, data, config);
-    yield* assertLegalEvidence(db, orderId, data.locale);
+    yield* assertPostgresRow(row, data, config).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_assertion_failed")
+    );
+    yield* assertLegalEvidence(db, orderId, data.locale).pipe(
+      withWorkspaceE2EDiagnosticCode(
+        "postgres_legal_evidence_validation_failed"
+      )
+    );
     yield* assertNoLocalPii(
       db,
       orderId,
       row.payment_attempt_id,
       row.webhook_id,
       data
+    ).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_local_pii_validation_failed")
     );
     log("Postgres checkout tables validated");
     return row;

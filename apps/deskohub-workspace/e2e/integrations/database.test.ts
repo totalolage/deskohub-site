@@ -59,6 +59,25 @@ test("polls for checkout rows before asserting reservation replacement state", a
   );
 });
 
+test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {
+  const source = await Bun.file(
+    fileURLToPath(new URL("./database.ts", import.meta.url))
+  ).text();
+
+  for (const diagnosticCode of [
+    "postgres_checkout_row_convergence_failed",
+    "postgres_checkout_row_assertion_failed",
+    "postgres_legal_evidence_validation_failed",
+    "postgres_local_pii_validation_failed",
+  ]) {
+    expect(source).toMatch(
+      new RegExp(
+        `withWorkspaceE2EDiagnosticCode\\(\\s*"${diagnosticCode}"\\s*\\)`
+      )
+    );
+  }
+});
+
 test("replays Nexi notification against the exact protected preview", async () => {
   const requests: Array<{
     body: string;
@@ -116,6 +135,7 @@ test("replays Nexi notification against the exact protected preview", async () =
 
 test.each([
   ["nexi_webhook_fulfillment_failed", "nexi_webhook_fulfillment_failed"],
+  ["postgres_checkout_row_assertion_failed", undefined],
   ["provider-payload-value", undefined],
 ] as const)("keeps webhook failure diagnostics on the fixed allowlist for %s", async (responseCode, expectedDiagnosticCode) => {
   const fetchMock = mock(async () =>
