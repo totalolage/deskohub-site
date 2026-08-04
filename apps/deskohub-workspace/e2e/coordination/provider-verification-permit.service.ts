@@ -4,6 +4,7 @@ import * as SqlError from "effect/unstable/sql/SqlError";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 
 export const workspaceE2EProviderVerificationConcurrency = 1;
+export const workspaceE2EProviderVerificationCooldownMs = 1_000;
 
 export interface WorkspaceE2EProviderVerificationPermit {
   readonly withPermit: <A, E, R>(
@@ -17,11 +18,8 @@ export class WorkspaceE2EProviderVerificationPermitService extends Context.Servi
 >()("WorkspaceE2E/ProviderVerificationPermitService") {
   static SuiteLocal = Layer.effect(
     this,
-    Semaphore.make(workspaceE2EProviderVerificationConcurrency).pipe(
-      Effect.map((semaphore) => ({
-        withPermit: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-          semaphore.withPermit(effect),
-      }))
+    makeSuiteLocalProviderVerificationPermit(
+      workspaceE2EProviderVerificationCooldownMs
     )
   );
 
@@ -44,7 +42,10 @@ export class WorkspaceE2EProviderVerificationPermitService extends Context.Servi
                     ${providerPermitNamespace}::integer,
                     ${providerPermitResource}::integer
                   )
-                `.pipe(Effect.andThen(effect))
+                `.pipe(
+                  Effect.andThen(effect),
+                  Effect.ensuring(providerVerificationCooldown)
+                )
               )
               .pipe(
                 Effect.catchIf(SqlError.isSqlError, (cause) =>
@@ -62,6 +63,32 @@ export class WorkspaceE2EProviderVerificationPermitService extends Context.Servi
   );
 }
 
+export function makeSuiteLocalProviderVerificationPermitLayer(
+  cooldownMs = workspaceE2EProviderVerificationCooldownMs
+) {
+  return Layer.effect(
+    WorkspaceE2EProviderVerificationPermitService,
+    makeSuiteLocalProviderVerificationPermit(cooldownMs)
+  );
+}
+
+function makeSuiteLocalProviderVerificationPermit(cooldownMs: number) {
+  return Semaphore.make(workspaceE2EProviderVerificationConcurrency).pipe(
+    Effect.map((semaphore) => ({
+      withPermit: <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        semaphore.withPermit(
+          effect.pipe(
+            Effect.ensuring(
+              cooldownMs > 0
+                ? Effect.sleep(`${cooldownMs} millis`)
+                : Effect.void
+            )
+          )
+        ),
+    }))
+  );
+}
+
 const assertCoordinationConnection = (sql: PgClient.PgClient) =>
   sql`select 1`.pipe(
     Effect.asVoid,
@@ -71,6 +98,10 @@ const assertCoordinationConnection = (sql: PgClient.PgClient) =>
       )
     )
   );
+
+const providerVerificationCooldown = Effect.sleep(
+  `${workspaceE2EProviderVerificationCooldownMs} millis`
+);
 
 // Two fixed int32 keys keep this lock in its own advisory-lock namespace.
 const providerPermitNamespace = 0x4453_4b48;

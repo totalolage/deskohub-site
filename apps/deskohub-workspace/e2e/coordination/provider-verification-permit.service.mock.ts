@@ -1,4 +1,4 @@
-import { WorkspaceE2EProviderVerificationPermitService } from "./provider-verification-permit.service";
+import { makeSuiteLocalProviderVerificationPermitLayer } from "./provider-verification-permit.service";
 
 export const WorkspaceE2EProviderVerificationPermitServiceMock =
-  WorkspaceE2EProviderVerificationPermitService.SuiteLocal;
+  makeSuiteLocalProviderVerificationPermitLayer(0);

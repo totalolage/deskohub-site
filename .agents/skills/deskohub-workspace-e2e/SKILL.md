@@ -65,9 +65,15 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   never expose the allocator URL or role to exact-SHA code. During rollout, the
   old default-branch workflow retains the global job lock and may use the local
   compatibility permit; controlled branch soaks must set the permit-required
-  flag and fail closed without its URL. Do not include hosted-page payment,
-  genuine webhook delivery, fulfillment, or unrelated provider work in that
-  boundary. For both boundaries, the semantic step timeout begins after
+  flag and fail closed without its URL. Sustained three-way replay queues later
+  produced sequential HTTP 500 responses even though the advisory lock proved
+  there was no overlap. Keep a one-second quiet cooldown inside the permit after
+  every replay exit so the synchronous fulfillment's two email sends cannot
+  turn multiple suites into a shared-team rate burst. The cooldown must also run
+  after failure or interruption; do not retry the webhook. Do not include
+  hosted-page payment, genuine webhook delivery, work after the synthetic replay
+  response, or unrelated provider work in that boundary. For both boundaries,
+  the semantic step timeout begins after
   admission while its trace duration includes permit wait and the case watchdog
   bounds both. Do not key either boundary from step-name strings, expand it to
   later checkout stages, or change its capacity without exact-run evidence.
@@ -150,6 +156,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   case/step IDs and safe GitHub correlation metadata, and never attach preview
   URLs, provider or database identifiers, customer/order/reservation data, raw
   errors, secrets, or artifact contents.
+  A failed synthetic Nexi replay may add `e2e.failure.code` only after decoding
+  the route's fixed application error allowlist. Discard unknown bodies and
+  arbitrary provider values instead of attaching or logging them.
 - When an in-process E2E case fails, inspect its exported PostHog trace before
   diagnosing from console output or rerunning. Correlate the exact GitHub run
   and attempt as `<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`, then find the failed or
