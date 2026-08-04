@@ -144,6 +144,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   sequences rather than contiguous date bands so clustered unavailability does
   not starve a run that the full candidate range could support.
 - Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
+- Confirm Dotypos cancellation convergence through the same active-overlap read
+  model used by capacity validation. Absence from the generic reservation list
+  is not sufficient evidence that provider availability has released the seats.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one
   root run span, fixed phase spans, one child span for every case, and one child
