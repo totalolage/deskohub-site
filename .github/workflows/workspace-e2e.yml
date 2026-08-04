@@ -122,11 +122,11 @@ jobs:
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
-  allocate-shard:
+  test-e2e:
     needs: resolve-target
     if: needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 50
     environment: workspace-checkout-e2e
     permissions:
       actions: read
@@ -134,6 +134,20 @@ jobs:
       statuses: write
     outputs:
       shard: ${{ steps.lease.outputs.shard }}
+    concurrency:
+      # Controlled workflow-dispatch soaks exercise the atomic allocator while
+      # ordinary CI retains the provider lock until five three-way soaks pass.
+      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
+      cancel-in-progress: false
+    env:
+      NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
+      WORKSPACE_E2E_EXECUTION_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'ci' }}
+      WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -173,31 +187,6 @@ jobs:
             -f description="Shard $ALLOCATION_SHARD of 3 allocated" \
             -f target_url="$lease_target_url" \
             >/dev/null
-
-  test-e2e:
-    needs: [resolve-target, allocate-shard]
-    if: needs.resolve-target.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 50
-    environment: workspace-checkout-e2e
-    permissions:
-      contents: read
-      statuses: write
-    concurrency:
-      # Controlled workflow-dispatch soaks exercise the atomic allocator while
-      # ordinary CI retains the provider lock until five three-way soaks pass.
-      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
-      cancel-in-progress: false
-    env:
-      NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
-      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
-      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
-      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
-      WORKSPACE_E2E_EXECUTION_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && 'manual' || 'ci' }}
-      WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-
-    steps:
 
       - name: Publish pending commit status
         env:
@@ -412,7 +401,7 @@ jobs:
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
-          WORKSPACE_E2E_ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
+          WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
         run: bun turbo test:e2e --filter=deskohub-workspace
 
       - uses: actions/upload-artifact@v4
@@ -423,35 +412,27 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  publish-final-status:
-    needs: [resolve-target, allocate-shard, test-e2e]
-    if: always() && needs.resolve-target.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    environment: workspace-checkout-e2e
-    permissions:
-      actions: read
-      contents: read
-      statuses: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.workflow_sha }}
-          path: .workspace-e2e-coordinator
-          persist-credentials: false
-          sparse-checkout: .github/actions/workspace-e2e-allocation
-
       - name: Release date shard
+        if: always() && steps.lease.outputs.shard != ''
         uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
         with:
           mode: release
           token: ${{ github.token }}
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
+  publish-final-status:
+    needs: [resolve-target, test-e2e]
+    if: always() && needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+    steps:
       - name: Publish final commit status
         if: always()
         env:
-          ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.allocate-shard.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
+          ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
+          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
           GH_TOKEN: ${{ github.token }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}

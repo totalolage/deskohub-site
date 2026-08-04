@@ -6,7 +6,7 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
 
-  expect(workflow).toContain("allocate-shard:");
+  expect(workflow).not.toContain("  allocate-shard:");
   expect(workflow).toContain(
     "uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation"
   );
@@ -27,4 +27,24 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(testJob).not.toContain("contents: write");
   expect(workflow).toContain("Validate aggregate Dotypos capacity");
   expect(workflow).not.toContain("pulls?state=open");
+});
+
+test("holds the provider lock for the complete shard lease lifetime", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const testJob = workflow.slice(
+    workflow.indexOf("  test-e2e:"),
+    workflow.indexOf("  publish-final-status:")
+  );
+
+  expect(testJob).toContain("concurrency:");
+  const lockIndex = testJob.indexOf("concurrency:");
+  const leaseIndex = testJob.indexOf("Lease an available date shard");
+  const runIndex = testJob.indexOf("Run checkout E2E");
+  const releaseIndex = testJob.indexOf("Release date shard");
+
+  expect(lockIndex).toBeLessThan(leaseIndex);
+  expect(leaseIndex).toBeLessThan(runIndex);
+  expect(runIndex).toBeLessThan(releaseIndex);
 });
