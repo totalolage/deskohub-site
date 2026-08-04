@@ -1,0 +1,1 @@
+Temporary marker for a unique exact-SHA protected-preview soak deployment.
