@@ -61,9 +61,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   constructing cases. Coordinate owners through the dedicated long-lived Neon
   coordination database, never an application production, development, or
   integration-owned preview database. Serialize state transitions by locking
-  the fixed pool row in a serializable transaction; retain a partial unique
-  index as the one-owner-per-shard collision backstop. Persist a generated queue
-  identity as the true FIFO ticket, preserve an existing assignment for the
+  the fixed pool row in a serializable transaction. PostgreSQL requires both
+  `SELECT` and `UPDATE` on the pool table for `SELECT ... FOR UPDATE`, even
+  though the allocator never changes the pool definition. Retain a partial
+  unique index as the one-owner-per-shard collision backstop. Persist a generated
+  queue identity as the true FIFO ticket, preserve an existing assignment for the
   same repository/run/attempt owner, and retry only classified transaction
   serialization failures. Query the exact GitHub workflow attempt endpoint,
   reclaim only attempts confirmed `completed`, and fail closed on missing or

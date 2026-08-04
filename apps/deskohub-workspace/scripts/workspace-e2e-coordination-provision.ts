@@ -65,8 +65,8 @@ const program = Schema.decodeUnknownEffect(Environment)(process.env).pipe(
             sql`grant usage on schema workspace_e2e_coordination to ${allocatorRole}`
           );
           yield* provisionStep(
-            "grant pool read",
-            sql`grant select on workspace_e2e_coordination.allocation_pools to ${allocatorRole}`
+            "grant pool read and row-lock access",
+            sql`grant select, update on workspace_e2e_coordination.allocation_pools to ${allocatorRole}`
           );
           yield* provisionStep(
             "grant allocation request access",

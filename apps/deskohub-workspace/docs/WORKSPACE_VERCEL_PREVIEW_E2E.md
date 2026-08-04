@@ -140,9 +140,11 @@ cannot release a rerun. A later acquisition reconciles any terminal owner left
 by an interrupted finalizer. A bounded fourth contender waits in FIFO order
 until a shard is released or its preparation deadline expires.
 
-The runtime role can connect, use the coordination schema, read the pool, and
-read/write allocation requests and their identity sequence. It cannot perform
-DDL. Only its direct TLS connection URL is stored as the
+The runtime role can connect, use the coordination schema, read and row-lock
+the fixed pool row, and read/write allocation requests and their identity
+sequence. The pool's `UPDATE` grant is required by PostgreSQL for `SELECT ...
+FOR UPDATE`; the allocator does not change the pool definition. It cannot
+perform DDL. Only its direct TLS connection URL is stored as the
 `WORKSPACE_E2E_COORDINATOR_DATABASE_URL` secret in the
 `workspace-checkout-e2e` GitHub environment; the administrator URL and Neon API
 credentials are absent from CI. Allocator jobs require `actions: read`,
