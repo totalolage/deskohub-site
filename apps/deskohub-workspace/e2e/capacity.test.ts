@@ -3,6 +3,7 @@ import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import {
+  getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
   makeWorkspaceE2ECapacityReport,
 } from "./capacity";
@@ -91,6 +92,21 @@ test("fails the aggregate contract when a monitor-specific pool is short", () =>
   ).toMatchObject({
     meetsRequiredCapacity: false,
     requiredSeatCount: 4,
+    totalSeatCount: 3,
+  });
+  expect(getWorkspaceE2ECapacityFailures(report)).toContainEqual({
+    activeReservationCount: 0,
+    activeVisibleTableCount: 1,
+    assignableTableCount: 1,
+    availableSeatCount: 3,
+    availableTableCount: 1,
+    id: "tier:profi/monitor:2x27-qhd",
+    peakActiveReservationSeatCount: 0,
+    peakActiveReservationTableCount: 0,
+    requiredAvailableSeatCount: 2,
+    requiredAvailableTableCount: undefined,
+    requiredSeatCount: 4,
+    requiredTableCount: undefined,
     totalSeatCount: 3,
   });
 });
