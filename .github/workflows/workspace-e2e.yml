@@ -5,6 +5,11 @@ on:
     types: [vercel.deployment.success]
   workflow_dispatch:
     inputs:
+      allow_concurrent:
+        description: Bypass the ordinary provider lock for a controlled soak
+        required: false
+        default: false
+        type: boolean
       sha:
         description: Exact commit SHA to test
         required: true
@@ -117,18 +122,79 @@ jobs:
             echo "url=$normalized_url"
           } >> "$GITHUB_OUTPUT"
 
-  test-e2e:
+  allocate-shard:
     needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: write
+      statuses: write
+    outputs:
+      shard: ${{ steps.lease.outputs.shard }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workspace-e2e-coordinator
+          persist-credentials: false
+          sparse-checkout: .github/actions/workspace-e2e-allocation
+
+      - name: Select preferred date shard
+        id: preferred-shard
+        env:
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+        run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Lease an available date shard
+        id: lease
+        uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
+        with:
+          mode: acquire
+          preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
+          token: ${{ github.token }}
+
+      - name: Publish allocation status
+        env:
+          ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
+          GH_TOKEN: ${{ github.token }}
+          LEASE_ANCHOR_SHA: 7ff11c3b550458a2036f87cdf6ef912b00fad760
+          TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+        run: |
+          lease_target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/statuses/$LEASE_ANCHOR_SHA" \
+            -f state=pending \
+            -f context="Workspace E2E allocation shard $ALLOCATION_SHARD" \
+            -f description="Shard $ALLOCATION_SHARD of 3 allocated" \
+            -f target_url="$lease_target_url" \
+            >/dev/null
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
+            -f state=pending \
+            -f context='Workspace E2E allocation' \
+            -f description="Shard $ALLOCATION_SHARD of 3 allocated" \
+            -f target_url="$lease_target_url" \
+            >/dev/null
+
+  test-e2e:
+    needs: [resolve-target, allocate-shard]
     if: needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e
-    outputs:
-      shard: ${{ steps.lease.outputs.shard }}
+    permissions:
+      contents: read
+      statuses: write
     concurrency:
-      # This lock also makes lease acquisition atomic until provider capacity
-      # and a queue-preserving allocator are ready for the three-run soak.
-      group: workspace-e2e-dotypos-sandbox
+      # Controlled workflow-dispatch soaks exercise the atomic allocator while
+      # ordinary CI retains the provider lock until five three-way soaks pass.
+      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
       cancel-in-progress: false
     env:
       NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
@@ -140,93 +206,6 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
-      - name: Lease an available date shard
-        id: lease
-        env:
-          GH_TOKEN: ${{ github.token }}
-          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
-        run: |
-          set -euo pipefail
-
-          supported_concurrency=3
-          # Fixed main-history commit used only as the three-context lease registry.
-          lease_anchor_sha=7ff11c3b550458a2036f87cdf6ef912b00fad760
-          declare -A active_run_ids=()
-          while IFS= read -r active_run_id; do
-            if [[ "$active_run_id" =~ ^[1-9][0-9]*$ ]]; then
-              active_run_ids["$active_run_id"]=1
-            fi
-          done < <(
-            for status in queued in_progress waiting pending requested; do
-              gh api --paginate \
-                "repos/$GITHUB_REPOSITORY/actions/workflows/workspace-e2e.yml/runs?status=$status&per_page=100" \
-                --jq '.workflow_runs[].id'
-            done
-          )
-
-          declare -A occupied_shards=()
-          declare -A seen_lease_contexts=()
-          while IFS=$'\t' read -r context state target_url; do
-            if [[ ! "$context" =~ ^Workspace\ E2E\ allocation\ shard\ ([1-3])$ ]]; then
-              continue
-            fi
-            shard="${BASH_REMATCH[1]}"
-            if [[ "${seen_lease_contexts[$context]:-}" == "1" ]]; then
-              continue
-            fi
-            seen_lease_contexts["$context"]=1
-            if [[ "$state" != "pending" ]]; then
-              continue
-            fi
-            if [[ ! "$target_url" =~ /actions/runs/([1-9][0-9]*)$ ]]; then
-              continue
-            fi
-            lease_run_id="${BASH_REMATCH[1]}"
-            if [[ "${active_run_ids[$lease_run_id]:-}" != "1" ]]; then
-              continue
-            fi
-            occupied_shards["$shard"]=1
-          done < <(
-            gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/commits/$lease_anchor_sha/statuses?per_page=100" \
-              --jq '.[] | [.context, .state, (.target_url // "")] | @tsv'
-          )
-
-          preferred_shard=$((PR_NUMBER % supported_concurrency + 1))
-          allocated_shard=""
-          for offset in $(seq 0 $((supported_concurrency - 1))); do
-            candidate=$(((preferred_shard - 1 + offset) % supported_concurrency + 1))
-            if [[ -z "${occupied_shards[$candidate]:-}" ]]; then
-              allocated_shard="$candidate"
-              break
-            fi
-          done
-
-          if [[ -z "$allocated_shard" ]]; then
-            echo "Workspace E2E allocation exhausted: all 3 shards are leased for supported concurrency 3" >&2
-            exit 1
-          fi
-
-          lease_target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/statuses/$lease_anchor_sha" \
-            -f state=pending \
-            -f context="Workspace E2E allocation shard $allocated_shard" \
-            -f description="Shard $allocated_shard of 3 allocated" \
-            -f target_url="$lease_target_url" \
-            >/dev/null
-          gh api \
-            --method POST \
-            -H "Accept: application/vnd.github+json" \
-            "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
-            -f state=pending \
-            -f context='Workspace E2E allocation' \
-            -f description="Shard $allocated_shard of 3 allocated" \
-            -f target_url="$lease_target_url" \
-            >/dev/null
-          echo "shard=$allocated_shard" >> "$GITHUB_OUTPUT"
 
       - name: Publish pending commit status
         env:
@@ -246,6 +225,7 @@ jobs:
         with:
           ref: ${{ needs.resolve-target.outputs.sha }}
           fetch-depth: 2
+          persist-credentials: false
 
       - name: Confirm checked-out commit
         run: |
@@ -362,6 +342,27 @@ jobs:
             echo "pooled_url=$pooled_url"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Validate aggregate Dotypos capacity
+        env:
+          DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
+          DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
+          DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
+          DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
+          DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
+          DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
+          DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
+          DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
+        run: |
+          started_at=$SECONDS
+          set +e
+          bun --cwd apps/deskohub-workspace e2e:capacity
+          status=$?
+          set -e
+          echo "| Aggregate Dotypos capacity validation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+
       - name: Migrate preview database
         working-directory: apps/deskohub-workspace
         env:
@@ -419,7 +420,7 @@ jobs:
           DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
           WORKSPACE_E2E_POSTHOG_HOST: ${{ vars.WORKSPACE_E2E_POSTHOG_HOST }}
           WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: ${{ vars.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN }}
-          WORKSPACE_E2E_ALLOCATION_SHARD: ${{ steps.lease.outputs.shard }}
+          WORKSPACE_E2E_ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
         run: bun turbo test:e2e --filter=deskohub-workspace
 
       - uses: actions/upload-artifact@v4
@@ -431,14 +432,39 @@ jobs:
           retention-days: 7
 
   publish-final-status:
-    needs: [resolve-target, test-e2e]
+    needs: [resolve-target, allocate-shard, test-e2e]
     if: always() && needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      statuses: write
     steps:
-      - name: Publish final commit status
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workspace-e2e-coordinator
+          persist-credentials: false
+          sparse-checkout: .github/actions/workspace-e2e-allocation
+
+      - name: Select preferred date shard
+        id: preferred-shard
         env:
-          ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
+          PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+        run: echo "shard=$((PR_NUMBER % 3 + 1))" >> "$GITHUB_OUTPUT"
+
+      - name: Release date shard
+        uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
+        with:
+          mode: release
+          preferred-shard: ${{ steps.preferred-shard.outputs.shard }}
+          token: ${{ github.token }}
+
+      - name: Publish final commit status
+        if: always()
+        env:
+          ALLOCATION_SHARD: ${{ needs.allocate-shard.outputs.shard }}
+          ALLOCATION_DESCRIPTION: ${{ needs.allocate-shard.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
           GH_TOKEN: ${{ github.token }}
           LEASE_ANCHOR_SHA: 7ff11c3b550458a2036f87cdf6ef912b00fad760
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}

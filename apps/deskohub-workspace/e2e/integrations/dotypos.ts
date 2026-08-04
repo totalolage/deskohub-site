@@ -372,7 +372,8 @@ export const changeDotyposCustomerDiscount = (
   );
 
 export const loadDotyposCapacityInventory = (
-  config: DatasourceConfig
+  config: DatasourceConfig,
+  interval: { readonly endDate: Date; readonly startDate: Date }
 ): Effect.Effect<
   {
     readonly reservations: readonly Reservation[];
@@ -384,7 +385,7 @@ export const loadDotyposCapacityInventory = (
     const dotypos = yield* DotyposService;
     return yield* Effect.all(
       {
-        reservations: dotypos.listReservations(),
+        reservations: dotypos.listActiveReservationsOverlapping(interval),
         tables: dotypos.getTables(),
       },
       { concurrency: "unbounded" }

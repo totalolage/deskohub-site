@@ -114,27 +114,31 @@ suite-wide hosted-payment semaphore without evidence of a provider-specific
 concurrency failure.
 
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
-runs. While the global Dotypos lock remains, the first step of the locked E2E
-job leases one of three static absolute round-robin weekday sequences from the
-14-to-90-day candidate range before provider setup begins. Do not put lease
-acquisition in a separate GitHub Actions concurrency group: a group keeps only
-one pending job and cancels older pending contenders, even when
-`cancel-in-progress` is false. Assign weekday ownership before filtering the
-deployed availability response so changing provider snapshots cannot shift a
-date between shards. Interleaving the fixed candidates also avoids starving one
-run when unavailable dates cluster in a contiguous part of the range. The PR
-identity selects the preferred shard; the allocator selects the next free shard
-when that preference is already leased. Three fixed status contexts on a stable
-main-history anchor record the owning workflow run, so force-pushing a PR cannot
-hide its previous active lease. Only leases belonging to queued or active
-Workspace E2E workflow runs count as occupied, and finalization releases a
-context only when it still belongs to the same run, so interrupted or
-superseded statuses cannot strand capacity. An exhausted three-shard pool fails
-in allocation with the supported-concurrency context instead of allowing cases
-to race. The checked-out runner receives the leased one-based shard through
-`WORKSPACE_E2E_ALLOCATION_SHARD`; its identity fallback exists only for
-first-rollout compatibility while the global Dotypos lock still prevents
-overlap.
+runs. Before provider setup begins, an isolated coordinator leases one of three
+static absolute round-robin weekday sequences from the 14-to-90-day candidate
+range. One fixed Git ref stores the three owners and FIFO queue in a linear
+commit history. Each transaction appends to the exact observed tip and moves the
+ref without force. When contenders write from the same parent, only one update
+can fast-forward; the others reload the winner and retry. This is the atomic
+authority. Fixed commit-status contexts remain safe diagnostics only.
+
+The owner token contains the workflow run ID and attempt. Allocation reclaims
+an owner only after the Actions API reports that exact attempt terminal, and
+finalization removes only its own token. Interrupted or superseded workflows
+therefore cannot strand capacity, and a delayed finalizer cannot release a
+replacement owner. The allocator has `contents: write` only in isolated jobs
+that check out the workflow-owned action with persisted credentials disabled.
+The exact-SHA application checkout and test job retain read-only contents
+permission. The PR identity selects the preferred shard; the allocator chooses
+another free shard when necessary and preserves a fourth contender in FIFO
+order until a shard is released or its bounded preparation wait expires.
+
+Assign weekday ownership before filtering the deployed availability response so
+changing provider snapshots cannot shift a date between shards. Interleaving
+the fixed candidates also avoids starving one run when unavailable dates cluster
+in a contiguous part of the range. The checked-out runner receives the leased
+one-based shard through `WORKSPACE_E2E_ALLOCATION_SHARD`; its identity fallback
+exists only for rollout compatibility.
 
 Cowork and meeting-room candidates remain validated through the deployed
 availability route. Basic cases deliberately use at most four same-date
@@ -143,13 +147,11 @@ Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
 and from one another. Meeting-room cases use distinct dates within the run's
 shard, including the dates touched by a whole-day reservation.
 
-The job-level `workspace-e2e-dotypos-sandbox` lock is intentionally still
-present and currently makes status-based lease acquisition atomic. Before
-removing or partitioning that lock, replace the status write with an atomic,
-queue-preserving allocator that cannot cancel contenders, complete the capacity
-checklist below, and pass five three-way concurrent soaks. The lease and
-capacity validator make that rollout testable; they do not prove the shared
-sandbox has been provisioned or that concurrent lease acquisition is safe.
+The job-level `workspace-e2e-dotypos-sandbox` lock remains the default while
+rollout evidence is collected. A controlled `workflow_dispatch` soak may set
+`allow_concurrent` to exercise the atomic allocator without changing ordinary
+CI. Remove the default lock only after the capacity checklist and five three-way
+concurrent soaks pass.
 
 ### Dotypos capacity checklist
 
@@ -161,7 +163,8 @@ contract:
 bun --cwd apps/deskohub-workspace e2e:capacity
 ```
 
-The command uses the generated Dotypos table and reservation contracts and
+The command uses the generated Dotypos table and reservation contracts, bounds
+the reservation lookup to active overlaps in the candidate interval, and
 prints no table, reservation, customer, or provider identifiers. It reports
 active-visible and assignable table counts, the sorted seat-count multiset,
 total seats, and active overlapping reservation totals for these groups:
@@ -171,6 +174,13 @@ total seats, and active overlapping reservation totals for these groups:
 - every `tier:profi` monitor-tag combination: at least 4 aggregate seats for
   each exact tag set; a generic Profi table does not satisfy a specific set;
 - `reservation:meeting-room`: at least two active visible assignable tables.
+
+The testing-cloud inventory was operationally provisioned on 2026-08-04 with
+16 Basic seats, 16 Plus seats, four seats for every exact Profi monitor option,
+and four meeting-room tables. Treat these as expected aggregates, not verified
+evidence, until the protected workflow validator confirms that every table is
+active, visible, assignable, and exactly tagged. No provider identifiers belong
+in this document or the validator output.
 
 The cowork budgets cover the supported three runs plus one run of inventory
 headroom. Meeting-room seat counts do not increase concurrency because normal
@@ -470,10 +480,11 @@ timeouts, closed outcomes/failure kinds, and the minimum artifact facts needed
 to explain the failure.
 
 Failures before the E2E process starts—target resolution, dependency
-installation, preview-database resolution, or migration—do not produce suite
-spans. Diagnose those from the responsible GitHub Actions step. The workflow
-adds a setup timing table to its Actions summary for Bun setup, repository
-dependencies, Neon resolution, migration, the pinned `agent-browser` CLI, and
+installation, preview-database resolution, capacity validation, or
+migration—do not produce suite spans. Diagnose those from the responsible
+GitHub Actions step. The workflow adds a setup timing table to its Actions
+summary for Bun setup, repository dependencies, Neon resolution, aggregate
+Dotypos capacity validation, migration, the pinned `agent-browser` CLI, and
 browser/system dependencies. These operations remain sequential until a
 supported prepared runner image or cache can overlap them without background
 shell jobs, shared-install locks, or hidden failures.

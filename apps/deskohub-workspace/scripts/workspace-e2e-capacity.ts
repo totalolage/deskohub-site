@@ -8,10 +8,14 @@ import { runStandaloneWorkspaceEffect } from "../shared/backend/standalone-works
 
 const environment = makeE2EEnvironment();
 const datasourceConfig = getDatasourceConfig(environment);
-const inventoryExit = await loadDotyposCapacityInventory(datasourceConfig).pipe(
-  Effect.exit,
-  runStandaloneWorkspaceEffect("workspace-e2e.capacity")
-);
+const from = new Date();
+from.setUTCDate(from.getUTCDate() + 14);
+const to = new Date();
+to.setUTCDate(to.getUTCDate() + 91);
+const inventoryExit = await loadDotyposCapacityInventory(datasourceConfig, {
+  endDate: to,
+  startDate: from,
+}).pipe(Effect.exit, runStandaloneWorkspaceEffect("workspace-e2e.capacity"));
 
 if (Exit.isFailure(inventoryExit)) {
   process.stderr.write(
@@ -20,10 +24,6 @@ if (Exit.isFailure(inventoryExit)) {
   process.exit(1);
 }
 
-const from = new Date();
-from.setUTCDate(from.getUTCDate() + 14);
-const to = new Date();
-to.setUTCDate(to.getUTCDate() + 91);
 const report = makeWorkspaceE2ECapacityReport({
   from,
   reservations: inventoryExit.value.reservations,

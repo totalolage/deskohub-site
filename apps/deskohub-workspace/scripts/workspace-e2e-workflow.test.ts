@@ -1,16 +1,27 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-test("discovers active shard leases independently of current PR heads", async () => {
+test("keeps the atomic allocator isolated from exact-SHA test code", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
 
-  expect(workflow).toContain("commits/$lease_anchor_sha/statuses");
-  expect(workflow).not.toContain("allocate-shard:");
-  expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
-  expect(workflow.indexOf("group: workspace-e2e-dotypos-sandbox")).toBeLessThan(
-    workflow.indexOf("- name: Lease an available date shard")
+  expect(workflow).toContain("allocate-shard:");
+  expect(workflow).toContain(
+    "uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation"
   );
+  expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
+  expect(workflow).toContain("inputs.allow_concurrent");
+  expect(workflow).toContain("persist-credentials: false");
+  expect(workflow.indexOf("contents: write")).toBeLessThan(
+    workflow.indexOf("  test-e2e:")
+  );
+  const testJob = workflow.slice(
+    workflow.indexOf("  test-e2e:"),
+    workflow.indexOf("  publish-final-status:")
+  );
+  expect(testJob).toContain("contents: read");
+  expect(testJob).not.toContain("contents: write");
+  expect(workflow).toContain("Validate aggregate Dotypos capacity");
   expect(workflow).not.toContain("pulls?state=open");
 });

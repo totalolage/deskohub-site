@@ -1,0 +1,34 @@
+name: Workspace E2E allocation
+description: Atomically acquire or release one Workspace E2E provider shard
+
+inputs:
+  mode:
+    description: acquire or release
+    required: true
+  preferred-shard:
+    description: One-based preferred allocation shard
+    required: true
+  token:
+    description: GitHub token with actions read and contents write permissions
+    required: true
+  wait-seconds:
+    description: Maximum time to wait for a shard
+    required: false
+    default: "900"
+
+outputs:
+  shard:
+    description: One-based allocated shard
+    value: ${{ steps.allocate.outputs.shard }}
+
+runs:
+  using: composite
+  steps:
+    - id: allocate
+      shell: bash
+      env:
+        WORKSPACE_E2E_ALLOCATION_MODE: ${{ inputs.mode }}
+        WORKSPACE_E2E_ALLOCATION_PREFERRED_SHARD: ${{ inputs.preferred-shard }}
+        WORKSPACE_E2E_ALLOCATION_TOKEN: ${{ inputs.token }}
+        WORKSPACE_E2E_ALLOCATION_WAIT_SECONDS: ${{ inputs.wait-seconds }}
+      run: node "$GITHUB_ACTION_PATH/index.cjs"
