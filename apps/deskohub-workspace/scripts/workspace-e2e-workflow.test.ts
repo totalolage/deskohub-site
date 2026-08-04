@@ -66,3 +66,14 @@ test("holds the provider lock for the complete shard lease lifetime", async () =
   expect(leaseIndex).toBeLessThan(runIndex);
   expect(runIndex).toBeLessThan(releaseIndex);
 });
+
+test("uses the hosted runner browser without downloading another browser", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+
+  expect(workflow).not.toContain("agent-browser install --with-deps");
+  expect(workflow).toContain("command -v google-chrome");
+  expect(workflow).toContain("AGENT_BROWSER_EXECUTABLE_PATH");
+  expect(workflow).toContain("Hosted browser verification");
+});
