@@ -400,7 +400,18 @@ export const make = (
     <const Tag extends string, Schema extends Schema.Top>(tag: Tag, schema: Schema) =>
     (response: HttpClientResponse.HttpClientResponse) =>
       Effect.flatMap(
-        HttpClientResponse.schemaBodyJson(schema)(response),
+        HttpClientResponse.schemaBodyJson(schema)(response).pipe(
+          Effect.mapError(
+            () =>
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.StatusCodeError({
+                  request: response.request,
+                  response,
+                  description: "Error response did not match the documented schema",
+                }),
+              }),
+          ),
+        ),
         (cause) => Effect.fail(DotyposClientError(tag, cause, response)),
       )
   return {

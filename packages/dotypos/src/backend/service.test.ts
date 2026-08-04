@@ -669,6 +669,34 @@ describe("DotyposService customer lookup", () => {
 });
 
 describe("DotyposService reservations", () => {
+  test("preserves a not-found status when the error body is undocumented", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/missing") {
+        return Response.json(["Reservation not found"], { status: 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getReservation("missing").pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure).toMatchObject({
+        _tag: "ExternalAPIError",
+        operation: "getReservation",
+        statusCode: 404,
+      });
+    }
+  });
+
   test("reads only the reservation when checking its status", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
