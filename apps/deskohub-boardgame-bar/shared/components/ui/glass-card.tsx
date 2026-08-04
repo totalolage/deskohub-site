@@ -9,7 +9,7 @@ function GlassCard({ optics, style, ...props }: GlassCardProps) {
     <Glass
       data-slot="glass-card"
       optics={{ brightness: 0, ...optics }}
-      style={{ display: "block", ...style }}
+      style={{ display: "block", position: "relative", ...style }}
       {...props}
     />
   );
