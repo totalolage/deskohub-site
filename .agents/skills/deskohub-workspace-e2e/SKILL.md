@@ -173,7 +173,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Emit one GitHub check annotation for the genuine failed or timed-out case
   after its finalizer completes. Include only the code-owned case ID, terminal
   semantic step ID when known, the closed outcome/failure-kind values, and an
-  optional failure code from the fixed application-owned diagnostic allowlist.
+  optional failure code from the fixed code-owned diagnostic allowlist.
   Never annotate interrupted siblings, unknown diagnostic values, raw errors,
   provider data, customer data, URLs, or identifiers that fail the checked
   low-cardinality format.
