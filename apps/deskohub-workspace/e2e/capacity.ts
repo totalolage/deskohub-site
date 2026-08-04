@@ -5,7 +5,10 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import { temporalPlainDateToDate } from "@/shared/utils/temporal";
 import {
+  getWorkspaceE2ECandidateDate,
   workspaceE2EConcurrentRunTarget,
   workspaceE2EFullDateAllocation,
   workspaceE2EProviderHeadroomRuns,
@@ -21,16 +24,28 @@ export const workspaceE2EMaximumSameDateCoworkReservations = {
 } as const;
 
 export const getWorkspaceE2ECapacityInterval = (now = new Date()) => {
-  const startDate = new Date(now);
-  startDate.setUTCDate(
-    startDate.getUTCDate() + workspaceE2EFullDateAllocation.fromOffsetDays
-  );
-  startDate.setUTCHours(0, 0, 0, 0);
-  const endDate = new Date(now);
-  endDate.setUTCDate(
-    endDate.getUTCDate() + workspaceE2EFullDateAllocation.toOffsetDays + 1
-  );
-  endDate.setUTCHours(0, 0, 0, 0);
+  const timeZone = workspaceSiteConstants.location.timeZone;
+  const midnight = Temporal.PlainTime.from("00:00");
+  const startDate = temporalPlainDateToDate({
+    date: Temporal.PlainDate.from(
+      getWorkspaceE2ECandidateDate(
+        workspaceE2EFullDateAllocation.fromOffsetDays,
+        now
+      )
+    ),
+    plainTime: midnight,
+    timeZone,
+  });
+  const endDate = temporalPlainDateToDate({
+    date: Temporal.PlainDate.from(
+      getWorkspaceE2ECandidateDate(
+        workspaceE2EFullDateAllocation.toOffsetDays + 1,
+        now
+      )
+    ),
+    plainTime: midnight,
+    timeZone,
+  });
   return { endDate, startDate };
 };
 
@@ -160,10 +175,8 @@ export const makeWorkspaceE2ECapacityReport = ({
         total + (parsePositiveInteger(reservation.seats) ?? 0),
       0
     );
-    const {
-      peakActiveReservationSeatCount,
-      peakActiveReservationTableCount,
-    } = getPeakActiveReservationUsage(activeReservations);
+    const { peakActiveReservationSeatCount, peakActiveReservationTableCount } =
+      getPeakActiveReservationUsage(activeReservations);
     const availableSeatCount = Math.max(
       0,
       totalSeatCount - peakActiveReservationSeatCount

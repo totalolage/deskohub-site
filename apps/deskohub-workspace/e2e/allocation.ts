@@ -15,6 +15,15 @@ export const workspaceE2EFullDateAllocation: WorkspaceE2EDateAllocation = {
   toOffsetDays: 90,
 };
 
+export const getWorkspaceE2ECandidateDate = (
+  offsetDays: number,
+  now = new Date()
+) => {
+  const date = new Date(now);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+};
+
 export const makeWorkspaceE2EDateAllocation = ({
   prNumber,
   runId,
