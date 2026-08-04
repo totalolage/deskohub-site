@@ -1,0 +1,63 @@
+@property --glow-border-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes glow-border-spin {
+  to {
+    --glow-border-angle: 1turn;
+  }
+}
+
+@utility glow-border {
+  --glow-border-color: currentColor;
+  --glow-border-count: 1;
+  --glow-border-duration: 2s;
+  --glow-border-width: 2px;
+
+  position: relative;
+
+  &::after {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    box-sizing: border-box;
+    padding: var(--glow-border-width);
+    border-radius: inherit;
+    pointer-events: none;
+    content: "";
+    background: repeating-conic-gradient(
+      from var(--glow-border-angle),
+      transparent 0 calc(90% / var(--glow-border-count)),
+      var(--glow-border-color) calc(95% / var(--glow-border-count)),
+      transparent calc(100% / var(--glow-border-count))
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: glow-border-spin var(--glow-border-duration) linear infinite;
+
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+    }
+  }
+}
+
+@utility glow-border-* {
+  --glow-border-color: --value(--color-*, [color]);
+}
+
+@utility glow-border-count-* {
+  --glow-border-count: --value(integer, [integer]);
+}
+
+@utility glow-border-duration-* {
+  --glow-border-duration: calc(--value(integer) * 1ms);
+  --glow-border-duration: --value([*]);
+}
