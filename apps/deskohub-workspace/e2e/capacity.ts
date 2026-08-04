@@ -1,5 +1,6 @@
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
+import "@/shared/polyfills/temporal";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
 import {
   workspaceProductMonitorOptions,
