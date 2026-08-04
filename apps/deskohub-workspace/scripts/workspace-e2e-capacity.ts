@@ -2,6 +2,7 @@ import "../shared/polyfills/temporal";
 
 import { Cause, Effect, Exit } from "effect";
 import {
+  getWorkspaceE2ECapacityFailures,
   getWorkspaceE2ECapacityInterval,
   makeWorkspaceE2ECapacityReport,
 } from "../e2e/capacity";
@@ -35,4 +36,17 @@ const report = makeWorkspaceE2ECapacityReport({
 
 process.stdout.write(`${JSON.stringify(report, undefined, 2)}\n`);
 
-if (!report.meetsRequiredCapacity) process.exit(1);
+if (!report.meetsRequiredCapacity) {
+  const diagnostic = JSON.stringify({
+    failures: getWorkspaceE2ECapacityFailures(report),
+    provisionedRunCapacity: report.provisionedRunCapacity,
+    supportedConcurrentRuns: report.supportedConcurrentRuns,
+  });
+  process.stderr.write(`Workspace E2E capacity insufficient: ${diagnostic}\n`);
+  if (environment.GITHUB_ACTIONS === "true") {
+    process.stderr.write(
+      `::error title=Workspace E2E capacity insufficient::${diagnostic}\n`
+    );
+  }
+  process.exit(1);
+}
