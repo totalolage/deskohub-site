@@ -17,6 +17,10 @@ import {
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
 import {
+  reconcileStaleWorkspaceE2EReservations,
+  type WorkspaceE2EStaleReservationReport,
+} from "../stale-reservations";
+import {
   workspaceE2EPollIntervalMs,
   workspaceE2ETimeouts,
 } from "../timeouts";
@@ -311,6 +315,34 @@ export const waitForDotyposCancellationConvergence = <E, R>(
     }
   ).pipe(Effect.asVoid);
 };
+
+export const reconcileStaleDotyposReservations = (
+  config: DatasourceConfig,
+  interval: { readonly endDate: Date; readonly startDate: Date },
+  apply: boolean
+): Effect.Effect<WorkspaceE2EStaleReservationReport, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* reconcileStaleWorkspaceE2EReservations(interval, apply, {
+      cancelReservation: dotypos.cancelReservation,
+      listActiveReservations: dotypos.listActiveReservationsOverlapping,
+      loadReservation: dotypos.getReservation,
+      waitForCancellationConvergence: (reservationIds) =>
+        waitForDotyposCancellationConvergence(
+          dotypos.listReservations(),
+          reservationIds,
+          {
+            intervalMs: workspaceE2EPollIntervalMs.datasource,
+            timeoutMs: config.timeouts.datasource,
+          }
+        ),
+    });
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("reconcile stale Dotypos reservations", cause)
+    )
+  );
 
 export const readDotyposReservationStatus = (
   config: DatasourceConfig,

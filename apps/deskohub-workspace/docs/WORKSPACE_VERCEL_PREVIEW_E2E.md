@@ -196,6 +196,15 @@ contract:
 bun --cwd apps/deskohub-workspace e2e:capacity
 ```
 
+Stale reservation reconciliation is available only through a manual protected
+workflow dispatch. The script boundary is dry-run by default and applies
+cancellations only when every active candidate can be inspected and both the
+`Workspace E2E ` customer-name prefix and the `delivered+…@resend.dev` email
+shape match. It reports aggregate counts only, collects every detail-read and
+cancellation result, and waits for cancellation convergence. Use the workflow
+input `cleanup_stale_e2e_reservations` with the ordinary provider lock; do not
+combine it with `allow_concurrent` or run it during a controlled soak.
+
 The command uses the generated Dotypos table and reservation contracts, bounds
 the reservation lookup to active overlaps across the whole first and last
 candidate dates, and

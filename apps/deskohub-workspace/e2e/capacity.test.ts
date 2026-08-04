@@ -27,6 +27,8 @@ test("reports only aggregate capacity for every workspace table pool", () => {
         makeTable(`profi-${monitorOption}`, ["tier:profi", ...tags], 4 + index)
     ),
     makeTable("provider-room-id", ["reservation:meeting-room"], 1),
+    makeTable("provider-room-2", ["reservation:meeting-room"], 1),
+    makeTable("provider-room-3", ["reservation:meeting-room"], 1),
     makeTable("provider-room-headroom", ["reservation:meeting-room"], 1),
     makeTable("hidden-basic", ["tier:basic"], 100, { display: false }),
   ];
@@ -65,6 +67,8 @@ test("reports only aggregate capacity for every workspace table pool", () => {
   const serialized = JSON.stringify(report);
   expect(serialized).not.toContain("basic-table");
   expect(serialized).not.toContain("provider-room-id");
+  expect(serialized).not.toContain("provider-room-2");
+  expect(serialized).not.toContain("provider-room-3");
   expect(serialized).not.toContain("provider-room-headroom");
 });
 
