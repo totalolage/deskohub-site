@@ -8,7 +8,6 @@ import type {
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
-import { getWorkspaceE2ECapacityInterval } from "../capacity";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -263,14 +262,13 @@ export const cancelDotyposReservation = (
 
 export const waitForCancelledDotyposReservations = (
   config: DatasourceConfig,
-  dotyposReservationIds: readonly string[]
+  dotyposReservationIds: readonly string[],
+  interval: { readonly endDate: Date; readonly startDate: Date }
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     yield* waitForDotyposCancellationConvergence(
-      dotypos.listActiveReservationsOverlapping(
-        getWorkspaceE2ECapacityInterval()
-      ),
+      dotypos.listActiveReservationsOverlapping(interval),
       dotyposReservationIds,
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
