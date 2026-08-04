@@ -18,11 +18,11 @@ The administration projection deliberately excludes Workspace access codes, paym
 
 Historical analytics enrichment is optional. Configure all three server-only variables to enable it:
 
-- `POSTHOG_HISTORY_HOST`
-- `POSTHOG_HISTORY_PROJECT_ID`
+- `POSTHOG_HOST`
+- `POSTHOG_PROJECT_ID`
 - `POSTHOG_HISTORY_API_KEY`
 
-The API key must be a dedicated least-privilege personal API key with `query:read`. Do not reuse the public ingest token or the API key used for source-map upload.
+The host and project ID are shared with the existing PostHog setup. The history API key must be a dedicated least-privilege personal API key with `query:read`. Do not reuse the public ingest token or the API key used for source-map upload.
 
 Queries are limited to the app-owned reservation lifecycle event names, the local Workspace reservation ID, the current deployment environment, and the Workspace service name. Only normalized event name, time, event identifier, payment-attempt identifier, and provider are decoded; React never receives the raw event object.
 

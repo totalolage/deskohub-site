@@ -101,8 +101,8 @@ export class PostHogHistoryRuntimeConfig extends Context.Service<
   static Live = Layer.succeed(this, {
     apiKey: env.POSTHOG_HISTORY_API_KEY,
     environment: env.VERCEL_ENV,
-    host: env.POSTHOG_HISTORY_HOST,
-    projectId: env.POSTHOG_HISTORY_PROJECT_ID,
+    host: env.POSTHOG_HOST,
+    projectId: env.POSTHOG_PROJECT_ID,
     serviceName: env.POSTHOG_SERVICE_NAME,
   });
 }
