@@ -16,7 +16,10 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
-import { workspaceE2EPollIntervalMs } from "../timeouts";
+import {
+  workspaceE2EPollIntervalMs,
+  workspaceE2ETimeouts,
+} from "../timeouts";
 import type { CheckoutData, CheckoutRow } from "../types";
 
 export interface E2EDotyposDiscountGroup {
@@ -347,6 +350,14 @@ export const prepareDotyposCustomerDiscount = (
       }
     );
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    yield* waitForDotyposCustomerDiscountGroup(
+      dotypos.getCustomer(customerId),
+      discountGroupId,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      }
+    );
     log("Dotypos customer discount fixture prepared");
   }).pipe(
     Effect.provide(getDotyposLayer(config)),
@@ -363,12 +374,47 @@ export const changeDotyposCustomerDiscount = (
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    yield* waitForDotyposCustomerDiscountGroup(
+      dotypos.getCustomer(customerId),
+      discountGroupId,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      }
+    );
     log("Dotypos customer discount fixture changed");
   }).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("change Dotypos customer discount", cause)
     )
+  );
+
+export const waitForDotyposCustomerDiscountGroup = <
+  A extends { readonly _discountGroupId?: string | null },
+  E,
+  R,
+>(
+  readCustomer: Effect.Effect<A, E, R>,
+  discountGroupId: string | null,
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<A, E | WorkspaceE2EError, R> =>
+  pollUntil(
+    readCustomer.pipe(
+      Effect.map((customer) =>
+        (customer._discountGroupId?.trim() || null) === discountGroupId
+          ? customer
+          : undefined
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "Dotypos customer discount-group change",
+      timeoutMs: options.timeoutMs,
+    }
   );
 
 export const loadDotyposCapacityInventory = (

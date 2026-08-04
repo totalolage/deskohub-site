@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
+  waitForDotyposCustomerDiscountGroup,
   waitForConfirmedDotyposReservation,
   waitForDotyposCancellationConvergence,
 } from "./dotypos";
@@ -82,6 +83,44 @@ test("waits for cancelled reservations to leave active inventory", async () => {
   );
 
   expect(reads).toBe(3);
+});
+
+test("waits for a customer discount-group change to become readable", async () => {
+  let reads = 0;
+  const customer = await Effect.runPromise(
+    waitForDotyposCustomerDiscountGroup(
+      Effect.sync(() => {
+        reads += 1;
+        return {
+          _discountGroupId: reads < 3 ? null : "group-id",
+        };
+      }),
+      "group-id",
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(customer._discountGroupId).toBe("group-id");
+  expect(reads).toBe(3);
+});
+
+test("waits for a removed customer discount group to become readable", async () => {
+  let reads = 0;
+  const customer = await Effect.runPromise(
+    waitForDotyposCustomerDiscountGroup(
+      Effect.sync(() => {
+        reads += 1;
+        return {
+          _discountGroupId: reads < 2 ? "group-id" : null,
+        };
+      }),
+      null,
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(customer._discountGroupId).toBeNull();
+  expect(reads).toBe(2);
 });
 
 test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {
