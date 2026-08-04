@@ -9,6 +9,7 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 import type {
+  CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
 } from "./contracts";
@@ -57,18 +58,24 @@ export const readDiscountCodeForm = (
     formData,
     "discountId"
   ) as CreateDiscountCodeAdminInput["discountId"],
+  ...readDiscountCodeConfigurationForm(formData),
+});
+
+export const readDiscountCodeConfigurationForm = (
+  formData: FormData
+): CreateCustomerDiscountCodeAdminInput["code"] => ({
   code: readString(formData, "code")
     .trim()
-    .toUpperCase() as CreateDiscountCodeAdminInput["code"],
+    .toUpperCase() as CreateCustomerDiscountCodeAdminInput["code"]["code"],
   enabled: formData.get("enabled") === "on",
   validFrom: readOptionalLocalDateTime(
     formData,
     "validFrom"
-  ) as CreateDiscountCodeAdminInput["validFrom"],
+  ) as CreateCustomerDiscountCodeAdminInput["code"]["validFrom"],
   validUntil: readOptionalLocalDateTime(
     formData,
     "validUntil"
-  ) as CreateDiscountCodeAdminInput["validUntil"],
+  ) as CreateCustomerDiscountCodeAdminInput["code"]["validUntil"],
   maxUses: readOptionalNumber(formData, "maxUses"),
 });
 

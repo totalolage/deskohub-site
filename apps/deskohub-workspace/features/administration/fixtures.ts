@@ -406,3 +406,27 @@ export const loadFixtureCustomerProfile = (
     claims: [],
   };
 };
+
+const fixtureDiscounts = [
+  {
+    id: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
+    labels: {
+      "cs-CZ": "Člen Workspace",
+      "en-US": "Workspace member",
+    },
+  },
+  {
+    id: "019c91dd-c560-7e55-b9d8-c95065efd55d" as StoredDiscountId,
+    labels: {
+      "cs-CZ": "Uvítací nabídka",
+      "en-US": "Welcome offer",
+    },
+  },
+];
+
+export const loadFixtureCustomerCodeCreation = (customerId: string) => {
+  const profile = loadFixtureCustomerProfile(customerId);
+  return profile
+    ? { customer: profile.customer, discounts: fixtureDiscounts }
+    : null;
+};

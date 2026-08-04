@@ -3,6 +3,10 @@ import "server-only";
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
+import {
+  administrationFixturesEnabled,
+  loadFixtureCustomerCodeCreation,
+} from "@/features/administration/fixtures";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId } from "../persistence-contracts";
@@ -87,6 +91,31 @@ export const loadDiscountAdminCustomerPageData = async (
     profile,
     notice: await loadNotice(searchParams),
   };
+};
+
+export const loadDiscountAdminCustomerCodeCreationPageData = async (
+  customerId: DotyposCustomerId
+) => {
+  if (administrationFixturesEnabled()) {
+    const fixture = loadFixtureCustomerCodeCreation(customerId);
+    if (!fixture) notFound();
+    return fixture;
+  }
+
+  await authorizeDiscountAdminPage();
+
+  const data = await Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCustomerCodeCreation({ customerId });
+  }).pipe(
+    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-customer-code-creation", {
+      boundary: "route",
+    })
+  );
+  if (!data) notFound();
+  return data;
 };
 
 const loadOptionalDiscountAdminCustomerProfile = cache(

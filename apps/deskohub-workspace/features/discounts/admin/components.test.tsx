@@ -28,10 +28,14 @@ import type {
 } from "./discount-administration.service";
 
 const refresh = mock();
+const back = mock();
+const replace = mock();
 
 mock.module("next/navigation", () => ({
   useRouter: () => ({
+    back,
     refresh,
+    replace,
   }),
 }));
 
@@ -109,7 +113,9 @@ describe("discount administration pages", () => {
   });
 
   beforeEach(() => {
+    back.mockClear();
     refresh.mockClear();
+    replace.mockClear();
     workspaceUseAction.mockReset();
     workspaceUseAction.mockReturnValue({
       execute: mock(),
@@ -390,6 +396,12 @@ describe("discount administration pages", () => {
       name: "Customer code eligibility",
     });
 
+    expect(
+      view
+        .getByRole("link", { name: "Create discount code" })
+        .getAttribute("href")
+    ).toBe("/admin/customers/dotypos-customer/create-code");
+
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
     expect(within(table).queryByText("SOMEONEELSE")).toBeNull();
@@ -423,6 +435,58 @@ describe("discount administration pages", () => {
     expect(
       view.getByRole("button", { name: "Keep available to all" })
     ).toBeDefined();
+  });
+
+  test("creates a customer code with an existing discount or a new definition", async () => {
+    const execute = mock();
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+    const { CustomerDiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    const view = render(
+      <CustomerDiscountCodeCreationForm
+        completion="back"
+        customerId="dotypos-customer"
+        customerName="Test Customer"
+        discounts={dashboard.discounts}
+      />
+    );
+
+    expect(
+      view.getByRole("radio", { name: "Use an existing discount" })
+    ).toHaveProperty("checked", true);
+    expect(view.getByRole("combobox", { name: "Discount" })).toBeDefined();
+    expect(view.queryByRole("textbox", { name: "English (en-US)" })).toBeNull();
+
+    fireEvent.change(view.getByRole("textbox", { name: "Code" }), {
+      target: { value: "personal10" },
+    });
+    fireEvent.submit(view.getByRole("form", { name: "Create discount code" }));
+    expect(execute).toHaveBeenCalledWith({
+      kind: "create-customer-code",
+      customerId: "dotypos-customer",
+      code: {
+        code: "PERSONAL10",
+        enabled: true,
+        validFrom: null,
+        validUntil: null,
+        maxUses: null,
+      },
+      discount: {
+        kind: "existing",
+        discountId: dashboard.discounts[0].id,
+      },
+    });
+
+    fireEvent.click(view.getByRole("radio", { name: "Create a new discount" }));
+    expect(
+      view.getByRole("textbox", { name: "English (en-US)" })
+    ).toBeDefined();
+    expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
   });
 
   test("describes adding a customer to an existing restricted code audience", async () => {

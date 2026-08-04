@@ -146,6 +146,44 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
+  test("creates a customer code with an existing or new discount", () => {
+    const code = {
+      code: validCode.code,
+      enabled: validCode.enabled,
+      validFrom: validCode.validFrom,
+      validUntil: validCode.validUntil,
+      maxUses: validCode.maxUses,
+    };
+
+    expect(() =>
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: {
+          kind: "existing",
+          discountId: validCode.discountId,
+        },
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: { kind: "new", discount: validDiscount },
+      })
+    ).not.toThrow();
+    expect(() =>
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: { kind: "existing" },
+      })
+    ).toThrow();
+  });
+
   test("accepts a bounded fuzzy customer query", () => {
     expect(() => decodeCustomerSearch({ query: "Ada" })).not.toThrow();
     expect(() => decodeCustomerSearch({ query: "a" })).toThrow();

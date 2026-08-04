@@ -60,6 +60,7 @@ import {
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
+import { getDiscountAdminValidationMessage } from "./form-feedback";
 import { readDiscountCodeForm, readDiscountForm } from "./form-input";
 
 export type DiscountTableItem = {
@@ -266,7 +267,7 @@ export function CreateDiscountForm() {
       submitLabel="Create discount"
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
-      <DiscountFields />
+      <DiscountDefinitionFields />
     </MutationForm>
   );
 }
@@ -475,7 +476,7 @@ function DiscountEditor({
         submitLabel="Save discount"
         submitIcon={<Save aria-hidden className="size-4" />}
       >
-        <DiscountFields discount={discount} />
+        <DiscountDefinitionFields discount={discount} />
       </MutationForm>
     </div>
   );
@@ -564,7 +565,7 @@ function MutationForm({
         kind: "error",
         message:
           error.serverError ??
-          firstValidationMessage(error.validationErrors) ??
+          getDiscountAdminValidationMessage(error.validationErrors) ??
           "The change could not be saved. Check the form and try again.",
       });
     },
@@ -658,7 +659,7 @@ function DeleteButton({
     onError: ({ error: actionError }) => {
       setError(
         actionError.serverError ??
-          firstValidationMessage(actionError.validationErrors) ??
+          getDiscountAdminValidationMessage(actionError.validationErrors) ??
           "The item could not be deleted."
       );
     },
@@ -695,7 +696,7 @@ function DeleteButton({
   );
 }
 
-function DiscountFields({
+export function DiscountDefinitionFields({
   discount,
 }: {
   readonly discount?: DiscountTableItem;
@@ -853,7 +854,34 @@ function DiscountCodeFields({
 }) {
   return (
     <div className="grid gap-5">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <FormField label="Discount">
+        <select
+          className={selectClassName}
+          defaultValue={code?.discountId}
+          id={fieldId("discountId", code?.id)}
+          name="discountId"
+          required
+        >
+          {discounts.map((discount) => (
+            <option key={discount.id} value={discount.id}>
+              {discount.labels["en-US"]}
+            </option>
+          ))}
+        </select>
+      </FormField>
+      <DiscountCodeConfigurationFields code={code} />
+    </div>
+  );
+}
+
+export function DiscountCodeConfigurationFields({
+  code,
+}: {
+  readonly code?: DiscountCodeTableItem;
+}) {
+  return (
+    <div className="grid gap-5">
+      <div className="grid gap-4 md:grid-cols-2">
         <FormField label="Code">
           <Input
             autoCapitalize="characters"
@@ -864,21 +892,6 @@ function DiscountCodeFields({
             name="code"
             required
           />
-        </FormField>
-        <FormField label="Discount">
-          <select
-            className={selectClassName}
-            defaultValue={code?.discountId}
-            id={fieldId("discountId", code?.id)}
-            name="discountId"
-            required
-          >
-            {discounts.map((discount) => (
-              <option key={discount.id} value={discount.id}>
-                {discount.labels["en-US"]}
-              </option>
-            ))}
-          </select>
         </FormField>
         <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold">
           <input
@@ -949,23 +962,6 @@ const fingerprintForm = (form: HTMLFormElement) =>
         `${leftKey}:${leftValue}`.localeCompare(`${rightKey}:${rightValue}`)
       )
   );
-
-const firstValidationMessage = (value: unknown): string | null => {
-  if (typeof value === "string") return value;
-  if (Array.isArray(value)) {
-    for (const item of value) {
-      const message = firstValidationMessage(item);
-      if (message) return message;
-    }
-  }
-  if (value && typeof value === "object") {
-    for (const item of Object.values(value)) {
-      const message = firstValidationMessage(item);
-      if (message) return message;
-    }
-  }
-  return null;
-};
 
 const toDateTimeInputValue = (value: string | null | undefined) =>
   value

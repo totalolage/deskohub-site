@@ -1,3 +1,4 @@
+import { Plus } from "lucide-react";
 import Link from "next/link";
 import type { AdministrationReservationPage } from "@/features/administration/administration.service";
 import {
@@ -237,12 +238,22 @@ export function CustomerAdministrationDetailPage({
           </section>
 
           <section>
-            <div className="mb-3">
-              <h2 className="text-xl">Discount codes</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                Codes explicitly available to this customer, followed by codes
-                available to everyone.
-              </p>
+            <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-xl">Discount codes</h2>
+                <p className="mt-1 text-sm text-navy-blue/65">
+                  Codes explicitly available to this customer, followed by codes
+                  available to everyone.
+                </p>
+              </div>
+              <Button asChild size="sm">
+                <Link
+                  href={`/admin/customers/${profile.customer.id}/create-code`}
+                >
+                  <Plus aria-hidden className="size-4" />
+                  Create discount code
+                </Link>
+              </Button>
             </div>
             {visibleCodes.length === 0 ? (
               <EmptyState message="No discount codes are available to this customer." />

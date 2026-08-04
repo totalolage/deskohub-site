@@ -40,9 +40,15 @@ export async function AdministrationBreadcrumb({
       formatAdministrationDateTime(detail.booking.startsAt);
   }
 
+  const segmentLabels: Record<string, string> = {};
+  if (entityLabel && segments[1]) {
+    segmentLabels[segments[1]] = entityLabel;
+  }
+
   return (
     <AdministrationBreadcrumbs
-      entityLabel={entityLabel}
+      entityLabel={segments.length === 2 ? entityLabel : undefined}
+      segmentLabels={segmentLabels}
       segments={["admin", ...segments]}
     />
   );

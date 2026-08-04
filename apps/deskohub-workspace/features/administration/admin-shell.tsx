@@ -121,6 +121,7 @@ const breadcrumbNames: Record<string, string> = {
   bookings: "Bookings",
   codes: "Codes",
   customers: "Customers",
+  "create-code": "Create discount code",
   discounts: "Discounts",
   reservations: "Reservations",
   sales: "Sales",
@@ -128,14 +129,17 @@ const breadcrumbNames: Record<string, string> = {
 
 export function AdministrationBreadcrumbs({
   entityLabel,
+  segmentLabels,
   segments,
 }: {
   readonly entityLabel?: string;
+  readonly segmentLabels?: Readonly<Record<string, string>>;
   readonly segments: readonly string[];
 }) {
   const crumbs = segments.map((segment, index) => ({
     href: `/${segments.slice(0, index + 1).join("/")}`,
     label:
+      segmentLabels?.[segment] ||
       (index === segments.length - 1 && entityLabel) ||
       breadcrumbNames[segment] ||
       ({

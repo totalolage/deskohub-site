@@ -29,14 +29,17 @@ export const metadata: Metadata = {
 export default function AdminLayout({
   breadcrumb,
   children,
+  modal,
 }: {
   readonly breadcrumb: ReactNode;
   readonly children: ReactNode;
+  readonly modal: ReactNode;
 }) {
   return (
     <html lang="en" className={sculpin.variable} data-scroll-behavior="smooth">
       <body>
         <AdminShell breadcrumb={breadcrumb}>{children}</AdminShell>
+        {modal}
       </body>
     </html>
   );
