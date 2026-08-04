@@ -246,7 +246,7 @@ export function CustomerAdministrationDetailPage({
                   available to everyone.
                 </p>
               </div>
-              <Button asChild size="sm">
+              <Button asChild className="text-black" size="sm">
                 <Link
                   href={`/admin/customers/${profile.customer.id}/create-code`}
                 >

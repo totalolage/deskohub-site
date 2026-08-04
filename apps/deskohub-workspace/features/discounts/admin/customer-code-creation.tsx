@@ -173,7 +173,7 @@ export function CustomerDiscountCodeCreationForm({
         <Button onClick={close} type="button" variant="secondary">
           Cancel
         </Button>
-        <Button disabled={isExecuting} type="submit">
+        <Button className="text-black" disabled={isExecuting} type="submit">
           <Plus aria-hidden className="size-4" />
           {isExecuting ? "Creating…" : "Create discount code"}
         </Button>
