@@ -1181,6 +1181,30 @@ describe("DotyposService reservation listing", () => {
     expect(result).toEqual([]);
   });
 
+  test("treats a first-page 404 with a null body as empty", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json(null, { status: 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listActiveReservationsOverlapping({
+          startDate: new Date("2026-06-20T10:00:00Z"),
+          endDate: new Date("2026-06-20T12:00:00Z"),
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+  });
+
   test("accepts nullable reservation notes", async () => {
     const liveReservation = {
       ...reservation(),
