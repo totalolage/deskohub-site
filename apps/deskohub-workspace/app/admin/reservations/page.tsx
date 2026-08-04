@@ -48,7 +48,7 @@ export default async function ReservationsAdministrationPage({
         </div>
       )}
 
-      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[11rem_11rem_auto] md:justify-start">
+      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[11rem_13rem_auto] md:justify-start">
         <select
           aria-label="Status"
           className={selectClassName}
