@@ -19,6 +19,16 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(workflow).toContain(
     `database-url: \${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}`
   );
+  const runE2EStep = workflow.slice(
+    workflow.indexOf("- name: Run checkout E2E"),
+    workflow.indexOf("- uses: actions/upload-artifact@v4")
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: \${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}`
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"`
+  );
   expect(workflow).toContain(`group: \${{ github.event_name ==`);
   expect(workflow).toContain("'workspace-e2e-dotypos-sandbox'");
   const testJob = workflow.slice(
@@ -38,6 +48,20 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
     "secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET"
   );
   expect(staleCleanupStep).not.toContain("secrets.DOTYPOS_CLIENT_SECRET");
+  expect(staleCleanupStep).not.toContain(
+    "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
+  );
+  expect(staleCleanupStep).not.toContain(
+    "WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED"
+  );
+  const capacityStep = workflow.slice(
+    workflow.indexOf("Validate aggregate Dotypos capacity"),
+    workflow.indexOf("Migrate preview database")
+  );
+  expect(capacityStep).not.toContain(
+    "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
+  );
+  expect(capacityStep).not.toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
   expect(workflow).not.toContain("pulls?state=open");
 });
 

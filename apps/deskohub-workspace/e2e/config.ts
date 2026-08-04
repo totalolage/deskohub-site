@@ -1,5 +1,10 @@
 import type { E2EEnvironment } from "./e2e-env";
-import { addRedaction, assert, parseUrl } from "./runtime";
+import {
+  addDatabaseUrlRedactions,
+  addRedaction,
+  assert,
+  parseUrl,
+} from "./runtime";
 import { workspaceE2ETimeouts } from "./timeouts";
 
 const immutableWorkspaceDeploymentHost =
@@ -53,9 +58,8 @@ export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
 export const getDatasourceConfig = (environment: E2EEnvironment) => {
   const databaseUrl = environment.DATABASE_URL;
   const databaseUrlUnpooled = environment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED;
+  [databaseUrl, databaseUrlUnpooled].forEach(addDatabaseUrlRedactions);
   [
-    databaseUrl,
-    databaseUrlUnpooled,
     environment.DOTYPOS_API_URL,
     environment.DOTYPOS_BRANCH_ID,
     environment.DOTYPOS_CLIENT_ID,

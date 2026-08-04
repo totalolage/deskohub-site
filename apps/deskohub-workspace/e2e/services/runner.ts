@@ -1,13 +1,17 @@
 import { resolve } from "node:path";
-import { Cause, Context, Effect, Exit, Layer } from "effect";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import { Cause, Context, Effect, Exit, Layer, Redacted } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { E2EEnvironment } from "../e2e-env";
+import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
+import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
+import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
 import { E2EDatabase } from "../integrations/database.service";
+import { addDatabaseUrlRedactions } from "../runtime";
 import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
@@ -134,10 +138,47 @@ export class WorkspaceE2ERunnerService extends Context.Service<
   );
 }
 
-export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
+export const makeWorkspaceE2ELive = (environment: WorkspaceE2EEnvironment) => {
+  addDatabaseUrlRedactions(
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+  );
+
   const E2ETelemetryLive = E2ETelemetryService.Live.pipe(
     Layer.provideMerge(E2ERunContextService.layer(environment))
   );
+
+  const WorkspaceE2EProviderPermitDatabaseLive =
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+      ? PgClient.layer({
+          applicationName: "workspace-e2e-provider-verification",
+          connectTimeout: "10 seconds",
+          maxConnections: 2,
+          url: Redacted.make(
+            normalizePostgresConnectionUrl(
+              environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+            )
+          ),
+        }).pipe(
+          Layer.catch((cause) =>
+            Layer.effect(
+              PgClient.PgClient,
+              Effect.fail(
+                toWorkspaceE2EError(
+                  "connect to provider permit coordination database",
+                  cause
+                )
+              )
+            )
+          )
+        )
+      : undefined;
+
+  const WorkspaceE2EProviderVerificationPermitLive =
+    WorkspaceE2EProviderPermitDatabaseLive
+      ? WorkspaceE2EProviderVerificationPermitService.Live.pipe(
+          Layer.provide(WorkspaceE2EProviderPermitDatabaseLive)
+        )
+      : WorkspaceE2EProviderVerificationPermitService.SuiteLocal;
 
   const WorkspaceE2ECoreLive = Layer.mergeAll(
     FetchHttpClient.layer,
@@ -145,6 +186,7 @@ export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
     WorkspaceE2ERedactionService.Live,
     WorkspaceE2EConfigService.layer(environment),
     WorkspaceE2ECleanupService.Live,
+    WorkspaceE2EProviderVerificationPermitLive,
     E2ETelemetryLive
   );
 

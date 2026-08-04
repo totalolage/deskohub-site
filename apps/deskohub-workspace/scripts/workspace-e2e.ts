@@ -1,7 +1,7 @@
 import "../shared/polyfills/temporal";
 
 import { Cause, Exit } from "effect";
-import { makeE2EEnvironment } from "../e2e/e2e-env";
+import { makeWorkspaceE2EEnvironment } from "../e2e/e2e-env";
 import { formatWorkspaceE2EFailure } from "../e2e/errors";
 import {
   makeE2ETelemetryRuntime,
@@ -9,7 +9,7 @@ import {
 } from "../e2e/telemetry-runtime";
 import { makeWorkspaceE2E } from "../e2e/workspace-e2e";
 
-const environment = makeE2EEnvironment();
+const environment = makeWorkspaceE2EEnvironment();
 const telemetry = makeE2ETelemetryRuntime(environment);
 const exit = await runE2EEffect(makeWorkspaceE2E(environment), telemetry);
 

@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { Cause, Deferred, Effect, Exit, Fiber, Layer } from "effect";
 import type { DatasourceConfig } from "./config";
+import { WorkspaceE2EProviderVerificationPermitServiceMock } from "./coordination/provider-verification-permit.service.mock";
 import { workspaceE2EError } from "./errors";
 import type { Runner } from "./runtime";
 import { WorkspaceE2ECleanupService } from "./services/cleanup";
@@ -217,6 +218,82 @@ test("serializes provider verification while independent cases stay concurrent",
   expect(providerVerificationCount).toBe(2);
 });
 
+test("shares provider verification capacity across concurrent suites", async () => {
+  let activeProviderVerifications = 0;
+  let maximumActiveProviderVerifications = 0;
+  let providerVerificationCount = 0;
+  let releaseFirstVerification: () => void = () => undefined;
+  let signalFirstVerification: () => void = () => undefined;
+  const firstVerificationRelease = new Promise<void>((resolve) => {
+    releaseFirstVerification = resolve;
+  });
+  const firstVerificationStarted = new Promise<void>((resolve) => {
+    signalFirstVerification = resolve;
+  });
+  const makeCase = (suiteIndex: number): WorkspaceE2ECase => ({
+    execute: ({ runStep }) =>
+      runStep({
+        capacity: "provider-verification",
+        execute: Effect.acquireUseRelease(
+          Effect.sync(() => {
+            const isFirstVerification = providerVerificationCount === 0;
+            providerVerificationCount += 1;
+            activeProviderVerifications += 1;
+            maximumActiveProviderVerifications = Math.max(
+              maximumActiveProviderVerifications,
+              activeProviderVerifications
+            );
+            if (isFirstVerification) signalFirstVerification();
+            return isFirstVerification;
+          }),
+          (isFirstVerification) =>
+            isFirstVerification
+              ? Effect.promise(() => firstVerificationRelease)
+              : Effect.void,
+          () =>
+            Effect.sync(() => {
+              activeProviderVerifications -= 1;
+            })
+        ),
+        id: `provider-verification-${suiteIndex}`,
+        timeoutMs: 10_000,
+      }),
+    checkoutStates: [],
+    id: `provider-verification-${suiteIndex}`,
+    timeoutMs: 10_000,
+  });
+  const suites = [0, 1].map((suiteIndex) =>
+    runWorkspaceE2ECases({
+      artifactRoot: `/tmp/workspace-e2e-provider-suite-${suiteIndex}`,
+      cases: [makeCase(suiteIndex)],
+      datasourceConfig: testDatasourceConfig,
+      run: makeTestRunner(),
+      sessionPrefix: `workspace-e2e-provider-suite-${suiteIndex}`,
+      timeouts: workspaceE2ETimeouts,
+    })
+  );
+
+  const suiteRun = Effect.runPromise(
+    Effect.all(suites, { concurrency: "unbounded", discard: true }).pipe(
+      Effect.provide(makeTestSuiteLayer())
+    )
+  );
+
+  await firstVerificationStarted;
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  const verificationsBeforeRelease = providerVerificationCount;
+  releaseFirstVerification();
+  await suiteRun;
+
+  expect(verificationsBeforeRelease).toBe(
+    workspaceE2EProviderVerificationConcurrency
+  );
+  expect(maximumActiveProviderVerifications).toBe(
+    workspaceE2EProviderVerificationConcurrency
+  );
+  expect(providerVerificationCount).toBe(2);
+});
+
 test("bounds reservation starts and prioritizes a late shorter deadline", async () => {
   const caseCount = workspaceE2EReservationStartConcurrency + 2;
   const shortCaseIndex = caseCount - 1;
@@ -296,9 +373,9 @@ test("bounds reservation starts and prioritizes a late shorter deadline", async 
   expect(
     admittedCaseIds.slice(0, workspaceE2EReservationStartConcurrency)
   ).not.toContain(`reservation-start-${shortCaseIndex}`);
-  expect(
-    admittedCaseIds.at(workspaceE2EReservationStartConcurrency)
-  ).toBe(`reservation-start-${shortCaseIndex}`);
+  expect(admittedCaseIds.at(workspaceE2EReservationStartConcurrency)).toBe(
+    `reservation-start-${shortCaseIndex}`
+  );
   expect(reservationStartCount).toBe(caseCount);
 });
 
@@ -429,10 +506,16 @@ test("reservation start permits survive queued and granted interruptions", async
         );
 
       const holderA = yield* Effect.forkChild(
-        pool.withPermit(10_000, holdPermit("holder-a", holderAReady, holderARelease))
+        pool.withPermit(
+          10_000,
+          holdPermit("holder-a", holderAReady, holderARelease)
+        )
       );
       const holderB = yield* Effect.forkChild(
-        pool.withPermit(10_000, holdPermit("holder-b", holderBReady, holderBRelease))
+        pool.withPermit(
+          10_000,
+          holdPermit("holder-b", holderBReady, holderBRelease)
+        )
       );
       yield* Deferred.await(holderAReady);
       yield* Deferred.await(holderBReady);
@@ -667,7 +750,11 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
         timeouts: workspaceE2ETimeouts,
       }).pipe(
         Effect.provide(
-          Layer.merge(makeE2ETelemetryMock(telemetryEvents), cleanupLayer)
+          Layer.mergeAll(
+            makeE2ETelemetryMock(telemetryEvents),
+            cleanupLayer,
+            WorkspaceE2EProviderVerificationPermitServiceMock
+          )
         )
       )
     );
@@ -878,7 +965,8 @@ const makeTestRunner = (): Runner => async (_command, args) => ({
 const testDatasourceConfig = {} as DatasourceConfig;
 
 const makeTestSuiteLayer = (telemetryEvents: E2ETelemetryObservation[] = []) =>
-  Layer.merge(
+  Layer.mergeAll(
     makeE2ETelemetryMock(telemetryEvents),
-    WorkspaceE2ECleanupService.Live
+    WorkspaceE2ECleanupService.Live,
+    WorkspaceE2EProviderVerificationPermitServiceMock
   );

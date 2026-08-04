@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit, Semaphore } from "effect";
+import { Cause, Deferred, Effect, Exit } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -8,6 +8,11 @@ import {
   stopBrowserHar,
 } from "./browser";
 import type { DatasourceConfig } from "./config";
+import {
+  type WorkspaceE2EProviderVerificationPermit,
+  WorkspaceE2EProviderVerificationPermitService,
+  workspaceE2EProviderVerificationConcurrency,
+} from "./coordination/provider-verification-permit.service";
 import { type WorkspaceE2EError, workspaceE2ETimeoutError } from "./errors";
 import type { E2EDatabase } from "./integrations/database.service";
 import type { Runner } from "./runtime";
@@ -41,7 +46,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
 };
 
 export const workspaceE2EReservationStartConcurrency = 6;
-export const workspaceE2EProviderVerificationConcurrency = 1;
+export { workspaceE2EProviderVerificationConcurrency };
 
 type ReservationStartPermit = {
   readonly deferred: Deferred.Deferred<void>;
@@ -86,7 +91,10 @@ export const runWorkspaceE2ECases = ({
 }): Effect.Effect<
   void,
   WorkspaceE2EError,
-  E2EDatabase | E2ETelemetryService | WorkspaceE2ECleanupService
+  | E2EDatabase
+  | E2ETelemetryService
+  | WorkspaceE2ECleanupService
+  | WorkspaceE2EProviderVerificationPermitService
 > =>
   Effect.scoped(
     Effect.gen(function* () {
@@ -95,9 +103,8 @@ export const runWorkspaceE2ECases = ({
       const reservationStartPermitPool = yield* makeReservationStartPermitPool(
         workspaceE2EReservationStartConcurrency
       );
-      const providerVerificationSemaphore = yield* Semaphore.make(
-        workspaceE2EProviderVerificationConcurrency
-      );
+      const providerVerificationPermit =
+        yield* WorkspaceE2EProviderVerificationPermitService;
       const indexedCases = [...cases.entries()];
       const independentFailure = yield* Deferred.make<number>();
       const parallelCases = indexedCases
@@ -129,7 +136,7 @@ export const runWorkspaceE2ECases = ({
                 telemetry,
                 timeouts,
                 reservationStartPermitPool,
-                providerVerificationSemaphore
+                providerVerificationPermit
               ).pipe(
                 Effect.tapCause((cause) =>
                   failureSignal && !Cause.hasInterruptsOnly(cause)
@@ -241,14 +248,14 @@ const runCase = (
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts,
   reservationStartPermitPool: ReservationStartPermitPool,
-  providerVerificationSemaphore: Semaphore.Semaphore
+  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
     runtime.testCase.id,
     telemetry,
     reservationStartPermitPool,
-    providerVerificationSemaphore,
+    providerVerificationPermit,
     runtime.testCase.timeoutMs
   );
 
@@ -300,7 +307,7 @@ const makeStepRunner =
     caseId: string,
     telemetry: E2ETelemetry,
     reservationStartPermitPool: ReservationStartPermitPool,
-    providerVerificationSemaphore: Semaphore.Semaphore,
+    providerVerificationPermit: WorkspaceE2EProviderVerificationPermit,
     caseTimeoutMs: number
   ): WorkspaceE2EStepRunner =>
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
@@ -325,7 +332,7 @@ const makeStepRunner =
         );
       }
       if (capacity === "provider-verification") {
-        return providerVerificationSemaphore.withPermit(timedExecution);
+        return providerVerificationPermit.withPermit(timedExecution);
       }
       return timedExecution;
     })();
