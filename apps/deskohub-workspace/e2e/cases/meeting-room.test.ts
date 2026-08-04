@@ -2,13 +2,17 @@ import "../../shared/polyfills/temporal";
 
 import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { makeMeetingRoomCheckoutData } from "../checkout/data";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
-import { assertMeetingRoomSlotUnavailable } from "./meeting-room";
+import {
+  assertMeetingRoomSlotAvailability,
+  isMeetingRoomUnavailableFromInventory,
+} from "./meeting-room";
 
 test("keeps the deployed E2E runner independent of generated translations", async () => {
   const source = await Bun.file(
@@ -19,7 +23,44 @@ test("keeps the deployed E2E runner independent of generated translations", asyn
   expect(source).not.toContain("@/features/i18n");
 });
 
-test("treats an occupied interval as unavailable without requiring the whole date", async () => {
+test("keeps a held interval available while another meeting-room table is empty", () => {
+  const slot = {
+    date: "2099-09-01",
+    duration: { unit: "hour", amount: 1 } as const,
+    endsAt: "2099-09-01T09:00:00Z",
+    startDateTime: "2099-09-01T10:00",
+    startsAt: "2099-09-01T08:00:00Z",
+  };
+  const tables = [
+    makeMeetingRoomTable("room-a"),
+    makeMeetingRoomTable("room-b"),
+  ];
+  const reservations = [makeMeetingRoomReservation("room-a")];
+
+  expect(
+    isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
+  ).toBe(false);
+});
+
+test("treats a held interval as unavailable when every meeting room is occupied", () => {
+  const slot = {
+    date: "2099-09-01",
+    duration: { unit: "hour", amount: 1 } as const,
+    endsAt: "2099-09-01T09:00:00Z",
+    startDateTime: "2099-09-01T10:00",
+    startsAt: "2099-09-01T08:00:00Z",
+  };
+
+  expect(
+    isMeetingRoomUnavailableFromInventory({
+      reservations: [makeMeetingRoomReservation("room-a")],
+      slot,
+      tables: [makeMeetingRoomTable("room-a")],
+    })
+  ).toBe(true);
+});
+
+test("asserts the public interval availability expected from aggregate capacity", async () => {
   const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", {
     unit: "hour",
     amount: 1,
@@ -43,7 +84,7 @@ test("treats an occupied interval as unavailable without requiring the whole dat
   const fetchMock = mock(() =>
     Promise.resolve(
       Response.json({
-        meetingRoomUnavailable: true,
+        meetingRoomUnavailable: false,
         unavailableDates: [],
       })
     )
@@ -59,10 +100,27 @@ test("treats an occupied interval as unavailable without requiring the whole dat
 
   await expect(
     Effect.runPromise(
-      assertMeetingRoomSlotUnavailable(config, data).pipe(
+      assertMeetingRoomSlotAvailability(config, data, false).pipe(
         Effect.provide(httpClientLayer)
       )
     )
   ).resolves.toBeUndefined();
   expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+const makeMeetingRoomTable = (id: string): Table => ({
+  display: true,
+  enabled: true,
+  id,
+  name: id,
+  seats: "1",
+  tags: ["reservation:meeting-room"],
+});
+
+const makeMeetingRoomReservation = (tableId: string): Reservation => ({
+  _tableId: tableId,
+  endDate: "2099-09-01T09:00:00Z",
+  seats: "1",
+  startDate: "2099-09-01T08:00:00Z",
+  status: "CONFIRMED",
 });
