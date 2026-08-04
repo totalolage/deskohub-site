@@ -15,7 +15,7 @@ import type { WorkspaceE2EError } from "../errors";
 import {
   assertPaymentTerminalRow,
   markPaymentTerminalForE2E,
-  waitForWebhookReplayRow,
+  waitForProviderSessionRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -142,7 +142,7 @@ const preparePaymentTerminalState = ({
   state: CheckoutFlowState;
 }) =>
   Effect.gen(function* () {
-    state.checkoutRow = yield* waitForWebhookReplayRow(
+    state.checkoutRow = yield* waitForProviderSessionRow(
       datasourceConfig,
       orderId,
       (row) => {

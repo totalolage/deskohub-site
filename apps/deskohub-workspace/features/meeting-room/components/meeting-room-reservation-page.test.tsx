@@ -4,7 +4,7 @@ import type { ReactElement, ReactNode } from "react";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import type { MeetingRoomReservationForm } from "./meeting-room-reservation-form";
 
-const loadInitialAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
+const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
   Effect.succeed(requests)
 );
 
@@ -14,10 +14,9 @@ mock.module(
     CheckoutPricingServiceLiveWithDependencies: Layer.empty,
   })
 );
-mock.module(
-  "@/features/reservation/backend/initial-advertised-prices.server",
-  () => ({ loadInitialAdvertisedPrices })
-);
+mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
+  loadAdvertisedPrices,
+}));
 mock.module(
   "@/features/reservation/components/create-reservation-page.server",
   () => ({
@@ -59,8 +58,8 @@ test("preloads the preserved quote for a restored hourly slot that has started",
       locale: "en-US",
     });
 
-    expect(loadInitialAdvertisedPrices).toHaveBeenCalledTimes(1);
-    expect(loadInitialAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
+    expect(loadAdvertisedPrices).toHaveBeenCalledTimes(1);
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
       locale: "en-US",
       reservation: {
         kind: "meeting-room",
@@ -71,7 +70,7 @@ test("preloads the preserved quote for a restored hourly slot that has started",
         },
       },
     });
-    expect(loadInitialAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
       locale: "en-US",
       reservation: {
         kind: "meeting-room",
@@ -118,7 +117,7 @@ test("restores a whole-day reservation after its start and before its end", asyn
       email: "ada@example.com",
       phone: "+420777777777",
     });
-    expect(loadInitialAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
+    expect(loadAdvertisedPrices.mock.calls[0]?.[0]).toContainEqual({
       locale: "en-US",
       reservation: {
         kind: "meeting-room",

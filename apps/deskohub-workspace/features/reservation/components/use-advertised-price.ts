@@ -1,22 +1,74 @@
 "use client";
 
-import { skipToken, useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries } from "@tanstack/react-query";
 import {
   type AdvertisedPriceRequest,
   advertisedPriceKeys,
   advertisedPriceRequestEquals,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import { getAdvertisedPrice } from "@/features/reservation/actions/get-advertised-price";
+import { getAdvertisedPrices } from "@/features/reservation/actions/get-advertised-price";
 
-const loadAdvertisedPrice = async (request: AdvertisedPriceRequest) => {
-  const result = await getAdvertisedPrice(request);
+type PendingAdvertisedPrice = {
+  readonly reject: (error: Error) => void;
+  readonly request: AdvertisedPriceRequest;
+  readonly resolve: (
+    price: PreloadedAdvertisedPrice["advertisedPrice"]
+  ) => void;
+};
 
-  if (result.data) {
-    return result.data;
+let pendingAdvertisedPrices: PendingAdvertisedPrice[] = [];
+
+const loadAdvertisedPrice = (request: AdvertisedPriceRequest) =>
+  new Promise<PreloadedAdvertisedPrice["advertisedPrice"]>(
+    (resolve, reject) => {
+      const shouldScheduleBatch = pendingAdvertisedPrices.length === 0;
+      pendingAdvertisedPrices.push({ reject, request, resolve });
+      if (shouldScheduleBatch) {
+        setTimeout(flushAdvertisedPriceBatch, 0);
+      }
+    }
+  );
+
+const flushAdvertisedPriceBatch = async () => {
+  const pending = pendingAdvertisedPrices;
+  pendingAdvertisedPrices = [];
+  const requests = pending
+    .map(({ request }) => request)
+    .filter(
+      (request, index, candidates) =>
+        candidates.findIndex((candidate) =>
+          advertisedPriceRequestEquals(candidate, request)
+        ) === index
+    );
+
+  try {
+    const result = await getAdvertisedPrices(requests);
+    if (!result.data) {
+      throw new Error(
+        result.serverError ?? "Advertised price could not be loaded"
+      );
+    }
+
+    for (const item of pending) {
+      const price = result.data.find(({ request: candidate }) =>
+        advertisedPriceRequestEquals(candidate, item.request)
+      )?.advertisedPrice;
+      if (price) {
+        item.resolve(price);
+      } else {
+        item.reject(new Error("Advertised price could not be loaded"));
+      }
+    }
+  } catch (cause) {
+    const error =
+      cause instanceof Error
+        ? cause
+        : new Error("Advertised price could not be loaded");
+    for (const { reject } of pending) {
+      reject(error);
+    }
   }
-
-  throw new Error(result.serverError ?? "Advertised price could not be loaded");
 };
 
 const advertisedPriceQuery = (
@@ -36,19 +88,6 @@ const advertisedPriceQuery = (
     ...(preloadedPrice && { initialData: preloadedPrice }),
   };
 };
-
-export const useAdvertisedPrice = (
-  request: AdvertisedPriceRequest | undefined
-) =>
-  useQuery({
-    queryKey: request
-      ? advertisedPriceKeys.price(request)
-      : advertisedPriceKeys.all,
-    queryFn: request ? () => loadAdvertisedPrice(request) : skipToken,
-    retry: (failureCount) => failureCount < 3,
-    staleTime: 4 * 60 * 1000,
-    refetchInterval: 4 * 60 * 1000,
-  });
 
 export const useAdvertisedPrices = (
   requests: ReadonlyArray<AdvertisedPriceRequest>,

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import { type Locale, m } from "@/features/i18n";
-import { loadInitialAdvertisedPrices } from "@/features/reservation/backend/initial-advertised-prices.server";
+import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import {
   getCoworkCoffeeAdvertisedPriceRequest,
@@ -53,7 +53,7 @@ export const coworkReservationPage = createReservationPage({
           }),
         ]
       : [];
-    const initialAdvertisedPrices = await loadInitialAdvertisedPrices(
+    const initialAdvertisedPrices = await loadAdvertisedPrices(
       initialAdvertisedPriceRequests
     ).pipe(
       Effect.provide(CheckoutPricingServiceLiveWithDependencies),

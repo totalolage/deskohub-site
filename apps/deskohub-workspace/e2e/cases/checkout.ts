@@ -34,7 +34,7 @@ import {
   replayNexiWebhook,
   validateDiscountApplications,
   validatePostgres,
-  waitForWebhookReplayRow,
+  waitForProviderSessionRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import {
@@ -119,6 +119,13 @@ export const executeCheckoutFlow = ({
       id: "start-checkout-payment",
       timeoutMs: config.timeouts.providerTransition,
     });
+    const providerSessionRow = yield* runStep({
+      execute: waitForProviderSessionRow(datasourceConfig, orderId, (row) => {
+        state.checkoutRow = row;
+      }),
+      id: "wait-for-provider-session-row",
+      timeoutMs: config.timeouts.datasource,
+    });
     yield* runStep({
       execute: completeNexiHostedPayment({
         data,
@@ -138,16 +145,9 @@ export const executeCheckoutFlow = ({
 
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
-    const replayRow = yield* runStep({
-      execute: waitForWebhookReplayRow(datasourceConfig, orderId, (row) => {
-        state.checkoutRow = row;
-      }),
-      id: "wait-for-webhook-row",
-      timeoutMs: config.timeouts.datasource,
-    });
     yield* runStep({
       capacity: "provider-verification",
-      execute: replayNexiWebhook(config, replayRow).pipe(
+      execute: replayNexiWebhook(config, providerSessionRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),
       id: "replay-payment-webhook",

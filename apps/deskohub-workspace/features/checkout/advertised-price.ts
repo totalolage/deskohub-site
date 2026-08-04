@@ -24,6 +24,16 @@ export const advertisedPriceRequestSchema = Schema.Union([
   description: "Inputs for anonymous price advertisement.",
 });
 
+export const advertisedPriceRequestsSchema = Schema.Array(
+  advertisedPriceRequestSchema
+)
+  .check(Schema.isMinLength(1))
+  .check(Schema.isMaxLength(16))
+  .annotate({
+    identifier: "AdvertisedPriceRequests",
+    description: "A bounded batch of anonymous price advertisement inputs.",
+  });
+
 const advertisedPriceBaseSchema = Schema.Struct({
   advertisedPriceToken: Schema.NonEmptyString,
 });

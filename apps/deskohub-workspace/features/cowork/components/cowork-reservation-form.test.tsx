@@ -18,6 +18,10 @@ import {
 } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
+import type {
+  AdvertisedPrice,
+  AdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
 import {
   buildCoworkCheckoutSummary,
   buildCoworkReservationQuote,
@@ -37,8 +41,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 const execute = mock(() => undefined);
-const getAdvertisedPrice = mock(() =>
-  Promise.resolve({ data: advertisedPriceResponse })
+const getAdvertisedPrices = mock(
+  (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
+    Promise.resolve(advertisedPricesResult(requests))
 );
 
 mock.module("@/features/cookie-consent", () => ({
@@ -46,7 +51,7 @@ mock.module("@/features/cookie-consent", () => ({
 }));
 
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
-  getAdvertisedPrice,
+  getAdvertisedPrices,
 }));
 
 const { CoworkReservationForm } = await import("./cowork-reservation-form");
@@ -117,6 +122,19 @@ const advertisedPriceResponse = {
   ),
   advertisedPriceToken: "sealed-advertised-price",
 };
+
+function advertisedPricesResult(
+  requests: ReadonlyArray<AdvertisedPriceRequest>,
+  getPrice: (request: AdvertisedPriceRequest) => AdvertisedPrice = () =>
+    advertisedPriceResponse
+) {
+  return {
+    data: requests.map((request) => ({
+      request,
+      advertisedPrice: getPrice(request),
+    })),
+  };
+}
 
 const plusPrice = getWorkspaceProductByTier("plus").price;
 const plusDiscountAmount = money(Math.round(plusPrice.value * 0.2));
@@ -216,11 +234,14 @@ describe("CoworkReservationForm advertised pricing", () => {
       isExecuting: false,
       result: {},
     });
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(advertisedPricesResult(requests))
+    );
   });
 
   afterEach(() => {
     cleanup();
-    getAdvertisedPrice.mockClear();
+    getAdvertisedPrices.mockClear();
     push.mockClear();
     execute.mockClear();
   });
@@ -231,7 +252,7 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("renders server-loaded discounts on the first paint without refetching", () => {
     workspaceUseSearchParams.mockReturnValue(new URLSearchParams());
-    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
     const advertisedPrices = {
       basic: advertisedPriceResponse,
       plus: plusAdvertisedPriceResponse,
@@ -260,7 +281,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     );
     expect(coffeePrice?.textContent).toContain("50");
     expect(coffeePrice?.querySelector("[data-slot='skeleton']")).toBeNull();
-    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+    expect(getAdvertisedPrices).not.toHaveBeenCalled();
     view.unmount();
   });
 
@@ -268,7 +289,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     workspaceUseSearchParams.mockReturnValue(
       new URLSearchParams("entryTier=basic")
     );
-    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
 
     const view = renderForm();
     const priceRows = Array.from(
@@ -288,23 +309,37 @@ describe("CoworkReservationForm advertised pricing", () => {
         "[data-reservation-coffee-price] [data-slot='skeleton']"
       )
     ).not.toBeNull();
-    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+    expect(getAdvertisedPrices).not.toHaveBeenCalled();
     view.unmount();
   });
 
   test("renders discounts accessibly and blocks checkout while the selected tier price loads", async () => {
-    const advertisedRequests: unknown[] = [];
+    const advertisedRequests: AdvertisedPriceRequest[] = [];
+    let plusBatchCount = 0;
     let resolvePlusRequest:
-      | ((response: { data: typeof advertisedPriceResponse }) => void)
+      | ((response: ReturnType<typeof advertisedPricesResult>) => void)
       | undefined;
-    getAdvertisedPrice.mockImplementation((input) => {
-      advertisedRequests.push(input);
-      if (input.reservation.details.entryTier === "plus") {
+    getAdvertisedPrices.mockImplementation((requests) => {
+      advertisedRequests.push(...requests);
+      const includesPlus = requests.some(
+        ({ reservation }) =>
+          reservation.kind === "cowork" &&
+          reservation.details.entryTier === "plus"
+      );
+      if (includesPlus && plusBatchCount++ > 0) {
         return new Promise((resolve) => {
           resolvePlusRequest = resolve;
         });
       }
-      return Promise.resolve({ data: advertisedPriceResponse });
+      return Promise.resolve(
+        advertisedPricesResult(
+          requests.filter(
+            ({ reservation }) =>
+              reservation.kind !== "cowork" ||
+              reservation.details.entryTier !== "plus"
+          )
+        )
+      );
     });
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
@@ -366,7 +401,17 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(view.getByText(/discounted price.*175/i)).toBeDefined();
 
     await act(async () => {
-      resolvePlusRequest?.({ data: plusAdvertisedPriceResponse });
+      const plusRequest = advertisedRequests.find(
+        ({ reservation }) =>
+          reservation.kind === "cowork" &&
+          reservation.details.entryTier === "plus"
+      );
+      if (!plusRequest) {
+        throw new Error("Expected the Plus advertised-price request");
+      }
+      resolvePlusRequest?.(
+        advertisedPricesResult([plusRequest], () => plusAdvertisedPriceResponse)
+      );
     });
     await waitFor(() => {
       expect(
@@ -377,13 +422,15 @@ describe("CoworkReservationForm advertised pricing", () => {
   });
 
   test("advertises discounts on every applicable tier and top-aligns price rows", async () => {
-    getAdvertisedPrice.mockImplementation((input) =>
-      Promise.resolve({
-        data:
-          input.reservation.details.entryTier === "plus"
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, ({ reservation }) =>
+          reservation.kind === "cowork" &&
+          reservation.details.entryTier === "plus"
             ? plusAdvertisedPriceResponse
-            : advertisedPriceResponse,
-      })
+            : advertisedPriceResponse
+        )
+      )
     );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
@@ -396,7 +443,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     const view = renderForm();
 
     await waitFor(() => {
-      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+      expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
     });
     expect(
       view.container.querySelector(
@@ -539,11 +586,11 @@ describe("CoworkReservationForm advertised pricing", () => {
 
   test("shows a retryable error instead of enabling checkout with failed price data", async () => {
     let failAdvertisedPrice = true;
-    getAdvertisedPrice.mockImplementation(() =>
+    getAdvertisedPrices.mockImplementation((requests) =>
       Promise.resolve(
         failAdvertisedPrice
           ? { serverError: "unavailable" }
-          : { data: advertisedPriceResponse }
+          : advertisedPricesResult(requests)
       )
     );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
@@ -575,11 +622,11 @@ describe("CoworkReservationForm advertised pricing", () => {
   });
 
   test("does not refetch the advertised price when the monitor changes", async () => {
-    const advertisedRequests: unknown[] = [];
+    const advertisedRequests: AdvertisedPriceRequest[] = [];
     const availabilityRequests: string[] = [];
-    getAdvertisedPrice.mockImplementation((input) => {
-      advertisedRequests.push(input);
-      return Promise.resolve({ data: advertisedPriceResponse });
+    getAdvertisedPrices.mockImplementation((requests) => {
+      advertisedRequests.push(...requests);
+      return Promise.resolve(advertisedPricesResult(requests));
     });
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);

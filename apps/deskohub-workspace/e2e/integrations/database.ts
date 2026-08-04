@@ -51,7 +51,7 @@ import {
   runRetrySafeDatabaseOperation,
 } from "./database-operation";
 
-export const waitForWebhookReplayRow = (
+export const waitForProviderSessionRow = (
   config: DatasourceConfig,
   orderId: string,
   onRow?: (row: CheckoutRow) => void
@@ -64,18 +64,18 @@ export const waitForWebhookReplayRow = (
           row ? Effect.sync(() => onRow?.(row)) : Effect.void
         ),
         Effect.map((row) =>
-          row && isWebhookReplayReady(row) ? row : undefined
+          row && isProviderSessionReady(row) ? row : undefined
         )
       ),
       {
         intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: `webhook replay checkout row for ${orderId}`,
+        label: `provider session checkout row for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
       }
     );
   });
 
-const isWebhookReplayReady = (row: CheckoutRow) =>
+const isProviderSessionReady = (row: CheckoutRow) =>
   !!row.provider_order_id &&
   !!row.security_token &&
   !!row.amount_value &&

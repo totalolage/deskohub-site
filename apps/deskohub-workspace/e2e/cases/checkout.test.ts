@@ -141,7 +141,7 @@ test("limits capacity only around reservation start and provider verification", 
       return Effect.succeed(orderId);
     }
     if (
-      step.id === "wait-for-webhook-row" ||
+      step.id === "wait-for-provider-session-row" ||
       step.id === "validate-postgres-state"
     ) {
       return Effect.succeed(replayRow);
@@ -190,5 +190,14 @@ test("limits capacity only around reservation start and provider verification", 
       capacity: "provider-verification",
       id: "replay-payment-webhook",
     },
+  ]);
+  expect(observedSteps.slice(0, 7).map(({ id }) => id)).toEqual([
+    "prepare-checkout-pay-page",
+    "start-checkout-payment",
+    "wait-for-provider-session-row",
+    "complete-hosted-payment",
+    "reach-checkout-status-page",
+    "replay-payment-webhook",
+    "complete-test-fulfillment",
   ]);
 });
