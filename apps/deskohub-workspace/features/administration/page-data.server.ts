@@ -50,6 +50,7 @@ const runAdministration =
     );
 
 export const authorizeAdministrationPage = async () => {
+  if (administrationFixturesEnabled()) return;
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),
     Effect.catchTag("DiscountAdminUnauthorizedError", () =>

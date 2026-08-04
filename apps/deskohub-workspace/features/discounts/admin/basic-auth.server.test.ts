@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Exit } from "effect";
+import { env } from "@/env";
 
 let requestHeaders = new Headers();
 
@@ -45,6 +46,28 @@ describe("discount administration server authorization", () => {
           "DiscountAdminUnauthorizedError"
         );
       }
+    }
+  });
+
+  test("keeps operation authorization enabled during synthetic page previews", async () => {
+    const previousNodeEnvironment = process.env.NODE_ENV;
+    const previousFixtureSetting = env.ADMIN_PREVIEW_FIXTURES;
+    process.env.NODE_ENV = "development";
+    Object.assign(env, { ADMIN_PREVIEW_FIXTURES: "true" });
+    requestHeaders = new Headers();
+
+    try {
+      const exit = await Effect.runPromiseExit(await loadAuthorization());
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        expect(exit.cause.toString()).toContain(
+          "DiscountAdminUnauthorizedError"
+        );
+      }
+    } finally {
+      process.env.NODE_ENV = previousNodeEnvironment;
+      Object.assign(env, { ADMIN_PREVIEW_FIXTURES: previousFixtureSetting });
     }
   });
 

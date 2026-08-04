@@ -6,6 +6,7 @@ import {
   Handle,
   MarkerType,
   type Node,
+  type NodeHandle,
   type NodeProps,
   Position,
   ReactFlow,
@@ -18,39 +19,77 @@ type LifecycleNodeData = {
   readonly tone: "neutral" | "positive" | "warning";
 };
 
+const lifecycleHandles: NodeHandle[] = [
+  { id: null, position: Position.Left, type: "target", x: 0, y: 33 },
+  { id: null, position: Position.Right, type: "source", x: 176, y: 33 },
+  { id: "top-source", position: Position.Top, type: "source", x: 88, y: 0 },
+  { id: "top-target", position: Position.Top, type: "target", x: 88, y: 0 },
+  {
+    id: "bottom-source",
+    position: Position.Bottom,
+    type: "source",
+    x: 88,
+    y: 66,
+  },
+  {
+    id: "bottom-target",
+    position: Position.Bottom,
+    type: "target",
+    x: 88,
+    y: 66,
+  },
+];
+
 const nodes: Node<LifecycleNodeData>[] = [
   {
+    handles: lifecycleHandles,
     id: "started",
+    height: 66,
     position: { x: 20, y: 140 },
     data: { label: "Started", note: "Checkout created", tone: "neutral" },
     type: "lifecycle",
+    width: 176,
   },
   {
+    handles: lifecycleHandles,
     id: "held",
+    height: 66,
     position: { x: 245, y: 140 },
     data: { label: "Held", note: "Awaiting payment", tone: "neutral" },
     type: "lifecycle",
+    width: 176,
   },
   {
+    handles: lifecycleHandles,
     id: "paid",
+    height: 66,
     position: { x: 470, y: 140 },
     data: { label: "Paid", note: "Being confirmed", tone: "neutral" },
     type: "lifecycle",
+    width: 176,
   },
   {
+    handles: lifecycleHandles,
     id: "complete",
+    height: 66,
     position: { x: 920, y: 140 },
     data: { label: "Complete", note: "Access delivered", tone: "positive" },
     type: "lifecycle",
+    width: 176,
   },
   {
+    handles: lifecycleHandles,
     id: "cancelled",
+    height: 66,
     position: { x: 695, y: 260 },
     data: { label: "Cancelled", note: "Hold released", tone: "warning" },
     type: "lifecycle",
+    width: 176,
   },
   {
+    handles: lifecycleHandles,
     id: "attention",
+    height: 66,
     position: { x: 695, y: 20 },
     data: {
       label: "Needs attention",
@@ -58,6 +97,7 @@ const nodes: Node<LifecycleNodeData>[] = [
       tone: "warning",
     },
     type: "lifecycle",
+    width: 176,
   },
 ];
 

@@ -17,11 +17,20 @@ import {
 import { env } from "./env";
 import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/basic-auth";
 
+const isFixtureBackedAdministrationPath = (pathname: string) =>
+  pathname === "/admin" ||
+  pathname === "/admin/reservations" ||
+  pathname.startsWith("/admin/reservations/") ||
+  pathname === "/admin/customers" ||
+  pathname.startsWith("/admin/customers/");
+
 export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname.startsWith("/admin")) {
     const isSyntheticLocalPreview =
       process.env.NODE_ENV === "development" &&
-      env.ADMIN_PREVIEW_FIXTURES === "true";
+      env.ADMIN_PREVIEW_FIXTURES === "true" &&
+      request.method === "GET" &&
+      isFixtureBackedAdministrationPath(request.nextUrl.pathname);
     if (
       !isSyntheticLocalPreview &&
       !isDiscountAdminAuthorizationValid(

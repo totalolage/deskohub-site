@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { NextRequest } from "next/server";
+import { env } from "@/env";
 import { localeCookieName } from "@/features/i18n/routing";
 import { proxy } from "./proxy";
 
@@ -87,6 +88,35 @@ test("checks administration Server Action posts before the general pass-through"
 
   expect(unauthorized.status).toBe(401);
   expect(authorized.headers.get("x-middleware-next")).toBe("1");
+});
+
+test("limits synthetic preview bypass to fixture-backed read-only pages", () => {
+  const previousNodeEnvironment = process.env.NODE_ENV;
+  const previousFixtureSetting = env.ADMIN_PREVIEW_FIXTURES;
+  process.env.NODE_ENV = "development";
+  Object.assign(env, { ADMIN_PREVIEW_FIXTURES: "true" });
+
+  try {
+    const fixturePage = proxy(
+      new NextRequest("https://workspace.example/admin/reservations/example")
+    );
+    const livePage = proxy(
+      new NextRequest("https://workspace.example/admin/discounts")
+    );
+    const mutation = proxy(
+      new NextRequest("https://workspace.example/admin/reservations/example", {
+        method: "POST",
+        headers: { "next-action": "action-id" },
+      })
+    );
+
+    expect(fixturePage.headers.get("x-middleware-next")).toBe("1");
+    expect(livePage.status).toBe(401);
+    expect(mutation.status).toBe(401);
+  } finally {
+    process.env.NODE_ENV = previousNodeEnvironment;
+    Object.assign(env, { ADMIN_PREVIEW_FIXTURES: previousFixtureSetting });
+  }
 });
 
 test("test authentication fixture matches the configured hash contract", () => {

@@ -54,4 +54,4 @@ The schema and lifecycle documentation also define `hold_expired` and `confirmin
 
 ## Synthetic local review
 
-Set `ADMIN_PREVIEW_FIXTURES=true` only with `NODE_ENV=development` to render obviously synthetic reservation and customer examples for visual review and screenshots. The mode cannot activate in production builds. It bypasses local Basic authentication because it contains no real records and is intended for automated visual review; normal development, preview, and production administration remain protected.
+Set `ADMIN_PREVIEW_FIXTURES=true` only with `NODE_ENV=development` to render obviously synthetic reservation and customer examples for visual review and screenshots. The mode cannot activate in production builds. It bypasses local Basic authentication only for fixture-backed `GET` pages under the overview, reservations, and customers sections. Discount, code, and sales pages, Server Actions, and every live data operation remain protected.
