@@ -186,10 +186,10 @@ export function ReservationTable({
           </TableHeader>
           <TableBody>
             {reservations.map((reservation) => (
-              <TableRow key={reservation.id}>
+              <TableRow className="relative" key={reservation.id}>
                 <TableCell>
                   <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
                     href={`/admin/reservations/${reservation.id}`}
                   >
                     {reservation.typeLabel}
@@ -202,7 +202,7 @@ export function ReservationTable({
                   {reservation.customer ? (
                     <>
                       <Link
-                        className="font-medium hover:underline"
+                        className="relative z-10 font-medium hover:underline"
                         href={`/admin/customers/${reservation.customerId}`}
                       >
                         {reservation.customer.displayName}

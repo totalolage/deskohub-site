@@ -527,45 +527,16 @@ export class DiscountAdministration extends Context.Service<
       const searchCustomers = Effect.fn(
         "DiscountAdministration.searchCustomers"
       )(function* (input: DiscountAdminCustomerSearch) {
-        if (input.kind === "id") {
-          const customer = yield* dotypos
-            .getCustomer(input.customerId)
-            .pipe(
-              Effect.catchTag("ExternalAPIError", (error) =>
-                error.statusCode === 404
-                  ? Effect.succeed(undefined)
-                  : Effect.fail(error)
-              )
-            );
-          return !customer || customer.deleted || !customer.id
-            ? ({
-                kind: "not-found",
-                customers: [],
-              } satisfies AdminCustomerSearchResult)
-            : ({
-                kind: "matched",
-                customers: [toAdminDotyposCustomer(customer)],
-              } satisfies AdminCustomerSearchResult);
-        }
-
-        const lookupField = input.kind;
-        const result = yield* dotypos.findCustomer(
-          {
-            firstName: "",
-            ...(input.kind === "email"
-              ? { email: input.email }
-              : { phone: input.phone }),
-          },
-          { lookupFields: [lookupField] }
-        );
+        const customers = (yield* dotypos.searchCustomers(input.query))
+          .filter((customer) => customer.id && !customer.deleted)
+          .map(toAdminDotyposCustomer)
+          .slice(0, 50);
         let kind: AdminCustomerSearchResult["kind"] = "not-found";
-        if (result._tag === "Matched") kind = "matched";
-        else if (result._tag === "Ambiguous") kind = "ambiguous";
+        if (customers.length === 1) kind = "matched";
+        else if (customers.length > 1) kind = "ambiguous";
         return {
           kind,
-          customers: result.matches
-            .filter((customer) => customer.id && !customer.deleted)
-            .map(toAdminDotyposCustomer),
+          customers,
         } satisfies AdminCustomerSearchResult;
       });
 

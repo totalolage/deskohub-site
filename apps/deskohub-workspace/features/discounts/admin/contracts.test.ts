@@ -146,21 +146,14 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
-  test("keeps customer search fields explicit for PII censorship", () => {
+  test("accepts a bounded fuzzy customer query", () => {
+    expect(() => decodeCustomerSearch({ query: "Ada" })).not.toThrow();
+    expect(() => decodeCustomerSearch({ query: "a" })).toThrow();
     expect(() =>
-      decodeCustomerSearch({ kind: "id", customerId: "customer-id" })
-    ).not.toThrow();
+      decodeCustomerSearch({ query: "Ada;deleted|eq|true" })
+    ).toThrow();
     expect(() =>
-      decodeCustomerSearch({
-        kind: "email",
-        email: "customer@example.com",
-      })
-    ).not.toThrow();
-    expect(() =>
-      decodeCustomerSearch({ kind: "phone", phone: "+420123456789" })
-    ).not.toThrow();
-    expect(() =>
-      decodeCustomerSearch({ kind: "email", value: "customer@example.com" })
+      decodeCustomerSearch({ query: "Ada", customerId: "customer-id" })
     ).toThrow();
   });
 });

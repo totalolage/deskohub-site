@@ -145,20 +145,13 @@ export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
   }
 );
 
-export const discountAdminCustomerSearchSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("id"),
-    customerId: dotyposCustomerIdSchema,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("email"),
-    email: Schema.Trim.check(Schema.isNonEmpty()),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("phone"),
-    phone: Schema.Trim.check(Schema.isNonEmpty()),
-  }),
-]);
+export const discountAdminCustomerSearchSchema = Schema.Struct({
+  query: Schema.Trim.check(
+    Schema.isMinLength(2),
+    Schema.isMaxLength(100),
+    Schema.isPattern(/^[^|;]+$/)
+  ),
+});
 
 export const discountAdminCustomerSearchStandardSchema =
   Schema.toStandardSchemaV1(discountAdminCustomerSearchSchema, {

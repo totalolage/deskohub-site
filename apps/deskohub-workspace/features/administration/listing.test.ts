@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  getAdministrationPagination,
-  getReservationSearchPattern,
-} from "./listing";
+import { loadFixtureReservations } from "./fixtures";
+import { getAdministrationPagination } from "./listing";
 
 describe("administration listings", () => {
   test("clamps a stale requested page to the available range", () => {
@@ -22,9 +20,9 @@ describe("administration listings", () => {
     ).toEqual({ offset: 0, page: 1, pageCount: 1 });
   });
 
-  test("treats SQL wildcard characters as literal reservation ID text", () => {
-    expect(getReservationSearchPattern("reservation%_\\id")).toBe(
-      "%reservation\\%\\_\\\\id%"
+  test("filters reservations by the selected customer search result", () => {
+    expect(loadFixtureReservations({ customerId: "customer-alex" }).total).toBe(
+      2
     );
   });
 });

@@ -87,16 +87,6 @@ export default async function ReservationAdministrationDetailPage({
               </p>
             </div>
             <ReservationTimeline items={detail.timeline} />
-            {detail.historyAvailability === "unavailable" && (
-              <p className="mt-6 rounded-lg bg-navy-blue/[0.035] px-4 py-3 text-sm text-navy-blue/65">
-                Additional activity is unavailable. Confirmed milestones are
-                still shown.
-              </p>
-            )}
-            <p className="mt-4 text-xs leading-5 text-navy-blue/65">
-              Some intermediate activity may be missing. This operational view
-              is not an audit record.
-            </p>
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">

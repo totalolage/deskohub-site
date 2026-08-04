@@ -648,6 +648,42 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const searchCustomers = Effect.fn("searchCustomers")(function* (
+    rawQuery: string
+  ) {
+    const query = rawQuery.trim();
+    if (query.length < 2 || query.length > 100 || /[|;]/.test(query)) {
+      return yield* new ValidationError({
+        message: "Customer search query is invalid",
+      });
+    }
+
+    const matches = yield* Effect.all(
+      (["firstName", "lastName", "companyName", "email"] as const).map(
+        (field) =>
+          runDotyposRequest(
+            client
+              .getCustomers(config.cloudId, {
+                params: { filter: `${field}|like|${query}`, limit: 100 },
+              })
+              .pipe(Effect.map((page) => [...(page.data ?? [])])),
+            "searchCustomers"
+          ).pipe(
+            Effect.catchTag("ExternalAPIError", (error) =>
+              error.statusCode === 404
+                ? Effect.succeed<Customer[]>([])
+                : Effect.fail(error)
+            ),
+            Effect.retry(retryPolicy)
+          )
+      ),
+      { concurrency: 4 }
+    );
+    const customers: Customer[] = [];
+    for (const match of matches.flat()) addUniqueCustomer(customers, match);
+    return customers;
+  });
+
   const lookupCustomer = Effect.fn("lookupCustomer")(
     function* (
       customerData: DotyposCustomerLookupData,
@@ -1212,6 +1248,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservation,
     getReservationStatus,
     getCustomer,
+    searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,
     getDiscountGroups,

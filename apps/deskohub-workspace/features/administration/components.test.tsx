@@ -11,6 +11,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { AdministrationBreadcrumbs } from "./admin-shell";
 import { ReservationTable, ReservationTimeline } from "./components";
 import { loadFixtureReservation, loadFixtureReservations } from "./fixtures";
 
@@ -27,8 +28,11 @@ describe("administration reservation components", () => {
       0
     );
     expect(
+      within(table).getAllByRole("link", { name: "Meeting Room" })[0].className
+    ).toContain("before:absolute");
+    expect(
       within(table)
-        .getAllByRole("link", { name: "Meeting room" })[0]
+        .getAllByRole("link", { name: "Meeting Room" })[0]
         .getAttribute("href")
     ).toBe("/admin/reservations/0198-admin-fixture-attention");
   });
@@ -49,5 +53,23 @@ describe("administration reservation components", () => {
     });
     expect(within(timeline).getAllByRole("listitem")).toHaveLength(5);
     expect(within(timeline).getByText("Payment started")).toBeDefined();
+  });
+
+  test("identifies customer and reservation entities in breadcrumbs", () => {
+    const view = render(
+      <AdministrationBreadcrumbs
+        entityLabel="Ada Lovelace"
+        segments={["admin", "customers", "customer-ada"]}
+      />
+    );
+    expect(view.getByText("Ada Lovelace")).toBeDefined();
+
+    view.rerender(
+      <AdministrationBreadcrumbs
+        entityLabel="Cowork Basic"
+        segments={["admin", "reservations", "reservation-basic"]}
+      />
+    );
+    expect(view.getByText("Cowork Basic")).toBeDefined();
   });
 });

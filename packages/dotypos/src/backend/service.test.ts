@@ -126,6 +126,57 @@ const runWithService = <A, E>(
 };
 
 describe("DotyposService customer lookup", () => {
+  test("fuzzily searches customer names and email without duplicates", async () => {
+    const ada = customer({
+      id: "ada",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+    });
+    const company = customer({
+      id: "analytical-engines",
+      companyName: "Analytical Engines",
+      email: "team@analytical.example",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname !== "/clouds/cloud-id/customers") {
+        return new Response("Not found", { status: 404 });
+      }
+      const filter = url.searchParams.get("filter");
+      if (filter === "firstName|like|ada") {
+        return Response.json({ data: [ada] });
+      }
+      if (filter === "email|like|ada") {
+        return Response.json({ data: [ada, company] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.searchCustomers("  ada  ");
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([ada, company]);
+    expect(
+      fetchMock.mock.calls
+        .map((call) => new URL(getUrl(call as FetchCall)))
+        .filter(({ pathname }) => pathname.endsWith("/customers"))
+        .map((url) => url.searchParams.get("filter"))
+        .toSorted()
+    ).toEqual([
+      "companyName|like|ada",
+      "email|like|ada",
+      "firstName|like|ada",
+      "lastName|like|ada",
+    ]);
+  });
+
   test("requests a token once, searches by exact email, and sends bearer auth", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
     const fetchMock = mockDotyposFetch((request) => {

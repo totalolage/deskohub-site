@@ -1,4 +1,3 @@
-import { Search } from "lucide-react";
 import Link from "next/link";
 import {
   AdministrationPage,
@@ -10,8 +9,8 @@ import {
   type AdministrationSearchParams,
   loadAdministrationReservations,
 } from "@/features/administration/page-data.server";
+import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
 
 export const dynamic = "force-dynamic";
 
@@ -33,20 +32,23 @@ export default async function ReservationsAdministrationPage({
         title="Reservations"
       />
 
-      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[minmax(14rem,1fr)_11rem_11rem_auto]">
-        <div className="relative">
-          <Search
-            aria-hidden
-            className="absolute left-3 top-3 size-4 text-navy-blue/65"
-          />
-          <Input
-            aria-label="Reservation ID"
-            className="pl-9"
-            defaultValue={input.query}
-            name="query"
-            placeholder="Search reservation ID"
-          />
+      <div className="mb-5">
+        <CustomerSearch destination="reservations" />
+      </div>
+
+      {input.customerId && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
+          <p>Showing reservations for the selected customer.</p>
+          <Link
+            className="font-semibold hover:underline"
+            href="/admin/reservations"
+          >
+            Clear customer
+          </Link>
         </div>
+      )}
+
+      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[11rem_11rem_auto] md:justify-start">
         <select
           aria-label="Status"
           className={selectClassName}
@@ -54,7 +56,6 @@ export default async function ReservationsAdministrationPage({
           name="status"
         >
           <option value="">All statuses</option>
-          <option value="attention">Needs attention</option>
           <option value="in_progress">In progress</option>
           <option value="complete">Complete</option>
           <option value="cancelled">Cancelled</option>
@@ -69,6 +70,9 @@ export default async function ReservationsAdministrationPage({
           <option value="cowork">Coworking</option>
           <option value="meeting-room">Meeting room</option>
         </select>
+        {input.customerId && (
+          <input name="customerId" type="hidden" value={input.customerId} />
+        )}
         {input.date && <input name="date" type="hidden" value={input.date} />}
         <Button size="sm" type="submit">
           Apply filters
@@ -102,7 +106,7 @@ export default async function ReservationsAdministrationPage({
         pageCount={result.pageCount}
         params={{
           date: input.date,
-          query: input.query,
+          customerId: input.customerId,
           status: input.status,
           type: input.type,
         }}

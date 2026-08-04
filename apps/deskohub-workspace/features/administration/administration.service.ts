@@ -9,7 +9,6 @@ import {
   countDistinct,
   desc,
   eq,
-  ilike,
   inArray,
   max,
   or,
@@ -26,10 +25,7 @@ import {
 } from "@/db/schema";
 import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
-import {
-  getAdministrationPagination,
-  getReservationSearchPattern,
-} from "./listing";
+import { getAdministrationPagination } from "./listing";
 import {
   mergeReservationHistory,
   PostHogReservationHistory,
@@ -51,10 +47,10 @@ const paymentAttemptStateLabels = {
 } as const;
 
 export type AdministrationReservationListInput = {
+  readonly customerId?: string;
   readonly date?: string;
   readonly page?: number;
-  readonly query?: string;
-  readonly status?: AdministrationStatusGroup;
+  readonly status?: Exclude<AdministrationStatusGroup, "attention">;
   readonly type?: "cowork" | "meeting-room";
 };
 
@@ -128,7 +124,6 @@ export type AdministrationTimelineItem = {
 export type AdministrationReservationDetail = {
   readonly reservation: AdministrationReservationSummary;
   readonly timeline: readonly AdministrationTimelineItem[];
-  readonly historyAvailability: "available" | "unavailable";
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
   readonly discounts: readonly AdministrationDiscountApplication[];
   readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
@@ -204,9 +199,9 @@ const toCustomer = (
 };
 
 const getReservationTypeLabel = (row: SafeReservationRow) => {
-  if (row.reservationDetails.kind === "meeting-room") return "Meeting room";
+  if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
   const tier = row.reservationDetails.entryTier;
-  return `${tier[0]?.toUpperCase()}${tier.slice(1)} coworking`;
+  return `Cowork ${tier[0]?.toUpperCase()}${tier.slice(1)}`;
 };
 
 const getReservationDate = (startsAt: string) =>
@@ -256,13 +251,9 @@ const getDateBounds = (date: string) => {
   };
 };
 
-const statusCondition = (status: AdministrationStatusGroup): SQL => {
-  if (status === "attention") {
-    return or(
-      eq(workspaceReservations.fulfillmentState, "failed"),
-      eq(workspaceReservations.reservationState, "cancellation_failed")
-    )!;
-  }
+const statusCondition = (
+  status: Exclude<AdministrationStatusGroup, "attention">
+): SQL => {
   if (status === "complete") {
     return and(
       sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
@@ -347,7 +338,7 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "fulfillment-failed",
-    "Customer confirmation needs attention",
+    "Customer confirmation failed",
     "The confirmation could not be completed.",
     row.fulfillmentFailedAt,
     "warning"
@@ -372,12 +363,10 @@ export class AdministrationService extends Context.Service<
         readonly counts: {
           readonly reservations: number;
           readonly customers: number;
-          readonly attention: number;
         };
         readonly recent: readonly AdministrationReservationSummary[];
         readonly today: readonly AdministrationReservationSummary[];
         readonly todayUnavailable: boolean;
-        readonly attention: readonly AdministrationReservationSummary[];
       },
       unknown
     >;
@@ -483,14 +472,9 @@ export class AdministrationService extends Context.Service<
         const pageSize = input.pageSize ?? reservationPageSize;
         const dateReservations = yield* loadDateReservationMap(input.date);
         const conditions: SQL[] = [];
-        const query = input.query?.trim();
-        if (query) {
-          const pattern = getReservationSearchPattern(query);
+        if (input.customerId) {
           conditions.push(
-            or(
-              ilike(workspaceReservations.id, pattern),
-              ilike(workspaceReservations.dotyposReservationId, pattern)
-            )!
+            eq(workspaceReservations.dotyposCustomerId, input.customerId)
           );
         }
         if (input.status) conditions.push(statusCondition(input.status));
@@ -635,7 +619,6 @@ export class AdministrationService extends Context.Service<
             durable: buildTimeline(row),
             history,
           }),
-          historyAvailability: history.kind,
           paymentAttempts: attemptRows.map((attempt) => ({
             id: attempt.id,
             providerLabel:
@@ -755,40 +738,30 @@ export class AdministrationService extends Context.Service<
 
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* () {
-          const { attention, customerCountRows, recent, today } =
-            yield* Effect.all(
-              {
-                attention: listReservations({
-                  page: 1,
-                  pageSize: 6,
-                  status: "attention",
-                }),
-                customerCountRows: db
-                  .select({
-                    value: countDistinct(
-                      workspaceReservations.dotyposCustomerId
-                    ),
-                  })
-                  .from(workspaceReservations),
-                recent: listReservations({ page: 1, pageSize: 6 }),
-                today: listReservations({
-                  date: getCurrentPragueDate(),
-                  page: 1,
-                  pageSize: 6,
-                }),
-              },
-              { concurrency: 4 }
-            );
+          const { customerCountRows, recent, today } = yield* Effect.all(
+            {
+              customerCountRows: db
+                .select({
+                  value: countDistinct(workspaceReservations.dotyposCustomerId),
+                })
+                .from(workspaceReservations),
+              recent: listReservations({ page: 1, pageSize: 6 }),
+              today: listReservations({
+                date: getCurrentPragueDate(),
+                page: 1,
+                pageSize: 6,
+              }),
+            },
+            { concurrency: 3 }
+          );
           return {
             counts: {
               reservations: recent.total,
               customers: Number(customerCountRows[0]?.value ?? 0),
-              attention: attention.total,
             },
             recent: recent.items.slice(0, 6),
             today: today.items.slice(0, 6),
             todayUnavailable: today.dateFilterUnavailable,
-            attention: attention.items.slice(0, 6),
           };
         }
       );

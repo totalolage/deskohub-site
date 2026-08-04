@@ -72,7 +72,7 @@ const nodes: Node<LifecycleNodeData>[] = [
     handles: lifecycleHandles,
     id: "complete",
     height: 66,
-    position: { x: 920, y: 140 },
+    position: { x: 695, y: 140 },
     data: { label: "Complete", note: "Access delivered", tone: "positive" },
     type: "lifecycle",
     width: 176,
@@ -81,21 +81,8 @@ const nodes: Node<LifecycleNodeData>[] = [
     handles: lifecycleHandles,
     id: "cancelled",
     height: 66,
-    position: { x: 695, y: 260 },
+    position: { x: 245, y: 235 },
     data: { label: "Cancelled", note: "Hold released", tone: "warning" },
-    type: "lifecycle",
-    width: 176,
-  },
-  {
-    handles: lifecycleHandles,
-    id: "attention",
-    height: 66,
-    position: { x: 695, y: 20 },
-    data: {
-      label: "Needs attention",
-      note: "Confirmation issue",
-      tone: "warning",
-    },
     type: "lifecycle",
     width: 176,
   },
@@ -138,20 +125,6 @@ const edges: Edge[] = [
     sourceHandle: "bottom-source",
     target: "cancelled",
     targetHandle: "top-target",
-  },
-  {
-    ...directionalEdge,
-    id: "paid-attention",
-    source: "paid",
-    sourceHandle: "top-source",
-    target: "attention",
-    targetHandle: "bottom-target",
-  },
-  {
-    ...directionalEdge,
-    id: "attention-complete",
-    source: "attention",
-    target: "complete",
   },
 ];
 
@@ -212,7 +185,7 @@ export function ReservationLifecycleMap() {
     <>
       <div
         aria-hidden="true"
-        className="hidden h-[24rem] overflow-hidden rounded-xl border border-navy-blue/10 bg-white lg:block"
+        className="hidden h-80 overflow-hidden rounded-xl border border-navy-blue/10 bg-white lg:block"
       >
         <ReactFlow
           edges={edges}
@@ -252,12 +225,6 @@ export function ReservationLifecycleMap() {
           <strong>Held → Cancelled</strong>
           <p className="mt-1 text-sm text-navy-blue/65">
             Unpaid or abandoned holds are released.
-          </p>
-        </li>
-        <li className="rounded-lg border border-burned-orange/25 bg-white p-4">
-          <strong>Paid → Needs attention → Complete</strong>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Confirmation issues stay visible until the reservation completes.
           </p>
         </li>
       </ol>

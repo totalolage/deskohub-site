@@ -123,14 +123,24 @@ const breadcrumbNames: Record<string, string> = {
   sales: "Sales",
 };
 
-function Breadcrumbs() {
-  const pathname = usePathname();
-  const segments = pathname.split("/").filter(Boolean);
+export function AdministrationBreadcrumbs({
+  entityLabel,
+  segments,
+}: {
+  readonly entityLabel?: string;
+  readonly segments: readonly string[];
+}) {
   const crumbs = segments.map((segment, index) => ({
     href: `/${segments.slice(0, index + 1).join("/")}`,
     label:
-      breadcrumbNames[segment] ??
-      (segments[index - 1] === "reservations" ? "Reservation" : "Customer"),
+      (index === segments.length - 1 && entityLabel) ||
+      breadcrumbNames[segment] ||
+      ({
+        codes: "Code",
+        customers: "Customer",
+        reservations: "Reservation",
+      }[segments[index - 1] ?? ""] ??
+        segment),
   }));
   return (
     <nav aria-label="Breadcrumb" className="min-w-0">
@@ -178,7 +188,13 @@ function Brand() {
   );
 }
 
-export function AdminShell({ children }: { readonly children: ReactNode }) {
+export function AdminShell({
+  breadcrumb,
+  children,
+}: {
+  readonly breadcrumb: ReactNode;
+  readonly children: ReactNode;
+}) {
   return (
     <div className="min-h-screen bg-[#f6f6f3] text-navy-blue lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
       <aside className="hidden border-r border-navy-blue/10 bg-white px-4 py-5 lg:sticky lg:top-0 lg:block lg:h-screen">
@@ -218,13 +234,11 @@ export function AdminShell({ children }: { readonly children: ReactNode }) {
             <div className="lg:hidden">
               <Brand />
             </div>
-            <div className="hidden min-w-0 lg:block">
-              <Breadcrumbs />
-            </div>
+            <div className="hidden min-w-0 lg:block">{breadcrumb}</div>
           </div>
         </header>
         <div className="border-b border-navy-blue/10 bg-white px-4 py-3 lg:hidden">
-          <Breadcrumbs />
+          {breadcrumb}
         </div>
         {children}
       </div>

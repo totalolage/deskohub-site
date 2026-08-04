@@ -1,4 +1,3 @@
-import { Search } from "lucide-react";
 import Link from "next/link";
 import {
   AdministrationPage,
@@ -8,9 +7,6 @@ import {
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
-import { Button } from "@/shared/components/ui/button";
-import { Input } from "@/shared/components/ui/input";
-import { Label } from "@/shared/components/ui/label";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +20,12 @@ export default async function AdminPage() {
         title="Workspace overview"
       />
 
-      <dl className="mb-7 grid overflow-hidden rounded-xl border border-navy-blue/10 bg-white sm:grid-cols-3 sm:divide-x sm:divide-navy-blue/10">
+      <dl className="mb-7 grid overflow-hidden rounded-xl border border-navy-blue/10 bg-white sm:grid-cols-2 sm:divide-x sm:divide-navy-blue/10">
         <OverviewCount
           label="Reservations"
           value={overview.counts.reservations}
         />
         <OverviewCount label="Customers" value={overview.counts.customers} />
-        <OverviewCount
-          attention={overview.counts.attention > 0}
-          label="Needs attention"
-          value={overview.counts.attention}
-        />
       </dl>
 
       <section aria-labelledby="find-heading" className="mb-9">
@@ -43,45 +34,14 @@ export default async function AdminPage() {
             Find a record
           </h2>
           <p className="mt-1 text-sm text-navy-blue/65">
-            Search reservations by ID, or customers by their exact contact
-            details.
+            Search reservations and customers by customer name or email.
           </p>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
-          <form
-            action="/admin/reservations"
-            className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
-          >
-            <div className="grid gap-1.5">
-              <Label htmlFor="reservation-query">Reservation ID</Label>
-              <Input
-                autoComplete="off"
-                id="reservation-query"
-                name="query"
-                placeholder="Reservation ID"
-                required
-              />
-            </div>
-            <Button type="submit">
-              <Search aria-hidden className="size-4" />
-              Find reservation
-            </Button>
-          </form>
-          <CustomerSearch compact />
+          <CustomerSearch destination="reservations" />
+          <CustomerSearch />
         </div>
       </section>
-
-      <OverviewSection
-        actionHref="/admin/reservations?status=attention"
-        actionLabel="View attention queue"
-        description="Reservations with confirmation or cancellation issues."
-        title="Needs attention"
-      >
-        <ReservationTable
-          emptyMessage="No reservations currently need attention."
-          reservations={overview.attention}
-        />
-      </OverviewSection>
 
       <OverviewSection
         actionHref={`/admin/reservations?date=${new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Prague" })}`}
@@ -117,8 +77,7 @@ export default async function AdminPage() {
             How reservations progress
           </h2>
           <p className="mt-2 text-sm leading-6 text-navy-blue/65">
-            A simple view of the normal path and the states that need an
-            operator’s attention.
+            A simple view of the normal path and alternate outcomes.
           </p>
         </div>
         <ReservationLifecycleMap />
@@ -128,11 +87,9 @@ export default async function AdminPage() {
 }
 
 function OverviewCount({
-  attention = false,
   label,
   value,
 }: {
-  readonly attention?: boolean;
   readonly label: string;
   readonly value: number;
 }) {
@@ -141,13 +98,7 @@ function OverviewCount({
       <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-navy-blue/65">
         {label}
       </dt>
-      <dd
-        className={
-          attention ? "mt-2 text-2xl text-burned-orange-ink" : "mt-2 text-2xl"
-        }
-      >
-        {value}
-      </dd>
+      <dd className="mt-2 text-2xl">{value}</dd>
     </div>
   );
 }

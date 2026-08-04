@@ -58,7 +58,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(currentDate, 16),
       date: currentDate.toString(),
       type: "meeting-room",
-      typeLabel: "Meeting room",
+      typeLabel: "Meeting Room",
       status: { group: "attention", label: "Confirmation issue" },
       updatedAt: atTime(currentDate, 10),
     },
@@ -71,7 +71,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(currentDate, 18),
       date: currentDate.toString(),
       type: "cowork",
-      typeLabel: "Profi coworking",
+      typeLabel: "Cowork Profi",
       status: { group: "in_progress", label: "Payment pending" },
       updatedAt: atTime(currentDate, 9),
     },
@@ -84,7 +84,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(tomorrow, 17),
       date: tomorrow.toString(),
       type: "cowork",
-      typeLabel: "Plus coworking",
+      typeLabel: "Cowork Plus",
       status: { group: "in_progress", label: "Confirming" },
       updatedAt: atTime(yesterday, 17),
     },
@@ -97,7 +97,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(lastWeek, 18),
       date: lastWeek.toString(),
       type: "cowork",
-      typeLabel: "Basic coworking",
+      typeLabel: "Cowork Basic",
       status: { group: "complete", label: "Complete" },
       updatedAt: atTime(lastWeek, 8),
     },
@@ -110,7 +110,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       endsAt: atTime(yesterday, 15),
       date: yesterday.toString(),
       type: "meeting-room",
-      typeLabel: "Meeting room",
+      typeLabel: "Meeting Room",
       status: { group: "cancelled", label: "Cancelled" },
       updatedAt: atTime(yesterday, 8),
     },
@@ -124,10 +124,9 @@ export const administrationFixturesEnabled = () =>
 export const loadFixtureReservations = (
   input: AdministrationReservationListInput
 ) => {
-  const query = input.query?.toLowerCase();
   const items = makeReservations().filter(
     (reservation) =>
-      (!query || reservation.id.toLowerCase().includes(query)) &&
+      (!input.customerId || reservation.customerId === input.customerId) &&
       (!input.status || reservation.status.group === input.status) &&
       (!input.type || reservation.type === input.type) &&
       (!input.date || reservation.date === input.date)
@@ -148,13 +147,7 @@ export const loadFixtureOverview = () => {
     counts: {
       reservations: reservations.length,
       customers: Object.keys(fixtureCustomers).length,
-      attention: reservations.filter(
-        ({ status }) => status.group === "attention"
-      ).length,
     },
-    attention: reservations.filter(
-      ({ status }) => status.group === "attention"
-    ),
     today: reservations.filter(({ date }) => date === currentDate),
     todayUnavailable: false,
     recent: reservations.slice(0, 4),
@@ -212,7 +205,7 @@ export const loadFixtureReservation = (
         ? [
             {
               id: "fixture-attention",
-              title: "Customer confirmation needs attention",
+              title: "Customer confirmation failed",
               description: "The confirmation could not be completed.",
               occurredAt: reservation.updatedAt,
               tone: "warning" as const,
@@ -220,7 +213,6 @@ export const loadFixtureReservation = (
           ]
         : []),
     ],
-    historyAvailability: "available",
     paymentAttempts: [
       {
         id: "fixture-payment",

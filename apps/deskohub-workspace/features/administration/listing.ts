@@ -15,9 +15,3 @@ export const getAdministrationPagination = ({
     pageCount,
   };
 };
-
-export const getReservationSearchPattern = (query: string) =>
-  `%${query
-    .replaceAll("\\", "\\\\")
-    .replaceAll("%", "\\%")
-    .replaceAll("_", "\\_")}%`;

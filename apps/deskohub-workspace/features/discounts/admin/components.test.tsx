@@ -123,6 +123,23 @@ describe("discount administration pages", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
+  test("searches customers with one fuzzy name or email query", async () => {
+    const { CustomerSearch } = await import("./customer-admin-client");
+    const view = render(
+      <>
+        <CustomerSearch destination="reservations" />
+        <CustomerSearch />
+      </>
+    );
+
+    const searchboxes = view.getAllByRole("searchbox", {
+      name: "Customer name or email",
+    });
+    expect(searchboxes).toHaveLength(2);
+    expect(searchboxes[0]?.id).not.toBe(searchboxes[1]?.id);
+    expect(view.queryByRole("combobox", { name: "Search by" })).toBeNull();
+  });
+
   test("uses a sortable table and a percentage editor with a dirty save state", async () => {
     const { DiscountsAdministrationPage } = await import("./components");
     const view = render(<DiscountsAdministrationPage dashboard={dashboard} />);

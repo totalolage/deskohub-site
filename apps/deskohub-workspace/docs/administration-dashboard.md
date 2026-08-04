@@ -10,7 +10,7 @@ The dashboard composes three sources without creating a second customer or reser
 - Dotypos supplies current booking dates and customer contact details. A missing or unavailable Dotypos record does not hide an existing Workspace reservation.
 - PostHog can add selected historical lifecycle observations to an individual reservation timeline. It never determines the current status and is not queried for reservation or customer lists.
 
-Customer search by email or phone remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. Reservation IDs, status groups, reservation types, dates, and page numbers may be represented in URLs.
+Fuzzy customer search by name or email remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. The selected Dotypos customer ID, status groups, reservation types, dates, and page numbers may be represented in URLs.
 
 The administration projection deliberately excludes Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags.
 
@@ -26,11 +26,11 @@ The host and project ID are shared with the existing PostHog setup. The history 
 
 Queries are limited to the app-owned reservation lifecycle event names, the local Workspace reservation ID, the current deployment environment, and the Workspace service name. Only normalized event name, time, event identifier, payment-attempt identifier, and provider are decoded; React never receives the raw event object.
 
-If the configuration is absent, PostHog is slow, or the response cannot be decoded, the reservation page continues to show durable Workspace milestones and labels the additional history unavailable.
+If the configuration is absent, PostHog is slow, or the response cannot be decoded, the reservation page continues to show durable Workspace milestones without interrupting the operator view.
 
 ## Visibility, not auditability
 
-The timeline is an operational reconstruction, not an audit record. The dashboard states this on every reservation detail page.
+The timeline is an operational reconstruction, not an audit record. This limitation is documented here instead of repeated in the operator interface. Auditability would require an immutable event ledger with explicit retention, integrity, and access guarantees.
 
 The current history can be incomplete because:
 

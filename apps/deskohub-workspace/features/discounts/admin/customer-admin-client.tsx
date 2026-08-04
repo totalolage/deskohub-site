@@ -3,19 +3,15 @@
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
-import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
-import type {
-  DiscountAdminCustomerSearch,
-  DiscountAdminMutation,
-} from "./contracts";
+import type { DiscountAdminMutation } from "./contracts";
 import type {
   AdminCustomerSearchResult,
   AdminDiscountGroup,
@@ -24,27 +20,12 @@ import type {
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
-const customerSearchLabels = {
-  id: "Dotypos customer ID",
-  email: "Email",
-  phone: "Phone",
-} as const satisfies Record<DiscountAdminCustomerSearch["kind"], string>;
-
-const getCustomerSearch = (
-  kind: DiscountAdminCustomerSearch["kind"],
-  value: string
-): DiscountAdminCustomerSearch => {
-  if (kind === "id") return { kind, customerId: value as DotyposCustomerId };
-  if (kind === "email") return { kind, email: value };
-  return { kind, phone: value };
-};
-
 export function CustomerSearch({
-  compact = false,
+  destination = "customer",
 }: {
-  readonly compact?: boolean;
+  readonly destination?: "customer" | "reservations";
 }) {
-  const [kind, setKind] = useState<DiscountAdminCustomerSearch["kind"]>("id");
+  const queryId = useId();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(
@@ -73,12 +54,7 @@ export function CustomerSearch({
   return (
     <div className="space-y-4">
       <form
-        className={cn(
-          "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:items-end",
-          compact
-            ? "md:grid-cols-[9rem_minmax(0,1fr)_auto]"
-            : "md:grid-cols-[11rem_minmax(0,1fr)_auto]"
-        )}
+        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);
@@ -88,42 +64,29 @@ export function CustomerSearch({
             ?.toString()
             .trim();
           if (!value) return;
-          execute(getCustomerSearch(kind, value));
+          execute({ query: value });
         }}
       >
         <div className="grid gap-1.5">
-          <Label htmlFor="customer-search-kind">Search by</Label>
-          <select
-            className={selectClassName}
-            id="customer-search-kind"
-            onChange={(event) => {
-              setKind(
-                event.currentTarget.value as DiscountAdminCustomerSearch["kind"]
-              );
-              setResult(null);
-            }}
-            value={kind}
-          >
-            <option value="id">Customer ID</option>
-            <option value="email">Exact email</option>
-            <option value="phone">Exact phone</option>
-          </select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="customer-search-query">
-            {customerSearchLabels[kind]}
-          </Label>
+          <Label htmlFor={queryId}>Customer name or email</Label>
           <Input
             autoComplete="off"
-            id="customer-search-query"
+            id={queryId}
+            minLength={2}
             name="query"
+            placeholder="Search by name or email"
             required
-            type={kind === "email" ? "email" : "text"}
+            type="search"
           />
         </div>
         <Button disabled={isExecuting} type="submit">
           <Search aria-hidden className="size-4" />
-          {isExecuting ? "Searching…" : "Search"}
+          {isExecuting
+            ? "Searching…"
+            : {
+                customer: "Find customer",
+                reservations: "Find reservations",
+              }[destination]}
         </Button>
       </form>
 
@@ -148,7 +111,7 @@ export function CustomerSearch({
             <>
               {result.kind === "ambiguous" && (
                 <p className="border-b border-navy-blue/10 px-5 py-3 text-sm text-navy-blue/70">
-                  Multiple exact matches. Choose the correct customer.
+                  Multiple matches. Choose the correct customer.
                 </p>
               )}
               <ul className="divide-y divide-navy-blue/10">
@@ -164,13 +127,22 @@ export function CustomerSearch({
                           .filter(Boolean)
                           .join(" · ") || "No contact details"}
                       </p>
-                      <code className="mt-1 block text-xs text-navy-blue/65">
-                        {customer.id}
-                      </code>
                     </div>
                     <Button asChild size="sm" variant="secondary">
-                      <Link href={`/admin/customers/${customer.id}`}>
-                        Manage
+                      <Link
+                        href={
+                          {
+                            customer: `/admin/customers/${customer.id}`,
+                            reservations: `/admin/reservations?customerId=${encodeURIComponent(customer.id)}`,
+                          }[destination]
+                        }
+                      >
+                        {
+                          {
+                            customer: "Open customer",
+                            reservations: "View reservations",
+                          }[destination]
+                        }
                       </Link>
                     </Button>
                   </li>

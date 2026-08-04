@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import type { DiscountCodeId } from "../persistence-contracts";
@@ -88,33 +89,45 @@ export const loadDiscountAdminCustomerPageData = async (
   };
 };
 
+const loadOptionalDiscountAdminCustomerProfile = cache(
+  async (customerId: DotyposCustomerId) =>
+    Effect.gen(function* () {
+      const administration = yield* DiscountAdministration;
+      return yield* administration.loadCustomerProfile({ customerId });
+    }).pipe(
+      Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
+      Effect.catch((cause) =>
+        Effect.logWarning("Customer administration details unavailable", {
+          cause,
+          customerId,
+        }).pipe(Effect.as(null))
+      ),
+      Effect.provide(DiscountAdministrationLive),
+      runWorkspaceEffect("discount-administration.load-customer-optional", {
+        boundary: "route",
+      })
+    )
+);
+
 export const loadOptionalDiscountAdminCustomerPageData = async (
   customerId: DotyposCustomerId,
   searchParams: DiscountAdminSearchParams
 ) => {
   await authorizeDiscountAdminPage();
-
-  const profile = await Effect.gen(function* () {
-    const administration = yield* DiscountAdministration;
-    return yield* administration.loadCustomerProfile({ customerId });
-  }).pipe(
-    Effect.catchTag("DiscountAdminNotFoundError", () => Effect.succeed(null)),
-    Effect.catch((cause) =>
-      Effect.logWarning("Customer administration details unavailable", {
-        cause,
-        customerId,
-      }).pipe(Effect.as(null))
-    ),
-    Effect.provide(DiscountAdministrationLive),
-    runWorkspaceEffect("discount-administration.load-customer-optional", {
-      boundary: "route",
-    })
-  );
+  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
 
   return {
     profile,
     notice: await loadNotice(searchParams),
   };
+};
+
+export const loadDiscountAdminCustomerBreadcrumbLabel = async (
+  customerId: DotyposCustomerId
+) => {
+  await authorizeDiscountAdminPage();
+  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
+  return profile?.customer.displayName;
 };
 
 export const authorizeDiscountAdminPage = async () => {

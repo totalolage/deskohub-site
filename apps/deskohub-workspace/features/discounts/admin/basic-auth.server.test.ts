@@ -84,8 +84,7 @@ describe("discount administration server authorization", () => {
       id: "00000000-0000-0000-0000-000000000001",
     });
     const search = await searchDiscountAdminCustomers({
-      kind: "id",
-      customerId: "attacker-controlled-id",
+      query: "attacker-controlled-name",
     });
 
     expect(mutation).toHaveProperty("serverError");

@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
+import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { AdministrationLive } from "./administration.runtime";
@@ -17,7 +18,6 @@ import {
   loadFixtureReservation,
   loadFixtureReservations,
 } from "./fixtures";
-import type { AdministrationStatusGroup } from "./reservation-status";
 
 export type AdministrationSearchParams = Promise<
   Record<string, string | readonly string[] | undefined>
@@ -33,11 +33,8 @@ const parsePage = (value: string | undefined) => {
 
 const parseStatus = (
   value: string | undefined
-): AdministrationStatusGroup | undefined =>
-  value === "attention" ||
-  value === "in_progress" ||
-  value === "complete" ||
-  value === "cancelled"
+): AdministrationReservationListInput["status"] =>
+  value === "in_progress" || value === "complete" || value === "cancelled"
     ? value
     : undefined;
 
@@ -77,9 +74,9 @@ export const loadAdministrationReservations = async (
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const input: AdministrationReservationListInput = {
+    customerId: firstParam(params.customerId),
     date: firstParam(params.date),
     page: parsePage(firstParam(params.page)),
-    query: firstParam(params.query),
     status: parseStatus(firstParam(params.status)),
     type:
       typeValue === "cowork" || typeValue === "meeting-room"
@@ -96,7 +93,7 @@ export const loadAdministrationReservations = async (
   return { input, result };
 };
 
-export const loadAdministrationReservation = async (id: string) => {
+export const loadAdministrationReservation = cache(async (id: string) => {
   await authorizeAdministrationPage();
   if (administrationFixturesEnabled()) {
     const fixture = loadFixtureReservation(id);
@@ -109,7 +106,7 @@ export const loadAdministrationReservation = async (id: string) => {
   }).pipe(runAdministration("administration.reservation"));
   if (!detail) notFound();
   return detail;
-};
+});
 
 export const loadAdministrationCustomers = async (
   searchParams: AdministrationSearchParams
