@@ -211,21 +211,19 @@ const getReservationLegalEvidence = Effect.fn(
         hashAlgorithm: documents.privacyPolicy.hashAlgorithm,
       },
     },
-    ...(input.marketingAccepted && {
-      [documents.marketingCommunications.hash]: {
-        documentKey: "marketingCommunications" as const,
-        documentHash: documents.marketingCommunications.hash,
-        accepted: true,
-        acceptedAt: input.acceptedAt,
-        locale: input.locale,
-        source: reservationSubmitLegalEvidenceSource,
-        document: {
-          path: documents.marketingCommunications.path,
-          hash: documents.marketingCommunications.hash,
-          hashAlgorithm: documents.marketingCommunications.hashAlgorithm,
-        },
+    [documents.marketingCommunications.hash]: {
+      documentKey: "marketingCommunications",
+      documentHash: documents.marketingCommunications.hash,
+      accepted: input.marketingAccepted,
+      acceptedAt: input.acceptedAt,
+      locale: input.locale,
+      source: reservationSubmitLegalEvidenceSource,
+      document: {
+        path: documents.marketingCommunications.path,
+        hash: documents.marketingCommunications.hash,
+        hashAlgorithm: documents.marketingCommunications.hashAlgorithm,
       },
-    }),
+    },
   });
 });
 

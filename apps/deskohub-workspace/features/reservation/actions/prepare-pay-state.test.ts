@@ -918,7 +918,19 @@ describe("prepareWorkspacePayState", () => {
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",
-        evidence: expect.objectContaining({ documentHash: "privacy-hash" }),
+        evidence: expect.objectContaining({
+          accepted: true,
+          documentHash: "privacy-hash",
+          documentKey: "privacyPolicy",
+        }),
+      }),
+      expect.objectContaining({
+        workspaceReservationId: "reservation-id",
+        evidence: expect.objectContaining({
+          accepted: false,
+          documentHash: "marketing-hash",
+          documentKey: "marketingCommunications",
+        }),
       }),
     ]);
 
