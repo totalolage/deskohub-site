@@ -410,6 +410,7 @@ const prepareReservationDraft = Effect.fn(
 )(function* (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
+  readonly marketingConsent: boolean;
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
@@ -426,6 +427,7 @@ const prepareReservationDraft = Effect.fn(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent,
       reservation: input.reservation,
     });
 
@@ -654,6 +656,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent === true,
       reservation,
     });
     yield* Effect.annotateLogsScoped({
@@ -732,6 +735,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent === true,
       reservation,
       draft: {
         dotyposCustomerId,
