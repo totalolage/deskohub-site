@@ -74,6 +74,7 @@ test("binds the manual target origin to a successful exact-SHA Workspace deploym
     workflow.indexOf("  test-e2e:")
   );
 
+  expect(workflow).toContain("deployments: read");
   expect(resolveTargetStep).toContain('"repos/$GITHUB_REPOSITORY/deployments"');
   expect(resolveTargetStep).toContain('-f sha="$TARGET_SHA"');
   expect(resolveTargetStep).toContain(
