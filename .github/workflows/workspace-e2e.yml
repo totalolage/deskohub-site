@@ -177,6 +177,14 @@ jobs:
       WORKSPACE_E2E_PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
 
     steps:
+      - name: Start test job setup timing
+        id: test-job-setup-clock
+        run: |
+          echo '## Workspace E2E setup timings' >> "$GITHUB_STEP_SUMMARY"
+          echo '| Operation | Duration |' >> "$GITHUB_STEP_SUMMARY"
+          echo '| --- | ---: |' >> "$GITHUB_STEP_SUMMARY"
+          echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Checkout exact target
         uses: actions/checkout@v4
         with:
@@ -248,12 +256,9 @@ jobs:
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             >/dev/null
 
-      - name: Start setup timing
+      - name: Start post-allocation setup timing
         id: setup-clock
         run: |
-          echo '## Workspace E2E setup timings' >> "$GITHUB_STEP_SUMMARY"
-          echo '| Operation | Duration |' >> "$GITHUB_STEP_SUMMARY"
-          echo '| --- | ---: |' >> "$GITHUB_STEP_SUMMARY"
           echo "started_at=$(date +%s)" >> "$GITHUB_OUTPUT"
 
       - uses: oven-sh/setup-bun@v2
@@ -432,10 +437,14 @@ jobs:
 
       - name: Record setup critical path
         env:
+          TEST_JOB_SETUP_STARTED_AT: ${{ steps.test-job-setup-clock.outputs.started_at }}
           SETUP_STARTED_AT: ${{ steps.setup-clock.outputs.started_at }}
         run: |
-          elapsed_seconds=$(($(date +%s) - SETUP_STARTED_AT))
-          echo "| **Total setup critical path** | **${elapsed_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
+          completed_at=$(date +%s)
+          post_allocation_seconds=$((completed_at - SETUP_STARTED_AT))
+          test_job_seconds=$((completed_at - TEST_JOB_SETUP_STARTED_AT))
+          echo "| **Post-allocation setup critical path** | **${post_allocation_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Total test job setup critical path** | **${test_job_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run checkout E2E
         env:

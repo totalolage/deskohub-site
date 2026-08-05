@@ -139,3 +139,26 @@ test("uses the hosted runner browser without downloading another browser", async
   expect(workflow).toContain("AGENT_BROWSER_EXECUTABLE_PATH");
   expect(workflow).toContain("Hosted browser verification");
 });
+
+test("reports the complete test job setup critical path", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const testJob = workflow.slice(
+    workflow.indexOf("  test-e2e:"),
+    workflow.indexOf("  publish-final-status:")
+  );
+  const setupClockIndex = testJob.indexOf("Start test job setup timing");
+  const checkoutIndex = testJob.indexOf("Checkout exact target");
+  const postAllocationClockIndex = testJob.indexOf(
+    "Start post-allocation setup timing"
+  );
+  const runIndex = testJob.indexOf("Run checkout E2E");
+
+  expect(setupClockIndex).toBeGreaterThan(-1);
+  expect(setupClockIndex).toBeLessThan(checkoutIndex);
+  expect(checkoutIndex).toBeLessThan(postAllocationClockIndex);
+  expect(postAllocationClockIndex).toBeLessThan(runIndex);
+  expect(testJob).toContain("Post-allocation setup critical path");
+  expect(testJob).toContain("Total test job setup critical path");
+});

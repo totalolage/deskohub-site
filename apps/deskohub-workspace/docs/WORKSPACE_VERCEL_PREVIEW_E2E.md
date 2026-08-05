@@ -613,9 +613,12 @@ migration—do not produce suite spans. Diagnose those from the responsible
 GitHub Actions step. The workflow adds a setup timing table to its Actions
 summary for Bun setup, repository dependencies, Neon resolution, aggregate
 Dotypos capacity validation, migration, the pinned `agent-browser` CLI, and
-browser/system dependencies. These operations remain sequential until a
-supported prepared runner image or cache can overlap them without background
-shell jobs, shared-install locks, or hidden failures.
+browser/system dependencies. It reports both the post-allocation setup path and
+the complete `test-e2e` job setup path from before the exact-SHA checkout. The
+separate target-resolution job remains visible in native Actions timings. These
+operations remain sequential until a supported prepared runner image or cache
+can overlap them without background shell jobs, shared-install locks, or hidden
+failures.
 
 For scripted inspection, authenticate `posthog-cli` to the EU Workspace
 project with a personal API key granting `tracing:read`. The public project
