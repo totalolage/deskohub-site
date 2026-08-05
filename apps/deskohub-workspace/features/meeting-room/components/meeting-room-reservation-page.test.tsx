@@ -1,6 +1,6 @@
 import { beforeEach, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import type { ReactElement, ReactNode } from "react";
+import type { ReactElement } from "react";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import type { MeetingRoomReservationForm } from "./meeting-room-reservation-form";
 
@@ -17,19 +17,7 @@ mock.module(
 mock.module("@/features/reservation/backend/advertised-prices.server", () => ({
   loadAdvertisedPrices,
 }));
-mock.module(
-  "@/features/reservation/components/create-reservation-page.server",
-  () => ({
-    createReservationPage: (definition: {
-      readonly render: (context: {
-        readonly checkoutSessionId?: string;
-        readonly initialReservation?: unknown;
-        readonly locale: "en-US";
-      }) => ReactNode | Promise<ReactNode>;
-    }) => definition,
-  })
-);
-const { meetingRoomReservationPage } = await import(
+const { renderMeetingRoomReservationContent } = await import(
   "./meeting-room-reservation-page"
 );
 
@@ -50,7 +38,7 @@ test("preloads the preserved quote for a restored hourly slot that has started",
   });
 
   try {
-    await meetingRoomReservationPage.render({
+    await renderMeetingRoomReservationContent({
       initialReservation: restoredReservation,
       locale: "en-US",
     });
@@ -98,12 +86,14 @@ test("restores a whole-day reservation after its start and before its end", asyn
   });
 
   try {
-    const form = (await meetingRoomReservationPage.render({
+    const form = (await renderMeetingRoomReservationContent({
       initialReservation: restoredReservation,
       locale: "en-US",
+      replacementToken: "signed-replacement-token",
     })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;
 
     expect(form.props.initialReservation).toBe(restoredReservation);
+    expect(form.props.replacementToken).toBe("signed-replacement-token");
     expect(form.props.initialValues).toMatchObject({
       startDateTime: "2099-07-30T00:00",
       duration: "day:1",
