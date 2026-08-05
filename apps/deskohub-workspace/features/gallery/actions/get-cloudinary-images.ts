@@ -21,7 +21,7 @@ export interface GetCloudinaryImagesOptions extends SearchOptions {
 
 export async function getCloudinaryImages({
   tags,
-  maxResults = 60,
+  maxResults,
   sortBy,
   sortDirection,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
