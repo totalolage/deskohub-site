@@ -37,6 +37,12 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   );
   expect(testJob).toContain("contents: read");
   expect(testJob).not.toContain("contents: write");
+  expect(testJob).toContain(`release_outcome: \${{ steps.release.outcome }}`);
+  expect(testJob).toContain("id: release");
+  expect(workflow).toContain(
+    `needs.test-e2e.outputs.release_outcome == 'success'`
+  );
+  expect(workflow).toContain("Workspace E2E shard release failed");
   expect(workflow).toContain("Validate aggregate Dotypos capacity");
   expect(workflow).toContain("Reconcile stale Workspace E2E reservations");
   expect(workflow).toContain("e2e:cleanup-stale --apply");
