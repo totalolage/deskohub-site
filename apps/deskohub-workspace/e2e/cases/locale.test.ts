@@ -70,6 +70,12 @@ test("switches locale from hydrated stable selectors with native activation", as
   expect(calls.some(({ args }) => args.includes("snapshot"))).toBe(false);
 });
 
+test("allows repeated locale navigations to outlive two navigation windows", () => {
+  expect(workspaceE2ETimeouts.localeCase).toBeGreaterThan(
+    workspaceE2ETimeouts.browserNavigation * 2
+  );
+});
+
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

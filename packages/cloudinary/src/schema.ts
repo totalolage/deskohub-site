@@ -16,7 +16,14 @@ export const CloudinaryAssetSchema = Schema.Struct({
       custom: Schema.optional(
         Schema.Struct({
           alt: Schema.optional(Schema.String),
+          "alt-cs-CZ": Schema.optional(Schema.String),
+          "alt-en-US": Schema.optional(Schema.String),
           caption: Schema.optional(Schema.String),
+          "caption-cs-CZ": Schema.optional(Schema.String),
+          "caption-en-US": Schema.optional(Schema.String),
+          detail: Schema.optional(Schema.String),
+          "detail-cs-CZ": Schema.optional(Schema.String),
+          "detail-en-US": Schema.optional(Schema.String),
         })
       ),
     })

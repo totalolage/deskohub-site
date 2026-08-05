@@ -16,7 +16,19 @@ describe("Cloudinary schemas", () => {
         created_at: "2026-06-20T10:00:00Z",
         folder: "gallery",
         tags: ["workspace"],
-        context: { custom: { alt: "Desk", caption: "Workspace" } },
+        context: {
+          custom: {
+            alt: "Desk",
+            "alt-cs-CZ": "Stůl",
+            "alt-en-US": "Desk",
+            caption: "Workspace",
+            "caption-cs-CZ": "Pracovní prostor",
+            "caption-en-US": "Workspace",
+            detail: "Ten seats",
+            "detail-cs-CZ": "Deset míst",
+            "detail-en-US": "Ten seats",
+          },
+        },
       })
     ).toBeTrue();
 

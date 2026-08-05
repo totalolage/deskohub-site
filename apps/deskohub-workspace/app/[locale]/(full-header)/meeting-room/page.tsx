@@ -7,7 +7,7 @@ import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { MeetingRoomEditorialDesign } from "@/features/meeting-room/components/meeting-room-editorial-design";
+import { MeetingRoomPage } from "@/features/meeting-room/components/meeting-room-page";
 import { MeetingRoomPageFeature } from "@/features/meeting-room/components/meeting-room-page-feature";
 import {
   getWorkspaceLocalizedCanonicalUrl,
@@ -21,9 +21,18 @@ type MeetingRoomPageProps = {
 const pathname = "/meeting-room";
 const decodeMeetingRoomParams = getParamsDecoder({});
 
-const getMeetingRoomImages = () =>
+const getMeetingRoomHeroImages = () =>
   getCloudinaryImages({
-    tags: [["ttrpg-room", "ttrpg-room-workspace"]],
+    maxResults: 1,
+    tags: "meeting-room-hero",
+  }).catch((): readonly CloudinaryAsset[] => []);
+
+const getMeetingRoomGalleryImages = () =>
+  getCloudinaryImages({
+    maxResults: 5,
+    sortBy: "public_id",
+    sortDirection: "asc",
+    tags: "meeting-room-gallery",
   }).catch((): readonly CloudinaryAsset[] => []);
 
 export async function generateMetadata({
@@ -75,11 +84,18 @@ export default async function LocalizedMeetingRoomPage({
   const { locale } = routeParams;
   const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
   if (!meetingRoomPageEnabled) notFound();
-  const images = await getMeetingRoomImages();
+  const [heroImages, galleryImages] = await Promise.all([
+    getMeetingRoomHeroImages(),
+    getMeetingRoomGalleryImages(),
+  ]);
 
   return runWithRequestLocale(locale, () => (
     <MeetingRoomPageFeature initialEnabled={meetingRoomPageEnabled}>
-      <MeetingRoomEditorialDesign images={images} locale={locale} />
+      <MeetingRoomPage
+        galleryImages={galleryImages}
+        heroImage={heroImages[0]}
+        locale={locale}
+      />
     </MeetingRoomPageFeature>
   ));
 }

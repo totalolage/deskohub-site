@@ -10,6 +10,7 @@ import {
   checkoutFlows,
   makeCoworkCheckoutData,
   requireCheckoutDate,
+  reuseCoworkCheckoutContact,
   selectCoworkDates,
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -175,6 +176,24 @@ export const makeWorkspaceE2ECases = ({
           "cowork-reservation-replacement"
         );
         nextDateIndex += 1;
+        const editedReservationReplacementDates = yield* selectCoworkDates(
+          discountPreparation.availableBasicDates,
+          1,
+          {
+            allocation,
+            excludedDates: new Set([reservationReplacementDate]),
+            selectionLabel: "reservation-replacement",
+          }
+        );
+        const editedReservationReplacementDate = yield* requireCheckoutDate(
+          editedReservationReplacementDates,
+          0
+        );
+        const editedReservationReplacementData = reuseCoworkCheckoutContact(
+          config.baseUrl,
+          editedReservationReplacementDate,
+          reservationReplacementData
+        );
         const reservationReplacementState = trackCheckoutState(
           flowStates,
           reservationReplacementData
@@ -186,7 +205,7 @@ export const makeWorkspaceE2ECases = ({
               config,
               data: reservationReplacementData,
               datasourceConfig,
-              replacementData: reservationReplacementData,
+              replacementData: editedReservationReplacementData,
               reservationPath: "/en-US/reservation/cowork",
               run,
               runStep,
