@@ -126,7 +126,7 @@ describe("whole-day meeting-room checkout proof", () => {
   });
 });
 
-test("observes fulfillment on the existing checkout return page", async () => {
+test("observes fulfillment across server and runner whitespace variants", async () => {
   const commands: string[][] = [];
   const run = (async (_command: string, args: string[]) => {
     commands.push(args);
@@ -137,7 +137,7 @@ test("observes fulfillment on the existing checkout return page", async () => {
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : "Your workspace access is ready. Access details were sent by email.",
+        : "Your workspace access is ready. Access details were sent by email. Tuesday, August 25, 2026 10:00\u202fAM\u2009–\u20092:00\u202fPM CZK\u00a00",
     };
   }) as Runner;
 
@@ -145,15 +145,21 @@ test("observes fulfillment on the existing checkout return page", async () => {
     assertFulfilledStatusPage({
       checkoutRow: {
         amount_exponent: 2,
-        amount_value: 10_000,
+        amount_value: 0,
         currency: "CZK",
       } as CheckoutRow,
       config: {
         expectedHost: "workspace.test",
         timeouts: workspaceE2ETimeouts,
       } as WorkspaceE2EConfig,
-      data: { locale: "en-US" } as CheckoutData,
-      dotyposReservation: {} as never,
+      data: {
+        locale: "en-US",
+        meetingRoom: {},
+      } as CheckoutData,
+      dotyposReservation: {
+        reservedFrom: Temporal.Instant.from("2026-08-25T08:00:00Z"),
+        reservedUntil: Temporal.Instant.from("2026-08-25T12:00:00Z"),
+      } as never,
       orderId: "order-id",
       run,
       session: "existing-status-page",
