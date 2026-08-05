@@ -65,7 +65,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   interruption-safe priority permit pool, beginning before navigation and
   releasing before hosted payment. Prioritize queued starts by the case watchdog,
   keep equal-deadline starts FIFO, remove interrupted waiters, and release a
-  granted permit when interruption races admission. The synthetic
+  granted permit when interruption races admission. A three-way exact-SHA soak
+  with unbounded hosted sessions produced Nexi error pages in multiple runs;
+  keep one interruption-safe hosted-payment session per suite from payment
+  submission through the return to the checkout status page. This narrow
+  suite-local Effect semaphore permits one session from each supported
+  concurrent run and does not serialize unrelated cases or jobs. The synthetic
   `replay-payment-webhook` step is the other measured boundary. A three-way
   exact-SHA round failed all runs when a suite-local semaphore still allowed
   three aggregate Nexi replays, so admit one replay globally with a

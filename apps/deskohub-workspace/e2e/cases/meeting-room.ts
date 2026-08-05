@@ -167,7 +167,7 @@ export const makeMeetingRoomE2ECases = ({
     return [
       {
         checkoutStates: [paidState],
-        execute: ({ runStep, session }) =>
+        execute: ({ resources, runStep, session }) =>
           executeCheckoutFlow({
             config,
             data: paidData,
@@ -176,6 +176,7 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-one-hour",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
+            resources,
             payPageSteps: () => [
               {
                 execute: assertMeetingRoomPayPage(
@@ -266,11 +267,12 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [cancelledState],
-        execute: ({ runStep, session }) =>
+        execute: ({ resources, runStep, session }) =>
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
             reservationPath: "/en-US/reservation/meeting-room",
+            resources,
             run,
             runStep,
             scenario: cancelledScenario,
@@ -291,7 +293,7 @@ export const makeMeetingRoomE2ECases = ({
       },
       {
         checkoutStates: [dayState],
-        execute: ({ runStep, session }) =>
+        execute: ({ resources, runStep, session }) =>
           executeCheckoutFlow({
             config,
             data: dayData,
@@ -300,6 +302,7 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-whole-day",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
+            resources,
             payPageSteps: () => [
               {
                 execute: assertMeetingRoomPayPage(

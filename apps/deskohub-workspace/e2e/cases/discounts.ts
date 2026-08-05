@@ -60,6 +60,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
+  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -193,7 +194,7 @@ export const makeDiscountE2ECases = ({
     const codeCheckoutState = trackCheckoutState(flowStates, codeCheckoutData);
     cases.push({
       checkoutStates: [codeCheckoutState],
-      execute: ({ runStep, session }) =>
+      execute: ({ resources, runStep, session }) =>
         executeDiscountCheckout({
           config,
           data: codeCheckoutData,
@@ -201,6 +202,7 @@ export const makeDiscountE2ECases = ({
           discountCode: discountCodeFixtures.partial.code,
           expectedDiscounts: [codeDiscountExpectation],
           flowId: "cowork-discount-code",
+          resources,
           run,
           runStep,
           session,
@@ -255,13 +257,14 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [calendarCheckoutState],
-      execute: ({ runStep, session }) =>
+      execute: ({ resources, runStep, session }) =>
         executeDiscountCheckout({
           config,
           data: calendarCheckoutData,
           datasourceConfig,
           expectedDiscounts: [calendarDiscountExpectation],
           flowId: "cowork-calendar-sale",
+          resources,
           run,
           runStep,
           session,
@@ -288,7 +291,7 @@ export const makeDiscountE2ECases = ({
     );
     cases.push({
       checkoutStates: [combinedCheckoutState],
-      execute: ({ runStep, session }) =>
+      execute: ({ resources, runStep, session }) =>
         executeDiscountCheckout({
           config,
           data: combinedCheckoutData,
@@ -299,6 +302,7 @@ export const makeDiscountE2ECases = ({
             codeDiscountExpectation,
           ],
           flowId: "cowork-calendar-sale-and-code",
+          resources,
           run,
           runStep,
           session,
@@ -428,7 +432,7 @@ export const makeDiscountE2ECases = ({
       const state = trackCheckoutState(flowStates, scenario.data);
       cases.push({
         checkoutStates: [state],
-        execute: ({ runStep, session }) =>
+        execute: ({ resources, runStep, session }) =>
           Effect.gen(function* () {
             yield* runStep({
               execute: prepareDotyposCustomerDiscount(
@@ -447,6 +451,7 @@ export const makeDiscountE2ECases = ({
                 "discountCode" in scenario ? scenario.discountCode : undefined,
               expectedDiscounts: scenario.expectedDiscounts,
               flowId: `cowork-${scenario.id}`,
+              resources,
               run,
               runStep,
               session,
@@ -912,6 +917,7 @@ export const executeDiscountCheckout = ({
   discountCode,
   expectedDiscounts,
   flowId,
+  resources,
   run,
   runStep,
   session,
@@ -923,6 +929,7 @@ export const executeDiscountCheckout = ({
   readonly discountCode?: string;
   readonly expectedDiscounts: readonly ExpectedDiscountApplication[];
   readonly flowId: string;
+  readonly resources: WorkspaceE2ECaseResources;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -938,6 +945,7 @@ export const executeDiscountCheckout = ({
     datasourceConfig,
     expectedDiscounts,
     flow: discountCheckoutFlow(flowId),
+    resources,
     payPageSteps: () => {
       const automaticDiscounts = expectedDiscounts.filter(
         ({ label }) => label !== codeDiscountLabel
