@@ -11,16 +11,6 @@ import {
   type AdministrationReservationListInput,
   AdministrationService,
 } from "./administration.service";
-import {
-  administrationFixturesEnabled,
-  loadFixtureBooking,
-  loadFixtureBookings,
-  loadFixtureCustomerReservations,
-  loadFixtureCustomers,
-  loadFixtureOverview,
-  loadFixtureReservation,
-  loadFixtureReservations,
-} from "./fixtures";
 
 export type AdministrationSearchParams = Promise<
   Record<string, string | readonly string[] | undefined>
@@ -59,7 +49,6 @@ const runAdministration =
     );
 
 export const authorizeAdministrationPage = async () => {
-  if (administrationFixturesEnabled()) return;
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),
     Effect.catchTag("DiscountAdminUnauthorizedError", () =>
@@ -72,7 +61,6 @@ export const authorizeAdministrationPage = async () => {
 
 export const loadAdministrationOverview = async () => {
   await authorizeAdministrationPage();
-  if (administrationFixturesEnabled()) return loadFixtureOverview();
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadOverview();
@@ -95,9 +83,6 @@ export const loadAdministrationReservations = async (
         ? typeValue
         : undefined,
   };
-  if (administrationFixturesEnabled()) {
-    return { input, result: loadFixtureReservations(input) };
-  }
   const result = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listReservations(input);
@@ -107,11 +92,6 @@ export const loadAdministrationReservations = async (
 
 export const loadAdministrationReservation = cache(async (id: string) => {
   await authorizeAdministrationPage();
-  if (administrationFixturesEnabled()) {
-    const fixture = loadFixtureReservation(id);
-    if (!fixture) notFound();
-    return fixture;
-  }
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadReservation(id);
@@ -129,9 +109,6 @@ export const loadAdministrationBookings = async (
     date: parseDate(firstParam(params.date)),
     page: parsePage(firstParam(params.page)),
   };
-  if (administrationFixturesEnabled()) {
-    return { input, result: loadFixtureBookings(input) };
-  }
   const result = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listBookings(input);
@@ -141,11 +118,6 @@ export const loadAdministrationBookings = async (
 
 export const loadAdministrationBooking = cache(async (id: string) => {
   await authorizeAdministrationPage();
-  if (administrationFixturesEnabled()) {
-    const fixture = loadFixtureBooking(id);
-    if (!fixture) notFound();
-    return fixture;
-  }
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadBooking(id);
@@ -159,7 +131,6 @@ export const loadAdministrationCustomers = async (
 ) => {
   await authorizeAdministrationPage();
   const params = await searchParams;
-  if (administrationFixturesEnabled()) return loadFixtureCustomers();
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listCustomers({
@@ -175,9 +146,6 @@ export const loadAdministrationCustomerReservations = async (
   await authorizeAdministrationPage();
   const params = await searchParams;
   const page = parsePage(firstParam(params.reservationsPage));
-  if (administrationFixturesEnabled()) {
-    return loadFixtureCustomerReservations(customerId, page);
-  }
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.loadCustomerReservations({ customerId, page });

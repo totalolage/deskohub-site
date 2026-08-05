@@ -2,7 +2,6 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import { env } from "@/env";
 
 let requestHeaders = new Headers();
 
@@ -49,28 +48,6 @@ describe("discount administration server authorization", () => {
     }
   });
 
-  test("keeps operation authorization enabled during synthetic page previews", async () => {
-    const previousNodeEnvironment = process.env.NODE_ENV;
-    const previousFixtureSetting = env.ADMIN_PREVIEW_FIXTURES;
-    process.env.NODE_ENV = "development";
-    Object.assign(env, { ADMIN_PREVIEW_FIXTURES: "true" });
-    requestHeaders = new Headers();
-
-    try {
-      const exit = await Effect.runPromiseExit(await loadAuthorization());
-
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        expect(exit.cause.toString()).toContain(
-          "DiscountAdminUnauthorizedError"
-        );
-      }
-    } finally {
-      process.env.NODE_ENV = previousNodeEnvironment;
-      Object.assign(env, { ADMIN_PREVIEW_FIXTURES: previousFixtureSetting });
-    }
-  });
-
   test("rejects direct invocations of every exported admin action", async () => {
     requestHeaders = new Headers({
       referer: "https://deskohub.test/admin/discounts",
@@ -99,5 +76,58 @@ describe("discount administration server authorization", () => {
     expect(search).not.toHaveProperty("data");
     expect(reservation).toHaveProperty("serverError");
     expect(reservation).not.toHaveProperty("data");
+  });
+
+  test("rejects direct invocations of every exported admin page-data loader", async () => {
+    requestHeaders = new Headers();
+    const administration = await import(
+      "@/features/administration/page-data.server"
+    );
+    const discounts = await import("./page-data.server");
+    const searchParams = Promise.resolve({});
+    const operations = [
+      administration.authorizeAdministrationPage,
+      administration.loadAdministrationOverview,
+      () => administration.loadAdministrationReservations(searchParams),
+      () => administration.loadAdministrationReservation("reservation-id"),
+      () => administration.loadAdministrationBookings(searchParams),
+      () => administration.loadAdministrationBooking("booking-id"),
+      () => administration.loadAdministrationCustomers(searchParams),
+      () =>
+        administration.loadAdministrationCustomerReservations(
+          "customer-id",
+          searchParams
+        ),
+      discounts.authorizeDiscountAdminPage,
+      () => discounts.loadDiscountAdminPageData(searchParams),
+      () => discounts.loadDiscountAdminShellPageData(searchParams),
+      () =>
+        discounts.loadDiscountAdminCodePageData(
+          "00000000-0000-0000-0000-000000000001",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerCodeCreationPageData("customer-id"),
+      () =>
+        discounts.loadOptionalDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () => discounts.loadDiscountAdminCustomerBreadcrumbLabel("customer-id"),
+    ] as const;
+
+    for (const operation of operations) {
+      const error = await operation().then(
+        () => null,
+        (cause: unknown) => cause
+      );
+
+      expect(error).toHaveProperty("digest", "NEXT_HTTP_ERROR_FALLBACK;404");
+    }
   });
 });

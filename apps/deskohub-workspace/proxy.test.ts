@@ -1,11 +1,93 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
+import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { NextRequest } from "next/server";
-import { env } from "@/env";
 import { localeCookieName } from "@/features/i18n/routing";
-import { proxy } from "./proxy";
+import { config, proxy } from "./proxy";
 
 const adminAuthorization = `Basic ${Buffer.from("admin:test-password").toString("base64")}`;
+
+const administrationPaths = [
+  "/admin",
+  "/admin/",
+  "/admin/bookings",
+  "/admin/bookings/booking-id",
+  "/admin/reservations",
+  "/admin/reservations/reservation-id",
+  "/admin/customers",
+  "/admin/customers/customer-id",
+  "/admin/customers/customer-id/create-code",
+  "/admin/discounts",
+  "/admin/codes",
+  "/admin/codes/code-id",
+  "/admin/sales",
+] as const;
+
+describe("administration route boundary", () => {
+  test("matches every administration route including dotted identifiers", () => {
+    for (const pathname of [
+      ...administrationPaths,
+      "/admin//reservations",
+      "/admin/reservations/reservation.with.dots",
+      "/admin/reservations/reservation%2Ewith%2Edots",
+      "/admin/customers/customer.with.dots/create-code",
+    ]) {
+      expect(
+        unstable_doesMiddlewareMatch({
+          config,
+          url: `https://workspace.example${pathname}`,
+        })
+      ).toBe(true);
+    }
+  });
+
+  test("does not classify paths with an admin-like prefix as administration", () => {
+    for (const pathname of ["/administrator", "/admin-help"]) {
+      const response = proxy(
+        new NextRequest(`https://workspace.example${pathname}`)
+      );
+
+      expect(response.status).not.toBe(401);
+      expect(response.headers.get("location")).toBe(
+        `https://workspace.example/en-US${pathname}`
+      );
+    }
+  });
+
+  test("challenges every concrete administration route", () => {
+    for (const pathname of administrationPaths) {
+      const response = proxy(
+        new NextRequest(`https://workspace.example${pathname}`)
+      );
+
+      expect(response.status).toBe(401);
+      expect(response.headers.get("www-authenticate")).toContain(
+        "Basic realm="
+      );
+    }
+  });
+
+  test("challenges navigation request variants consistently", () => {
+    const requests = [
+      new NextRequest("https://workspace.example/admin/reservations", {
+        method: "HEAD",
+      }),
+      new NextRequest("https://workspace.example/admin/reservations", {
+        headers: { rsc: "1" },
+      }),
+      new NextRequest("https://workspace.example/admin/reservations", {
+        headers: {
+          "next-router-prefetch": "1",
+          purpose: "prefetch",
+        },
+      }),
+    ];
+
+    for (const request of requests) {
+      expect(proxy(request).status).toBe(401);
+    }
+  });
+});
 
 test("passes Server Action requests through without mutating the response", () => {
   const request = new NextRequest(
@@ -88,39 +170,6 @@ test("checks administration Server Action posts before the general pass-through"
 
   expect(unauthorized.status).toBe(401);
   expect(authorized.headers.get("x-middleware-next")).toBe("1");
-});
-
-test("limits synthetic preview bypass to fixture-backed read-only pages", () => {
-  const previousNodeEnvironment = process.env.NODE_ENV;
-  const previousFixtureSetting = env.ADMIN_PREVIEW_FIXTURES;
-  process.env.NODE_ENV = "development";
-  Object.assign(env, { ADMIN_PREVIEW_FIXTURES: "true" });
-
-  try {
-    const fixturePage = proxy(
-      new NextRequest("https://workspace.example/admin/reservations/example")
-    );
-    const fixtureBookingPage = proxy(
-      new NextRequest("https://workspace.example/admin/bookings/example")
-    );
-    const livePage = proxy(
-      new NextRequest("https://workspace.example/admin/discounts")
-    );
-    const mutation = proxy(
-      new NextRequest("https://workspace.example/admin/reservations/example", {
-        method: "POST",
-        headers: { "next-action": "action-id" },
-      })
-    );
-
-    expect(fixturePage.headers.get("x-middleware-next")).toBe("1");
-    expect(fixtureBookingPage.headers.get("x-middleware-next")).toBe("1");
-    expect(livePage.status).toBe(401);
-    expect(mutation.status).toBe(401);
-  } finally {
-    process.env.NODE_ENV = previousNodeEnvironment;
-    Object.assign(env, { ADMIN_PREVIEW_FIXTURES: previousFixtureSetting });
-  }
 });
 
 test("test authentication fixture matches the configured hash contract", () => {

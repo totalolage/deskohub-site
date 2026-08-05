@@ -3,10 +3,6 @@ import "server-only";
 import { AdministrationBreadcrumbs } from "@/features/administration/admin-shell";
 import { formatAdministrationDateTime } from "@/features/administration/components";
 import {
-  administrationFixturesEnabled,
-  loadFixtureCustomerProfile,
-} from "@/features/administration/fixtures";
-import {
   loadAdministrationBooking,
   loadAdministrationReservation,
 } from "@/features/administration/page-data.server";
@@ -21,11 +17,9 @@ export async function AdministrationBreadcrumb({
   let entityLabel: string | undefined;
 
   if (segments[0] === "customers" && segments[1]) {
-    entityLabel = administrationFixturesEnabled()
-      ? loadFixtureCustomerProfile(segments[1])?.customer.displayName
-      : await loadDiscountAdminCustomerBreadcrumbLabel(
-          segments[1] as DotyposCustomerId
-        );
+    entityLabel = await loadDiscountAdminCustomerBreadcrumbLabel(
+      segments[1] as DotyposCustomerId
+    );
   }
 
   if (segments[0] === "reservations" && segments[1]) {

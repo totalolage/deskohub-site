@@ -51,7 +51,3 @@ Bringing reservation lifecycle history up to auditability requires a durable app
 The checkout lifecycle documentation says Workspace access codes must not be stored locally, while the current `workspace_reservations` schema still contains a `customer_access_code` column. The administration projection excludes that column entirely. Removing the existing storage is a separate checkout migration and should be handled under the checkout lifecycle invariants.
 
 The schema and lifecycle documentation also define `hold_expired` and `confirming`, while current transition writers appear to skip those intermediate reservation states. The dashboard handles both states exhaustively but does not invent or repair transitions.
-
-## Synthetic local review
-
-Set `ADMIN_PREVIEW_FIXTURES=true` only with `NODE_ENV=development` to render obviously synthetic reservation and customer examples for visual review and screenshots. The mode cannot activate in production builds. It bypasses local Basic authentication only for fixture-backed `GET` pages under the overview, reservations, and customers sections. Discount, code, and sales pages, Server Actions, and every live data operation remain protected.

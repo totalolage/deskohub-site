@@ -1,15 +1,6 @@
-import { env } from "@/env";
-import type { AdminCustomerProfile } from "@/features/discounts/admin/discount-administration.service";
 import type {
-  DiscountCodeId,
-  StoredDiscountId,
-} from "@/features/discounts/persistence-contracts";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import type {
-  AdministrationBookingDetail,
   AdministrationBookingPage,
   AdministrationBookingSummary,
-  AdministrationCustomerSummary,
   AdministrationReservationDetail,
   AdministrationReservationListInput,
   AdministrationReservationSummary,
@@ -155,10 +146,6 @@ const makeBookings = (): readonly AdministrationBookingSummary[] =>
     updatedAt: reservation.updatedAt,
   }));
 
-export const administrationFixturesEnabled = () =>
-  process.env.NODE_ENV === "development" &&
-  env.ADMIN_PREVIEW_FIXTURES === "true";
-
 export const loadFixtureReservations = (
   input: AdministrationReservationListInput
 ) => {
@@ -198,35 +185,6 @@ const getFixtureDate = (value: string) =>
     .toZonedDateTimeISO(timeZone)
     .toPlainDate()
     .toString();
-
-export const loadFixtureBooking = (
-  id: string
-): AdministrationBookingDetail | null => {
-  const booking = makeBookings().find((item) => item.id === id);
-  if (!booking) return null;
-  return {
-    booking,
-    references: {
-      bookingId: booking.id,
-      customerId: booking.customerId,
-      workspaceReservationId: booking.linkedReservation?.id ?? null,
-    },
-  };
-};
-
-export const loadFixtureOverview = () => {
-  const reservations = makeReservations();
-  const currentDate = today().toString();
-  return {
-    counts: {
-      reservations: reservations.length,
-      customers: Object.keys(fixtureCustomers).length,
-    },
-    today: reservations.filter(({ date }) => date === currentDate),
-    todayUnavailable: false,
-    recent: reservations.slice(0, 4),
-  };
-};
 
 export const loadFixtureReservation = (
   id: string
@@ -318,115 +276,4 @@ export const loadFixtureReservation = (
       customerId: reservation.customerId,
     },
   };
-};
-
-export const loadFixtureCustomers = () => {
-  const reservations = makeReservations();
-  const items: AdministrationCustomerSummary[] = Object.values(
-    fixtureCustomers
-  ).map((customer) => {
-    const customerReservations = reservations.filter(
-      (reservation) => reservation.customerId === customer.id
-    );
-    return {
-      customer,
-      customerId: customer.id,
-      reservationCount: customerReservations.length,
-      lastActivityAt:
-        customerReservations[0]?.updatedAt ?? Temporal.Now.instant().toString(),
-    };
-  });
-  return { items, page: 1, pageCount: 1, total: items.length };
-};
-
-export const loadFixtureCustomerReservations = (
-  customerId: string,
-  page = 1
-) => {
-  const items = makeReservations().filter(
-    (reservation) => reservation.customerId === customerId
-  );
-  return { items, page, pageCount: 1, total: items.length };
-};
-
-export const loadFixtureCustomerProfile = (
-  customerId: string
-): AdminCustomerProfile | null => {
-  const customer = Object.values(fixtureCustomers).find(
-    (item) => item.id === customerId
-  );
-  if (!customer) return null;
-  return {
-    customer: {
-      ...customer,
-      id: customer.id as DotyposCustomerId,
-      discountGroupId: null,
-    },
-    discountGroups: [
-      { id: "fixture-standard", name: "Workspace member", basisPoints: 1000 },
-    ],
-    codes: [
-      {
-        id: "019c91dd-c560-7e55-b9d8-c95065efd52d" as DiscountCodeId,
-        discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
-        code: "MEMBER15",
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-        maxUses: null,
-        audienceSize: 1,
-        reservedUses: 0,
-        redeemedUses: 4,
-        releasedUses: 0,
-        remainingUses: null,
-        createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
-        updatedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
-        discountLabel: "Workspace member",
-        eligible: true,
-      },
-      {
-        id: "019c91dd-c560-7e55-b9d8-c95065efd53d" as DiscountCodeId,
-        discountId: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
-        code: "WELCOME10",
-        enabled: true,
-        validFrom: null,
-        validUntil: null,
-        maxUses: 100,
-        audienceSize: 0,
-        reservedUses: 2,
-        redeemedUses: 18,
-        releasedUses: 1,
-        remainingUses: 80,
-        createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
-        updatedAt: Temporal.Instant.from("2026-08-01T08:00:00Z"),
-        discountLabel: "Welcome offer",
-        eligible: false,
-      },
-    ],
-    claims: [],
-  };
-};
-
-const fixtureDiscounts = [
-  {
-    id: "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId,
-    labels: {
-      "cs-CZ": "Člen Workspace",
-      "en-US": "Workspace member",
-    },
-  },
-  {
-    id: "019c91dd-c560-7e55-b9d8-c95065efd55d" as StoredDiscountId,
-    labels: {
-      "cs-CZ": "Uvítací nabídka",
-      "en-US": "Welcome offer",
-    },
-  },
-];
-
-export const loadFixtureCustomerCodeCreation = (customerId: string) => {
-  const profile = loadFixtureCustomerProfile(customerId);
-  return profile
-    ? { customer: profile.customer, discounts: fixtureDiscounts }
-    : null;
 };

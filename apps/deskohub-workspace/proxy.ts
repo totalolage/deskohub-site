@@ -17,24 +17,12 @@ import {
 import { env } from "./env";
 import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/basic-auth";
 
-const isFixtureBackedAdministrationPath = (pathname: string) =>
-  pathname === "/admin" ||
-  pathname === "/admin/bookings" ||
-  pathname.startsWith("/admin/bookings/") ||
-  pathname === "/admin/reservations" ||
-  pathname.startsWith("/admin/reservations/") ||
-  pathname === "/admin/customers" ||
-  pathname.startsWith("/admin/customers/");
+const isAdministrationPath = (pathname: string) =>
+  pathname === "/admin" || pathname.startsWith("/admin/");
 
 export function proxy(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/admin")) {
-    const isSyntheticLocalPreview =
-      process.env.NODE_ENV === "development" &&
-      env.ADMIN_PREVIEW_FIXTURES === "true" &&
-      request.method === "GET" &&
-      isFixtureBackedAdministrationPath(request.nextUrl.pathname);
+  if (isAdministrationPath(request.nextUrl.pathname)) {
     if (
-      !isSyntheticLocalPreview &&
       !isDiscountAdminAuthorizationValid(
         request.headers.get("authorization"),
         env.ADMIN_BASIC_AUTH_SHA256
@@ -90,6 +78,7 @@ export function proxy(request: NextRequest) {
 
 export const config: MiddlewareConfig = {
   matcher: [
+    "/admin/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

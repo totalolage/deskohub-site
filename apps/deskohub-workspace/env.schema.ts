@@ -24,7 +24,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ADMIN_BASIC_AUTH_SHA256: toEnvSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/)))
   ),
-  ADMIN_PREVIEW_FIXTURES: toEnvSchema(Schema.optional(Schema.Literal("true"))),
   DOTYPOS_API_TIMEOUT: toEnvSchema(
     Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))

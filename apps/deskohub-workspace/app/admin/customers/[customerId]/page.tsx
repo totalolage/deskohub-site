@@ -5,10 +5,6 @@ import {
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
-import {
-  administrationFixturesEnabled,
-  loadFixtureCustomerProfile,
-} from "@/features/administration/fixtures";
 import { loadAdministrationCustomerReservations } from "@/features/administration/page-data.server";
 import { CustomerAdministrationDetailPage } from "@/features/discounts/admin/customer-admin-components";
 import {
@@ -31,16 +27,11 @@ export default async function DiscountCustomerAdminDetailPage({
     customerId,
     searchParams
   );
-  const fixtureProfile = administrationFixturesEnabled()
-    ? loadFixtureCustomerProfile(customerId)
-    : null;
   const [liveData, reservations] = await Promise.all([
-    fixtureProfile
-      ? Promise.resolve({ notice: undefined, profile: fixtureProfile })
-      : loadOptionalDiscountAdminCustomerPageData(
-          customerId as DotyposCustomerId,
-          searchParams
-        ),
+    loadOptionalDiscountAdminCustomerPageData(
+      customerId as DotyposCustomerId,
+      searchParams
+    ),
     reservationsPromise,
   ]);
   const { notice, profile } = liveData;
