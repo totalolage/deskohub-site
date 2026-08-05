@@ -10,9 +10,10 @@ import {
 
 test("waits for the discount trigger pointer handler before hovering it", async () => {
   let pointerHandlerReady = false;
+  let triggerCentered = false;
   let triggerOpened = false;
   const calls: string[][] = [];
-  const run: Runner = async (_command, args) => {
+  const run: Runner = async (_command, args, options) => {
     calls.push(args);
     const [operation, value] = args.slice(2);
     if (operation === "wait" && value === "--fn") {
@@ -20,10 +21,16 @@ test("waits for the discount trigger pointer handler before hovering it", async 
       pointerHandlerReady =
         script.includes("__reactProps$") && script.includes('"onPointerMove"');
     }
-    if (operation === "hover" && !pointerHandlerReady) {
+    if (
+      operation === "eval" &&
+      options.input?.includes('scrollIntoView({ block: "center"')
+    ) {
+      triggerCentered = true;
+    }
+    if (operation === "hover" && (!pointerHandlerReady || !triggerCentered)) {
       return {
         exitCode: 1,
-        stderr: "discount trigger pointer handler is not ready",
+        stderr: "discount trigger is not ready at an unobstructed click point",
         stdout: "",
       };
     }
@@ -54,10 +61,15 @@ test("waits for the discount trigger pointer handler before hovering it", async 
     })
   );
 
-  expect(calls.map((args) => args.at(2))).toEqual(["wait", "hover", "wait"]);
-  expect(calls.at(2)?.at(4)).toContain(
+  expect(calls.map((args) => args.at(2))).toEqual([
+    "wait",
+    "eval",
+    "hover",
+    "wait",
+  ]);
+  expect(calls.at(3)?.at(4)).toContain(
     "document.querySelectorAll('[role=\"tooltip\"] li')"
   );
-  expect(calls.at(2)?.at(4)).toContain('"e2e calendar sale"');
-  expect(calls.at(2)?.at(4)).toContain('"20%"');
+  expect(calls.at(3)?.at(4)).toContain('"e2e calendar sale"');
+  expect(calls.at(3)?.at(4)).toContain('"20%"');
 });
