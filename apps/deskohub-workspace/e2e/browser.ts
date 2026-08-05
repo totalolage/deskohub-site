@@ -261,23 +261,6 @@ export const focusBrowserElement = (
     }
   ).pipe(Effect.asVoid);
 
-export const hoverBrowserElement = (
-  run: Runner,
-  session: string,
-  selector: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(
-    "hover browser element",
-    run,
-    session,
-    ["hover", selector],
-    {
-      logOutput: false,
-      timeoutMs: options.timeoutMs ?? 60_000,
-    }
-  ).pipe(Effect.asVoid);
-
 export const scrollBrowserElementIntoView = (
   run: Runner,
   session: string,
