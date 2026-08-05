@@ -176,11 +176,18 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-one-hour",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
-            payPageStep: () => ({
-              execute: assertMeetingRoomPayPage(config, paidData, run, session),
-              id: "assert-meeting-room-pay-summary",
-              timeoutMs: config.timeouts.uiTransition,
-            }),
+            payPageSteps: () => [
+              {
+                execute: assertMeetingRoomPayPage(
+                  config,
+                  paidData,
+                  run,
+                  session
+                ),
+                id: "assert-meeting-room-pay-summary",
+                timeoutMs: config.timeouts.uiTransition,
+              },
+            ],
             run,
             runStep,
             session,
@@ -293,11 +300,18 @@ export const makeMeetingRoomE2ECases = ({
               id: "meeting-room-paid-whole-day",
               submitReservationScript: getSubmitMeetingRoomReservationScript,
             },
-            payPageStep: () => ({
-              execute: assertMeetingRoomPayPage(config, dayData, run, session),
-              id: "assert-whole-day-meeting-room-pay-summary",
-              timeoutMs: config.timeouts.uiTransition,
-            }),
+            payPageSteps: () => [
+              {
+                execute: assertMeetingRoomPayPage(
+                  config,
+                  dayData,
+                  run,
+                  session
+                ),
+                id: "assert-whole-day-meeting-room-pay-summary",
+                timeoutMs: config.timeouts.uiTransition,
+              },
+            ],
             run,
             runStep,
             session,

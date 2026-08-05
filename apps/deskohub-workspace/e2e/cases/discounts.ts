@@ -6,6 +6,7 @@ import {
   evalBrowserScript,
   hoverBrowserElement,
   openBrowserPage,
+  scrollBrowserElementIntoView,
   waitForBrowserCondition,
   waitForBrowserReactHandler,
   waitForBrowserTextContent,
@@ -59,6 +60,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
+  WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
@@ -936,38 +938,48 @@ export const executeDiscountCheckout = ({
     datasourceConfig,
     expectedDiscounts,
     flow: discountCheckoutFlow(flowId),
-    payPageStep: () => ({
-      execute: Effect.gen(function* () {
-        const automaticDiscounts = expectedDiscounts.filter(
-          ({ label }) => label !== codeDiscountLabel
-        );
-        if (automaticDiscounts.length > 0) {
-          yield* assertDisplayedDiscounts({
+    payPageSteps: () => {
+      const automaticDiscounts = expectedDiscounts.filter(
+        ({ label }) => label !== codeDiscountLabel
+      );
+      const steps: WorkspaceE2EStep<void>[] = [];
+      if (automaticDiscounts.length > 0) {
+        steps.push({
+          execute: assertDisplayedDiscounts({
             config,
             discounts: automaticDiscounts,
             run,
             session,
-          });
-        }
-        if (discountCode) {
-          yield* applyDiscountCode({
+          }),
+          id: "assert-automatic-checkout-discounts",
+          timeoutMs: config.timeouts.uiTransition,
+        });
+      }
+      if (discountCode) {
+        steps.push({
+          execute: applyDiscountCode({
             appliedMessage: "Discount code applied: 10% off 🎉",
             code: discountCode,
             config,
             run,
             session,
-          });
-        }
-        yield* assertDisplayedDiscounts({
+          }),
+          id: "apply-checkout-discount-code",
+          timeoutMs: config.timeouts.uiTransition,
+        });
+      }
+      steps.push({
+        execute: assertDisplayedDiscounts({
           config,
           discounts: expectedDiscounts,
           run,
           session,
-        });
-      }),
-      id: "assert-and-apply-checkout-discounts",
-      timeoutMs: config.timeouts.uiTransition,
-    }),
+        }),
+        id: "assert-final-checkout-discounts",
+        timeoutMs: config.timeouts.uiTransition,
+      });
+      return steps;
+    },
     run,
     runStep,
     session,
@@ -1175,6 +1187,9 @@ export const assertDisplayedDiscounts = ({
       "onPointerMove",
       { timeoutMs: config.timeouts.uiTransition }
     );
+    yield* scrollBrowserElementIntoView(run, session, triggerSelector, {
+      timeoutMs: config.timeouts.browserAction,
+    });
     yield* hoverBrowserElement(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
