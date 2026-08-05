@@ -132,15 +132,15 @@ test("serializes hosted payment sessions while cases stay concurrent", async () 
   let hostedPaymentCount = 0;
   let maximumActiveHostedPayments = 0;
   let readyCaseCount = 0;
-  let releaseFirstHostedPayment: () => void = () => undefined;
+  let releaseAdmittedHostedPayments: () => void = () => undefined;
   let releaseReadyCases: () => void = () => undefined;
-  let signalFirstHostedPayment: () => void = () => undefined;
+  let signalHostedPaymentCapacityReached: () => void = () => undefined;
   let signalReadyCases: () => void = () => undefined;
-  const firstHostedPaymentRelease = new Promise<void>((resolve) => {
-    releaseFirstHostedPayment = resolve;
+  const admittedHostedPaymentsRelease = new Promise<void>((resolve) => {
+    releaseAdmittedHostedPayments = resolve;
   });
-  const firstHostedPaymentStarted = new Promise<void>((resolve) => {
-    signalFirstHostedPayment = resolve;
+  const hostedPaymentCapacityReached = new Promise<void>((resolve) => {
+    signalHostedPaymentCapacityReached = resolve;
   });
   const readyCasesRelease = new Promise<void>((resolve) => {
     releaseReadyCases = resolve;
@@ -149,33 +149,34 @@ test("serializes hosted payment sessions while cases stay concurrent", async () 
     signalReadyCases = resolve;
   });
   const cases: readonly WorkspaceE2ECase[] = Array.from(
-    { length: 2 },
+    { length: workspaceE2EHostedPaymentConcurrency + 1 },
     (_, index) => ({
       checkoutStates: [],
       execute: ({ resources }) =>
         Effect.gen(function* () {
           yield* Effect.sync(() => {
             readyCaseCount += 1;
-            if (readyCaseCount === 2) signalReadyCases();
+            if (readyCaseCount === workspaceE2EHostedPaymentConcurrency + 1) {
+              signalReadyCases();
+            }
           });
           yield* Effect.promise(() => readyCasesRelease);
           yield* resources.withHostedPaymentSession(
             Effect.acquireUseRelease(
               Effect.sync(() => {
-                const isFirst = hostedPaymentCount === 0;
                 hostedPaymentCount += 1;
                 activeHostedPayments += 1;
                 maximumActiveHostedPayments = Math.max(
                   maximumActiveHostedPayments,
                   activeHostedPayments
                 );
-                if (isFirst) signalFirstHostedPayment();
-                return isFirst;
+                if (
+                  activeHostedPayments === workspaceE2EHostedPaymentConcurrency
+                ) {
+                  signalHostedPaymentCapacityReached();
+                }
               }),
-              (isFirst) =>
-                isFirst
-                  ? Effect.promise(() => firstHostedPaymentRelease)
-                  : Effect.void,
+              () => Effect.promise(() => admittedHostedPaymentsRelease),
               () =>
                 Effect.sync(() => {
                   activeHostedPayments -= 1;
@@ -199,19 +200,19 @@ test("serializes hosted payment sessions while cases stay concurrent", async () 
   );
 
   await readyCases;
-  expect(readyCaseCount).toBe(2);
+  expect(readyCaseCount).toBe(workspaceE2EHostedPaymentConcurrency + 1);
   releaseReadyCases();
-  await firstHostedPaymentStarted;
+  await hostedPaymentCapacityReached;
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   const paymentsBeforeRelease = hostedPaymentCount;
-  releaseFirstHostedPayment();
+  releaseAdmittedHostedPayments();
   await suiteRun;
 
   expect(paymentsBeforeRelease).toBe(workspaceE2EHostedPaymentConcurrency);
   expect(maximumActiveHostedPayments).toBe(
     workspaceE2EHostedPaymentConcurrency
   );
-  expect(hostedPaymentCount).toBe(2);
+  expect(hostedPaymentCount).toBe(workspaceE2EHostedPaymentConcurrency + 1);
 });
 
 test("serializes provider verification while independent cases stay concurrent", async () => {
