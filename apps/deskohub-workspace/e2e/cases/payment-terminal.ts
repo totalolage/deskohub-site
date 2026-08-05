@@ -10,12 +10,12 @@ import {
   prepareCheckoutPaymentAttempt,
   submitPaymentAndWaitForHostedPage,
 } from "../checkout/payment";
-import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
   assertPaymentTerminalRow,
   markPaymentTerminalForE2E,
-  waitForProviderSessionRow,
+  requireProviderSessionRowAfterRedirect,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -46,7 +46,6 @@ export const getPaymentTerminalScenarios =
 export const assertPaymentTerminalPath = ({
   config,
   data,
-  datasourceConfig,
   reservationPath,
   run,
   runStep,
@@ -57,7 +56,6 @@ export const assertPaymentTerminalPath = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  datasourceConfig: DatasourceConfig;
   reservationPath: string;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
@@ -96,7 +94,6 @@ export const assertPaymentTerminalPath = ({
     log(`Started hosted payment attempt for order ${orderId}`);
     yield* runStep({
       execute: preparePaymentTerminalState({
-        datasourceConfig,
         orderId,
         scenario,
         state,
@@ -131,25 +128,27 @@ export const assertPaymentTerminalPath = ({
   });
 
 const preparePaymentTerminalState = ({
-  datasourceConfig,
   orderId,
   scenario,
   state,
 }: {
-  datasourceConfig: DatasourceConfig;
   orderId: string;
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
 }) =>
   Effect.gen(function* () {
-    state.checkoutRow = yield* waitForProviderSessionRow(
-      datasourceConfig,
+    const providerSessionRow = yield* requireProviderSessionRowAfterRedirect(
       orderId,
       (row) => {
         state.checkoutRow = row;
       }
     );
-    const checkoutRow = yield* markPaymentTerminalForE2E(orderId, scenario);
+    state.checkoutRow = providerSessionRow;
+    const checkoutRow = yield* markPaymentTerminalForE2E(
+      orderId,
+      providerSessionRow.payment_attempt_id,
+      scenario
+    );
     state.checkoutRow = checkoutRow;
     yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });

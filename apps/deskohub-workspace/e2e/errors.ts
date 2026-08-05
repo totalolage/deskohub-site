@@ -23,6 +23,10 @@ export const isNexiWebhookDiagnosticCode = (
   nexiWebhookDiagnosticCodes.some((code) => code === value);
 
 export const workspaceE2ERunnerDiagnosticCodes = [
+  "provider_session_row_read_failed_after_redirect",
+  "provider_session_reservation_missing_after_redirect",
+  "provider_session_active_attempt_missing_after_redirect",
+  "provider_session_fields_missing_after_redirect",
   "postgres_checkout_row_convergence_failed",
   "postgres_checkout_row_assertion_failed",
   "postgres_legal_evidence_validation_failed",

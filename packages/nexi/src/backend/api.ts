@@ -120,6 +120,14 @@ export const mapNexiClientError = (
 ): ExternalAPIError | NetworkError => {
   if (isNetworkError(error)) return error;
 
+  if (Schema.isSchemaError(error)) {
+    return new ExternalAPIError({
+      service: "Nexi",
+      operation,
+      message: "Nexi returned an invalid response.",
+    });
+  }
+
   if (HttpClientError.isHttpClientError(error)) {
     const reason = error.reason;
     if (
