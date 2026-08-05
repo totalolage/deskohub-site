@@ -4,15 +4,12 @@ import {
 } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
+import { ContactBusinessEmail } from "@/emails/contact-business";
+import { ContactConfirmationEmail } from "@/emails/contact-confirmation";
+import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
 import { type Locale, m } from "@/features/i18n";
-import {
-  type EmailDetailRow,
-  MultilineEmailText,
-  renderEmailRowsText,
-  renderWorkspaceEmailHtml,
-  WorkspaceEmailRows,
-} from "@/shared/backend/email/rendering";
+import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import { StorageError } from "@/shared/backend/errors";
 import { workspaceSiteConstants } from "@/shared/utils";
 
@@ -65,26 +62,39 @@ const getBusinessSubject = (name: string) => {
 const getConfirmationSubject = (locale: Locale) =>
   m.contactEmailConfirmationSubject({}, { locale });
 
-const createDetailRows = (
+const createContactEmailDetails = (
   submission: ContactSubmission,
   formattedDate: string,
   locale: Locale
-): EmailDetailRow[] => {
-  const rows: EmailDetailRow[] = [
-    [m.contactEmailNameLabel({}, { locale }), submission.name],
-    [m.contactEmailEmailLabel({}, { locale }), submission.email],
-    [m.contactEmailSubmittedAtLabel({}, { locale }), formattedDate],
-  ];
+): WorkspaceEmailDetail[] => [
+  {
+    label: m.contactEmailNameLabel({}, { locale }),
+    value: submission.name,
+  },
+  {
+    label: m.contactEmailEmailLabel({}, { locale }),
+    value: submission.email,
+  },
+  ...(submission.phone
+    ? [
+        {
+          label: m.contactEmailPhoneLabel({}, { locale }),
+          value: submission.phone,
+        },
+      ]
+    : []),
+  {
+    label: m.contactEmailSubmittedAtLabel({}, { locale }),
+    value: formattedDate,
+  },
+];
 
-  if (submission.phone) {
-    rows.splice(2, 0, [
-      m.contactEmailPhoneLabel({}, { locale }),
-      submission.phone,
-    ]);
-  }
-
-  return rows;
-};
+const toContactStorageError = (locale: Locale, cause: unknown) =>
+  new StorageError({
+    message: m.contactEmailSendError({}, { locale }),
+    operation: "workspace.contact.submit",
+    cause,
+  });
 
 export const ContactServiceLive = Layer.effect(
   ContactService,
@@ -93,7 +103,7 @@ export const ContactServiceLive = Layer.effect(
     const emailConfig = yield* EmailConfigTag;
 
     return ContactService.of({
-      submit: Effect.fn("workspaceContactSubmit")(
+      submit: Effect.fn("ContactService.submit")(
         function* (data, locale) {
           yield* Effect.annotateLogsScoped({ data, locale });
           yield* Effect.logInfo("Workspace contact submission started");
@@ -106,85 +116,39 @@ export const ContactServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ submission });
           yield* Effect.logInfo("Workspace contact submission prepared");
 
-          const businessFormattedDate = formatSubmissionDate(
-            submission.submittedAt,
-            businessNotificationLocale
-          );
-          const businessRows = createDetailRows(
-            submission,
-            businessFormattedDate,
-            businessNotificationLocale
-          );
+          const businessSubject = getBusinessSubject(data.name);
           const businessHeading = m.contactEmailBusinessHeading(
             {},
             { locale: businessNotificationLocale }
           );
-          const messageHeading = m.contactEmailMessageHeading(
-            {},
-            { locale: businessNotificationLocale }
+          const businessEmail = yield* renderWorkspaceEmail(
+            <ContactBusinessEmail
+              details={createContactEmailDetails(
+                submission,
+                formatSubmissionDate(
+                  submission.submittedAt,
+                  businessNotificationLocale
+                ),
+                businessNotificationLocale
+              )}
+              heading={businessHeading}
+              locale={businessNotificationLocale}
+              message={data.message}
+              messageHeading={m.contactEmailMessageHeading(
+                {},
+                { locale: businessNotificationLocale }
+              )}
+              preview={businessSubject}
+            />
+          ).pipe(
+            Effect.mapError((cause) => toContactStorageError(locale, cause))
           );
-          const messageTextHeading = m.contactEmailMessageTextHeading(
-            {},
-            { locale: businessNotificationLocale }
-          );
-          const confirmationHeading = m.contactEmailCustomerHeading(
-            {},
-            { locale }
-          );
-          const confirmationBody = m.contactEmailCustomerBody({}, { locale });
-          const confirmationFollowUp = m.contactEmailCustomerFollowUp(
-            { email: workspaceSiteConstants.contact.infoEmail },
-            { locale }
-          );
-
           const businessEmailMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
             to: workspaceRecipient,
-            subject: getBusinessSubject(data.name),
-            html: renderWorkspaceEmailHtml(
-              <div
-                style={{
-                  fontFamily: "Arial, sans-serif",
-                  maxWidth: "600px",
-                  margin: "0 auto",
-                  color: "#0b1848",
-                }}
-              >
-                <h2 style={{ color: "#0b1848" }}>{businessHeading}</h2>
-                <table
-                  style={{
-                    width: "100%",
-                    borderCollapse: "collapse",
-                    marginTop: "16px",
-                  }}
-                >
-                  <tbody>
-                    <WorkspaceEmailRows rows={businessRows} />
-                  </tbody>
-                </table>
-                <h3 style={{ marginTop: "24px", color: "#0b1848" }}>
-                  {messageHeading}
-                </h3>
-                <div
-                  style={{
-                    background: "#f4f1ea",
-                    borderRadius: "16px",
-                    padding: "16px",
-                    whiteSpace: "normal",
-                  }}
-                >
-                  <MultilineEmailText value={data.message} />
-                </div>
-              </div>
-            ),
-            text: [
-              businessHeading,
-              "",
-              ...renderEmailRowsText(businessRows),
-              "",
-              messageTextHeading,
-              data.message,
-            ].join("\n"),
+            subject: businessSubject,
+            html: businessEmail.html,
+            text: businessEmail.text,
             replyTo: {
               email: data.email,
               name: data.name,
@@ -213,80 +177,53 @@ export const ContactServiceLive = Layer.effect(
                 }
               )
             ),
-            Effect.mapError(
-              (error) =>
-                new StorageError({
-                  message: m.contactEmailSendError({}, { locale }),
-                  operation: "workspace.contact.submit",
-                  cause: error,
-                })
-            )
+            Effect.mapError((cause) => toContactStorageError(locale, cause))
           );
           yield* Effect.logInfo(
             "Workspace contact business email send succeeded"
           );
 
-          const confirmationMessage: EmailMessage = {
-            from: emailConfig.defaultFrom,
-            to: {
-              email: data.email,
-              name: data.name,
-            },
-            replyTo: workspaceRecipient,
-            subject: getConfirmationSubject(locale),
-            html: renderWorkspaceEmailHtml(
-              <div
-                style={{
-                  fontFamily: "Arial, sans-serif",
-                  maxWidth: "600px",
-                  margin: "0 auto",
-                  color: "#0b1848",
-                }}
-              >
-                <h2 style={{ color: "#0b1848" }}>{confirmationHeading}</h2>
-                <p>{confirmationBody}</p>
-                <div
-                  style={{
-                    background: "#f4f1ea",
-                    borderRadius: "16px",
-                    marginTop: "16px",
-                    padding: "16px",
-                    whiteSpace: "normal",
-                  }}
-                >
-                  <MultilineEmailText value={data.message} />
-                </div>
-                <p style={{ marginTop: "20px" }}>{confirmationFollowUp}</p>
-              </div>
-            ),
-            text: [
-              confirmationHeading,
-              "",
-              confirmationBody,
-              "",
-              data.message,
-              "",
-              confirmationFollowUp,
-            ].join("\n"),
-            tags: ["workspace-contact-confirmation"],
-          };
-          yield* Effect.annotateLogsScoped({ confirmationMessage });
-          yield* Effect.logInfo(
-            "Workspace contact confirmation email send started"
-          );
-
-          yield* emailService.send(confirmationMessage).pipe(
-            Effect.tap(() =>
-              Effect.logInfo(
-                "Workspace contact confirmation email send succeeded"
-              )
-            ),
+          const confirmationSubject = getConfirmationSubject(locale);
+          yield* Effect.gen(function* () {
+            const confirmationEmail = yield* renderWorkspaceEmail(
+              <ContactConfirmationEmail
+                body={m.contactEmailCustomerBody({}, { locale })}
+                followUp={m.contactEmailCustomerFollowUp(
+                  { email: workspaceSiteConstants.contact.infoEmail },
+                  { locale }
+                )}
+                heading={m.contactEmailCustomerHeading({}, { locale })}
+                locale={locale}
+                message={data.message}
+                preview={confirmationSubject}
+              />
+            );
+            const confirmationMessage: EmailMessage = {
+              from: emailConfig.defaultFrom,
+              to: {
+                email: data.email,
+                name: data.name,
+              },
+              replyTo: workspaceRecipient,
+              subject: confirmationSubject,
+              html: confirmationEmail.html,
+              text: confirmationEmail.text,
+              tags: ["workspace-contact-confirmation"],
+            };
+            yield* Effect.annotateLogsScoped({ confirmationMessage });
+            yield* Effect.logInfo(
+              "Workspace contact confirmation email send started"
+            );
+            yield* emailService.send(confirmationMessage);
+            yield* Effect.logInfo(
+              "Workspace contact confirmation email send succeeded"
+            );
+          }).pipe(
             Effect.catch((error) =>
               Effect.logWarning("Contact confirmation email delivery failed", {
                 error,
                 errorType: error._tag,
                 errorMessage: error.message,
-                confirmationMessage,
                 submission,
               })
             )

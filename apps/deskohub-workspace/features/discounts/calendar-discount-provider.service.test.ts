@@ -798,6 +798,7 @@ describe("CalendarDiscountProvider", () => {
       ),
       TestClock.layer()
     );
+    const testLayer = Layer.merge(providerLayer, TestClock.layer());
     const quoteForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;
       return yield* provider.discover({
@@ -816,7 +817,7 @@ describe("CalendarDiscountProvider", () => {
     });
 
     const first = await quoteForDate.pipe(
-      Effect.provide(providerLayer),
+      Effect.provide(testLayer),
       Effect.runPromise
     );
     currentLabels = {
@@ -824,15 +825,15 @@ describe("CalendarDiscountProvider", () => {
       "cs-CZ": "Upravená databázová sleva",
     };
     const cached = await quoteForDate.pipe(
-      Effect.provide(providerLayer),
+      Effect.provide(testLayer),
       Effect.runPromise
     );
     const fresh = await revalidateForDate.pipe(
-      Effect.provide(providerLayer),
+      Effect.provide(testLayer),
       Effect.runPromise
     );
     const stillCached = await quoteForDate.pipe(
-      Effect.provide(providerLayer),
+      Effect.provide(testLayer),
       Effect.runPromise
     );
 
