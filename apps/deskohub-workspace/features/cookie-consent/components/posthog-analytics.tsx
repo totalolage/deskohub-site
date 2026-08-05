@@ -2,7 +2,7 @@
 
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { PostHogProvider } from "@posthog/react";
-import posthog, { type BeforeSendFn } from "posthog-js";
+import posthog from "posthog-js";
 import { type ReactNode, useEffect } from "react";
 import { env } from "@/env";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
@@ -12,26 +12,12 @@ import {
   createPostHogSessionCookieStrings,
   writePostHogSessionCookie,
 } from "@/shared/utils/posthog-session-cookies";
-import { sanitizePostHogProperties } from "../utils/posthog-url";
+import { preparePostHogEvent } from "../utils/posthog-event";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
 let hasInitializedPostHog = false;
 let analyticsSendingEnabled = false;
-
-type PostHogBeforeSendEvent = NonNullable<Parameters<BeforeSendFn>[0]>;
-
-function sanitizePostHogEvent(
-  event: PostHogBeforeSendEvent,
-  posthogEnvironment: string
-) {
-  event.properties = sanitizePostHogProperties(
-    event.properties,
-    posthogEnvironment
-  );
-
-  return event;
-}
 
 type PostHogAnalyticsProps = {
   analyticsAccepted: boolean;
@@ -99,13 +85,10 @@ function PostHogClient({
         before_send: (event) => {
           if (!event) return event;
 
-          const sanitizedEvent = sanitizePostHogEvent(
-            event,
-            posthogEnvironment
-          );
-          if (!analyticsSendingEnabled) return null;
+          const preparedEvent = preparePostHogEvent(event, posthogEnvironment);
+          if (!preparedEvent || !analyticsSendingEnabled) return null;
 
-          return sanitizedEvent;
+          return preparedEvent;
         },
         capture_pageleave: true,
         capture_pageview: "history_change",
