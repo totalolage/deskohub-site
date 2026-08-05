@@ -661,21 +661,26 @@ const makeDotyposService = Effect.gen(function* () {
     const matches = yield* Effect.all(
       (["firstName", "lastName", "companyName", "email"] as const).map(
         (field) =>
-          runDotyposRequest(
-            client
-              .getCustomers(config.cloudId, {
-                params: { filter: `${field}|like|${query}`, limit: 100 },
-              })
-              .pipe(Effect.map((page) => [...(page.data ?? [])])),
-            "searchCustomers"
-          ).pipe(
-            Effect.catchTag("ExternalAPIError", (error) =>
-              error.statusCode === 404
-                ? Effect.succeed<Customer[]>([])
-                : Effect.fail(error)
-            ),
-            Effect.retry(retryPolicy)
-          )
+          loadAllDotyposPages({
+            loadPage: (page) =>
+              runDotyposRequest(
+                client.getCustomers(config.cloudId, {
+                  params: {
+                    filter: `${field}|like|${query}`,
+                    limit: 100,
+                    page,
+                  },
+                }),
+                "searchCustomers"
+              ).pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  page === 1 && error.statusCode === 404
+                    ? Effect.succeed({ data: [] as const })
+                    : Effect.fail(error)
+                )
+              ),
+            operation: "searchCustomers",
+          }).pipe(Effect.retry(retryPolicy))
       ),
       { concurrency: 4 }
     );

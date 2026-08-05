@@ -177,6 +177,44 @@ describe("DotyposService customer lookup", () => {
     ]);
   });
 
+  test("follows every page of fuzzy customer search results", async () => {
+    const firstPageCustomer = customer({ id: "first-page" });
+    const secondPageCustomer = customer({ id: "second-page" });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname !== "/clouds/cloud-id/customers") {
+        return new Response("Not found", { status: 404 });
+      }
+      if (url.searchParams.get("filter") !== "firstName|like|ada") {
+        return new Response("Not found", { status: 404 });
+      }
+      return url.searchParams.get("page") === "2"
+        ? Response.json({ data: [secondPageCustomer], nextPage: null })
+        : Response.json({ data: [firstPageCustomer], nextPage: "2" });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.searchCustomers("ada");
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([firstPageCustomer, secondPageCustomer]);
+    expect(
+      fetchMock.mock.calls
+        .map((call) => new URL(getUrl(call as FetchCall)))
+        .filter(
+          (url) =>
+            url.pathname.endsWith("/customers") &&
+            url.searchParams.get("filter") === "firstName|like|ada"
+        )
+        .map((url) => url.searchParams.get("page"))
+    ).toEqual(["1", "2"]);
+  });
+
   test("requests a token once, searches by exact email, and sends bearer auth", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
     const fetchMock = mockDotyposFetch((request) => {
