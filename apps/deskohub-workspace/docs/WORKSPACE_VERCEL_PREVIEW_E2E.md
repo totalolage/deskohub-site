@@ -100,8 +100,8 @@ The in-run contract is:
 - suite cleanup reconciles interrupted or incompletely captured states and is
   the only place allowed to use the broader locale/product/time lookup. It
   waits for every successfully cancelled reservation to leave Dotypos active
-  inventory before releasing the sandbox lock, including reservations already
-  cancelled by case finalizers;
+  inventory before releasing the run's date shard, including reservations
+  already cancelled by case finalizers;
 - Calendar pricing-change scenarios remain one serialized tail until two
   separate immutable operational events and separate preview-owned definitions
   have been provisioned for quote-change and payment-change. The regression
@@ -211,6 +211,19 @@ p50 was 4m15s and p95 was 4m32s; the independent phase ranged from 3.3m to 3.8m.
 Concurrent CI sets `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the
 narrow provider permit URL, and fails closed if the URL or connection is
 missing.
+
+Final unlocked exact-SHA run
+[`31006167472`](https://github.com/totalolage/deskohub-site/actions/runs/31006167472)
+found zero active E2E reservations during pre-run reconciliation, passed every
+aggregate capacity group, ran checkout in 4m40s, and released its shard after
+cleanup. Its independent phase took 3.8m, the remaining Calendar fixture tail
+took 28.3s, and suite cleanup took 366ms. Post-allocation setup was 25s and the
+complete test-job setup path was 41s; the `test-e2e` job took 5m32s. Checkout
+therefore remains below five minutes, while the full-job p95-below-five-minute
+target is not yet demonstrated. The measured setup remainder is too small to
+justify background shell orchestration; use a supported prepared runner image
+if further setup reduction becomes necessary.
+
 The permit serializes only `replay-payment-webhook`, whose production route
 confirms the Dotypos hold and sends the paid-reservation notifications. It
 retains the advisory-lock transaction for a one-second quiet period after each
@@ -284,16 +297,16 @@ dates. Meeting-room availability requires at least one table outside the peak
 occupied set because run shards use disjoint dates; exact selected slots are
 still validated through the deployed availability route before cases start.
 
-Before changing the workflow lock:
+Before changing the supported-concurrency contract or provider coordination:
 
 1. Confirm the validator passes and investigate any active overlapping
    reservations using safe aggregate diagnostics only.
-2. Start three exact-SHA previews simultaneously and repeat the concurrent soak
-   at least five times while the ordinary CI lock remains unchanged.
+2. Start the supported number of exact-SHA previews simultaneously and repeat
+   the concurrent soak at least five times with the current controls unchanged.
 3. Verify every run passes, cleanup converges to zero active E2E reservations,
    no allocation shard exhausts, and provider/function p95 does not regress.
-4. Only then partition or remove the global lock. If one mutable resource
-   remains, lock only that resource rather than the whole job.
+4. Only then raise the supported concurrency or narrow a remaining resource
+   boundary. Lock only the shared resource rather than the whole job.
 
 ## Preview database identity and migration
 
@@ -484,8 +497,10 @@ starting and fail the run. The boundary is load control rather than
 provider-side fencing: a coordinator connection loss during an in-flight HTTP
 request can release the lock before commit reports the failure, while Nexi's
 unique order and idempotency identities continue to protect the operation.
-Keep the global workflow lock until five successful three-run soaks verify the
-distributed boundary under load.
+Five successful three-run soaks verified this distributed boundary before the
+global workflow lock was removed. Restore a broad lock only if exact-run
+evidence shows that the allocator and narrow resource controls no longer bound
+the failing provider operation.
 
 ## Verification
 
