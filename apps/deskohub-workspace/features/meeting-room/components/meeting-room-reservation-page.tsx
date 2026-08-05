@@ -18,6 +18,7 @@ import {
 } from "./meeting-room-reservation-form";
 
 export const meetingRoomReservationPage = createReservationPage({
+  fallback: (locale) => <MeetingRoomReservationFormFallback locale={locale} />,
   kind: "meeting-room",
   pathname: meetingRoomReservationPath,
   metadata: (locale: Locale) => ({
@@ -53,20 +54,17 @@ export const meetingRoomReservationPage = createReservationPage({
       runWorkspaceEffect("reservation.meeting-room.load-advertised-prices")
     );
 
-    return {
-      fallback: <MeetingRoomReservationFormFallback locale={locale} />,
-      children: (
-        <MeetingRoomReservationForm
-          checkoutSessionId={checkoutSessionId}
-          initialAdvertisedPrices={initialAdvertisedPrices}
-          initialReservation={
-            restoredInitialValues ? initialReservation : undefined
-          }
-          initialValues={initialValues}
-          locale={locale}
-          replacementToken={replacementToken}
-        />
-      ),
-    };
+    return (
+      <MeetingRoomReservationForm
+        checkoutSessionId={checkoutSessionId}
+        initialAdvertisedPrices={initialAdvertisedPrices}
+        initialReservation={
+          restoredInitialValues ? initialReservation : undefined
+        }
+        initialValues={initialValues}
+        locale={locale}
+        replacementToken={replacementToken}
+      />
+    );
   },
 });

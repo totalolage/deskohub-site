@@ -35,7 +35,7 @@ const getReservationPageSuspenseBoundary = async () => {
 };
 
 describe("ReservationPage", () => {
-  test("keeps the reservation form inside the search-param hydration boundary", async () => {
+  test("keeps dynamic reservation content inside the localized loading boundary", async () => {
     const suspenseBoundary = await getReservationPageSuspenseBoundary();
 
     expect(suspenseBoundary.type).toBe(Suspense);

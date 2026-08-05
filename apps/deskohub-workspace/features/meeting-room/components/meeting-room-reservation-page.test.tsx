@@ -25,10 +25,7 @@ mock.module(
         readonly checkoutSessionId?: string;
         readonly initialReservation?: unknown;
         readonly locale: "en-US";
-      }) => Promise<{
-        readonly children: ReactNode;
-        readonly fallback: ReactNode;
-      }>;
+      }) => ReactNode | Promise<ReactNode>;
     }) => definition,
   })
 );
@@ -101,13 +98,10 @@ test("restores a whole-day reservation after its start and before its end", asyn
   });
 
   try {
-    const rendered = await meetingRoomReservationPage.render({
+    const form = (await meetingRoomReservationPage.render({
       initialReservation: restoredReservation,
       locale: "en-US",
-    });
-    const form = rendered.children as ReactElement<
-      Parameters<typeof MeetingRoomReservationForm>[0]
-    >;
+    })) as ReactElement<Parameters<typeof MeetingRoomReservationForm>[0]>;
 
     expect(form.props.initialReservation).toBe(restoredReservation);
     expect(form.props.initialValues).toMatchObject({

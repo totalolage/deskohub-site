@@ -15,7 +15,6 @@ export function ReservationPage({
 }: ReservationPageProps) {
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
-      {/* Suspense isolates useSearchParams() hydration, not data fetching or lazy loading. */}
       <Suspense fallback={fallback}>{children}</Suspense>
     </CheckoutFlowLayout>
   );
