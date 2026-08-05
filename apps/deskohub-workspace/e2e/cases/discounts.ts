@@ -52,7 +52,6 @@ import {
   changeDotyposCustomerDiscount,
   type E2EDotyposDiscountGroup,
   prepareDotyposCustomerDiscount,
-  resolveE2EDotyposDiscountGroup,
 } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
@@ -91,12 +90,16 @@ export type DiscountE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
 };
 
-export const prepareDiscountE2E = (
+export type DiscountAvailabilityE2EPreparation = Omit<
+  DiscountE2EPreparation,
+  "customerDiscountGroup"
+>;
+
+export const prepareDiscountAvailabilityE2E = (
   config: WorkspaceE2EConfig,
-  datasourceConfig: DatasourceConfig,
   allocation: WorkspaceE2EDateAllocation
 ): Effect.Effect<
-  DiscountE2EPreparation,
+  DiscountAvailabilityE2EPreparation,
   WorkspaceE2EError,
   HttpClient.HttpClient
 > =>
@@ -112,7 +115,6 @@ export const prepareDiscountE2E = (
         entryTier: "profi",
         monitorOption: "2x27-qhd",
       }),
-      customerDiscountGroup: resolveE2EDotyposDiscountGroup(datasourceConfig),
     },
     { concurrency: "unbounded" }
   );

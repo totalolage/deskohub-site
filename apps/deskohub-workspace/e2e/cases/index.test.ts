@@ -4,10 +4,7 @@ import { workspaceE2EFullDateAllocation } from "../allocation";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
-import {
-  type makeWorkspaceE2ECases,
-  sequenceWorkspaceE2EPreparation,
-} from ".";
+import { type makeWorkspaceE2ECases, sequenceWorkspaceE2EPreparation } from ".";
 
 test("case construction requires no deployment identity", () => {
   const input: Parameters<typeof makeWorkspaceE2ECases>[0] = {
@@ -21,12 +18,14 @@ test("case construction requires no deployment identity", () => {
   expect(input).not.toHaveProperty("deploymentId");
 });
 
-test("seeds fixtures before overlapping availability preparation", async () => {
+test("overlaps independent discovery with seeding before availability", async () => {
   let availabilityStartCount = 0;
   let releaseAvailability: () => void = () => undefined;
   let releaseFixtures: () => void = () => undefined;
+  let releaseIndependent: () => void = () => undefined;
   let signalAvailabilityStarted: () => void = () => undefined;
   let signalFixturesStarted: () => void = () => undefined;
+  let signalIndependentStarted: () => void = () => undefined;
   const availabilityRelease = new Promise<void>((resolve) => {
     releaseAvailability = resolve;
   });
@@ -38,6 +37,12 @@ test("seeds fixtures before overlapping availability preparation", async () => {
   });
   const fixturesStarted = new Promise<void>((resolve) => {
     signalFixturesStarted = resolve;
+  });
+  const independentRelease = new Promise<void>((resolve) => {
+    releaseIndependent = resolve;
+  });
+  const independentStarted = new Promise<void>((resolve) => {
+    signalIndependentStarted = resolve;
   });
   const availability = (id: string) =>
     Effect.acquireUseRelease(
@@ -62,17 +67,27 @@ test("seeds fixtures before overlapping availability preparation", async () => {
         () => Effect.promise(() => fixtureRelease),
         () => Effect.void
       ),
+      independent: Effect.acquireUseRelease(
+        Effect.sync(() => signalIndependentStarted()),
+        () =>
+          Effect.promise(() => independentRelease).pipe(Effect.as("dotypos")),
+        () => Effect.void
+      ),
     })
   );
 
-  await fixturesStarted;
+  await Promise.all([fixturesStarted, independentStarted]);
   await new Promise<void>((resolve) => setTimeout(resolve, 10));
   expect(availabilityStartCount).toBe(0);
   releaseFixtures();
   await availabilityStarted;
   expect(availabilityStartCount).toBe(2);
   releaseAvailability();
-  await expect(preparation).resolves.toEqual(["cowork", "meeting-room"]);
+  releaseIndependent();
+  await expect(preparation).resolves.toEqual([
+    ["cowork", "meeting-room"],
+    "dotypos",
+  ]);
 });
 
 const makeConfig = (): WorkspaceE2EConfig => ({
