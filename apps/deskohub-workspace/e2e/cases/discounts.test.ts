@@ -8,9 +8,10 @@ import {
   calendarDiscountExpectation,
 } from "./discounts";
 
-test("waits for the discount trigger pointer handler before hovering it", async () => {
-  let pointerHandlerReady = false;
+test("opens the discount tooltip through its native keyboard contract", async () => {
+  let focusHandlerReady = false;
   let triggerCentered = false;
+  let triggerFocused = false;
   let triggerOpened = false;
   const calls: string[][] = [];
   const run: Runner = async (_command, args, options) => {
@@ -18,8 +19,8 @@ test("waits for the discount trigger pointer handler before hovering it", async 
     const [operation, value] = args.slice(2);
     if (operation === "wait" && value === "--fn") {
       const script = args.at(4) ?? "";
-      pointerHandlerReady =
-        script.includes("__reactProps$") && script.includes('"onPointerMove"');
+      focusHandlerReady =
+        script.includes("__reactProps$") && script.includes('"onFocus"');
     }
     if (operation === "eval") {
       triggerCentered =
@@ -27,14 +28,24 @@ test("waits for the discount trigger pointer handler before hovering it", async 
         options.input.includes('block: "center"') &&
         options.input.includes("requestAnimationFrame");
     }
-    if (operation === "hover" && (!pointerHandlerReady || !triggerCentered)) {
+    if (operation === "focus") triggerFocused = true;
+    if (
+      operation === "press" &&
+      value === "Shift+Tab" &&
+      (!focusHandlerReady || !triggerCentered || !triggerFocused)
+    ) {
       return {
         exitCode: 1,
-        stderr: "discount trigger is not ready at an unobstructed click point",
+        stderr: "discount trigger is not ready for keyboard navigation",
         stdout: "",
       };
     }
-    if (operation === "hover") triggerOpened = true;
+    if (operation === "press" && value === "Shift+Tab") {
+      triggerFocused = false;
+    }
+    if (operation === "press" && value === "Tab" && !triggerFocused) {
+      triggerOpened = true;
+    }
     if (
       operation === "wait" &&
       value === "--fn" &&
@@ -64,12 +75,14 @@ test("waits for the discount trigger pointer handler before hovering it", async 
   expect(calls.map((args) => args.at(2))).toEqual([
     "wait",
     "eval",
-    "hover",
+    "focus",
+    "press",
+    "press",
     "wait",
   ]);
-  expect(calls.at(3)?.at(4)).toContain(
+  expect(calls.at(5)?.at(4)).toContain(
     "document.querySelectorAll('[role=\"tooltip\"] li')"
   );
-  expect(calls.at(3)?.at(4)).toContain('"e2e calendar sale"');
-  expect(calls.at(3)?.at(4)).toContain('"20%"');
+  expect(calls.at(5)?.at(4)).toContain('"e2e calendar sale"');
+  expect(calls.at(5)?.at(4)).toContain('"20%"');
 });

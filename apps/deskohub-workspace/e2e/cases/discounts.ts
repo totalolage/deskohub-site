@@ -4,8 +4,9 @@ import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-cat
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
-  hoverBrowserElement,
+  focusBrowserElement,
   openBrowserPage,
+  pressBrowserKey,
   scrollBrowserElementIntoView,
   waitForBrowserCondition,
   waitForBrowserReactHandler,
@@ -1184,13 +1185,19 @@ export const assertDisplayedDiscounts = ({
       run,
       session,
       triggerSelector,
-      "onPointerMove",
+      "onFocus",
       { timeoutMs: config.timeouts.uiTransition }
     );
     yield* scrollBrowserElementIntoView(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
-    yield* hoverBrowserElement(run, session, triggerSelector, {
+    yield* focusBrowserElement(run, session, triggerSelector, {
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* pressBrowserKey(run, session, "Shift+Tab", {
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* pressBrowserKey(run, session, "Tab", {
       timeoutMs: config.timeouts.browserAction,
     });
     for (const { basisPoints, label } of discounts) {
