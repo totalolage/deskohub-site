@@ -39,8 +39,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Use ordinary document links for cross-locale switching rather than Next.js client-router links. Locale is server-owned global context and the Workspace proxy persists its cookie for localized requests; cross-locale RSC prefetches and client transitions can race or fail to commit the selected locale. Keep this invariant shared across full, mobile, and minimal headers rather than fixing one presentation in isolation.
 - For dynamically rendered forms, wait for the relevant framework handler to be hydrated before interacting; do not use network idle as the readiness signal because analytics traffic can keep it open. Then use browser-native fill commands and semantic accessibility locators so framework handlers receive trusted interactions. Select the actual control by accessibility role rather than a wrapping `LabelText`, and parse its snapshot reference independently of attribute order because state such as `checked` may precede `ref`. Prefer a stable app-owned id or form-scoped selector for critical activation when one exists: parallel browser sessions can invalidate an accessibility reference between snapshot capture and activation. Focus that stable selector and activate it with the native keyboard because agent-browser's combined `click` can return successfully without emitting a form submission. When no stable selector exists, capture a fresh accessibility snapshot after hydration, immediately focus that reference, and activate it with the native keyboard. Do not capture references before hydration or reuse them after intervening DOM changes, and do not replace native form submission or link navigation with an evaluated DOM click.
 - For hover-owned tooltip assertions, wait for the trigger to hydrate, center it
-  in the viewport so a fixed header cannot cover its interaction point, and use
-  agent-browser's native `hover` command before reading the overlay. A focus
+  instantly in the viewport so a fixed header cannot cover its interaction
+  point, wait for layout to settle, and use agent-browser's native `hover`
+  command before reading the overlay. A focus
   command can succeed without opening the tooltip in an automated browser
   session; do not paper over that missing interaction by increasing the overlay
   wait.

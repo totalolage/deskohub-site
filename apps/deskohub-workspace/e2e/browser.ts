@@ -292,12 +292,19 @@ export const scrollBrowserElementIntoView = (
     ["eval", "--stdin"],
     {
       input: `
-(() => {
+(async () => {
   const element = document.querySelector(${selectorLiteral});
   if (!(element instanceof HTMLElement)) {
     throw new Error('scroll target not found');
   }
-  element.scrollIntoView({ block: "center", inline: "nearest" });
+  element.scrollIntoView({
+    behavior: "instant",
+    block: "center",
+    inline: "nearest",
+  });
+  await new Promise((resolve) =>
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  );
 })()
 `,
       logOutput: false,
