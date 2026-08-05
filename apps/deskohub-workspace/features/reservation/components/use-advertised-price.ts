@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
+import { Array as EffectArray } from "effect";
 import {
   type AdvertisedPriceRequest,
   advertisedPriceKeys,
@@ -34,25 +35,14 @@ const loadAdvertisedPrice = (request: AdvertisedPriceRequest) =>
 const flushAdvertisedPriceBatch = async () => {
   const pending = pendingAdvertisedPrices;
   pendingAdvertisedPrices = [];
-  const requests = pending
-    .map(({ request }) => request)
-    .filter(
-      (request, index, candidates) =>
-        candidates.findIndex((candidate) =>
-          advertisedPriceRequestEquals(candidate, request)
-        ) === index
-    );
-
-  const batches: AdvertisedPriceRequest[][] = [];
-  for (
-    let index = 0;
-    index < requests.length;
-    index += advertisedPriceRequestBatchSize
-  ) {
-    batches.push(
-      requests.slice(index, index + advertisedPriceRequestBatchSize)
-    );
-  }
+  const requests = EffectArray.dedupeWith(
+    pending.map(({ request }) => request),
+    advertisedPriceRequestEquals
+  );
+  const batches = EffectArray.chunksOf(
+    requests,
+    advertisedPriceRequestBatchSize
+  );
 
   await Promise.all(
     batches.map((batch) => loadAdvertisedPriceBatch(pending, batch))

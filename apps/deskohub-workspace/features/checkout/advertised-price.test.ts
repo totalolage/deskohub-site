@@ -6,6 +6,7 @@ import {
   getCoworkAdvertisedPriceReservation,
 } from "@/features/reservation/cowork-reservation";
 import {
+  advertisedPriceRequestBatchSize,
   advertisedPriceRequestSchema,
   advertisedPriceRequestsSchema,
 } from "./advertised-price";
@@ -34,10 +35,21 @@ describe("advertised price contract", () => {
 
     expect(Option.isNone(decodeRequests([]))).toBe(true);
     expect(
-      Option.isSome(decodeRequests(Array.from({ length: 16 }, () => request)))
+      Option.isSome(
+        decodeRequests(
+          Array.from({ length: advertisedPriceRequestBatchSize }, () => request)
+        )
+      )
     ).toBe(true);
     expect(
-      Option.isNone(decodeRequests(Array.from({ length: 17 }, () => request)))
+      Option.isNone(
+        decodeRequests(
+          Array.from(
+            { length: advertisedPriceRequestBatchSize + 1 },
+            () => request
+          )
+        )
+      )
     ).toBe(true);
   });
 
