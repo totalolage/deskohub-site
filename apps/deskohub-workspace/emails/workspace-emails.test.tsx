@@ -34,6 +34,8 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).toContain(
       customerReservationPreviewProps.accessCode
     );
+    expect(customerReservation).toContain('bgcolor="#00024f"');
+    expect(customerReservation).toContain("background-color:#00024f");
     expect(customerReservation).toContain(
       'content="width=device-width, initial-scale=1.0" name="viewport"'
     );

@@ -60,11 +60,21 @@ export function CustomerReservationEmail({
       </Heading>
 
       <Section className="mt-6 overflow-hidden rounded-[22px] border border-[#d8d9e4]">
-        <Section className="bg-navy px-4 py-6 text-center sm:px-6">
-          <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.4px] text-aquamarine uppercase">
+        <Section
+          bgcolor="#00024f"
+          className="bg-navy px-4 py-6 text-center sm:px-6"
+          style={{ backgroundColor: "#00024f" }}
+        >
+          <Text
+            className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.4px] text-aquamarine uppercase"
+            style={{ color: "#00df99" }}
+          >
             {labels.accessCode}
           </Text>
-          <Text className="m-0 mt-2 text-[50px] font-bold leading-[56px] tracking-[4px] text-white sm:text-[58px] sm:leading-[64px] sm:tracking-[6px]">
+          <Text
+            className="m-0 mt-2 text-[50px] font-bold leading-[56px] tracking-[4px] text-white sm:text-[58px] sm:leading-[64px] sm:tracking-[6px]"
+            style={{ color: "#ffffff" }}
+          >
             {accessCode}
           </Text>
         </Section>
