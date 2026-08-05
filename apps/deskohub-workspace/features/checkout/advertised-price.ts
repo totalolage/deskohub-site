@@ -24,11 +24,13 @@ export const advertisedPriceRequestSchema = Schema.Union([
   description: "Inputs for anonymous price advertisement.",
 });
 
+export const advertisedPriceRequestBatchSize = 16;
+
 export const advertisedPriceRequestsSchema = Schema.Array(
   advertisedPriceRequestSchema
 )
   .check(Schema.isMinLength(1))
-  .check(Schema.isMaxLength(16))
+  .check(Schema.isMaxLength(advertisedPriceRequestBatchSize))
   .annotate({
     identifier: "AdvertisedPriceRequests",
     description: "A bounded batch of anonymous price advertisement inputs.",
