@@ -122,6 +122,17 @@ test("holds the provider lock for the complete shard lease lifetime", async () =
   expect(runIndex).toBeLessThan(releaseIndex);
 });
 
+test("passes allocated shard and provider coordination through Turborepo", async () => {
+  const turbo = await Bun.file(
+    resolve(import.meta.dir, "../../../turbo.json")
+  ).json();
+  const environment = turbo.tasks["test:e2e"].passThroughEnv as string[];
+
+  expect(environment).toContain("WORKSPACE_E2E_ALLOCATION_SHARD");
+  expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
+  expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
+});
+
 test("uses the hosted runner browser without downloading another browser", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
