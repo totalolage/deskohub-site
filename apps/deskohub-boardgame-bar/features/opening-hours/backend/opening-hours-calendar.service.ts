@@ -1,12 +1,11 @@
 import type {
   GoogleCalendarError,
   GoogleCalendarEvent,
-  GoogleCalendarEventQuery,
   GoogleCalendarWatchChannel,
   GoogleCalendarWatchEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Match, Option } from "effect";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import { siteConstants } from "@/shared/utils/constants";
 import { OpeningHoursCalendarConfig } from "./opening-hours-calendar.config";
@@ -16,13 +15,13 @@ const specialHoursMarker = "[bar:hours]";
 
 export type OpeningHoursException = Data.TaggedEnum<{
   Closed: {
-    readonly date: string;
+    readonly date: Temporal.PlainDate;
     readonly sourceEventReference: string;
   };
   SpecialHours: {
-    readonly date: string;
-    readonly opensAt: string;
-    readonly closesAt: string;
+    readonly date: Temporal.PlainDate;
+    readonly opensAt: Temporal.PlainTime;
+    readonly closesAt: Temporal.PlainTime;
     readonly closesNextDay: boolean;
     readonly sourceEventReference: string;
   };
@@ -30,7 +29,10 @@ export type OpeningHoursException = Data.TaggedEnum<{
 
 export const OpeningHoursException = Data.taggedEnum<OpeningHoursException>();
 
-export type OpeningHoursExceptionQuery = GoogleCalendarEventQuery;
+export interface OpeningHoursExceptionQuery {
+  readonly from: Temporal.PlainDate;
+  readonly to: Temporal.PlainDate;
+}
 
 export type OpeningHoursCalendarWatchInput = Omit<
   GoogleCalendarWatchEventsInput,
@@ -66,14 +68,12 @@ export class OpeningHoursCalendarService extends Context.Service<
 
           const events = yield* calendar.listEvents({
             calendarId,
-            from: query.from,
-            to: query.to,
+            from: query.from.toString(),
+            to: query.to.toString(),
           });
-          const eventExceptions = yield* Effect.all(
-            events.map((event) => normalizeEvent(event, query)),
-            { concurrency: "inherit" }
+          const exceptions = resolveDateConflicts(
+            events.flatMap((event) => getEventExceptions(event, query))
           );
-          const exceptions = resolveDateConflicts(eventExceptions.flat());
 
           yield* Effect.logInfo(
             "Google Calendar opening-hours exceptions load completed",
@@ -86,8 +86,8 @@ export class OpeningHoursCalendarService extends Context.Service<
           effect.pipe(
             Effect.annotateLogs({
               calendarId,
-              from: query.from,
-              to: query.to,
+              from: query.from.toString(),
+              to: query.to.toString(),
             }),
             Effect.tapError((cause) =>
               Effect.logError(
@@ -114,170 +114,111 @@ export class OpeningHoursCalendarService extends Context.Service<
   );
 }
 
-class InvalidOpeningHoursEvent extends Data.TaggedError(
-  "InvalidOpeningHoursEvent"
-)<{
-  readonly reason: string;
-  readonly sourceEventReference: string;
-  readonly cause?: unknown;
-}> {
-  static invalidDateRange =
-    (sourceEventReference: string) => (cause: unknown) =>
-      new InvalidOpeningHoursEvent({
-        sourceEventReference,
-        reason: "all-day event has an invalid date range",
-        cause,
-      });
+export const getOpeningHoursExceptionKey = (exception: OpeningHoursException) =>
+  Match.value(exception).pipe(
+    Match.tagsExhaustive({
+      Closed: ({ date }) => `closed:${date}`,
+      SpecialHours: ({ closesAt, date, opensAt }) =>
+        `hours:${date}:${opensAt}:${closesAt}`,
+    })
+  );
 
-  static invalidDateTime = (sourceEventReference: string) => (cause: unknown) =>
-    new InvalidOpeningHoursEvent({
-      sourceEventReference,
-      reason: "timed event has an invalid date or time",
-      cause,
-    });
-}
-
-const normalizeEvent = Effect.fn("normalizeOpeningHoursCalendarEvent")(
-  function* (event: GoogleCalendarEvent, query: OpeningHoursExceptionQuery) {
-    if (event.status === "cancelled") {
-      return [];
-    }
-
-    const description = event.description?.toLocaleLowerCase("en-US") ?? "";
-    const isClosed = description.includes(closedMarker);
-    const hasSpecialHours = description.includes(specialHoursMarker);
-
-    if (!isClosed && !hasSpecialHours) {
-      return [];
-    }
-
-    const sourceEventReference = event.id ?? event.iCalUID ?? "unknown";
-
-    if (!event.id && !event.iCalUID) {
-      return yield* invalidEvent(
-        sourceEventReference,
-        "missing stable event reference"
-      );
-    }
-
-    if (isClosed && hasSpecialHours) {
-      return yield* invalidEvent(
-        sourceEventReference,
-        "event contains both opening-hours markers"
-      );
-    }
-
-    return yield* isClosed
-      ? normalizeClosedEvent(event, sourceEventReference, query)
-      : normalizeSpecialHoursEvent(event, sourceEventReference, query);
-  },
-  (effect) =>
-    effect.pipe(
-      Effect.catch((error) =>
-        Effect.logWarning(
-          "Ignoring invalid Google Calendar opening-hours event",
-          {
-            reason: error.reason,
-            sourceEventReference: error.sourceEventReference,
-          }
-        ).pipe(Effect.as([] as readonly OpeningHoursException[]))
-      )
-    )
-);
-
-const normalizeClosedEvent = Effect.fn("normalizeClosedOpeningHoursEvent")(
-  function* (
-    event: GoogleCalendarEvent,
-    sourceEventReference: string,
-    query: OpeningHoursExceptionQuery
-  ) {
-    const start = event.start?.date;
-    const end = event.end?.date;
-
-    if (!start || !end || event.start?.dateTime || event.end?.dateTime) {
-      return yield* invalidEvent(
-        sourceEventReference,
-        "closed marker requires an all-day event"
-      );
-    }
-
-    const dates = yield* getDateRange({
-      start,
-      exclusiveEnd: end,
-      sourceEventReference,
-    });
-
-    if (dates.length === 0) {
-      return yield* invalidEvent(
-        sourceEventReference,
-        "all-day event must end after it starts"
-      );
-    }
-
-    return dates
-      .filter((date) => date >= query.from && date <= query.to)
-      .map((date) =>
-        OpeningHoursException.Closed({ date, sourceEventReference })
-      );
+const getEventExceptions = (
+  event: GoogleCalendarEvent,
+  query: OpeningHoursExceptionQuery
+): readonly OpeningHoursException[] => {
+  if (event.status === "cancelled") {
+    return [];
   }
-);
 
-const normalizeSpecialHoursEvent = Effect.fn(
-  "normalizeSpecialOpeningHoursEvent"
-)(function* (
+  const description = event.description?.toLocaleLowerCase("en-US") ?? "";
+  const isClosed = description.includes(closedMarker);
+  const hasSpecialHours = description.includes(specialHoursMarker);
+  const sourceEventReference = event.id ?? event.iCalUID;
+
+  if (!sourceEventReference || isClosed === hasSpecialHours) {
+    return [];
+  }
+
+  return isClosed
+    ? getClosedExceptions(event, sourceEventReference, query)
+    : getSpecialHoursExceptions(event, sourceEventReference, query);
+};
+
+const getClosedExceptions = (
   event: GoogleCalendarEvent,
   sourceEventReference: string,
   query: OpeningHoursExceptionQuery
-) {
+): readonly OpeningHoursException[] => {
+  const start = event.start?.date;
+  const end = event.end?.date;
+
+  if (!start || !end || event.start?.dateTime || event.end?.dateTime) {
+    return [];
+  }
+
+  return getDateRange({ start, exclusiveEnd: end }).pipe(
+    Option.map((dates) =>
+      dates
+        .filter((date) => isDateInRange(date, query))
+        .map((date) =>
+          OpeningHoursException.Closed({ date, sourceEventReference })
+        )
+    ),
+    Option.getOrElse(() => [])
+  );
+};
+
+const getSpecialHoursExceptions = (
+  event: GoogleCalendarEvent,
+  sourceEventReference: string,
+  query: OpeningHoursExceptionQuery
+): readonly OpeningHoursException[] => {
   const startValue = event.start?.dateTime;
   const endValue = event.end?.dateTime;
 
   if (!startValue || !endValue || event.start?.date || event.end?.date) {
-    return yield* invalidEvent(
-      sourceEventReference,
-      "special-hours marker requires a timed event"
-    );
-  }
-
-  const { start, end } = yield* Effect.all({
-    start: toBarZonedDateTime({
-      dateTime: startValue,
-      timeZone: event.start?.timeZone,
-      sourceEventReference,
-    }),
-    end: toBarZonedDateTime({
-      dateTime: endValue,
-      timeZone: event.end?.timeZone,
-      sourceEventReference,
-    }),
-  });
-
-  if (Temporal.ZonedDateTime.compare(end, start) <= 0) {
-    return yield* invalidEvent(
-      sourceEventReference,
-      "timed event must end after it starts"
-    );
-  }
-
-  const startDate = start.toPlainDate();
-  const endDate = end.toPlainDate();
-  const localDaySpan = startDate.until(endDate).days;
-
-  if (localDaySpan < 0 || localDaySpan > 1) {
-    return yield* invalidEvent(
-      sourceEventReference,
-      "special opening hours may end only on the same or following day"
-    );
-  }
-
-  const date = startDate.toString();
-
-  if (date < query.from || date > query.to) {
     return [];
   }
 
-  const opensAt = toTime(start);
-  const closesAt = toTime(end);
+  return Option.all({
+    start: toBarZonedDateTime(startValue, event.start?.timeZone),
+    end: toBarZonedDateTime(endValue, event.end?.timeZone),
+  }).pipe(
+    Option.map(({ end, start }) =>
+      toSpecialHoursException({
+        end,
+        query,
+        sourceEventReference,
+        start,
+      })
+    ),
+    Option.getOrElse(() => [])
+  );
+};
+
+const toSpecialHoursException = (input: {
+  readonly start: Temporal.ZonedDateTime;
+  readonly end: Temporal.ZonedDateTime;
+  readonly sourceEventReference: string;
+  readonly query: OpeningHoursExceptionQuery;
+}): readonly OpeningHoursException[] => {
+  if (Temporal.ZonedDateTime.compare(input.end, input.start) <= 0) {
+    return [];
+  }
+
+  const date = input.start.toPlainDate();
+  const localDaySpan = date.until(input.end.toPlainDate()).days;
+  if (
+    localDaySpan < 0 ||
+    localDaySpan > 1 ||
+    !isDateInRange(date, input.query)
+  ) {
+    return [];
+  }
+
+  const opensAt = toMinuteTime(input.start);
+  const closesAt = toMinuteTime(input.end);
   const closesNextDay = localDaySpan === 1;
 
   if (!closesNextDay && matchesRegularHours(date, opensAt, closesAt)) {
@@ -290,111 +231,90 @@ const normalizeSpecialHoursEvent = Effect.fn(
       opensAt,
       closesAt,
       closesNextDay,
-      sourceEventReference,
+      sourceEventReference: input.sourceEventReference,
     }),
   ];
-});
+};
 
-const invalidEvent = (sourceEventReference: string, reason: string) =>
-  Effect.fail(new InvalidOpeningHoursEvent({ sourceEventReference, reason }));
-
-const toBarZonedDateTime = Effect.fn("toBarZonedDateTime")(
-  (input: {
-    readonly dateTime: string;
-    readonly timeZone: string | undefined;
-    readonly sourceEventReference: string;
-  }) =>
-    Effect.try({
-      try: () =>
-        hasExplicitOffset(input.dateTime)
-          ? Temporal.Instant.from(input.dateTime).toZonedDateTimeISO(
-              siteConstants.workingHours.timezone
-            )
-          : Temporal.PlainDateTime.from(input.dateTime)
-              .toZonedDateTime(
-                input.timeZone ?? siteConstants.workingHours.timezone
-              )
-              .withTimeZone(siteConstants.workingHours.timezone),
-      catch: InvalidOpeningHoursEvent.invalidDateTime(
-        input.sourceEventReference
-      ),
-    })
+const toBarZonedDateTime = Option.liftThrowable(
+  (dateTime: string, timeZone: string | undefined) =>
+    hasExplicitOffset(dateTime)
+      ? Temporal.Instant.from(dateTime).toZonedDateTimeISO(
+          siteConstants.workingHours.timezone
+        )
+      : Temporal.PlainDateTime.from(dateTime)
+          .toZonedDateTime(timeZone ?? siteConstants.workingHours.timezone)
+          .withTimeZone(siteConstants.workingHours.timezone)
 );
 
 const hasExplicitOffset = (dateTime: string) =>
   /(?:Z|[+-]\d{2}:\d{2})$/u.test(dateTime);
 
-const getDateRange = Effect.fn("getOpeningHoursDateRange")(
-  (input: {
-    readonly start: string;
-    readonly exclusiveEnd: string;
-    readonly sourceEventReference: string;
-  }) =>
-    Effect.try({
-      try: () => {
-        const dates: string[] = [];
-        let cursor = Temporal.PlainDate.from(input.start);
-        const end = Temporal.PlainDate.from(input.exclusiveEnd);
+const getDateRange = Option.liftThrowable(
+  (input: { readonly start: string; readonly exclusiveEnd: string }) => {
+    const dates: Temporal.PlainDate[] = [];
+    let cursor = Temporal.PlainDate.from(input.start);
+    const end = Temporal.PlainDate.from(input.exclusiveEnd);
 
-        while (Temporal.PlainDate.compare(cursor, end) < 0) {
-          dates.push(cursor.toString());
-          cursor = cursor.add({ days: 1 });
-        }
+    while (Temporal.PlainDate.compare(cursor, end) < 0) {
+      dates.push(cursor);
+      cursor = cursor.add({ days: 1 });
+    }
 
-        return dates;
-      },
-      catch: InvalidOpeningHoursEvent.invalidDateRange(
-        input.sourceEventReference
-      ),
-    })
+    return dates;
+  }
 );
 
-const toTime = (dateTime: Temporal.ZonedDateTime) =>
-  `${dateTime.hour.toString().padStart(2, "0")}:${dateTime.minute
-    .toString()
-    .padStart(2, "0")}`;
+const isDateInRange = (
+  date: Temporal.PlainDate,
+  query: OpeningHoursExceptionQuery
+) =>
+  Temporal.PlainDate.compare(date, query.from) >= 0 &&
+  Temporal.PlainDate.compare(date, query.to) <= 0;
+
+const toMinuteTime = (dateTime: Temporal.ZonedDateTime) =>
+  Temporal.PlainTime.from({ hour: dateTime.hour, minute: dateTime.minute });
 
 const matchesRegularHours = (
-  date: string,
-  opensAt: string,
-  closesAt: string
+  date: Temporal.PlainDate,
+  opensAt: Temporal.PlainTime,
+  closesAt: Temporal.PlainTime
 ) => {
-  const plainDate = Temporal.PlainDate.from(date);
-  const dayIndex = (plainDate.dayOfWeek % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
+  const dayIndex = (date.dayOfWeek % 7) as 0 | 1 | 2 | 3 | 4 | 5 | 6;
   const regularHours = siteConstants.workingHours.hours[dayIndex];
 
   return (
-    opensAt === toConfiguredTime(regularHours.open) &&
-    closesAt === toConfiguredTime(regularHours.close)
+    Temporal.PlainTime.compare(opensAt, toConfiguredTime(regularHours.open)) ===
+      0 &&
+    Temporal.PlainTime.compare(
+      closesAt,
+      toConfiguredTime(regularHours.close)
+    ) === 0
   );
 };
 
 const toConfiguredTime = (time: {
   readonly hrs: number;
   readonly mins: number;
-}) =>
-  `${time.hrs.toString().padStart(2, "0")}:${time.mins
-    .toString()
-    .padStart(2, "0")}`;
+}) => Temporal.PlainTime.from({ hour: time.hrs, minute: time.mins });
 
 const resolveDateConflicts = (exceptions: readonly OpeningHoursException[]) => {
   const closedDates = new Set(
-    exceptions.flatMap((exception) =>
-      exception._tag === "Closed" ? [exception.date] : []
-    )
+    exceptions
+      .filter(OpeningHoursException.$is("Closed"))
+      .map(({ date }) => date.toString())
   );
   const unique = new Map<string, OpeningHoursException>();
 
   for (const exception of exceptions) {
-    if (exception._tag === "SpecialHours" && closedDates.has(exception.date)) {
+    if (
+      OpeningHoursException.$is("SpecialHours")(exception) &&
+      closedDates.has(exception.date.toString())
+    ) {
       continue;
     }
 
-    const key =
-      exception._tag === "Closed"
-        ? `closed:${exception.date}`
-        : `hours:${exception.date}:${exception.opensAt}:${exception.closesAt}`;
-    unique.set(key, exception);
+    unique.set(getOpeningHoursExceptionKey(exception), exception);
   }
 
   return [...unique.values()].sort(compareExceptions);
@@ -403,8 +323,28 @@ const resolveDateConflicts = (exceptions: readonly OpeningHoursException[]) => {
 const compareExceptions = (
   left: OpeningHoursException,
   right: OpeningHoursException
-) =>
-  left.date.localeCompare(right.date) ||
-  (left._tag === "Closed" ? "" : left.opensAt).localeCompare(
-    right._tag === "Closed" ? "" : right.opensAt
+) => {
+  const dateOrder = Temporal.PlainDate.compare(left.date, right.date);
+  if (dateOrder !== 0) {
+    return dateOrder;
+  }
+
+  const leftTime = getExceptionStartTime(left);
+  const rightTime = getExceptionStartTime(right);
+  if (!leftTime) {
+    return rightTime ? -1 : 0;
+  }
+  if (!rightTime) {
+    return 1;
+  }
+
+  return Temporal.PlainTime.compare(leftTime, rightTime);
+};
+
+const getExceptionStartTime = (exception: OpeningHoursException) =>
+  Match.value(exception).pipe(
+    Match.tagsExhaustive({
+      Closed: () => undefined,
+      SpecialHours: ({ opensAt }) => opensAt,
+    })
   );

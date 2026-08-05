@@ -11,14 +11,17 @@ import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 setBoardgameTestEnv();
 
 type OpeningHoursExceptionQuery = {
-  readonly from: string;
-  readonly to: string;
+  readonly from: Temporal.PlainDate;
+  readonly to: Temporal.PlainDate;
 };
 
 const defaultQuery = {
-  from: "2026-08-02",
-  to: "2026-08-10",
+  from: Temporal.PlainDate.from("2026-08-02"),
+  to: Temporal.PlainDate.from("2026-08-10"),
 } satisfies OpeningHoursExceptionQuery;
+
+const plainDate = Temporal.PlainDate.from;
+const plainTime = Temporal.PlainTime.from;
 
 const runWithEvents = async (
   events: readonly GoogleCalendarEvent[],
@@ -149,26 +152,26 @@ describe("OpeningHoursCalendarService", () => {
     expect(inputs).toEqual([
       {
         calendarId: "opening-hours-calendar",
-        from: defaultQuery.from,
-        to: defaultQuery.to,
+        from: defaultQuery.from.toString(),
+        to: defaultQuery.to.toString(),
       },
     ]);
     expect(exceptions).toEqual([
       {
         _tag: "Closed",
-        date: "2026-08-04",
+        date: plainDate("2026-08-04"),
         sourceEventReference: "closed",
       },
       {
         _tag: "Closed",
-        date: "2026-08-05",
+        date: plainDate("2026-08-05"),
         sourceEventReference: "closed",
       },
       {
         _tag: "SpecialHours",
-        date: "2026-08-07",
-        opensAt: "12:00",
-        closesAt: "20:30",
+        date: plainDate("2026-08-07"),
+        opensAt: plainTime("12:00"),
+        closesAt: plainTime("20:30"),
         closesNextDay: false,
         sourceEventReference: "special-hours",
       },
@@ -200,17 +203,17 @@ describe("OpeningHoursCalendarService", () => {
     expect(exceptions).toEqual([
       {
         _tag: "SpecialHours",
-        date: "2026-08-03",
-        opensAt: "00:30",
-        closesAt: "05:00",
+        date: plainDate("2026-08-03"),
+        opensAt: plainTime("00:30"),
+        closesAt: plainTime("05:00"),
         closesNextDay: false,
         sourceEventReference: "offset-crosses-date",
       },
       {
         _tag: "SpecialHours",
-        date: "2026-08-08",
-        opensAt: "20:00",
-        closesAt: "02:00",
+        date: plainDate("2026-08-08"),
+        opensAt: plainTime("20:00"),
+        closesAt: plainTime("02:00"),
         closesNextDay: true,
         sourceEventReference: "floating-time",
       },
@@ -228,17 +231,17 @@ describe("OpeningHoursCalendarService", () => {
         },
       ],
       {
-        from: "2026-03-29",
-        to: "2026-03-29",
+        from: plainDate("2026-03-29"),
+        to: plainDate("2026-03-29"),
       }
     );
 
     expect(exceptions).toEqual([
       {
         _tag: "SpecialHours",
-        date: "2026-03-29",
-        opensAt: "01:30",
-        closesAt: "04:30",
+        date: plainDate("2026-03-29"),
+        opensAt: plainTime("01:30"),
+        closesAt: plainTime("04:30"),
         closesNextDay: false,
         sourceEventReference: "dst-transition",
       },
@@ -247,8 +250,8 @@ describe("OpeningHoursCalendarService", () => {
 
   test("keeps exceptions inside the local start-date window", async () => {
     const query = {
-      from: "2026-08-09",
-      to: "2026-08-10",
+      from: plainDate("2026-08-09"),
+      to: plainDate("2026-08-10"),
     } satisfies OpeningHoursExceptionQuery;
     const exceptions = await runWithEvents(
       [
@@ -277,9 +280,9 @@ describe("OpeningHoursCalendarService", () => {
     expect(exceptions).toEqual([
       {
         _tag: "SpecialHours",
-        date: "2026-08-09",
-        opensAt: "00:00",
-        closesAt: "00:15",
+        date: plainDate("2026-08-09"),
+        opensAt: plainTime("00:00"),
+        closesAt: plainTime("00:15"),
         closesNextDay: false,
         sourceEventReference: "inside-window",
       },
@@ -297,17 +300,17 @@ describe("OpeningHoursCalendarService", () => {
         },
       ],
       {
-        from: "2026-08-09",
-        to: "2026-08-10",
+        from: plainDate("2026-08-09"),
+        to: plainDate("2026-08-10"),
       }
     );
 
     expect(exceptions).toHaveLength(1);
     expect(exceptions[0]).toMatchObject({
       _tag: "SpecialHours",
-      date: "2026-08-09",
-      opensAt: "00:00",
-      closesAt: "00:15",
+      date: plainDate("2026-08-09"),
+      opensAt: plainTime("00:00"),
+      closesAt: plainTime("00:15"),
       closesNextDay: false,
       sourceEventReference: "same-day-ended",
     });
@@ -361,9 +364,9 @@ describe("OpeningHoursCalendarService", () => {
     expect(exceptions).toEqual([
       {
         _tag: "SpecialHours",
-        date: "2026-08-10",
-        opensAt: "10:00",
-        closesAt: "18:00",
+        date: plainDate("2026-08-10"),
+        opensAt: plainTime("10:00"),
+        closesAt: plainTime("18:00"),
         closesNextDay: false,
         sourceEventReference: "valid",
       },
@@ -389,7 +392,7 @@ describe("OpeningHoursCalendarService", () => {
     expect(exceptions).toEqual([
       {
         _tag: "Closed",
-        date: "2026-08-06",
+        date: plainDate("2026-08-06"),
         sourceEventReference: "closed",
       },
     ]);
