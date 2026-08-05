@@ -21,11 +21,11 @@ test("waits for the discount trigger pointer handler before hovering it", async 
       pointerHandlerReady =
         script.includes("__reactProps$") && script.includes('"onPointerMove"');
     }
-    if (
-      operation === "eval" &&
-      options.input?.includes('scrollIntoView({ block: "center"')
-    ) {
-      triggerCentered = true;
+    if (operation === "eval") {
+      triggerCentered =
+        options.input?.includes('behavior: "instant"') === true &&
+        options.input.includes('block: "center"') &&
+        options.input.includes("requestAnimationFrame");
     }
     if (operation === "hover" && (!pointerHandlerReady || !triggerCentered)) {
       return {
