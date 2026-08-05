@@ -1,19 +1,17 @@
 import type { ReactNode } from "react";
-import type { Locale } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { MinimalSiteHeader } from "@/shared/components/minimal-site-header";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { getSiteHeaderLanguageLabels } from "@/shared/components/site-header-config";
 
 type MinimalHeaderLayoutProps = {
   children: ReactNode;
-  params: Promise<{ locale: Locale }>;
 };
 
 export default async function MinimalHeaderLayout({
   children,
-  params,
 }: MinimalHeaderLayoutProps) {
-  const { locale } = await params;
+  const locale = await getRequestLocale();
   const languageLabels = getSiteHeaderLanguageLabels(locale);
 
   return (
@@ -23,7 +21,7 @@ export default async function MinimalHeaderLayout({
         languageLabels={languageLabels}
       />
       {children}
-      <PublicSiteFooter locale={locale} />
+      <PublicSiteFooter />
     </>
   );
 }

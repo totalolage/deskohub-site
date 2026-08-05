@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { createWorkspaceReservationCustomerEmailPreviewHtml } from "@/features/checkout/backend/fulfillment";
-import { isLocale, type Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { EmailPreviewFrame } from "../_components/email-preview-frame";
@@ -17,31 +15,18 @@ export const metadata: Metadata = {
   },
 };
 
-type WorkspaceReservationEmailPreviewPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
-export default async function WorkspaceReservationEmailPreviewPage({
-  params,
-}: WorkspaceReservationEmailPreviewPageProps) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
+export default async function WorkspaceReservationEmailPreviewPage() {
   return (
     <Suspense fallback={null}>
-      <WorkspaceReservationEmailPreviewContent locale={locale} />
+      <WorkspaceReservationEmailPreviewContent />
     </Suspense>
   );
 }
 
-async function WorkspaceReservationEmailPreviewContent({
-  locale,
-}: {
-  locale: Locale;
-}) {
+async function WorkspaceReservationEmailPreviewContent() {
   await connection();
 
-  const html = await runWithRequestLocale(locale, () =>
+  const html = await runWithRequestLocale((locale) =>
     createWorkspaceReservationCustomerEmailPreviewHtml({
       reservation: createWorkspaceReservationEmailPreviewReservation(locale),
     }).pipe(

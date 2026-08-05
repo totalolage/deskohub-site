@@ -12,7 +12,6 @@ import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checko
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
@@ -26,13 +25,13 @@ import {
 export const maxDuration = 30;
 
 type LocalizedCheckoutStatusPageProps = {
-  params: Promise<{ locale: string; orderId: string }>;
+  params: Promise<{ orderId: string }>;
   searchParams: Promise<SearchParamsRecord>;
 };
 
-const decodeCheckoutStatusParams = getParamsDecoder({
-  orderId: Schema.NonEmptyString,
-});
+const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
+  Schema.Struct({ orderId: Schema.NonEmptyString })
+);
 
 const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
   Schema.Struct({
@@ -44,9 +43,9 @@ export async function generateMetadata({
   params,
 }: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
   const decodedParams = decodeCheckoutStatusParams(await params);
-  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
+  const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  return runWithRequestLocale(locale, () => {
+  return runWithRequestLocale((locale) => {
     const title = m.checkoutStatusMetadataTitle({}, { locale });
     const description = m.checkoutStatusMetadataDescription({}, { locale });
     const url = getWorkspaceLocalizedCanonicalUrl(
@@ -98,35 +97,38 @@ async function CheckoutStatusContent({
   searchParams,
 }: LocalizedCheckoutStatusPageProps) {
   const decodedParams = decodeCheckoutStatusParams(await params);
-  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
+  const { orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  await connection();
-  const rawSearchParams = await searchParams;
-  const { outcome: returnOutcome } = Option.getOrElse(
-    decodeCheckoutStatusSearchParams(rawSearchParams),
-    () => ({ outcome: "unknown" as const })
-  );
-  const status = await Effect.flatMap(CheckoutStatusService, (service) =>
-    loadCheckoutStatusPage(service, { orderId, returnOutcome })
-  ).pipe(
-    Effect.tapError((cause) =>
-      Effect.logError("Checkout status load failed", {
-        orderId,
-        returnOutcome,
-        cause,
-      })
-    ),
-    Effect.provide(CheckoutStatusService.LiveWithDependencies),
-    runWorkspaceEffect("checkout.status.load")
-  );
-  return runWithRequestLocale(locale, () => (
-    <>
-      <CheckoutStatusAutoRefresh
-        enabled={shouldAutoRefreshCheckoutStatus(status.status)}
-      />
-      <CheckoutStatusPage locale={locale} status={status} />
-    </>
-  ));
+  return runWithRequestLocale(async (locale) => {
+    await connection();
+    const rawSearchParams = await searchParams;
+    const { outcome: returnOutcome } = Option.getOrElse(
+      decodeCheckoutStatusSearchParams(rawSearchParams),
+      () => ({ outcome: "unknown" as const })
+    );
+    const status = await Effect.flatMap(CheckoutStatusService, (service) =>
+      loadCheckoutStatusPage(service, { orderId, returnOutcome })
+    ).pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Checkout status load failed", {
+          orderId,
+          returnOutcome,
+          cause,
+        })
+      ),
+      Effect.provide(CheckoutStatusService.LiveWithDependencies),
+      runWorkspaceEffect("checkout.status.load")
+    );
+
+    return (
+      <>
+        <CheckoutStatusAutoRefresh
+          enabled={shouldAutoRefreshCheckoutStatus(status.status)}
+        />
+        <CheckoutStatusPage locale={locale} status={status} />
+      </>
+    );
+  });
 }
 
 function CheckoutStatusFallback() {

@@ -1,7 +1,6 @@
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -17,7 +16,7 @@ import { CheckoutDiscountCodeForm } from "@/features/checkout/components/checkou
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
-import { isLocale, type Locale, locales, m } from "@/features/i18n";
+import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import {
   getCoworkReservationPath,
@@ -40,17 +39,11 @@ import {
 } from "@/shared/utils";
 
 type LocalizedCheckoutPayPageProps = {
-  params: Promise<{ locale: string }>;
   searchParams: Promise<SearchParamsRecord>;
 };
 
-export async function generateMetadata({
-  params,
-}: LocalizedCheckoutPayPageProps): Promise<Metadata> {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
-  return runWithRequestLocale(locale, () => {
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) => {
     const title = m.checkoutPayMetadataTitle({}, { locale });
     const description = m.checkoutPayMetadataDescription({}, { locale });
     const url = getWorkspaceLocalizedCanonicalUrl(locale, "/checkout/pay");
@@ -81,13 +74,9 @@ export async function generateMetadata({
 }
 
 export default async function LocalizedCheckoutPayPage({
-  params,
   searchParams,
 }: LocalizedCheckoutPayPageProps) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
-  return runWithRequestLocale(locale, () => (
+  return runWithRequestLocale((locale) => (
     <Suspense fallback={null}>
       <CheckoutPayContent locale={locale} searchParams={searchParams} />
     </Suspense>
@@ -112,9 +101,7 @@ async function CheckoutPayContent({
     "unavailable";
 
   if (!payStateToken) {
-    return runWithRequestLocale(locale, () => (
-      <InvalidPayState locale={locale} />
-    ));
+    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
   }
 
   const opened = await Effect.gen(function* () {
@@ -144,9 +131,7 @@ async function CheckoutPayContent({
   );
 
   if (!opened || opened.state.locale !== locale) {
-    return runWithRequestLocale(locale, () => (
-      <InvalidPayState locale={locale} />
-    ));
+    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
   }
 
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
@@ -160,7 +145,7 @@ async function CheckoutPayContent({
     })
   );
 
-  return runWithRequestLocale(locale, () => (
+  return runWithRequestLocale(() => (
     <CheckoutFlowLayout
       activeStepKey="pay"
       locale={locale}

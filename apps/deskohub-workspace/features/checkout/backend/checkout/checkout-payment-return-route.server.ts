@@ -1,7 +1,7 @@
 import { Effect, type Layer, Option, Ref, Schedule, Schema } from "effect";
 import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
-import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import { getLocalizedParamsDecoder } from "@/features/i18n/server/route-params";
 import {
   defineWorkspaceRoute,
   WorkspaceRouteFailure,
@@ -23,7 +23,7 @@ type CheckoutPaymentReturn = {
   readonly outcome: CheckoutStatusRefreshInput["returnOutcome"];
 };
 
-const decodeCheckoutPaymentParams = getParamsDecoder({
+const decodeCheckoutPaymentParams = getLocalizedParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 

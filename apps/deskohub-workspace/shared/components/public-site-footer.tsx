@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { type Locale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { workspaceSiteConstants } from "@/shared/utils";
 
-type PublicSiteFooterProps = {
-  locale: Locale;
-};
-
-export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
+export async function PublicSiteFooter() {
+  const locale = await getRequestLocale();
   const localePath = `/${locale}`;
   const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";

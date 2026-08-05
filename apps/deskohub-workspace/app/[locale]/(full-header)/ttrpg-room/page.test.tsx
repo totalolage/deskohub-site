@@ -15,6 +15,10 @@ import {
 
 mock.module("server-only", () => ({}));
 
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
+
 mock.module("@/features/gallery/actions/get-cloudinary-images", () => ({
   getCloudinaryImages: () => Promise.resolve([]),
 }));
