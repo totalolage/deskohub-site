@@ -67,7 +67,7 @@ export const executeCheckoutFlow = ({
   runStep,
   session,
   state,
-  payPageStep,
+  payPageSteps,
   expectedDiscounts,
 }: {
   config: WorkspaceE2EConfig;
@@ -78,7 +78,7 @@ export const executeCheckoutFlow = ({
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  payPageStep?: (orderId: string) => WorkspaceE2EStep<void>;
+  payPageSteps?: (orderId: string) => readonly WorkspaceE2EStep<void>[];
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
 }): Effect.Effect<
   void,
@@ -107,8 +107,8 @@ export const executeCheckoutFlow = ({
       id: "prepare-checkout-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
     });
-    if (payPageStep) {
-      yield* runStep(payPageStep(orderId));
+    if (payPageSteps) {
+      for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
     yield* runStep({
       execute: submitPaymentAndWaitForHostedPage({

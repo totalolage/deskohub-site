@@ -278,6 +278,34 @@ export const hoverBrowserElement = (
     }
   ).pipe(Effect.asVoid);
 
+export const scrollBrowserElementIntoView = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const selectorLiteral = JSON.stringify(selector);
+  return runBrowserCommand(
+    "scroll browser element into view",
+    run,
+    session,
+    ["eval", "--stdin"],
+    {
+      input: `
+(() => {
+  const element = document.querySelector(${selectorLiteral});
+  if (!(element instanceof HTMLElement)) {
+    throw new Error('scroll target not found');
+  }
+  element.scrollIntoView({ block: "center", inline: "nearest" });
+})()
+`,
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const pressBrowserKey = (
   run: Runner,
   session: string,

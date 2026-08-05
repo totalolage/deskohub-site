@@ -176,6 +176,18 @@ test("limits capacity only around reservation start and provider verification", 
         id: "checkout-capacity-contract",
         submitReservationScript: () => "unused",
       },
+      payPageSteps: () => [
+        {
+          execute: Effect.void,
+          id: "first-pay-page-assertion",
+          timeoutMs: workspaceE2ETimeouts.uiTransition,
+        },
+        {
+          execute: Effect.void,
+          id: "second-pay-page-assertion",
+          timeoutMs: workspaceE2ETimeouts.browserAction,
+        },
+      ],
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
       runStep,
@@ -198,8 +210,10 @@ test("limits capacity only around reservation start and provider verification", 
       id: "replay-payment-webhook",
     },
   ]);
-  expect(observedSteps.slice(0, 7).map(({ id }) => id)).toEqual([
+  expect(observedSteps.slice(0, 9).map(({ id }) => id)).toEqual([
     "prepare-checkout-pay-page",
+    "first-pay-page-assertion",
+    "second-pay-page-assertion",
     "start-checkout-payment",
     "read-provider-session-row",
     "complete-hosted-payment",
