@@ -161,7 +161,7 @@ export class DiscountService extends Context.Service<
               operation: "discover_active_sales",
               provider: "calendar",
               resolve: () => calendar.discoverActiveSales(input),
-            }).pipe(Effect.map(Option.getOrElse(() => [])))
+            })
           ),
           Effect.map(({ activeSales }) => activeSales)
         )

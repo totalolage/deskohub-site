@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   workspaceCoworkProductTiers,
-  workspaceMeetingRoomDurationOptions,
+  workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import {
@@ -12,10 +12,10 @@ import {
 const coworkProducts = workspaceCoworkProductTiers.map(
   (tier): WorkspaceProductIdentity => ({ kind: "cowork", tier })
 );
-const meetingRoomProducts = workspaceMeetingRoomDurationOptions.map(
-  (durationMinutes): WorkspaceProductIdentity => ({
+const meetingRoomProducts = workspaceMeetingRoomCatalog.map(
+  ({ duration }): WorkspaceProductIdentity => ({
     kind: "meeting-room",
-    durationMinutes,
+    duration,
   })
 );
 

@@ -3,6 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Logger, References, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
@@ -20,7 +21,7 @@ const coworkProduct = {
 } satisfies WorkspaceProductIdentity;
 const meetingRoomProduct = {
   kind: "meeting-room",
-  durationMinutes: 60,
+  duration: workspaceMeetingRoomCatalog[0]!.duration,
 } satisfies WorkspaceProductIdentity;
 
 const sale = (

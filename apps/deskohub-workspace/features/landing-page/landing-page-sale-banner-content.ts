@@ -1,7 +1,7 @@
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import {
   workspaceCoworkProductTiers,
-  workspaceMeetingRoomDurationOptions,
+  workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductKey,
@@ -53,13 +53,13 @@ export function formatLandingPageSaleBannerLabel(
   const coworkCount = workspaceCoworkProductTiers.filter((tier) =>
     productKeys.has(`cowork:${tier}`)
   ).length;
-  const meetingRoomCount = workspaceMeetingRoomDurationOptions.filter(
-    (durationMinutes) => productKeys.has(`meeting-room:${durationMinutes}`)
+  const meetingRoomCount = workspaceMeetingRoomCatalog.filter(({ duration }) =>
+    productKeys.has(getWorkspaceProductKey({ kind: "meeting-room", duration }))
   ).length;
   const hasAllCoworkProducts =
     coworkCount === workspaceCoworkProductTiers.length;
   const hasAllMeetingRoomProducts =
-    meetingRoomCount === workspaceMeetingRoomDurationOptions.length;
+    meetingRoomCount === workspaceMeetingRoomCatalog.length;
   const values = {
     title: sale.title,
     adjustment: formatDiscountAdjustment(sale.adjustment, locale),
