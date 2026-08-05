@@ -139,6 +139,7 @@ export const getReservationDefaultValuesFromSearchParams = (
     ...coworkReservationDefaultValues,
     ...decodeReservationCheckoutQuery(searchParams),
     legalConsent: false,
+    marketingConsent: false,
   };
 
   const product = getWorkspaceProductByTier(values.entryTier);
@@ -164,6 +165,7 @@ export const getReservationDefaultValuesFromPayState = (
   }),
   ...(reservation.message !== undefined && { message: reservation.message }),
   legalConsent: false,
+  marketingConsent: false,
 });
 
 export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (

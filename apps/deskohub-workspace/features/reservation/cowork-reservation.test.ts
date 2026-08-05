@@ -34,6 +34,7 @@ describe("cowork reservation schema", () => {
       phone: "+420777777777",
       message: "  hello  ",
       legalConsent: true,
+      marketingConsent: false,
     });
 
     expect(Result.isSuccess(result)).toBe(true);
@@ -49,6 +50,9 @@ describe("cowork reservation schema", () => {
       expect(result.success).not.toHaveProperty("endsAt");
       expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
         "legalConsent"
+      );
+      expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
+        "marketingConsent"
       );
       expect(
         getCoworkReservationDetails(getCoworkReservationOrder(result.success))
@@ -95,6 +99,7 @@ describe("cowork reservation schema", () => {
       phone: "+420777777777",
       message: "",
       legalConsent: true,
+      marketingConsent: false,
     });
 
     expect(Result.isFailure(result)).toBe(true);
@@ -116,6 +121,7 @@ describe("cowork reservation schema", () => {
       phone: "+420777777777",
       message: "",
       legalConsent: true,
+      marketingConsent: false,
     });
 
     expect(Result.isFailure(result)).toBe(true);

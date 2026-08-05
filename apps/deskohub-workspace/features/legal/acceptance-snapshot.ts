@@ -10,7 +10,8 @@ import { getLegalDocument, type LegalDocumentContent } from "./content";
 type CheckoutLegalDocumentKey =
   | "terms-and-conditions"
   | "operating-rules"
-  | "privacy-policy";
+  | "privacy-policy"
+  | "marketing-communications";
 
 type CheckoutLegalDocumentSnapshot = {
   readonly path: string;
@@ -25,6 +26,7 @@ export type CheckoutLegalAcceptanceSnapshot = {
   readonly termsAndConditions: CheckoutLegalDocumentSnapshot;
   readonly operatingRules: CheckoutLegalDocumentSnapshot;
   readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
+  readonly marketingCommunications: CheckoutLegalDocumentSnapshot;
 };
 
 export class LegalAcceptanceSnapshotError extends Data.TaggedError(
@@ -120,6 +122,10 @@ export const getLegalAcceptanceSnapshot = Effect.fn(
     privacyPolicy: createLegalDocumentSnapshot({
       locale,
       documentKey: "privacy-policy",
+    }),
+    marketingCommunications: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "marketing-communications",
     }),
   })
 );

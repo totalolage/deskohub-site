@@ -124,6 +124,7 @@ describe("getReservationDefaultValuesFromPayState", () => {
       phone: "+420 777 000 111",
       message: "Please prepare the standing desk.",
       legalConsent: false,
+      marketingConsent: false,
     });
   });
 });

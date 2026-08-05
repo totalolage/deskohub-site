@@ -7,4 +7,5 @@ export const preparePayStateCommonSchema = Schema.Struct({
   checkoutAttemptId: Schema.NonEmptyString,
   advertisedPriceToken: Schema.NonEmptyString,
   legalConsent: Schema.optional(Schema.Boolean),
+  marketingConsent: Schema.optional(Schema.Boolean),
 });

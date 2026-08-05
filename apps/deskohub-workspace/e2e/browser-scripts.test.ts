@@ -851,7 +851,7 @@ test("follows the current meeting-room duration control after rerender", async (
   }
 });
 
-test("asserts restored whole-day meeting-room state and reset legal consent", async () => {
+test("asserts restored whole-day meeting-room state and reset consents", async () => {
   const interval = getTestMeetingRoomInterval(
     "2099-09-01T00:00",
     wholeDayMeetingRoomDuration
@@ -881,6 +881,7 @@ test("asserts restored whole-day meeting-room state and reset legal consent", as
       <input name="name" value="${data.name}" />
       <textarea name="message">${data.message}</textarea>
       <button id="reservation-privacy-consent" aria-checked="false"></button>
+      <button id="reservation-marketing-consent" aria-checked="false"></button>
     `;
     const run = new Function(
       "document",

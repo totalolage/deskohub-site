@@ -6,6 +6,7 @@ export const legalDocumentKeys = [
   "termsAndConditions",
   "operatingRules",
   "privacyPolicy",
+  "marketingCommunications",
 ] as const;
 
 export type LegalDocumentKey = (typeof legalDocumentKeys)[number];

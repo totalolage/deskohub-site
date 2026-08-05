@@ -16,5 +16,9 @@ describe("getLegalAcceptanceSnapshot", () => {
     expect(snapshot.termsAndConditions.hashAlgorithm).toBe("sha256");
     expect(snapshot.operatingRules.hashAlgorithm).toBe("sha256");
     expect(snapshot.privacyPolicy.hashAlgorithm).toBe("sha256");
+    expect(snapshot.marketingCommunications.hashAlgorithm).toBe("sha256");
+    expect(snapshot.marketingCommunications.hash).not.toBe(
+      snapshot.privacyPolicy.hash
+    );
   });
 });
