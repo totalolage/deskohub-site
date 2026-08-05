@@ -8,6 +8,7 @@ import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
 } from "./database";
 
@@ -57,6 +58,48 @@ test("polls for checkout rows before asserting reservation replacement state", a
   expect(reservationReplacementSource).toContain(
     "waitForCheckoutRow(datasourceConfig, orderId)"
   );
+});
+
+test("classifies provider session rows after the hosted redirect barrier", () => {
+  expect(getProviderSessionRowDiagnosticCode(undefined)).toBe(
+    "provider_session_reservation_missing_after_redirect"
+  );
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      reservation_id: "reservation-1",
+    } as CheckoutRow)
+  ).toBe("provider_session_active_attempt_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      reservation_id: "reservation-1",
+    } as CheckoutRow)
+  ).toBe("provider_session_fields_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      provider_redirect_url: "https://provider.example/hosted",
+      reservation_id: "reservation-1",
+      security_token: "",
+    } as CheckoutRow)
+  ).toBe("provider_session_fields_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      provider_redirect_url: "https://provider.example/hosted",
+      reservation_id: "reservation-1",
+      security_token: "security-token",
+    } as CheckoutRow)
+  ).toBeUndefined();
 });
 
 test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {

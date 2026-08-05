@@ -1,6 +1,6 @@
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import {
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
@@ -33,8 +33,8 @@ import {
 } from "../errors";
 import { discountCodeFixtures } from "../integrations/discount-fixtures";
 import {
-  loadDotyposCapacityInventory,
   dotyposTimestampMatches,
+  loadDotyposCapacityInventory,
 } from "../integrations/dotypos";
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
@@ -263,7 +263,6 @@ export const makeMeetingRoomE2ECases = ({
           assertPaymentTerminalPath({
             config,
             data: cancelledData,
-            datasourceConfig,
             reservationPath: "/en-US/reservation/meeting-room",
             run,
             runStep,
@@ -379,11 +378,7 @@ const assertHeldMeetingRoomSlotAvailability = (
       tables: inventory.tables,
     });
 
-    yield* assertMeetingRoomSlotAvailability(
-      config,
-      data,
-      expectedUnavailable
-    );
+    yield* assertMeetingRoomSlotAvailability(config, data, expectedUnavailable);
   });
 
 export const assertMeetingRoomSlotAvailability = (

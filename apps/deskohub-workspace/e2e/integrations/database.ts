@@ -33,6 +33,7 @@ import {
   isNexiWebhookDiagnosticCode,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
+  type WorkspaceE2EDiagnosticCode,
   type WorkspaceE2EError,
   withWorkspaceE2EDiagnosticCode,
   workspaceE2EError,
@@ -52,36 +53,67 @@ import {
   runRetrySafeDatabaseOperation,
 } from "./database-operation";
 
-export const waitForProviderSessionRow = (
-  config: DatasourceConfig,
+export const requireProviderSessionRowAfterRedirect = (
   orderId: string,
   onRow?: (row: CheckoutRow) => void
-): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+): Effect.Effect<ProviderSessionRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    return yield* pollUntil(
-      readCheckoutRowFromDatabase(db, orderId).pipe(
-        Effect.tap((row) =>
-          row ? Effect.sync(() => onRow?.(row)) : Effect.void
-        ),
-        Effect.map((row) =>
-          row && isProviderSessionReady(row) ? row : undefined
-        )
-      ),
-      {
-        intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: `provider session checkout row for ${orderId}`,
-        timeoutMs: config.timeouts.datasource,
-      }
+    const row = yield* readCheckoutRowFromDatabase(db, orderId).pipe(
+      withWorkspaceE2EDiagnosticCode(
+        "provider_session_row_read_failed_after_redirect"
+      )
     );
+    if (row) onRow?.(row);
+
+    const diagnosticCode = getProviderSessionRowDiagnosticCode(row);
+    if (!isProviderSessionRow(row) || diagnosticCode) {
+      return yield* workspaceE2EError(
+        "Provider session row did not satisfy the hosted redirect persistence invariant.",
+        {
+          diagnosticCode:
+            diagnosticCode ??
+            "provider_session_reservation_missing_after_redirect",
+          operation: "read provider session row after hosted redirect",
+        }
+      );
+    }
+
+    return row;
   });
 
-const isProviderSessionReady = (row: CheckoutRow) =>
-  !!row.provider_order_id &&
-  !!row.security_token &&
-  !!row.amount_value &&
-  !!row.currency &&
-  !!row.payment_attempt_id;
+export const getProviderSessionRowDiagnosticCode = (
+  row: CheckoutRow | undefined
+): WorkspaceE2EDiagnosticCode | undefined => {
+  if (!row) return "provider_session_reservation_missing_after_redirect";
+  if (!row.payment_attempt_id) {
+    return "provider_session_active_attempt_missing_after_redirect";
+  }
+  if (
+    !row.provider_order_id ||
+    !row.security_token ||
+    row.amount_value === null ||
+    !row.currency ||
+    !row.provider_redirect_url
+  ) {
+    return "provider_session_fields_missing_after_redirect";
+  }
+  return undefined;
+};
+
+type ProviderSessionRow = CheckoutRow & {
+  readonly amount_value: number;
+  readonly currency: string;
+  readonly payment_attempt_id: string;
+  readonly provider_order_id: string;
+  readonly provider_redirect_url: string;
+  readonly security_token: string;
+};
+
+const isProviderSessionRow = (
+  row: CheckoutRow | undefined
+): row is ProviderSessionRow =>
+  row !== undefined && getProviderSessionRowDiagnosticCode(row) === undefined;
 
 export const replayNexiWebhook = (
   config: WorkspaceE2EConfig,
@@ -579,19 +611,11 @@ export const readCleanupCheckoutRows = (
 
 export const markPaymentTerminalForE2E = (
   orderId: string,
+  paymentAttemptId: string,
   scenario: PaymentTerminalScenario
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const current = yield* readCheckoutRowFromDatabase(db, orderId);
-    const paymentAttemptId = yield* tryWorkspaceE2ESync(
-      "assert payment terminal checkout row",
-      () => {
-        assert(current?.payment_attempt_id, "payment attempt missing");
-        return current.payment_attempt_id;
-      }
-    );
-
     const failureCode = `workspace_e2e_nexi_${scenario.state}`;
     const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
     const now = Temporal.Now.instant();

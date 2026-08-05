@@ -32,9 +32,9 @@ import {
   markFulfillmentFailedForE2E,
   markPreviewFulfillmentDeliveredForE2E,
   replayNexiWebhook,
+  requireProviderSessionRowAfterRedirect,
   validateDiscountApplications,
   validatePostgres,
-  waitForProviderSessionRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import {
@@ -120,10 +120,10 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     const providerSessionRow = yield* runStep({
-      execute: waitForProviderSessionRow(datasourceConfig, orderId, (row) => {
+      execute: requireProviderSessionRowAfterRedirect(orderId, (row) => {
         state.checkoutRow = row;
       }),
-      id: "wait-for-provider-session-row",
+      id: "read-provider-session-row",
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
@@ -213,7 +213,6 @@ export const executeCheckoutFlow = ({
       execute: assertFulfillmentFailedSupportPath({
         config,
         data,
-        datasourceConfig,
         orderId,
         run,
         session,
@@ -462,14 +461,12 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
 const assertFulfillmentFailedSupportPath = ({
   config,
   data,
-  datasourceConfig,
   orderId,
   run,
   session,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  datasourceConfig: DatasourceConfig;
   orderId: string;
   run: Runner;
   session: string;

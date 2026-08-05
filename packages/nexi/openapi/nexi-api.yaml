@@ -163,6 +163,7 @@ components:
           format: uri
         securityToken:
           type: string
+          minLength: 1
         orderId:
           type: string
     Operation:

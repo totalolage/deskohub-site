@@ -184,6 +184,14 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.
 - Propagate Effect's `AbortSignal` through command runners into spawned processes so interruption actually cancels in-flight browser work. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
+- Treat arrival at the Nexi hosted page as the provider-session persistence
+  barrier: production creates and links the attempt, awaits provider-session
+  attachment, and only then returns the redirect URL. Read the exact active
+  attempt once through the retry-safe database boundary and fail immediately
+  with a fixed low-cardinality diagnostic when the reservation, active attempt,
+  token, or redirect is missing. Do not turn that invariant into a convergence
+  poll. Reject malformed provider-session responses at the checked-in OpenAPI
+  contract and do not retry payment creation after response decoding fails.
 
 Before inspecting production or provider logs, read `../deskohub-workspace-operations/references/diagnostics.md` and apply its redaction and summarization rules.
 

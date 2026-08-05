@@ -132,6 +132,35 @@ describe("NexiService hosted payment pages", () => {
       },
     });
   });
+
+  test("rejects an empty hosted-payment security token", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        hostedPage: "https://pay.example.test",
+        securityToken: "",
+      })
+    );
+
+    await expect(
+      runWithService(
+        Effect.gen(function* () {
+          const nexi = yield* NexiService;
+          return yield* nexi.createHostedPaymentPage({
+            orderId: "order-id",
+            correlationId: "correlation-id",
+            amount: "5000",
+            currency: "CZK",
+            locale: "en-US",
+            resultUrl: "https://example.test/result",
+            cancelUrl: "https://example.test/cancel",
+            notificationUrl: "https://example.test/webhook",
+          });
+        }),
+        fetchMock
+      )
+    ).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("NexiService verifyPaymentOutcome", () => {
