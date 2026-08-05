@@ -209,16 +209,13 @@ export const executeCheckoutFlow = ({
         timeoutMs: config.timeouts.datasource,
       });
     }
-    yield* runStep({
-      execute: assertFulfillmentFailedSupportPath({
-        config,
-        data,
-        orderId,
-        run,
-        session,
-      }),
-      id: "assert-fulfillment-support-path",
-      timeoutMs: config.timeouts.uiTransition,
+    yield* assertFulfillmentFailedSupportPath({
+      config,
+      data,
+      orderId,
+      run,
+      runStep,
+      session,
     });
 
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
@@ -463,63 +460,91 @@ const assertFulfillmentFailedSupportPath = ({
   data,
   orderId,
   run,
+  runStep,
   session,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   orderId: string;
   run: Runner;
+  runStep: WorkspaceE2EStepRunner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* markFulfillmentFailedForE2E(orderId);
-    const statusUrl = yield* makeUrl(
-      "build fulfillment failed checkout status URL",
-      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
-    );
-    yield* setSearchParams(statusUrl, {
-      e2eAt: String(Date.now()),
+    yield* runStep({
+      execute: markFulfillmentFailedForE2E(orderId),
+      id: "mark-fulfillment-failed-for-support-path",
+      timeoutMs: config.timeouts.datasource,
     });
-    yield* openBrowserPage(config, run, session, statusUrl.toString(), {
+    yield* runStep({
+      execute: Effect.gen(function* () {
+        const statusUrl = yield* makeUrl(
+          "build fulfillment failed checkout status URL",
+          `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
+        );
+        yield* setSearchParams(statusUrl, {
+          e2eAt: String(Date.now()),
+        });
+        yield* openBrowserPage(config, run, session, statusUrl.toString(), {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+      }),
+      id: "open-fulfillment-failed-status-page",
       timeoutMs: config.timeouts.browserNavigation,
     });
-    yield* waitForBrowserText({
-      description: "fulfillment failed support link",
-      matches: (text) =>
-        /couldn't deliver your access codes/i.test(text) &&
-        /Send support request/i.test(text),
-      run,
-      session,
+    yield* runStep({
+      execute: waitForBrowserText({
+        description: "fulfillment failed support link",
+        matches: (text) =>
+          /couldn't deliver your access codes/i.test(text) &&
+          /Send support request/i.test(text),
+        run,
+        session,
+        timeoutMs: config.timeouts.uiTransition,
+      }),
+      id: "wait-for-fulfillment-support-link",
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* evalBrowserScript(
-      "assert fulfillment failed support link",
-      run,
-      session,
-      getAssertFulfillmentFailedSupportScript(data, orderId),
-      {
-        logOutput: false,
-        timeoutMs: config.timeouts.browserAction,
-      }
-    );
-    yield* activateHydratedBrowserElement(
-      run,
-      session,
-      "#checkout-status-support-contact",
-      { timeoutMs: config.timeouts.browserAction }
-    );
-    yield* waitForBrowserUrl({
-      description: "fulfillment failed support contact page",
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.pathname === `/${data.locale}/contact` &&
-          (parsed.searchParams.get("message") ?? "").includes(orderId)
-        );
-      },
-      run,
-      session,
-      timeoutMs: 60_000,
+    yield* runStep({
+      execute: evalBrowserScript(
+        "assert fulfillment failed support link",
+        run,
+        session,
+        getAssertFulfillmentFailedSupportScript(data, orderId),
+        {
+          logOutput: false,
+          timeoutMs: config.timeouts.browserAction,
+        }
+      ),
+      id: "assert-fulfillment-support-link",
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* runStep({
+      execute: activateHydratedBrowserElement(
+        run,
+        session,
+        "#checkout-status-support-contact",
+        { timeoutMs: config.timeouts.browserAction }
+      ),
+      id: "activate-fulfillment-support-link",
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* runStep({
+      execute: waitForBrowserUrl({
+        description: "fulfillment failed support contact page",
+        matches: (url) => {
+          const parsed = parseUrl(url);
+          return (
+            parsed?.pathname === `/${data.locale}/contact` &&
+            (parsed.searchParams.get("message") ?? "").includes(orderId)
+          );
+        },
+        run,
+        session,
+        timeoutMs: config.timeouts.uiTransition,
+      }),
+      id: "reach-fulfillment-support-contact-page",
+      timeoutMs: config.timeouts.uiTransition,
     });
     log("Fulfillment failed support path e2e passed");
   });
