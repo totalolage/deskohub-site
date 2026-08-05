@@ -4,6 +4,7 @@ import { useQueries } from "@tanstack/react-query";
 import {
   type AdvertisedPriceRequest,
   advertisedPriceKeys,
+  advertisedPriceRequestBatchSize,
   advertisedPriceRequestEquals,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
@@ -42,6 +43,32 @@ const flushAdvertisedPriceBatch = async () => {
         ) === index
     );
 
+  const batches: AdvertisedPriceRequest[][] = [];
+  for (
+    let index = 0;
+    index < requests.length;
+    index += advertisedPriceRequestBatchSize
+  ) {
+    batches.push(
+      requests.slice(index, index + advertisedPriceRequestBatchSize)
+    );
+  }
+
+  await Promise.all(
+    batches.map((batch) => loadAdvertisedPriceBatch(pending, batch))
+  );
+};
+
+const loadAdvertisedPriceBatch = async (
+  pending: readonly PendingAdvertisedPrice[],
+  requests: readonly AdvertisedPriceRequest[]
+) => {
+  const batchItems = pending.filter(({ request }) =>
+    requests.some((candidate) =>
+      advertisedPriceRequestEquals(candidate, request)
+    )
+  );
+
   try {
     const result = await getAdvertisedPrices(requests);
     if (!result.data) {
@@ -50,7 +77,7 @@ const flushAdvertisedPriceBatch = async () => {
       );
     }
 
-    for (const item of pending) {
+    for (const item of batchItems) {
       const price = result.data.find(({ request: candidate }) =>
         advertisedPriceRequestEquals(candidate, item.request)
       )?.advertisedPrice;
@@ -65,7 +92,7 @@ const flushAdvertisedPriceBatch = async () => {
       cause instanceof Error
         ? cause
         : new Error("Advertised price could not be loaded");
-    for (const { reject } of pending) {
+    for (const { reject } of batchItems) {
       reject(error);
     }
   }
