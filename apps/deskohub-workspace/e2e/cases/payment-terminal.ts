@@ -97,6 +97,7 @@ export const assertPaymentTerminalPath = ({
         orderId,
         scenario,
         state,
+        timeoutMs: config.timeouts.browserAction,
       }),
       id: `prepare-${scenario.state}-payment-state`,
       timeoutMs: config.timeouts.datasource,
@@ -131,16 +132,21 @@ const preparePaymentTerminalState = ({
   orderId,
   scenario,
   state,
+  timeoutMs,
 }: {
   orderId: string;
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
+  timeoutMs: number;
 }) =>
   Effect.gen(function* () {
     const providerSessionRow = yield* requireProviderSessionRowAfterRedirect(
       orderId,
-      (row) => {
-        state.checkoutRow = row;
+      {
+        onRow: (row) => {
+          state.checkoutRow = row;
+        },
+        timeoutMs,
       }
     );
     state.checkoutRow = providerSessionRow;

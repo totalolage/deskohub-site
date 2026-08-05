@@ -34,7 +34,7 @@ import {
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EDiagnosticCode,
-  type WorkspaceE2EError,
+  WorkspaceE2EError,
   withWorkspaceE2EDiagnosticCode,
   workspaceE2EError,
 } from "../errors";
@@ -55,32 +55,69 @@ import {
 
 export const requireProviderSessionRowAfterRedirect = (
   orderId: string,
-  onRow?: (row: CheckoutRow) => void
+  options: {
+    readonly onRow?: (row: CheckoutRow) => void;
+    readonly timeoutMs: number;
+  }
 ): Effect.Effect<ProviderSessionRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const row = yield* readCheckoutRowFromDatabase(db, orderId).pipe(
-      withWorkspaceE2EDiagnosticCode(
-        "provider_session_row_read_failed_after_redirect"
-      )
+    return yield* waitForProviderSessionRowAfterRedirect(
+      readCheckoutRowFromDatabase(db, orderId).pipe(
+        withWorkspaceE2EDiagnosticCode(
+          "provider_session_row_read_failed_after_redirect"
+        )
+      ),
+      {
+        ...options,
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+      }
     );
-    if (row) onRow?.(row);
-
-    const diagnosticCode = getProviderSessionRowDiagnosticCode(row);
-    if (!isProviderSessionRow(row) || diagnosticCode) {
-      return yield* workspaceE2EError(
-        "Provider session row did not satisfy the hosted redirect persistence invariant.",
-        {
-          diagnosticCode:
-            diagnosticCode ??
-            "provider_session_reservation_missing_after_redirect",
-          operation: "read provider session row after hosted redirect",
-        }
-      );
-    }
-
-    return row;
   });
+
+export const waitForProviderSessionRowAfterRedirect = (
+  readRow: Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError>,
+  options: {
+    readonly intervalMs: number;
+    readonly onRow?: (row: CheckoutRow) => void;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<ProviderSessionRow, WorkspaceE2EError> => {
+  let lastRow: CheckoutRow | undefined;
+  return pollUntil(
+    readRow.pipe(
+      Effect.tap((row) =>
+        row
+          ? Effect.sync(() => {
+              lastRow = row;
+              options.onRow?.(row);
+            })
+          : Effect.void
+      ),
+      Effect.map((row) => (isProviderSessionRow(row) ? row : undefined))
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "provider session row after hosted redirect",
+      timeoutMs: options.timeoutMs,
+    }
+  ).pipe(
+    Effect.mapError((error) =>
+      error.diagnosticCode
+        ? error
+        : new WorkspaceE2EError({
+            cause: error,
+            diagnosticCode:
+              getProviderSessionRowDiagnosticCode(lastRow) ??
+              "provider_session_reservation_missing_after_redirect",
+            message:
+              "Provider session row did not satisfy the hosted redirect persistence invariant.",
+            operation: "read provider session row after hosted redirect",
+            reason: error.reason,
+          })
+    )
+  );
+};
 
 export const getProviderSessionRowDiagnosticCode = (
   row: CheckoutRow | undefined

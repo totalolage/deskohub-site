@@ -10,6 +10,7 @@ import {
   assertInternalDiscountApplications,
   getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
+  waitForProviderSessionRowAfterRedirect,
 } from "./database";
 
 test("reads persisted reservation details without legacy product columns", async () => {
@@ -100,6 +101,56 @@ test("classifies provider session rows after the hosted redirect barrier", () =>
       security_token: "security-token",
     } as CheckoutRow)
   ).toBeUndefined();
+});
+
+test("waits briefly for the provider session row to converge after redirect", async () => {
+  const completeRow = {
+    amount_value: 100,
+    currency: "EUR",
+    payment_attempt_id: "attempt-1",
+    provider_order_id: "provider-order-1",
+    provider_redirect_url: "https://provider.example/hosted",
+    reservation_id: "reservation-1",
+    security_token: "security-token",
+  } as CheckoutRow;
+  const rows: readonly (CheckoutRow | undefined)[] = [
+    undefined,
+    { reservation_id: "reservation-1" } as CheckoutRow,
+    completeRow,
+  ];
+  const observedRows: CheckoutRow[] = [];
+  let reads = 0;
+
+  const result = await Effect.runPromise(
+    waitForProviderSessionRowAfterRedirect(
+      Effect.sync(() => rows[reads++]),
+      {
+        intervalMs: 1,
+        onRow: (row) => observedRows.push(row),
+        timeoutMs: 50,
+      }
+    )
+  );
+
+  expect(result).toBe(completeRow);
+  expect(reads).toBe(3);
+  expect(observedRows).toEqual([rows[1], completeRow]);
+});
+
+test("retains the last provider session diagnostic after convergence times out", async () => {
+  const exit = await Effect.runPromiseExit(
+    waitForProviderSessionRowAfterRedirect(
+      Effect.succeed({ reservation_id: "reservation-1" } as CheckoutRow),
+      { intervalMs: 1, timeoutMs: 5 }
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  expect(Cause.squash(exit.cause)).toMatchObject({
+    diagnosticCode: "provider_session_active_attempt_missing_after_redirect",
+    reason: "timeout",
+  });
 });
 
 test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {

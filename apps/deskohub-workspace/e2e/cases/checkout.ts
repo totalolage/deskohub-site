@@ -120,8 +120,11 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.providerTransition,
     });
     const providerSessionRow = yield* runStep({
-      execute: requireProviderSessionRowAfterRedirect(orderId, (row) => {
-        state.checkoutRow = row;
+      execute: requireProviderSessionRowAfterRedirect(orderId, {
+        onRow: (row) => {
+          state.checkoutRow = row;
+        },
+        timeoutMs: config.timeouts.browserAction,
       }),
       id: "read-provider-session-row",
       timeoutMs: config.timeouts.datasource,
