@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { Effect, Exit } from "effect";
-import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -58,7 +58,6 @@ test("releases reservation-start capacity before hosted payment", async () => {
     assertPaymentTerminalPath({
       config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
       data,
-      datasourceConfig: {} as DatasourceConfig,
       reservationPath: "/en-US/reservation/cowork",
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
