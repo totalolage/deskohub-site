@@ -6,6 +6,7 @@ import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import type {
@@ -14,7 +15,7 @@ import type {
   CheckoutRow,
   WorkspaceE2EStepRunner,
 } from "../types";
-import { executeCheckoutFlow } from "./checkout";
+import { assertFulfilledStatusPage, executeCheckoutFlow } from "./checkout";
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -123,6 +124,46 @@ describe("whole-day meeting-room checkout proof", () => {
       )
     ).rejects.toThrow();
   });
+});
+
+test("observes fulfillment on the existing checkout return page", async () => {
+  const commands: string[][] = [];
+  const run = (async (_command: string, args: string[]) => {
+    commands.push(args);
+    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
+
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: readsUrl
+        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
+        : "Your workspace access is ready. Access details were sent by email.",
+    };
+  }) as Runner;
+
+  await Effect.runPromise(
+    assertFulfilledStatusPage({
+      checkoutRow: {
+        amount_exponent: 2,
+        amount_value: 10_000,
+        currency: "CZK",
+      } as CheckoutRow,
+      config: {
+        expectedHost: "workspace.test",
+        timeouts: workspaceE2ETimeouts,
+      } as WorkspaceE2EConfig,
+      data: { locale: "en-US" } as CheckoutData,
+      dotyposReservation: {} as never,
+      orderId: "order-id",
+      run,
+      session: "existing-status-page",
+    }).pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+    )
+  );
+
+  expect(commands.some((args) => args.includes("open"))).toBe(false);
+  expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
 });
 
 test("scopes reservation, hosted-payment, and verification capacity", async () => {

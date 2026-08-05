@@ -284,13 +284,24 @@ export const assertFulfilledStatusPage = ({
         );
       }
     );
-    yield* openBrowserPage(
-      config,
+    // The payment return already left this browser on the ordinary production
+    // status route. Keep that page alive so its real auto-refresh observes the
+    // fulfillment transition instead of starting another streamed RSC request
+    // for every paid case.
+    yield* waitForBrowserUrl({
+      description: "fulfilled checkout status page",
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return Boolean(
+          parsed &&
+            isExpectedCheckoutStatusUrl(url, config.expectedHost) &&
+            parsed.pathname.endsWith(`/reservation/status/${orderId}`)
+        );
+      },
       run,
       session,
-      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`,
-      { timeoutMs: config.timeouts.browserNavigation }
-    );
+      timeoutMs: config.timeouts.uiTransition,
+    });
     const expectedMeetingRoomText = yield* tryWorkspaceE2ESync(
       "read confirmed reservation interval for status assertion",
       () =>
