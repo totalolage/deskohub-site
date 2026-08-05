@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit, Option } from "effect";
+import { Cause, Deferred, Effect, Exit, Option, Semaphore } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -39,6 +39,7 @@ import {
 } from "./timeouts";
 import type {
   WorkspaceE2ECase,
+  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "./types";
@@ -51,6 +52,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
 };
 
 export const workspaceE2EReservationStartConcurrency = 6;
+export const workspaceE2EHostedPaymentConcurrency = 1;
 export { workspaceE2EProviderVerificationConcurrency };
 
 type ReservationStartPermit = {
@@ -123,6 +125,13 @@ export const runWorkspaceE2ECases = ({
       const reservationStartPermitPool = yield* makeReservationStartPermitPool(
         workspaceE2EReservationStartConcurrency
       );
+      const hostedPaymentSemaphore = yield* Semaphore.make(
+        workspaceE2EHostedPaymentConcurrency
+      );
+      const resources: WorkspaceE2ECaseResources = {
+        withHostedPaymentSession: (effect) =>
+          hostedPaymentSemaphore.withPermit(effect),
+      };
       const providerVerificationPermit =
         yield* WorkspaceE2EProviderVerificationPermitService;
       const indexedCases = [...cases.entries()];
@@ -159,7 +168,8 @@ export const runWorkspaceE2ECases = ({
                 telemetry,
                 timeouts,
                 reservationStartPermitPool,
-                providerVerificationPermit
+                providerVerificationPermit,
+                resources
               ).pipe(
                 Effect.tapCause((cause) =>
                   failureSignal && !Cause.hasInterruptsOnly(cause)
@@ -306,7 +316,8 @@ const runCase = (
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts,
   reservationStartPermitPool: ReservationStartPermitPool,
-  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
+  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit,
+  resources: WorkspaceE2ECaseResources
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
@@ -334,7 +345,11 @@ const runCase = (
           ),
       })
     );
-    yield* runtime.testCase.execute({ runStep, session: runtime.session });
+    yield* runtime.testCase.execute({
+      resources,
+      runStep,
+      session: runtime.session,
+    });
   }).pipe(
     Effect.timeoutOrElse({
       duration: `${runtime.testCase.timeoutMs} millis`,

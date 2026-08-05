@@ -16,6 +16,7 @@ import {
   makeReservationStartPermitPool,
   runWorkspaceE2ECases,
   type WorkspaceE2EFailureDiagnostic,
+  workspaceE2EHostedPaymentConcurrency,
   workspaceE2EProviderVerificationConcurrency,
   workspaceE2EReservationStartConcurrency,
 } from "./suite";
@@ -124,6 +125,93 @@ test("runs all independent preview cases concurrently", async () => {
   );
 
   expect(maximumActiveCaseCount).toBe(12);
+});
+
+test("serializes hosted payment sessions while cases stay concurrent", async () => {
+  let activeHostedPayments = 0;
+  let hostedPaymentCount = 0;
+  let maximumActiveHostedPayments = 0;
+  let readyCaseCount = 0;
+  let releaseFirstHostedPayment: () => void = () => undefined;
+  let releaseReadyCases: () => void = () => undefined;
+  let signalFirstHostedPayment: () => void = () => undefined;
+  let signalReadyCases: () => void = () => undefined;
+  const firstHostedPaymentRelease = new Promise<void>((resolve) => {
+    releaseFirstHostedPayment = resolve;
+  });
+  const firstHostedPaymentStarted = new Promise<void>((resolve) => {
+    signalFirstHostedPayment = resolve;
+  });
+  const readyCasesRelease = new Promise<void>((resolve) => {
+    releaseReadyCases = resolve;
+  });
+  const readyCases = new Promise<void>((resolve) => {
+    signalReadyCases = resolve;
+  });
+  const cases: readonly WorkspaceE2ECase[] = Array.from(
+    { length: 2 },
+    (_, index) => ({
+      checkoutStates: [],
+      execute: ({ resources }) =>
+        Effect.gen(function* () {
+          yield* Effect.sync(() => {
+            readyCaseCount += 1;
+            if (readyCaseCount === 2) signalReadyCases();
+          });
+          yield* Effect.promise(() => readyCasesRelease);
+          yield* resources.withHostedPaymentSession(
+            Effect.acquireUseRelease(
+              Effect.sync(() => {
+                const isFirst = hostedPaymentCount === 0;
+                hostedPaymentCount += 1;
+                activeHostedPayments += 1;
+                maximumActiveHostedPayments = Math.max(
+                  maximumActiveHostedPayments,
+                  activeHostedPayments
+                );
+                if (isFirst) signalFirstHostedPayment();
+                return isFirst;
+              }),
+              (isFirst) =>
+                isFirst
+                  ? Effect.promise(() => firstHostedPaymentRelease)
+                  : Effect.void,
+              () =>
+                Effect.sync(() => {
+                  activeHostedPayments -= 1;
+                })
+            )
+          );
+        }),
+      id: `hosted-payment-${index}`,
+      timeoutMs: 10_000,
+    })
+  );
+  const suiteRun = Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-hosted-payment-test",
+      cases,
+      datasourceConfig: testDatasourceConfig,
+      run: makeTestRunner(),
+      sessionPrefix: "workspace-e2e-hosted-payment",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
+  );
+
+  await readyCases;
+  expect(readyCaseCount).toBe(2);
+  releaseReadyCases();
+  await firstHostedPaymentStarted;
+  await new Promise<void>((resolve) => setTimeout(resolve, 10));
+  const paymentsBeforeRelease = hostedPaymentCount;
+  releaseFirstHostedPayment();
+  await suiteRun;
+
+  expect(paymentsBeforeRelease).toBe(workspaceE2EHostedPaymentConcurrency);
+  expect(maximumActiveHostedPayments).toBe(
+    workspaceE2EHostedPaymentConcurrency
+  );
+  expect(hostedPaymentCount).toBe(2);
 });
 
 test("serializes provider verification while independent cases stay concurrent", async () => {
