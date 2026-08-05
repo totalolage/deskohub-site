@@ -111,9 +111,11 @@ The in-run contract is:
 
 Customer-discount cases mutate only their unique customer's group assignment;
 they never mutate the selected Dotypos discount-group definition. Nexi order
-and idempotency identities remain unique per checkout, and there is no
-suite-wide hosted-payment semaphore without evidence of a provider-specific
-concurrency failure.
+and idempotency identities remain unique per checkout. A three-way exact-SHA
+soak produced Nexi error pages in two runs while hosted sessions were
+unbounded, so each suite now admits one hosted-payment session at a time from
+payment submission through the return to the checkout status page. Three
+overlapping suites can still hold one session each.
 
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
 runs. Before provider setup begins, an isolated coordinator leases one of three
@@ -217,6 +219,8 @@ fulfillment sends at most two sequential email API requests, so this bounds the
 sustained shared-team email rate without retrying a webhook or serializing
 hosted payment. Resend documents a per-team, per-second limit with no extra
 burst allowance: <https://resend.com/docs/api-reference/rate-limit>.
+An independent suite-local Effect semaphore bounds the hosted-payment session;
+it does not use the coordination database or serialize unrelated cases.
 Remove the default lock only after the capacity checklist and five three-way
 concurrent soaks pass with the distributed permit enabled.
 
@@ -375,14 +379,17 @@ boundary in different cases. Reducing the boundary from six to four repeated
 the same pre-submit meeting-room readiness failure while leaving fourteen cases
 queued after 4.8 minutes, so four did not improve reliability and could not meet
 the existing case watchdogs. The checked-in limit is therefore six. The narrow
-boundary releases at pay-page arrival, before hosted payment, webhook,
-fulfillment, assertions, and cleanup, which all remain parallel. The permit
-pool prioritizes queued starts by the owning case watchdog and keeps equal
+boundary releases at pay-page arrival, before the separate hosted-payment and
+webhook boundaries; fulfillment, assertions, and cleanup remain parallel. The
+permit pool prioritizes queued starts by the owning case watchdog and keeps equal
 deadlines FIFO, so shorter terminal scenarios cannot be stranded behind longer
 checkout cases when browser diagnostics make them reach the pool later. All
 case fibers still launch immediately and participate in the same fail-fast
-aggregate. Direct database assertions share one runner-owned pool capped at ten
-connections.
+aggregate. After pay-page assertions, payment cases enter the suite's
+interruption-safe hosted-payment session permit. That permit covers payment
+submission, the retry-safe exact-attempt row read, hosted-page interaction, and
+the normal return page; it does not retry any state-creating operation. Direct
+database assertions share one runner-owned pool capped at ten connections.
 Before allowing three concurrent runs, revalidate the aggregate eighteen-start
 ceiling in the required soak and lower the per-run limit if provider p95 or
 throttling regresses. Do not make an edge case mutate a fixture consumed by
@@ -467,11 +474,13 @@ allows only one blocked lock query per process, while the dedicated direct SQL
 pool retains a second connection for interruption cancellation. Transaction
 commit, rollback, interruption, or connection loss releases the lock.
 
-Hosted payment, genuine webhook delivery, fulfillment, and unrelated provider
-work remain parallel. Permit wait is included in the step trace duration, the
-semantic step timeout begins after admission, and the case watchdog bounds the
-complete wait and execution. SQL connection and acquisition failures prevent the
-replay from starting and fail the run. The boundary is load control rather than
+Hosted payment is serialized only within each suite after an exact three-way
+round produced two hosted-provider error pages; genuine webhook delivery,
+fulfillment, and unrelated provider work remain parallel. Provider-verification
+permit wait is included in the step trace duration, the semantic step timeout
+begins after admission, and the case watchdog bounds the complete wait and
+execution. SQL connection and acquisition failures prevent the replay from
+starting and fail the run. The boundary is load control rather than
 provider-side fencing: a coordinator connection loss during an in-flight HTTP
 request can release the lock before commit reports the failure, while Nexi's
 unique order and idempotency identities continue to protect the operation.

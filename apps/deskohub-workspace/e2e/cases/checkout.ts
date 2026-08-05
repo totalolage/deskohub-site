@@ -48,6 +48,7 @@ import type {
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
+  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -63,6 +64,7 @@ export const executeCheckoutFlow = ({
   data,
   datasourceConfig,
   flow,
+  resources,
   run,
   runStep,
   session,
@@ -74,6 +76,7 @@ export const executeCheckoutFlow = ({
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
+  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
@@ -110,40 +113,45 @@ export const executeCheckoutFlow = ({
     if (payPageSteps) {
       for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
-    yield* runStep({
-      execute: submitPaymentAndWaitForHostedPage({
-        run,
-        session,
-        timeouts: config.timeouts,
-      }).pipe(Effect.asVoid),
-      id: "start-checkout-payment",
-      timeoutMs: config.timeouts.providerTransition,
-    });
-    const providerSessionRow = yield* runStep({
-      execute: requireProviderSessionRowAfterRedirect(orderId, {
-        onRow: (row) => {
-          state.checkoutRow = row;
-        },
-        timeoutMs: config.timeouts.browserAction,
-      }),
-      id: "read-provider-session-row",
-      timeoutMs: config.timeouts.datasource,
-    });
-    yield* runStep({
-      execute: completeNexiHostedPayment({
-        data,
-        run,
-        session,
-        timeouts: config.timeouts,
-      }),
-      id: "complete-hosted-payment",
-      timeoutMs: config.timeouts.hostedPayment,
-    });
-    yield* runStep({
-      execute: waitForCheckoutStatusPage(config, run, session),
-      id: "reach-checkout-status-page",
-      timeoutMs: config.timeouts.providerTransition,
-    });
+    const providerSessionRow = yield* resources.withHostedPaymentSession(
+      Effect.gen(function* () {
+        yield* runStep({
+          execute: submitPaymentAndWaitForHostedPage({
+            run,
+            session,
+            timeouts: config.timeouts,
+          }).pipe(Effect.asVoid),
+          id: "start-checkout-payment",
+          timeoutMs: config.timeouts.providerTransition,
+        });
+        const row = yield* runStep({
+          execute: requireProviderSessionRowAfterRedirect(orderId, {
+            onRow: (value) => {
+              state.checkoutRow = value;
+            },
+            timeoutMs: config.timeouts.browserAction,
+          }),
+          id: "read-provider-session-row",
+          timeoutMs: config.timeouts.datasource,
+        });
+        yield* runStep({
+          execute: completeNexiHostedPayment({
+            data,
+            run,
+            session,
+            timeouts: config.timeouts,
+          }),
+          id: "complete-hosted-payment",
+          timeoutMs: config.timeouts.hostedPayment,
+        });
+        yield* runStep({
+          execute: waitForCheckoutStatusPage(config, run, session),
+          id: "reach-checkout-status-page",
+          timeoutMs: config.timeouts.providerTransition,
+        });
+        return row;
+      })
+    );
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner

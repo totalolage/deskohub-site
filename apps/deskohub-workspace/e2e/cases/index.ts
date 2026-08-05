@@ -140,11 +140,12 @@ export const makeWorkspaceE2ECases = ({
           const state = trackCheckoutState(flowStates, data);
           cases.push({
             checkoutStates: [state],
-            execute: ({ runStep, session }) =>
+            execute: ({ resources, runStep, session }) =>
               assertPaymentTerminalPath({
                 config,
                 data,
                 reservationPath: "/en-US/reservation/cowork",
+                resources,
                 run,
                 runStep,
                 scenario,
@@ -250,12 +251,13 @@ export const makeWorkspaceE2ECases = ({
           const state = trackCheckoutState(flowStates, data);
           cases.push({
             checkoutStates: [state],
-            execute: ({ runStep, session }) =>
+            execute: ({ resources, runStep, session }) =>
               executeCheckoutFlow({
                 config,
                 data,
                 datasourceConfig,
                 flow,
+                resources,
                 run,
                 runStep,
                 session,
