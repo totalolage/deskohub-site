@@ -16,7 +16,7 @@ import {
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
-import { waitForBrowserText } from "../browser";
+import { normalizeBrowserText, waitForBrowserText } from "../browser";
 import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
 import {
   loadMeetingRoomAvailability,
@@ -520,16 +520,16 @@ const assertMeetingRoomPayPage = (
     const price = formatWorkspaceMoney(
       getWorkspaceMeetingRoomPriceForDuration(meetingRoom.duration),
       data.locale
-    ).replaceAll(/\s+/g, " ");
+    );
 
     yield* waitForBrowserText({
       description: "meeting-room pay summary",
       matches: (text) => {
-        const normalized = text.replaceAll(/\s+/g, " ");
+        const normalized = normalizeBrowserText(text);
         return (
           /Meeting Room/i.test(normalized) &&
           normalized.includes(durationTitle) &&
-          normalized.includes(price)
+          normalized.includes(normalizeBrowserText(price))
         );
       },
       run,

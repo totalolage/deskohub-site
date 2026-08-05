@@ -60,7 +60,10 @@
       ]
     },
     "typecheck": {
-      "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]
+      "dependsOn": ["@deskohub/nexi#generate", "i18n:compile", "typegen"]
+    },
+    "typegen": {
+      "outputs": [".next/types/**"]
     }
   }
 }

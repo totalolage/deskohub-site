@@ -1,36 +1,23 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { GalleryErrorBoundary } from "@/features/gallery/components/gallery-error-boundary";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
 import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
-import { isLocale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { Container } from "@/shared/components/container";
 
-type GalleryPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
-export async function generateMetadata({
-  params,
-}: GalleryPageProps): Promise<Metadata> {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
-  return runWithRequestLocale(locale, () => ({
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) => ({
     title: m.galleryMetadataTitle({}, { locale }),
     description: m.galleryMetadataDescription({}, { locale }),
     robots: { index: false, follow: false },
   }));
 }
 
-export default async function GalleryPage({ params }: GalleryPageProps) {
-  const { locale } = await params;
-  if (!isLocale(locale)) notFound();
-
-  return runWithRequestLocale(locale, () => (
+export default async function GalleryPage() {
+  return runWithRequestLocale(() => (
     <Gallery>
       <GalleryErrorBoundary>
         <GalleryContent />

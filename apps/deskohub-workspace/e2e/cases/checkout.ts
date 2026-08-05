@@ -12,6 +12,7 @@ import { isSingleDayReservationInterval } from "@/features/reservation/reservati
 import {
   activateHydratedBrowserElement,
   evalBrowserScript,
+  normalizeBrowserText,
   openBrowserPage,
   waitForBrowserText,
   waitForBrowserUrl,
@@ -328,10 +329,17 @@ export const assertFulfilledStatusPage = ({
     );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
-      matches: (text) =>
-        /Your workspace access is ready\./i.test(text) &&
-        /sent by email/i.test(text) &&
-        expectedMeetingRoomText.every((expected) => text.includes(expected)),
+      matches: (text) => {
+        const normalizedText = normalizeBrowserText(text);
+
+        return (
+          /Your workspace access is ready\./i.test(normalizedText) &&
+          /sent by email/i.test(normalizedText) &&
+          expectedMeetingRoomText.every((expected) =>
+            normalizedText.includes(normalizeBrowserText(expected))
+          )
+        );
+      },
       run,
       session,
       timeoutMs: config.timeouts.uiTransition,

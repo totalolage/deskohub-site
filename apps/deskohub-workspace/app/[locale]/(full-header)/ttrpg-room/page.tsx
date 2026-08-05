@@ -1,13 +1,10 @@
-import { Option } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { getMeetingRoomReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
@@ -16,12 +13,7 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-type TtrpgRoomPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
 const pathname = "/ttrpg-room";
-const decodeTtrpgRoomParams = getParamsDecoder({});
 
 const getContactHref = (href: string, message: string) => {
   const searchParams = new URLSearchParams({ message });
@@ -36,16 +28,8 @@ const getRoomImages = (
     (): readonly CloudinaryAsset[] => []
   );
 
-export async function generateMetadata({
-  params,
-}: TtrpgRoomPageProps): Promise<Metadata> {
-  const routeParams = Option.getOrUndefined(
-    decodeTtrpgRoomParams(await params)
-  );
-  if (!routeParams) notFound();
-  const { locale } = routeParams;
-
-  return runWithRequestLocale(locale, () => {
+export async function generateMetadata(): Promise<Metadata> {
+  return runWithRequestLocale((locale) => {
     const title = m.ttrpgRoomMetadataTitle({}, { locale });
     const description = m.ttrpgRoomMetadataDescription({}, { locale });
     const url = getWorkspaceLocalizedCanonicalUrl(locale, pathname);
@@ -141,24 +125,19 @@ export function TtrpgRoomPage({
   );
 }
 
-export default async function LocalizedTtrpgRoomPage({
-  params,
-}: TtrpgRoomPageProps) {
-  const routeParams = Option.getOrUndefined(
-    decodeTtrpgRoomParams(await params)
-  );
-  if (!routeParams) notFound();
-  const { locale } = routeParams;
-  const [barImages, workspaceImages] = await Promise.all([
-    getRoomImages(["ttrpg-room", "ttrpg-room-bar"]),
-    getRoomImages(["ttrpg-room", "ttrpg-room-workspace"]),
-  ]);
+export default async function LocalizedTtrpgRoomPage() {
+  return runWithRequestLocale(async (locale) => {
+    const [barImages, workspaceImages] = await Promise.all([
+      getRoomImages(["ttrpg-room", "ttrpg-room-bar"]),
+      getRoomImages(["ttrpg-room", "ttrpg-room-workspace"]),
+    ]);
 
-  return runWithRequestLocale(locale, () => (
-    <TtrpgRoomPage
-      barImages={barImages}
-      locale={locale}
-      workspaceImages={workspaceImages}
-    />
-  ));
+    return (
+      <TtrpgRoomPage
+        barImages={barImages}
+        locale={locale}
+        workspaceImages={workspaceImages}
+      />
+    );
+  });
 }

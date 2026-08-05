@@ -2,13 +2,12 @@ import "server-only";
 
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
-import { isLocale, type Locale, locales } from "@/features/i18n";
+import { type Locale, locales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -54,7 +53,6 @@ type ReservationPageDefinition<Kind extends ReservationKind> = {
 };
 
 type LocalizedReservationPageProps = {
-  readonly params: Promise<{ readonly locale: string }>;
   readonly searchParams: Promise<SearchParamsRecord>;
 };
 
@@ -88,13 +86,8 @@ const loadRestoredReservation = Effect.fn(
 export function createReservationPage<const Kind extends ReservationKind>(
   definition: ReservationPageDefinition<Kind>
 ) {
-  async function generateMetadata({
-    params,
-  }: LocalizedReservationPageProps): Promise<Metadata> {
-    const { locale } = await params;
-    if (!isLocale(locale)) notFound();
-
-    return runWithRequestLocale(locale, () => {
+  async function generateMetadata(): Promise<Metadata> {
+    return runWithRequestLocale((locale) => {
       const { description, title } = definition.metadata(locale);
       const url = getWorkspaceLocalizedCanonicalUrl(
         locale,
@@ -128,14 +121,10 @@ export function createReservationPage<const Kind extends ReservationKind>(
     });
   }
 
-  async function Page({ params, searchParams }: LocalizedReservationPageProps) {
-    const [{ locale }, resolvedSearchParams] = await Promise.all([
-      params,
-      searchParams,
-    ]);
-    if (!isLocale(locale)) notFound();
+  async function Page({ searchParams }: LocalizedReservationPageProps) {
+    const resolvedSearchParams = await searchParams;
 
-    return runWithRequestLocale(locale, async () => {
+    return runWithRequestLocale(async (locale) => {
       const restoredReservation = await loadRestoredReservation(
         getSearchParam(resolvedSearchParams, payStateTokenQueryParam),
         locale,

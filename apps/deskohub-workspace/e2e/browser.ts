@@ -378,6 +378,9 @@ export const readBrowserText = (
     timeoutMs: 30_000,
   }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
+export const normalizeBrowserText = (text: string) =>
+  text.replaceAll(/\s+/g, " ").trim();
+
 export const waitForBrowserText = ({
   description,
   matches,

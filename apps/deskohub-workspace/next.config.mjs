@@ -30,6 +30,9 @@ const postHogSourceMapConfig =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheComponents: false,
+  experimental: {
+    useTypeScriptCli: false,
+  },
   reactCompiler: true,
   transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {

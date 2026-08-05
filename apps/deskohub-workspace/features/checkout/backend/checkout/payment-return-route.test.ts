@@ -117,9 +117,15 @@ describe("checkout pay return route", () => {
       })
     );
 
-    const response = await invokeGet(GET, { locale: "en-US", orderId: "" });
+    const invalidParams = [
+      { locale: "en-US", orderId: "" },
+      { locale: "sk-SK", orderId: "order-id" },
+    ];
 
-    expect(response.status).toBe(404);
+    for (const params of invalidParams) {
+      const response = await invokeGet(GET, params);
+      expect(response.status).toBe(404);
+    }
     expect(acquisitions).toBe(0);
   });
 });

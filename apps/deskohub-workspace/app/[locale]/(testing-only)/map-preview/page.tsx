@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { isLocale, type Locale, m } from "@/features/i18n";
+import { m } from "@/features/i18n";
+import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
@@ -9,25 +10,17 @@ import {
   workspaceLocationMapImageOptions,
 } from "@/shared/utils";
 
-type WorkspaceMapPreviewPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
-export default async function WorkspaceMapPreviewPage({
-  params,
-}: WorkspaceMapPreviewPageProps) {
-  const { locale } = await params;
-  if (!isLocale(locale)) return null;
-
+export default async function WorkspaceMapPreviewPage() {
   return (
     <Suspense fallback={null}>
-      <WorkspaceMapPreviewContent locale={locale} />
+      <WorkspaceMapPreviewContent />
     </Suspense>
   );
 }
 
-async function WorkspaceMapPreviewContent({ locale }: { locale: Locale }) {
+async function WorkspaceMapPreviewContent() {
   await connection();
+  const locale = await getRequestLocale();
   const image = await generateWorkspaceLocationMapImage().pipe(
     runStandaloneWorkspaceEffect("workspaceLocationMap.preview")
   );

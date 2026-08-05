@@ -3,7 +3,7 @@ import { locales } from "../routing";
 
 const LocaleRouteParamSchema = Schema.Literals(locales);
 
-export const getParamsDecoder = <
+export const getLocalizedParamsDecoder = <
   const Fields extends {
     readonly [Key in keyof Fields]: Schema.Decoder<unknown>;
   },
