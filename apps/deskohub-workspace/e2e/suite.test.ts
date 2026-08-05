@@ -20,7 +20,7 @@ import {
   workspaceE2EReservationStartConcurrency,
 } from "./suite";
 import { workspaceE2ETimeouts } from "./timeouts";
-import type { WorkspaceE2ECase } from "./types";
+import type { CheckoutFlowState, WorkspaceE2ECase } from "./types";
 
 test("runs checkout and terminal cases", async () => {
   const telemetryEvents: E2ETelemetryObservation[] = [];
@@ -662,6 +662,11 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
   let releaseCases: () => void = () => undefined;
   let releaseCleanup: () => void = () => undefined;
   let siblingInterrupted = false;
+  const siblingCheckoutState: CheckoutFlowState = {
+    data: {} as CheckoutFlowState["data"],
+    orderId: "owned-sibling-order",
+  };
+  const cleanedCheckoutStates: CheckoutFlowState[] = [];
   const failureDiagnostics: WorkspaceE2EFailureDiagnostic[] = [];
   const bothCasesStarted = new Promise<void>((resolveStarted) => {
     releaseCases = resolveStarted;
@@ -676,9 +681,13 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
   });
   const cleanupLayer = Layer.succeed(WorkspaceE2ECleanupService, {
     cleanupCheckoutStates: () => Effect.succeed(undefined),
-    cleanupOwnedCheckoutStates: () =>
+    cleanupOwnedCheckoutStates: ({ flowStates }) =>
       Effect.acquireUseRelease(
         Effect.sync(() => {
+          for (const flowState of flowStates) {
+            flowState.cleanupComplete = true;
+            cleanedCheckoutStates.push(flowState);
+          }
           cleanupCallCount += 1;
           activeCleanupCount += 1;
           maximumActiveCleanupCount = Math.max(
@@ -730,7 +739,7 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
           id: "prepare-interrupted-reservation",
           timeoutMs: 10_000,
         }),
-      checkoutStates: [],
+      checkoutStates: [siblingCheckoutState],
       id: "cancelled-sibling",
       timeoutMs: 10_000,
     },
@@ -775,6 +784,8 @@ test("case failure interrupts siblings while their cleanup and browser finalizer
     expect(siblingInterrupted).toBe(true);
     expect(cleanupCallCount).toBe(2);
     expect(maximumActiveCleanupCount).toBe(2);
+    expect(siblingCheckoutState.cleanupComplete).toBe(true);
+    expect(cleanedCheckoutStates).toContain(siblingCheckoutState);
     expect(closedBrowserCount).toBe(2);
     expect(failureDiagnostics).toEqual([
       {
@@ -940,6 +951,42 @@ test("reports the semantic step that timed out", async () => {
   } finally {
     await rm(artifactRoot, { force: true, recursive: true });
   }
+});
+
+test("stops HAR capture before closing the browser session", async () => {
+  const finalizerOperations: string[] = [];
+  const cases: readonly WorkspaceE2ECase[] = [
+    {
+      execute: () => Effect.void,
+      checkoutStates: [],
+      id: "har-finalizer-order",
+      timeoutMs: 1_000,
+    },
+  ];
+  const run: Runner = async (_command, args) => {
+    if (
+      args.includes("network") &&
+      args.includes("har") &&
+      args.includes("stop")
+    ) {
+      finalizerOperations.push("har-stop");
+    }
+    if (args.includes("close")) finalizerOperations.push("browser-close");
+    return { exitCode: 0, stderr: "", stdout: "" };
+  };
+
+  await Effect.runPromise(
+    runWorkspaceE2ECases({
+      artifactRoot: "/tmp/workspace-e2e-har-finalizer-order-test",
+      cases,
+      datasourceConfig: testDatasourceConfig,
+      run,
+      sessionPrefix: "workspace-e2e-har-finalizer-order",
+      timeouts: workspaceE2ETimeouts,
+    }).pipe(Effect.provide(makeTestSuiteLayer()))
+  );
+
+  expect(finalizerOperations).toEqual(["har-stop", "browser-close"]);
 });
 
 test("propagates browser finalizer failures", async () => {
