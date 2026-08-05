@@ -52,7 +52,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
 };
 
 export const workspaceE2EReservationStartConcurrency = 6;
-export const workspaceE2EHostedPaymentConcurrency = 1;
+export const workspaceE2EHostedPaymentConcurrency = 3;
 export { workspaceE2EProviderVerificationConcurrency };
 
 type ReservationStartPermit = {
