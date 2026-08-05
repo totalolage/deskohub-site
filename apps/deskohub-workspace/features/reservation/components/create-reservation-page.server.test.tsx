@@ -2,6 +2,9 @@ import { expect, mock, test } from "bun:test";
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 
 mock.module("server-only", () => ({}));
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
 
 const { createReservationPage } = await import(
   "./create-reservation-page.server"
@@ -20,7 +23,6 @@ test("renders the reservation shell before request-bound content resolves", asyn
   });
 
   const page = await pageDefinition.Page({
-    params: Promise.resolve({ locale: "en-US" }),
     searchParams,
   });
 

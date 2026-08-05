@@ -4,6 +4,10 @@ import type { ReactElement } from "react";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
 import type { MeetingRoomReservationForm } from "./meeting-room-reservation-form";
 
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
+
 const loadAdvertisedPrices = mock((requests: ReadonlyArray<unknown>) =>
   Effect.succeed(requests)
 );
