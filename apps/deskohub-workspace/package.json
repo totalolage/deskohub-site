@@ -25,7 +25,8 @@
     "lint:biome": "biome check app db emails features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\" --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
-    "typecheck": "next typegen && tsc --noEmit",
+    "typecheck": "tsc --noEmit",
+    "typegen": "next typegen",
     "start": "next start"
   },
   "dependencies": {
