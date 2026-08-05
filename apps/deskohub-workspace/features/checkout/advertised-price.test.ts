@@ -5,11 +5,19 @@ import {
   coworkAdvertisedPriceReservationEquals,
   getCoworkAdvertisedPriceReservation,
 } from "@/features/reservation/cowork-reservation";
-import { advertisedPriceRequestSchema } from "./advertised-price";
+import {
+  advertisedPriceRequestBatchSize,
+  advertisedPriceRequestSchema,
+  advertisedPriceRequestsSchema,
+} from "./advertised-price";
 
 const decodeRequest = Schema.decodeUnknownOption(advertisedPriceRequestSchema, {
   onExcessProperty: "error",
 });
+const decodeRequests = Schema.decodeUnknownOption(
+  advertisedPriceRequestsSchema,
+  { onExcessProperty: "error" }
+);
 
 const reservation = {
   kind: "cowork" as const,
@@ -22,6 +30,29 @@ const reservation = {
 };
 
 describe("advertised price contract", () => {
+  test("bounds action batches to a non-empty provider-safe size", () => {
+    const request = { locale: "en-US", reservation } as const;
+
+    expect(Option.isNone(decodeRequests([]))).toBe(true);
+    expect(
+      Option.isSome(
+        decodeRequests(
+          Array.from({ length: advertisedPriceRequestBatchSize }, () => request)
+        )
+      )
+    ).toBe(true);
+    expect(
+      Option.isNone(
+        decodeRequests(
+          Array.from(
+            { length: advertisedPriceRequestBatchSize + 1 },
+            () => request
+          )
+        )
+      )
+    ).toBe(true);
+  });
+
   test("accepts meeting-room reservations at the family-neutral boundary", () => {
     const decoded = decodeRequest({
       locale: "en-US",

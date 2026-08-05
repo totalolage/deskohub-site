@@ -1,5 +1,5 @@
 import { expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 import { browserDiagnosticsScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
@@ -8,6 +8,7 @@ import type { CheckoutData } from "../types";
 import {
   completeNexiHostedPayment,
   startCheckoutPaymentAttempt,
+  submitReservationForPayPage,
 } from "./payment";
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
@@ -42,10 +43,17 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (
       commandArgs[0] === "eval" &&
-      options.input === submitReservationScript
+      options.input?.includes(submitReservationScript)
     ) {
       reservationSubmitAttempts += 1;
       return success();
+    }
+
+    if (
+      commandArgs[0] === "eval" &&
+      options.input?.includes("__deskohubWorkspaceE2EPreparation")
+    ) {
+      return success(JSON.stringify({ status: "ready" }));
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
@@ -123,6 +131,117 @@ test("retries a transient reservation preparation failure with the same checkout
     "@e2",
     "@e3",
   ]);
+});
+
+test("detaches long reservation preparation from the CDP evaluation", async () => {
+  const submitReservationScript = "new Promise(() => undefined)";
+  let focusedRef: string | undefined;
+  let preparationKickoffs = 0;
+  let preparationStateReads = 0;
+  let reservationSubmitActivations = 0;
+  let reservationSubmitted = false;
+  const run = mock(async (_command, args, options = {}) => {
+    const commandArgs = args.slice(2);
+
+    if (commandArgs[0] === "eval") {
+      if (options.input === submitReservationScript) {
+        throw new Error("CDP command timed out: Runtime.evaluate");
+      }
+      if (options.input?.includes(submitReservationScript)) {
+        preparationKickoffs += 1;
+        return success();
+      }
+      if (options.input?.includes("__deskohubWorkspaceE2EPreparation")) {
+        preparationStateReads += 1;
+        return success(
+          serializeAgentBrowserStateResult(options.input, { status: "ready" })
+        );
+      }
+    }
+
+    if (commandArgs[0] === "wait") return success();
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+    if (commandArgs[0] === "press") {
+      if (focusedRef === "#reservation-submit") {
+        reservationSubmitActivations += 1;
+        reservationSubmitted = true;
+      }
+      return success();
+    }
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(
+        reservationSubmitted
+          ? `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
+          : checkoutUrl
+      );
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  }) as unknown as Runner;
+
+  const result = await Effect.runPromise(
+    submitReservationForPayPage({
+      run,
+      session: "detached-preparation",
+      submitReservationScript,
+      timeouts: workspaceE2ETimeouts,
+    })
+  );
+
+  expect(result).toBe(orderId);
+  expect(preparationKickoffs).toBe(1);
+  expect(preparationStateReads).toBe(1);
+  expect(reservationSubmitActivations).toBe(1);
+});
+
+test("preserves a detached reservation preparation failure without submitting", async () => {
+  const submitReservationScript =
+    "Promise.reject(new Error('advertised price failed'))";
+  let reservationSubmitActivations = 0;
+  const run = mock(async (_command, args, options = {}) => {
+    const commandArgs = args.slice(2);
+
+    if (
+      commandArgs[0] === "eval" &&
+      options.input?.includes(submitReservationScript)
+    ) {
+      return success();
+    }
+    if (
+      commandArgs[0] === "eval" &&
+      options.input?.includes("__deskohubWorkspaceE2EPreparation")
+    ) {
+      return success(
+        JSON.stringify({ error: "advertised price failed", status: "failed" })
+      );
+    }
+    if (commandArgs[0] === "focus") {
+      reservationSubmitActivations += 1;
+      return success();
+    }
+
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  }) as unknown as Runner;
+
+  const exit = await Effect.runPromiseExit(
+    submitReservationForPayPage({
+      run,
+      session: "failed-detached-preparation",
+      submitReservationScript,
+      timeouts: workspaceE2ETimeouts,
+    })
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) {
+    expect(String(Cause.squash(exit.cause))).toContain(
+      "advertised price failed"
+    );
+  }
+  expect(reservationSubmitActivations).toBe(0);
 });
 
 test("types into a hosted payment field when fill does not stick", async () => {
@@ -297,6 +416,14 @@ test("activates hosted-payment targets and recognizes the reservation status ret
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
+
+const serializeAgentBrowserStateResult = (
+  script: string | undefined,
+  state: unknown
+) =>
+  JSON.stringify(
+    script?.includes("JSON.stringify(") ? JSON.stringify(state) : state
+  );
 
 const makeConfig = (): WorkspaceE2EConfig => ({
   baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",

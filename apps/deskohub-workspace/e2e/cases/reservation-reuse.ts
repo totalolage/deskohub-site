@@ -55,6 +55,7 @@ export const assertReservationReplacement = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const firstOrderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -91,26 +92,25 @@ export const assertReservationReplacement = ({
       yield* runStep(initialHoldStep(firstRow));
     }
 
-    yield* runStep({
-      execute: returnToPrefilledReservation({
-        data,
-        reservationPath,
-        run,
-        session,
-        timeouts: config.timeouts,
-      }),
-      id: "return-to-prefilled-reservation",
-      timeoutMs: config.timeouts.uiTransition,
-    });
     const secondOrderId = yield* runStep({
-      execute: submitReservationForPayPage({
-        onOrderId: (orderId) => {
-          state.orderId = orderId;
-        },
-        run,
-        session,
-        submitReservationScript: submitReservationScript(replacementData),
-        timeouts: config.timeouts,
+      capacity: "reservation-start",
+      execute: Effect.gen(function* () {
+        yield* returnToPrefilledReservation({
+          data,
+          reservationPath,
+          run,
+          session,
+          timeouts: config.timeouts,
+        });
+        return yield* submitReservationForPayPage({
+          onOrderId: (orderId) => {
+            state.orderId = orderId;
+          },
+          run,
+          session,
+          submitReservationScript: submitReservationScript(replacementData),
+          timeouts: config.timeouts,
+        });
       }),
       id: "resubmit-prefilled-reservation",
       timeoutMs: config.timeouts.checkoutStart,

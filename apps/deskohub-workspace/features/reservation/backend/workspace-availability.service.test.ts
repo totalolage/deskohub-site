@@ -1,6 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposReservationInterval,
+  DotyposService,
+} from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
@@ -103,6 +106,9 @@ const runWithInventory = async <A>(
     readonly expiredHoldDotyposReservationIds?: readonly string[];
     readonly expiredHoldDotyposReservationIdsError?: boolean;
     readonly limitations?: readonly WorkspaceCalendarLimitationType[];
+    readonly onReservationInterval?: (
+      interval: DotyposReservationInterval
+    ) => void;
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
@@ -116,9 +122,10 @@ const runWithInventory = async <A>(
               getTables: mock(() =>
                 Effect.succeed([...(input.tables ?? defaultTables)])
               ),
-              listReservations: mock(() =>
-                Effect.succeed([...(input.reservations ?? [])])
-              ),
+              listActiveReservationsOverlapping: mock((interval) => {
+                input.onReservationInterval?.(interval);
+                return Effect.succeed([...(input.reservations ?? [])]);
+              }),
             }),
             Layer.succeed(GoogleCalendarWorkspaceLimitationsService, {
               listLimitations: mock(() =>
@@ -165,6 +172,9 @@ const getAvailability = (input: {
   readonly expiredHoldDotyposReservationIds?: readonly string[];
   readonly expiredHoldDotyposReservationIdsError?: boolean;
   readonly limitations?: readonly WorkspaceCalendarLimitationType[];
+  readonly onReservationInterval?: (
+    interval: DotyposReservationInterval
+  ) => void;
 }) =>
   runWithInventory(
     Effect.gen(function* () {
@@ -196,6 +206,21 @@ const getAvailability = (input: {
   );
 
 describe("WorkspaceAvailabilityService", () => {
+  test("loads only the active reservation interval covering Prague dates", async () => {
+    let interval: DotyposReservationInterval | undefined;
+
+    await getAvailability({
+      from: "2026-03-29",
+      onReservationInterval: (value) => {
+        interval = value;
+      },
+      to: "2026-03-29",
+    });
+
+    expect(interval?.startDate.toISOString()).toBe("2026-03-28T23:00:00.000Z");
+    expect(interval?.endDate.toISOString()).toBe("2026-03-29T22:00:00.000Z");
+  });
+
   test("counts NEW reservations as occupied for selected monitor setup dates", async () => {
     const availability = await getAvailability({
       entryTier: "profi",

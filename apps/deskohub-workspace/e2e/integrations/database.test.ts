@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { Effect, Layer } from "effect";
+import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import { workspaceE2ETimeouts } from "../timeouts";
@@ -8,7 +8,9 @@ import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
+  waitForProviderSessionRowAfterRedirect,
 } from "./database";
 
 test("reads persisted reservation details without legacy product columns", async () => {
@@ -57,6 +59,117 @@ test("polls for checkout rows before asserting reservation replacement state", a
   expect(reservationReplacementSource).toContain(
     "waitForCheckoutRow(datasourceConfig, orderId)"
   );
+});
+
+test("classifies provider session rows after the hosted redirect barrier", () => {
+  expect(getProviderSessionRowDiagnosticCode(undefined)).toBe(
+    "provider_session_reservation_missing_after_redirect"
+  );
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      reservation_id: "reservation-1",
+    } as CheckoutRow)
+  ).toBe("provider_session_active_attempt_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      reservation_id: "reservation-1",
+    } as CheckoutRow)
+  ).toBe("provider_session_fields_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      provider_redirect_url: "https://provider.example/hosted",
+      reservation_id: "reservation-1",
+      security_token: "",
+    } as CheckoutRow)
+  ).toBe("provider_session_fields_missing_after_redirect");
+  expect(
+    getProviderSessionRowDiagnosticCode({
+      amount_value: 100,
+      currency: "EUR",
+      payment_attempt_id: "attempt-1",
+      provider_order_id: "provider-order-1",
+      provider_redirect_url: "https://provider.example/hosted",
+      reservation_id: "reservation-1",
+      security_token: "security-token",
+    } as CheckoutRow)
+  ).toBeUndefined();
+});
+
+test("waits briefly for the provider session row to converge after redirect", async () => {
+  const completeRow = {
+    amount_value: 100,
+    currency: "EUR",
+    payment_attempt_id: "attempt-1",
+    provider_order_id: "provider-order-1",
+    provider_redirect_url: "https://provider.example/hosted",
+    reservation_id: "reservation-1",
+    security_token: "security-token",
+  } as CheckoutRow;
+  const rows: readonly (CheckoutRow | undefined)[] = [
+    undefined,
+    { reservation_id: "reservation-1" } as CheckoutRow,
+    completeRow,
+  ];
+  const observedRows: CheckoutRow[] = [];
+  let reads = 0;
+
+  const result = await Effect.runPromise(
+    waitForProviderSessionRowAfterRedirect(
+      Effect.sync(() => rows[reads++]),
+      {
+        intervalMs: 1,
+        onRow: (row) => observedRows.push(row),
+        timeoutMs: 50,
+      }
+    )
+  );
+
+  expect(result).toBe(completeRow);
+  expect(reads).toBe(3);
+  expect(observedRows).toEqual([rows[1], completeRow]);
+});
+
+test("retains the last provider session diagnostic after convergence times out", async () => {
+  const exit = await Effect.runPromiseExit(
+    waitForProviderSessionRowAfterRedirect(
+      Effect.succeed({ reservation_id: "reservation-1" } as CheckoutRow),
+      { intervalMs: 1, timeoutMs: 5 }
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  expect(Cause.squash(exit.cause)).toMatchObject({
+    diagnosticCode: "provider_session_active_attempt_missing_after_redirect",
+    reason: "timeout",
+  });
+});
+
+test("assigns fixed diagnostics to the Postgres validation boundaries", async () => {
+  const source = await Bun.file(
+    fileURLToPath(new URL("./database.ts", import.meta.url))
+  ).text();
+
+  for (const diagnosticCode of [
+    "postgres_checkout_row_convergence_failed",
+    "postgres_checkout_row_assertion_failed",
+    "postgres_legal_evidence_validation_failed",
+    "postgres_local_pii_validation_failed",
+  ]) {
+    expect(source).toMatch(
+      new RegExp(
+        `withWorkspaceE2EDiagnosticCode\\(\\s*"${diagnosticCode}"\\s*\\)`
+      )
+    );
+  }
 });
 
 test("replays Nexi notification against the exact protected preview", async () => {
@@ -112,6 +225,46 @@ test("replays Nexi notification against the exact protected preview", async () =
     },
     securityToken: "test-security-token",
   });
+});
+
+test.each([
+  ["nexi_webhook_fulfillment_failed", "nexi_webhook_fulfillment_failed"],
+  ["postgres_checkout_row_assertion_failed", undefined],
+  ["provider-payload-value", undefined],
+] as const)("keeps webhook failure diagnostics on the fixed allowlist for %s", async (responseCode, expectedDiagnosticCode) => {
+  const fetchMock = mock(async () =>
+    Response.json(
+      { code: responseCode, payload: "provider payload must stay private" },
+      { status: 500 }
+    )
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const exit = await Effect.runPromiseExit(
+    replayNexiWebhook(makeConfig(), makeCheckoutRow()).pipe(
+      Effect.provide(httpClientLayer)
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  const error = Cause.squash(exit.cause);
+  expect(error).toMatchObject({
+    message: "Nexi webhook replay failed with 500",
+  });
+  expect((error as { readonly diagnosticCode?: unknown }).diagnosticCode).toBe(
+    expectedDiagnosticCode
+  );
+  expect(JSON.stringify(error)).not.toContain(
+    "provider payload must stay private"
+  );
 });
 
 test("accepts automatic discounts stacked before the redeemed zero-total code", () => {

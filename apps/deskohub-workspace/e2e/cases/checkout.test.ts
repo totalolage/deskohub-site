@@ -1,9 +1,21 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import type { Customer } from "@deskohub/dotypos/generated";
 import { fileURLToPath } from "node:url";
-import { Effect } from "effect";
+import type { Customer } from "@deskohub/dotypos/generated";
+import { Effect, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
+import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import { E2EDatabase } from "../integrations/database.service";
+import type { Runner } from "../runtime";
+import { workspaceE2ETimeouts } from "../timeouts";
+import type {
+  CheckoutData,
+  CheckoutFlowState,
+  CheckoutRow,
+  WorkspaceE2EStepRunner,
+} from "../types";
+import { assertFulfilledStatusPage, executeCheckoutFlow } from "./checkout";
 
 const customer: Customer = {
   _cloudId: "customer-id",
@@ -112,4 +124,196 @@ describe("whole-day meeting-room checkout proof", () => {
       )
     ).rejects.toThrow();
   });
+});
+
+test("observes fulfillment on the existing checkout return page", async () => {
+  const commands: string[][] = [];
+  const run = (async (_command: string, args: string[]) => {
+    commands.push(args);
+    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
+
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: readsUrl
+        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
+        : "Your workspace access is ready. Access details were sent by email.",
+    };
+  }) as Runner;
+
+  await Effect.runPromise(
+    assertFulfilledStatusPage({
+      checkoutRow: {
+        amount_exponent: 2,
+        amount_value: 10_000,
+        currency: "CZK",
+      } as CheckoutRow,
+      config: {
+        expectedHost: "workspace.test",
+        timeouts: workspaceE2ETimeouts,
+      } as WorkspaceE2EConfig,
+      data: { locale: "en-US" } as CheckoutData,
+      dotyposReservation: {} as never,
+      orderId: "order-id",
+      run,
+      session: "existing-status-page",
+    }).pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+    )
+  );
+
+  expect(commands.some((args) => args.includes("open"))).toBe(false);
+  expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
+});
+
+test("scopes reservation, hosted-payment, and verification capacity", async () => {
+  let insideHostedPaymentSession = false;
+  const observedSteps: Array<{
+    readonly capacity:
+      | "provider-verification"
+      | "reservation-start"
+      | undefined;
+    readonly id: string;
+    readonly insideHostedPaymentSession: boolean;
+    readonly timeoutMs: number;
+  }> = [];
+  const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
+  const replayRow = {} as CheckoutRow;
+  const runStep = ((step) => {
+    observedSteps.push({
+      capacity: step.capacity,
+      id: step.id,
+      insideHostedPaymentSession,
+      timeoutMs: step.timeoutMs,
+    });
+    if (step.id === "prepare-checkout-pay-page") {
+      return Effect.succeed(orderId);
+    }
+    if (
+      step.id === "read-provider-session-row" ||
+      step.id === "validate-postgres-state"
+    ) {
+      return Effect.succeed(replayRow);
+    }
+    if (step.id === "validate-dotypos-reservation") {
+      return Effect.succeed({});
+    }
+    return Effect.void;
+  }) as WorkspaceE2EStepRunner;
+  const data = {} as CheckoutData;
+  const state: CheckoutFlowState = { data };
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(FetchHttpClient.Fetch, (() =>
+        Promise.reject(
+          new Error("HTTP must not execute in the step contract test")
+        )) as typeof globalThis.fetch)
+    )
+  );
+
+  await Effect.runPromise(
+    executeCheckoutFlow({
+      config: { timeouts: workspaceE2ETimeouts } as WorkspaceE2EConfig,
+      data,
+      datasourceConfig: {} as DatasourceConfig,
+      flow: {
+        id: "checkout-capacity-contract",
+        submitReservationScript: () => "unused",
+      },
+      payPageSteps: () => [
+        {
+          execute: Effect.void,
+          id: "first-pay-page-assertion",
+          timeoutMs: workspaceE2ETimeouts.uiTransition,
+        },
+        {
+          execute: Effect.void,
+          id: "second-pay-page-assertion",
+          timeoutMs: workspaceE2ETimeouts.browserAction,
+        },
+      ],
+      resources: {
+        withHostedPaymentSession: (effect) =>
+          Effect.acquireUseRelease(
+            Effect.sync(() => {
+              insideHostedPaymentSession = true;
+            }),
+            () => effect,
+            () =>
+              Effect.sync(() => {
+                insideHostedPaymentSession = false;
+              })
+          ),
+      },
+      run: (() =>
+        Promise.reject(new Error("runner must not execute"))) as Runner,
+      runStep,
+      session: "checkout-capacity-contract",
+      state,
+    }).pipe(Effect.provide(httpClientLayer)) as Effect.Effect<void>
+  );
+
+  expect(
+    observedSteps.flatMap(({ capacity, id }) =>
+      capacity === undefined ? [] : [{ capacity, id }]
+    )
+  ).toEqual([
+    {
+      capacity: "reservation-start",
+      id: "prepare-checkout-pay-page",
+    },
+    {
+      capacity: "provider-verification",
+      id: "replay-payment-webhook",
+    },
+  ]);
+  expect(observedSteps.slice(0, 9).map(({ id }) => id)).toEqual([
+    "prepare-checkout-pay-page",
+    "first-pay-page-assertion",
+    "second-pay-page-assertion",
+    "start-checkout-payment",
+    "read-provider-session-row",
+    "complete-hosted-payment",
+    "reach-checkout-status-page",
+    "replay-payment-webhook",
+    "complete-test-fulfillment",
+  ]);
+  expect(
+    observedSteps
+      .filter(({ insideHostedPaymentSession }) => insideHostedPaymentSession)
+      .map(({ id }) => id)
+  ).toEqual([
+    "start-checkout-payment",
+    "read-provider-session-row",
+    "complete-hosted-payment",
+    "reach-checkout-status-page",
+  ]);
+  expect(
+    observedSteps.slice(-6).map(({ id, timeoutMs }) => ({ id, timeoutMs }))
+  ).toEqual([
+    {
+      id: "mark-fulfillment-failed-for-support-path",
+      timeoutMs: workspaceE2ETimeouts.datasource,
+    },
+    {
+      id: "open-fulfillment-failed-status-page",
+      timeoutMs: workspaceE2ETimeouts.browserNavigation,
+    },
+    {
+      id: "wait-for-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.uiTransition,
+    },
+    {
+      id: "assert-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.browserAction,
+    },
+    {
+      id: "activate-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.browserAction,
+    },
+    {
+      id: "reach-fulfillment-support-contact-page",
+      timeoutMs: workspaceE2ETimeouts.uiTransition,
+    },
+  ]);
 });

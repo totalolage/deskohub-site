@@ -15,6 +15,7 @@ import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
 } from "./checkout/data";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 const workspaceTemporal = globalThis.Temporal;
 const oneHourMeetingRoomDuration = { unit: "hour", amount: 1 } as const;
@@ -41,6 +42,9 @@ test("keeps advertised-price preparation separable from form submission", () => 
     "advertised price did not refresh after monitor selection"
   );
   expect(prepare).toContain("new MutationObserver");
+  expect(prepare).toContain(
+    `Date.now() + ${workspaceE2ETimeouts.uiTransition}`
+  );
   expect(prepare).not.toContain("reservation-privacy-consent");
   expect(submitPreparedCoworkReservationScript).toContain(
     "reservation-privacy-consent"
@@ -227,6 +231,9 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   expect(prepare).toContain("'[data-day=\"' + expected.date");
   expect(prepare).toContain('input[aria-label="Meeting room start time"]');
   expect(prepare).toContain("meeting-room-duration-");
+  expect(prepare).toContain(
+    `Date.now() + ${workspaceE2ETimeouts.uiTransition}`
+  );
   expect(prepare).toContain('"date":"2099-09-01"');
   expect(prepare).toContain('"time":"10:00"');
   expect(prepare).not.toContain("setField('input[name=\"startDateTime\"]'");
@@ -319,6 +326,181 @@ test("waits through delayed meeting-room availability readiness", async () => {
         location
       )
     ).resolves.toBe(location.href);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("checks meeting-room readiness once at the existing deadline", async () => {
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-03T10:00",
+    oneHourMeetingRoomDuration
+  );
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-03",
+      duration: oneHourMeetingRoomDuration,
+      startDateTime: "2099-09-03T10:00",
+      ...interval!,
+    },
+    "meeting-room-deadline-readiness"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Meeting room start date"></button>
+      <div data-day="2099-09-03"><button type="button"></button></div>
+      <input aria-label="Meeting room start time" value="10:00" />
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <input name="startDateTime" value="2099-09-03" />
+      <button type="submit" disabled></button>
+    `;
+
+    let now = 0;
+    class DeadlineDate extends Date {
+      static override now() {
+        now += 15_000;
+        return now;
+      }
+    }
+    let waits = 0;
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareMeetingRoomAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        DeadlineDate,
+        (callback: () => void) => {
+          waits += 1;
+          if (waits === 2) {
+            document.querySelector<HTMLButtonElement>(
+              'button[type="submit"]'
+            )!.disabled = false;
+          }
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).resolves.toBe(location.href);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("retries the selected meeting-room price at most once", async () => {
+  const interval = getTestMeetingRoomInterval(
+    "2099-09-04T10:00",
+    oneHourMeetingRoomDuration
+  );
+  expect(interval).toBeDefined();
+  const data = makeMeetingRoomCheckoutData(
+    "https://workspace.example.test",
+    {
+      date: "2099-09-04",
+      duration: oneHourMeetingRoomDuration,
+      startDateTime: "2099-09-04T10:00",
+      ...interval!,
+    },
+    "meeting-room-price-retry"
+  );
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/meeting-room",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Meeting room start date"></button>
+      <div data-day="2099-09-04"><button type="button"></button></div>
+      <input aria-label="Meeting room start time" value="10:00" />
+      <input id="meeting-room-duration-hour:1" type="radio" value="hour:1" checked />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <input name="startDateTime" value="2099-09-04" />
+      <button
+        data-reservation-availability-loading="false"
+        data-reservation-price-error="true"
+        data-reservation-price-loading="false"
+        data-reservation-unavailable="false"
+        type="submit"
+        disabled
+      ></button>
+      <button id="reservation-advertised-price-retry" type="button"></button>
+    `;
+
+    let retryCount = 0;
+    document
+      .querySelector("#reservation-advertised-price-retry")!
+      .addEventListener("click", () => {
+        retryCount += 1;
+      });
+    let now = 0;
+    class FastDate extends Date {
+      static override now() {
+        now += 10_000;
+        return now;
+      }
+    }
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${getPrepareMeetingRoomAdvertisedPriceScript(data).trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        FastDate,
+        (callback: () => void) => {
+          queueMicrotask(callback);
+          return 0;
+        },
+        location
+      )
+    ).rejects.toThrow(
+      "price_error=true; price_loading=false; unavailable=false; " +
+        "price_retry_available=true; price_retry_attempted=true"
+    );
+    expect(retryCount).toBe(1);
   } finally {
     await GlobalRegistrator.unregister();
     globalThis.Temporal = workspaceTemporal;

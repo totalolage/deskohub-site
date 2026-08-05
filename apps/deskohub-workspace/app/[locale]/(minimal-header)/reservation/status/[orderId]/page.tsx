@@ -3,7 +3,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { CheckoutStatusService } from "@/features/checkout/backend/checkout";
+import {
+  CheckoutStatusService,
+  loadCheckoutStatusPage,
+} from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
@@ -104,7 +107,7 @@ async function CheckoutStatusContent({
     () => ({ outcome: "unknown" as const })
   );
   const status = await Effect.flatMap(CheckoutStatusService, (service) =>
-    service.refreshStatus({ orderId, returnOutcome })
+    loadCheckoutStatusPage(service, { orderId, returnOutcome })
   ).pipe(
     Effect.tapError((cause) =>
       Effect.logError("Checkout status load failed", {

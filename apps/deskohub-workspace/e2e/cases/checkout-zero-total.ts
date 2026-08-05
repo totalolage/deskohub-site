@@ -46,22 +46,21 @@ export const executeZeroTotalCheckout = ({
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    yield* runStep({
-      execute: openBrowserPage(config, run, session, data.checkoutUrl, {
-        timeoutMs: config.timeouts.browserNavigation,
-      }).pipe(Effect.asVoid),
-      id: "open-zero-total-checkout",
-      timeoutMs: config.timeouts.browserNavigation,
-    });
     const orderId = yield* runStep({
-      execute: submitReservationForPayPage({
-        onOrderId: (startedOrderId) => {
-          state.orderId = startedOrderId;
-        },
-        run,
-        session,
-        submitReservationScript,
-        timeouts: config.timeouts,
+      capacity: "reservation-start",
+      execute: Effect.gen(function* () {
+        yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+        return yield* submitReservationForPayPage({
+          onOrderId: (startedOrderId) => {
+            state.orderId = startedOrderId;
+          },
+          run,
+          session,
+          submitReservationScript,
+          timeouts: config.timeouts,
+        });
       }),
       id: "prepare-zero-total-pay-page",
       timeoutMs: config.timeouts.checkoutStart,

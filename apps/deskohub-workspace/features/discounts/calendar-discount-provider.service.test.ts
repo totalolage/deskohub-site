@@ -569,6 +569,83 @@ describe("CalendarDiscountProvider", () => {
     expect(loadById).toHaveBeenCalledTimes(1);
   });
 
+  test("isolates transient definition mutations by event identity and date cache key", async () => {
+    const definitions = new Map<StoredDiscountId, DiscountDefinition>([
+      [discountIdA, definition(discountIdA)],
+      [discountIdB, definition(discountIdB)],
+    ]);
+    const listEvents = mock(
+      ({ from }: Parameters<IGoogleCalendarService["listEvents"]>[0]) =>
+        Effect.succeed([
+          saleEvent({
+            description: from === "2026-07-14" ? discountIdA : discountIdB,
+            id: from === "2026-07-14" ? "quote-change" : "payment-change",
+            start: { date: from },
+            end: {
+              date: Temporal.PlainDate.from(from).add({ days: 1 }).toString(),
+            },
+          }),
+        ])
+    );
+    const loadById = mock(
+      ({ discountId }: { readonly discountId: StoredDiscountId }) => {
+        const loaded = definitions.get(discountId);
+        return loaded
+          ? Effect.succeed(loaded)
+          : Effect.fail(
+              new DiscountDefinitionNotFoundError({
+                discountId,
+                message: "Definition missing from isolated fixture",
+              })
+            );
+      }
+    );
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        const quoteBeforeMutation = yield* provider.discover({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-14",
+        });
+        definitions.set(discountIdA, definition(discountIdA, { products: [] }));
+        const quoteAfterMutation = yield* provider.revalidate({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-14",
+        });
+        const independentPaymentCase = yield* provider.discover({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-15",
+        });
+        const cachedQuoteCase = yield* provider.discover({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-14",
+        });
+        return {
+          cachedQuoteCase,
+          independentPaymentCase,
+          quoteAfterMutation,
+          quoteBeforeMutation,
+        };
+      }),
+      listEvents,
+      loadById
+    );
+
+    expect(result.quoteBeforeMutation).toHaveLength(1);
+    expect(result.quoteAfterMutation).toHaveLength(0);
+    expect(result.independentPaymentCase).toHaveLength(1);
+    expect(result.cachedQuoteCase).toHaveLength(1);
+    expect(result.independentPaymentCase[0]?.provenance.details).toMatchObject({
+      eventReference: "payment-change",
+      storedDiscountId: discountIdB,
+    });
+  });
+
   test("keeps the operator title out of the public label", async () => {
     let title = "Initial operator title";
     const listEvents = mock(() =>
@@ -701,20 +778,23 @@ describe("CalendarDiscountProvider", () => {
     );
     const processMemoMap = Layer.makeMemoMapUnsafe();
     const processScope = Scope.makeUnsafe();
-    const providerLayer = Layer.fromBuild(() =>
-      Layer.buildWithMemoMap(
-        CalendarDiscountProvider.Live.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              GoogleCalendarServiceMock({ listEvents }),
-              DiscountDefinitionRepositoryMock({ loadById }),
-              resourceConfigLayer
+    const providerLayer = Layer.mergeAll(
+      Layer.fromBuild(() =>
+        Layer.buildWithMemoMap(
+          CalendarDiscountProvider.Live.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                GoogleCalendarServiceMock({ listEvents }),
+                DiscountDefinitionRepositoryMock({ loadById }),
+                resourceConfigLayer
+              )
             )
-          )
-        ),
-        processMemoMap,
-        processScope
-      )
+          ),
+          processMemoMap,
+          processScope
+        )
+      ),
+      TestClock.layer()
     );
     const quoteForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;

@@ -13,6 +13,30 @@ const optionalPositiveInteger = toEnvironmentSchema(
     Schema.FiniteFromString.check(Schema.isInt()).check(Schema.isGreaterThan(0))
   )
 );
+const optionalAllocationShard = toEnvironmentSchema(
+  Schema.optional(
+    Schema.FiniteFromString.check(Schema.isInt())
+      .check(Schema.isGreaterThan(0))
+      .check(Schema.isLessThanOrEqualTo(3))
+  )
+);
+const optionalDirectPostgresUrl = toEnvironmentSchema(
+  Schema.optional(
+    Schema.String.check(
+      Schema.makeFilter(
+        (value) => {
+          if (!URL.canParse(value)) return false;
+          const url = new URL(value);
+          return (
+            (url.protocol === "postgres:" || url.protocol === "postgresql:") &&
+            !url.hostname.split(".")[0]?.endsWith("-pooler")
+          );
+        },
+        { expected: "a direct PostgreSQL URL" }
+      )
+    )
+  )
+);
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
@@ -50,6 +74,11 @@ export const e2eEnvironmentSchema = Schema.Struct({
     Schema.optional(Schema.Literals(["ci", "manual"]))
   ),
   WORKSPACE_E2E_BASE_URL: url,
+  WORKSPACE_E2E_ALLOCATION_SHARD: optionalAllocationShard,
+  WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: toEnvironmentSchema(
+    Schema.optional(Schema.Literals(["true"]))
+  ),
+  WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: optionalDirectPostgresUrl,
   WORKSPACE_E2E_DATABASE_ALLOWLIST: nonEmptyString,
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
@@ -89,6 +118,12 @@ export const makeE2EEnvironment = (
       VERCEL_AUTOMATION_BYPASS_SECRET:
         runtimeEnvironment.VERCEL_AUTOMATION_BYPASS_SECRET,
       WORKSPACE_E2E_BASE_URL: runtimeEnvironment.WORKSPACE_E2E_BASE_URL,
+      WORKSPACE_E2E_ALLOCATION_SHARD:
+        runtimeEnvironment.WORKSPACE_E2E_ALLOCATION_SHARD,
+      WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED:
+        runtimeEnvironment.WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED,
+      WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
+        runtimeEnvironment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL,
       WORKSPACE_E2E_DATABASE_ALLOWLIST:
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
       WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
@@ -104,3 +139,20 @@ export const makeE2EEnvironment = (
   });
 
 export type E2EEnvironment = ReturnType<typeof makeE2EEnvironment>;
+
+export const makeWorkspaceE2EEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+) => {
+  const environment = makeE2EEnvironment(runtimeEnvironment);
+  if (
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED === "true" &&
+    !environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+  ) {
+    throw new Error("Invalid workspace E2E environment variables.");
+  }
+  return environment;
+};
+
+export type WorkspaceE2EEnvironment = ReturnType<
+  typeof makeWorkspaceE2EEnvironment
+>;

@@ -32,9 +32,9 @@ import {
   markFulfillmentFailedForE2E,
   markPreviewFulfillmentDeliveredForE2E,
   replayNexiWebhook,
+  requireProviderSessionRowAfterRedirect,
   validateDiscountApplications,
   validatePostgres,
-  waitForWebhookReplayRow,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import {
@@ -48,6 +48,7 @@ import type {
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
+  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -63,22 +64,24 @@ export const executeCheckoutFlow = ({
   data,
   datasourceConfig,
   flow,
+  resources,
   run,
   runStep,
   session,
   state,
-  payPageStep,
+  payPageSteps,
   expectedDiscounts,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
+  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  payPageStep?: (orderId: string) => WorkspaceE2EStep<void>;
+  payPageSteps?: (orderId: string) => readonly WorkspaceE2EStep<void>[];
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
 }): Effect.Effect<
   void,
@@ -89,6 +92,7 @@ export const executeCheckoutFlow = ({
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
+      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -106,46 +110,55 @@ export const executeCheckoutFlow = ({
       id: "prepare-checkout-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
     });
-    if (payPageStep) {
-      yield* runStep(payPageStep(orderId));
+    if (payPageSteps) {
+      for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
-    yield* runStep({
-      execute: submitPaymentAndWaitForHostedPage({
-        run,
-        session,
-        timeouts: config.timeouts,
-      }).pipe(Effect.asVoid),
-      id: "start-checkout-payment",
-      timeoutMs: config.timeouts.providerTransition,
-    });
-    yield* runStep({
-      execute: completeNexiHostedPayment({
-        data,
-        run,
-        session,
-        timeouts: config.timeouts,
-      }),
-      id: "complete-hosted-payment",
-      timeoutMs: config.timeouts.hostedPayment,
-    });
-    yield* runStep({
-      execute: waitForCheckoutStatusPage(config, run, session),
-      id: "reach-checkout-status-page",
-      timeoutMs: config.timeouts.providerTransition,
-    });
+    const providerSessionRow = yield* resources.withHostedPaymentSession(
+      Effect.gen(function* () {
+        yield* runStep({
+          execute: submitPaymentAndWaitForHostedPage({
+            run,
+            session,
+            timeouts: config.timeouts,
+          }).pipe(Effect.asVoid),
+          id: "start-checkout-payment",
+          timeoutMs: config.timeouts.providerTransition,
+        });
+        const row = yield* runStep({
+          execute: requireProviderSessionRowAfterRedirect(orderId, {
+            onRow: (value) => {
+              state.checkoutRow = value;
+            },
+            timeoutMs: config.timeouts.browserAction,
+          }),
+          id: "read-provider-session-row",
+          timeoutMs: config.timeouts.datasource,
+        });
+        yield* runStep({
+          execute: completeNexiHostedPayment({
+            data,
+            run,
+            session,
+            timeouts: config.timeouts,
+          }),
+          id: "complete-hosted-payment",
+          timeoutMs: config.timeouts.hostedPayment,
+        });
+        yield* runStep({
+          execute: waitForCheckoutStatusPage(config, run, session),
+          id: "reach-checkout-status-page",
+          timeoutMs: config.timeouts.providerTransition,
+        });
+        return row;
+      })
+    );
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
-    const replayRow = yield* runStep({
-      execute: waitForWebhookReplayRow(datasourceConfig, orderId, (row) => {
-        state.checkoutRow = row;
-      }),
-      id: "wait-for-webhook-row",
-      timeoutMs: config.timeouts.datasource,
-    });
     yield* runStep({
-      execute: replayNexiWebhook(config, replayRow).pipe(
+      capacity: "provider-verification",
+      execute: replayNexiWebhook(config, providerSessionRow).pipe(
         Effect.provideService(HttpClient.HttpClient, httpClient)
       ),
       id: "replay-payment-webhook",
@@ -207,17 +220,13 @@ export const executeCheckoutFlow = ({
         timeoutMs: config.timeouts.datasource,
       });
     }
-    yield* runStep({
-      execute: assertFulfillmentFailedSupportPath({
-        config,
-        data,
-        datasourceConfig,
-        orderId,
-        run,
-        session,
-      }),
-      id: "assert-fulfillment-support-path",
-      timeoutMs: config.timeouts.uiTransition,
+    yield* assertFulfillmentFailedSupportPath({
+      config,
+      data,
+      orderId,
+      run,
+      runStep,
+      session,
     });
 
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
@@ -275,13 +284,24 @@ export const assertFulfilledStatusPage = ({
         );
       }
     );
-    yield* openBrowserPage(
-      config,
+    // The payment return already left this browser on the ordinary production
+    // status route. Keep that page alive so its real auto-refresh observes the
+    // fulfillment transition instead of starting another streamed RSC request
+    // for every paid case.
+    yield* waitForBrowserUrl({
+      description: "fulfilled checkout status page",
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return Boolean(
+          parsed &&
+            isExpectedCheckoutStatusUrl(url, config.expectedHost) &&
+            parsed.pathname.endsWith(`/reservation/status/${orderId}`)
+        );
+      },
       run,
       session,
-      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`,
-      { timeoutMs: config.timeouts.browserNavigation }
-    );
+      timeoutMs: config.timeouts.uiTransition,
+    });
     const expectedMeetingRoomText = yield* tryWorkspaceE2ESync(
       "read confirmed reservation interval for status assertion",
       () =>
@@ -460,67 +480,93 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
 const assertFulfillmentFailedSupportPath = ({
   config,
   data,
-  datasourceConfig,
   orderId,
   run,
+  runStep,
   session,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  datasourceConfig: DatasourceConfig;
   orderId: string;
   run: Runner;
+  runStep: WorkspaceE2EStepRunner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* markFulfillmentFailedForE2E(orderId);
-    const statusUrl = yield* makeUrl(
-      "build fulfillment failed checkout status URL",
-      `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
-    );
-    yield* setSearchParams(statusUrl, {
-      e2eAt: String(Date.now()),
+    yield* runStep({
+      execute: markFulfillmentFailedForE2E(orderId),
+      id: "mark-fulfillment-failed-for-support-path",
+      timeoutMs: config.timeouts.datasource,
     });
-    yield* openBrowserPage(config, run, session, statusUrl.toString(), {
+    yield* runStep({
+      execute: Effect.gen(function* () {
+        const statusUrl = yield* makeUrl(
+          "build fulfillment failed checkout status URL",
+          `${config.baseUrl}/${data.locale}/reservation/status/${orderId}`
+        );
+        yield* setSearchParams(statusUrl, {
+          e2eAt: String(Date.now()),
+        });
+        yield* openBrowserPage(config, run, session, statusUrl.toString(), {
+          timeoutMs: config.timeouts.browserNavigation,
+        });
+      }),
+      id: "open-fulfillment-failed-status-page",
       timeoutMs: config.timeouts.browserNavigation,
     });
-    yield* waitForBrowserText({
-      description: "fulfillment failed support link",
-      matches: (text) =>
-        /couldn't deliver your access codes/i.test(text) &&
-        /Send support request/i.test(text),
-      run,
-      session,
+    yield* runStep({
+      execute: waitForBrowserText({
+        description: "fulfillment failed support link",
+        matches: (text) =>
+          /couldn't deliver your access codes/i.test(text) &&
+          /Send support request/i.test(text),
+        run,
+        session,
+        timeoutMs: config.timeouts.uiTransition,
+      }),
+      id: "wait-for-fulfillment-support-link",
       timeoutMs: config.timeouts.uiTransition,
     });
-    yield* evalBrowserScript(
-      "assert fulfillment failed support link",
-      run,
-      session,
-      getAssertFulfillmentFailedSupportScript(data, orderId),
-      {
-        logOutput: false,
-        timeoutMs: config.timeouts.browserAction,
-      }
-    );
-    yield* activateHydratedBrowserElement(
-      run,
-      session,
-      "#checkout-status-support-contact",
-      { timeoutMs: config.timeouts.browserAction }
-    );
-    yield* waitForBrowserUrl({
-      description: "fulfillment failed support contact page",
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.pathname === `/${data.locale}/contact` &&
-          (parsed.searchParams.get("message") ?? "").includes(orderId)
-        );
-      },
-      run,
-      session,
-      timeoutMs: 60_000,
+    yield* runStep({
+      execute: evalBrowserScript(
+        "assert fulfillment failed support link",
+        run,
+        session,
+        getAssertFulfillmentFailedSupportScript(data, orderId),
+        {
+          logOutput: false,
+          timeoutMs: config.timeouts.browserAction,
+        }
+      ),
+      id: "assert-fulfillment-support-link",
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* runStep({
+      execute: activateHydratedBrowserElement(
+        run,
+        session,
+        "#checkout-status-support-contact",
+        { timeoutMs: config.timeouts.browserAction }
+      ),
+      id: "activate-fulfillment-support-link",
+      timeoutMs: config.timeouts.browserAction,
+    });
+    yield* runStep({
+      execute: waitForBrowserUrl({
+        description: "fulfillment failed support contact page",
+        matches: (url) => {
+          const parsed = parseUrl(url);
+          return (
+            parsed?.pathname === `/${data.locale}/contact` &&
+            (parsed.searchParams.get("message") ?? "").includes(orderId)
+          );
+        },
+        run,
+        session,
+        timeoutMs: config.timeouts.uiTransition,
+      }),
+      id: "reach-fulfillment-support-contact-page",
+      timeoutMs: config.timeouts.uiTransition,
     });
     log("Fulfillment failed support path e2e passed");
   });

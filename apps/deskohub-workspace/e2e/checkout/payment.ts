@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 import {
-  activateBrowserElement,
+  activateHydratedBrowserElement,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
@@ -46,6 +46,7 @@ const reservationStartRetryableErrorMessages = [
 ] as const;
 const reservationSubmitAttemptCount = 2;
 const reservationSubmitSelector = "#reservation-submit";
+const reservationPreparationStateKey = "__deskohubWorkspaceE2EPreparation";
 const hostedPaymentFieldFillAttemptCount = 3;
 
 const runBrowserCommand = (
@@ -137,15 +138,13 @@ export const startCheckoutPaymentAttempt = ({
   submitReservationScript: string;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-      timeoutMs: config.timeouts.browserNavigation,
-    });
-    const orderId = yield* submitReservationForPayPage({
+    const orderId = yield* prepareCheckoutPaymentAttempt({
+      config,
+      data,
       onOrderId,
       run,
       session,
       submitReservationScript,
-      timeouts: config.timeouts,
     });
     yield* submitPaymentAndWaitForHostedPage({
       run,
@@ -154,6 +153,34 @@ export const startCheckoutPaymentAttempt = ({
     });
     log(`Started hosted payment attempt for order ${orderId}`);
     return orderId;
+  });
+
+export const prepareCheckoutPaymentAttempt = ({
+  config,
+  data,
+  onOrderId,
+  run,
+  session,
+  submitReservationScript,
+}: {
+  config: WorkspaceE2EConfig;
+  data: CheckoutData;
+  onOrderId?: (orderId: string) => void;
+  run: Runner;
+  session: string;
+  submitReservationScript: string;
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+      timeoutMs: config.timeouts.browserNavigation,
+    });
+    return yield* submitReservationForPayPage({
+      onOrderId,
+      run,
+      session,
+      submitReservationScript,
+      timeouts: config.timeouts,
+    });
   });
 
 export const submitReservationForPayPage = ({
@@ -225,21 +252,18 @@ const submitReservationAndWaitForPayPage = ({
       attempt: number
     ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
       Effect.gen(function* () {
-        yield* runBrowserCommand(
-          "submit checkout reservation",
+        yield* startReservationPreparation(
           run,
           session,
-          ["eval", "--stdin"],
-          {
-            input: submitReservationScript,
-            logOutput: false,
-          }
+          submitReservationScript,
+          timeouts.browserAction
         );
-        yield* activateBrowserElement(
+        yield* waitForReservationPreparation(run, session, timeoutMs);
+        yield* activateHydratedBrowserElement(
           run,
           session,
           reservationSubmitSelector,
-          { timeoutMs }
+          { timeoutMs: timeouts.browserAction }
         );
 
         const result = yield* waitForReservationStart(run, session, timeoutMs);
@@ -280,6 +304,111 @@ const submitReservationAndWaitForPayPage = ({
       }
     );
   });
+
+type ReservationPreparationState =
+  | { readonly status: "pending" | "ready" }
+  | { readonly error: string; readonly status: "failed" };
+
+const startReservationPreparation = (
+  run: Runner,
+  session: string,
+  script: string,
+  timeoutMs: number
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const stateKey = JSON.stringify(reservationPreparationStateKey);
+  const kickoffScript = `
+(() => {
+  const state = { status: 'pending' };
+  globalThis[${stateKey}] = state;
+  Promise.resolve()
+    .then(() => (${script.trim()}))
+    .then(
+      () => { state.status = 'ready'; },
+      (error) => {
+        state.status = 'failed';
+        state.error = String(error instanceof Error ? error.message : error).slice(0, 500);
+      }
+    );
+  return true;
+})()
+`;
+
+  return runBrowserCommand(
+    "start checkout reservation preparation",
+    run,
+    session,
+    ["eval", "--stdin"],
+    {
+      input: kickoffScript,
+      logOutput: false,
+      timeoutMs,
+    }
+  ).pipe(Effect.asVoid);
+};
+
+const waitForReservationPreparation = (
+  run: Runner,
+  session: string,
+  timeoutMs: number
+): Effect.Effect<void, WorkspaceE2EError> =>
+  pollUntil(
+    readReservationPreparationState(run, session).pipe(
+      Effect.flatMap((state) =>
+        state.status === "failed"
+          ? Effect.fail(
+              toWorkspaceE2EError(
+                "prepare checkout reservation",
+                new Error(state.error)
+              )
+            )
+          : Effect.succeed(state.status === "ready" ? true : undefined)
+      )
+    ),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: "checkout reservation preparation",
+      timeoutMs,
+    }
+  ).pipe(Effect.asVoid);
+
+const readReservationPreparationState = (
+  run: Runner,
+  session: string
+): Effect.Effect<ReservationPreparationState, WorkspaceE2EError> => {
+  const stateKey = JSON.stringify(reservationPreparationStateKey);
+  const stateScript = `
+(() => globalThis[${stateKey}] ?? { status: 'pending' })()
+`;
+
+  return Effect.gen(function* () {
+    const result = yield* runBrowserCommand(
+      "read checkout reservation preparation state",
+      run,
+      session,
+      ["eval", "--stdin"],
+      {
+        input: stateScript,
+        logOutput: false,
+        timeoutMs: 30_000,
+      }
+    );
+    return yield* tryWorkspaceE2ESync(
+      "parse checkout reservation preparation state",
+      () => {
+        const state = JSON.parse(
+          result.stdout.trim()
+        ) as Partial<ReservationPreparationState>;
+        assert(
+          state.status === "pending" ||
+            state.status === "ready" ||
+            (state.status === "failed" && typeof state.error === "string"),
+          "checkout reservation preparation state invalid"
+        );
+        return state as ReservationPreparationState;
+      }
+    );
+  });
+};
 
 type ReservationStartResult =
   | {

@@ -8,6 +8,18 @@ import {
 } from "./errors";
 import { makeUrl } from "./urls";
 
+export const assertPreviewEndpointsReady = (
+  config: WorkspaceE2EConfig
+): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
+  Effect.all(
+    [
+      assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
+      assertPreviewEndpointReady(config, "/api/webhooks/resend"),
+      assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
+    ],
+    { concurrency: "unbounded", discard: true }
+  );
+
 export const assertPreviewEndpointReady = (
   config: WorkspaceE2EConfig,
   path: string

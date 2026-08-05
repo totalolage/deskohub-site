@@ -18,6 +18,10 @@ import {
 } from "@testing-library/react";
 import { Schema } from "effect";
 import type { ComponentProps } from "react";
+import type {
+  AdvertisedPrice,
+  AdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
@@ -44,8 +48,9 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 const execute = mock(() => undefined);
-const getAdvertisedPrice = mock(() =>
-  Promise.resolve({ data: advertisedPriceResponse })
+const getAdvertisedPrices = mock(
+  (requests: ReadonlyArray<AdvertisedPriceRequest>) =>
+    Promise.resolve(advertisedPricesResult(requests))
 );
 
 mock.module("@/features/cookie-consent", () => ({
@@ -53,7 +58,7 @@ mock.module("@/features/cookie-consent", () => ({
 }));
 
 mock.module("@/features/reservation/actions/get-advertised-price", () => ({
-  getAdvertisedPrice,
+  getAdvertisedPrices,
 }));
 
 const { MeetingRoomReservationForm } = await import(
@@ -100,6 +105,19 @@ const advertisedPriceResponse = {
   summary: getMeetingRoomCheckoutSummary(meetingRoomQuote),
   advertisedPriceToken: "sealed-advertised-price",
 };
+
+function advertisedPricesResult(
+  requests: ReadonlyArray<AdvertisedPriceRequest>,
+  getPrice: (request: AdvertisedPriceRequest) => AdvertisedPrice = () =>
+    advertisedPriceResponse
+) {
+  return {
+    data: requests.map((request) => ({
+      request,
+      advertisedPrice: getPrice(request),
+    })),
+  };
+}
 
 const getDiscountedAdvertisedPriceResponse = (
   duration: MeetingRoomReservationDuration
@@ -205,15 +223,15 @@ describe("MeetingRoomReservationForm", () => {
       isExecuting: false,
       result: {},
     });
-    getAdvertisedPrice.mockImplementation(() =>
-      Promise.resolve({ data: advertisedPriceResponse })
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(advertisedPricesResult(requests))
     );
   });
 
   afterEach(() => {
     cleanup();
     execute.mockClear();
-    getAdvertisedPrice.mockClear();
+    getAdvertisedPrices.mockClear();
     push.mockClear();
   });
 
@@ -222,7 +240,7 @@ describe("MeetingRoomReservationForm", () => {
   });
 
   test("renders every server-loaded duration quote on the first paint without refetching", () => {
-    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
     const initialAdvertisedPrices = workspaceMeetingRoomCatalog.map(
       ({ duration }) => {
         return {
@@ -259,7 +277,7 @@ describe("MeetingRoomReservationForm", () => {
         )
       ).not.toBeNull();
     }
-    expect(getAdvertisedPrice).not.toHaveBeenCalled();
+    expect(getAdvertisedPrices).not.toHaveBeenCalled();
   });
 
   test("loads cancellable availability and submits the current advertised reservation", async () => {
@@ -317,17 +335,21 @@ describe("MeetingRoomReservationForm", () => {
       "endsAt=2099-07-30T09%3A00%3A00Z"
     );
     expect(availabilityRequest?.signal).toBeInstanceOf(AbortSignal);
-    expect(getAdvertisedPrice).toHaveBeenCalledWith({
-      locale: "en-US",
-      reservation: {
-        kind: "meeting-room",
-        details: {
-          kind: "meeting-room",
-          duration: { unit: "hour", amount: 1 },
-          reservationDate: "2099-07-30",
+    expect(getAdvertisedPrices).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        {
+          locale: "en-US",
+          reservation: {
+            kind: "meeting-room",
+            details: {
+              kind: "meeting-room",
+              duration: { unit: "hour", amount: 1 },
+              reservationDate: "2099-07-30",
+            },
+          },
         },
-      },
-    });
+      ])
+    );
 
     fireEvent.click(view.getByRole("checkbox"));
     fireEvent.click(continueButton);
@@ -355,20 +377,24 @@ describe("MeetingRoomReservationForm", () => {
       ) as HTMLInputElement
     );
     await waitFor(() => {
-      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+      expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
       expect(continueButton.hasAttribute("disabled")).toBe(false);
       expect(durationInputs[1]?.checked).toBe(true);
-      expect(getAdvertisedPrice).toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            duration: { unit: "hour", amount: 4 },
-            reservationDate: "2099-07-30",
+      expect(getAdvertisedPrices).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "hour", amount: 4 },
+                reservationDate: "2099-07-30",
+              },
+            },
           },
-        },
-      });
+        ])
+      );
     });
     fireEvent.click(continueButton);
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(3));
@@ -390,7 +416,7 @@ describe("MeetingRoomReservationForm", () => {
       availabilityUrl = String(request);
       return Promise.resolve(jsonResponse(availabilityResponse));
     }) as typeof fetch;
-    getAdvertisedPrice.mockImplementation(() => new Promise(() => undefined));
+    getAdvertisedPrices.mockImplementation(() => new Promise(() => undefined));
     const advertisedPrice = getDiscountedAdvertisedPriceResponse({
       unit: "day",
       amount: 1,
@@ -480,17 +506,21 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(view.queryByLabelText("Meeting room start time")).toBeNull();
-        expect(getAdvertisedPrice).toHaveBeenCalledWith({
-          locale: "en-US",
-          reservation: {
-            kind: "meeting-room",
-            details: {
-              kind: "meeting-room",
-              duration: { unit: "day", amount: 1 },
-              reservationDate: "2099-07-30",
+        expect(getAdvertisedPrices).toHaveBeenCalledWith(
+          expect.arrayContaining([
+            {
+              locale: "en-US",
+              reservation: {
+                kind: "meeting-room",
+                details: {
+                  kind: "meeting-room",
+                  duration: { unit: "day", amount: 1 },
+                  reservationDate: "2099-07-30",
+                },
+              },
             },
-          },
-        });
+          ])
+        );
       });
       fireEvent.click(
         view.container.querySelector(
@@ -585,30 +615,34 @@ describe("MeetingRoomReservationForm", () => {
       renderForm({ initialReservation: restoredHourlyReservation });
 
       await waitFor(() => {
-        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+        expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
       });
-      expect(getAdvertisedPrice).toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            duration: { unit: "day", amount: 1 },
-            reservationDate: "2099-07-30",
+      expect(getAdvertisedPrices).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "day", amount: 1 },
+                reservationDate: "2099-07-30",
+              },
+            },
           },
-        },
-      });
-      expect(getAdvertisedPrice).toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            duration: { unit: "hour", amount: 1 },
-            reservationDate: "2099-07-30",
+          {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "hour", amount: 1 },
+                reservationDate: "2099-07-30",
+              },
+            },
           },
-        },
-      });
+        ])
+      );
     } finally {
       Temporal.Now.instant = originalNow;
     }
@@ -632,30 +666,34 @@ describe("MeetingRoomReservationForm", () => {
       renderForm({ initialReservation: restoredHourlyReservation });
 
       await waitFor(() => {
-        expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+        expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
       });
-      expect(getAdvertisedPrice).toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            duration: { unit: "hour", amount: 4 },
-            reservationDate: "2099-07-30",
+      expect(getAdvertisedPrices).toHaveBeenCalledWith(
+        expect.arrayContaining([
+          {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "hour", amount: 4 },
+                reservationDate: "2099-07-30",
+              },
+            },
           },
-        },
-      });
-      expect(getAdvertisedPrice).toHaveBeenCalledWith({
-        locale: "en-US",
-        reservation: {
-          kind: "meeting-room",
-          details: {
-            kind: "meeting-room",
-            duration: { unit: "hour", amount: 1 },
-            reservationDate: "2099-07-30",
+          {
+            locale: "en-US",
+            reservation: {
+              kind: "meeting-room",
+              details: {
+                kind: "meeting-room",
+                duration: { unit: "hour", amount: 1 },
+                reservationDate: "2099-07-30",
+              },
+            },
           },
-        },
-      });
+        ])
+      );
     } finally {
       Temporal.Now.instant = originalNow;
     }
@@ -710,6 +748,33 @@ describe("MeetingRoomReservationForm", () => {
     }
   });
 
+  test("collapses rapid interval edits into one availability request", async () => {
+    globalThis.fetch = mock(() =>
+      Promise.resolve(jsonResponse(availabilityResponse))
+    ) as typeof fetch;
+
+    const view = renderForm();
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(1));
+
+    fireEvent.input(
+      view.container.querySelector(
+        'input[aria-label="Meeting room start time"]'
+      ) as HTMLInputElement,
+      { target: { value: "11:00" } }
+    );
+    fireEvent.click(
+      view.container.querySelector(
+        'input[type="radio"][value="hour:4"]'
+      ) as HTMLInputElement
+    );
+
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    expect(String(globalThis.fetch.mock.calls[1]?.[0])).toContain(
+      "startsAt=2099-07-30T09%3A00%3A00Z&endsAt=2099-07-30T13%3A00%3A00Z"
+    );
+  });
+
   test("renders the selected advertised discount without adding a price card", async () => {
     const discountedQuote = {
       ...advertisedPriceResponse.quote,
@@ -735,14 +800,14 @@ describe("MeetingRoomReservationForm", () => {
         ],
       },
     };
-    getAdvertisedPrice.mockImplementation(() =>
-      Promise.resolve({
-        data: {
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, () => ({
           ...advertisedPriceResponse,
           quote: discountedQuote,
           summary: getMeetingRoomCheckoutSummary(discountedQuote),
-        },
-      })
+        }))
+      )
     );
     globalThis.fetch = mock(() =>
       Promise.resolve(jsonResponse(availabilityResponse))
@@ -773,13 +838,15 @@ describe("MeetingRoomReservationForm", () => {
   });
 
   test("advertises a sale on every duration before it is selected", async () => {
-    getAdvertisedPrice.mockImplementation((input) => {
-      const duration = input.reservation.details.duration;
-
-      return Promise.resolve({
-        data: getDiscountedAdvertisedPriceResponse(duration),
-      });
-    });
+    getAdvertisedPrices.mockImplementation((requests) =>
+      Promise.resolve(
+        advertisedPricesResult(requests, (request) =>
+          getDiscountedAdvertisedPriceResponse(
+            request.reservation.details.duration
+          )
+        )
+      )
+    );
     globalThis.fetch = mock(() =>
       Promise.resolve(jsonResponse(availabilityResponse))
     ) as typeof fetch;
@@ -787,8 +854,9 @@ describe("MeetingRoomReservationForm", () => {
     const view = renderForm();
 
     await waitFor(() => {
-      expect(getAdvertisedPrice).toHaveBeenCalledTimes(3);
+      expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
     });
+    expect(getAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(3);
     for (const { duration } of workspaceMeetingRoomCatalog) {
       const durationKey = getMeetingRoomReservationDurationKey(duration);
       expect(
@@ -821,10 +889,10 @@ describe("MeetingRoomReservationForm", () => {
 
   test("keeps checkout disabled until advertised pricing can be retried", async () => {
     let pricingAvailable = false;
-    getAdvertisedPrice.mockImplementation(() =>
+    getAdvertisedPrices.mockImplementation((requests) =>
       Promise.resolve(
         pricingAvailable
-          ? { data: advertisedPriceResponse }
+          ? advertisedPricesResult(requests)
           : { serverError: "unavailable" }
       )
     );
@@ -836,6 +904,7 @@ describe("MeetingRoomReservationForm", () => {
     expect(
       (await view.findByRole("alert", {}, { timeout: 3000 })).textContent
     ).toMatch(/current price could not be loaded/i);
+    expect(getAdvertisedPrices).toHaveBeenCalledTimes(4);
     expect(
       view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
     ).toBe(true);
@@ -847,6 +916,7 @@ describe("MeetingRoomReservationForm", () => {
         view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
       ).toBe(false);
     });
+    expect(getAdvertisedPrices).toHaveBeenCalledTimes(5);
   });
 
   test("accepts a pricing-changed redirect and reports transport failures", async () => {

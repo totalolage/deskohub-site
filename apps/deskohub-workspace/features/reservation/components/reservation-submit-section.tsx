@@ -31,6 +31,10 @@ export function ReservationSubmitSection({
     <div className="space-y-3 pt-1">
       <Button
         className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+        data-reservation-availability-loading={isAvailabilityLoading}
+        data-reservation-price-error={priceError}
+        data-reservation-price-loading={isPriceLoading}
+        data-reservation-unavailable={Boolean(unavailableMessage)}
         disabled={disabled}
         id="reservation-submit"
         type="submit"
@@ -67,6 +71,7 @@ export function ReservationSubmitSection({
           <Button
             className="h-9 rounded-full px-4"
             disabled={retryingPrice}
+            id="reservation-advertised-price-retry"
             onClick={onRetryPrice}
             type="button"
             variant="secondary"

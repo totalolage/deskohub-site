@@ -48,6 +48,12 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Validate Workspace E2E allocation bundle
+        run: |
+          bun --cwd apps/deskohub-workspace e2e:coordination:build-action
+          git diff --exit-code -- \
+            .github/actions/workspace-e2e-allocation/index.mjs
+
       - run: bun turbo typecheck
 
       - run: bun turbo test --filter=./apps/deskohub-workspace

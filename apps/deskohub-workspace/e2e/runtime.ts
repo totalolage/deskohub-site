@@ -151,6 +151,24 @@ export const addRedaction = (value: string | undefined, force = false) => {
   );
 };
 
+export const addDatabaseUrlRedactions = (value: string | undefined) => {
+  addRedaction(value);
+  if (!value) return;
+
+  const url = parseUrl(value);
+  if (!url) return;
+  [
+    url.host,
+    url.hostname,
+    url.pathname,
+    url.pathname.slice(1),
+    url.username,
+    url.password,
+  ].forEach((part) => {
+    addRedaction(part, true);
+  });
+};
+
 export const redact = (text: string) => {
   let output = text;
   for (const secret of redactions)

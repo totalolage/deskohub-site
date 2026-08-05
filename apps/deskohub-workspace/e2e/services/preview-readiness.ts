@@ -2,10 +2,7 @@ import { Context, Effect, Layer } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
-import {
-  assertPreviewEndpointReady,
-  assertPreviewJpegReady,
-} from "../preview-readiness";
+import { assertPreviewEndpointsReady } from "../preview-readiness";
 
 interface IWorkspaceE2EPreviewReadinessService {
   readonly assertEndpoints: (
@@ -23,14 +20,9 @@ export class WorkspaceE2EPreviewReadinessService extends Context.Service<
       const httpClient = yield* HttpClient.HttpClient;
       return {
         assertEndpoints: (config) =>
-          Effect.gen(function* () {
-            yield* assertPreviewEndpointReady(config, "/api/webhooks/nexi");
-            yield* assertPreviewEndpointReady(config, "/api/webhooks/resend");
-            yield* assertPreviewJpegReady(
-              config,
-              "/workspace-location-map.jpeg"
-            );
-          }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
+          assertPreviewEndpointsReady(config).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient)
+          ),
       };
     })
   );

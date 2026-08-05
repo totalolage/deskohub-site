@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
-import { Effect, Fiber } from "effect";
-import { tryWorkspaceE2EPromise } from "./errors";
+import { Cause, Effect, Exit, Fiber } from "effect";
+import {
+  isWorkspaceE2ETimeout,
+  tryWorkspaceE2EPromise,
+  withWorkspaceE2EDiagnosticCode,
+  workspaceE2EError,
+  workspaceE2ETimeoutError,
+} from "./errors";
 
 test("aborts an in-flight promise when its fiber is interrupted", async () => {
   let signal: AbortSignal | undefined;
@@ -19,4 +25,41 @@ test("aborts an in-flight promise when its fiber is interrupted", async () => {
   );
 
   expect(signal?.aborted).toBe(true);
+});
+
+test("adds a fixed diagnostic code without changing timeout classification", async () => {
+  const original = workspaceE2ETimeoutError("checkout state unavailable", {
+    operation: "wait for Postgres checkout state",
+  });
+  const exit = await Effect.runPromiseExit(
+    Effect.fail(original).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  const error = Cause.squash(exit.cause);
+  expect(error).toMatchObject({
+    diagnosticCode: "postgres_checkout_row_convergence_failed",
+    message: original.message,
+    operation: original.operation,
+    reason: "timeout",
+  });
+  expect(isWorkspaceE2ETimeout(error)).toBe(true);
+});
+
+test("keeps a more specific existing diagnostic code", async () => {
+  const original = workspaceE2EError("webhook failed", {
+    diagnosticCode: "nexi_webhook_verification_failed",
+  });
+  const exit = await Effect.runPromiseExit(
+    Effect.fail(original).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
+    )
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isSuccess(exit)) return;
+  expect(Cause.squash(exit.cause)).toBe(original);
 });

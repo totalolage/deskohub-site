@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { makeE2EEnvironment } from "./e2e-env";
+import { makeE2EEnvironment, makeWorkspaceE2EEnvironment } from "./e2e-env";
 import {
   makeTestE2EEnvironment,
   validE2ERuntimeEnvironment,
@@ -12,6 +12,7 @@ describe("Workspace E2E environment", () => {
       GITHUB_RUN_ID: "12345",
       TARGET_SHA: "a".repeat(40),
       WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
+      WORKSPACE_E2E_ALLOCATION_SHARD: "2",
       WORKSPACE_E2E_POSTHOG_HOST: "https://us.i.posthog.com",
       WORKSPACE_E2E_PR_NUMBER: "127",
     });
@@ -20,6 +21,7 @@ describe("Workspace E2E environment", () => {
     expect(environment.GITHUB_RUN_ID).toBe("12345");
     expect(environment.TARGET_SHA).toBe("a".repeat(40));
     expect(environment.WORKSPACE_E2E_EXECUTION_CONTEXT).toBe("ci");
+    expect(environment.WORKSPACE_E2E_ALLOCATION_SHARD).toBe(2);
     expect(environment.WORKSPACE_E2E_POSTHOG_HOST).toBe(
       "https://us.i.posthog.com"
     );
@@ -58,9 +60,47 @@ describe("Workspace E2E environment", () => {
     );
   });
 
+  test("requires the narrow provider coordination database when rollout is enabled", () => {
+    expect(() =>
+      makeWorkspaceE2EEnvironment({
+        ...validE2ERuntimeEnvironment,
+        WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true",
+        WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
+      })
+    ).toThrow("Invalid workspace E2E environment variables.");
+  });
+
+  test("does not expose the provider permit database to standalone diagnostics", () => {
+    expect(
+      makeE2EEnvironment({
+        ...validE2ERuntimeEnvironment,
+        WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
+      }).WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+    ).toBeUndefined();
+  });
+
+  test("supports the globally locked default-branch workflow during rollout", () => {
+    const environment = makeWorkspaceE2EEnvironment({
+      ...validE2ERuntimeEnvironment,
+      WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
+      WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: undefined,
+    });
+
+    expect(
+      environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+    ).toBeUndefined();
+  });
+
   test.each([
     { TARGET_SHA: "not-a-sha" },
     { WORKSPACE_E2E_EXECUTION_CONTEXT: "scheduled" },
+    { WORKSPACE_E2E_ALLOCATION_SHARD: "4" },
+    { WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "false" },
+    { WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: "https://example.test" },
+    {
+      WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
+        "postgresql://permit:test@ep-coordinator-pooler.eu.neon.tech/neondb",
+    },
     { WORKSPACE_E2E_POSTHOG_HOST: "not-a-url" },
     { WORKSPACE_E2E_PR_NUMBER: "0" },
   ])("rejects invalid E2E configuration", (runtimeEnvironment) => {

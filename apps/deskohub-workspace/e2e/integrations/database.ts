@@ -14,7 +14,12 @@ import {
   sql,
 } from "drizzle-orm";
 import { Effect } from "effect";
-import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import {
+  HttpClient,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from "effect/unstable/http";
+import type { DatabaseClient } from "@/db/database-client";
 import {
   discountApplications,
   discountCodeRedemptions,
@@ -23,12 +28,14 @@ import {
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
-import type { DatabaseClient } from "@/db/database-client";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
+  isNexiWebhookDiagnosticCode,
   toWorkspaceE2EError,
   tryWorkspaceE2ESync,
-  type WorkspaceE2EError,
+  type WorkspaceE2EDiagnosticCode,
+  WorkspaceE2EError,
+  withWorkspaceE2EDiagnosticCode,
   workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
@@ -40,42 +47,110 @@ import type {
   PaymentTerminalScenario,
 } from "../types";
 import { makeUrl } from "../urls";
+import { E2EDatabase } from "./database.service";
 import {
   runDatabaseOperation,
   runRetrySafeDatabaseOperation,
 } from "./database-operation";
-import { E2EDatabase } from "./database.service";
 
-export const waitForWebhookReplayRow = (
-  config: DatasourceConfig,
+export const requireProviderSessionRowAfterRedirect = (
   orderId: string,
-  onRow?: (row: CheckoutRow) => void
-): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
+  options: {
+    readonly onRow?: (row: CheckoutRow) => void;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<ProviderSessionRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    return yield* pollUntil(
+    return yield* waitForProviderSessionRowAfterRedirect(
       readCheckoutRowFromDatabase(db, orderId).pipe(
-        Effect.tap((row) =>
-          row ? Effect.sync(() => onRow?.(row)) : Effect.void
-        ),
-        Effect.map((row) =>
-          row && isWebhookReplayReady(row) ? row : undefined
+        withWorkspaceE2EDiagnosticCode(
+          "provider_session_row_read_failed_after_redirect"
         )
       ),
       {
+        ...options,
         intervalMs: workspaceE2EPollIntervalMs.datasource,
-        label: `webhook replay checkout row for ${orderId}`,
-        timeoutMs: config.timeouts.datasource,
       }
     );
   });
 
-const isWebhookReplayReady = (row: CheckoutRow) =>
-  !!row.provider_order_id &&
-  !!row.security_token &&
-  !!row.amount_value &&
-  !!row.currency &&
-  !!row.payment_attempt_id;
+export const waitForProviderSessionRowAfterRedirect = (
+  readRow: Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError>,
+  options: {
+    readonly intervalMs: number;
+    readonly onRow?: (row: CheckoutRow) => void;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<ProviderSessionRow, WorkspaceE2EError> => {
+  let lastRow: CheckoutRow | undefined;
+  return pollUntil(
+    readRow.pipe(
+      Effect.tap((row) =>
+        row
+          ? Effect.sync(() => {
+              lastRow = row;
+              options.onRow?.(row);
+            })
+          : Effect.void
+      ),
+      Effect.map((row) => (isProviderSessionRow(row) ? row : undefined))
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "provider session row after hosted redirect",
+      timeoutMs: options.timeoutMs,
+    }
+  ).pipe(
+    Effect.mapError((error) =>
+      error.diagnosticCode
+        ? error
+        : new WorkspaceE2EError({
+            cause: error,
+            diagnosticCode:
+              getProviderSessionRowDiagnosticCode(lastRow) ??
+              "provider_session_reservation_missing_after_redirect",
+            message:
+              "Provider session row did not satisfy the hosted redirect persistence invariant.",
+            operation: "read provider session row after hosted redirect",
+            reason: error.reason,
+          })
+    )
+  );
+};
+
+export const getProviderSessionRowDiagnosticCode = (
+  row: CheckoutRow | undefined
+): WorkspaceE2EDiagnosticCode | undefined => {
+  if (!row) return "provider_session_reservation_missing_after_redirect";
+  if (!row.payment_attempt_id) {
+    return "provider_session_active_attempt_missing_after_redirect";
+  }
+  if (
+    !row.provider_order_id ||
+    !row.security_token ||
+    row.amount_value === null ||
+    !row.currency ||
+    !row.provider_redirect_url
+  ) {
+    return "provider_session_fields_missing_after_redirect";
+  }
+  return undefined;
+};
+
+type ProviderSessionRow = CheckoutRow & {
+  readonly amount_value: number;
+  readonly currency: string;
+  readonly payment_attempt_id: string;
+  readonly provider_order_id: string;
+  readonly provider_redirect_url: string;
+  readonly security_token: string;
+};
+
+const isProviderSessionRow = (
+  row: CheckoutRow | undefined
+): row is ProviderSessionRow =>
+  row !== undefined && getProviderSessionRowDiagnosticCode(row) === undefined;
 
 export const replayNexiWebhook = (
   config: WorkspaceE2EConfig,
@@ -118,17 +193,31 @@ export const replayNexiWebhook = (
         toWorkspaceE2EError("replay Nexi webhook", cause)
       )
     );
-    yield* Effect.succeed(response).pipe(
-      Effect.filterOrFail(
-        ({ status }) => status >= 200 && status < 300,
-        ({ status }) =>
-          workspaceE2EError(`Nexi webhook replay failed with ${status}`, {
-            operation: "replay Nexi webhook",
-          })
-      )
-    );
+    if (response.status < 200 || response.status >= 300) {
+      const diagnosticCode = yield* readNexiWebhookDiagnosticCode(response);
+      return yield* workspaceE2EError(
+        `Nexi webhook replay failed with ${response.status}`,
+        {
+          ...(diagnosticCode ? { diagnosticCode } : {}),
+          operation: "replay Nexi webhook",
+        }
+      );
+    }
     log("Nexi webhook replay accepted");
   });
+
+const readNexiWebhookDiagnosticCode = (
+  response: HttpClientResponse.HttpClientResponse
+) =>
+  response.json.pipe(
+    Effect.map((body) => {
+      if (!body || typeof body !== "object" || !("code" in body)) {
+        return undefined;
+      }
+      return isNexiWebhookDiagnosticCode(body.code) ? body.code : undefined;
+    }),
+    Effect.catch(() => Effect.succeed(undefined))
+  );
 
 const previewWebhookHeaders = (config: WorkspaceE2EConfig) => ({
   "content-type": "application/json",
@@ -159,16 +248,26 @@ export const validatePostgres = (
         label: `Postgres checkout rows for ${orderId}`,
         timeoutMs: config.timeouts.datasource,
       }
+    ).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_convergence_failed")
     );
 
-    yield* assertPostgresRow(row, data, config);
-    yield* assertLegalEvidence(db, orderId, data.locale);
+    yield* assertPostgresRow(row, data, config).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_checkout_row_assertion_failed")
+    );
+    yield* assertLegalEvidence(db, orderId, data.locale).pipe(
+      withWorkspaceE2EDiagnosticCode(
+        "postgres_legal_evidence_validation_failed"
+      )
+    );
     yield* assertNoLocalPii(
       db,
       orderId,
       row.payment_attempt_id,
       row.webhook_id,
       data
+    ).pipe(
+      withWorkspaceE2EDiagnosticCode("postgres_local_pii_validation_failed")
     );
     log("Postgres checkout tables validated");
     return row;
@@ -194,7 +293,9 @@ export const validateDiscountApplications = (
         .select({
           sequence: discountApplications.sequence,
           label: discountApplications.label,
-          adjustment: sql<DiscountApplicationRow["adjustment"]>`${discountApplications.adjustment}`,
+          adjustment: sql<
+            DiscountApplicationRow["adjustment"]
+          >`${discountApplications.adjustment}`,
           subtotal_before_value: discountApplications.subtotalBeforeValue,
           subtotal_before_exponent: discountApplications.subtotalBeforeExponent,
           subtotal_before_currency: discountApplications.subtotalBeforeCurrency,
@@ -212,10 +313,7 @@ export const validateDiscountApplications = (
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
-          eq(
-            discountCodeRedemptions.applicationId,
-            discountApplications.id
-          )
+          eq(discountCodeRedemptions.applicationId, discountApplications.id)
         )
         .where(eq(discountApplications.workspaceReservationId, orderId))
         .orderBy(asc(discountApplications.sequence))
@@ -347,9 +445,7 @@ export const assertNoDiscountPaymentState = (
             db
               .select({ count: count() })
               .from(discountApplications)
-              .where(
-                eq(discountApplications.workspaceReservationId, orderId)
-              ),
+              .where(eq(discountApplications.workspaceReservationId, orderId)),
             db
               .select({ count: count() })
               .from(discountCodeRedemptions)
@@ -360,9 +456,7 @@ export const assertNoDiscountPaymentState = (
                   discountCodeRedemptions.applicationId
                 )
               )
-              .where(
-                eq(discountApplications.workspaceReservationId, orderId)
-              ),
+              .where(eq(discountApplications.workspaceReservationId, orderId)),
           ],
           { concurrency: "inherit" }
         )
@@ -442,8 +536,7 @@ const checkoutRowSelection = {
   reservation_hold_expires_at: workspaceReservations.reservationHoldExpiresAt,
   reservation_confirmed_at: workspaceReservations.reservationConfirmedAt,
   reservation_cancelled_at: workspaceReservations.reservationCancelledAt,
-  reservation_hold_expired_at:
-    workspaceReservations.reservationHoldExpiredAt,
+  reservation_hold_expired_at: workspaceReservations.reservationHoldExpiredAt,
   paid_at: workspaceReservations.paidAt,
   fulfilled_at: workspaceReservations.fulfilledAt,
   fulfillment_failed_at: workspaceReservations.fulfillmentFailedAt,
@@ -555,25 +648,17 @@ export const readCleanupCheckoutRows = (
 
 export const markPaymentTerminalForE2E = (
   orderId: string,
+  paymentAttemptId: string,
   scenario: PaymentTerminalScenario
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const current = yield* readCheckoutRowFromDatabase(db, orderId);
-      const paymentAttemptId = yield* tryWorkspaceE2ESync(
-        "assert payment terminal checkout row",
-        () => {
-          assert(current?.payment_attempt_id, "payment attempt missing");
-          return current.payment_attempt_id;
-        }
-      );
-
-      const failureCode = `workspace_e2e_nexi_${scenario.state}`;
-      const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
+    const failureCode = `workspace_e2e_nexi_${scenario.state}`;
+    const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
     const now = Temporal.Now.instant();
 
     yield* runDatabaseOperation(
-        "mark payment attempt terminal state",
+      "mark payment attempt terminal state",
       db.transaction((tx) =>
         Effect.gen(function* () {
           yield* tx
@@ -638,7 +723,7 @@ export const markFulfillmentFailedForE2E = (
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     const rows = yield* runDatabaseOperation(
-        "mark checkout fulfillment failed",
+      "mark checkout fulfillment failed",
       db
         .update(workspaceReservations)
         .set({
@@ -941,10 +1026,7 @@ const assertInternalDiscountState = (
         .from(discountApplications)
         .leftJoin(
           discountCodeRedemptions,
-          eq(
-            discountCodeRedemptions.applicationId,
-            discountApplications.id
-          )
+          eq(discountCodeRedemptions.applicationId, discountApplications.id)
         )
         .where(
           eq(

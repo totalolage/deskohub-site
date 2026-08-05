@@ -1,7 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposReservationInterval,
+  DotyposService,
+} from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
@@ -105,7 +108,8 @@ const assignTableId = (
   reservation: WorkspaceTableAssignmentReservation,
   tables: readonly Table[],
   dotyposReservations: readonly Reservation[] = [],
-  expiredHoldDotyposReservationIds: readonly string[] = []
+  expiredHoldDotyposReservationIds: readonly string[] = [],
+  onReservationInterval?: (interval: DotyposReservationInterval) => void
 ) => {
   const dotyposService: DotyposAssignmentTestService = {
     createReservation: mock(() => Effect.die("createReservation not mocked")),
@@ -119,6 +123,10 @@ const assignTableId = (
       Effect.die("getCustomerDiscount not mocked")
     ),
     getTables: mock(() => Effect.succeed([...tables])),
+    listActiveReservationsOverlapping: mock((interval) => {
+      onReservationInterval?.(interval);
+      return Effect.succeed([...dotyposReservations]);
+    }),
     listReservations: mock(() => Effect.succeed([...dotyposReservations])),
     getProducts: mock(() => Effect.die("getProducts not mocked")),
     getCategories: mock(() => Effect.die("getCategories not mocked")),
@@ -147,6 +155,55 @@ const assignTableId = (
 };
 
 describe("WorkspaceTableAssignmentService", () => {
+  test("loads only reservations overlapping the exact meeting-room interval", async () => {
+    let interval: DotyposReservationInterval | undefined;
+
+    await assignTableId(
+      makeMeetingRoomReservation({
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T11:00:00Z",
+      }),
+      [
+        makeTable({
+          id: "meeting-room",
+          name: "Meeting room",
+          tags: ["reservation:meeting-room"],
+        }),
+      ],
+      [],
+      [],
+      (value) => {
+        interval = value;
+      }
+    );
+
+    expect(interval?.startDate.toISOString()).toBe("2099-06-10T07:00:00.000Z");
+    expect(interval?.endDate.toISOString()).toBe("2099-06-10T11:00:00.000Z");
+  });
+
+  test("uses Prague day bounds for cowork inventory across DST", async () => {
+    let interval: DotyposReservationInterval | undefined;
+
+    await assignTableId(
+      makeReservation({ date: "2026-10-25" }),
+      [
+        makeTable({
+          id: "basic",
+          name: "Basic",
+          tags: ["tier:basic"],
+        }),
+      ],
+      [],
+      [],
+      (value) => {
+        interval = value;
+      }
+    );
+
+    expect(interval?.startDate.toISOString()).toBe("2026-10-24T22:00:00.000Z");
+    expect(interval?.endDate.toISOString()).toBe("2026-10-25T23:00:00.000Z");
+  });
+
   test("matches Profi 2x27 QHD by tier and monitor tags", async () => {
     await expect(
       assignTableId(

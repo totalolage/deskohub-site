@@ -1,5 +1,10 @@
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
-import type { Customer, DiscountGroup } from "@deskohub/dotypos/generated";
+import type {
+  Customer,
+  DiscountGroup,
+  Reservation,
+  Table,
+} from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
@@ -11,7 +16,11 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
-import { workspaceE2EPollIntervalMs } from "../timeouts";
+import {
+  reconcileStaleWorkspaceE2EReservations,
+  type WorkspaceE2EStaleReservationReport,
+} from "../stale-reservations";
+import { workspaceE2EPollIntervalMs, workspaceE2ETimeouts } from "../timeouts";
 import type { CheckoutData, CheckoutRow } from "../types";
 
 export interface E2EDotyposDiscountGroup {
@@ -251,6 +260,88 @@ export const cancelDotyposReservation = (
     )
   );
 
+export const waitForCancelledDotyposReservations = (
+  config: DatasourceConfig,
+  dotyposReservationIds: readonly string[],
+  interval: { readonly endDate: Date; readonly startDate: Date }
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    yield* waitForDotyposCancellationConvergence(
+      dotypos.listActiveReservationsOverlapping(interval),
+      dotyposReservationIds,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: config.timeouts.datasource,
+      }
+    );
+    log("Dotypos reservation cancellations converged");
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("wait for Dotypos cancellation convergence", cause)
+    )
+  );
+
+export const waitForDotyposCancellationConvergence = <E, R>(
+  readReservations: Effect.Effect<readonly Reservation[], E, R>,
+  dotyposReservationIds: readonly string[],
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<void, E | WorkspaceE2EError, R> => {
+  const reservationIds = new Set(dotyposReservationIds);
+
+  return pollUntil(
+    readReservations.pipe(
+      Effect.map((reservations) =>
+        reservations.some(
+          (reservation) =>
+            reservation.id &&
+            reservationIds.has(reservation.id) &&
+            reservation.status !== "CANCELLED"
+        )
+          ? undefined
+          : true
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "cancelled Dotypos reservations to leave active inventory",
+      timeoutMs: options.timeoutMs,
+    }
+  ).pipe(Effect.asVoid);
+};
+
+export const reconcileStaleDotyposReservations = (
+  config: DatasourceConfig,
+  interval: { readonly endDate: Date; readonly startDate: Date },
+  apply: boolean
+): Effect.Effect<WorkspaceE2EStaleReservationReport, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* reconcileStaleWorkspaceE2EReservations(interval, apply, {
+      cancelReservation: dotypos.cancelReservation,
+      listActiveReservations: dotypos.listActiveReservationsOverlapping,
+      loadReservation: dotypos.getReservation,
+      waitForCancellationConvergence: (reservationIds) =>
+        waitForDotyposCancellationConvergence(
+          dotypos.listActiveReservationsOverlapping(interval),
+          reservationIds,
+          {
+            intervalMs: workspaceE2EPollIntervalMs.datasource,
+            timeoutMs: config.timeouts.datasource,
+          }
+        ),
+    });
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("reconcile stale Dotypos reservations", cause)
+    )
+  );
+
 export const readDotyposReservationStatus = (
   config: DatasourceConfig,
   dotyposReservationId: string
@@ -289,6 +380,14 @@ export const prepareDotyposCustomerDiscount = (
       }
     );
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    yield* waitForDotyposCustomerDiscountGroup(
+      dotypos.getCustomer(customerId),
+      discountGroupId,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      }
+    );
     log("Dotypos customer discount fixture prepared");
   }).pipe(
     Effect.provide(getDotyposLayer(config)),
@@ -305,11 +404,72 @@ export const changeDotyposCustomerDiscount = (
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
+    yield* waitForDotyposCustomerDiscountGroup(
+      dotypos.getCustomer(customerId),
+      discountGroupId,
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        timeoutMs: workspaceE2ETimeouts.datasource,
+      }
+    );
     log("Dotypos customer discount fixture changed");
   }).pipe(
     Effect.provide(getDotyposLayer(config)),
     Effect.mapError((cause) =>
       toWorkspaceE2EError("change Dotypos customer discount", cause)
+    )
+  );
+
+export const waitForDotyposCustomerDiscountGroup = <
+  A extends { readonly _discountGroupId?: string | null },
+  E,
+  R,
+>(
+  readCustomer: Effect.Effect<A, E, R>,
+  discountGroupId: string | null,
+  options: {
+    readonly intervalMs: number;
+    readonly timeoutMs: number;
+  }
+): Effect.Effect<A, E | WorkspaceE2EError, R> =>
+  pollUntil(
+    readCustomer.pipe(
+      Effect.map((customer) =>
+        (customer._discountGroupId?.trim() || null) === discountGroupId
+          ? customer
+          : undefined
+      )
+    ),
+    {
+      intervalMs: options.intervalMs,
+      label: "Dotypos customer discount-group change",
+      timeoutMs: options.timeoutMs,
+    }
+  );
+
+export const loadDotyposCapacityInventory = (
+  config: DatasourceConfig,
+  interval: { readonly endDate: Date; readonly startDate: Date }
+): Effect.Effect<
+  {
+    readonly reservations: readonly Reservation[];
+    readonly tables: readonly Table[];
+  },
+  WorkspaceE2EError
+> =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* Effect.all(
+      {
+        reservations: dotypos.listActiveReservationsOverlapping(interval),
+        tables: dotypos.getTables(),
+      },
+      { concurrency: "unbounded" }
+    );
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("load aggregate Dotypos capacity inventory", cause)
     )
   );
 

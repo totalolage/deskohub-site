@@ -8,8 +8,8 @@ import {
 } from "@/features/checkout/advertised-price";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
 
-export const loadInitialAdvertisedPrices = Effect.fn(
-  "reservationPage.loadInitialAdvertisedPrices"
+export const loadAdvertisedPrices = Effect.fn(
+  "reservation.loadAdvertisedPrices"
 )(function* (requests: ReadonlyArray<AdvertisedPriceRequest>) {
   const uniqueRequests = requests.filter(
     (request, index) =>
@@ -21,8 +21,8 @@ export const loadInitialAdvertisedPrices = Effect.fn(
     uniqueRequests.map((request) =>
       buildAdvertisedPrice(request).pipe(
         Effect.tapError(() =>
-          Effect.logError("Initial advertised price load failed", {
-            reservation: request.reservation,
+          Effect.logError("Advertised price load failed", {
+            reservationKind: request.reservation.kind,
           })
         ),
         Effect.option,

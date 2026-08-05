@@ -28,7 +28,9 @@ The normal repository-dispatch trigger works only after the workflow exists on
 the default branch. Before then, dispatch `.github/workflows/workspace-e2e.yml`
 manually with the exact 40-character SHA, immutable HTTPS deployment URL, and
 internal PR head ref. The workflow applies the same open, internal, non-draft,
-non-Dependabot PR guards to manual runs.
+non-Dependabot PR guards to manual runs and confirms through GitHub deployment
+metadata that the supplied origin is a successful Workspace deployment for that
+exact SHA before the test job can allocate or mutate shared state.
 
 Never scrape a Vercel PR comment or use a branch URL. The E2E target must be the
 immutable `.vercel.app` deployment origin emitted for the exact SHA.
@@ -74,6 +76,237 @@ Workspace appends the protection-bypass query parameter to preview Nexi result
 and notification URLs when configured. Browser navigation establishes the
 bypass cookie, readiness checks use the bypass header, and direct Nexi webhook
 replays send the `x-vercel-protection-bypass` header.
+
+## Parallel execution contract and rollout state
+
+The initial timing baseline is exact-SHA run
+[`30841881638`](https://github.com/totalolage/deskohub-site/actions/runs/30841881638)
+at `549e3f34696d3b1ae2c46da139c89f8c2902b475`. `Run checkout E2E` took
+`4m50.783s`; 30 independent cases overlapped for about `2.6m`, the serialized
+Calendar pricing-change case added about `1.3m`, and preparation, readiness,
+finalization, and cleanup accounted for the remainder. The full job took
+`5m45s`, about `55s` of which was setup. This is the comparison point for phase
+spans and the workflow timing summary.
+
+The in-run contract is:
+
+- preview readiness requests, read-only availability preparation, discount
+  fixture seeding, cleanup discovery, and independent cancellations overlap;
+- the first case failure signals siblings before its own finalizer, so sibling
+  browser and provider work is interrupted promptly;
+- every case owns its checkout states and cancels captured Dotypos reservations
+  in its finalizer using only a captured reservation ID or an exact order
+  lookup; HAR stop still precedes browser close;
+- suite cleanup reconciles interrupted or incompletely captured states and is
+  the only place allowed to use the broader locale/product/time lookup. It
+  waits for every successfully cancelled reservation to leave Dotypos active
+  inventory before releasing the run's date shard, including reservations
+  already cancelled by case finalizers;
+- Calendar pricing-change scenarios remain one serialized tail until two
+  separate immutable operational events and separate preview-owned definitions
+  have been provisioned for quote-change and payment-change. The regression
+  suite proves distinct event identities and dates do not share transient cache
+  mutations, but that does not replace provisioning the real Preview fixtures
+  and an exact-SHA parallel run.
+
+Customer-discount cases mutate only their unique customer's group assignment;
+they never mutate the selected Dotypos discount-group definition. Nexi order
+and idempotency identities remain unique per checkout. A three-way exact-SHA
+soak produced Nexi error pages in two runs while hosted sessions were
+unbounded. A one-session suite bound then stretched the independent phase to
+5.7--5.9 minutes and caused a case-watchdog failure, so each suite now admits at
+most three hosted-payment sessions from payment submission through the return
+to the checkout status page. Three overlapping suites can hold at most nine
+sessions in aggregate.
+
+Cross-run concurrency has a target of three simultaneous healthy exact-SHA
+runs. Before provider setup begins, an isolated coordinator leases one of three
+static absolute round-robin weekday sequences from the 14-to-90-day candidate
+range. A separate long-lived Neon project named `workspace-e2e-coordination`
+owns the coordination database. It has no Vercel integration and is not an
+application production, development, or preview database.
+
+The database stores one fixed three-shard pool and one request row per
+repository, workflow run, and exact attempt. A generated identity is the true
+FIFO ticket. Each state transition opens a serializable transaction, locks the
+pool row, removes only owners already confirmed terminal, preserves an existing
+assignment for the same owner, and assigns free shards in queue order while
+preferring the PR-derived shard. The partial unique index on pool and allocated
+shard is the collision backstop. Transaction serialization failures are the
+only state-changing operation retried; a checkout is never retried by this
+coordinator.
+
+The owner token contains the repository, workflow run ID, and exact attempt.
+Allocation checks `/actions/runs/{run_id}/attempts/{attempt}` and reclaims an
+owner only when that exact attempt reports `completed`. Missing or failed API
+lookups fail closed and do not free capacity; timestamps are diagnostics, never
+TTL lease authority, because Dotypos does not provide a fencing token.
+Finalization deletes only its own complete owner key, so a delayed finalizer
+cannot release a rerun. A later acquisition reconciles any terminal owner left
+by an interrupted finalizer. A bounded fourth contender waits in FIFO order
+until a shard is released or its preparation deadline expires.
+
+The allocation role can connect, use the coordination schema, read and row-lock
+the fixed pool row, and read/write allocation requests and their identity
+sequence. The pool's `UPDATE` grant is required by PostgreSQL for `SELECT ...
+FOR UPDATE`; the allocator does not change the pool definition. Only its direct
+TLS connection URL is stored as the
+`WORKSPACE_E2E_COORDINATOR_DATABASE_URL` secret in the
+`workspace-checkout-e2e` GitHub environment; the administrator URL and Neon API
+credentials are absent from CI. Allocator jobs require `actions: read`,
+`contents: read`, and status publication only. The authored implementation is
+TypeScript and Effect; the early job executes its committed dependency-free ESM
+bundle, rebuilt with:
+
+```bash
+bun --cwd apps/deskohub-workspace e2e:coordination:build-action
+```
+
+Exact-SHA checkout code receives a different direct URL through the
+`WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL` environment secret. Its dedicated
+SQL-created role has database connectivity only. It has no schema, table,
+sequence, write, DDL, elevated-role membership, or administrative access. The
+workflow secret is constructed from the exact coordination project, primary
+branch, and database, smoke-tested with the advisory lock, and then stored
+without printing it. Do not create
+this role through the Neon Console, CLI, or API because those paths inherit
+`neon_superuser`; create it through a trusted SQL admin session, strip all role
+memberships there, and then run the checked provisioner. The provisioner resets
+object grants and refuses to commit unless the provider permit role has no
+elevated flags or memberships. The allocator URL, administrator URL, and Neon API
+credentials remain unavailable to exact-SHA code.
+The allocator secret is consumed only by the action checked out from the trusted
+default-workflow SHA; it is never passed to exact-SHA checkout code. The
+coordination project's current role quota prevents adding another SQL-created
+allocator without deleting an administrative role, so replacing that trusted
+action identity remains an operational hardening task rather than a prerequisite
+for the narrow exact-SHA permit.
+
+Provision or migrate the dedicated database from a trusted operations session
+with the administrator URL available only to that process:
+
+```bash
+WORKSPACE_E2E_COORDINATOR_ADMIN_DATABASE_URL='…' \
+  bun --cwd apps/deskohub-workspace e2e:coordination:provision
+```
+
+Assign weekday ownership before filtering the deployed availability response so
+changing provider snapshots cannot shift a date between shards. Interleaving
+the fixed candidates also avoids starving one run when unavailable dates cluster
+in a contiguous part of the range. The checked-out runner receives the leased
+one-based shard through `WORKSPACE_E2E_ALLOCATION_SHARD`; its identity fallback
+exists only for rollout compatibility.
+
+Cowork and meeting-room candidates remain validated through the deployed
+availability route. Basic cases deliberately use at most four same-date
+reservations; Plus and every monitor-specific Profi pool use at most one.
+Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
+and from one another. Meeting-room cases use distinct dates within the run's
+shard, including the dates touched by a whole-day reservation.
+
+The job-level `workspace-e2e-dotypos-sandbox` lock was removed after five
+three-way exact-SHA rounds passed on unchanged builds. All 15 accepted runs
+acquired distinct shards, completed cleanup, and released their leases. Checkout
+p50 was 4m15s and p95 was 4m32s; the independent phase ranged from 3.3m to 3.8m.
+Concurrent CI sets `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the
+narrow provider permit URL, and fails closed if the URL or connection is
+missing.
+
+Final unlocked exact-SHA run
+[`31006167472`](https://github.com/totalolage/deskohub-site/actions/runs/31006167472)
+found zero active E2E reservations during pre-run reconciliation, passed every
+aggregate capacity group, ran checkout in 4m40s, and released its shard after
+cleanup. Its independent phase took 3.8m, the remaining Calendar fixture tail
+took 28.3s, and suite cleanup took 366ms. Post-allocation setup was 25s and the
+complete test-job setup path was 41s; the `test-e2e` job took 5m32s. Checkout
+therefore remains below five minutes, while the full-job p95-below-five-minute
+target is not yet demonstrated. The measured setup remainder is too small to
+justify background shell orchestration; use a supported prepared runner image
+if further setup reduction becomes necessary.
+
+The permit serializes only `replay-payment-webhook`, whose production route
+confirms the Dotypos hold and sends the paid-reservation notifications. It
+retains the advisory-lock transaction for a one-second quiet period after each
+success, failure, or interruption before admitting the next suite. Each
+fulfillment sends at most two sequential email API requests, so this bounds the
+sustained shared-team email rate without retrying a webhook or serializing
+hosted payment. Resend documents a per-team, per-second limit with no extra
+burst allowance: <https://resend.com/docs/api-reference/rate-limit>.
+An independent suite-local Effect semaphore bounds the hosted-payment session;
+it does not use the coordination database or serialize unrelated cases.
+
+### Dotypos capacity checklist
+
+Run the read-only aggregate validator only against the dedicated testing cloud
+from an environment that already satisfies the Workspace E2E environment
+contract:
+
+```bash
+bun --cwd apps/deskohub-workspace e2e:capacity
+```
+
+Stale reservation reconciliation is available only through a manual protected
+workflow dispatch. The script boundary is dry-run by default and applies
+cancellations only when every active candidate can be inspected and both the
+`Workspace E2E ` customer-name prefix and the `delivered+…@resend.dev` email
+shape match. The timestamp embedded in that customer name must also be at least
+two hours old, beyond the workflow's 50-minute job timeout, so an active healthy
+run cannot be swept. It reports aggregate counts only, collects every
+detail-read and cancellation result, distinguishes active fresh and stale E2E
+reservations without printing their identities, and waits for cancellation
+convergence.
+Use the workflow input `cleanup_stale_e2e_reservations` only for an intentional
+manual reconciliation. The strict two-hour age fence prevents it from touching
+a healthy 50-minute run; do not request it during a deliberate load soak.
+
+The command uses the generated Dotypos table and reservation contracts, bounds
+the reservation lookup to active overlaps across the whole first and last
+candidate dates, and
+prints no table, reservation, customer, or provider identifiers. It reports
+active-visible and assignable table counts, the sorted seat-count multiset,
+total seats, active reservation totals, peak overlapping seat/table occupancy,
+and remaining capacity for these groups:
+
+- `tier:basic`: at least 16 aggregate seats;
+- `tier:plus`: at least 4 aggregate seats, with 16 currently provisioned;
+- every `tier:profi` monitor-tag combination: at least 4 aggregate seats for
+  each exact tag set; a generic Profi table does not satisfy a specific set;
+- `reservation:meeting-room`: at least four active visible assignable tables,
+  covering three supported runs plus one room of failure/cleanup headroom.
+
+The testing-cloud inventory was operationally provisioned on 2026-08-04 with
+16 Basic seats, 16 Plus seats, four seats for every exact Profi monitor option,
+and four meeting-room tables. Treat these as expected aggregates, not verified
+evidence, until the protected workflow validator confirms that every table is
+active, visible, assignable, and exactly tagged. No provider identifiers belong
+in this document or the validator output.
+
+The cowork budgets cover the supported three runs plus one run of inventory
+headroom. Meeting-room seat counts do not increase concurrency because normal
+assignment requires an empty table; date sharding supplies the primary
+isolation while four rooms cover the three-run contract plus one room of
+failure/cleanup headroom. The repository
+Dotypos contract exposes table reads, not a runner-owned capacity mutation.
+Change testing-table seats or provision rooms operationally, then rerun the
+validator. Never change shared table capacity from the test runner.
+
+The verdict requires both the provisioned totals and enough capacity after peak
+overlapping active reservations for one arriving run plus cowork cleanup
+headroom. It uses peak overlap rather than summing reservations on unrelated
+dates. Meeting-room availability requires at least one table outside the peak
+occupied set because run shards use disjoint dates; exact selected slots are
+still validated through the deployed availability route before cases start.
+
+Before changing the supported-concurrency contract or provider coordination:
+
+1. Confirm the validator passes and investigate any active overlapping
+   reservations using safe aggregate diagnostics only.
+2. Start the supported number of exact-SHA previews simultaneously and repeat
+   the concurrent soak at least five times with the current controls unchanged.
+3. Verify every run passes, cleanup converges to zero active E2E reservations,
+   no allocation shard exhausts, and provider/function p95 does not regress.
+4. Only then raise the supported concurrency or narrow a remaining resource
+   boundary. Lock only the shared resource rather than the whole job.
 
 ## Preview database identity and migration
 
@@ -148,11 +381,32 @@ zero-total checkout, then exercise a second customer or reservation against
 the consumed code. Capacity limits advance from retained active audit history
 on reruns; the suite never deletes application or redemption records.
 
-Every case uses a unique customer and reservation date. Basic and Plus date
-sets are selected independently and made disjoint. The suite runs independent
-cases with uncapped fail-fast Effect concurrency. Direct database assertions
-share one runner-owned pool capped at ten connections. Do not make an edge case
-mutate a fixture consumed by another case.
+Every case uses a unique customer. Dates come from the run's deterministic
+allocation shard. Basic cases may share a date up to the documented capacity
+of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
+another. The suite runs independent case fibers with uncapped fail-fast Effect
+concurrency. Reservation-start steps alone share six runner-owned permits from
+navigation through pay-page arrival. Two exact-SHA runs with unbounded starts
+showed provider-backed availability responses queueing beyond the existing UI
+boundary in different cases. Reducing the boundary from six to four repeated
+the same pre-submit meeting-room readiness failure while leaving fourteen cases
+queued after 4.8 minutes, so four did not improve reliability and could not meet
+the existing case watchdogs. The checked-in limit is therefore six. The narrow
+boundary releases at pay-page arrival, before the separate hosted-payment and
+webhook boundaries; fulfillment, assertions, and cleanup remain parallel. The
+permit pool prioritizes queued starts by the owning case watchdog and keeps equal
+deadlines FIFO, so shorter terminal scenarios cannot be stranded behind longer
+checkout cases when browser diagnostics make them reach the pool later. All
+case fibers still launch immediately and participate in the same fail-fast
+aggregate. After pay-page assertions, payment cases enter the suite's
+interruption-safe hosted-payment session permit. That permit covers payment
+submission, the retry-safe exact-attempt row read, hosted-page interaction, and
+the normal return page; it does not retry any state-creating operation. Direct
+database assertions share one runner-owned pool capped at ten connections.
+Before allowing three concurrent runs, revalidate the aggregate eighteen-start
+ceiling in the required soak and lower the per-run limit if provider p95 or
+throttling regresses. Do not make an edge case mutate a fixture consumed by
+another case.
 
 ### Discount coverage matrix
 
@@ -222,6 +476,32 @@ handler must still fetch authoritative order state from Nexi before applying a
 payment transition. Keep raw payloads, credentials, customer data, and
 connection strings out of logs and artifacts.
 
+Concurrent exact-SHA soaks showed repeated Nexi connection failures when many
+cases from three suites reached that authoritative replay verification at once.
+Two three-way rounds passed with a suite-local Effect semaphore, but the next
+round failed all three runs on synthetic webhook replay: suite-local capacity
+one still allowed aggregate capacity three. The runner therefore admits one
+synthetic `replay-payment-webhook` step globally with a transaction-scoped
+PostgreSQL advisory lock in the coordination database. A suite-local semaphore
+allows only one blocked lock query per process, while the dedicated direct SQL
+pool retains a second connection for interruption cancellation. Transaction
+commit, rollback, interruption, or connection loss releases the lock.
+
+Hosted payment is bounded only within each suite after an exact three-way
+round produced two hosted-provider error pages; genuine webhook delivery,
+fulfillment, and unrelated provider work remain parallel. Provider-verification
+permit wait is included in the step trace duration, the semantic step timeout
+begins after admission, and the case watchdog bounds the complete wait and
+execution. SQL connection and acquisition failures prevent the replay from
+starting and fail the run. The boundary is load control rather than
+provider-side fencing: a coordinator connection loss during an in-flight HTTP
+request can release the lock before commit reports the failure, while Nexi's
+unique order and idempotency identities continue to protect the operation.
+Five successful three-run soaks verified this distributed boundary before the
+global workflow lock was removed. Restore a broad lock only if exact-run
+evidence shows that the allocator and narrow resource controls no longer bound
+the failing provider operation.
+
 ## Verification
 
 Run from the repository root:
@@ -250,25 +530,47 @@ For a real run, record only non-secret evidence:
     its obsolete preview branch without a repository cleanup workflow.
 
 Failure artifacts remain available for seven days. The suite must retain
-fail-fast bounded-concurrency aggregation, scoped browser sessions,
+fail-fast concurrency, scoped browser sessions,
 cancellation propagation, bounded finalizers, case watchdogs, and discrete
 semantic-step timeouts.
 
 ## Suite telemetry
 
 The Bun E2E process exports an OTLP trace to PostHog under its own
-`deskohub-workspace-e2e` service name. One root `e2e.run` span contains an
-`e2e.case` child for every case, and every semantic step is an `e2e.step` child
-of its case. Span names are fixed and low-cardinality; code-owned case and step
-IDs are attributes.
+`deskohub-workspace-e2e` service name. One root `e2e.run` span contains fixed
+`e2e.phase` spans for preview readiness, fixture seeding, cowork/meeting-room
+availability preparation, case construction, the independent and
+shared-fixture phases, per-case finalization, and suite cleanup. It also
+contains an `e2e.case` child for every case, and every semantic step is an
+`e2e.step` child of its case. Span names are fixed and low-cardinality; phase,
+case, and step IDs are code-owned attributes. The allocation shard and shard
+count are bounded numeric attributes; provider identifiers, selected dates,
+and preview URLs are not trace attributes.
+The shared exporter censors SQL-client `server.address` and `db.namespace`
+attributes, while the process redactor registers the permit URL, host, database
+name, user, and password before SQL Layer initialization.
 
 PostHog's native span duration is the authoritative elapsed time. Case and step
 spans also record their configured `e2e.timeout_ms`, which allows actual
 duration to be compared with the watchdog that governed the operation. Terminal
 attributes use only the closed outcomes `passed`, `failed`, `timed_out`, and
 `cancelled`, plus the closed failure kinds `error`, `defect`, and `timeout`.
+When the protected Nexi route returns one of its fixed application error codes,
+the failed step also records that allowlisted value as `e2e.failure.code`.
+Unknown response bodies and arbitrary provider values are discarded rather
+than attached to the span.
 The exact target SHA and GitHub run correlation values are included when
 available.
+
+A reservation-start step's span includes time waiting for one of the six
+runner permits. Its semantic step timeout begins only after admission; the case
+watchdog still bounds the complete queued and active lifetime. This keeps a
+healthy provider operation from losing its full timeout merely because another
+case is using the documented provider-capacity boundary.
+
+Fixture seeding completes before availability preparation because Calendar
+availability resolves the seeded discount definition. Once that transaction
+commits, cowork and meeting-room availability preparation run concurrently.
 
 The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
 `ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:
@@ -321,8 +623,17 @@ timeouts, closed outcomes/failure kinds, and the minimum artifact facts needed
 to explain the failure.
 
 Failures before the E2E process starts—target resolution, dependency
-installation, preview-database resolution, or migration—do not produce suite
-spans. Diagnose those from the responsible GitHub Actions step.
+installation, preview-database resolution, capacity validation, or
+migration—do not produce suite spans. Diagnose those from the responsible
+GitHub Actions step. The workflow adds a setup timing table to its Actions
+summary for Bun setup, repository dependencies, Neon resolution, aggregate
+Dotypos capacity validation, migration, the pinned `agent-browser` CLI, and
+browser/system dependencies. It reports both the post-allocation setup path and
+the complete `test-e2e` job setup path from before the exact-SHA checkout. The
+separate target-resolution job remains visible in native Actions timings. These
+operations remain sequential until a supported prepared runner image or cache
+can overlap them without background shell jobs, shared-install locks, or hidden
+failures.
 
 For scripted inspection, authenticate `posthog-cli` to the EU Workspace
 project with a personal API key granting `tracing:read`. The public project

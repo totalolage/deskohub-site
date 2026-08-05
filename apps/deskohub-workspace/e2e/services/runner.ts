@@ -1,14 +1,19 @@
 import { resolve } from "node:path";
-import { Cause, Context, Effect, Exit, Layer } from "effect";
+import * as PgClient from "@effect/sql-pg/PgClient";
+import { Cause, Context, Effect, Exit, Layer, Redacted } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import type { E2EEnvironment } from "../e2e-env";
+import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
+import { WorkspaceE2EProviderVerificationPermitService } from "../coordination/provider-verification-permit.service";
+import type { WorkspaceE2EEnvironment } from "../e2e-env";
 import {
   toWorkspaceE2EError,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
-import type { CheckoutFlowState } from "../types";
+import { writeWorkspaceE2EFailureAnnotation } from "../github-actions";
 import { E2EDatabase } from "../integrations/database.service";
+import { addDatabaseUrlRedactions } from "../runtime";
+import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
 import {
@@ -52,8 +57,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               sessionPrefix
             );
             const flowStates: CheckoutFlowState[] = [];
-            const datasourceConfig =
-              yield* configService.getDatasourceConfig;
+            const datasourceConfig = yield* configService.getDatasourceConfig;
             yield* configService.assertDatasourceSafety(datasourceConfig);
             yield* configService.assertNexiSandbox(
               datasourceConfig.nexiApiOrigin
@@ -61,9 +65,13 @@ export class WorkspaceE2ERunnerService extends Context.Service<
 
             yield* Effect.gen(function* () {
               const workflow = Effect.gen(function* () {
-                yield* previewReadiness.assertEndpoints(config);
+                yield* telemetry.tracePhase({
+                  effect: previewReadiness.assertEndpoints(config),
+                  phaseId: "preview-readiness",
+                });
 
                 const e2eCases = yield* cases.makeCases({
+                  allocation: runContext.allocation,
                   config,
                   datasourceConfig,
                   flowStates,
@@ -73,6 +81,10 @@ export class WorkspaceE2ERunnerService extends Context.Service<
                 yield* cases.runCases({
                   artifactRoot,
                   cases: e2eCases,
+                  datasourceConfig,
+                  ...(runContext.githubRunId
+                    ? { reportFailure: writeWorkspaceE2EFailureAnnotation }
+                    : {}),
                   run,
                   sessionPrefix,
                   timeouts: config.timeouts,
@@ -83,11 +95,28 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               const workflowError = Exit.isFailure(workflowExit)
                 ? Cause.squash(workflowExit.cause)
                 : undefined;
-              const cleanupError = yield* cleanup.cleanupCheckoutStates({
-                datasourceConfig,
-                flowStates,
-                workflowError,
-              });
+              const cleanupExit = yield* Effect.exit(
+                telemetry.tracePhase({
+                  effect: cleanup
+                    .cleanupCheckoutStates({
+                      datasourceConfig,
+                      flowStates,
+                      workflowError,
+                    })
+                    .pipe(
+                      Effect.flatMap((cleanupError) =>
+                        cleanupError ? Effect.fail(cleanupError) : Effect.void
+                      )
+                    ),
+                  phaseId: "suite-cleanup",
+                })
+              );
+              const cleanupError = Exit.isFailure(cleanupExit)
+                ? toWorkspaceE2EError(
+                    "clean up workspace e2e suite",
+                    Cause.squash(cleanupExit.cause)
+                  )
+                : undefined;
 
               if (Exit.isFailure(workflowExit)) {
                 const workflowFailure = toWorkspaceE2EError(
@@ -113,10 +142,47 @@ export class WorkspaceE2ERunnerService extends Context.Service<
   );
 }
 
-export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
+export const makeWorkspaceE2ELive = (environment: WorkspaceE2EEnvironment) => {
+  addDatabaseUrlRedactions(
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+  );
+
   const E2ETelemetryLive = E2ETelemetryService.Live.pipe(
     Layer.provideMerge(E2ERunContextService.layer(environment))
   );
+
+  const WorkspaceE2EProviderPermitDatabaseLive =
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+      ? PgClient.layer({
+          applicationName: "workspace-e2e-provider-verification",
+          connectTimeout: "10 seconds",
+          maxConnections: 2,
+          url: Redacted.make(
+            normalizePostgresConnectionUrl(
+              environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+            )
+          ),
+        }).pipe(
+          Layer.catch((cause) =>
+            Layer.effect(
+              PgClient.PgClient,
+              Effect.fail(
+                toWorkspaceE2EError(
+                  "connect to provider permit coordination database",
+                  cause
+                )
+              )
+            )
+          )
+        )
+      : undefined;
+
+  const WorkspaceE2EProviderVerificationPermitLive =
+    WorkspaceE2EProviderPermitDatabaseLive
+      ? WorkspaceE2EProviderVerificationPermitService.Live.pipe(
+          Layer.provide(WorkspaceE2EProviderPermitDatabaseLive)
+        )
+      : WorkspaceE2EProviderVerificationPermitService.SuiteLocal;
 
   const WorkspaceE2ECoreLive = Layer.mergeAll(
     FetchHttpClient.layer,
@@ -124,6 +190,7 @@ export const makeWorkspaceE2ELive = (environment: E2EEnvironment) => {
     WorkspaceE2ERedactionService.Live,
     WorkspaceE2EConfigService.layer(environment),
     WorkspaceE2ECleanupService.Live,
+    WorkspaceE2EProviderVerificationPermitLive,
     E2ETelemetryLive
   );
 

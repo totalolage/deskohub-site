@@ -137,7 +137,10 @@ export function MeetingRoomReservationForm({
         : undefined,
     [selectedInterval]
   );
-  const availabilityQueryResult = useReservationAvailability(availabilityQuery);
+  const availabilityQueryResult = useReservationAvailability(
+    availabilityQuery,
+    { debounceMs: 250 }
+  );
   const { availability } = availabilityQueryResult;
   const isSelectedReservationUnavailable = Boolean(
     selectedInterval &&

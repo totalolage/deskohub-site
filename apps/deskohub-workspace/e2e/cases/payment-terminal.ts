@@ -6,13 +6,16 @@ import {
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import { startCheckoutPaymentAttempt } from "../checkout/payment";
-import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import {
+  prepareCheckoutPaymentAttempt,
+  submitPaymentAndWaitForHostedPage,
+} from "../checkout/payment";
+import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
   assertPaymentTerminalRow,
   markPaymentTerminalForE2E,
-  waitForWebhookReplayRow,
+  requireProviderSessionRowAfterRedirect,
 } from "../integrations/database";
 import type { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -22,6 +25,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   PaymentTerminalScenario,
+  WorkspaceE2ECaseResources,
   WorkspaceE2EStepRunner,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
@@ -43,8 +47,8 @@ export const getPaymentTerminalScenarios =
 export const assertPaymentTerminalPath = ({
   config,
   data,
-  datasourceConfig,
   reservationPath,
+  resources,
   run,
   runStep,
   scenario,
@@ -54,8 +58,8 @@ export const assertPaymentTerminalPath = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  datasourceConfig: DatasourceConfig;
   reservationPath: string;
+  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   scenario: PaymentTerminalScenario;
@@ -66,7 +70,8 @@ export const assertPaymentTerminalPath = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      execute: startCheckoutPaymentAttempt({
+      capacity: "reservation-start",
+      execute: prepareCheckoutPaymentAttempt({
         config,
         data,
         onOrderId: (startedOrderId) => {
@@ -76,16 +81,30 @@ export const assertPaymentTerminalPath = ({
         session,
         submitReservationScript,
       }),
-      id: "start-checkout-payment",
+      id: "prepare-checkout-pay-page",
       timeoutMs: config.timeouts.checkoutStart,
     });
     state.orderId = orderId;
+    yield* resources.withHostedPaymentSession(
+      Effect.suspend(() =>
+        runStep({
+          execute: submitPaymentAndWaitForHostedPage({
+            run,
+            session,
+            timeouts: config.timeouts,
+          }),
+          id: "start-hosted-payment",
+          timeoutMs: config.timeouts.providerTransition,
+        })
+      )
+    );
+    log(`Started hosted payment attempt for order ${orderId}`);
     yield* runStep({
       execute: preparePaymentTerminalState({
-        datasourceConfig,
         orderId,
         scenario,
         state,
+        timeoutMs: config.timeouts.browserAction,
       }),
       id: `prepare-${scenario.state}-payment-state`,
       timeoutMs: config.timeouts.datasource,
@@ -117,25 +136,32 @@ export const assertPaymentTerminalPath = ({
   });
 
 const preparePaymentTerminalState = ({
-  datasourceConfig,
   orderId,
   scenario,
   state,
+  timeoutMs,
 }: {
-  datasourceConfig: DatasourceConfig;
   orderId: string;
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
+  timeoutMs: number;
 }) =>
   Effect.gen(function* () {
-    state.checkoutRow = yield* waitForWebhookReplayRow(
-      datasourceConfig,
+    const providerSessionRow = yield* requireProviderSessionRowAfterRedirect(
       orderId,
-      (row) => {
-        state.checkoutRow = row;
+      {
+        onRow: (row) => {
+          state.checkoutRow = row;
+        },
+        timeoutMs,
       }
     );
-    const checkoutRow = yield* markPaymentTerminalForE2E(orderId, scenario);
+    state.checkoutRow = providerSessionRow;
+    const checkoutRow = yield* markPaymentTerminalForE2E(
+      orderId,
+      providerSessionRow.payment_attempt_id,
+      scenario
+    );
     state.checkoutRow = checkoutRow;
     yield* assertPaymentTerminalRow(checkoutRow, scenario);
   });
@@ -148,16 +174,10 @@ const restartReservation = (
   timeouts: WorkspaceE2ETimeouts
 ) =>
   Effect.gen(function* () {
-    yield* activateStatusReserveAgain(
-      run,
-      session,
-      reservationPath,
-      timeouts
-    );
+    yield* activateStatusReserveAgain(run, session, reservationPath, timeouts);
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
-      matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === reservationPath,
+      matches: (url) => (parseUrl(url)?.pathname ?? "") === reservationPath,
       run,
       session,
       timeoutMs: timeouts.uiTransition,

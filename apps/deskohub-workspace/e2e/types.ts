@@ -81,6 +81,7 @@ export type CheckoutFlow = {
 
 export type CheckoutFlowState = {
   checkoutRow?: CheckoutRow;
+  cleanupComplete?: boolean;
   data: CheckoutData;
   orderId?: string;
   startedAt?: Date;
@@ -93,16 +94,25 @@ export type PaymentTerminalScenario = {
 };
 
 export type WorkspaceE2ECase = {
+  readonly checkoutStates: readonly CheckoutFlowState[];
   readonly id: string;
   readonly runAfterParallel?: boolean;
   readonly timeoutMs: number;
   readonly execute: (context: {
+    readonly resources: WorkspaceE2ECaseResources;
     readonly runStep: WorkspaceE2EStepRunner;
     readonly session: string;
   }) => Effect.Effect<void, WorkspaceE2EError, E2EDatabase>;
 };
 
+export interface WorkspaceE2ECaseResources {
+  readonly withHostedPaymentSession: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+}
+
 export type WorkspaceE2EStep<A, R = never> = {
+  readonly capacity?: "provider-verification" | "reservation-start";
   readonly execute: Effect.Effect<A, WorkspaceE2EError, R>;
   readonly id: string;
   readonly timeoutMs: number;

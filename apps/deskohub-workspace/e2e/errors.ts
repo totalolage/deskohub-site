@@ -1,9 +1,56 @@
 import { Data, Effect } from "effect";
 import { redact } from "./runtime";
 
+export const nexiWebhookDiagnosticCodes = [
+  "nexi_webhook_parse_failed",
+  "nexi_webhook_unknown_order",
+  "nexi_webhook_missing_security_token",
+  "nexi_webhook_invalid_currency",
+  "nexi_webhook_verification_failed",
+  "nexi_webhook_verification_mismatch",
+  "nexi_webhook_transition_failed",
+  "nexi_webhook_fulfillment_failed",
+  "nexi_webhook_internal_error",
+] as const;
+
+export type NexiWebhookDiagnosticCode =
+  (typeof nexiWebhookDiagnosticCodes)[number];
+
+export const isNexiWebhookDiagnosticCode = (
+  value: unknown
+): value is NexiWebhookDiagnosticCode =>
+  typeof value === "string" &&
+  nexiWebhookDiagnosticCodes.some((code) => code === value);
+
+export const workspaceE2ERunnerDiagnosticCodes = [
+  "provider_session_row_read_failed_after_redirect",
+  "provider_session_reservation_missing_after_redirect",
+  "provider_session_active_attempt_missing_after_redirect",
+  "provider_session_fields_missing_after_redirect",
+  "postgres_checkout_row_convergence_failed",
+  "postgres_checkout_row_assertion_failed",
+  "postgres_legal_evidence_validation_failed",
+  "postgres_local_pii_validation_failed",
+] as const;
+
+export const workspaceE2EDiagnosticCodes = [
+  ...nexiWebhookDiagnosticCodes,
+  ...workspaceE2ERunnerDiagnosticCodes,
+] as const;
+
+export type WorkspaceE2EDiagnosticCode =
+  (typeof workspaceE2EDiagnosticCodes)[number];
+
+export const isWorkspaceE2EDiagnosticCode = (
+  value: unknown
+): value is WorkspaceE2EDiagnosticCode =>
+  typeof value === "string" &&
+  workspaceE2EDiagnosticCodes.some((code) => code === value);
+
 export class WorkspaceE2EError extends Data.TaggedError("WorkspaceE2EError")<{
   readonly cause?: unknown;
   readonly causes?: readonly unknown[];
+  readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
   readonly message: string;
   readonly operation?: string;
   readonly reason?: "timeout";
@@ -23,6 +70,7 @@ export const workspaceE2EError = (
   options: {
     readonly cause?: unknown;
     readonly causes?: readonly unknown[];
+    readonly diagnosticCode?: WorkspaceE2EDiagnosticCode;
     readonly operation?: string;
   } = {}
 ) => new WorkspaceE2EError({ message, ...options });
@@ -33,6 +81,26 @@ export const workspaceE2ETimeoutError = (
     readonly operation?: string;
   } = {}
 ) => new WorkspaceE2EError({ message, ...options, reason: "timeout" });
+
+export const withWorkspaceE2EDiagnosticCode =
+  (diagnosticCode: WorkspaceE2EDiagnosticCode) =>
+  <A, R>(
+    effect: Effect.Effect<A, WorkspaceE2EError, R>
+  ): Effect.Effect<A, WorkspaceE2EError, R> =>
+    effect.pipe(
+      Effect.mapError((error) =>
+        error.diagnosticCode
+          ? error
+          : new WorkspaceE2EError({
+              cause: error.cause,
+              causes: error.causes,
+              diagnosticCode,
+              message: error.message,
+              operation: error.operation,
+              reason: error.reason,
+            })
+      )
+    );
 
 export const failWorkspaceE2E = (
   message: string,

@@ -1,3 +1,4 @@
+import type { DotyposReservationInterval } from "@deskohub/dotypos";
 import type { Reservation } from "@deskohub/dotypos/generated";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -9,23 +10,9 @@ export const getWorkspaceTableOccupancyById = (
   input: ReservationInterval | Temporal.PlainDate
 ) => {
   const occupancyByTableId = new Map<string, number>();
-  const startsAt =
-    input instanceof Temporal.PlainDate
-      ? input
-          .toZonedDateTime({
-            timeZone: workspaceSiteConstants.location.timeZone,
-          })
-          .toInstant().epochMilliseconds
-      : Temporal.Instant.from(input.startsAt).epochMilliseconds;
-  const endsAt =
-    input instanceof Temporal.PlainDate
-      ? input
-          .add({ days: 1 })
-          .toZonedDateTime({
-            timeZone: workspaceSiteConstants.location.timeZone,
-          })
-          .toInstant().epochMilliseconds
-      : Temporal.Instant.from(input.endsAt).epochMilliseconds;
+  const interval = getWorkspaceReservationIntervalDates(input);
+  const startsAt = interval.startDate.getTime();
+  const endsAt = interval.endDate.getTime();
 
   for (const reservation of reservations) {
     if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
@@ -53,6 +40,30 @@ export const getWorkspaceTableOccupancyById = (
   }
 
   return occupancyByTableId;
+};
+
+export const getWorkspaceReservationIntervalDates = (
+  input: ReservationInterval | Temporal.PlainDate
+): DotyposReservationInterval => {
+  const startsAt =
+    input instanceof Temporal.PlainDate
+      ? input
+          .toZonedDateTime({
+            timeZone: workspaceSiteConstants.location.timeZone,
+          })
+          .toInstant().epochMilliseconds
+      : Temporal.Instant.from(input.startsAt).epochMilliseconds;
+  const endsAt =
+    input instanceof Temporal.PlainDate
+      ? input
+          .add({ days: 1 })
+          .toZonedDateTime({
+            timeZone: workspaceSiteConstants.location.timeZone,
+          })
+          .toInstant().epochMilliseconds
+      : Temporal.Instant.from(input.endsAt).epochMilliseconds;
+
+  return { startDate: new Date(startsAt), endDate: new Date(endsAt) };
 };
 
 export const excludeExpiredLocalHolds = (

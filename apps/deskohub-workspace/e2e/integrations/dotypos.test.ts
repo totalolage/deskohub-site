@@ -5,6 +5,8 @@ import {
   dotyposTimestampMatches,
   selectE2EDotyposDiscountGroup,
   waitForConfirmedDotyposReservation,
+  waitForDotyposCancellationConvergence,
+  waitForDotyposCustomerDiscountGroup,
 } from "./dotypos";
 
 test("selects an active partial Dotypos discount deterministically", () => {
@@ -62,18 +64,81 @@ test("waits for Dotypos to expose the confirmed reservation state", async () => 
   expect(reads).toBe(3);
 });
 
+test("waits for cancelled reservations to leave active inventory", async () => {
+  let reads = 0;
+  await Effect.runPromise(
+    waitForDotyposCancellationConvergence(
+      Effect.sync(() => {
+        reads += 1;
+        return [
+          ...(reads < 3
+            ? [{ id: "target-reservation", status: "CONFIRMED" as const }]
+            : []),
+        ];
+      }),
+      ["target-reservation"],
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(reads).toBe(3);
+});
+
+test("uses the active-overlap read model for cleanup convergence", async () => {
+  const source = await Bun.file(
+    new URL("./dotypos.ts", import.meta.url)
+  ).text();
+
+  expect(
+    source.match(/dotypos\.listActiveReservationsOverlapping\(interval\)/g)
+  ).toHaveLength(3);
+  expect(source).not.toContain("dotypos.listReservations(),");
+});
+
+test("waits for a customer discount-group change to become readable", async () => {
+  let reads = 0;
+  const customer = await Effect.runPromise(
+    waitForDotyposCustomerDiscountGroup(
+      Effect.sync(() => {
+        reads += 1;
+        return {
+          _discountGroupId: reads < 3 ? null : "group-id",
+        };
+      }),
+      "group-id",
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(customer._discountGroupId).toBe("group-id");
+  expect(reads).toBe(3);
+});
+
+test("waits for a removed customer discount group to become readable", async () => {
+  let reads = 0;
+  const customer = await Effect.runPromise(
+    waitForDotyposCustomerDiscountGroup(
+      Effect.sync(() => {
+        reads += 1;
+        return {
+          _discountGroupId: reads < 2 ? "group-id" : null,
+        };
+      }),
+      null,
+      { intervalMs: 1, timeoutMs: 100 }
+    )
+  );
+
+  expect(customer._discountGroupId).toBeNull();
+  expect(reads).toBe(2);
+});
+
 test("matches ISO Dotypos timestamps to the selected meeting-room instant", () => {
   expect(
-    dotyposTimestampMatches(
-      "2099-09-01T08:00:00.000Z",
-      "2099-09-01T08:00:00Z"
-    )
+    dotyposTimestampMatches("2099-09-01T08:00:00.000Z", "2099-09-01T08:00:00Z")
   ).toBe(true);
   expect(
-    dotyposTimestampMatches(
-      "2099-09-01T09:00:00.000Z",
-      "2099-09-01T08:00:00Z"
-    )
+    dotyposTimestampMatches("2099-09-01T09:00:00.000Z", "2099-09-01T08:00:00Z")
   ).toBe(false);
 });
 
