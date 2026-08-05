@@ -7,6 +7,21 @@ export type GoogleCalendarListEventsInput = GoogleCalendarEventQuery & {
   readonly calendarId: string;
 };
 
+export type GoogleCalendarWatchEventsInput = {
+  readonly calendarId: string;
+  readonly channelId: string;
+  readonly webhookUrl: string;
+  readonly webhookToken: string;
+  readonly ttlSeconds: number;
+};
+
+export type GoogleCalendarWatchChannel = {
+  readonly channelId: string;
+  readonly resourceId?: string;
+  readonly resourceUri?: string;
+  readonly expiration?: number;
+};
+
 export type GoogleCalendarEventDateTime = {
   readonly date?: string;
   readonly dateTime?: string;

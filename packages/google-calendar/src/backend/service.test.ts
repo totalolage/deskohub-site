@@ -19,9 +19,22 @@ type ListEventsImplementation = (
   params: CalendarListQuery
 ) => Promise<CalendarListResponse>;
 
+type WatchEventsImplementation = (params: {
+  readonly calendarId: string;
+  readonly requestBody?: unknown;
+}) => Promise<{
+  readonly data: {
+    readonly id?: string | null;
+    readonly resourceId?: string | null;
+    readonly resourceUri?: string | null;
+    readonly expiration?: string | null;
+  };
+}>;
+
 let listEvents = mock<ListEventsImplementation>(async () => ({
   data: { items: [] },
 }));
+let watchEvents = mock<WatchEventsImplementation>(async () => ({ data: {} }));
 const calendarCalls: unknown[] = [];
 const jwtCalls: unknown[] = [];
 
@@ -35,7 +48,7 @@ mock.module("@googleapis/calendar", () => ({
   },
   calendar: mock((options: unknown) => {
     calendarCalls.push(options);
-    return { events: { list: listEvents } };
+    return { events: { list: listEvents, watch: watchEvents } };
   }),
 }));
 
@@ -53,6 +66,7 @@ beforeEach(() => {
   listEvents = mock<ListEventsImplementation>(async () => ({
     data: { items: [] },
   }));
+  watchEvents = mock<WatchEventsImplementation>(async () => ({ data: {} }));
   calendarCalls.length = 0;
   jwtCalls.length = 0;
 });
@@ -262,6 +276,84 @@ describe("GoogleCalendarService", () => {
         operation: "events.list",
         statusCode: 403,
         message: "Forbidden",
+      });
+    }
+  });
+
+  test("creates an event notification channel", async () => {
+    watchEvents = mock<WatchEventsImplementation>(async () => ({
+      data: {
+        id: "returned-channel-id",
+        resourceId: "resource-id",
+        resourceUri:
+          "https://www.googleapis.com/calendar/v3/calendars/calendar-id/events",
+        expiration: "1785902400000",
+      },
+    }));
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        return yield* googleCalendar.watchEvents({
+          calendarId: "calendar-id",
+          channelId: "requested-channel-id",
+          webhookUrl:
+            "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
+          webhookToken: "derived-webhook-token",
+          ttlSeconds: 259_200,
+        });
+      })
+    );
+
+    expect(watchEvents).toHaveBeenCalledWith({
+      calendarId: "calendar-id",
+      requestBody: {
+        address:
+          "https://bar.example.test/api/webhooks/google-calendar/opening-hours",
+        id: "requested-channel-id",
+        params: { ttl: "259200" },
+        token: "derived-webhook-token",
+        type: "web_hook",
+      },
+    });
+    expect(result).toEqual({
+      channelId: "returned-channel-id",
+      resourceId: "resource-id",
+      resourceUri:
+        "https://www.googleapis.com/calendar/v3/calendars/calendar-id/events",
+      expiration: 1_785_902_400_000,
+    });
+  });
+
+  test("maps event watch provider errors", async () => {
+    watchEvents = mock<WatchEventsImplementation>(async () => {
+      const error = new Error("Invalid webhook address");
+      Object.assign(error, { status: 400 });
+      throw error;
+    });
+
+    const result = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+        return yield* googleCalendar
+          .watchEvents({
+            calendarId: "calendar-id",
+            channelId: "channel-id",
+            webhookUrl: "https://bar.example.test/webhook",
+            webhookToken: "derived-webhook-token",
+            ttlSeconds: 259_200,
+          })
+          .pipe(Effect.result);
+      })
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure).toMatchObject({
+        _tag: "GoogleCalendarAPIError",
+        operation: "events.watch",
+        statusCode: 400,
+        message: "Invalid webhook address",
       });
     }
   });

@@ -33,6 +33,10 @@ Place newly introduced private helper definitions below their callers so the pri
 
 Keep the interface, Context service declaration, and live layer in the `*.service.ts` module. Put the mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of inline test mocks.
 
+When a service has one standard fully wired live composition, expose it as the
+service's static `LiveWithDependencies` layer. Do not create a separate runtime
+module whose only job is to export that composition.
+
 ## Model capabilities
 
 Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose implementations with Layers; do not pass them as ordinary function arguments or dependency objects.

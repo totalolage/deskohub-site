@@ -31,7 +31,10 @@
   },
   "hours": {
     "weekdays": "PO - PÁ",
-    "weekends": "SO - NE"
+    "weekends": "SO - NE",
+    "exceptionsTitle": "Nadcházející změny otevírací doby",
+    "closed": "Zavřeno",
+    "nextDay": "následující den"
   },
   "about": {
     "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
