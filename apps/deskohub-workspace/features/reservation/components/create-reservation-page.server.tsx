@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import {
   openPayState,
@@ -35,21 +36,16 @@ type ReservationPageContext<Kind extends ReservationKind> = {
 };
 
 type ReservationPageDefinition<Kind extends ReservationKind> = {
+  readonly fallback: (locale: Locale) => ReactNode;
   readonly kind: Kind;
   readonly metadata: (locale: Locale) => {
     readonly description: string;
     readonly title: string;
   };
   readonly pathname: string;
-  readonly render: (context: ReservationPageContext<Kind>) =>
-    | {
-        readonly children: ReactNode;
-        readonly fallback: ReactNode;
-      }
-    | Promise<{
-        readonly children: ReactNode;
-        readonly fallback: ReactNode;
-      }>;
+  readonly render: (
+    context: ReservationPageContext<Kind>
+  ) => ReactNode | Promise<ReactNode>;
 };
 
 type LocalizedReservationPageProps = {
@@ -122,27 +118,40 @@ export function createReservationPage<const Kind extends ReservationKind>(
   }
 
   async function Page({ searchParams }: LocalizedReservationPageProps) {
-    const resolvedSearchParams = await searchParams;
-
-    return runWithRequestLocale(async (locale) => {
-      const restoredReservation = await loadRestoredReservation(
-        getSearchParam(resolvedSearchParams, payStateTokenQueryParam),
-        locale,
-        definition.kind
-      ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`));
-      const content = await definition.render({
-        locale,
-        searchParams: resolvedSearchParams,
-        ...restoredReservation,
-      });
-
-      return (
-        <ReservationPage fallback={content.fallback} locale={locale}>
-          {content.children}
-        </ReservationPage>
-      );
-    });
+    return runWithRequestLocale((locale) => (
+      <ReservationPage fallback={definition.fallback(locale)} locale={locale}>
+        <ReservationPageContent
+          definition={definition}
+          searchParams={searchParams}
+        />
+      </ReservationPage>
+    ));
   }
 
   return { generateMetadata, Page };
+}
+
+async function ReservationPageContent<Kind extends ReservationKind>({
+  definition,
+  searchParams,
+}: {
+  readonly definition: ReservationPageDefinition<Kind>;
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
+  await connection();
+  const resolvedSearchParams = await searchParams;
+
+  return runWithRequestLocale(async (locale) => {
+    const restoredReservation = await loadRestoredReservation(
+      getSearchParam(resolvedSearchParams, payStateTokenQueryParam),
+      locale,
+      definition.kind
+    ).pipe(runWorkspaceEffect(`reservation.${definition.kind}.load-state`));
+
+    return definition.render({
+      locale,
+      searchParams: resolvedSearchParams,
+      ...restoredReservation,
+    });
+  });
 }

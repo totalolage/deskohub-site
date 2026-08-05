@@ -309,6 +309,10 @@ describe("CoworkReservationForm advertised pricing", () => {
         "[data-reservation-coffee-price] [data-slot='skeleton']"
       )
     ).not.toBeNull();
+    expect(view.getByRole("textbox", { name: /email/i })).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Continue" }).hasAttribute("disabled")
+    ).toBe(true);
     expect(getAdvertisedPrices).not.toHaveBeenCalled();
     view.unmount();
   });
