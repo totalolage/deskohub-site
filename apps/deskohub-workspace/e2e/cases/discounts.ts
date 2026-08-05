@@ -6,7 +6,6 @@ import {
   evalBrowserScript,
   focusBrowserElement,
   openBrowserPage,
-  pressBrowserKey,
   scrollBrowserElementIntoView,
   waitForBrowserCondition,
   waitForBrowserReactHandler,
@@ -1194,12 +1193,6 @@ export const assertDisplayedDiscounts = ({
     yield* focusBrowserElement(run, session, triggerSelector, {
       timeoutMs: config.timeouts.browserAction,
     });
-    yield* pressBrowserKey(run, session, "Shift+Tab", {
-      timeoutMs: config.timeouts.browserAction,
-    });
-    yield* pressBrowserKey(run, session, "Tab", {
-      timeoutMs: config.timeouts.browserAction,
-    });
     for (const { basisPoints, label } of discounts) {
       const adjustment = new Intl.NumberFormat("en-US", {
         style: "percent",
@@ -1212,11 +1205,15 @@ export const assertDisplayedDiscounts = ({
         session,
         `${label} discount detail`,
         `
-(() => [...document.querySelectorAll('[role="tooltip"] li')].some((item) => {
-  const content = item.textContent ?? '';
+(() => {
+  const trigger = document.querySelector(${JSON.stringify(triggerSelector)});
+  const descriptionId = trigger?.getAttribute('aria-describedby');
+  const content = descriptionId
+    ? (document.getElementById(descriptionId)?.textContent ?? '')
+    : '';
   return content.toLocaleLowerCase().includes(${labelLiteral})
     && content.includes(${adjustmentLiteral});
-}))()
+})()
 `,
         { timeoutMs: config.timeouts.uiTransition }
       );

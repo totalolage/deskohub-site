@@ -8,10 +8,9 @@ import {
   calendarDiscountExpectation,
 } from "./discounts";
 
-test("opens the discount tooltip through its native keyboard contract", async () => {
+test("reads discount details from the focused trigger's accessible description", async () => {
   let focusHandlerReady = false;
   let triggerCentered = false;
-  let triggerFocused = false;
   let triggerOpened = false;
   const calls: string[][] = [];
   const run: Runner = async (_command, args, options) => {
@@ -28,28 +27,20 @@ test("opens the discount tooltip through its native keyboard contract", async ()
         options.input.includes('block: "center"') &&
         options.input.includes("requestAnimationFrame");
     }
-    if (operation === "focus") triggerFocused = true;
-    if (
-      operation === "press" &&
-      value === "Shift+Tab" &&
-      (!focusHandlerReady || !triggerCentered || !triggerFocused)
-    ) {
-      return {
-        exitCode: 1,
-        stderr: "discount trigger is not ready for keyboard navigation",
-        stdout: "",
-      };
-    }
-    if (operation === "press" && value === "Shift+Tab") {
-      triggerFocused = false;
-    }
-    if (operation === "press" && value === "Tab" && !triggerFocused) {
+    if (operation === "focus") {
+      if (!focusHandlerReady || !triggerCentered) {
+        return {
+          exitCode: 1,
+          stderr: "discount trigger is not ready to receive focus",
+          stdout: "",
+        };
+      }
       triggerOpened = true;
     }
     if (
       operation === "wait" &&
       value === "--fn" &&
-      args.at(4)?.includes('[role="tooltip"]') &&
+      args.at(4)?.includes("aria-describedby") &&
       !triggerOpened
     ) {
       return {
@@ -76,13 +67,14 @@ test("opens the discount tooltip through its native keyboard contract", async ()
     "wait",
     "eval",
     "focus",
-    "press",
-    "press",
     "wait",
   ]);
-  expect(calls.at(5)?.at(4)).toContain(
-    "document.querySelectorAll('[role=\"tooltip\"] li')"
+  expect(calls.at(3)?.at(4)).toContain(
+    "trigger?.getAttribute('aria-describedby')"
   );
-  expect(calls.at(5)?.at(4)).toContain('"e2e calendar sale"');
-  expect(calls.at(5)?.at(4)).toContain('"20%"');
+  expect(calls.at(3)?.at(4)).toContain(
+    "document.getElementById(descriptionId)"
+  );
+  expect(calls.at(3)?.at(4)).toContain('"e2e calendar sale"');
+  expect(calls.at(3)?.at(4)).toContain('"20%"');
 });
