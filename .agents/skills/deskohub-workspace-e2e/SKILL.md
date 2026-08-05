@@ -81,10 +81,10 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   process can block and a second SQL-pool connection remains available for
   interruption cancellation. Use a separate direct URL whose SQL-created role
   has database connectivity only and no schema or table privileges;
-  never expose the allocator URL or role to exact-SHA code. During rollout, the
-  old default-branch workflow retains the global job lock and may use the local
-  compatibility permit; controlled branch soaks must set the permit-required
-  flag and fail closed without its URL. Sustained three-way replay queues later
+  never expose the allocator URL or role to exact-SHA code. The five-round
+  three-way soak completed with the distributed permit required on every run,
+  so concurrent CI must set the permit-required flag and fail closed without
+  its URL. Sustained three-way replay queues later
   produced sequential HTTP 500 responses even though the advisory lock proved
   there was no overlap. Keep a one-second quiet cooldown inside the permit after
   every replay exit so the synchronous fulfillment's two email sends cannot
@@ -139,10 +139,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   retain its deterministic identity fallback only for rollout compatibility;
   concurrent CI must supply a coordinated shard. Validate every selected date
   through the deployed availability route; do not add an application query
-  parameter or runner capacity mutation. Keep the ordinary Dotypos workflow
-  lock until aggregate pool provisioning and five successful controlled
-  concurrent soaks prove the documented target. If rollout evidence is
-  incomplete, retain the lock and document the external gate. Capacity
+  parameter or runner capacity mutation. The ordinary Dotypos workflow lock was
+  removed only after aggregate pool provisioning and five successful
+  three-way exact-SHA rounds proved the documented target; do not restore a
+  global lock while the allocator and narrow measured permits remain healthy.
+  Capacity
   preflight must check both physical inventory and capacity remaining after
   peak overlapping active reservations; never sum reservations on unrelated
   dates or treat meeting-room seats as room concurrency. Query the whole first

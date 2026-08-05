@@ -204,15 +204,13 @@ Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
 and from one another. Meeting-room cases use distinct dates within the run's
 shard, including the dates touched by a whole-day reservation.
 
-The job-level `workspace-e2e-dotypos-sandbox` lock remains the default because
-the external sandbox capacity and cross-run fixture isolation have not yet
-passed the required concurrent soak. It is no longer needed for shard
-allocator atomicity. It is still the compatibility authority when an automatic
-repository dispatch uses the old default-branch workflow, which cannot pass a
-new secret added only by the exact-SHA PR. A controlled branch
-`workflow_dispatch` soak may set `allow_concurrent`; that workflow sets
-`WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the narrow provider
-permit URL, and fails closed if the URL or connection is missing.
+The job-level `workspace-e2e-dotypos-sandbox` lock was removed after five
+three-way exact-SHA rounds passed on unchanged builds. All 15 accepted runs
+acquired distinct shards, completed cleanup, and released their leases. Checkout
+p50 was 4m15s and p95 was 4m32s; the independent phase ranged from 3.3m to 3.8m.
+Concurrent CI sets `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED=true`, passes the
+narrow provider permit URL, and fails closed if the URL or connection is
+missing.
 The permit serializes only `replay-payment-webhook`, whose production route
 confirms the Dotypos hold and sends the paid-reservation notifications. It
 retains the advisory-lock transaction for a one-second quiet period after each
@@ -223,8 +221,6 @@ hosted payment. Resend documents a per-team, per-second limit with no extra
 burst allowance: <https://resend.com/docs/api-reference/rate-limit>.
 An independent suite-local Effect semaphore bounds the hosted-payment session;
 it does not use the coordination database or serialize unrelated cases.
-Remove the default lock only after the capacity checklist and five three-way
-concurrent soaks pass with the distributed permit enabled.
 
 ### Dotypos capacity checklist
 
@@ -243,10 +239,12 @@ cancellations only when every active candidate can be inspected and both the
 shape match. The timestamp embedded in that customer name must also be at least
 two hours old, beyond the workflow's 50-minute job timeout, so an active healthy
 run cannot be swept. It reports aggregate counts only, collects every
-detail-read and cancellation result, and waits for cancellation convergence.
-Use the workflow input `cleanup_stale_e2e_reservations` with the ordinary
-provider lock; do not combine it with `allow_concurrent` or run it during a
-controlled soak.
+detail-read and cancellation result, distinguishes active fresh and stale E2E
+reservations without printing their identities, and waits for cancellation
+convergence.
+Use the workflow input `cleanup_stale_e2e_reservations` only for an intentional
+manual reconciliation. The strict two-hour age fence prevents it from touching
+a healthy 50-minute run; do not request it during a deliberate load soak.
 
 The command uses the generated Dotypos table and reservation contracts, bounds
 the reservation lookup to active overlaps across the whole first and last

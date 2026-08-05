@@ -11,9 +11,8 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
     "uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation"
   );
   expect(workflow).not.toContain("group: workspace-e2e-shard-allocation");
-  expect(workflow).toContain("inputs.allow_concurrent");
+  expect(workflow).not.toContain("allow_concurrent");
   expect(workflow).toContain("inputs.cleanup_stale_e2e_reservations");
-  expect(workflow).toContain("!inputs.cleanup_stale_e2e_reservations");
   expect(workflow).toContain("persist-credentials: false");
   expect(workflow).not.toContain("contents: write");
   expect(workflow).toContain(
@@ -29,8 +28,7 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(runE2EStep).toContain(
     `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"`
   );
-  expect(workflow).toContain(`group: \${{ github.event_name ==`);
-  expect(workflow).toContain("'workspace-e2e-dotypos-sandbox'");
+  expect(workflow).not.toContain("workspace-e2e-dotypos-sandbox");
   const testJob = workflow.slice(
     workflow.indexOf("  test-e2e:"),
     workflow.indexOf("  publish-final-status:")
@@ -96,7 +94,7 @@ test("binds the manual target origin to a successful exact-SHA Workspace deploym
   );
 });
 
-test("holds the provider lock for the complete shard lease lifetime", async () => {
+test("uses the allocator without a global provider lock", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
@@ -105,8 +103,7 @@ test("holds the provider lock for the complete shard lease lifetime", async () =
     workflow.indexOf("  publish-final-status:")
   );
 
-  expect(testJob).toContain("concurrency:");
-  const lockIndex = testJob.indexOf("concurrency:");
+  expect(testJob).not.toContain("concurrency:");
   const targetCheckoutIndex = testJob.indexOf("Checkout exact target");
   const coordinatorCheckoutIndex = testJob.indexOf(
     "Checkout allocation action"
@@ -115,7 +112,6 @@ test("holds the provider lock for the complete shard lease lifetime", async () =
   const runIndex = testJob.indexOf("Run checkout E2E");
   const releaseIndex = testJob.indexOf("Release date shard");
 
-  expect(lockIndex).toBeLessThan(targetCheckoutIndex);
   expect(targetCheckoutIndex).toBeLessThan(coordinatorCheckoutIndex);
   expect(coordinatorCheckoutIndex).toBeLessThan(leaseIndex);
   expect(leaseIndex).toBeLessThan(runIndex);

@@ -7,6 +7,8 @@ export type WorkspaceE2EStaleReservationReport = {
   readonly cancellationConverged: boolean | null;
   readonly cancellationFailureCount: number;
   readonly detailReadFailureCount: number;
+  readonly identifiedActiveE2ECount: number;
+  readonly identifiedFreshE2ECount: number;
   readonly identifiedStaleE2ECount: number;
 };
 
@@ -63,15 +65,24 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
       { concurrency: providerConcurrency }
     );
     const detailReadFailureCount = detailResults.filter(
-      (result) =>
-        result._tag === "MissingId" || Exit.isFailure(result.exit)
+      (result) => result._tag === "MissingId" || Exit.isFailure(result.exit)
     ).length;
-    const reservationIds = [
+    const now = new Date();
+    const activeE2EReservationIds = new Set(
+      detailResults.flatMap((result) =>
+        result._tag === "Read" &&
+        Exit.isSuccess(result.exit) &&
+        isWorkspaceE2ETestCustomer(result.exit.value.customer)
+          ? [result.reservationId]
+          : []
+      )
+    );
+    const staleE2EReservationIds = [
       ...new Set(
         detailResults.flatMap((result) =>
           result._tag === "Read" &&
           Exit.isSuccess(result.exit) &&
-          isStaleWorkspaceE2ETestCustomer(result.exit.value.customer)
+          isStaleWorkspaceE2ETestCustomer(result.exit.value.customer, now)
             ? [result.reservationId]
             : []
         )
@@ -83,16 +94,19 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
       cancellationConverged: null,
       cancellationFailureCount: 0,
       detailReadFailureCount,
-      identifiedStaleE2ECount: reservationIds.length,
+      identifiedActiveE2ECount: activeE2EReservationIds.size,
+      identifiedFreshE2ECount:
+        activeE2EReservationIds.size - staleE2EReservationIds.length,
+      identifiedStaleE2ECount: staleE2EReservationIds.length,
     } satisfies WorkspaceE2EStaleReservationReport;
 
     if (!apply || detailReadFailureCount > 0) return baseReport;
-    if (reservationIds.length === 0) {
+    if (staleE2EReservationIds.length === 0) {
       return { ...baseReport, cancellationConverged: true };
     }
 
     const cancellationExits = yield* Effect.all(
-      reservationIds.map((reservationId) =>
+      staleE2EReservationIds.map((reservationId) =>
         Effect.exit(dependencies.cancelReservation(reservationId))
       ),
       { concurrency: providerConcurrency }
@@ -104,19 +118,19 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
     if (cancellationFailureCount > 0) {
       return {
         ...baseReport,
-        cancellationAttemptCount: reservationIds.length,
+        cancellationAttemptCount: staleE2EReservationIds.length,
         cancellationConverged: false,
         cancellationFailureCount,
       };
     }
 
     const convergenceExit = yield* Effect.exit(
-      dependencies.waitForCancellationConvergence(reservationIds)
+      dependencies.waitForCancellationConvergence(staleE2EReservationIds)
     );
 
     return {
       ...baseReport,
-      cancellationAttemptCount: reservationIds.length,
+      cancellationAttemptCount: staleE2EReservationIds.length,
       cancellationConverged: Exit.isSuccess(convergenceExit),
     };
   });
@@ -125,6 +139,18 @@ export const isStaleWorkspaceE2ETestCustomer = (
   customer: Customer,
   now = new Date()
 ) => {
+  const createdAt = getWorkspaceE2ETestCustomerCreatedAt(customer);
+
+  return Boolean(
+    createdAt &&
+      createdAt.getTime() <= now.getTime() - staleReservationMinimumAgeMs
+  );
+};
+
+export const isWorkspaceE2ETestCustomer = (customer: Customer) =>
+  getWorkspaceE2ETestCustomerCreatedAt(customer) !== undefined;
+
+const getWorkspaceE2ETestCustomerCreatedAt = (customer: Customer) => {
   const name = [customer.firstName, customer.lastName]
     .map((part) => part?.trim())
     .filter(Boolean)
@@ -132,12 +158,11 @@ export const isStaleWorkspaceE2ETestCustomer = (
   const email = customer.email?.trim().toLowerCase();
   const createdAt = parseWorkspaceE2ECustomerTimestamp(name);
 
-  return Boolean(
-    createdAt &&
-      createdAt.getTime() <= now.getTime() - staleReservationMinimumAgeMs &&
-      email?.startsWith("delivered+") === true &&
-      email.endsWith("@resend.dev")
-  );
+  return createdAt &&
+    email?.startsWith("delivered+") === true &&
+    email.endsWith("@resend.dev")
+    ? createdAt
+    : undefined;
 };
 
 const parseWorkspaceE2ECustomerTimestamp = (name: string) => {
@@ -150,7 +175,9 @@ const parseWorkspaceE2ECustomerTimestamp = (name: string) => {
   const hour = Number(timestamp.slice(8, 10));
   const minute = Number(timestamp.slice(10, 12));
   const second = Number(timestamp.slice(12, 14));
-  const createdAt = new Date(Date.UTC(year, month - 1, day, hour, minute, second));
+  const createdAt = new Date(
+    Date.UTC(year, month - 1, day, hour, minute, second)
+  );
   const normalizedTimestamp = createdAt
     .toISOString()
     .replace(/[-:.TZ]/g, "")

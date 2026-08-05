@@ -5,11 +5,6 @@ on:
     types: [vercel.deployment.success]
   workflow_dispatch:
     inputs:
-      allow_concurrent:
-        description: Bypass the ordinary provider lock for a controlled soak
-        required: false
-        default: false
-        type: boolean
       cleanup_stale_e2e_reservations:
         description: Cancel strictly identified stale E2E reservations before validation
         required: false
@@ -172,11 +167,6 @@ jobs:
     outputs:
       release_outcome: ${{ steps.release.outcome }}
       shard: ${{ steps.lease.outputs.shard }}
-    concurrency:
-      # Controlled workflow-dispatch soaks exercise the atomic allocator while
-      # ordinary CI retains the provider lock until five three-way soaks pass.
-      group: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_concurrent && !inputs.cleanup_stale_e2e_reservations && format('workspace-e2e-dotypos-soak-{0}', github.run_id) || 'workspace-e2e-dotypos-sandbox' }}
-      cancel-in-progress: false
     env:
       NEXI_API_ORIGIN: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
       NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
