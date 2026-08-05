@@ -170,6 +170,7 @@ jobs:
       contents: read
       statuses: write
     outputs:
+      release_outcome: ${{ steps.release.outcome }}
       shard: ${{ steps.lease.outputs.shard }}
     concurrency:
       # Controlled workflow-dispatch soaks exercise the atomic allocator while
@@ -476,6 +477,7 @@ jobs:
           retention-days: 7
 
       - name: Release date shard
+        id: release
         if: always() && steps.lease.outputs.shard != ''
         uses: ./.workspace-e2e-coordinator/.github/actions/workspace-e2e-allocation
         with:
@@ -495,7 +497,7 @@ jobs:
         if: always()
         env:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
-          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard != '' && 'Workspace E2E shard released' || 'Workspace E2E shard allocation failed' }}
+          ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
           STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
