@@ -34,6 +34,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   Do not project application-only variables or use app-client PostHog variables
   as E2E telemetry fallbacks.
 - Remember that repository-dispatch workflow configuration is evaluated from the default branch even when the job checks out an exact PR SHA. Do not make exact-SHA validation depend on changing a workflow-level environment value in the same PR; keep canonical expectations in the checked-out runner code or supply them through an already-compatible dispatch contract.
+- When `test:e2e` runs through Turborepo, add every runner-owned workflow
+  variable to that task's `passThroughEnv`. A workflow step can see an
+  allocator or coordination value while the E2E child process silently loses
+  it under Turborepo's strict environment filtering; test the workflow-to-task
+  propagation boundary whenever adding one.
 - Do not add runtime branches, query parameters, or other production behavior that bypasses the normal application path for E2E. Establish the required fixture state through approved integrations, then exercise the same route and workflow a real request uses.
 - Keep Vercel Deployment Protection enabled. Use its automation-bypass cookie/header/query flow for browser navigation, preview callbacks, readiness checks, and webhook replays. BotID is a separate production-only application concern; read the BotID skill before changing that boundary.
 - Use ordinary document links for cross-locale switching rather than Next.js client-router links. Locale is server-owned global context and the Workspace proxy persists its cookie for localized requests; cross-locale RSC prefetches and client transitions can race or fail to commit the selected locale. Keep this invariant shared across full, mobile, and minimal headers rather than fixing one presentation in isolation.
