@@ -113,9 +113,11 @@ Customer-discount cases mutate only their unique customer's group assignment;
 they never mutate the selected Dotypos discount-group definition. Nexi order
 and idempotency identities remain unique per checkout. A three-way exact-SHA
 soak produced Nexi error pages in two runs while hosted sessions were
-unbounded, so each suite now admits one hosted-payment session at a time from
-payment submission through the return to the checkout status page. Three
-overlapping suites can still hold one session each.
+unbounded. A one-session suite bound then stretched the independent phase to
+5.7--5.9 minutes and caused a case-watchdog failure, so each suite now admits at
+most three hosted-payment sessions from payment submission through the return
+to the checkout status page. Three overlapping suites can hold at most nine
+sessions in aggregate.
 
 Cross-run concurrency has a target of three simultaneous healthy exact-SHA
 runs. Before provider setup begins, an isolated coordinator leases one of three
@@ -474,7 +476,7 @@ allows only one blocked lock query per process, while the dedicated direct SQL
 pool retains a second connection for interruption cancellation. Transaction
 commit, rollback, interruption, or connection loss releases the lock.
 
-Hosted payment is serialized only within each suite after an exact three-way
+Hosted payment is bounded only within each suite after an exact three-way
 round produced two hosted-provider error pages; genuine webhook delivery,
 fulfillment, and unrelated provider work remain parallel. Provider-verification
 permit wait is included in the step trace duration, the semantic step timeout

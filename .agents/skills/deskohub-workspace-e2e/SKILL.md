@@ -67,10 +67,12 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   keep equal-deadline starts FIFO, remove interrupted waiters, and release a
   granted permit when interruption races admission. A three-way exact-SHA soak
   with unbounded hosted sessions produced Nexi error pages in multiple runs;
-  keep one interruption-safe hosted-payment session per suite from payment
-  submission through the return to the checkout status page. This narrow
-  suite-local Effect semaphore permits one session from each supported
-  concurrent run and does not serialize unrelated cases or jobs. The synthetic
+  keep at most three interruption-safe hosted-payment sessions per suite from
+  payment submission through the return to the checkout status page. One
+  session per suite made the independent phase take 5.7--5.9 minutes and caused
+  a case-watchdog failure, so the checked-in bound is three per suite and nine
+  across the supported three-run load. This narrow suite-local Effect semaphore
+  does not serialize unrelated cases or jobs. The synthetic
   `replay-payment-webhook` step is the other measured boundary. A three-way
   exact-SHA round failed all runs when a suite-local semaphore still allowed
   three aggregate Nexi replays, so admit one replay globally with a
