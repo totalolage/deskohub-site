@@ -65,6 +65,7 @@ export const coworkReservationFormInputSchema =
   coworkReservationOrderBaseSchema.mapFields((fields) => ({
     ...fields,
     legalConsent: reservationLegalConsentSchema,
+    marketingConsent: Schema.Boolean,
   }));
 
 export type CoworkReservationOrderInput =
@@ -103,14 +104,17 @@ export const normalizedCoworkReservationFormSchema = Schema.Union([
   Schema.Struct({
     ...normalizedBasicCoworkReservationOrderSchema.fields,
     legalConsent: Schema.Boolean,
+    marketingConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedPlusCoworkReservationOrderSchema.fields,
     legalConsent: Schema.Boolean,
+    marketingConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedProfiCoworkReservationOrderSchema.fields,
     legalConsent: Schema.Boolean,
+    marketingConsent: Schema.Boolean,
   }),
 ]);
 
@@ -355,6 +359,7 @@ export const normalizeCoworkReservationForm = (
 ): NormalizedCoworkReservationForm => ({
   ...normalizeCoworkReservationOrder(data),
   legalConsent: data.legalConsent,
+  marketingConsent: data.marketingConsent,
 });
 
 export const getCoworkReservationOrder = (
@@ -362,11 +367,11 @@ export const getCoworkReservationOrder = (
 ): NormalizedCoworkReservationOrder =>
   Match.value(form).pipe(
     Match.discriminatorsExhaustive("entryTier")({
-      basic: ({ legalConsent: _, ...reservation }) =>
+      basic: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
         normalizedBasicCoworkReservationOrderSchema.make(reservation),
-      plus: ({ legalConsent: _, ...reservation }) =>
+      plus: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
         normalizedPlusCoworkReservationOrderSchema.make(reservation),
-      profi: ({ legalConsent: _, ...reservation }) =>
+      profi: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
         normalizedProfiCoworkReservationOrderSchema.make(reservation),
     })
   );
@@ -397,6 +402,7 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
   phone: "",
   message: "",
   legalConsent: false,
+  marketingConsent: false,
 };
 
 export type { WorkspaceCoworkProductTier };

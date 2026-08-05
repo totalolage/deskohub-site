@@ -39,6 +39,11 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
         hash: "privacy-hash",
         hashAlgorithm: "sha256",
       },
+      marketingCommunications: {
+        path: "/legal/marketing.md",
+        hash: "marketing-hash",
+        hashAlgorithm: "sha256",
+      },
     })
   ),
 }));
@@ -252,6 +257,7 @@ const runReusableReservationScenario = async (input: {
   readonly getReservationStatus?: ReturnType<typeof mock>;
   readonly markCancellationFailed?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
+  readonly marketingConsent?: boolean;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
@@ -381,6 +387,7 @@ const runReusableReservationScenario = async (input: {
       input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation,
     legalConsent: true,
+    marketingConsent: input.marketingConsent,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
   return {
@@ -911,7 +918,19 @@ describe("prepareWorkspacePayState", () => {
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",
-        evidence: expect.objectContaining({ documentHash: "privacy-hash" }),
+        evidence: expect.objectContaining({
+          accepted: true,
+          documentHash: "privacy-hash",
+          documentKey: "privacyPolicy",
+        }),
+      }),
+      expect.objectContaining({
+        workspaceReservationId: "reservation-id",
+        evidence: expect.objectContaining({
+          accepted: false,
+          documentHash: "marketing-hash",
+          documentKey: "marketingCommunications",
+        }),
       }),
     ]);
 
@@ -959,6 +978,34 @@ describe("prepareWorkspacePayState", () => {
         dotyposCustomerId: existingReservation.dotyposCustomerId,
       })
     );
+  });
+
+  test("records a separate versioned marketing opt-in without requiring it", async () => {
+    const existingReservation = makeReusableReservation();
+    const result = await runReusableReservationScenario({
+      findByAttemptKey: mock(() => Effect.succeed(existingReservation)),
+      marketingConsent: true,
+    });
+
+    expect(result.result.status).toBe("ready");
+    expect(result.recordMany).toHaveBeenCalledWith([
+      {
+        workspaceReservationId: existingReservation.id,
+        evidence: expect.objectContaining({
+          accepted: true,
+          documentHash: "privacy-hash",
+          documentKey: "privacyPolicy",
+        }),
+      },
+      {
+        workspaceReservationId: existingReservation.id,
+        evidence: expect.objectContaining({
+          accepted: true,
+          documentHash: "marketing-hash",
+          documentKey: "marketingCommunications",
+        }),
+      },
+    ]);
   });
 
   test("reuses a held reservation returned by a conflicting draft insert", async () => {

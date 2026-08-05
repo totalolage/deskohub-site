@@ -188,19 +188,20 @@ const getReservationCheckoutDetails = (input: {
     })
   );
 
-const getReservationPrivacyEvidence = Effect.fn(
-  "preparePayState.getReservationPrivacyEvidence"
+const getReservationLegalEvidence = Effect.fn(
+  "preparePayState.getReservationLegalEvidence"
 )(function* (input: {
   readonly locale: Locale;
-  readonly accepted: boolean;
   readonly acceptedAt: string;
+  readonly privacyAccepted: boolean;
+  readonly marketingAccepted: boolean;
 }) {
   const documents = yield* getLegalAcceptanceSnapshot(input.locale);
   return decodeLegalEvidenceMap({
     [documents.privacyPolicy.hash]: {
       documentKey: "privacyPolicy",
       documentHash: documents.privacyPolicy.hash,
-      accepted: input.accepted,
+      accepted: input.privacyAccepted,
       acceptedAt: input.acceptedAt,
       locale: input.locale,
       source: reservationSubmitLegalEvidenceSource,
@@ -208,6 +209,19 @@ const getReservationPrivacyEvidence = Effect.fn(
         path: documents.privacyPolicy.path,
         hash: documents.privacyPolicy.hash,
         hashAlgorithm: documents.privacyPolicy.hashAlgorithm,
+      },
+    },
+    [documents.marketingCommunications.hash]: {
+      documentKey: "marketingCommunications",
+      documentHash: documents.marketingCommunications.hash,
+      accepted: input.marketingAccepted,
+      acceptedAt: input.acceptedAt,
+      locale: input.locale,
+      source: reservationSubmitLegalEvidenceSource,
+      document: {
+        path: documents.marketingCommunications.path,
+        hash: documents.marketingCommunications.hash,
+        hashAlgorithm: documents.marketingCommunications.hashAlgorithm,
       },
     },
   });
@@ -394,6 +408,7 @@ const prepareReservationDraft = Effect.fn(
 )(function* (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
+  readonly marketingConsent: boolean;
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
@@ -410,6 +425,7 @@ const prepareReservationDraft = Effect.fn(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent,
       reservation: input.reservation,
     });
 
@@ -638,6 +654,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent === true,
       reservation,
     });
     yield* Effect.annotateLogsScoped({
@@ -649,12 +666,14 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.logInfo("Workspace reservation submit started");
 
     const acceptedAt = Temporal.Now.instant().toString();
-    const privacyEvidence = yield* getReservationPrivacyEvidence({
+    const reservationLegalEvidence = yield* getReservationLegalEvidence({
       locale: input.locale,
-      accepted: input.legalConsent === true,
       acceptedAt,
+      privacyAccepted: input.legalConsent === true,
+      marketingAccepted:
+        input.legalConsent === true && input.marketingConsent === true,
     });
-    yield* Effect.annotateLogsScoped({ privacyEvidence });
+    yield* Effect.annotateLogsScoped({ reservationLegalEvidence });
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
@@ -664,7 +683,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
       yield* legalEvents
         .recordMany(
-          Object.values(privacyEvidence).map((evidence) => ({
+          Object.values(reservationLegalEvidence).map((evidence) => ({
             evidence,
           }))
         )
@@ -714,6 +733,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
+      marketingConsent: input.marketingConsent === true,
       reservation,
       draft: {
         dotyposCustomerId,
@@ -737,7 +757,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
-        Object.values(privacyEvidence).map((evidence) => ({
+        Object.values(reservationLegalEvidence).map((evidence) => ({
           workspaceReservationId: reservationDraft.id,
           evidence,
         }))
@@ -784,7 +804,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           locale: input.locale,
         });
         yield* legalEvents.recordMany(
-          Object.values(privacyEvidence).map((evidence) => ({
+          Object.values(reservationLegalEvidence).map((evidence) => ({
             workspaceReservationId: claimConflictReservation.id,
             evidence,
           }))
@@ -814,7 +834,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutDetails = getReservationCheckoutDetails({
       locale: input.locale,
       prepared,
-      legalEvidence: privacyEvidence,
+      legalEvidence: reservationLegalEvidence,
     });
     yield* Effect.annotateLogsScoped({ checkoutDetails });
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
@@ -962,7 +982,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     });
 
     yield* legalEvents.recordMany(
-      Object.values(privacyEvidence).map((evidence) => ({
+      Object.values(reservationLegalEvidence).map((evidence) => ({
         workspaceReservationId: reservationDraft.id,
         evidence,
       }))

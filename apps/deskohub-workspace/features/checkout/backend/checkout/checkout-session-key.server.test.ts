@@ -19,6 +19,28 @@ const contact = {
 };
 
 describe("checkout attempt key", () => {
+  test("changes when marketing consent changes", async () => {
+    const { deriveCheckoutAttemptKey } = await import(
+      "./checkout-session-key.server"
+    );
+    const reservation = decodeReservation({
+      kind: "cowork",
+      ...contact,
+      date: "2099-06-10",
+      entryTier: "basic",
+      coffee: false,
+    });
+    const getKey = (marketingConsent: boolean) =>
+      deriveCheckoutAttemptKey({
+        checkoutSessionId: "session-id",
+        checkoutAttemptId: "attempt-id",
+        marketingConsent,
+        reservation,
+      });
+
+    expect(getKey(false)).not.toBe(getKey(true));
+  });
+
   test("includes each reservation family's canonical details", async () => {
     const { deriveCheckoutAttemptKey } = await import(
       "./checkout-session-key.server"
@@ -27,6 +49,7 @@ describe("checkout attempt key", () => {
       deriveCheckoutAttemptKey({
         checkoutSessionId: "session-id",
         checkoutAttemptId: "attempt-id",
+        marketingConsent: false,
         reservation,
       });
     const cowork = decodeReservation({

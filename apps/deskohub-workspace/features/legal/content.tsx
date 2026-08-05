@@ -4,6 +4,7 @@ import { workspaceSiteConstants } from "@/shared/utils";
 
 export type LegalDocumentKey =
   | "privacy-policy"
+  | "marketing-communications"
   | "terms-and-conditions"
   | "cookie-policy"
   | "operating-rules";
@@ -445,7 +446,7 @@ const legalDocuments: Record<
     "privacy-policy": {
       title: "Privacy Policy",
       lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the public Deskohub Workspace website, including contact and reservation forms.",
-      updatedAt: "27 April 2026",
+      updatedAt: "5 August 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -495,6 +496,11 @@ const legalDocuments: Record<
               limited to utm_source, utm_medium, utm_campaign, utm_content, and
               utm_term.
             </>,
+            <>
+              If you separately opt in to marketing emails, we also process your
+              name, email address, preferred language, consent time, and the
+              version of the marketing notice you accepted.
+            </>,
           ],
         },
         {
@@ -510,6 +516,12 @@ const legalDocuments: Record<
             <>
               We do not use reservation or enquiry data for marketing unless you
               separately consent to receive marketing communication.
+            </>,
+            <>
+              When you give that optional consent, we use your email address to
+              send occasional Deskohub Workspace news, event invitations, and
+              offers. We do not share the marketing list with third parties for
+              their own marketing.
             </>,
             <>
               With your analytics consent, we use analytics and external
@@ -538,6 +550,11 @@ const legalDocuments: Record<
               based on consent, which you can withdraw or change at any time via
               cookie settings.
             </>,
+            <>
+              Marketing emails are based on your separate consent. Giving this
+              consent is voluntary and is not a condition of making or paying
+              for a reservation.
+            </>,
           ],
         },
         {
@@ -555,6 +572,12 @@ const legalDocuments: Record<
               the applicable analytics and technical provider settings and only
               as long as necessary for the stated measurement purposes.
             </>,
+            <>
+              We keep marketing contact and consent evidence until you withdraw
+              your consent or the stated purpose ends. After withdrawal, we may
+              retain a minimal suppression record so that we do not add the
+              address back to marketing mailings by mistake.
+            </>,
           ],
         },
         {
@@ -569,6 +592,11 @@ const legalDocuments: Record<
               contractual, organizational, and technical safeguards for provider
               access.
             </>,
+            <>
+              When you opt in to marketing emails, our email delivery provider
+              may process the contact and delivery information needed to send
+              them on our behalf.
+            </>,
           ],
         },
         {
@@ -579,6 +607,83 @@ const legalDocuments: Record<
               rectification, erasure, restriction, objection, or data
               portability where applicable, and you may also lodge a complaint
               with the competent supervisory authority.
+            </>,
+            <>
+              You can withdraw marketing consent at any time through the
+              unsubscribe option in a marketing email or by contacting us at{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              . Withdrawal does not affect processing that took place before it.
+            </>,
+          ],
+        },
+      ],
+    },
+    "marketing-communications": {
+      title: "Marketing Communications Consent",
+      lead: "This notice records the optional consent you can give to receive Deskohub Workspace marketing emails from Desktechub s.r.o.",
+      updatedAt: "5 August 2026",
+      sections: [
+        {
+          heading: "1. Who will contact you",
+          body: [
+            <>
+              The sender and controller is {companyName}, ID No.{" "}
+              {workspaceSiteConstants.company.identificationNumber}, at{" "}
+              {companyAddress}.
+            </>,
+          ],
+        },
+        {
+          heading: "2. What you agree to",
+          body: [
+            "You agree that we may use your name and email address to send occasional commercial emails about Deskohub Workspace news, event invitations, and offers.",
+            "The consent covers marketing by email for our own Deskohub Workspace services. We do not give your contact details to another business for its own marketing.",
+          ],
+        },
+        {
+          heading: "3. Your choice",
+          body: [
+            "This consent is voluntary and separate from your reservation. Leaving the marketing checkbox unchecked does not prevent you from making or paying for a reservation.",
+            "We process marketing contact data on the basis of this consent and record the time and version of the notice so that the consent can be demonstrated.",
+          ],
+        },
+        {
+          heading: "4. Withdrawal and retention",
+          body: [
+            <>
+              You can withdraw your consent at any time by using the unsubscribe
+              option in a marketing email or by writing to{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              . Withdrawal applies to future marketing and does not affect prior
+              lawful processing.
+            </>,
+            "We retain marketing contact and consent evidence until you withdraw consent or the purpose ends. We may then keep a minimal suppression record to prevent accidental resubscription.",
+          ],
+        },
+        {
+          heading: "5. Providers and your rights",
+          body: [
+            <>
+              Our email delivery provider may process the data needed to deliver
+              and measure these messages on our behalf. More information about
+              recipients, safeguards, and your data protection rights is in our{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href="/en-US/privacy-policy"
+              >
+                Privacy Policy
+              </a>
+              .
             </>,
           ],
         },
@@ -674,7 +779,7 @@ const legalDocuments: Record<
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
       lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "27. dubna 2026",
+      updatedAt: "5. srpna 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -725,6 +830,12 @@ const legalDocuments: Record<
               parametry z URL. Tyto kampanové parametry jsou omezené na
               utm_source, utm_medium, utm_campaign, utm_content a utm_term.
             </>,
+            <>
+              Pokud se samostatně přihlásíte k odběru marketingových e-mailů,
+              zpracováváme také vaše jméno, e-mailovou adresu, preferovaný
+              jazyk, čas souhlasu a verzi marketingového sdělení, se kterou jste
+              souhlasili.
+            </>,
           ],
         },
         {
@@ -740,6 +851,12 @@ const legalDocuments: Record<
             <>
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
               tomu neudělíte samostatný souhlas.
+            </>,
+            <>
+              Pokud tento nepovinný souhlas udělíte, používáme váš e-mail k
+              občasnému zasílání novinek, pozvánek na akce a nabídek Deskohub
+              Workspace. Marketingový seznam neposkytujeme třetím stranám pro
+              jejich vlastní marketing.
             </>,
             <>
               S vaším analytickým souhlasem používáme analytické a externí
@@ -767,6 +884,11 @@ const legalDocuments: Record<
               Analytické a kampanové měření je založené na souhlasu, který
               můžete kdykoli odvolat nebo změnit v nastavení cookies.
             </>,
+            <>
+              Marketingové e-maily zasíláme na základě vašeho samostatného
+              souhlasu. Udělení souhlasu je dobrovolné a není podmínkou pro
+              vytvoření ani zaplacení rezervace.
+            </>,
           ],
         },
         {
@@ -784,6 +906,12 @@ const legalDocuments: Record<
               nastavení příslušných analytických a technických poskytovatelů a
               pouze po dobu potřebnou pro uvedené účely měření.
             </>,
+            <>
+              Marketingový kontakt a doklad o souhlasu uchováváme do odvolání
+              souhlasu nebo ukončení uvedeného účelu. Po odvolání můžeme uchovat
+              minimální záznam v seznamu blokovaných adres, abychom e-mail
+              omylem znovu nezařadili do marketingových rozesílek.
+            </>,
           ],
         },
         {
@@ -797,6 +925,11 @@ const legalDocuments: Record<
               nebo kampanové měření. Pro přístup poskytovatelů používáme
               přiměřené smluvní, organizační a technické záruky.
             </>,
+            <>
+              Pokud se přihlásíte k marketingovým e-mailům, může náš
+              poskytovatel e-mailových služeb zpracovávat kontaktní a doručovací
+              údaje potřebné k jejich odeslání naším jménem.
+            </>,
           ],
         },
         {
@@ -807,6 +940,84 @@ const legalDocuments: Record<
               omezení zpracování, vznést námitku nebo požadovat přenositelnost
               údajů, pokud je použitelná. Zároveň můžete podat stížnost u
               příslušného dozorového úřadu.
+            </>,
+            <>
+              Marketingový souhlas můžete kdykoli odvolat prostřednictvím
+              možnosti odhlášení v marketingovém e-mailu nebo zprávou na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              . Odvolání nemá vliv na zpracování, které proběhlo před jeho
+              odvoláním.
+            </>,
+          ],
+        },
+      ],
+    },
+    "marketing-communications": {
+      title: "Souhlas s marketingovou komunikací",
+      lead: "Toto oznámení zachycuje nepovinný souhlas se zasíláním marketingových e-mailů Deskohub Workspace společností Desktechub s.r.o.",
+      updatedAt: "5. srpna 2026",
+      sections: [
+        {
+          heading: "1. Kdo vás bude kontaktovat",
+          body: [
+            <>
+              Odesílatelem a správcem je {companyName}, IČO{" "}
+              {workspaceSiteConstants.company.identificationNumber}, na adrese{" "}
+              {companyAddress}.
+            </>,
+          ],
+        },
+        {
+          heading: "2. S čím souhlasíte",
+          body: [
+            "Souhlasíte, že můžeme vaše jméno a e-mailovou adresu použít k občasnému zasílání obchodních sdělení o novinkách, pozvánkách na akce a nabídkách Deskohub Workspace.",
+            "Souhlas se vztahuje na e-mailový marketing našich vlastních služeb Deskohub Workspace. Vaše kontaktní údaje neposkytujeme jiné společnosti pro její vlastní marketing.",
+          ],
+        },
+        {
+          heading: "3. Vaše volba",
+          body: [
+            "Souhlas je dobrovolný a oddělený od rezervace. Pokud marketingové políčko nezaškrtnete, nijak vám to nebrání rezervaci vytvořit ani zaplatit.",
+            "Marketingové kontaktní údaje zpracováváme na základě tohoto souhlasu a zaznamenáváme čas a verzi oznámení, abychom mohli udělení souhlasu doložit.",
+          ],
+        },
+        {
+          heading: "4. Odvolání a doba uchování",
+          body: [
+            <>
+              Souhlas můžete kdykoli odvolat prostřednictvím možnosti odhlášení
+              v marketingovém e-mailu nebo zprávou na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              . Odvolání platí pro budoucí marketing a nemá vliv na předchozí
+              zákonné zpracování.
+            </>,
+            "Marketingový kontakt a doklad o souhlasu uchováváme do odvolání souhlasu nebo ukončení účelu. Poté můžeme ponechat minimální záznam v seznamu blokovaných adres, abychom zabránili nechtěnému opětovnému přihlášení.",
+          ],
+        },
+        {
+          heading: "5. Poskytovatelé a vaše práva",
+          body: [
+            <>
+              Náš poskytovatel e-mailových služeb může naším jménem zpracovávat
+              údaje potřebné k doručení a měření těchto zpráv. Více informací o
+              příjemcích, zárukách a vašich právech najdete v našich{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href="/cs-CZ/privacy-policy"
+              >
+                zásadách ochrany osobních údajů
+              </a>
+              .
             </>,
           ],
         },

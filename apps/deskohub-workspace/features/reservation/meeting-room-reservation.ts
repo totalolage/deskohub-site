@@ -339,6 +339,7 @@ const meetingRoomReservationBaseSchema = Schema.Struct({
   startDateTime: meetingRoomStartDateTimeSchema,
   duration: meetingRoomReservationDurationKeySchema,
   legalConsent: reservationLegalConsentSchema,
+  marketingConsent: Schema.Boolean,
 });
 
 export const meetingRoomReservationSchema =
@@ -386,6 +387,7 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
     phone: "",
     message: "",
     legalConsent: false,
+    marketingConsent: false,
   };
 
 export const getMeetingRoomReservationDefaultValues = (
@@ -408,6 +410,7 @@ export const getMeetingRoomReservationDefaultValues = (
     phone: reservation.phone,
     ...(reservation.message !== undefined && { message: reservation.message }),
     legalConsent: false,
+    marketingConsent: false,
   };
 };
 

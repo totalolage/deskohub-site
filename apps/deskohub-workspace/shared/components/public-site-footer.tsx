@@ -61,6 +61,13 @@ export async function PublicSiteFooter() {
                 {m.footerPrivacyLink({}, { locale })}
               </Link>
               <Link
+                href={`${localePath}/marketing-communications`}
+                prefetch={false}
+                className="transition-colors hover:text-sunset-yellow"
+              >
+                {m.footerMarketingCommunicationsLink({}, { locale })}
+              </Link>
+              <Link
                 href={`${localePath}/terms-and-conditions`}
                 prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"

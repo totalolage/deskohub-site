@@ -66,6 +66,7 @@ describe("meetingRoomReservationSchema", () => {
       ...customer,
       message: "",
       legalConsent: true,
+      marketingConsent: false,
     });
 
     expect(Result.isFailure(result)).toBe(true);
@@ -80,6 +81,7 @@ describe("meetingRoomReservationSchema", () => {
       phone: customer.phone,
       message: "  Project workshop  ",
       legalConsent: true,
+      marketingConsent: true,
     });
 
     expect(Result.isSuccess(result)).toBe(true);
@@ -88,6 +90,7 @@ describe("meetingRoomReservationSchema", () => {
         name: "Ada Lovelace",
         email: "ada@example.com",
         message: "Project workshop",
+        marketingConsent: true,
       });
     }
   });
@@ -101,6 +104,7 @@ describe("meetingRoomReservationSchema", () => {
       ...customer,
       message: "",
       legalConsent: true,
+      marketingConsent: false,
     });
     const issues = Effect.runSync(
       getMeetingRoomReservationIssues(
@@ -165,6 +169,7 @@ describe("meetingRoomReservationSchema", () => {
         ...customer,
         message: "",
         legalConsent: true,
+        marketingConsent: false,
       });
 
       expect(Result.isFailure(result)).toBe(true);
@@ -189,9 +194,14 @@ describe("meetingRoomReservationSchema", () => {
       ...customer,
       message: "Workshop",
       legalConsent: false,
+      marketingConsent: false,
     });
     expect(
-      getMeetingRoomReservationOrder({ ...defaults!, legalConsent: true })
+      getMeetingRoomReservationOrder({
+        ...defaults!,
+        legalConsent: true,
+        marketingConsent: true,
+      })
     ).toEqual(reservation);
   });
 
@@ -253,6 +263,7 @@ describe("meetingRoomReservationSchema", () => {
       ...customer,
       message: "",
       legalConsent: true,
+      marketingConsent: false,
     });
 
     expect(Result.isSuccess(result)).toBe(true);

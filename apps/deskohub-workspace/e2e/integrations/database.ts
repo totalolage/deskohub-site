@@ -1097,32 +1097,48 @@ const assertLegalEvidence = (
         .where(eq(legalEvidenceEvents.workspaceReservationId, orderId))
     );
 
-    yield* tryWorkspaceE2ESync("assert legal evidence rows", () => {
-      const expected = new Set([
-        "privacyPolicy:reservation_submit",
-        "termsAndConditions:payment_submit",
-        "operatingRules:payment_submit",
-      ]);
-
-      for (const row of rows) {
-        assert(
-          row.accepted,
-          `legal evidence ${row.document_key} was not accepted`
-        );
-        assert(
-          row.hash_algorithm === "sha256",
-          "legal evidence hash algorithm mismatch"
-        );
-        assert(row.locale === locale, "legal evidence locale mismatch");
-        expected.delete(`${row.document_key}:${row.source}`);
-      }
-
-      assert(
-        expected.size === 0,
-        `missing legal evidence rows: ${[...expected].join(", ")}`
-      );
-    });
+    yield* tryWorkspaceE2ESync("assert legal evidence rows", () =>
+      assertLegalEvidenceRows(rows, locale)
+    );
   });
+
+export const assertLegalEvidenceRows = (
+  rows: readonly {
+    readonly accepted: boolean;
+    readonly document_key: string;
+    readonly hash_algorithm: string;
+    readonly locale: string;
+    readonly source: string;
+  }[],
+  locale: CheckoutData["locale"]
+) => {
+  const expected = new Set([
+    "privacyPolicy:reservation_submit",
+    "marketingCommunications:reservation_submit",
+    "termsAndConditions:payment_submit",
+    "operatingRules:payment_submit",
+  ]);
+
+  for (const row of rows) {
+    if (row.document_key !== "marketingCommunications") {
+      assert(
+        row.accepted,
+        `legal evidence ${row.document_key} was not accepted`
+      );
+    }
+    assert(
+      row.hash_algorithm === "sha256",
+      "legal evidence hash algorithm mismatch"
+    );
+    assert(row.locale === locale, "legal evidence locale mismatch");
+    expected.delete(`${row.document_key}:${row.source}`);
+  }
+
+  assert(
+    expected.size === 0,
+    `missing legal evidence rows: ${[...expected].join(", ")}`
+  );
+};
 
 const assertNoLocalPii = (
   db: DatabaseClient,

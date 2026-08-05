@@ -8,10 +8,37 @@ import type { CheckoutRow } from "../types";
 import {
   assertDiscountApplications,
   assertInternalDiscountApplications,
+  assertLegalEvidenceRows,
   getProviderSessionRowDiagnosticCode,
   replayNexiWebhook,
   waitForProviderSessionRowAfterRedirect,
 } from "./database";
+
+test("accepts an explicit unchecked marketing choice in legal evidence", () => {
+  const row = (
+    document_key: string,
+    source: string,
+    accepted = true
+  ) => ({
+    accepted,
+    document_key,
+    hash_algorithm: "sha256",
+    locale: "en-US",
+    source,
+  });
+
+  expect(() =>
+    assertLegalEvidenceRows(
+      [
+        row("privacyPolicy", "reservation_submit"),
+        row("marketingCommunications", "reservation_submit", false),
+        row("termsAndConditions", "payment_submit"),
+        row("operatingRules", "payment_submit"),
+      ],
+      "en-US"
+    )
+  ).not.toThrow();
+});
 
 test("reads persisted reservation details without legacy product columns", async () => {
   const source = await Bun.file(

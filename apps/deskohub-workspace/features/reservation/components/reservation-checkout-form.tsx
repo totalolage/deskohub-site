@@ -9,11 +9,13 @@ import { Form } from "@/shared/components/ui/form";
 import { ReservationCustomerFields } from "./reservation-customer-fields";
 import { ReservationFormCard } from "./reservation-form-card";
 import { ReservationLegalConsentField } from "./reservation-legal-consent-field";
+import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
 import { ReservationSubmitSection } from "./reservation-submit-section";
 import { useReservationCheckout } from "./use-reservation-checkout";
 
 type ReservationFormData = FieldValues & {
   readonly legalConsent: boolean;
+  readonly marketingConsent: boolean;
 };
 
 type ReservationCheckoutFormProps<
@@ -83,6 +85,7 @@ export function ReservationCheckoutForm<
       startCheckout({
         advertisedPriceToken: advertisedPrice.token,
         legalConsent: data.legalConsent,
+        marketingConsent: data.marketingConsent,
         reservation: getReservation(data),
       });
     })(event);
@@ -103,6 +106,7 @@ export function ReservationCheckoutForm<
           />
           {afterCustomerFields}
           <ReservationLegalConsentField locale={locale} />
+          <ReservationMarketingConsentField locale={locale} />
           <ReservationSubmitSection
             disabled={
               form.formState.isSubmitting ||
