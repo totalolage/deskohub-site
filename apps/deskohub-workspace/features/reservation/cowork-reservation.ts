@@ -20,7 +20,7 @@ import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
-import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
+import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationIntervalInput } from "@/features/reservation/reservation-interval-domain";
 import { coworkReservationKind } from "@/features/reservation/reservation-kind";
 import {
@@ -45,7 +45,7 @@ const dateSchema = Schema.String.check(
   isPlainDateString({
     message: m.reservationValidationDateRequired(),
   }),
-  Schema.makeFilter(isTodayOrFuturePragueDate, {
+  Schema.makeFilter(isTodayOrFutureWorkspaceDate, {
     message: m.reservationValidationDatePast(),
   })
 );

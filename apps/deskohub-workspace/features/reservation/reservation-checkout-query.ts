@@ -16,7 +16,7 @@ import {
   reservationCustomerNameSchema,
   reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
-import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
+import { isTodayOrFutureWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type CoworkWorkspaceAvailabilityQuery,
   parseWorkspaceAvailabilityQuery,
@@ -47,7 +47,7 @@ const queryBooleanSchema = Schema.toStandardSchemaV1(
 const queryDateSchema = Schema.toStandardSchemaV1(
   Schema.String.check(
     Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
-    Schema.makeFilter(isTodayOrFuturePragueDate)
+    Schema.makeFilter(isTodayOrFutureWorkspaceDate)
   )
 );
 const queryTierSchema = Schema.toStandardSchemaV1(

@@ -18,6 +18,16 @@ describe("createPostHogPageUrl", () => {
     ).toBe("https://deskohub.test/reservation/status/order-id?step=done");
   });
 
+  test("preserves sale-banner attribution on PostHog pageviews", () => {
+    expect(
+      createPostHogPageUrl(
+        "https://deskohub.test/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+      )
+    ).toBe(
+      "https://deskohub.test/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+    );
+  });
+
   test("strips sensitive params from current, referrer, and initial urls", () => {
     expect(
       sanitizePostHogProperties(

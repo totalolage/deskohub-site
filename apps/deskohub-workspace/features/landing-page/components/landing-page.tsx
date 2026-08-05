@@ -10,13 +10,15 @@ import {
 } from "./landing-page-hero-section";
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
+import type { LandingPageSaleBannerContent } from "./landing-page-sale-banner";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 
 type LandingPageProps = {
   locale: Locale;
+  saleBanner?: LandingPageSaleBannerContent;
 };
 
-export function LandingPage({ locale }: LandingPageProps) {
+export function LandingPage({ locale, saleBanner }: LandingPageProps) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
@@ -31,6 +33,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         overviewSectionId={siteHeaderSectionIds.overview}
         reservationHref={reservationHref}
         eventsHref={contactHref}
+        saleBanner={saleBanner}
       />
 
       <LandingPagePhotoCarouselSection />

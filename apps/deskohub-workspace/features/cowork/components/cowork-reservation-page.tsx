@@ -12,7 +12,7 @@ import {
   getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
-import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { coworkReservationPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -31,6 +31,7 @@ export const coworkReservationPage = createReservationPage({
     checkoutSessionId,
     initialReservation,
     locale,
+    replacementToken,
     searchParams,
   }) => {
     const restoredOrQueryValues = initialReservation
@@ -38,7 +39,10 @@ export const coworkReservationPage = createReservationPage({
       : getReservationDefaultValuesFromSearchParams(searchParams);
     const initialValues = restoredOrQueryValues.date
       ? restoredOrQueryValues
-      : { ...restoredOrQueryValues, date: getCurrentPragueDate() };
+      : {
+          ...restoredOrQueryValues,
+          date: getCurrentWorkspaceDate().toString(),
+        };
     const initialAdvertisedPriceRequests = initialValues.date
       ? [
           ...getCoworkTierAdvertisedPriceRequests({
@@ -77,6 +81,7 @@ export const coworkReservationPage = createReservationPage({
           initialReservation={initialReservation}
           initialValues={initialValues}
           locale={locale}
+          replacementToken={replacementToken}
         />
       ),
     };

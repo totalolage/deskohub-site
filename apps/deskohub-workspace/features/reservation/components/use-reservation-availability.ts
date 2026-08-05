@@ -12,6 +12,7 @@ import { loadWorkspaceAvailability } from "@/features/reservation/workspace-avai
 type UseReservationAvailabilityOptions = {
   readonly debounceMs?: number;
   readonly keepPreviousData?: boolean;
+  readonly replacementToken?: string;
 };
 
 const useDebouncedAvailabilityQuery = (
@@ -46,11 +47,18 @@ export function useReservationAvailability(
   const availabilityQuery = debounced.query;
   const result = useQuery<WorkspaceAvailability>({
     queryKey: availabilityQuery
-      ? workspaceAvailabilityKeys.availability(availabilityQuery)
+      ? [
+          ...workspaceAvailabilityKeys.availability(availabilityQuery),
+          options.replacementToken ?? null,
+        ]
       : ["workspace-availability", "empty"],
     queryFn: availabilityQuery
       ? ({ signal }) =>
-          loadWorkspaceAvailability({ query: availabilityQuery, signal })
+          loadWorkspaceAvailability({
+            query: availabilityQuery,
+            signal,
+            replacementToken: options.replacementToken,
+          })
       : skipToken,
     ...(options.keepPreviousData && { placeholderData: keepPreviousData }),
     retry: (failureCount) => failureCount < 3,

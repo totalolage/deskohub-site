@@ -8,6 +8,8 @@ import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
+  type ActiveSale,
+  type ActiveSaleDiscoveryInput,
   type AffirmedDiscountAdvertisementQuote,
   type AppliedDiscount,
   affirmedDiscountAdvertisementQuoteCodec,
@@ -74,6 +76,9 @@ export type AppliedDiscountCodeQuote = {
 };
 
 export interface IDiscountService {
+  readonly discoverActiveSales: (
+    input: ActiveSaleDiscoveryInput
+  ) => Effect.Effect<readonly ActiveSale[]>;
   readonly quote: (
     input: DiscountQuoteInput
   ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
@@ -141,6 +146,25 @@ export class DiscountService extends Context.Service<
           ).pipe(
             Effect.map((candidatesByProvider) => candidatesByProvider.flat())
           )
+      );
+
+      const discoverActiveSales = Effect.fn(
+        "DiscountService.discoverActiveSales"
+      )((input: ActiveSaleDiscoveryInput) =>
+        Effect.succeed(input).pipe(
+          Effect.bind("releaseGates", () =>
+            releaseGates.evaluate({ operation: "discover_active_sales" })
+          ),
+          Effect.bind("activeSales", ({ releaseGates }) =>
+            recoverGatedDiscountResolution({
+              enabled: releaseGates.calendarSales,
+              operation: "discover_active_sales",
+              provider: "calendar",
+              resolve: () => calendar.discoverActiveSales(input),
+            })
+          ),
+          Effect.map(({ activeSales }) => activeSales)
+        )
       );
 
       const resolveDisplayedCandidates = Effect.fn(
@@ -367,6 +391,7 @@ export class DiscountService extends Context.Service<
 
       return {
         quote,
+        discoverActiveSales,
         discoverAdvertisedDiscounts,
         affirmAdvertisement,
         applyCustomerDiscount,
@@ -377,12 +402,12 @@ export class DiscountService extends Context.Service<
   );
 }
 
-const recoverGatedDiscountResolution = (input: {
+const recoverGatedDiscountResolution = <A>(input: {
   readonly enabled: boolean;
   readonly operation: DiscountResolutionOperation;
   readonly provider: DiscountResolutionProvider;
   readonly resolve: () => Effect.Effect<
-    readonly DiscountCandidate[],
+    readonly A[],
     DiscountResolutionFailure
   >;
 }) =>

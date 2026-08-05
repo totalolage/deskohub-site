@@ -24,7 +24,12 @@ export const meetingRoomReservationPage = createReservationPage({
     title: m.reservationMeetingRoomMetadataTitle({}, { locale }),
     description: m.reservationMeetingRoomMetadataDescription({}, { locale }),
   }),
-  render: async ({ checkoutSessionId, initialReservation, locale }) => {
+  render: async ({
+    checkoutSessionId,
+    initialReservation,
+    locale,
+    replacementToken,
+  }) => {
     const minimumStartDateTime = getEarliestMeetingRoomStartDateTime(
       getMeetingRoomReservationDuration(
         meetingRoomReservationDefaultValues.duration
@@ -59,6 +64,7 @@ export const meetingRoomReservationPage = createReservationPage({
           }
           initialValues={initialValues}
           locale={locale}
+          replacementToken={replacementToken}
         />
       ),
     };

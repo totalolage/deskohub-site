@@ -15,6 +15,7 @@ type LandingPageHeroScrollSceneProps = {
   background: ReactNode;
   bottomSection: ReactNode;
   children: ReactNode;
+  overlay?: ReactNode;
 };
 
 export function LandingPageHeroScrollScene({
@@ -23,6 +24,7 @@ export function LandingPageHeroScrollScene({
   background,
   bottomSection,
   children,
+  overlay,
 }: LandingPageHeroScrollSceneProps) {
   const sectionRef = useRef<HTMLElement>(null);
   const shouldReduceMotion = useReducedMotion();
@@ -47,6 +49,8 @@ export function LandingPageHeroScrollScene({
       >
         {background}
       </motion.div>
+
+      {overlay}
 
       <Container className="mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center">
         <motion.div

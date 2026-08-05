@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 import { requireDiscountAdminAuthorization } from "@/features/discounts/admin/basic-auth.server";
-import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { AdministrationLive } from "./administration.runtime";
 import {
@@ -25,11 +25,11 @@ const parsePage = (value: string | undefined) => {
 };
 
 const parseDate = (value: string | undefined) => {
-  if (!value) return getCurrentPragueDate();
+  if (!value) return getCurrentWorkspaceDate().toString();
   try {
     return Temporal.PlainDate.from(value).toString();
   } catch {
-    return getCurrentPragueDate();
+    return getCurrentWorkspaceDate().toString();
   }
 };
 

@@ -124,6 +124,58 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
+  test("discovers localized active sales with their complete product targets", async () => {
+    const products = [
+      basicProduct,
+      { kind: "meeting-room", durationMinutes: 60 } as const,
+    ];
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        return yield* provider.discoverActiveSales({
+          currentDate: Temporal.PlainDate.from("2026-07-20"),
+          locale: "cs-CZ",
+        });
+      }),
+      listEvents,
+      ({ discountId }) =>
+        Effect.succeed(
+          definition(discountId, {
+            adjustment: {
+              kind: "fixed",
+              amount: { value: 5000, exponent: 2, currency: "CZK" },
+            },
+            products,
+          })
+        )
+    );
+
+    expect(listEvents).toHaveBeenCalledWith({
+      calendarId: salesCalendarId,
+      from: "2026-07-20",
+      to: "2026-07-20",
+    });
+    expect(result).toEqual([
+      expect.objectContaining({
+        discount: {
+          id: expect.any(String),
+          label: "Databázová sleva",
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 5000, exponent: 2, currency: "CZK" },
+          },
+          countdownStartsAt: expect.any(String),
+          expiresAt: expect.any(String),
+        },
+        products,
+      }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain("Operator calendar title");
+    expect(JSON.stringify(result)).not.toContain(discountIdA);
+  });
+
   test("loads database definitions and returns ordered source-neutral candidates", async () => {
     const listEvents = mock(() =>
       Effect.succeed([
@@ -749,19 +801,29 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
+        const activeSalesAfterExpiry = yield* provider.discoverActiveSales({
+          currentDate: Temporal.PlainDate.from("2026-07-20"),
+          locale: "en-US",
+        });
         const freshAfterExpiry = yield* provider.revalidate({
           locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
 
-        return { beforeExpiry, cachedAfterExpiry, freshAfterExpiry };
+        return {
+          activeSalesAfterExpiry,
+          beforeExpiry,
+          cachedAfterExpiry,
+          freshAfterExpiry,
+        };
       }),
       listEvents
     );
 
     expect(result.beforeExpiry).toHaveLength(1);
     expect(result.cachedAfterExpiry).toEqual([]);
+    expect(result.activeSalesAfterExpiry).toEqual([]);
     expect(result.freshAfterExpiry).toEqual([]);
     expect(listEvents).toHaveBeenCalledTimes(2);
   });
@@ -815,7 +877,6 @@ describe("CalendarDiscountProvider", () => {
         reservationDate: "2026-07-20",
       });
     });
-
     const first = await quoteForDate.pipe(
       Effect.provide(testLayer),
       Effect.runPromise

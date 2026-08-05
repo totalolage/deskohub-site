@@ -14,6 +14,7 @@ export type DiscountResolutionProvider =
 
 export type DiscountResolutionOperation =
   | "quote"
+  | "discover_active_sales"
   | "discover_advertised_discounts"
   | "affirm_advertisement"
   | "apply_customer_discount"

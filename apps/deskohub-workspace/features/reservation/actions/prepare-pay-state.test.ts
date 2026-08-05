@@ -254,6 +254,7 @@ const runReusableReservationScenario = async (input: {
   readonly advertisedPriceToken?: string;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
+  readonly ensureAvailable?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -281,7 +282,7 @@ const runReusableReservationScenario = async (input: {
   const enqueueCleanup = mock(() => Effect.void);
   const updateReservationDetails = mock(() => Effect.void);
   const recordMany = mock((events) => Effect.succeed(events as never));
-  const ensureAvailable = mock(() => Effect.void);
+  const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const claimHoldCreation =
@@ -1036,6 +1037,11 @@ describe("prepareWorkspacePayState", () => {
           lifecycleEvents.push("cancel-previous-dotypos-reservation");
         })
       ),
+      ensureAvailable: mock(() =>
+        Effect.sync(() => {
+          lifecycleEvents.push("recheck-availability");
+        })
+      ),
       completeSupersessionAndCreateDraft: mock((input) =>
         Effect.sync(() => {
           lifecycleEvents.push("cancel-local-and-create-replacement-draft");
@@ -1074,9 +1080,11 @@ describe("prepareWorkspacePayState", () => {
     );
     expect(lifecycleEvents).toEqual([
       "cancel-previous-dotypos-reservation",
+      "recheck-availability",
       "cancel-local-and-create-replacement-draft",
       "create-replacement-dotypos-reservation",
     ]);
+    expect(result.ensureAvailable).toHaveBeenCalledTimes(1);
   });
 
   test("rotates the checkout session instead of cancelling a reservation with pending payment", async () => {

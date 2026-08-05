@@ -26,7 +26,7 @@ import {
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
-import { getCurrentPragueDate } from "@/features/reservation/reservation-date";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { getAdministrationPagination } from "./listing";
 import {
@@ -1091,7 +1091,7 @@ export class AdministrationService extends Context.Service<
                 .from(workspaceReservations),
               recent: listReservations({ page: 1, pageSize: 6 }),
               today: listReservations({
-                date: getCurrentPragueDate(),
+                date: getCurrentWorkspaceDate().toString(),
                 page: 1,
                 pageSize: 6,
               }),

@@ -189,18 +189,49 @@ const getAvailability = (input: {
 
       return yield* input.kind === "meeting-room"
         ? service.getAvailability({
-            ...baseQuery,
-            kind: "meeting-room",
-            startsAt: input.startsAt,
-            endsAt: input.endsAt,
+            query: {
+              ...baseQuery,
+              kind: "meeting-room",
+              startsAt: input.startsAt,
+              endsAt: input.endsAt,
+            },
           })
         : service.getAvailability({
-            ...baseQuery,
-            kind: "cowork",
-            date: input.date,
-            entryTier: input.entryTier,
-            monitorOption: input.monitorOption,
+            query: {
+              ...baseQuery,
+              kind: "cowork",
+              date: input.date,
+              entryTier: input.entryTier,
+              monitorOption: input.monitorOption,
+            },
           });
+    }),
+    input
+  );
+
+const getReplacementAvailability = (input: {
+  readonly excludedDotyposReservationId: string;
+  readonly reservations: readonly Reservation[];
+  readonly tables: readonly Table[];
+}) =>
+  runWithInventory(
+    Effect.gen(function* () {
+      const availability = yield* Effect.promise(
+        () => import("./workspace-availability.service")
+      );
+      const service = yield* availability.WorkspaceAvailabilityService;
+      return yield* service.getAvailability({
+        query: {
+          kind: "cowork",
+          from: testDate,
+          to: testDate,
+          date: testDate,
+          entryTier: "basic",
+        },
+        occupancyExclusion: {
+          dotyposReservationId: input.excludedDotyposReservationId,
+        },
+      });
     }),
     input
   );
@@ -276,6 +307,57 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(availability.unavailableDates).not.toContain(testDate);
     expect(availability.unavailableMonitorOptions).not.toContain("2x27-qhd");
+  });
+
+  test("excludes only the verified replacement hold from occupancy", async () => {
+    const ownReservation = makeReservation({
+      id: "own-dotypos-reservation-id",
+      tableId: "basic-1",
+      status: "NEW",
+    });
+    const tables = [makeTable({ id: "basic-1", tags: ["tier:basic"] })];
+
+    const onlyOwnHold = await getReplacementAvailability({
+      excludedDotyposReservationId: "own-dotypos-reservation-id",
+      reservations: [ownReservation],
+      tables,
+    });
+
+    expect(onlyOwnHold.unavailableDates).not.toContain(testDate);
+    expect(onlyOwnHold.unavailableCoworkTiers).not.toContain("basic");
+
+    const anotherHoldRemains = await getReplacementAvailability({
+      excludedDotyposReservationId: "own-dotypos-reservation-id",
+      reservations: [
+        ownReservation,
+        makeReservation({
+          id: "another-dotypos-reservation-id",
+          tableId: "basic-1",
+          status: "NEW",
+        }),
+      ],
+      tables,
+    });
+
+    expect(anotherHoldRemains.unavailableDates).toContain(testDate);
+    expect(anotherHoldRemains.unavailableCoworkTiers).toContain("basic");
+  });
+
+  test("does not exclude a replacement reservation that is no longer pending", async () => {
+    const availability = await getReplacementAvailability({
+      excludedDotyposReservationId: "confirmed-dotypos-reservation-id",
+      reservations: [
+        makeReservation({
+          id: "confirmed-dotypos-reservation-id",
+          tableId: "basic-1",
+          status: "CONFIRMED",
+        }),
+      ],
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.unavailableCoworkTiers).toContain("basic");
   });
 
   test("falls back when expired local hold filtering fails", async () => {

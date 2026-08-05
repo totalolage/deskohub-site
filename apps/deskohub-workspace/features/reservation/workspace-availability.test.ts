@@ -7,6 +7,18 @@ import {
 } from "./workspace-availability";
 
 describe("parseWorkspaceAvailabilityQuery", () => {
+  test("derives default dates from the configured Workspace timezone", () => {
+    const query = parseWorkspaceAvailabilityQuery(
+      new URLSearchParams(),
+      new Date("2026-07-19T22:30:00Z")
+    );
+
+    expect(query).toMatchObject({
+      from: "2026-07-20",
+      to: "2027-01-20",
+    });
+  });
+
   test("keeps the public kind query param as the domain discriminator", () => {
     const query = parseWorkspaceAvailabilityQuery(
       new URLSearchParams({
