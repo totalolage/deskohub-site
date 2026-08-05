@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: read
+  deployments: read
   pull-requests: read
   statuses: write
 
