@@ -11,7 +11,7 @@ import type {
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { and, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -39,6 +39,7 @@ import {
   storedDiscountIdSchema,
 } from "../persistence-contracts";
 import type {
+  CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
   DiscountAdminCustomerSearch,
@@ -123,6 +124,11 @@ export type AdminCustomerProfile = {
   readonly claims: readonly AdminDiscountCodeClaim[];
 };
 
+export type AdminCustomerCodeCreation = {
+  readonly customer: AdminDotyposCustomer;
+  readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
+};
+
 export type AdminCustomerSearchResult = {
   readonly kind: "matched" | "not-found" | "ambiguous";
   readonly customers: readonly AdminDotyposCustomer[];
@@ -185,6 +191,17 @@ export interface IDiscountAdministration {
   readonly createCode: (
     input: CreateDiscountCodeAdminInput
   ) => Effect.Effect<DiscountCodeId, EffectDrizzleQueryError | SqlError>;
+  readonly createCustomerCode: (
+    input: CreateCustomerDiscountCodeAdminInput
+  ) => Effect.Effect<
+    DiscountCodeId,
+    | EffectDrizzleQueryError
+    | SqlError
+    | ExternalAPIError
+    | NetworkError
+    | ValidationError
+    | DiscountAdminNotFoundError
+  >;
   readonly updateCode: (
     input: UpdateDiscountCodeAdminInput
   ) => Effect.Effect<
@@ -213,6 +230,17 @@ export interface IDiscountAdministration {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
     AdminCustomerProfile,
+    | EffectDrizzleQueryError
+    | SqlError
+    | ExternalAPIError
+    | NetworkError
+    | ValidationError
+    | DiscountAdminNotFoundError
+  >;
+  readonly loadCustomerCodeCreation: (input: {
+    readonly customerId: DotyposCustomerId;
+  }) => Effect.Effect<
+    AdminCustomerCodeCreation,
     | EffectDrizzleQueryError
     | SqlError
     | ExternalAPIError
@@ -308,17 +336,32 @@ export class DiscountAdministration extends Context.Service<
         )
       );
 
+      const loadDiscounts = Effect.fn("DiscountAdministration.loadDiscounts")(
+        () =>
+          db.query.discounts
+            .findMany({
+              with: {
+                codes: {},
+                productTargets: {},
+              },
+            })
+            .pipe(
+              Effect.map((rows) =>
+                rows
+                  .map(toAdminDiscount)
+                  .toSorted((left, right) =>
+                    (left.labels["en-US"] ?? "").localeCompare(
+                      right.labels["en-US"] ?? ""
+                    )
+                  )
+              )
+            )
+      );
+
       const loadDashboard = Effect.fn("DiscountAdministration.loadDashboard")(
         () =>
           Effect.Do.pipe(
-            Effect.bind("definitionRows", () =>
-              db.query.discounts.findMany({
-                with: {
-                  codes: {},
-                  productTargets: {},
-                },
-              })
-            ),
+            Effect.bind("discounts", loadDiscounts),
             Effect.bind("codeRows", () =>
               db.query.discountCodes.findMany({
                 with: {
@@ -326,15 +369,6 @@ export class DiscountAdministration extends Context.Service<
                   redemptions: {},
                 },
               })
-            ),
-            Effect.let("discounts", ({ definitionRows }) =>
-              definitionRows
-                .map(toAdminDiscount)
-                .toSorted((left, right) =>
-                  (left.labels["en-US"] ?? "").localeCompare(
-                    right.labels["en-US"] ?? ""
-                  )
-                )
             ),
             Effect.let("codes", ({ codeRows }) =>
               codeRows
@@ -438,6 +472,68 @@ export class DiscountAdministration extends Context.Service<
             )
       );
 
+      const createCustomerCode = Effect.fn(
+        "DiscountAdministration.createCustomerCode"
+      )(function* (input: CreateCustomerDiscountCodeAdminInput) {
+        yield* loadActiveCustomer(input.customerId);
+
+        return yield* db.transaction((tx) =>
+          Effect.gen(function* () {
+            const discountId = yield* Match.value(input.discount).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                existing: ({ discountId }) =>
+                  tx
+                    .select({ id: discounts.id })
+                    .from(discounts)
+                    .where(eq(discounts.id, discountId))
+                    .for("update")
+                    .pipe(
+                      Effect.flatMap((rows) =>
+                        requireUpdatedRow(rows, "discount", discountId)
+                      ),
+                      Effect.as(discountId)
+                    ),
+                new: ({ discount }) =>
+                  Effect.gen(function* () {
+                    const rows = yield* tx
+                      .insert(discounts)
+                      .values(toDiscountValues(discount))
+                      .returning({ id: discounts.id });
+                    const row = rows[0];
+                    if (!row) {
+                      return yield* Effect.die(
+                        new Error("Discount insert returned no identifier.")
+                      );
+                    }
+                    yield* tx.insert(discountProductTargets).values(
+                      discount.products.map((productIdentity) => ({
+                        discountId: row.id,
+                        productIdentity,
+                      }))
+                    );
+                    return row.id;
+                  }),
+              })
+            );
+            const codeRows = yield* tx
+              .insert(discountCodes)
+              .values(toDiscountCodeValues({ ...input.code, discountId }))
+              .returning({ id: discountCodes.id });
+            const codeRow = codeRows[0];
+            if (!codeRow) {
+              return yield* Effect.die(
+                new Error("Discount code insert returned no identifier.")
+              );
+            }
+            yield* tx.insert(discountCodeCustomers).values({
+              codeId: codeRow.id,
+              dotyposCustomerId: input.customerId,
+            });
+            return codeRow.id;
+          })
+        );
+      });
+
       const updateCode = Effect.fn("DiscountAdministration.updateCode")(
         (input: UpdateDiscountCodeAdminInput) =>
           db
@@ -527,45 +623,16 @@ export class DiscountAdministration extends Context.Service<
       const searchCustomers = Effect.fn(
         "DiscountAdministration.searchCustomers"
       )(function* (input: DiscountAdminCustomerSearch) {
-        if (input.kind === "id") {
-          const customer = yield* dotypos
-            .getCustomer(input.customerId)
-            .pipe(
-              Effect.catchTag("ExternalAPIError", (error) =>
-                error.statusCode === 404
-                  ? Effect.succeed(undefined)
-                  : Effect.fail(error)
-              )
-            );
-          return !customer || customer.deleted || !customer.id
-            ? ({
-                kind: "not-found",
-                customers: [],
-              } satisfies AdminCustomerSearchResult)
-            : ({
-                kind: "matched",
-                customers: [toAdminDotyposCustomer(customer)],
-              } satisfies AdminCustomerSearchResult);
-        }
-
-        const lookupField = input.kind;
-        const result = yield* dotypos.findCustomer(
-          {
-            firstName: "",
-            ...(input.kind === "email"
-              ? { email: input.email }
-              : { phone: input.phone }),
-          },
-          { lookupFields: [lookupField] }
-        );
+        const customers = (yield* dotypos.searchCustomers(input.query))
+          .filter((customer) => customer.id && !customer.deleted)
+          .map(toAdminDotyposCustomer)
+          .slice(0, 50);
         let kind: AdminCustomerSearchResult["kind"] = "not-found";
-        if (result._tag === "Matched") kind = "matched";
-        else if (result._tag === "Ambiguous") kind = "ambiguous";
+        if (customers.length === 1) kind = "matched";
+        else if (customers.length > 1) kind = "ambiguous";
         return {
           kind,
-          customers: result.matches
-            .filter((customer) => customer.id && !customer.deleted)
-            .map(toAdminDotyposCustomer),
+          customers,
         } satisfies AdminCustomerSearchResult;
       });
 
@@ -614,6 +681,23 @@ export class DiscountAdministration extends Context.Service<
               .toSorted((left, right) =>
                 Temporal.Instant.compare(right.reservedAt, left.reservedAt)
               ),
+          }))
+        )
+      );
+
+      const loadCustomerCodeCreation = Effect.fn(
+        "DiscountAdministration.loadCustomerCodeCreation"
+      )((input: { readonly customerId: DotyposCustomerId }) =>
+        Effect.all(
+          {
+            customer: loadActiveCustomer(input.customerId),
+            discounts: loadDiscounts(),
+          },
+          { concurrency: "inherit" }
+        ).pipe(
+          Effect.map(({ customer, discounts }) => ({
+            customer: toAdminDotyposCustomer(customer),
+            discounts: discounts.map(({ id, labels }) => ({ id, labels })),
           }))
         )
       );
@@ -757,10 +841,12 @@ export class DiscountAdministration extends Context.Service<
       return {
         addCodeCustomer,
         createCode,
+        createCustomerCode,
         createDiscount,
         deleteCode,
         deleteDiscount,
         loadCodeDetail,
+        loadCustomerCodeCreation,
         loadCustomerProfile,
         loadDashboard,
         makeCodeUnrestricted,

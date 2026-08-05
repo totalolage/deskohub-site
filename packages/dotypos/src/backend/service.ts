@@ -35,6 +35,13 @@ import {
 
 type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 
+export type ReservationListOptions = {
+  readonly customerId?: string;
+  readonly startsAtOrAfter?: string;
+  readonly startsBefore?: string;
+  readonly order?: "startDateAscending" | "startDateDescending";
+};
+
 type DotyposPage<A> = {
   readonly data?: readonly A[];
   readonly nextPage?: string | null;
@@ -641,6 +648,47 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const searchCustomers = Effect.fn("searchCustomers")(function* (
+    rawQuery: string
+  ) {
+    const query = rawQuery.trim();
+    if (query.length < 2 || query.length > 100 || /[|;]/.test(query)) {
+      return yield* new ValidationError({
+        message: "Customer search query is invalid",
+      });
+    }
+
+    const matches = yield* Effect.all(
+      (["firstName", "lastName", "companyName", "email"] as const).map(
+        (field) =>
+          loadAllDotyposPages({
+            loadPage: (page) =>
+              runDotyposRequest(
+                client.getCustomers(config.cloudId, {
+                  params: {
+                    filter: `${field}|like|${query}`,
+                    limit: 100,
+                    page,
+                  },
+                }),
+                "searchCustomers"
+              ).pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  page === 1 && error.statusCode === 404
+                    ? Effect.succeed({ data: [] as const })
+                    : Effect.fail(error)
+                )
+              ),
+            operation: "searchCustomers",
+          }).pipe(Effect.retry(retryPolicy))
+      ),
+      { concurrency: 4 }
+    );
+    const customers: Customer[] = [];
+    for (const match of matches.flat()) addUniqueCustomer(customers, match);
+    return customers;
+  });
+
   const lookupCustomer = Effect.fn("lookupCustomer")(
     function* (
       customerData: DotyposCustomerLookupData,
@@ -1093,13 +1141,21 @@ const makeDotyposService = Effect.gen(function* () {
     }).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"))
   );
 
-  const listReservationsByFilter = (filter?: string) =>
+  const loadReservations = (options: {
+    readonly filter?: string;
+    readonly sort?: string;
+  }) =>
     loadAllDotyposPages({
       operation: "listReservations",
       loadPage: (page) =>
         runDotyposRequest(
           client.listReservations(config.cloudId, {
-            params: { filter, limit: 100, page },
+            params: {
+              limit: 100,
+              page,
+              ...(options.filter && { filter: options.filter }),
+              ...(options.sort && { sort: options.sort }),
+            },
           }),
           "listReservations"
         ).pipe(
@@ -1114,15 +1170,43 @@ const makeDotyposService = Effect.gen(function* () {
       catchUnexpectedDotyposError("listReservations")
     );
 
-  const listReservations = Effect.fn("listReservations")(() =>
-    listReservationsByFilter()
-  );
+  const listReservations = Effect.fn("listReservations")(function* (
+    options: ReservationListOptions = {}
+  ) {
+    const filterValues = [
+      options.customerId,
+      options.startsAtOrAfter,
+      options.startsBefore,
+    ].filter((value): value is string => value !== undefined);
+
+    if (filterValues.some((value) => !value.trim() || /[|;]/.test(value))) {
+      return yield* new ValidationError({
+        message: "Reservation filters contain an invalid value",
+      });
+    }
+
+    const filter = [
+      options.customerId && `_customerId|eq|${options.customerId}`,
+      options.startsAtOrAfter && `startDate|gteq|${options.startsAtOrAfter}`,
+      options.startsBefore && `startDate|lt|${options.startsBefore}`,
+    ]
+      .filter((value): value is string => Boolean(value))
+      .join(";");
+
+    return yield* loadReservations({
+      ...(filter && { filter }),
+      ...(options.order && {
+        sort:
+          options.order === "startDateAscending" ? "startDate" : "-startDate",
+      }),
+    });
+  });
 
   const listActiveReservationsOverlapping = Effect.fn(
     "listActiveReservationsOverlapping"
   )(function* (interval: DotyposReservationInterval) {
     const filter = yield* getActiveReservationOverlapFilter(interval);
-    return yield* listReservationsByFilter(filter);
+    return yield* loadReservations({ filter });
   });
 
   const getProducts = Effect.fn("getProducts")(function* (options: {
@@ -1169,6 +1253,7 @@ const makeDotyposService = Effect.gen(function* () {
     getReservation,
     getReservationStatus,
     getCustomer,
+    searchCustomers,
     getCustomerDiscountGroup,
     getCustomerDiscount,
     getDiscountGroups,

@@ -34,7 +34,7 @@ export const discountAdminLabelsSchema = Schema.Struct({
   "en-US": discountLabelSchema,
 });
 
-const discountFields = {
+const discountDefinitionSchema = Schema.Struct({
   labels: discountAdminLabelsSchema,
   adjustment: adminDiscountAdjustmentSchema,
   products: Schema.NonEmptyArray(workspaceProductIdentitySchema).check(
@@ -47,23 +47,22 @@ const discountFields = {
         }
     )
   ),
-};
+});
 
-export const createDiscountAdminInputSchema = Schema.Struct(discountFields);
+export const createDiscountAdminInputSchema = discountDefinitionSchema;
 
 export const updateDiscountAdminInputSchema = Schema.Struct({
   id: storedDiscountIdSchema,
-  ...discountFields,
+  ...discountDefinitionSchema.fields,
 });
 
-const codeFields = {
-  discountId: storedDiscountIdSchema,
+const discountCodeConfigurationSchema = Schema.Struct({
   code: canonicalDiscountCodeSchema,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(instantStringSchema),
   validUntil: Schema.NullOr(instantStringSchema),
   maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
-};
+});
 
 const validCodeWindow = Schema.makeFilter<{
   readonly validFrom: string | null;
@@ -81,13 +80,31 @@ const validCodeWindow = Schema.makeFilter<{
     }
 );
 
-export const createDiscountCodeAdminInputSchema =
-  Schema.Struct(codeFields).check(validCodeWindow);
+export const createDiscountCodeAdminInputSchema = Schema.Struct({
+  discountId: storedDiscountIdSchema,
+  ...discountCodeConfigurationSchema.fields,
+}).check(validCodeWindow);
 
 export const updateDiscountCodeAdminInputSchema = Schema.Struct({
   id: discountCodeIdSchema,
-  ...codeFields,
+  discountId: storedDiscountIdSchema,
+  ...discountCodeConfigurationSchema.fields,
 }).check(validCodeWindow);
+
+export const createCustomerDiscountCodeAdminInputSchema = Schema.Struct({
+  customerId: dotyposCustomerIdSchema,
+  code: discountCodeConfigurationSchema.check(validCodeWindow),
+  discount: Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literal("existing"),
+      discountId: storedDiscountIdSchema,
+    }),
+    Schema.Struct({
+      kind: Schema.Literal("new"),
+      discount: createDiscountAdminInputSchema,
+    }),
+  ]),
+});
 
 export const discountAdminMutationSchema = Schema.Union([
   Schema.Struct({
@@ -105,6 +122,10 @@ export const discountAdminMutationSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("create-code"),
     code: createDiscountCodeAdminInputSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create-customer-code"),
+    ...createCustomerDiscountCodeAdminInputSchema.fields,
   }),
   Schema.Struct({
     kind: Schema.Literal("update-code"),
@@ -145,20 +166,13 @@ export const discountAdminMutationStandardSchema = Schema.toStandardSchemaV1(
   }
 );
 
-export const discountAdminCustomerSearchSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("id"),
-    customerId: dotyposCustomerIdSchema,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("email"),
-    email: Schema.Trim.check(Schema.isNonEmpty()),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("phone"),
-    phone: Schema.Trim.check(Schema.isNonEmpty()),
-  }),
-]);
+export const discountAdminCustomerSearchSchema = Schema.Struct({
+  query: Schema.Trim.check(
+    Schema.isMinLength(2),
+    Schema.isMaxLength(100),
+    Schema.isPattern(/^[^|;]+$/)
+  ),
+});
 
 export const discountAdminCustomerSearchStandardSchema =
   Schema.toStandardSchemaV1(discountAdminCustomerSearchSchema, {
@@ -174,6 +188,8 @@ export type UpdateDiscountAdminInput =
   typeof updateDiscountAdminInputSchema.Type;
 export type CreateDiscountCodeAdminInput =
   typeof createDiscountCodeAdminInputSchema.Type;
+export type CreateCustomerDiscountCodeAdminInput =
+  typeof createCustomerDiscountCodeAdminInputSchema.Type;
 export type UpdateDiscountCodeAdminInput =
   typeof updateDiscountCodeAdminInputSchema.Type;
 export type DiscountAdminMutation = typeof discountAdminMutationSchema.Type;

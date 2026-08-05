@@ -18,7 +18,7 @@ When fixing a bug raised by review, first add a regression test against the curr
 
 When a planned PR stopping point is ready for user review, publish the PR as ready for review instead of leaving it in draft.
 
-For every PR that introduces or changes UI, attach screenshots of every newly introduced visible UI state to the PR. Capture the exact committed and pushed code, preferably from its immutable preview. Cover states that differ materially in copy, layout, interaction result, or responsive presentation; document non-visible boundary states with tests rather than empty screenshots. Upload ephemeral review screenshots as GitHub-native PR body or comment attachments; do not commit them to the repository unless they are durable documentation or test fixtures.
+For every PR that introduces or changes UI, attach screenshots of every newly introduced visible UI state to the PR. Capture the exact committed and pushed code, preferably from its immutable preview. Cover states that differ materially in copy, layout, interaction result, or responsive presentation; document non-visible boundary states with tests rather than empty screenshots. Upload ephemeral review screenshots through GitHub rather than committing them to the repository unless they are durable documentation or test fixtures. Use the `gh image` extension for native `user-attachments` when a GitHub browser session is available. In a headless environment, upload synthetic-only screenshots as GitHub Release Assets in the dedicated `totalolage/gitshot-images` repository and embed those URLs with `gh pr comment`. Never use Cloudinary for PR screenshots.
 
 After an addressed fix is pushed and validated, reply to each addressed review thread with a concise summary and mark the thread resolved.
 

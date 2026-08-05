@@ -1,5 +1,9 @@
-import { AlertCircle, ArrowUpRight, CheckCircle2, Plus } from "lucide-react";
-import Link from "next/link";
+import { ArrowUpRight, Plus } from "lucide-react";
+import {
+  AdministrationNoticeBanner,
+  AdministrationPage,
+  AdministrationPageHeader,
+} from "@/features/administration/components";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -142,7 +146,6 @@ export function SalesAdministrationPage({
 }
 
 export function AdminPageShell({
-  activeSection,
   children,
   count,
   notice,
@@ -155,63 +158,11 @@ export function AdminPageShell({
   readonly title: string;
 }) {
   return (
-    <main className="min-h-screen bg-[#f4f5f8] text-navy-blue">
-      <header className="border-b border-navy-blue/12 bg-white">
-        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-5 py-4 sm:px-8 lg:flex-row lg:items-center lg:justify-between lg:px-12">
-          <div className="flex items-center gap-3">
-            <h1 className="text-2xl leading-none">{title}</h1>
-            <Badge variant="subtle">{count}</Badge>
-          </div>
-          <nav aria-label="Administration" className="flex gap-1">
-            <AdminSectionLink
-              active={activeSection === "discounts"}
-              href="/admin/discounts"
-            >
-              Discounts
-            </AdminSectionLink>
-            <AdminSectionLink
-              active={activeSection === "codes"}
-              href="/admin/codes"
-            >
-              Codes
-            </AdminSectionLink>
-            <AdminSectionLink
-              active={activeSection === "sales"}
-              href="/admin/sales"
-            >
-              Sales
-            </AdminSectionLink>
-            <AdminSectionLink
-              active={activeSection === "customers"}
-              href="/admin/customers"
-            >
-              Customers
-            </AdminSectionLink>
-          </nav>
-        </div>
-      </header>
-
-      <div className="mx-auto max-w-7xl px-5 py-6 sm:px-8 lg:px-12">
-        {notice && (
-          <div
-            className={
-              notice.status === "success"
-                ? "mb-5 flex items-start gap-3 rounded-xl bg-aquamarine-green/15 px-4 py-3 text-aquamarine-ink"
-                : "mb-5 flex items-start gap-3 rounded-xl bg-burned-orange/10 px-4 py-3 text-burned-orange-ink"
-            }
-            role={notice.status === "error" ? "alert" : "status"}
-          >
-            {notice.status === "success" ? (
-              <CheckCircle2 aria-hidden className="mt-0.5 size-5 shrink-0" />
-            ) : (
-              <AlertCircle aria-hidden className="mt-0.5 size-5 shrink-0" />
-            )}
-            <p className="text-sm font-semibold leading-6">{notice.message}</p>
-          </div>
-        )}
-        {children}
-      </div>
-    </main>
+    <AdministrationPage>
+      <AdministrationPageHeader count={count} title={title} />
+      <AdministrationNoticeBanner notice={notice} />
+      {children}
+    </AdministrationPage>
   );
 }
 
@@ -342,30 +293,6 @@ export function EmptyState({ message }: { readonly message: string }) {
     <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-10 text-center text-sm text-navy-blue/62">
       {message}
     </div>
-  );
-}
-
-function AdminSectionLink({
-  active,
-  children,
-  href,
-}: {
-  readonly active: boolean;
-  readonly children: React.ReactNode;
-  readonly href: string;
-}) {
-  return (
-    <Link
-      aria-current={active ? "page" : undefined}
-      className={
-        active
-          ? "inline-flex min-h-10 items-center rounded-lg bg-navy-blue px-3 py-2 text-sm font-semibold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-          : "inline-flex min-h-10 items-center rounded-lg px-3 py-2 text-sm font-semibold text-navy-blue/70 transition hover:bg-navy-blue/5 hover:text-navy-blue focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-      }
-      href={href}
-    >
-      {children}
-    </Link>
   );
 }
 

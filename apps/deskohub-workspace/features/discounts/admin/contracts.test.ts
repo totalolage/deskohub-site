@@ -146,21 +146,52 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
-  test("keeps customer search fields explicit for PII censorship", () => {
+  test("creates a customer code with an existing or new discount", () => {
+    const code = {
+      code: validCode.code,
+      enabled: validCode.enabled,
+      validFrom: validCode.validFrom,
+      validUntil: validCode.validUntil,
+      maxUses: validCode.maxUses,
+    };
+
     expect(() =>
-      decodeCustomerSearch({ kind: "id", customerId: "customer-id" })
-    ).not.toThrow();
-    expect(() =>
-      decodeCustomerSearch({
-        kind: "email",
-        email: "customer@example.com",
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: {
+          kind: "existing",
+          discountId: validCode.discountId,
+        },
       })
     ).not.toThrow();
     expect(() =>
-      decodeCustomerSearch({ kind: "phone", phone: "+420123456789" })
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: { kind: "new", discount: validDiscount },
+      })
     ).not.toThrow();
     expect(() =>
-      decodeCustomerSearch({ kind: "email", value: "customer@example.com" })
+      decodeMutation({
+        kind: "create-customer-code",
+        customerId: "customer-id",
+        code,
+        discount: { kind: "existing" },
+      })
+    ).toThrow();
+  });
+
+  test("accepts a bounded fuzzy customer query", () => {
+    expect(() => decodeCustomerSearch({ query: "Ada" })).not.toThrow();
+    expect(() => decodeCustomerSearch({ query: "a" })).toThrow();
+    expect(() =>
+      decodeCustomerSearch({ query: "Ada;deleted|eq|true" })
+    ).toThrow();
+    expect(() =>
+      decodeCustomerSearch({ query: "Ada", customerId: "customer-id" })
     ).toThrow();
   });
 });

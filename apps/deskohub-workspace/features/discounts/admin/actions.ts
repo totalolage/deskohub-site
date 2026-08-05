@@ -1,6 +1,7 @@
 "use server";
 
 import { Effect, Match } from "effect";
+import { revalidatePath } from "next/cache";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { requireDiscountAdminAuthorization } from "./basic-auth.server";
@@ -26,6 +27,16 @@ const executeDiscountAdminMutation = Effect.fn(
         administration.updateDiscount(discount),
       "delete-discount": ({ id }) => administration.deleteDiscount({ id }),
       "create-code": ({ code }) => administration.createCode(code),
+      "create-customer-code": ({ code, customerId, discount }) =>
+        administration
+          .createCustomerCode({ code, customerId, discount })
+          .pipe(
+            Effect.tap(() =>
+              Effect.sync(() =>
+                revalidatePath(`/admin/customers/${customerId}`)
+              )
+            )
+          ),
       "update-code": ({ code }) => administration.updateCode(code),
       "delete-code": ({ id }) => administration.deleteCode({ id }),
       "add-code-customer": ({ codeId, customerId }) =>
@@ -48,6 +59,10 @@ const executeDiscountAdminMutation = Effect.fn(
       Match.when("update-discount", () => "Discount updated."),
       Match.when("delete-discount", () => "Discount deleted."),
       Match.when("create-code", () => "Discount code created."),
+      Match.when(
+        "create-customer-code",
+        () => "Discount code created for this customer."
+      ),
       Match.when("update-code", () => "Discount code updated."),
       Match.when("delete-code", () => "Discount code deleted."),
       Match.when(
@@ -116,7 +131,7 @@ const discountAdminCustomerSearchAction = defineWorkspaceAction(
       Effect.mapError(
         (cause) =>
           new PublicSafeActionError({
-            message: "Dotypos customer search is temporarily unavailable.",
+            message: "Customer search is temporarily unavailable.",
             cause,
           })
       )

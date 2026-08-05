@@ -1,20 +1,27 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Minus, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, type ReactNode, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin, searchDiscountAdminCustomers } from "./actions";
-import type {
-  DiscountAdminCustomerSearch,
-  DiscountAdminMutation,
-} from "./contracts";
+import type { DiscountAdminMutation } from "./contracts";
 import type {
   AdminCustomerSearchResult,
   AdminDiscountGroup,
@@ -23,23 +30,8 @@ import type {
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
-const customerSearchLabels = {
-  id: "Dotypos customer ID",
-  email: "Email",
-  phone: "Phone",
-} as const satisfies Record<DiscountAdminCustomerSearch["kind"], string>;
-
-const getCustomerSearch = (
-  kind: DiscountAdminCustomerSearch["kind"],
-  value: string
-): DiscountAdminCustomerSearch => {
-  if (kind === "id") return { kind, customerId: value as DotyposCustomerId };
-  if (kind === "email") return { kind, email: value };
-  return { kind, phone: value };
-};
-
 export function CustomerSearch() {
-  const [kind, setKind] = useState<DiscountAdminCustomerSearch["kind"]>("id");
+  const queryId = useId();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { execute, isExecuting } = useWorkspaceAction(
@@ -68,7 +60,7 @@ export function CustomerSearch() {
   return (
     <div className="space-y-4">
       <form
-        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[11rem_minmax(0,1fr)_auto] md:items-end"
+        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);
@@ -78,42 +70,24 @@ export function CustomerSearch() {
             ?.toString()
             .trim();
           if (!value) return;
-          execute(getCustomerSearch(kind, value));
+          execute({ query: value });
         }}
       >
         <div className="grid gap-1.5">
-          <Label htmlFor="customer-search-kind">Search by</Label>
-          <select
-            className={selectClassName}
-            id="customer-search-kind"
-            onChange={(event) => {
-              setKind(
-                event.currentTarget.value as DiscountAdminCustomerSearch["kind"]
-              );
-              setResult(null);
-            }}
-            value={kind}
-          >
-            <option value="id">Customer ID</option>
-            <option value="email">Exact email</option>
-            <option value="phone">Exact phone</option>
-          </select>
-        </div>
-        <div className="grid gap-1.5">
-          <Label htmlFor="customer-search-query">
-            {customerSearchLabels[kind]}
-          </Label>
+          <Label htmlFor={queryId}>Customer name or email</Label>
           <Input
             autoComplete="off"
-            id="customer-search-query"
+            id={queryId}
+            minLength={2}
             name="query"
+            placeholder="Search by name or email"
             required
-            type={kind === "email" ? "email" : "text"}
+            type="search"
           />
         </div>
         <Button disabled={isExecuting} type="submit">
           <Search aria-hidden className="size-4" />
-          {isExecuting ? "Searching…" : "Search"}
+          {isExecuting ? "Searching…" : "Find customer"}
         </Button>
       </form>
 
@@ -132,13 +106,13 @@ export function CustomerSearch() {
         >
           {result.customers.length === 0 ? (
             <p className="px-5 py-8 text-center text-sm text-navy-blue/65">
-              No active Dotypos customer matched.
+              No customer matched.
             </p>
           ) : (
             <>
               {result.kind === "ambiguous" && (
                 <p className="border-b border-navy-blue/10 px-5 py-3 text-sm text-navy-blue/70">
-                  Multiple exact matches. Choose the correct customer.
+                  Multiple matches. Choose the correct customer.
                 </p>
               )}
               <ul className="divide-y divide-navy-blue/10">
@@ -154,13 +128,10 @@ export function CustomerSearch() {
                           .filter(Boolean)
                           .join(" · ") || "No contact details"}
                       </p>
-                      <code className="mt-1 block text-xs text-navy-blue/55">
-                        {customer.id}
-                      </code>
                     </div>
                     <Button asChild size="sm" variant="secondary">
                       <Link href={`/admin/customers/${customer.id}`}>
-                        Manage
+                        Open customer
                       </Link>
                     </Button>
                   </li>
@@ -299,6 +270,161 @@ export function AdminMutationButton({
         </span>
       )}
     </>
+  );
+}
+
+export function CustomerCodeAction({
+  audienceSize,
+  code,
+  codeId,
+  customerId,
+  customerName,
+  eligible,
+}: {
+  readonly audienceSize: number;
+  readonly code: string;
+  readonly codeId: DiscountCodeId;
+  readonly customerId: DotyposCustomerId;
+  readonly customerName: string;
+  readonly eligible: boolean;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
+    actionName: "manageCustomerCodeEligibility",
+    onSuccess: () => {
+      setOpen(false);
+      router.refresh();
+    },
+    onError: ({ error: actionError }) =>
+      setError(actionError.serverError ?? "The change could not be saved."),
+    onTransportError: () =>
+      setError("The change could not be saved. Try again."),
+  });
+
+  const label = eligible
+    ? `Remove ${customerName} from ${code}`
+    : `Add ${customerName} to ${code}`;
+  const Icon = eligible ? Minus : Plus;
+  const isOnlyCustomer = eligible && audienceSize === 1;
+  let dialogTitle = `Limit ${code} to ${customerName}?`;
+  let dialogDescription = `${code} is currently available to every customer. Limiting it will make ${customerName} the only eligible customer.`;
+  if (isOnlyCustomer) {
+    dialogTitle = "Remove the only eligible customer?";
+    dialogDescription = `Removing ${customerName} would leave ${code} without an audience, which makes it available to every customer. Choose whether to delete the code or make it available to all.`;
+  } else if (eligible) {
+    dialogTitle = `Remove ${customerName}?`;
+    dialogDescription = `${customerName} will no longer be able to use ${code}.`;
+  } else if (audienceSize > 0) {
+    dialogTitle = `Add ${customerName} to ${code}?`;
+    dialogDescription = `${code} is currently limited to ${audienceSize} other customers. Adding ${customerName} will make it available to ${audienceSize + 1} customers.`;
+  }
+
+  return (
+    <Dialog
+      onOpenChange={(nextOpen) => {
+        setError(null);
+        setOpen(nextOpen);
+      }}
+      open={open}
+    >
+      <DialogTrigger asChild>
+        <Button
+          aria-label={label}
+          className="relative z-10 size-8"
+          size="icon"
+          title={label}
+          variant="ghost"
+        >
+          <Icon aria-hidden className="size-4" />
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{dialogTitle}</DialogTitle>
+          <DialogDescription>{dialogDescription}</DialogDescription>
+        </DialogHeader>
+        {error && (
+          <p
+            className="mt-4 text-sm font-semibold text-burned-orange-ink"
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+        <DialogFooter>
+          {isOnlyCustomer && (
+            <>
+              <Button
+                disabled={isExecuting}
+                onClick={() => execute({ kind: "delete-code", id: codeId })}
+                type="button"
+                variant="secondary"
+              >
+                Delete code
+              </Button>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({ kind: "make-code-unrestricted", codeId })
+                }
+                type="button"
+              >
+                Make available to all
+              </Button>
+            </>
+          )}
+          {!isOnlyCustomer && eligible && (
+            <>
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  Cancel
+                </Button>
+              </DialogClose>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({
+                    kind: "remove-code-customer",
+                    codeId,
+                    customerId,
+                  })
+                }
+                type="button"
+              >
+                Remove customer
+              </Button>
+            </>
+          )}
+          {!eligible && (
+            <>
+              <DialogClose asChild>
+                <Button type="button" variant="secondary">
+                  {audienceSize > 0 ? "Cancel" : "Keep available to all"}
+                </Button>
+              </DialogClose>
+              <Button
+                className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
+                disabled={isExecuting}
+                onClick={() =>
+                  execute({
+                    kind: "add-code-customer",
+                    codeId,
+                    customerId,
+                  })
+                }
+                type="button"
+              >
+                {audienceSize > 0 ? "Add customer" : "Limit to only this user"}
+              </Button>
+            </>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

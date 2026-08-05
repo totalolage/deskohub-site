@@ -113,6 +113,11 @@ paths:
           description: Filter reservations using the Dotypos filter syntax
           schema:
             type: string
+        - name: sort
+          in: query
+          description: Sort reservations (for example, "-startDate")
+          schema:
+            type: string
         - $ref: '#/components/parameters/PageParam'
         - $ref: '#/components/parameters/LimitParam'
       responses:

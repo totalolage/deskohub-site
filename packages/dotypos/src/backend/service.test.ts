@@ -126,6 +126,95 @@ const runWithService = <A, E>(
 };
 
 describe("DotyposService customer lookup", () => {
+  test("fuzzily searches customer names and email without duplicates", async () => {
+    const ada = customer({
+      id: "ada",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+    });
+    const company = customer({
+      id: "analytical-engines",
+      companyName: "Analytical Engines",
+      email: "team@analytical.example",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname !== "/clouds/cloud-id/customers") {
+        return new Response("Not found", { status: 404 });
+      }
+      const filter = url.searchParams.get("filter");
+      if (filter === "firstName|like|ada") {
+        return Response.json({ data: [ada] });
+      }
+      if (filter === "email|like|ada") {
+        return Response.json({ data: [ada, company] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.searchCustomers("  ada  ");
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([ada, company]);
+    expect(
+      fetchMock.mock.calls
+        .map((call) => new URL(getUrl(call as FetchCall)))
+        .filter(({ pathname }) => pathname.endsWith("/customers"))
+        .map((url) => url.searchParams.get("filter"))
+        .toSorted()
+    ).toEqual([
+      "companyName|like|ada",
+      "email|like|ada",
+      "firstName|like|ada",
+      "lastName|like|ada",
+    ]);
+  });
+
+  test("follows every page of fuzzy customer search results", async () => {
+    const firstPageCustomer = customer({ id: "first-page" });
+    const secondPageCustomer = customer({ id: "second-page" });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname !== "/clouds/cloud-id/customers") {
+        return new Response("Not found", { status: 404 });
+      }
+      if (url.searchParams.get("filter") !== "firstName|like|ada") {
+        return new Response("Not found", { status: 404 });
+      }
+      return url.searchParams.get("page") === "2"
+        ? Response.json({ data: [secondPageCustomer], nextPage: null })
+        : Response.json({ data: [firstPageCustomer], nextPage: "2" });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.searchCustomers("ada");
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([firstPageCustomer, secondPageCustomer]);
+    expect(
+      fetchMock.mock.calls
+        .map((call) => new URL(getUrl(call as FetchCall)))
+        .filter(
+          (url) =>
+            url.pathname.endsWith("/customers") &&
+            url.searchParams.get("filter") === "firstName|like|ada"
+        )
+        .map((url) => url.searchParams.get("page"))
+    ).toEqual(["1", "2"]);
+  });
+
   test("requests a token once, searches by exact email, and sends bearer auth", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
     const fetchMock = mockDotyposFetch((request) => {
@@ -618,6 +707,34 @@ describe("DotyposService customer lookup", () => {
 });
 
 describe("DotyposService reservations", () => {
+  test("preserves a not-found status when the error body is undocumented", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations/missing") {
+        return Response.json(["Reservation not found"], { status: 404 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getReservation("missing").pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure).toMatchObject({
+        _tag: "ExternalAPIError",
+        operation: "getReservation",
+        statusCode: 404,
+      });
+    }
+  });
+
   test("reads only the reservation when checking its status", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
@@ -1330,6 +1447,61 @@ describe("DotyposService reservation listing", () => {
 
     expect(result).toEqual([firstReservation, secondReservation]);
     expect(requestedPages).toEqual(["1", "2"]);
+  });
+
+  test("filters reservations with domain-shaped options", async () => {
+    const requestedQueries: URLSearchParams[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        requestedQueries.push(url.searchParams);
+        return Response.json({ data: [] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations({
+          customerId: "customer-id",
+          startsAtOrAfter: "2026-08-04T00:00:00+02:00",
+          startsBefore: "2026-08-05T00:00:00+02:00",
+          order: "startDateDescending",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(requestedQueries).toHaveLength(1);
+    expect(requestedQueries[0]?.get("filter")).toBe(
+      "_customerId|eq|customer-id;startDate|gteq|2026-08-04T00:00:00+02:00;startDate|lt|2026-08-05T00:00:00+02:00"
+    );
+    expect(requestedQueries[0]?.get("sort")).toBe("-startDate");
+  });
+
+  test("rejects reservation filter delimiters", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .listReservations({ customerId: "customer|eq|other" })
+          .pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ValidationError" },
+    });
   });
 
   test("preserves a later-page 404 as an API error", async () => {

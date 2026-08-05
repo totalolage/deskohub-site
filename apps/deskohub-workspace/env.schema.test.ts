@@ -47,13 +47,17 @@ describe("workspace environment schemas", () => {
       workspaceServerEnvSchema.fields.DATABASE_URL
     );
     const decodePostHogHost = Schema.decodeUnknownSync(
-      workspaceClientEnvSchema.fields.NEXT_PUBLIC_POSTHOG_HOST
+      workspaceServerEnvSchema.fields.POSTHOG_HOST
     );
     const databaseUrl = "postgres://user:pass@localhost:5432/workspace";
 
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
     expect(decodePostHogHost(undefined)).toBeUndefined();
+    expect(decodePostHogHost("https://eu.posthog.com")).toBe(
+      "https://eu.posthog.com"
+    );
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
+    expect(() => decodePostHogHost("not a URL")).toThrow();
   });
 
   test("accepts an absent or lowercase SHA-256 administration hash", () => {

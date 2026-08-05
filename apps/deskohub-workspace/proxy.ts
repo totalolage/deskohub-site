@@ -17,8 +17,11 @@ import {
 import { env } from "./env";
 import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/basic-auth";
 
+const isAdministrationPath = (pathname: string) =>
+  pathname === "/admin" || pathname.startsWith("/admin/");
+
 export function proxy(request: NextRequest) {
-  if (request.nextUrl.pathname.startsWith("/admin")) {
+  if (isAdministrationPath(request.nextUrl.pathname)) {
     if (
       !isDiscountAdminAuthorizationValid(
         request.headers.get("authorization"),
@@ -31,7 +34,7 @@ export function proxy(request: NextRequest) {
           "Cache-Control": "private, no-store",
           Vary: "Authorization",
           "WWW-Authenticate":
-            'Basic realm="Deskohub discount administration", charset="UTF-8"',
+            'Basic realm="Deskohub administration", charset="UTF-8"',
         },
       });
     }
@@ -75,6 +78,7 @@ export function proxy(request: NextRequest) {
 
 export const config: MiddlewareConfig = {
   matcher: [
+    "/admin/:path*",
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
 };

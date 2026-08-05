@@ -63,8 +63,8 @@ export type GetAccessToken400 = ErrorResponse
 export const GetAccessToken400 = ErrorResponse
 export type GetAccessToken401 = ErrorResponse
 export const GetAccessToken401 = ErrorResponse
-export type ListReservationsParams = { readonly "filter"?: string, readonly "page"?: number, readonly "limit"?: number }
-export const ListReservationsParams = Schema.Struct({ "filter": Schema.optionalKey(Schema.String), "page": Schema.optionalKey(Schema.Number.annotate({ "default": 1 }).check(Schema.isInt())), "limit": Schema.optionalKey(Schema.Number.annotate({ "default": 100 }).check(Schema.isInt()).check(Schema.isLessThanOrEqualTo(100))) })
+export type ListReservationsParams = { readonly "filter"?: string, readonly "sort"?: string, readonly "page"?: number, readonly "limit"?: number }
+export const ListReservationsParams = Schema.Struct({ "filter": Schema.optionalKey(Schema.String), "sort": Schema.optionalKey(Schema.String), "page": Schema.optionalKey(Schema.Number.annotate({ "default": 1 }).check(Schema.isInt())), "limit": Schema.optionalKey(Schema.Number.annotate({ "default": 100 }).check(Schema.isInt()).check(Schema.isLessThanOrEqualTo(100))) })
 export type ListReservations200 = PaginatedReservations
 export const ListReservations200 = PaginatedReservations
 export type ListReservations401 = ErrorResponse
@@ -400,7 +400,18 @@ export const make = (
     <const Tag extends string, Schema extends Schema.Top>(tag: Tag, schema: Schema) =>
     (response: HttpClientResponse.HttpClientResponse) =>
       Effect.flatMap(
-        HttpClientResponse.schemaBodyJson(schema)(response),
+        HttpClientResponse.schemaBodyJson(schema)(response).pipe(
+          Effect.mapError(
+            () =>
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.StatusCodeError({
+                  request: response.request,
+                  response,
+                  description: "Error response did not match the documented schema",
+                }),
+              }),
+          ),
+        ),
         (cause) => Effect.fail(DotyposClientError(tag, cause, response)),
       )
   return {
@@ -416,7 +427,7 @@ export const make = (
     }))
   ),
     "listReservations": (cloudId, options) => HttpClientRequest.get(`/clouds/${cloudId}/reservations`).pipe(
-    HttpClientRequest.setUrlParams({ "filter": options?.params?.["filter"] as any, "page": options?.params?.["page"] as any, "limit": options?.params?.["limit"] as any }),
+    HttpClientRequest.setUrlParams({ "filter": options?.params?.["filter"] as any, "sort": options?.params?.["sort"] as any, "page": options?.params?.["page"] as any, "limit": options?.params?.["limit"] as any }),
     withResponse(options?.config)(HttpClientResponse.matchStatus({
       "2xx": decodeSuccess(ListReservations200),
       "401": decodeError("ListReservations401", ListReservations401),

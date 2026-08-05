@@ -39,4 +39,33 @@ if (exitCode !== 0) {
 const diagnosticHeader =
   "// @effect-diagnostics schemaNumber:off unnecessaryTypeofType:off\n";
 
-await Bun.write(output, `${diagnosticHeader}${generatedSource}`);
+const generatedErrorDecoder = `      Effect.flatMap(
+        HttpClientResponse.schemaBodyJson(schema)(response),
+        (cause) => Effect.fail(${name}Error(tag, cause, response)),
+      )`;
+const statusPreservingErrorDecoder = `      Effect.flatMap(
+        HttpClientResponse.schemaBodyJson(schema)(response).pipe(
+          Effect.mapError(
+            () =>
+              new HttpClientError.HttpClientError({
+                reason: new HttpClientError.StatusCodeError({
+                  request: response.request,
+                  response,
+                  description: "Error response did not match the documented schema",
+                }),
+              }),
+          ),
+        ),
+        (cause) => Effect.fail(${name}Error(tag, cause, response)),
+      )`;
+
+if (!generatedSource.includes(generatedErrorDecoder)) {
+  throw new Error("Could not find the generated error response decoder.");
+}
+
+const hardenedSource = generatedSource.replace(
+  generatedErrorDecoder,
+  statusPreservingErrorDecoder
+);
+
+await Bun.write(output, `${diagnosticHeader}${hardenedSource}`);

@@ -55,19 +55,79 @@ describe("discount administration server authorization", () => {
     const { mutateDiscountAdmin, searchDiscountAdminCustomers } = await import(
       "./actions"
     );
+    const { getAdministrationReservation } = await import(
+      "@/features/administration/actions"
+    );
 
     const mutation = await mutateDiscountAdmin({
       kind: "delete-discount",
       id: "00000000-0000-0000-0000-000000000001",
     });
     const search = await searchDiscountAdminCustomers({
-      kind: "id",
-      customerId: "attacker-controlled-id",
+      query: "attacker-controlled-name",
+    });
+    const reservation = await getAdministrationReservation({
+      identifier: "attacker-controlled-id",
     });
 
     expect(mutation).toHaveProperty("serverError");
     expect(mutation).not.toHaveProperty("data");
     expect(search).toHaveProperty("serverError");
     expect(search).not.toHaveProperty("data");
+    expect(reservation).toHaveProperty("serverError");
+    expect(reservation).not.toHaveProperty("data");
+  });
+
+  test("rejects direct invocations of every exported admin page-data loader", async () => {
+    requestHeaders = new Headers();
+    const administration = await import(
+      "@/features/administration/page-data.server"
+    );
+    const discounts = await import("./page-data.server");
+    const searchParams = Promise.resolve({});
+    const operations = [
+      administration.authorizeAdministrationPage,
+      administration.loadAdministrationOverview,
+      () => administration.loadAdministrationReservations(searchParams),
+      () => administration.loadAdministrationReservation("reservation-id"),
+      () => administration.loadAdministrationBookings(searchParams),
+      () => administration.loadAdministrationBooking("booking-id"),
+      () => administration.loadAdministrationCustomers(searchParams),
+      () =>
+        administration.loadAdministrationCustomerReservations(
+          "customer-id",
+          searchParams
+        ),
+      discounts.authorizeDiscountAdminPage,
+      () => discounts.loadDiscountAdminPageData(searchParams),
+      () => discounts.loadDiscountAdminShellPageData(searchParams),
+      () =>
+        discounts.loadDiscountAdminCodePageData(
+          "00000000-0000-0000-0000-000000000001",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () =>
+        discounts.loadDiscountAdminCustomerCodeCreationPageData("customer-id"),
+      () =>
+        discounts.loadOptionalDiscountAdminCustomerPageData(
+          "customer-id",
+          searchParams
+        ),
+      () => discounts.loadDiscountAdminCustomerBreadcrumbLabel("customer-id"),
+    ] as const;
+
+    for (const operation of operations) {
+      const error = await operation().then(
+        () => null,
+        (cause: unknown) => cause
+      );
+
+      expect(error).toHaveProperty("digest", "NEXT_HTTP_ERROR_FALLBACK;404");
+    }
   });
 });
