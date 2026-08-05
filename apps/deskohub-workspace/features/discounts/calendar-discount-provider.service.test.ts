@@ -771,7 +771,9 @@ describe("CalendarDiscountProvider", () => {
       "en-US": "Initial database sale",
       "cs-CZ": "Počáteční databázová sleva",
     };
-    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    const listEvents = mock(() =>
+      Effect.succeed([saleEvent({ end: { date: "2099-01-01" } })])
+    );
     const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
       ({ discountId }) =>
         Effect.succeed(definition(discountId, { labels: currentLabels }))

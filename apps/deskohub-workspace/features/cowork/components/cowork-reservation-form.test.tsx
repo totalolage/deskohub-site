@@ -456,29 +456,8 @@ describe("CoworkReservationForm advertised pricing", () => {
     const basicBanner = basicCard?.querySelector(
       '[data-reservation-type-discount-banner="basic"]'
     );
-    const basicGlimmer = basicCard?.querySelector(
-      '[data-reservation-type-sale-glimmer="basic"]'
-    );
-    expect(basicGlimmer).not.toBeNull();
-    expect(basicGlimmer?.getAttribute("aria-hidden")).toBe("true");
-    expect(basicGlimmer?.className).toContain(
-      "[mask-clip:padding-box,border-box]"
-    );
-    const basicGlimmerBeam = basicGlimmer?.querySelector(
-      "[data-reservation-type-sale-glimmer-beam]"
-    ) as HTMLElement | null;
-    expect(basicGlimmerBeam?.style.backgroundImage).toBe(
-      "linear-gradient(to right, transparent 0%, var(--color-purple-300) 50%, transparent 100%)"
-    );
-    expect(basicGlimmerBeam?.style.offsetPath).toBe(
-      "rect(0 auto auto 0 round 1.4rem)"
-    );
-    expect(basicGlimmerBeam?.style.width).toBe("5rem");
-    expect(
-      Array.from(basicCard?.children ?? []).find(
-        (element) => !element.getAttribute("class")?.includes("absolute")
-      )
-    ).toBe(basicBanner ?? null);
+    expect(basicCard?.className.split(" ")).toContain("glow-border");
+    expect(basicCard?.firstElementChild).toBe(basicBanner ?? null);
     expect(basicBanner?.className).toContain("bg-purple-100");
     expect(basicBanner?.querySelector("svg")?.getAttribute("class")).toContain(
       "lucide-percent"
@@ -489,7 +468,6 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(basicCard?.className.split(" ")).toContain("grid");
     expect(basicCard?.className.split(" ")).not.toContain("flex");
     expect(basicCard?.className.split(" ")).not.toContain("gap-3");
-    expect(basicCard?.className.split(" ")).not.toContain("border");
     expect(basicCard?.className.split(" ")).toContain("outline-1");
     expect(basicCard?.className).toContain("outline-purple-500");
     expect(basicCard?.className).not.toContain("outline-burned-orange");
@@ -516,19 +494,11 @@ describe("CoworkReservationForm advertised pricing", () => {
         ?.className.split(" ")
     ).toContain("mt-4");
     expect(
-      Array.from(basicCard?.children ?? [])
-        .filter(
-          (element) => !element.getAttribute("class")?.includes("absolute")
+      Array.from(basicCard?.children ?? []).map((element) =>
+        ["discount-banner", "title", "price-row", "description", "perks"].find(
+          (row) => element.hasAttribute(`data-reservation-type-${row}`)
         )
-        .map((element) =>
-          [
-            "discount-banner",
-            "title",
-            "price-row",
-            "description",
-            "perks",
-          ].find((row) => element.hasAttribute(`data-reservation-type-${row}`))
-        )
+      )
     ).toEqual([
       "discount-banner",
       "title",
@@ -549,9 +519,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     expect(
       profiCard?.querySelector("[data-reservation-type-discount-banner]")
     ).toBeNull();
-    expect(
-      profiCard?.querySelector("[data-reservation-type-sale-glimmer]")
-    ).toBeNull();
+    expect(profiCard?.className.split(" ")).not.toContain("glow-border");
     expect(
       profiCard
         ?.querySelector('[data-reservation-type-title="profi"]')
@@ -562,10 +530,11 @@ describe("CoworkReservationForm advertised pricing", () => {
         '[data-reservation-type-option="plus"] [data-reservation-type-discount="launch-sale"]'
       )?.textContent
     ).toContain("Launch sale");
-    expect(
-      view.container.querySelector('[data-reservation-type-option="plus"]')
-        ?.className
-    ).toContain("hover:outline-purple-500/60");
+    const plusCard = view.container.querySelector(
+      '[data-reservation-type-option="plus"]'
+    );
+    expect(plusCard?.className).toContain("glow-border");
+    expect(plusCard?.className).toContain("hover:outline-purple-500/60");
     expect(profiCard?.className).toContain("hover:outline-burned-orange/45");
     expect(
       view.container

@@ -1,17 +1,14 @@
 "use client";
 
 import { Percent } from "lucide-react";
-import { useInView, useReducedMotion } from "motion/react";
 import {
   createContext,
   type HTMLAttributes,
   type Key,
   type ReactNode,
   type Ref,
-  useCallback,
   useContext,
   useMemo,
-  useRef,
 } from "react";
 import { cn } from "@/shared/utils";
 
@@ -22,7 +19,6 @@ type ReservationTypeInputContextValue = {
   readonly name?: string;
   readonly onBlur?: () => void;
   readonly onChange: (value: ReservationTypeValue) => void;
-  readonly shouldAnimateSaleGlimmer: boolean;
   readonly value: ReservationTypeValue;
 };
 
@@ -64,17 +60,6 @@ const ReservationTypeInputRefContext = createContext<
   Ref<HTMLInputElement> | undefined
 >(undefined);
 
-const setRef = <Value,>(ref: Ref<Value> | undefined, value: Value | null) => {
-  if (typeof ref === "function") {
-    ref(value);
-    return;
-  }
-
-  if (ref) {
-    ref.current = value;
-  }
-};
-
 export function ReservationTypeInput<Value extends ReservationTypeValue>({
   children,
   className,
@@ -87,33 +72,22 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
   value,
   ...props
 }: ReservationTypeInputProps<Value>) {
-  const rootRef = useRef<HTMLDivElement>(null);
-  const isVisible = useInView(rootRef, { amount: 0.15 });
-  const shouldReduceMotion = useReducedMotion();
-  const composedRef = useCallback(
-    (node: HTMLDivElement | null) => {
-      rootRef.current = node;
-      setRef(ref, node);
-    },
-    [ref]
-  );
   const context = useMemo<ReservationTypeInputContextValue>(
     () => ({
       idPrefix,
       name,
       onBlur,
       onChange: (nextValue) => onChange(nextValue as Value),
-      shouldAnimateSaleGlimmer: isVisible && !shouldReduceMotion,
       value,
     }),
-    [idPrefix, isVisible, name, onBlur, onChange, shouldReduceMotion, value]
+    [idPrefix, name, onBlur, onChange, value]
   );
 
   return (
     <ReservationTypeInputRefContext.Provider value={inputRef}>
       <ReservationTypeInputContext.Provider value={context}>
         <div
-          ref={composedRef}
+          ref={ref}
           className={cn(
             "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3",
             className
@@ -160,6 +134,8 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
           : "lg:row-start-2 lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
+        hasDiscount &&
+          "glow-border glow-border-purple-300 glow-border-count-1 glow-border-duration-5000",
         isSelected &&
           hasDiscount &&
           "bg-purple-500/5 outline-purple-500 ring-4 ring-purple-500/10",
@@ -172,30 +148,6 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         className
       )}
     >
-      {hasDiscount && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 z-30 rounded-[inherit] border-2 border-transparent [mask-clip:padding-box,border-box] [mask-composite:intersect] [mask-image:linear-gradient(transparent,transparent),linear-gradient(#000,#000)]"
-          data-reservation-type-sale-glimmer={value}
-          style={{
-            opacity: input.shouldAnimateSaleGlimmer ? 1 : 0,
-          }}
-        >
-          <span
-            data-reservation-type-sale-glimmer-beam=""
-            className={cn(
-              "absolute aspect-square motion-reduce:animate-none",
-              input.shouldAnimateSaleGlimmer && "animate-tier-sale-glimmer"
-            )}
-            style={{
-              backgroundImage:
-                "linear-gradient(to right, transparent 0%, var(--color-purple-300) 50%, transparent 100%)",
-              offsetPath: "rect(0 auto auto 0 round 1.4rem)",
-              width: "5rem",
-            }}
-          />
-        </span>
-      )}
       {hasDiscount && discount && (
         <div
           className="pointer-events-none relative z-20 -mx-4 flex items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900"

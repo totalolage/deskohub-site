@@ -825,15 +825,12 @@ describe("MeetingRoomReservationForm", () => {
     const discountedOption = view.container.querySelector(
       '[data-reservation-type-option="hour:1"]'
     );
-    expect(discountedOption?.className).toContain("outline-purple-500");
+    expect(discountedOption?.className).toContain("glow-border");
     expect(
       discountedOption?.querySelector(
         '[data-reservation-type-discount="meeting-room-sale"]'
       )?.textContent
     ).toBe("Meeting room sale");
-    expect(
-      discountedOption?.querySelector("[data-reservation-type-sale-glimmer]")
-    ).not.toBeNull();
     expect(view.queryByText(/selected price/i)).toBeNull();
   });
 

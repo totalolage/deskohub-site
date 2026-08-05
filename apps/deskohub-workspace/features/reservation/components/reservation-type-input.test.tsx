@@ -116,9 +116,14 @@ describe("ReservationTypeInput", () => {
       option?.querySelector('[data-reservation-type-discount="summer-sale"]')
         ?.textContent
     ).toBe("Summer sale");
-    expect(
-      option?.querySelector("[data-reservation-type-sale-glimmer-beam]")
-    ).not.toBeNull();
+    expect(option?.className.split(" ")).toEqual(
+      expect.arrayContaining([
+        "glow-border",
+        "glow-border-purple-300",
+        "glow-border-count-1",
+        "glow-border-duration-5000",
+      ])
+    );
     expect(
       option?.querySelector("[data-domain-description]")?.textContent
     ).toBe("Open-space desk");
