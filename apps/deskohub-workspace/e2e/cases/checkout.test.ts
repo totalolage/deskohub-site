@@ -132,11 +132,16 @@ test("limits capacity only around reservation start and provider verification", 
       | "reservation-start"
       | undefined;
     readonly id: string;
+    readonly timeoutMs: number;
   }> = [];
   const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
   const replayRow = {} as CheckoutRow;
   const runStep = ((step) => {
-    observedSteps.push({ capacity: step.capacity, id: step.id });
+    observedSteps.push({
+      capacity: step.capacity,
+      id: step.id,
+      timeoutMs: step.timeoutMs,
+    });
     if (step.id === "prepare-checkout-pay-page") {
       return Effect.succeed(orderId);
     }
@@ -180,7 +185,9 @@ test("limits capacity only around reservation start and provider verification", 
   );
 
   expect(
-    observedSteps.filter(({ capacity }) => capacity !== undefined)
+    observedSteps.flatMap(({ capacity, id }) =>
+      capacity === undefined ? [] : [{ capacity, id }]
+    )
   ).toEqual([
     {
       capacity: "reservation-start",
@@ -199,5 +206,33 @@ test("limits capacity only around reservation start and provider verification", 
     "reach-checkout-status-page",
     "replay-payment-webhook",
     "complete-test-fulfillment",
+  ]);
+  expect(
+    observedSteps.slice(-6).map(({ id, timeoutMs }) => ({ id, timeoutMs }))
+  ).toEqual([
+    {
+      id: "mark-fulfillment-failed-for-support-path",
+      timeoutMs: workspaceE2ETimeouts.datasource,
+    },
+    {
+      id: "open-fulfillment-failed-status-page",
+      timeoutMs: workspaceE2ETimeouts.browserNavigation,
+    },
+    {
+      id: "wait-for-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.uiTransition,
+    },
+    {
+      id: "assert-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.browserAction,
+    },
+    {
+      id: "activate-fulfillment-support-link",
+      timeoutMs: workspaceE2ETimeouts.browserAction,
+    },
+    {
+      id: "reach-fulfillment-support-contact-page",
+      timeoutMs: workspaceE2ETimeouts.uiTransition,
+    },
   ]);
 });
