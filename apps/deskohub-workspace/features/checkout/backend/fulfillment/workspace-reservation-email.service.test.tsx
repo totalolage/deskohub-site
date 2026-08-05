@@ -17,9 +17,6 @@ mock.module("osm", () => ({
   generateStaticMapImage: mock(() =>
     Effect.succeed(Buffer.from("workspace-location-map"))
   ),
-  generateSvgPngBuffer: mock(() =>
-    Promise.resolve(Buffer.from("workspace-table-map"))
-  ),
 }));
 
 const customer: Customer = {
@@ -69,11 +66,14 @@ describe("workspace reservation email details", () => {
     const rows = createReservationRows(makeReservation({}), "en-US");
 
     expect(rows).toEqual([
-      ["Entry tier", "Basic Day Pass"],
-      ["Reservation date", "Friday, June 12, 2026"],
-      ["Coffee", "No"],
-      ["Reservation reference", "dotypos-reservation-id"],
-      ["Order reference", "reservation-id"],
+      { label: "Entry tier", value: "Basic Day Pass" },
+      { label: "Reservation date", value: "Friday, June 12, 2026" },
+      { label: "Coffee", value: "No" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
     ]);
   });
 
@@ -94,12 +94,15 @@ describe("workspace reservation email details", () => {
     );
 
     expect(rows).toEqual([
-      ["Entry tier", "Profi Workstation"],
-      ["Reservation date", "Friday, June 12, 2026"],
-      ["Coffee", "Yes"],
-      ["Monitors", "2x 27 QHD"],
-      ["Reservation reference", "dotypos-reservation-id"],
-      ["Order reference", "reservation-id"],
+      { label: "Entry tier", value: "Profi Workstation" },
+      { label: "Reservation date", value: "Friday, June 12, 2026" },
+      { label: "Coffee", value: "Yes" },
+      { label: "Monitors", value: "2x 27 QHD" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
     ]);
   });
 
@@ -113,16 +116,20 @@ describe("workspace reservation email details", () => {
     });
 
     expect(createReservationRows(reservation, "en-US")).toEqual([
-      ["Reservation", "Meeting Room"],
-      ["Reservation date", "Friday, June 12, 2026"],
-      ["Reservation time", "9:00 AM – 1:00 PM"],
-      ["Reservation reference", "dotypos-reservation-id"],
-      ["Order reference", "reservation-id"],
+      { label: "Reservation", value: "Meeting Room" },
+      { label: "Reservation date", value: "Friday, June 12, 2026" },
+      { label: "Reservation time", value: "9:00 AM – 1:00 PM" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
     ]);
 
-    const internalHtml = createWorkspaceReservationNotificationEmailPreviewHtml(
-      { reservation }
-    );
+    const internalHtml =
+      await createWorkspaceReservationNotificationEmailPreviewHtml({
+        reservation,
+      }).pipe(Effect.runPromise);
 
     expect(internalHtml).toContain("Zasedací místnost");
     expect(internalHtml).toContain("9:00–13:00");
@@ -146,11 +153,14 @@ describe("workspace reservation email details", () => {
     });
 
     expect(createReservationRows(reservation, "en-US")).toEqual([
-      ["Reservation", "Meeting Room"],
-      ["Reservation date", "Sunday, March 28, 2027"],
-      ["Reservation time", "whole day"],
-      ["Reservation reference", "dotypos-reservation-id"],
-      ["Order reference", "reservation-id"],
+      { label: "Reservation", value: "Meeting Room" },
+      { label: "Reservation date", value: "Sunday, March 28, 2027" },
+      { label: "Reservation time", value: "whole day" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
     ]);
 
     const sentMessages: EmailMessage[] = [];

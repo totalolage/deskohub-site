@@ -1,18 +1,15 @@
 import { Column, Heading, Img, Link, Row, Section, Text } from "react-email";
-import {
-  type WorkspaceEmailDetail,
-  WorkspaceEmailDetails,
-} from "./_components/workspace-email-details";
+import { WorkspaceEmailDetails } from "./_components/workspace-email-details";
 import {
   WorkspaceEmailLayout,
   type WorkspaceEmailLocale,
 } from "./_components/workspace-email-layout";
 import { customerReservationPreviewProps } from "./_fixtures/preview-props";
+import type { WorkspaceEmailDetail } from "./workspace-email-detail";
 
-// Table-map rendering is intentionally omitted. The legacy implementation lives
-// in features/checkout/backend/fulfillment/workspace-reservation-email.service.tsx
-// (createWorkspaceTableMapPng/createWorkspaceTableMapAttachment); port that
-// image-generation and attachment flow before re-enabling table maps.
+// Table-map rendering is intentionally omitted. The removed legacy fulfillment
+// renderer generated a table-map PNG attachment; that flow must be ported into
+// this React Email template before table maps can be enabled again.
 export type CustomerReservationEmailProps = {
   readonly locale: WorkspaceEmailLocale;
   readonly preview: string;

@@ -1,10 +1,8 @@
 import { Heading, Text } from "react-email";
-import {
-  type WorkspaceEmailDetail,
-  WorkspaceEmailDetails,
-} from "./_components/workspace-email-details";
+import { WorkspaceEmailDetails } from "./_components/workspace-email-details";
 import { WorkspaceEmailLayout } from "./_components/workspace-email-layout";
 import { reservationNotificationPreviewProps } from "./_fixtures/preview-props";
+import type { WorkspaceEmailDetail } from "./workspace-email-detail";
 
 export type ReservationNotificationEmailProps = {
   readonly preview: string;

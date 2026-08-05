@@ -45,13 +45,10 @@ const verifyWebhook = mock(
 );
 
 const locationMapImage = Buffer.from("workspace-location-map");
-const tableMapImage = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const generateStaticMapImage = mock(() => Effect.succeed(locationMapImage));
-const generateSvgPngBuffer = mock(() => Effect.succeed(tableMapImage));
 
 mock.module("osm", () => ({
   generateStaticMapImage,
-  generateSvgPngBuffer,
 }));
 
 mock.module("resend", () => ({
@@ -192,7 +189,6 @@ describe("ResendWebhookService", () => {
     sendEmail.mockClear();
     constructResend.mockClear();
     generateStaticMapImage.mockClear();
-    generateSvgPngBuffer.mockClear();
   });
 
   test("marks delivered customer reservation access emails fulfilled", async () => {
@@ -547,9 +543,6 @@ describe("ResendWebhookService", () => {
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
-      const tableMap = emailView.getByRole("img", {
-        name: m.checkoutStatusTableMapTitle({}, { locale }),
-      });
       const networkHeading = emailView.getByText(
         m.checkoutEmailNetworkHeading({}, { locale })
       );
@@ -567,10 +560,10 @@ describe("ResendWebhookService", () => {
       });
       const expectedMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.location.coordinates.lat},${workspaceSiteConstants.location.coordinates.lng}`;
 
-      expect(emailView.getByRole("heading", { level: 2 }).textContent).toBe(
+      expect(emailView.getByRole("heading", { level: 1 }).textContent).toBe(
         customerAccessHeading
       );
-      expect(customerText).toContain(customerAccessHeading);
+      expect(customerText).toContain(customerAccessHeading.toUpperCase());
       expect(
         emailView.queryByText(m.reservationEmailNameLabel({}, { locale }))
       ).toBeNull();
@@ -591,23 +584,22 @@ describe("ResendWebhookService", () => {
       ).toBeTruthy();
       expect(networkQrImage.getAttribute("src")).toBe("cid:workspace-wifi-qr");
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
-      expect(tableLabel.parentElement?.contains(tableMap)).toBe(true);
-      expect(tableMap.tagName.toLowerCase()).toBe("img");
-      expect(tableMap.getAttribute("src")).toBe("cid:workspace-table-map");
-      expect(tableMap.getAttribute("width")).toBe("500");
-      expect(customerHtml.indexOf("Where to sit")).toBeGreaterThan(
-        customerHtml.indexOf(m.checkoutEmailTableNumberLabel({}, { locale }))
-      );
-      expect(customerHtml.indexOf("Where to sit")).toBeLessThan(
-        customerHtml.indexOf(m.checkoutEmailNetworkHeading({}, { locale }))
+      expect(
+        emailView.queryByRole("img", {
+          name: m.checkoutStatusTableMapTitle({}, { locale }),
+        })
+      ).toBeNull();
+      expect(customerHtml).not.toContain("Where to sit");
+      expect(customerHtml).not.toContain("workspace-table-map");
+      expect(customerText).not.toContain(
+        m.checkoutStatusTableMapTitle({}, { locale })
       );
       expect(emailView.getByText("dotypos-reservation-id")).toBeTruthy();
       expect(emailView.getByText("reservation-id")).toBeTruthy();
       expect(mapImage.getAttribute("src")).toBe("cid:workspace-location-map");
       expect(addressLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("href")).toBe(expectedMapUrl);
-      expect(mapLink.getAttribute("style")).toContain("margin-top:-24px");
-      expect(customerEmail.attachments).toHaveLength(3);
+      expect(customerEmail.attachments).toHaveLength(2);
       expect(customerEmail.attachments?.[0]).toMatchObject({
         contentId: "workspace-location-map",
         contentType: "image/jpeg",
@@ -615,24 +607,11 @@ describe("ResendWebhookService", () => {
       });
       expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
       expect(customerEmail.attachments?.[1]).toMatchObject({
-        contentId: "workspace-table-map",
-        contentType: "image/png",
-        filename: "workspace-table-map.png",
-      });
-      expect(customerEmail.attachments?.[1]?.content).toEqual(tableMapImage);
-      const tableMapAttachmentContent = customerEmail.attachments?.[1]?.content;
-      if (!Buffer.isBuffer(tableMapAttachmentContent)) {
-        throw new Error("Table map attachment content was not a PNG buffer.");
-      }
-      expect(tableMapAttachmentContent.subarray(1, 4).toString("ascii")).toBe(
-        "PNG"
-      );
-      expect(customerEmail.attachments?.[2]).toMatchObject({
         contentId: "workspace-wifi-qr",
         contentType: "image/png",
         filename: "workspace-wifi-qr.png",
       });
-      const qrAttachmentContent = customerEmail.attachments?.[2]?.content;
+      const qrAttachmentContent = customerEmail.attachments?.[1]?.content;
       if (!Buffer.isBuffer(qrAttachmentContent)) {
         throw new Error("Wi-Fi QR attachment content was not a PNG buffer.");
       }
@@ -642,36 +621,6 @@ describe("ResendWebhookService", () => {
           workspaceCheckoutPlaceholderNetworkDetails
         )
       ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
-      const [tableMapSvg] = generateSvgPngBuffer.mock.calls[0] ?? [];
-      if (typeof tableMapSvg !== "string") {
-        throw new Error(
-          "Table map PNG should be generated from an SVG string."
-        );
-      }
-      expect(tableMapSvg).toContain('width="720"');
-      expect(tableMapSvg).toContain('height="540"');
-      expect(tableMapSvg).not.toContain("<text");
-      const [, tableMapOptions] = generateSvgPngBuffer.mock.calls[0] ?? [];
-      if (
-        !tableMapOptions ||
-        typeof tableMapOptions !== "object" ||
-        !("textOverlays" in tableMapOptions) ||
-        !Array.isArray(tableMapOptions.textOverlays)
-      ) {
-        throw new Error(
-          "Table map labels should be rendered as text overlays."
-        );
-      }
-      const [tableMapLabel] = tableMapOptions.textOverlays;
-      if (!tableMapLabel) {
-        throw new Error("Table map label overlay was not generated.");
-      }
-      expect(tableMapLabel).toMatchObject({
-        text: "12",
-        color: "#ffffff",
-      });
-      expect(tableMapLabel.font).toContain("Sculpin");
-      expect(tableMapLabel.fontfile).toContain("Sculpin/regular.ttf");
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         workspaceLocationMapImageOptions
       );
@@ -704,10 +653,12 @@ describe("ResendWebhookService", () => {
       )
     );
     expect(internalEmail.text).toContain(
-      m.checkoutEmailInternalPaidReservationHeading(
-        {},
-        { locale: internalLocale }
-      )
+      m
+        .checkoutEmailInternalPaidReservationHeading(
+          {},
+          { locale: internalLocale }
+        )
+        .toUpperCase()
     );
     expect(internalEmail.html).toContain("customer@example.com");
     expect(internalEmail.text).toContain("customer@example.com");

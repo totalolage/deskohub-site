@@ -1,8 +1,8 @@
+import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import { formatMeetingRoomReservationDisplayTimeValue } from "@/features/reservation/meeting-room-reservation-display-time";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
-import type { EmailDetailRow } from "@/shared/backend/email/rendering";
 
 export interface WorkspaceMeetingRoomEmailCopy {
   readonly dateLabel: string;
@@ -21,15 +21,15 @@ export const createWorkspaceMeetingRoomEmailDetailRows = (
   reservation: MeetingRoomEmailReservation,
   locale: Locale,
   copy: WorkspaceMeetingRoomEmailCopy
-): EmailDetailRow[] => [
-  [copy.reservationLabel, copy.reservationTitle],
-  [
-    copy.dateLabel,
-    formatReservationDisplayDate(reservation.reservedFrom, locale),
-  ],
-  [
-    copy.timeLabel,
-    formatMeetingRoomReservationDisplayTimeValue(
+): WorkspaceEmailDetail[] => [
+  { label: copy.reservationLabel, value: copy.reservationTitle },
+  {
+    label: copy.dateLabel,
+    value: formatReservationDisplayDate(reservation.reservedFrom, locale),
+  },
+  {
+    label: copy.timeLabel,
+    value: formatMeetingRoomReservationDisplayTimeValue(
       {
         startsAt: reservation.reservedFrom,
         endsAt: reservation.reservedUntil,
@@ -37,5 +37,5 @@ export const createWorkspaceMeetingRoomEmailDetailRows = (
       locale,
       copy.wholeDay
     ),
-  ],
+  },
 ];

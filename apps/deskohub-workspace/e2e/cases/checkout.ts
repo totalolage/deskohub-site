@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import { renderWorkspaceEmailDetailsText } from "@/emails/workspace-email-detail";
 import { createWorkspaceMeetingRoomEmailDetailRows } from "@/features/checkout/backend/fulfillment/workspace-meeting-room-email-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
@@ -8,7 +9,6 @@ import {
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
-import { renderEmailRowsText } from "@/shared/backend/email/rendering";
 import {
   activateHydratedBrowserElement,
   evalBrowserScript,
@@ -419,8 +419,10 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
         wholeDay: "celý den",
       }
     );
-    const customerText = renderEmailRowsText(customerRows).join("\n");
-    const internalText = renderEmailRowsText(internalRows).join("\n");
+    const customerText =
+      renderWorkspaceEmailDetailsText(customerRows).join("\n");
+    const internalText =
+      renderWorkspaceEmailDetailsText(internalRows).join("\n");
 
     yield* tryWorkspaceE2ESync(
       "assert whole-day reservation email previews",
@@ -445,13 +447,13 @@ export const assertWholeDayMeetingRoomEmailPreviews = ({
         );
 
         assert(
-          customerRows[1]?.[1] === customerDate &&
-            customerRows[2]?.[1] === "whole day",
+          customerRows[1]?.value === customerDate &&
+            customerRows[2]?.value === "whole day",
           "customer email detail rows do not match the confirmed calendar day"
         );
         assert(
-          internalRows[1]?.[1] === internalDate &&
-            internalRows[2]?.[1] === "celý den",
+          internalRows[1]?.value === internalDate &&
+            internalRows[2]?.value === "celý den",
           "internal email detail rows do not match the confirmed calendar day"
         );
         assert(

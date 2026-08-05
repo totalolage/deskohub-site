@@ -1,9 +1,5 @@
 import { Column, Row, Section, Text } from "react-email";
-
-export type WorkspaceEmailDetail = {
-  readonly label: string;
-  readonly value: string;
-};
+import type { WorkspaceEmailDetail } from "../workspace-email-detail";
 
 export function WorkspaceEmailDetails({
   details,

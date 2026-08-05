@@ -83,22 +83,28 @@ describe("ContactService", () => {
       m.contactEmailBusinessHeading({}, { locale: "cs-CZ" })
     );
     expect(businessEmail.text).toContain(
-      m.contactEmailMessageTextHeading({}, { locale: "cs-CZ" })
+      m.contactEmailMessageHeading({}, { locale: "cs-CZ" }).toUpperCase()
     );
     expect(businessEmail.text).toContain(
-      `${m.contactEmailNameLabel({}, { locale: "cs-CZ" })}: Ada Lovelace`
+      m.contactEmailNameLabel({}, { locale: "cs-CZ" })
     );
+    expect(businessEmail.text).toContain("Ada Lovelace");
     expect(businessEmail.text).toContain(
-      `${m.contactEmailPhoneLabel({}, { locale: "cs-CZ" })}: +420 123 456 789`
+      m.contactEmailPhoneLabel({}, { locale: "cs-CZ" })
     );
+    expect(businessEmail.text).toContain("+420 123 456 789");
     expect(businessEmail.text).toContain(
-      `${m.contactEmailSubmittedAtLabel({}, { locale: "cs-CZ" })}:`
+      m.contactEmailSubmittedAtLabel({}, { locale: "cs-CZ" })
     );
     expect(businessEmail.html).not.toContain(
       m.contactEmailBusinessHeading({}, { locale: "en-US" })
     );
     expect(businessEmail.text).not.toContain(
-      m.contactEmailMessageTextHeading({}, { locale: "en-US" })
+      m.contactEmailMessageHeading({}, { locale: "en-US" })
+    );
+    expect(businessEmail.html).toContain("Deskohub");
+    expect(businessEmail.html).toContain(
+      'content="width=device-width, initial-scale=1.0" name="viewport"'
     );
 
     expect(confirmationEmail.subject).toBe(

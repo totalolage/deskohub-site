@@ -1,14 +1,12 @@
 import { Heading, Section, Text } from "react-email";
 import { MultilineEmailText } from "./_components/multiline-email-text";
-import {
-  type WorkspaceEmailDetail,
-  WorkspaceEmailDetails,
-} from "./_components/workspace-email-details";
+import { WorkspaceEmailDetails } from "./_components/workspace-email-details";
 import {
   WorkspaceEmailLayout,
   type WorkspaceEmailLocale,
 } from "./_components/workspace-email-layout";
 import { contactBusinessPreviewProps } from "./_fixtures/preview-props";
+import type { WorkspaceEmailDetail } from "./workspace-email-detail";
 
 export type ContactBusinessEmailProps = {
   readonly locale: WorkspaceEmailLocale;
