@@ -1,0 +1,72 @@
+# `dhw`
+
+`dhw` is the native Deskohub Workspace administration CLI. Its commands use
+the same Effect HTTP API contract and application services as the `/admin`
+interface.
+
+Stage 1 provides the native CLI shell, a typed `/api/v1/cli/info` vertical
+slice, OS credential-store integration, release automation, and self-updates.
+Authentication and administrative resources are added in the following
+milestones.
+
+## Development
+
+```bash
+bun --cwd apps/dhw typecheck
+bun --cwd apps/dhw test
+bun apps/dhw/src/main.ts --help
+bun apps/dhw/src/build.ts development
+apps/dhw/dist/dhw version --json
+```
+
+The release build target is explicit and embedded in the binary. The supported
+targets are:
+
+- `darwin-arm64`
+- `darwin-x64`
+- `linux-arm64`
+- `linux-x64-baseline`
+
+Windows is intentionally unsupported. Asset selection never infers a target
+from the host OS, architecture, or `uname`; the updater uses only the build
+target embedded at compilation.
+
+## Configuration
+
+- `DHW_BASE` changes the Workspace origin. It must be HTTPS, except for HTTP on
+  localhost during development.
+- `DHW_REQUEST_HEADERS` is a JSON object of additional API request headers. It
+  is intended for preview-protection bypass headers and its values are redacted
+  by Effect. It is never sent to GitHub during update checks.
+- `DHW_STATE_DIR` overrides the local updater state directory.
+- `DHW_NO_UPDATE_CHECK=true` disables automatic checks.
+
+Automatic update checks run only for interactive commands, never for JSON
+output, CI, or redirected input/output. The last attempt and GitHub ETag are
+persisted, and another request is not made for 30 seconds. `dhw update` forces a
+check. An update is accepted only from a stable immutable `dhw-v*` release with
+the exact embedded target, expected size, GitHub SHA-256 digest, and matching
+binary-reported version and target.
+
+## Automatic releases
+
+Release Please owns `apps/dhw/package.json`, `apps/dhw/CHANGELOG.md`, and the
+`dhw-v*` tags. A pull request that changes the CLI must contain at least one
+releasable Conventional Commit:
+
+- `feat(dhw): ...` for a minor release
+- `fix(dhw): ...` for a patch release
+
+When such a pull request is merged into `main`, the release workflow updates a
+transient Release Please pull request and enables auto-merge on it. Once its
+required checks pass, the workflow creates a draft release, builds and attests
+all four binaries on native runners, uploads them together with `SHA256SUMS`,
+and publishes the release. There is no per-release manual merge or publish
+step.
+
+Repository setup requires a GitHub App installed on this repository with
+Contents and Pull requests read/write, Issues read/write, and Administration
+read permissions. Set its app ID as the `DHW_RELEASE_APP_ID` Actions variable
+and its private key as the `DHW_RELEASE_APP_PRIVATE_KEY` Actions secret. Enable
+auto-merge, allow merge commits, and enable immutable releases for the
+repository. The workflow fails closed if immutable releases are not enabled.
