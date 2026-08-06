@@ -29,16 +29,17 @@ const GithubReleases = Schema.Array(GithubRelease);
 
 export type GithubRelease = typeof GithubRelease.Type;
 
-export type GithubReleaseResult =
-  | {
-      readonly _tag: "NotModified";
-      readonly etag: string | undefined;
-    }
-  | {
-      readonly _tag: "Modified";
-      readonly etag: string | undefined;
-      readonly releases: ReadonlyArray<GithubRelease>;
-    };
+export type GithubReleaseResult = Data.TaggedEnum<{
+  NotModified: {
+    readonly etag: string | undefined;
+  };
+  Modified: {
+    readonly etag: string | undefined;
+    readonly releases: ReadonlyArray<GithubRelease>;
+  };
+}>;
+
+export const GithubReleaseResult = Data.taggedEnum<GithubReleaseResult>();
 
 interface IGithubReleaseService {
   readonly list: (
@@ -95,20 +96,21 @@ const loadGithubReleases = (
       const responseEtag = response.headers.etag;
 
       if (response.status === 304) {
-        return Effect.succeed<GithubReleaseResult>({
-          _tag: "NotModified",
-          etag: responseEtag,
-        });
+        return Effect.succeed<GithubReleaseResult>(
+          GithubReleaseResult.NotModified({
+            etag: responseEtag,
+          })
+        );
       }
 
       return HttpClientResponse.filterStatusOk(response).pipe(
         Effect.flatMap(HttpClientResponse.schemaBodyJson(GithubReleases)),
         Effect.map(
-          (releases): GithubReleaseResult => ({
-            _tag: "Modified",
-            etag: responseEtag,
-            releases,
-          })
+          (releases): GithubReleaseResult =>
+            GithubReleaseResult.Modified({
+              etag: responseEtag,
+              releases,
+            })
         )
       );
     })
