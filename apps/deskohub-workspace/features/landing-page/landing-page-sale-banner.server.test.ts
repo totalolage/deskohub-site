@@ -23,6 +23,9 @@ const meetingRoomProduct = {
   kind: "meeting-room",
   duration: workspaceMeetingRoomCatalog[0]!.duration,
 } satisfies WorkspaceProductIdentity;
+const officeProduct = {
+  kind: "office",
+} satisfies WorkspaceProductIdentity;
 
 const sale = (
   products: readonly WorkspaceProductIdentity[],
@@ -75,6 +78,11 @@ describe("getActiveLandingPageSaleBanner", () => {
       "mixed",
       [coworkProduct, meetingRoomProduct],
       "/en-US/reservation/cowork?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+    ],
+    [
+      "mixed without cowork",
+      [officeProduct, meetingRoomProduct],
+      "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
     ],
   ] as const)("builds the %s sale CTA", async (_label, products, href) => {
     const { banner, discoverActiveSales } = await getBanner([sale(products)]);
