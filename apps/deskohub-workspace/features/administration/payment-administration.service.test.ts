@@ -77,12 +77,12 @@ describe("PaymentAdministrationService", () => {
     );
 
     const query = new PgDialect().sqlToQuery(localOrderFilter as SQL).sql;
-    expect(
-      query.match(/coalesce\([^)]*provider_order_created_at[^)]*\)/g)
-    ).toEqual([
-      'coalesce("payment_attempts"."provider_order_created_at", "payment_attempts"."created_at")',
-      'coalesce("payment_attempts"."provider_order_created_at", "payment_attempts"."created_at")',
-    ]);
+    expect(query).toMatch(
+      /coalesce\([^)]*provider_order_created_at[^)]*\) >= \$\d+/
+    );
+    expect(query).toMatch(
+      /coalesce\([^)]*provider_order_created_at[^)]*\) < \$\d+/
+    );
   });
 
   test("links returned provider orders beyond the truncated local page", async () => {

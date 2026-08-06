@@ -10,7 +10,7 @@ import {
   gte,
   inArray,
   isNotNull,
-  lte,
+  lt,
   type SQL,
   sql,
 } from "drizzle-orm";
@@ -203,7 +203,7 @@ export class PaymentAdministrationService extends Context.Service<
         }
         if (input.toTime) {
           conditions.push(
-            lte(orderCreatedAt, Temporal.Instant.from(input.toTime))
+            lt(orderCreatedAt, Temporal.Instant.from(input.toTime))
           );
         }
         return db
