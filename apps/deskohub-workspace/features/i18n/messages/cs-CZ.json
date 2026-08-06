@@ -429,7 +429,21 @@
       }
     }
   ],
-  "checkoutSummaryItemOfficeSeat": [
+  "checkoutSummaryItemOfficeSeatCount": [
+    {
+      "declarations": [
+        "input seatCount",
+        "local seatCountPlural = seatCount: plural"
+      ],
+      "selectors": ["seatCountPlural"],
+      "match": {
+        "seatCountPlural=one": "{seatCount} místo v kanceláři",
+        "seatCountPlural=few": "{seatCount} místa v kanceláři",
+        "seatCountPlural=other": "{seatCount} míst v kanceláři"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDayCount": [
     {
       "declarations": [
         "input dayCount",
@@ -437,9 +451,9 @@
       ],
       "selectors": ["dayCountPlural"],
       "match": {
-        "dayCountPlural=one": "Místo v kanceláři · {dayCount} den",
-        "dayCountPlural=few": "Místo v kanceláři · {dayCount} dny",
-        "dayCountPlural=other": "Místo v kanceláři · {dayCount} dní"
+        "dayCountPlural=one": "{dayCount} den",
+        "dayCountPlural=few": "{dayCount} dny",
+        "dayCountPlural=other": "{dayCount} dní"
       }
     }
   ],

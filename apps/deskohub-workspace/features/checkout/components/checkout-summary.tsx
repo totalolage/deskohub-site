@@ -196,6 +196,10 @@ function OfficeCheckoutSummaryRows({
   readonly locale: Locale;
 }) {
   const guestCount = item.additionalGuests + 1;
+  const seatTotalAmount = workspaceMoneyWithValue(
+    item.seatAmount.value * guestCount,
+    item.seatAmount
+  );
   const discountedItem =
     "originalAmount" in item && item.originalAmount ? item : undefined;
   const discountAmount = discountedItem
@@ -216,18 +220,18 @@ function OfficeCheckoutSummaryRows({
         )}
         locale={locale}
       />
-      {Array.from({ length: guestCount }, (_, index) => (
-        <CheckoutSummaryLine
-          key={`${item.key}:seat:${index}`}
-          amount={item.seatAmount}
-          changed={changed}
-          label={m.checkoutSummaryItemOfficeSeat(
-            { dayCount: item.dayCount },
-            { locale }
-          )}
-          locale={locale}
-        />
-      ))}
+      <CheckoutSummaryLine
+        amount={seatTotalAmount}
+        changed={changed}
+        label={`${m.checkoutSummaryItemOfficeSeatCount(
+          { seatCount: guestCount },
+          { locale }
+        )} · ${m.checkoutSummaryItemOfficeDayCount(
+          { dayCount: item.dayCount },
+          { locale }
+        )}`}
+        locale={locale}
+      />
       {discountedItem && discountAmount ? (
         <CheckoutSummaryLine
           amount={discountAmount}

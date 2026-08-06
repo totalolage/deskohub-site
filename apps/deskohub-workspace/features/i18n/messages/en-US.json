@@ -426,7 +426,20 @@
       }
     }
   ],
-  "checkoutSummaryItemOfficeSeat": [
+  "checkoutSummaryItemOfficeSeatCount": [
+    {
+      "declarations": [
+        "input seatCount",
+        "local seatCountPlural = seatCount: plural"
+      ],
+      "selectors": ["seatCountPlural"],
+      "match": {
+        "seatCountPlural=one": "{seatCount} office seat",
+        "seatCountPlural=other": "{seatCount} office seats"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDayCount": [
     {
       "declarations": [
         "input dayCount",
@@ -434,8 +447,8 @@
       ],
       "selectors": ["dayCountPlural"],
       "match": {
-        "dayCountPlural=one": "Office seat · {dayCount} day",
-        "dayCountPlural=other": "Office seat · {dayCount} days"
+        "dayCountPlural=one": "{dayCount} day",
+        "dayCountPlural=other": "{dayCount} days"
       }
     }
   ],

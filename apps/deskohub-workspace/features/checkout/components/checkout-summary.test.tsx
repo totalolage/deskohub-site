@@ -99,13 +99,13 @@ describe("CheckoutSummary", () => {
     expect(view.queryByText("Meeting room - 24 hours")).toBeNull();
   });
 
-  test("splits office access and every attendee seat with singular days", () => {
+  test("aggregates every attendee seat into one singular-day row", () => {
     const quote = Effect.runSync(
       getOfficeReservationQuote({
         kind: "office",
         startsOn: "2099-06-10",
         endsOn: "2099-06-10",
-        additionalGuests: 1,
+        additionalGuests: 2,
       })
     );
     const view = render(
@@ -116,9 +116,11 @@ describe("CheckoutSummary", () => {
     );
 
     expect(view.getByText("Private office access · 1 day")).toBeDefined();
-    expect(view.getAllByText("Office seat · 1 day")).toHaveLength(2);
+    expect(view.getByText("3 office seats · 1 day")).toBeDefined();
     expect(view.getByText("CZK 530")).toBeDefined();
-    expect(view.getAllByText("CZK 315")).toHaveLength(2);
+    expect(view.getByText("CZK 945")).toBeDefined();
+    expect(view.queryByText("Office seat · 1 day")).toBeNull();
+    expect(view.queryByText("CZK 315")).toBeNull();
   });
 
   test("pluralizes multi-day office summary rows", () => {
@@ -138,7 +140,27 @@ describe("CheckoutSummary", () => {
     );
 
     expect(view.getByText("Private office access · 2 days")).toBeDefined();
-    expect(view.getByText("Office seat · 2 days")).toBeDefined();
+    expect(view.getByText("1 office seat · 2 days")).toBeDefined();
+  });
+
+  test("localizes an aggregate office seat row", () => {
+    const quote = Effect.runSync(
+      getOfficeReservationQuote({
+        kind: "office",
+        startsOn: "2099-06-10",
+        endsOn: "2099-06-10",
+        additionalGuests: 2,
+      })
+    );
+    const view = render(
+      <CheckoutSummary
+        locale="cs-CZ"
+        summary={getOfficeCheckoutSummary(quote)}
+      />
+    );
+
+    expect(view.getByText("3 místa v kanceláři · 1 den")).toBeDefined();
+    expect(view.getByText("945 Kč")).toBeDefined();
   });
 
   test("keeps office component rows and discounts reconciled to the total", () => {
