@@ -196,10 +196,10 @@ export function OfficeReservationForm({
       locale={locale}
       messagePlaceholder={m.reservationOfficeMessagePlaceholder({}, { locale })}
     >
-      <FormItem>
-        <ReservationFormLabel required>
+      <fieldset className="flex flex-col gap-y-2">
+        <legend className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72 after:content-['_*']">
           {m.reservationOfficeDateRangeLabel({}, { locale })}
-        </ReservationFormLabel>
+        </legend>
         <div className="grid gap-3 sm:grid-cols-2">
           <FormField
             control={form.control}
@@ -257,7 +257,7 @@ export function OfficeReservationForm({
             )}
           />
         </div>
-      </FormItem>
+      </fieldset>
 
       <FormField
         control={form.control}
