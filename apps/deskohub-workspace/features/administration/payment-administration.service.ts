@@ -191,28 +191,26 @@ export class PaymentAdministrationService extends Context.Service<
       const nexi = yield* NexiService;
 
       const loadLocalOrderRows = (input: AdministrationOrderListInput) => {
+        const orderCreatedAt = sql<Temporal.Instant>`coalesce(${paymentAttempts.providerOrderCreatedAt}, ${paymentAttempts.createdAt})`;
         const conditions: SQL[] = [
           eq(paymentAttempts.provider, "nexi"),
           isNotNull(paymentAttempts.providerOrderId),
         ];
         if (input.fromTime) {
           conditions.push(
-            gte(
-              paymentAttempts.createdAt,
-              Temporal.Instant.from(input.fromTime)
-            )
+            gte(orderCreatedAt, Temporal.Instant.from(input.fromTime))
           );
         }
         if (input.toTime) {
           conditions.push(
-            lte(paymentAttempts.createdAt, Temporal.Instant.from(input.toTime))
+            lte(orderCreatedAt, Temporal.Instant.from(input.toTime))
           );
         }
         return db
           .select(localOrderSelection)
           .from(paymentAttempts)
           .where(and(...conditions))
-          .orderBy(desc(paymentAttempts.createdAt))
+          .orderBy(desc(orderCreatedAt))
           .limit(normalizeMaximumRecords(input.maxRecords));
       };
 
