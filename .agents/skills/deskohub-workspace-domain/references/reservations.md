@@ -14,9 +14,10 @@ always start at Prague midnight on the first date and end at Prague midnight
 after the last date, so DST days remain whole calendar days rather than fixed
 24-hour periods. Price each selected day as the base daily office price plus
 the per-person daily price for every attendee, including the customer. The
-submitted `additionalGuests` value counts only the other people, while Dotypos
-`seats` stores the total party size and therefore offers additional-guest
-values from zero through one less than the table capacity. Office product identity is `{ kind:
+submitted `additionalGuests` value counts only the other people, while the
+reservation form presents total seat counts from one through the table
+capacity and Dotypos `seats` stores that same total party size. Translate each
+displayed seat count to `additionalGuests` by subtracting one. Office product identity is `{ kind:
 "office" }` with product key `office`; dates and party size affect the quote,
 not the product identity. Persist only `{ kind: "office" }` locally and project
 confirmed timing and party size from Dotypos.

@@ -78,7 +78,7 @@ describe("OfficeReservationForm", () => {
     ).toBeDefined();
   });
 
-  test("offers additional-seat cards up to the office table capacity", () => {
+  test("offers total-seat cards up to the office table capacity", () => {
     const queryClient = new QueryClient();
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -96,9 +96,12 @@ describe("OfficeReservationForm", () => {
       "1",
       "2",
     ]);
-    expect(view.getByText("No additional seats")).toBeDefined();
-    expect(view.getByText("1 additional seat")).toBeDefined();
-    expect(view.getByText("2 additional seats")).toBeDefined();
+    expect(view.getByText("How many office seats do you need?")).toBeDefined();
+    expect(view.getByText("1 seat")).toBeDefined();
+    expect(view.getByText("2 seats")).toBeDefined();
+    expect(view.getByText("3 seats")).toBeDefined();
+    expect(view.queryByText(/additional seat/i)).toBeNull();
+    expect(view.queryByText(/already included/i)).toBeNull();
   });
 
   test("keeps every card on self-contained rows when the seat options wrap", () => {
@@ -128,7 +131,7 @@ describe("OfficeReservationForm", () => {
     ).toBeFalse();
   });
 
-  test("shows the combined access and attendee price in every card", () => {
+  test("marks every card with its seat surcharge", () => {
     const startsOn = decodePlainDate("2099-06-10");
     const endsOn = decodePlainDate("2099-06-10");
     const initialAdvertisedPrices = [0, 1, 2].map((additionalGuests) => {
@@ -173,8 +176,14 @@ describe("OfficeReservationForm", () => {
         .querySelector(`[data-reservation-type-option="${additionalGuests}"]`)
         ?.textContent?.replaceAll("\u00a0", " ");
 
-    expect(optionText(0)).toContain("CZK 845");
-    expect(optionText(1)).toContain("CZK 1,160");
-    expect(optionText(2)).toContain("CZK 1,475");
+    expect(optionText(0)).toContain("CZK 315");
+    expect(optionText(1)).toContain("CZK 630");
+    expect(optionText(2)).toContain("CZK 945");
+    expect(optionText(0)).not.toContain("CZK 845");
+    expect(
+      view.container
+        .querySelector('[data-reservation-type-price="0"] span')
+        ?.classList.contains("before:content-['+']")
+    ).toBeTrue();
   });
 });

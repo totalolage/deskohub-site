@@ -11,8 +11,11 @@ import {
 } from "@/features/checkout/advertised-price";
 import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
+import {
+  formatWorkspaceMoney,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationDatePicker } from "@/features/reservation/components/reservation-date-picker";
 import {
@@ -45,7 +48,6 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import type { OfficeWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormMessage,
@@ -286,12 +288,12 @@ export function OfficeReservationForm({
         render={({ field }) => (
           <FormItem>
             <ReservationFormLabel required>
-              {m.reservationOfficeAdditionalGuestsLabel({}, { locale })}
+              {m.reservationOfficeSeatCountLabel({}, { locale })}
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
                 className="space-y-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:grid-rows-none"
-                idPrefix="office-additional-seats"
+                idPrefix="office-seats"
                 inputRef={field.ref}
                 name={field.name}
                 onBlur={field.onBlur}
@@ -300,16 +302,11 @@ export function OfficeReservationForm({
               >
                 {getOfficeAdditionalSeatOptions(seatCapacity).map(
                   (additional) => {
-                    const optionTitle =
-                      additional === 0
-                        ? m.reservationOfficeNoAdditionalGuestsOption(
-                            {},
-                            { locale }
-                          )
-                        : m.reservationOfficeAdditionalGuestsOption(
-                            { count: additional },
-                            { locale }
-                          );
+                    const seatCount = additional + 1;
+                    const optionTitle = m.reservationOfficeSeatCountOption(
+                      { count: seatCount },
+                      { locale }
+                    );
                     const productItem = advertisedPricesByAdditionalGuests
                       .get(additional)
                       ?.summary.sections.find(({ key }) => key === "order")
@@ -321,13 +318,14 @@ export function OfficeReservationForm({
                       productItem && "discounts" in productItem
                         ? productItem.discounts
                         : undefined;
-                    const originalAmount =
-                      productItem && "originalAmount" in productItem
-                        ? productItem.originalAmount
+                    const seatPrice =
+                      productItem && "seatAmount" in productItem
+                        ? workspaceMoneyWithValue(
+                            productItem.seatAmount.value * seatCount,
+                            productItem.seatAmount
+                          )
                         : undefined;
-                    const hasDiscounts = Boolean(
-                      discounts?.length && originalAmount
-                    );
+                    const hasDiscounts = Boolean(discounts?.length);
 
                     return (
                       <ReservationTypeOption
@@ -353,23 +351,15 @@ export function OfficeReservationForm({
                             : undefined
                         }
                         price={
-                          productItem ? (
-                            <ReservationAdvertisedPrice
-                              amount={productItem.amount}
-                              locale={locale}
-                              originalAmount={
-                                hasDiscounts ? originalAmount : undefined
-                              }
-                              suffix={m.reservationOfficePriceSuffix(
-                                {},
-                                { locale }
-                              )}
-                            />
+                          seatPrice ? (
+                            <span className="before:content-['+']">
+                              {formatWorkspaceMoney(seatPrice, locale)}
+                            </span>
                           ) : (
                             <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
                           )
                         }
-                        priceReady={Boolean(productItem)}
+                        priceReady={Boolean(seatPrice)}
                         title={optionTitle}
                         value={String(additional)}
                       />
@@ -378,9 +368,6 @@ export function OfficeReservationForm({
                 )}
               </ReservationTypeInput>
             </FormControl>
-            <FormDescription>
-              {m.reservationOfficeAdditionalGuestsDescription({}, { locale })}
-            </FormDescription>
             <FormMessage />
           </FormItem>
         )}
