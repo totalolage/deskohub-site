@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import { type Locale, m } from "@/features/i18n";
-import { isOfficePageEnabled } from "@/features/office/backend/office-page-feature-flag";
+import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";

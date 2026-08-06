@@ -1,11 +1,14 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { buildCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import {
   discountAdvertisementQuoteCodec,
   discountIdSchema,
 } from "@/features/discounts/contracts";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 
 mock.module("server-only", () => ({}));
@@ -20,6 +23,54 @@ const money = (value: number) => ({
 });
 
 describe("buildAdvertisedPrice", () => {
+  test("rejects office price issuance while the office flag is disabled", async () => {
+    const input = {
+      locale: "en-US" as const,
+      reservation: {
+        kind: "office" as const,
+        details: {
+          kind: "office" as const,
+          startsOn: "2099-06-10",
+          endsOn: "2099-06-11",
+          additionalGuests: 2,
+        },
+      },
+    };
+    const quoteAdvertisement = mock((request) =>
+      buildOfficeReservationQuote(request.reservation.details).pipe(
+        Effect.map((quote) => ({
+          kind: "office" as const,
+          reservation: input.reservation,
+          quote,
+        }))
+      )
+    );
+
+    const result = await buildAdvertisedPrice(input).pipe(
+      Effect.provide(
+        Layer.merge(
+          CheckoutPricingServiceMock({ quoteAdvertisement }),
+          OfficeReservationFeatureFlagService.Live.pipe(
+            Layer.provide(
+              WorkspaceFeatureFlagServiceMock({
+                isEnabled: mock(() => Effect.succeed(false)),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromiseExit
+    );
+
+    expect(Exit.isFailure(result)).toBe(true);
+    if (Exit.isFailure(result)) {
+      expect(Cause.squash(result.cause)).toMatchObject({
+        _tag: "OfficeReservationsDisabledError",
+      });
+    }
+    expect(quoteAdvertisement).not.toHaveBeenCalled();
+  });
+
   test("seals the source-neutral quote returned by pricing", async () => {
     const discountQuote = discountAdvertisementQuoteCodec.make({
       product: { kind: "cowork", tier: "basic" },
@@ -64,7 +115,18 @@ describe("buildAdvertisedPrice", () => {
     };
 
     const result = await buildAdvertisedPrice(input).pipe(
-      Effect.provide(CheckoutPricingServiceMock({ quoteAdvertisement })),
+      Effect.provide(
+        Layer.merge(
+          CheckoutPricingServiceMock({ quoteAdvertisement }),
+          OfficeReservationFeatureFlagService.Live.pipe(
+            Layer.provide(
+              WorkspaceFeatureFlagServiceMock({
+                isEnabled: mock(() => Effect.succeed(false)),
+              })
+            )
+          )
+        )
+      ),
       Effect.runPromise
     );
     const state = await openAdvertisedPriceState(

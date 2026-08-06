@@ -7,9 +7,12 @@ mock.module(
   "@/features/meeting-room/backend/meeting-room-page-feature-flag",
   () => ({ isMeetingRoomPageEnabled })
 );
-mock.module("@/features/office/backend/office-page-feature-flag", () => ({
-  isOfficePageEnabled,
-}));
+mock.module(
+  "@/features/office/backend/office-reservation-feature-flag.server",
+  () => ({
+    isOfficePageEnabled,
+  })
+);
 
 describe("getSiteHeaderConfig", () => {
   beforeEach(() => {

@@ -6,6 +6,7 @@ import type {
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
+import { ensureOfficeReservationsEnabled } from "@/features/office/backend/office-reservation-feature-flag.service";
 import {
   buildAdvertisedPriceState,
   sealAdvertisedPriceState,
@@ -14,6 +15,10 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 
 export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
   function* (input: AdvertisedPriceRequest) {
+    if (input.reservation.kind === "office") {
+      yield* ensureOfficeReservationsEnabled;
+    }
+
     const pricing = yield* CheckoutPricingService;
     const advertised = yield* pricing.quoteAdvertisement(input);
     const state = yield* buildAdvertisedPriceState({

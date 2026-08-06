@@ -46,8 +46,13 @@ import {
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import {
+  ensureOfficeReservationsEnabled,
+  OfficeReservationFeatureFlagService,
+} from "@/features/office/backend/office-reservation-feature-flag.service";
 import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -667,6 +672,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
+    if (input.reservation.kind === "office") {
+      yield* ensureOfficeReservationsEnabled;
+    }
+
     const advertisement = yield* prepareAdvertisement(input);
     const reservation = advertisement.reservation;
 
@@ -1062,7 +1071,10 @@ const PreparePayStateLive = Layer.mergeAll(
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,
-  CheckoutPricingServiceLiveWithDependencies
+  CheckoutPricingServiceLiveWithDependencies,
+  OfficeReservationFeatureFlagService.Live.pipe(
+    Layer.provide(WorkspaceFeatureFlagServiceLive)
+  )
 );
 
 const preparePayStateAction = defineWorkspaceAction(

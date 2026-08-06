@@ -24,6 +24,8 @@ import {
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { meetingRoomAdvertisedPriceReservationSchema } from "@/features/reservation/meeting-room-reservation";
@@ -574,6 +576,52 @@ const runMeetingRoomNewHoldScenario = async (
 };
 
 describe("prepareWorkspacePayState", () => {
+  test("rejects office reservation issuance while the office flag is disabled", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const verifyHuman = mock(() => Effect.void);
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      checkoutSessionId: "session-id",
+      checkoutAttemptId: "attempt-id",
+      advertisedPriceToken: "disabled-office-has-no-price-token",
+      reservation: {
+        kind: "office",
+        startsOn: "2099-06-10",
+        endsOn: "2099-06-11",
+        additionalGuests: 2,
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420 777 777 777",
+      },
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          BotProtectionServiceMock({ verifyHuman }),
+          CheckoutPricingServiceMock({}),
+          OfficeReservationFeatureFlagService.Live.pipe(
+            Layer.provide(
+              WorkspaceFeatureFlagServiceMock({
+                isEnabled: mock(() => Effect.succeed(false)),
+              })
+            )
+          )
+        )
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: { _tag: "OfficeReservationsDisabledError" },
+    });
+    expect(verifyHuman).toHaveBeenCalledTimes(1);
+  });
+
   test("accepts meeting-room preparation with its family advertisement", async () => {
     const { preparePayStateSchema } = await import(
       "./prepare-pay-state.schema"

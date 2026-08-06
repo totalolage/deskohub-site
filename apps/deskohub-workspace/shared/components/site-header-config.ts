@@ -1,6 +1,6 @@
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { isOfficePageEnabled } from "@/features/office/backend/office-page-feature-flag";
+import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import {
   getCoworkReservationPath,
   getOfficeReservationPath,
