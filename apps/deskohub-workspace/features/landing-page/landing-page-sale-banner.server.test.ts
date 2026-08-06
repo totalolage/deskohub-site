@@ -128,6 +128,16 @@ describe("getActiveLandingPageSaleBanner", () => {
     expect(banner).toBeUndefined();
   });
 
+  test("renders no mixed office banner while office reservations are disabled", async () => {
+    const { banner } = await getBanner(
+      [sale([meetingRoomProduct, officeProduct])],
+      "en-US",
+      false
+    );
+
+    expect(banner).toBeUndefined();
+  });
+
   test("fails closed and logs when overlapping sales are ambiguous", async () => {
     const logRecords: {
       readonly annotations: Record<string, unknown>;
