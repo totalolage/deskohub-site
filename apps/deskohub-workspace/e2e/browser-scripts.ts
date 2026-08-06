@@ -658,6 +658,68 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     dateButton.click();
     await waitUntil(() => hidden.value === desiredDate, label + ' did not update');
   };
+  const selectDateAfterRequestSettles = async (
+    ariaLabel,
+    inputName,
+    desiredDate,
+    label
+  ) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const submit = document.querySelector('button[type="submit"]');
+      if (!(submit instanceof HTMLButtonElement)) {
+        throw new Error('office reservation submit control not found');
+      }
+      let sawPendingRequest =
+        submit.dataset.reservationAvailabilityLoading === 'true' ||
+        submit.dataset.reservationPriceLoading === 'true';
+      const requestObserver = new MutationObserver((records) => {
+        if (
+          records.some(
+            (record) =>
+              record.oldValue === 'true' ||
+              (record.target instanceof HTMLButtonElement &&
+                (record.target.dataset.reservationAvailabilityLoading === 'true' ||
+                  record.target.dataset.reservationPriceLoading === 'true'))
+          )
+        ) {
+          sawPendingRequest = true;
+        }
+      });
+      requestObserver.observe(submit, {
+        attributeFilter: [
+          'data-reservation-availability-loading',
+          'data-reservation-price-loading',
+        ],
+        attributeOldValue: true,
+      });
+
+      let dateRegressed = false;
+      try {
+        await selectDate(ariaLabel, inputName, desiredDate, label);
+        await waitUntil(() => {
+          const hidden = document.querySelector('input[name="' + inputName + '"]');
+          const currentSubmit = document.querySelector('button[type="submit"]');
+          if (!(hidden instanceof HTMLInputElement)) return false;
+          if (hidden.value !== desiredDate) {
+            dateRegressed = true;
+            return true;
+          }
+          if (!(currentSubmit instanceof HTMLButtonElement)) return false;
+          const requestPending =
+            currentSubmit.dataset.reservationAvailabilityLoading === 'true' ||
+            currentSubmit.dataset.reservationPriceLoading === 'true';
+          if (requestPending) sawPendingRequest = true;
+          return sawPendingRequest && !requestPending;
+        }, label + ' request did not settle');
+      } finally {
+        requestObserver.disconnect();
+      }
+
+      if (!dateRegressed) return;
+    }
+
+    throw new Error(label + ' did not remain selected');
+  };
 
   await selectDate(
     'Office reservation start date',
@@ -669,7 +731,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     const endsOn = document.querySelector('input[name="endsOn"]');
     return endsOn instanceof HTMLInputElement && endsOn.value === expected.startsOn;
   }, 'office end date did not follow the selected start date');
-  await selectDate(
+  await selectDateAfterRequestSettles(
     'Office reservation end date',
     'endsOn',
     expected.endsOn,

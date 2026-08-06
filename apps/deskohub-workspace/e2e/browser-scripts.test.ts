@@ -947,9 +947,14 @@ test("prepares a multi-day office reservation with other people", async () => {
       <input name="phone" />
       <input name="name" />
       <textarea name="message"></textarea>
-      <button type="submit"></button>
+      <button
+        data-reservation-availability-loading="false"
+        data-reservation-price-loading="false"
+        type="submit"
+      ></button>
     `;
     let activeDateField: "startsOn" | "endsOn" = "startsOn";
+    let endSelectionCount = 0;
     document
       .querySelector('button[aria-label="Office reservation start date"]')
       ?.addEventListener("click", () => {
@@ -977,7 +982,22 @@ test("prepares a multi-day office reservation with other people", async () => {
               document.querySelector<HTMLInputElement>('input[name="endsOn"]');
             if (endsOn) endsOn.value = selectedDate;
           }, 10);
+          return;
         }
+
+        endSelectionCount += 1;
+        const submit = document.querySelector<HTMLButtonElement>(
+          'button[type="submit"]'
+        );
+        if (submit) submit.dataset.reservationPriceLoading = "true";
+        setTimeout(() => {
+          if (endSelectionCount === 1) {
+            const startsOn =
+              document.querySelector<HTMLInputElement>('input[name="startsOn"]');
+            if (startsOn) input.value = startsOn.value;
+          }
+          if (submit) submit.dataset.reservationPriceLoading = "false";
+        }, 10);
       });
     }
     const run = new Function(
@@ -1014,6 +1034,7 @@ test("prepares a multi-day office reservation with other people", async () => {
       document.querySelector<HTMLInputElement>('input[name="additionalGuests"]')
         ?.value
     ).toBe("1");
+    expect(endSelectionCount).toBe(2);
     expect(
       document.querySelector<HTMLInputElement>('input[name="email"]')?.value
     ).toBe(data.email);
