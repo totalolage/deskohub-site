@@ -332,7 +332,7 @@ export function OfficeReservationForm({
                     return (
                       <ReservationTypeOption
                         key={additional}
-                        className="pb-4 lg:row-start-auto lg:row-span-1"
+                        className="pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
                         discount={
                           hasDiscounts && discounts
                             ? {

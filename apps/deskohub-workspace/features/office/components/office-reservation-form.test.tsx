@@ -101,6 +101,33 @@ describe("OfficeReservationForm", () => {
     expect(view.getByText("2 additional seats")).toBeDefined();
   });
 
+  test("keeps every card on self-contained rows when the seat options wrap", () => {
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={6}
+          initialValues={officeReservationDefaultValues}
+          locale="en-US"
+        />
+      </QueryClientProvider>
+    );
+
+    const options = Array.from(
+      view.container.querySelectorAll("[data-reservation-type-option]")
+    );
+
+    expect(options).toHaveLength(6);
+    expect(
+      options.every((option) => option.classList.contains("lg:grid-rows-none"))
+    ).toBeTrue();
+    expect(
+      options.some((option) =>
+        option.classList.contains("lg:grid-rows-subgrid")
+      )
+    ).toBeFalse();
+  });
+
   test("shows the combined access and attendee price in every card", () => {
     const startsOn = decodePlainDate("2099-06-10");
     const endsOn = decodePlainDate("2099-06-10");
