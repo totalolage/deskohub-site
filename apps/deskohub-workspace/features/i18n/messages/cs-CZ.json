@@ -329,17 +329,29 @@
   "reservationMeetingRoomUnavailable": "Zasedací místnost není v tomto termínu dostupná. Zkus jiný začátek nebo délku rezervace.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
   "reservationOfficeMetadataTitle": "Rezervace soukromé kanceláře | Deskohub Workspace",
-  "reservationOfficeMetadataDescription": "Rezervuj si soukromou kancelář v Deskohub Workspace na jeden nebo více celých dnů a přidej osoby, které přijdou s tebou.",
+  "reservationOfficeMetadataDescription": "Rezervuj si soukromou kancelář v Deskohub Workspace na jeden nebo více celých dnů a vyber potřebný počet míst.",
   "reservationOfficeFormTitle": "Rezervuj si soukromou kancelář.",
-  "reservationOfficeFormDescription": "Vyber první a poslední den, přidej další osoby, které budou kancelář využívat, a pokračuj k bezpečné platbě.",
+  "reservationOfficeFormDescription": "Vyber první a poslední den, počet dalších míst v kanceláři a pokračuj k bezpečné platbě.",
   "reservationOfficeDateRangeLabel": "Termín rezervace",
   "reservationOfficeDateRangePlaceholder": "Vyber rozsah dat",
   "reservationOfficeStartDateLabel": "Datum začátku rezervace kanceláře",
   "reservationOfficeEndDateLabel": "Datum konce rezervace kanceláře",
-  "reservationOfficeAdditionalGuestsLabel": "Kolik dalších lidí bude kancelář využívat?",
-  "reservationOfficeAdditionalGuestsDescription": "Osoba vytvářející rezervaci je už započítaná.",
+  "reservationOfficeAdditionalGuestsLabel": "Kolik dalších míst v kanceláři potřebuješ?",
+  "reservationOfficeAdditionalGuestsDescription": "Tvoje místo už je započítané.",
+  "reservationOfficeNoAdditionalGuestsOption": "Žádná další místa",
+  "reservationOfficeAdditionalGuestsOption": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} další místo",
+        "countPlural=few": "{count} další místa",
+        "countPlural=other": "{count} dalších míst"
+      }
+    }
+  ],
   "reservationOfficeMessagePlaceholder": "Název firmy, nastavení kanceláře, poznámka k fakturaci nebo cokoliv, co máme vědět.",
-  "reservationOfficeUnavailable": "Kancelář není dostupná pro všechny vybrané dny a počet lidí. Zkus jiný termín nebo počet osob.",
+  "reservationOfficeUnavailable": "Kancelář není dostupná pro všechny vybrané dny a počet míst. Zkus jiný termín nebo počet míst.",
   "reservationOfficePriceSuffix": " celkem",
   "reservationCoffeeLabel": "Káva",
   "reservationMonitorLabel": "Monitorový setup",
@@ -406,7 +418,35 @@
   "checkoutSummaryDiscountedPrice": "Cena po slevě: {price}",
   "checkoutSummaryItemCoffee": "Káva",
   "checkoutSummaryItemMeetingRoom": "Zasedací místnost - {duration}",
-  "checkoutSummaryItemOffice": "Soukromá kancelář · {dayCount} dní · {people} osob",
+  "checkoutSummaryItemOfficeAccess": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Přístup do soukromé kanceláře · {dayCount} den",
+        "dayCountPlural=few": "Přístup do soukromé kanceláře · {dayCount} dny",
+        "dayCountPlural=other": "Přístup do soukromé kanceláře · {dayCount} dní"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeSeat": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Místo v kanceláři · {dayCount} den",
+        "dayCountPlural=few": "Místo v kanceláři · {dayCount} dny",
+        "dayCountPlural=other": "Místo v kanceláři · {dayCount} dní"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDiscount": "Sleva na kancelář",
   "checkoutSummaryItemCustomerDiscount": "Zákaznická sleva",
   "checkoutSummaryItemTotal": "Celkem k platbě",
   "checkoutPayConsentBefore": "Souhlasím s dokumenty",
@@ -553,7 +593,7 @@
   "reservationValidationMeetingRoomStartWholeHour": "Rezervace zasedací místnosti musí začínat v celou hodinu.",
   "reservationValidationMeetingRoomDuration": "Délka rezervace zasedací místnosti musí být jedna z těchto možností: {durations}.",
   "reservationValidationMeetingRoomEnded": "Vyber čas zasedací místnosti, jehož rezervace ještě neskončila.",
-  "reservationValidationOfficeAdditionalGuests": "Zadej nulu nebo celé číslo dalších osob.",
+  "reservationValidationOfficeAdditionalGuests": "Zadej nulu nebo celé číslo dalších míst.",
   "reservationValidationOfficeEndBeforeStart": "Poslední den nesmí být před prvním dnem.",
   "reservationValidationOfficeEnded": "Vyber termín kanceláře, který ještě neskončil.",
   "reservationValidationMonitorRequired": "U Profi Workstation vyber monitorový setup.",

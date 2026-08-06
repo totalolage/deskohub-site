@@ -8,7 +8,7 @@ const decodeOfficeDetails = Schema.decodeUnknownSync(
 );
 
 describe("getOfficeReservationQuote", () => {
-  test("charges the daily base plus every additional person for every day", () => {
+  test("charges the daily base plus every person for every day", () => {
     const quote = Effect.runSync(
       getOfficeReservationQuote(
         decodeOfficeDetails({
@@ -25,9 +25,11 @@ describe("getOfficeReservationQuote", () => {
         type: "office",
         dayCount: 2,
         additionalGuests: 2,
-        amount: { value: 232_000, exponent: 2, currency: "CZK" },
+        accessAmount: { value: 106_000, exponent: 2, currency: "CZK" },
+        seatAmount: { value: 63_000, exponent: 2, currency: "CZK" },
+        amount: { value: 295_000, exponent: 2, currency: "CZK" },
       },
     ]);
-    expect(quote.payment.expectedPrice.value).toBe(232_000);
+    expect(quote.payment.expectedPrice.value).toBe(295_000);
   });
 });

@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
+  CheckoutSummaryItem,
+  CheckoutSummaryOrderItem,
 } from "@/features/checkout/checkout-summary";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
@@ -11,7 +13,11 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  formatWorkspaceMoney,
+  type WorkspaceMoney,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { cn } from "@/shared/utils";
 import { CheckoutSummaryDiscountDetails } from "./checkout-summary-discount-details";
@@ -40,16 +46,7 @@ const getSummaryItemLabel = (
         cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
         "meeting-room": ({ duration }) =>
           getWorkspaceMeetingRoomDurationTitle(duration, locale),
-        office: () =>
-          "dayCount" in item && "additionalGuests" in item
-            ? m.checkoutSummaryItemOffice(
-                {
-                  dayCount: item.dayCount,
-                  people: item.additionalGuests + 1,
-                },
-                { locale }
-              )
-            : getWorkspaceOfficeProductTitle(locale),
+        office: () => getWorkspaceOfficeProductTitle(locale),
       })
     );
   }
@@ -88,6 +85,17 @@ export function CheckoutSummary({
           >
             {section.items.map((item) => {
               const itemChanged = changedKeys?.itemKeys.includes(item.key);
+              if (isOfficeCheckoutSummaryItem(item)) {
+                return (
+                  <OfficeCheckoutSummaryRows
+                    key={item.key}
+                    changed={itemChanged}
+                    item={item}
+                    locale={locale}
+                  />
+                );
+              }
+
               const itemLabel = getSummaryItemLabel(item, locale);
               const discountedItem =
                 "originalAmount" in item && item.originalAmount
@@ -165,6 +173,107 @@ export function CheckoutSummary({
         );
       })}
     </CheckoutSummarySections>
+  );
+}
+
+type OfficeCheckoutSummaryItem = Extract<
+  CheckoutSummaryOrderItem,
+  { readonly product: { readonly kind: "office" } }
+>;
+
+const isOfficeCheckoutSummaryItem = (
+  item: CheckoutSummaryItem
+): item is OfficeCheckoutSummaryItem =>
+  "product" in item && item.product.kind === "office";
+
+function OfficeCheckoutSummaryRows({
+  changed,
+  item,
+  locale,
+}: {
+  readonly changed?: boolean;
+  readonly item: OfficeCheckoutSummaryItem;
+  readonly locale: Locale;
+}) {
+  const guestCount = item.additionalGuests + 1;
+  const discountedItem =
+    "originalAmount" in item && item.originalAmount ? item : undefined;
+  const discountAmount = discountedItem
+    ? workspaceMoneyWithValue(
+        item.amount.value - discountedItem.originalAmount.value,
+        item.amount
+      )
+    : undefined;
+
+  return (
+    <>
+      <CheckoutSummaryLine
+        amount={item.accessAmount}
+        changed={changed}
+        label={m.checkoutSummaryItemOfficeAccess(
+          { dayCount: item.dayCount },
+          { locale }
+        )}
+        locale={locale}
+      />
+      {Array.from({ length: guestCount }, (_, index) => (
+        <CheckoutSummaryLine
+          key={`${item.key}:seat:${index}`}
+          amount={item.seatAmount}
+          changed={changed}
+          label={m.checkoutSummaryItemOfficeSeat(
+            { dayCount: item.dayCount },
+            { locale }
+          )}
+          locale={locale}
+        />
+      ))}
+      {discountedItem && discountAmount ? (
+        <CheckoutSummaryLine
+          amount={discountAmount}
+          changed={changed}
+          label={m.checkoutSummaryItemOfficeDiscount({}, { locale })}
+          locale={locale}
+        >
+          <CheckoutSummaryDiscountDetails
+            discounts={discountedItem.discounts}
+            locale={locale}
+            productLabel={getWorkspaceOfficeProductTitle(locale)}
+          />
+        </CheckoutSummaryLine>
+      ) : null}
+    </>
+  );
+}
+
+function CheckoutSummaryLine({
+  amount,
+  changed,
+  children,
+  label,
+  locale,
+}: {
+  readonly amount: WorkspaceMoney;
+  readonly changed?: boolean;
+  readonly children?: ReactNode;
+  readonly label: ReactNode;
+  readonly locale: Locale;
+}) {
+  return (
+    <div
+      className={cn(
+        "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 text-sm leading-6",
+        changed && "font-semibold text-burned-orange"
+      )}
+    >
+      <span>{label}</span>
+      <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+        <span className="shrink-0 font-semibold tabular-nums">
+          {formatWorkspaceMoney(amount, locale)}
+        </span>
+        {children}
+      </span>
+    </div>
   );
 }
 

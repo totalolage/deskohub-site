@@ -208,6 +208,11 @@ export const getOfficeReservationGuestCount = (
   reservation: Pick<OfficeReservationDetails, "additionalGuests">
 ) => reservation.additionalGuests + 1;
 
+export const getOfficeAdditionalSeatOptions = (seatCapacity: number) =>
+  Array.from({ length: seatCapacity }, (_, additionalGuests) =>
+    officeAdditionalGuestsSchema.make(additionalGuests)
+  );
+
 export const getOfficeReservationDayCount = (
   reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn">
 ) =>

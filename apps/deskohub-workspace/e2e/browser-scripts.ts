@@ -152,7 +152,8 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
 
   if (value('input[name="startsOn"]', 'start date') !== expected.startsOn) fail('start date');
   if (value('input[name="endsOn"]', 'end date') !== expected.endsOn) fail('end date');
-  if (value('input[name="additionalGuests"]', 'other people') !== String(expected.additionalGuests)) fail('other people');
+  const additionalGuests = document.querySelector('input[name="additionalGuests"]:checked');
+  if (!(additionalGuests instanceof HTMLInputElement) || additionalGuests.value !== String(expected.additionalGuests)) fail('other people');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
   if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
@@ -737,7 +738,13 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     expected.endsOn,
     'office end date'
   );
-  setField('input[name="additionalGuests"]', String(expected.additionalGuests));
+  const additionalGuestsOption = document.querySelector(
+    'input[name="additionalGuests"][value="' + expected.additionalGuests + '"]'
+  );
+  if (!(additionalGuestsOption instanceof HTMLInputElement)) {
+    throw new Error('office additional-seat option not found');
+  }
+  additionalGuestsOption.click();
   setField('input[name="email"]', expected.email);
   setField('input[name="phone"]', expected.phone);
   setField('input[name="name"]', expected.name);
@@ -747,7 +754,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
   await waitUntil(() => {
     const startsOn = document.querySelector('input[name="startsOn"]');
     const endsOn = document.querySelector('input[name="endsOn"]');
-    const additionalGuests = document.querySelector('input[name="additionalGuests"]');
+    const additionalGuests = document.querySelector('input[name="additionalGuests"]:checked');
     const submit = document.querySelector('button[type="submit"]');
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
     if (

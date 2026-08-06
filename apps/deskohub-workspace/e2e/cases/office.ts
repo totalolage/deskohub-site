@@ -129,8 +129,9 @@ const assertOfficePayPage = (
         Temporal.PlainDate.from(office.endsOn),
         { largestUnit: "day" }
       ).days + 1;
-    const people = office.additionalGuests + 1;
-    const itemTitle = `Private office · ${dayCount} days · ${people} people`;
+    const dayLabel = dayCount === 1 ? "day" : "days";
+    const accessTitle = `Private office access · ${dayCount} ${dayLabel}`;
+    const seatTitle = `Office seat · ${dayCount} ${dayLabel}`;
     const price = formatWorkspaceMoney(
       getWorkspaceOfficePrice({
         additionalGuests: office.additionalGuests,
@@ -143,7 +144,11 @@ const assertOfficePayPage = (
       description: "office pay summary",
       matches: (text) => {
         const normalized = text.replaceAll(/\s+/g, " ");
-        return normalized.includes(itemTitle) && normalized.includes(price);
+        return (
+          normalized.includes(accessTitle) &&
+          normalized.includes(seatTitle) &&
+          normalized.includes(price)
+        );
       },
       run,
       session,

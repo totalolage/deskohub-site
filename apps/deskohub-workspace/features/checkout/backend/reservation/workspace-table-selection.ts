@@ -27,6 +27,11 @@ export const getWorkspaceTableCandidates = (
   requiredTags: readonly string[]
 ) => tables.filter((table) => isAssignableWorkspaceTable(table, requiredTags));
 
+export const getWorkspaceTableSeatCapacity = (table: Table) => {
+  const parsed = Number(table.seats);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
+};
+
 export const hasAvailableWorkspaceTableCandidate = (
   tables: readonly Table[],
   requiredTags: readonly string[],
@@ -110,7 +115,7 @@ const hasWorkspaceTableCapacity = (
 ) => {
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
-  const capacity = parsePositiveNumber(table.seats);
+  const capacity = getWorkspaceTableSeatCapacity(table);
   if (!capacity) return false;
   const occupancy = occupancyByTableId.get(tableId) ?? 0;
 
@@ -224,9 +229,4 @@ const getWorkspaceTableMaxDistance = (tables: readonly Table[]) => {
 const parseCoordinate = (value: string | undefined) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const parsePositiveNumber = (value: string | undefined) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };

@@ -26,6 +26,8 @@ export const getOfficeCheckoutSummary = (
     product,
     dayCount: item.dayCount,
     additionalGuests: item.additionalGuests,
+    accessAmount: item.accessAmount,
+    seatAmount: item.seatAmount,
   };
   const productItem =
     summaryDiscounts.length > 0

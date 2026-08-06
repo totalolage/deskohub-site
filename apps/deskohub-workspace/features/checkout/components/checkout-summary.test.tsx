@@ -15,7 +15,9 @@ import {
   buildCoworkReservationQuote as buildCoworkPriceQuote,
 } from "@/features/checkout/checkout-quote.test-utils";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
+import { getOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
@@ -95,6 +97,103 @@ describe("CheckoutSummary", () => {
 
     expect(view.getByText("Meeting room - whole day")).toBeDefined();
     expect(view.queryByText("Meeting room - 24 hours")).toBeNull();
+  });
+
+  test("splits office access and every attendee seat with singular days", () => {
+    const quote = Effect.runSync(
+      getOfficeReservationQuote({
+        kind: "office",
+        startsOn: "2099-06-10",
+        endsOn: "2099-06-10",
+        additionalGuests: 1,
+      })
+    );
+    const view = render(
+      <CheckoutSummary
+        locale="en-US"
+        summary={getOfficeCheckoutSummary(quote)}
+      />
+    );
+
+    expect(view.getByText("Private office access · 1 day")).toBeDefined();
+    expect(view.getAllByText("Office seat · 1 day")).toHaveLength(2);
+    expect(view.getByText("CZK 530")).toBeDefined();
+    expect(view.getAllByText("CZK 315")).toHaveLength(2);
+  });
+
+  test("pluralizes multi-day office summary rows", () => {
+    const quote = Effect.runSync(
+      getOfficeReservationQuote({
+        kind: "office",
+        startsOn: "2099-06-10",
+        endsOn: "2099-06-11",
+        additionalGuests: 0,
+      })
+    );
+    const view = render(
+      <CheckoutSummary
+        locale="en-US"
+        summary={getOfficeCheckoutSummary(quote)}
+      />
+    );
+
+    expect(view.getByText("Private office access · 2 days")).toBeDefined();
+    expect(view.getByText("Office seat · 2 days")).toBeDefined();
+  });
+
+  test("keeps office component rows and discounts reconciled to the total", () => {
+    const money = (value: number) => ({
+      value,
+      exponent: 2,
+      currency: "CZK",
+    });
+    const quote = Effect.runSync(
+      getOfficeReservationQuote(
+        {
+          kind: "office",
+          startsOn: "2099-06-10",
+          endsOn: "2099-06-10",
+          additionalGuests: 1,
+        },
+        {
+          discountQuote: {
+            product: { kind: "office" },
+            discountableSubtotal: money(116_000),
+            discounts: [
+              {
+                discount: {
+                  id: Schema.decodeUnknownSync(discountIdSchema)("office-sale"),
+                  label: "Office sale",
+                  adjustment: {
+                    kind: "percentage" as const,
+                    basisPoints: 5000,
+                  },
+                },
+                subtotalBefore: money(116_000),
+                amount: money(58_000),
+                subtotalAfter: money(58_000),
+              },
+            ],
+            totalDiscount: money(58_000),
+            discountedSubtotal: money(58_000),
+          },
+        }
+      )
+    );
+    const view = render(
+      <CheckoutSummary
+        locale="en-US"
+        summary={getOfficeCheckoutSummary(quote)}
+      />
+    );
+
+    expect(view.getByText("Office discount")).toBeDefined();
+    expect(
+      view.getByText("Office discount").parentElement?.textContent
+    ).toMatch(/-CZK\s*580/);
+    expect(view.getByText("Total to pay").parentElement?.textContent).toMatch(
+      /CZK\s*580/
+    );
   });
 
   test("highlights the canonical changed product key", () => {

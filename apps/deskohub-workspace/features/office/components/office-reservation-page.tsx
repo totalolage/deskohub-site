@@ -1,10 +1,11 @@
 import { Effect, Schema } from "effect";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import { type Locale, m } from "@/features/i18n";
+import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/office-reservation-capacity.server";
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
+import { getOfficeAdditionalSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDefaultValues,
   officeReservationDefaultValues,
@@ -44,14 +45,15 @@ export const officeReservationPage = createReservationPage({
       startsOn: today,
       endsOn: today,
     };
-    const initialAdvertisedPrices = await loadAdvertisedPrices([
-      getOfficeAdvertisedPriceRequest({
+    const seatCapacity = await loadOfficeReservationSeatCapacity();
+    const initialAdvertisedPrices = await loadAdvertisedPrices(
+      getOfficeAdditionalSeatAdvertisedPriceRequests({
+        seatCapacity,
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),
         endsOn: decodePlainDate(initialValues.endsOn),
-        additionalGuests: initialValues.additionalGuests,
-      }),
-    ]).pipe(
+      }).map(({ request }) => request)
+    ).pipe(
       Effect.provide(CheckoutPricingServiceLiveWithDependencies),
       Effect.scoped,
       runWorkspaceEffect("reservation.office.load-advertised-price")
@@ -60,6 +62,7 @@ export const officeReservationPage = createReservationPage({
     return (
       <OfficeReservationForm
         checkoutSessionId={checkoutSessionId}
+        seatCapacity={seatCapacity}
         initialAdvertisedPrices={initialAdvertisedPrices}
         initialReservation={initialReservation}
         initialValues={initialValues}

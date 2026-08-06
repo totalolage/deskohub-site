@@ -1,8 +1,15 @@
 import { Effect, Schema } from "effect";
-import { getWorkspaceOfficePrice } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceOfficeAccessPrice,
+  getWorkspaceOfficePrice,
+  getWorkspaceOfficeSeatPrice,
+} from "@/features/checkout/product-catalog";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { makeReservationQuoteSchema } from "@/features/checkout/reservation-quote-schema";
-import { workspaceMoneyCodec } from "@/features/checkout/workspace-money";
+import {
+  positiveWorkspaceMoneyCodec,
+  workspaceMoneyCodec,
+} from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts/contracts";
 import {
   getOfficeReservationDayCount,
@@ -14,6 +21,8 @@ export const officeReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("office"),
   dayCount: Schema.Int.check(Schema.isGreaterThan(0)),
   additionalGuests: officeAdditionalGuestsSchema,
+  accessAmount: positiveWorkspaceMoneyCodec,
+  seatAmount: positiveWorkspaceMoneyCodec,
   amount: workspaceMoneyCodec,
 });
 
@@ -42,6 +51,8 @@ export const getOfficeReservationQuote = (
     additionalGuests: reservation.additionalGuests,
     dayCount,
   });
+  const accessAmount = getWorkspaceOfficeAccessPrice(dayCount);
+  const seatAmount = getWorkspaceOfficeSeatPrice(dayCount);
   const discounts = options.discountQuote?.discounts ?? [];
   const expectedPrice = options.discountQuote?.discountedSubtotal ?? amount;
 
@@ -51,6 +62,8 @@ export const getOfficeReservationQuote = (
         type: "office" as const,
         dayCount,
         additionalGuests: reservation.additionalGuests,
+        accessAmount,
+        seatAmount,
         amount,
       },
     ] as const,

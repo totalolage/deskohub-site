@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import type { Table } from "@deskohub/dotypos/generated";
-import { selectWorkspaceTableFromCandidates } from "./workspace-table-selection";
+import {
+  getWorkspaceTableSeatCapacity,
+  selectWorkspaceTableFromCandidates,
+} from "./workspace-table-selection";
 
 const makeTable = (input: {
   readonly id: string;
@@ -20,6 +23,24 @@ const makeTable = (input: {
 });
 
 describe("selectWorkspaceTableFromCandidates", () => {
+  test("reads only positive whole-seat capacities", () => {
+    expect(
+      getWorkspaceTableSeatCapacity(
+        makeTable({ id: "office", name: "Office", seats: "8" })
+      )
+    ).toBe(8);
+    expect(
+      getWorkspaceTableSeatCapacity(
+        makeTable({ id: "fractional", name: "Office", seats: "8.5" })
+      )
+    ).toBeUndefined();
+    expect(
+      getWorkspaceTableSeatCapacity(
+        makeTable({ id: "zero", name: "Office", seats: "0" })
+      )
+    ).toBeUndefined();
+  });
+
   test("selects the candidate with the strongest normalized distance score", () => {
     const occupied = makeTable({
       id: "occupied",

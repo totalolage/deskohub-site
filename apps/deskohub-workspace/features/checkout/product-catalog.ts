@@ -94,7 +94,7 @@ export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
 export const workspaceProductCoffeePrice: WorkspaceMoney = currencyCZK(5000);
 export const workspaceOfficeBaseDailyPrice: WorkspaceMoney =
   currencyCZK(53_000);
-export const workspaceOfficeAdditionalGuestDailyPrice: WorkspaceMoney =
+export const workspaceOfficeSeatDailyPrice: WorkspaceMoney =
   currencyCZK(31_500);
 
 export function getWorkspaceProductByTier(tier: WorkspaceProductTier) {
@@ -157,9 +157,19 @@ export function getWorkspaceOfficePrice(input: {
   readonly additionalGuests: number;
   readonly dayCount: number;
 }): WorkspaceMoney {
+  const guestCount = input.additionalGuests + 1;
+
   return currencyCZK(
     (workspaceOfficeBaseDailyPrice.value +
-      workspaceOfficeAdditionalGuestDailyPrice.value * input.additionalGuests) *
+      workspaceOfficeSeatDailyPrice.value * guestCount) *
       input.dayCount
   );
+}
+
+export function getWorkspaceOfficeAccessPrice(dayCount: number) {
+  return currencyCZK(workspaceOfficeBaseDailyPrice.value * dayCount);
+}
+
+export function getWorkspaceOfficeSeatPrice(dayCount: number) {
+  return currencyCZK(workspaceOfficeSeatDailyPrice.value * dayCount);
 }

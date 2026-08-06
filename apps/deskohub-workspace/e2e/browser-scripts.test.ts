@@ -911,7 +911,7 @@ test("asserts restored whole-day meeting-room state and reset consents", async (
   }
 });
 
-test("prepares a multi-day office reservation with other people", async () => {
+test("prepares a multi-day office reservation with additional seats", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
     officeSlot
@@ -942,7 +942,8 @@ test("prepares a multi-day office reservation with other people", async () => {
       <div data-day="${officeSlot.endsOn}"><button type="button"></button></div>
       <input name="startsOn" value="" />
       <input name="endsOn" value="" />
-      <input name="additionalGuests" type="number" value="0" />
+      <input checked name="additionalGuests" type="radio" value="0" />
+      <input name="additionalGuests" type="radio" value="1" />
       <input name="email" />
       <input name="phone" />
       <input name="name" />
@@ -1047,8 +1048,9 @@ test("prepares a multi-day office reservation with other people", async () => {
       document.querySelector<HTMLInputElement>('input[name="endsOn"]')?.value
     ).toBe(officeSlot.endsOn);
     expect(
-      document.querySelector<HTMLInputElement>('input[name="additionalGuests"]')
-        ?.value
+      document.querySelector<HTMLInputElement>(
+        'input[name="additionalGuests"]:checked'
+      )?.value
     ).toBe("1");
     expect(endSelectionCount).toBe(2);
     expect(
@@ -1074,7 +1076,7 @@ test("asserts restored office range, party size, and reset consents", async () =
     document.body.innerHTML = `
       <input name="startsOn" value="${officeSlot.startsOn}" />
       <input name="endsOn" value="${officeSlot.endsOn}" />
-      <input name="additionalGuests" value="${officeSlot.additionalGuests}" />
+      <input checked name="additionalGuests" type="radio" value="${officeSlot.additionalGuests}" />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />

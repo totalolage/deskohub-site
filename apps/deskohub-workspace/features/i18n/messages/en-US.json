@@ -328,17 +328,28 @@
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
   "reservationOfficeProductTitle": "Private office",
   "reservationOfficeMetadataTitle": "Private office reservation | Deskohub Workspace",
-  "reservationOfficeMetadataDescription": "Reserve a private office at Deskohub Workspace for one or more whole days and add the people joining you.",
+  "reservationOfficeMetadataDescription": "Reserve a private office at Deskohub Workspace for one or more whole days and choose the seats you need.",
   "reservationOfficeFormTitle": "Reserve a private office.",
-  "reservationOfficeFormDescription": "Choose the first and last day, add the other people using the office, and continue to secure payment.",
+  "reservationOfficeFormDescription": "Choose the first and last day, select any additional office seats, and continue to secure payment.",
   "reservationOfficeDateRangeLabel": "Reservation dates",
   "reservationOfficeDateRangePlaceholder": "Choose a date range",
   "reservationOfficeStartDateLabel": "Office reservation start date",
   "reservationOfficeEndDateLabel": "Office reservation end date",
-  "reservationOfficeAdditionalGuestsLabel": "How many other people will use the office?",
-  "reservationOfficeAdditionalGuestsDescription": "The person making this reservation is already included.",
+  "reservationOfficeAdditionalGuestsLabel": "How many additional office seats do you need?",
+  "reservationOfficeAdditionalGuestsDescription": "Your seat is already included.",
+  "reservationOfficeNoAdditionalGuestsOption": "No additional seats",
+  "reservationOfficeAdditionalGuestsOption": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} additional seat",
+        "countPlural=other": "{count} additional seats"
+      }
+    }
+  ],
   "reservationOfficeMessagePlaceholder": "Company name, office setup, invoice note, or anything we should know.",
-  "reservationOfficeUnavailable": "The office is not available for all the selected days and people. Try another date range or party size.",
+  "reservationOfficeUnavailable": "The office is not available for all the selected days and seats. Try another date range or number of seats.",
   "reservationOfficePriceSuffix": " total",
   "reservationCoffeeLabel": "Coffee",
   "reservationMonitorLabel": "Monitor setup",
@@ -405,7 +416,33 @@
   "checkoutSummaryDiscountedPrice": "Discounted price: {price}",
   "checkoutSummaryItemCoffee": "Coffee",
   "checkoutSummaryItemMeetingRoom": "Meeting room - {duration}",
-  "checkoutSummaryItemOffice": "Private office · {dayCount} days · {people} people",
+  "checkoutSummaryItemOfficeAccess": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Private office access · {dayCount} day",
+        "dayCountPlural=other": "Private office access · {dayCount} days"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeSeat": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Office seat · {dayCount} day",
+        "dayCountPlural=other": "Office seat · {dayCount} days"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDiscount": "Office discount",
   "checkoutSummaryItemCustomerDiscount": "Customer discount",
   "checkoutSummaryItemTotal": "Total to pay",
   "checkoutPayConsentBefore": "I agree to the",
@@ -552,7 +589,7 @@
   "reservationValidationMeetingRoomStartWholeHour": "Meeting room reservations must start on a whole hour.",
   "reservationValidationMeetingRoomDuration": "Meeting room duration must be one of: {durations}.",
   "reservationValidationMeetingRoomEnded": "Choose a meeting room time whose reservation has not already ended.",
-  "reservationValidationOfficeAdditionalGuests": "Enter zero or a whole number of other people.",
+  "reservationValidationOfficeAdditionalGuests": "Enter zero or a whole number of additional seats.",
   "reservationValidationOfficeEndBeforeStart": "The last day cannot be before the first day.",
   "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",

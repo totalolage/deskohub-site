@@ -183,7 +183,7 @@ test("asserts office range, party size, and price on the fulfilled status page",
     "en-US"
   );
   const expectedPrice = formatWorkspaceMoney(
-    { value: 169_000, exponent: 2, currency: "CZK" },
+    { value: 232_000, exponent: 2, currency: "CZK" },
     "en-US"
   );
   const run = (async (_command: string, args: string[]) => {
@@ -202,7 +202,7 @@ test("asserts office range, party size, and price on the fulfilled status page",
     assertFulfilledStatusPage({
       checkoutRow: {
         amount_exponent: 2,
-        amount_value: 169_000,
+        amount_value: 232_000,
         currency: "CZK",
       } as CheckoutRow,
       config: {

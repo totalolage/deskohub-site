@@ -91,6 +91,12 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
   amount: item.amount,
   ...("product" in item && { product: item.product }),
+  ...("dayCount" in item && { dayCount: item.dayCount }),
+  ...("additionalGuests" in item && {
+    additionalGuests: item.additionalGuests,
+  }),
+  ...("accessAmount" in item && { accessAmount: item.accessAmount }),
+  ...("seatAmount" in item && { seatAmount: item.seatAmount }),
   ...("originalAmount" in item && {
     originalAmount: item.originalAmount,
     discounts: item.discounts,

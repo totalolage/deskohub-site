@@ -15,6 +15,8 @@ const officeCheckoutSummaryProductItemBaseSchema = Schema.Struct({
   product: workspaceOfficeProductIdentitySchema,
   dayCount: Schema.Int.check(Schema.isGreaterThan(0)),
   additionalGuests: officeAdditionalGuestsSchema,
+  accessAmount: positiveWorkspaceMoneyCodec,
+  seatAmount: positiveWorkspaceMoneyCodec,
 });
 
 export const officeCheckoutSummaryProductItemSchema = Schema.Struct({
