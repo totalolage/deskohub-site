@@ -6,6 +6,7 @@ import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
 import { getActiveLandingPageSaleBanner } from "@/features/landing-page/landing-page-sale-banner.server";
+import { OfficeReservationFeatureFlagServiceLive } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getWorkspaceLocalizedCanonicalUrl,
@@ -47,7 +48,8 @@ export default async function LocalizedWorkspaceHomePage() {
     Effect.gen(function* () {
       yield* Effect.promise(() => connection());
       const saleBanner = yield* getActiveLandingPageSaleBanner({ locale }).pipe(
-        Effect.provide(DiscountServiceLiveWithDependencies)
+        Effect.provide(DiscountServiceLiveWithDependencies),
+        Effect.provide(OfficeReservationFeatureFlagServiceLive)
       );
 
       return <LandingPage locale={locale} saleBanner={saleBanner} />;

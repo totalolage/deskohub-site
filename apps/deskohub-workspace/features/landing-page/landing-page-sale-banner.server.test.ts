@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Logger, References, Schema } from "effect";
+import { Effect, Layer, Logger, References, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
@@ -10,6 +10,9 @@ import { DiscountServiceMock } from "@/features/discounts/discount.service.mock"
 
 mock.module("server-only", () => ({}));
 
+const { OfficeReservationFeatureFlagService } = await import(
+  "@/features/office/backend/office-reservation-feature-flag.service"
+);
 const { getActiveLandingPageSaleBanner } = await import(
   "./landing-page-sale-banner.server"
 );
@@ -41,7 +44,8 @@ const sale = (
 
 const getBannerEffect = (
   activeSales: readonly ActiveSale[],
-  locale: "en-US" | "cs-CZ" = "en-US"
+  locale: "en-US" | "cs-CZ" = "en-US",
+  officePageEnabled = true
 ) => {
   const discoverActiveSales = mock(() => Effect.succeed(activeSales));
 
@@ -53,14 +57,23 @@ const getBannerEffect = (
     return { banner, discoverActiveSales };
   }).pipe(
     Effect.provide(DiscountServiceMock({ discoverActiveSales })),
+    Effect.provide(
+      Layer.succeed(OfficeReservationFeatureFlagService, {
+        isEnabled: Effect.succeed(officePageEnabled),
+      })
+    ),
     Effect.provide(TestClock.layer())
   );
 };
 
 const getBanner = (
   activeSales: readonly ActiveSale[],
-  locale: "en-US" | "cs-CZ" = "en-US"
-) => getBannerEffect(activeSales, locale).pipe(Effect.runPromise);
+  locale: "en-US" | "cs-CZ" = "en-US",
+  officePageEnabled = true
+) =>
+  getBannerEffect(activeSales, locale, officePageEnabled).pipe(
+    Effect.runPromise
+  );
 
 describe("getActiveLandingPageSaleBanner", () => {
   test.each([
@@ -84,6 +97,11 @@ describe("getActiveLandingPageSaleBanner", () => {
       [officeProduct, meetingRoomProduct],
       "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
     ],
+    [
+      "office-only",
+      [officeProduct],
+      "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero",
+    ],
   ] as const)("builds the %s sale CTA", async (_label, products, href) => {
     const { banner, discoverActiveSales } = await getBanner([sale(products)]);
 
@@ -100,6 +118,12 @@ describe("getActiveLandingPageSaleBanner", () => {
 
   test("renders no banner when there is no active sale", async () => {
     const { banner } = await getBanner([]);
+
+    expect(banner).toBeUndefined();
+  });
+
+  test("renders no office-only banner while office reservations are disabled", async () => {
+    const { banner } = await getBanner([sale([officeProduct])], "en-US", false);
 
     expect(banner).toBeUndefined();
   });
