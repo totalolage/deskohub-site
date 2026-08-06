@@ -12,6 +12,7 @@ import {
   isNotNull,
   lte,
   type SQL,
+  sql,
 } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -41,6 +42,7 @@ export type AdministrationOrderLink = {
   };
   readonly attemptCreatedAt: string;
   readonly providerOrderCreatedAt: string | null;
+  readonly providerOrderCreatedAtEstimated: boolean;
 };
 
 export type AdministrationOrder = {
@@ -92,6 +94,7 @@ type LocalOrderRow = {
   readonly currency: string;
   readonly attemptCreatedAt: Temporal.Instant;
   readonly providerOrderCreatedAt: Temporal.Instant | null;
+  readonly providerSessionAttached: boolean;
 };
 
 type ProviderOrderLookup =
@@ -104,19 +107,26 @@ type ProviderOperationLookup =
   | { readonly kind: "not_found" }
   | { readonly kind: "unavailable" };
 
-const toOrderLink = (row: LocalOrderRow): AdministrationOrderLink => ({
-  paymentAttemptId: row.paymentAttemptId,
-  reservationId: row.reservationId,
-  state: row.state,
-  stateLabel: paymentAttemptStateLabels[row.state],
-  amount: {
-    value: row.amountValue,
-    exponent: row.amountExponent,
-    currency: row.currency,
-  },
-  attemptCreatedAt: row.attemptCreatedAt.toString(),
-  providerOrderCreatedAt: row.providerOrderCreatedAt?.toString() ?? null,
-});
+const toOrderLink = (row: LocalOrderRow): AdministrationOrderLink => {
+  const providerOrderCreatedAt =
+    row.providerOrderCreatedAt ??
+    (row.providerSessionAttached ? row.attemptCreatedAt : null);
+  return {
+    paymentAttemptId: row.paymentAttemptId,
+    reservationId: row.reservationId,
+    state: row.state,
+    stateLabel: paymentAttemptStateLabels[row.state],
+    amount: {
+      value: row.amountValue,
+      exponent: row.amountExponent,
+      currency: row.currency,
+    },
+    attemptCreatedAt: row.attemptCreatedAt.toString(),
+    providerOrderCreatedAt: providerOrderCreatedAt?.toString() ?? null,
+    providerOrderCreatedAtEstimated:
+      row.providerOrderCreatedAt === null && row.providerSessionAttached,
+  };
+};
 
 const localOrderSelection = {
   paymentAttemptId: paymentAttempts.id,
@@ -128,6 +138,7 @@ const localOrderSelection = {
   currency: paymentAttempts.currency,
   attemptCreatedAt: paymentAttempts.createdAt,
   providerOrderCreatedAt: paymentAttempts.providerOrderCreatedAt,
+  providerSessionAttached: sql<boolean>`${paymentAttempts.providerRedirectUrl} is not null`,
 } as const;
 
 const normalizeMaximumRecords = (value?: number) =>
@@ -284,13 +295,14 @@ export class PaymentAdministrationService extends Context.Service<
             { concurrency: 2 }
           );
           const localOrders = toLocalOrderRows(localRows);
-          const links = new Map(
-            localOrders.map(
-              (row) => [row.providerOrderId, toOrderLink(row)] as const
-            )
-          );
           const providerItems =
             providerResult.kind === "available" ? providerResult.items : [];
+          const links = yield* loadLinksByOrderIds(
+            providerItems.map((provider) => provider.orderId)
+          );
+          for (const row of localOrders) {
+            links.set(row.providerOrderId, toOrderLink(row));
+          }
           const orders = new Map<string, AdministrationOrder>();
           for (const provider of providerItems) {
             orders.set(provider.orderId, {

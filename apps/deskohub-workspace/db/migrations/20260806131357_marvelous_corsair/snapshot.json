@@ -2618,7 +2618,7 @@
       "table": "payment_attempts"
     },
     {
-      "value": "(\"provider\" = 'nexi' and \"provider_order_id\" is not null) or (\"provider\" = 'internal' and \"provider_order_id\" is null and \"security_token\" is null and \"provider_redirect_url\" is null and \"last_webhook_event_id\" is null and \"last_provider_operation_id\" is null and \"last_provider_status\" is null)",
+      "value": "(\"provider\" = 'nexi' and \"provider_order_id\" is not null) or (\"provider\" = 'internal' and \"provider_order_id\" is null and \"security_token\" is null and \"provider_redirect_url\" is null and \"last_webhook_event_id\" is null and \"last_provider_operation_id\" is null and \"last_provider_status\" is null and \"provider_order_created_at\" is null)",
       "name": "payment_attempts_provider_fields_check",
       "entityType": "checks",
       "schema": "public",

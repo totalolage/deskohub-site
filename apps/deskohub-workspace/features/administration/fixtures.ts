@@ -320,6 +320,7 @@ export const loadFixtureReservation = (
             .subtract({ minutes: 3 })
             .toString(),
           providerOrderCreatedAt,
+          providerOrderCreatedAtEstimated: false,
         },
       },
     ],

@@ -34,7 +34,10 @@ import {
   type IPaymentAdministrationService,
   PaymentAdministrationService,
 } from "./payment-administration.service";
-import { getProviderValueLabel } from "./payment-presentation";
+import {
+  getProviderOperationTimelineTone,
+  getProviderValueLabel,
+} from "./payment-presentation";
 import {
   mergeReservationHistory,
   PostHogReservationHistory,
@@ -450,17 +453,6 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
 };
 
-const operationFailureResults = new Set([
-  "CANCELED",
-  "DECLINED",
-  "DENIED",
-  "DENIED_BY_RISK",
-  "FAILED",
-  "REFUNDED",
-  "THREEDS_FAILED",
-  "VOIDED",
-]);
-
 const getOperationTimelineTitle = (
   operationType: string | undefined,
   operationResult: string | undefined
@@ -494,8 +486,12 @@ const getOrderTimeline = (
     if (order.link?.providerOrderCreatedAt) {
       items.push({
         id: `order-${order.orderId}-created`,
-        title: "Nexi order created",
-        description: "Nexi accepted the hosted-payment request.",
+        title: order.link.providerOrderCreatedAtEstimated
+          ? "Nexi order created (estimated)"
+          : "Nexi order created",
+        description: order.link.providerOrderCreatedAtEstimated
+          ? "This attached Nexi session predates exact order-creation tracking; the local payment-attempt time is shown."
+          : "Nexi accepted the hosted-payment request.",
         occurredAt: order.link.providerOrderCreatedAt,
         tone: "neutral",
         href: `/admin/orders/${encodeURIComponent(order.orderId)}`,
@@ -525,10 +521,10 @@ const getOrderTimeline = (
           ? `Nexi reported this ${getProviderValueLabel(operation.channel)} operation.`
           : "Nexi reported this payment operation.",
         occurredAt,
-        tone:
-          result && operationFailureResults.has(result)
-            ? "warning"
-            : "positive",
+        tone: getProviderOperationTimelineTone(
+          operation.operationType,
+          operation.operationResult
+        ),
         ...(operationId && {
           href: `/admin/operations/${encodeURIComponent(operationId)}`,
         }),

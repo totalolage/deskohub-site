@@ -6,6 +6,10 @@ import {
   type AdministrationSearchParams,
   loadAdministrationOperations,
 } from "@/features/administration/page-data.server";
+import {
+  nexiOperationChannels,
+  nexiOperationTypes,
+} from "@/features/administration/payment-administration-filters";
 import { OperationTable } from "@/features/administration/payment-components";
 import { Button } from "@/shared/components/ui/button";
 
@@ -38,13 +42,13 @@ export default async function OperationsAdministrationPage({
           defaultValue={input.channel}
           label="Origin"
           name="channel"
-          options={["ECOMMERCE", "BACKOFFICE", "POS"]}
+          options={nexiOperationChannels}
         />
         <SelectField
           defaultValue={input.operationType}
           label="Type"
           name="operationType"
-          options={["AUTHORIZATION", "CAPTURE", "REFUND", "CANCEL", "VOID"]}
+          options={nexiOperationTypes}
         />
         <Button
           className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"

@@ -90,7 +90,11 @@ export default async function OrderAdministrationDetailPage({
                 )}
               />
               <OrderFact
-                label="Nexi order created"
+                label={
+                  order.link?.providerOrderCreatedAtEstimated
+                    ? "Nexi order created (estimated)"
+                    : "Nexi order created"
+                }
                 value={
                   order.link?.providerOrderCreatedAt
                     ? formatProviderDateTime(order.link.providerOrderCreatedAt)

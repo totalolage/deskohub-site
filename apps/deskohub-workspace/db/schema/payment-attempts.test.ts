@@ -72,5 +72,9 @@ describe("payment attempt providers", () => {
     expect(migration).toContain(
       'ADD COLUMN "provider_order_created_at" timestamp with time zone'
     );
+    expect(migration).toContain(
+      'DROP CONSTRAINT "payment_attempts_provider_fields_check"'
+    );
+    expect(migration).toContain('"provider_order_created_at" is null');
   });
 });

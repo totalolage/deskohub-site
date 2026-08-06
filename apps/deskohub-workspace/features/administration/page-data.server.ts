@@ -11,6 +11,10 @@ import {
   type AdministrationReservationListInput,
   AdministrationService,
 } from "./administration.service";
+import {
+  getAdministrationOperationFilters,
+  getAdministrationPaymentDateTimeBounds,
+} from "./payment-administration-filters";
 
 export type AdministrationSearchParams = Promise<
   Record<string, string | readonly string[] | undefined>
@@ -31,43 +35,6 @@ const parseDate = (value: string | undefined) => {
   } catch {
     return getCurrentWorkspaceDate().toString();
   }
-};
-
-const getDateTimeBounds = (
-  from: string | undefined,
-  to: string | undefined
-) => {
-  const current = getCurrentWorkspaceDate();
-  const fromDate = (() => {
-    try {
-      return from
-        ? Temporal.PlainDate.from(from)
-        : current.subtract({ days: 7 });
-    } catch {
-      return current.subtract({ days: 7 });
-    }
-  })();
-  const toDate = (() => {
-    try {
-      return to ? Temporal.PlainDate.from(to) : current;
-    } catch {
-      return current;
-    }
-  })();
-  const atStartOfDay = (date: Temporal.PlainDate) =>
-    date
-      .toZonedDateTime({
-        plainTime: Temporal.PlainTime.from("00:00"),
-        timeZone: "Europe/Prague",
-      })
-      .toInstant()
-      .toString();
-  return {
-    from: fromDate.toString(),
-    fromTime: atStartOfDay(fromDate),
-    to: toDate.toString(),
-    toTime: atStartOfDay(toDate.add({ days: 1 })),
-  };
 };
 
 const parseStatus = (
@@ -194,7 +161,7 @@ export const loadAdministrationOrders = async (
 ) => {
   await authorizeAdministrationPage();
   const params = await searchParams;
-  const range = getDateTimeBounds(
+  const range = getAdministrationPaymentDateTimeBounds(
     firstParam(params.from),
     firstParam(params.to)
   );
@@ -222,12 +189,14 @@ export const loadAdministrationOperations = async (
 ) => {
   await authorizeAdministrationPage();
   const params = await searchParams;
-  const range = getDateTimeBounds(
+  const range = getAdministrationPaymentDateTimeBounds(
     firstParam(params.from),
     firstParam(params.to)
   );
-  const channel = firstParam(params.channel)?.trim() || undefined;
-  const operationType = firstParam(params.operationType)?.trim() || undefined;
+  const { channel, operationType } = getAdministrationOperationFilters({
+    channel: firstParam(params.channel),
+    operationType: firstParam(params.operationType),
+  });
   const result = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listOperations({

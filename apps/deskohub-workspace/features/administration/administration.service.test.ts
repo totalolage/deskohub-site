@@ -5,6 +5,7 @@ import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { AdministrationService } from "./administration.service";
+import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
 describe("AdministrationService", () => {
@@ -37,7 +38,8 @@ describe("AdministrationService", () => {
                 PostHogReservationHistory.of({
                   load: () => Effect.succeed({ kind: "unavailable" } as const),
                 })
-              )
+              ),
+              PaymentAdministrationServiceMock({})
             )
           )
         )

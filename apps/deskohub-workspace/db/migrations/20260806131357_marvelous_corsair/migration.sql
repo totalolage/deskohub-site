@@ -1,1 +1,3 @@
-ALTER TABLE "payment_attempts" ADD COLUMN "provider_order_created_at" timestamp with time zone;
+ALTER TABLE "payment_attempts" ADD COLUMN "provider_order_created_at" timestamp with time zone;--> statement-breakpoint
+ALTER TABLE "payment_attempts" DROP CONSTRAINT "payment_attempts_provider_fields_check";--> statement-breakpoint
+ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_provider_fields_check" CHECK (("provider" = 'nexi' and "provider_order_id" is not null) or ("provider" = 'internal' and "provider_order_id" is null and "security_token" is null and "provider_redirect_url" is null and "last_webhook_event_id" is null and "last_provider_operation_id" is null and "last_provider_status" is null and "provider_order_created_at" is null));
