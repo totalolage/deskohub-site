@@ -984,7 +984,7 @@ test("prepares a multi-day office reservation with other people", async () => {
   }
 });
 
-test("asserts restored office range, party size, and reset legal consent", async () => {
+test("asserts restored office range, party size, and reset consents", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
     officeSlot
@@ -1004,6 +1004,7 @@ test("asserts restored office range, party size, and reset legal consent", async
       <input name="name" value="${data.name}" />
       <textarea name="message">${data.message}</textarea>
       <button id="reservation-privacy-consent" aria-checked="false"></button>
+      <button id="reservation-marketing-consent" aria-checked="false"></button>
     `;
     const run = new Function(
       "document",

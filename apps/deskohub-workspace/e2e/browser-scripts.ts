@@ -160,6 +160,8 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
 
   const consent = document.querySelector('#reservation-privacy-consent');
   if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
+  const marketingConsent = document.querySelector('#reservation-marketing-consent');
+  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
   return true;
 })()
 `;

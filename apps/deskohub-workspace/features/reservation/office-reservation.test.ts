@@ -5,8 +5,10 @@ import { Result, Schema } from "effect";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getOfficeReservationDayCount,
+  getOfficeReservationDefaultValues,
   getOfficeReservationGuestCount,
   getOfficeReservationIntervalInput,
+  getOfficeReservationOrder,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
   officeReservationSchema,
@@ -25,6 +27,7 @@ const validCustomer = {
   phone: "+420777777777",
   message: "",
   legalConsent: true,
+  marketingConsent: false,
 };
 
 describe("office reservation", () => {
@@ -51,6 +54,38 @@ describe("office reservation", () => {
       expect(getOfficeReservationDayCount(result.success)).toBe(3);
       expect(getOfficeReservationGuestCount(result.success)).toBe(3);
     }
+  });
+
+  test("keeps marketing consent in form state and resets it on restoration", () => {
+    const result = formParser.safeParse({
+      ...validCustomer,
+      marketingConsent: true,
+      startsOn: "2099-06-10",
+      endsOn: "2099-06-12",
+      additionalGuests: 2,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.marketingConsent).toBe(true);
+      const reservation = getOfficeReservationOrder(result.success);
+      expect(reservation).not.toHaveProperty("marketingConsent");
+      expect(
+        getOfficeReservationDefaultValues(reservation).marketingConsent
+      ).toBe(false);
+    }
+
+    expect(
+      Result.isFailure(
+        formParser.safeParse({
+          ...validCustomer,
+          marketingConsent: undefined,
+          startsOn: "2099-06-10",
+          endsOn: "2099-06-12",
+          additionalGuests: 2,
+        })
+      )
+    ).toBe(true);
   });
 
   test("rejects a backwards range and non-whole guest count", () => {
