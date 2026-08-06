@@ -1,0 +1,22 @@
+{
+  "name": "dhw",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun src/build.ts development",
+    "lint": "cd ../.. && biome check apps/dhw/src --config-path biome.json --vcs-root .",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@deskohub/workspace-admin-api": "workspace:*",
+    "@effect/platform-bun": "4.0.0-beta.85",
+    "effect": "4.0.0-beta.85",
+    "semver": "^7.7.4"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.7.1",
+    "typescript": "^5"
+  }
+}

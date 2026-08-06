@@ -1,9 +1,10 @@
 # Deskohub Site
 
-Private Bun/Turborepo monorepo for the Deskohub web properties and shared
-integrations. The repository currently contains two production Next.js apps, a
-small Astro portal, and shared packages for payments, reservations, email,
-media, i18n, and Effect-based backend services.
+Bun/Turborepo monorepo for the Deskohub web properties, administration tooling,
+and shared integrations. The repository currently contains two production
+Next.js apps, a small Astro portal, a native administration CLI, and shared
+packages for payments, reservations, email, media, i18n, and Effect-based
+backend services.
 
 ## Applications
 
@@ -12,6 +13,7 @@ media, i18n, and Effect-based backend services.
 | `apps/deskohub-boardgame-bar` | Public DeskoHub bar site at `bar.deskohub.cz`: home page, Dotypos-backed menu, gallery, board-game catalogue, contact, ChoiceQR table reservations, training room pages, cookie consent, and Dotypos admin setup flows. | Next.js 16, React 19, Tailwind CSS 3, Paraglide, Effect, Dotypos, Cloudinary, Resend |
 | `apps/deskohub-workspace` | Deskohub Workspace site at `workspace.deskohub.cz`: landing pages, pricing, gallery, legal pages, availability, checkout, Nexi payments, reservation holds, fulfillment, email notifications, and operational E2E tooling. | Next.js 16, React 19, Tailwind CSS 4, Paraglide, Effect, Drizzle/Postgres, Nexi, Dotypos, Google Calendar, PostHog |
 | `apps/deskohub-portal` | Localized portal at `www.deskohub.cz` that redirects/routes visitors into the Deskohub properties. | Astro 6, Paraglide, Vercel adapter |
+| `apps/dhw` | Native macOS/Linux CLI for the Deskohub Workspace administration API, with Effect CLI/HTTP and secure self-updates. | Bun native binary, Effect CLI, Effect HTTP |
 
 ## Shared Packages
 
@@ -29,6 +31,7 @@ media, i18n, and Effect-based backend services.
 | `@deskohub/qr-code` | QR code generation helper package. |
 | `@deskohub/reservation` | Shared reservation exports. |
 | `@deskohub/standard-schema` | Standard Schema V1 helper utilities. |
+| `@deskohub/workspace-admin-api` | Shared Effect HTTP API contract used by the Workspace server and `dhw` client. |
 
 ## Tooling
 
@@ -146,6 +149,10 @@ Do not commit real env files or quote secret values in logs, issues, or PRs.
   on failure.
 - `.github/workflows/mirror-repository.yml` mirrors `main` to the configured
   mirror repository as a squashed commit.
+- `.github/workflows/dhw-ci.yml` checks the typed CLI/API boundary and requires
+  a release-producing Conventional Commit for CLI changes.
+- `.github/workflows/dhw-release.yml` automatically versions, builds, attests,
+  and publishes immutable native CLI releases after merges to `main`.
 - The Neon/Vercel integration owns creation and deletion of Workspace preview
   database branches. Repository workflows must not delete those branches.
 

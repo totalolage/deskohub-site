@@ -1,0 +1,10 @@
+{
+  "$schema": "../../node_modules/@effect/tsgo/schema.json",
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "composite": false,
+    "noEmit": true
+  },
+  "include": ["src/**/*.ts"]
+}
