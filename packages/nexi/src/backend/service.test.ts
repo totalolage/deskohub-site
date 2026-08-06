@@ -99,6 +99,15 @@ describe("NexiService hosted payment pages", () => {
           resultUrl: "https://example.test/result",
           cancelUrl: "https://example.test/cancel",
           notificationUrl: "https://example.test/webhook",
+          customer: {
+            id: "customer-id",
+            name: "Ada Lovelace",
+            email: "ada@example.test",
+            mobilePhone: {
+              countryCallingCode: "420",
+              nationalNumber: "777777777",
+            },
+          },
         });
       }),
       fetchMock
@@ -119,7 +128,18 @@ describe("NexiService hosted payment pages", () => {
     expect(getHeader(call, "Correlation-Id")).toBe("correlation-id");
     expect(getHeader(call, "Content-Type")).toContain("application/json");
     expect(await readJsonBody(call)).toEqual({
-      order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+      order: {
+        orderId: "order-id",
+        amount: "5000",
+        currency: "CZK",
+        customerId: "customer-id",
+        customerInfo: {
+          cardHolderName: "Ada Lovelace",
+          cardHolderEmail: "ada@example.test",
+          mobilePhoneCountryCode: "420",
+          mobilePhone: "777777777",
+        },
+      },
       paymentSession: {
         amount: "5000",
         language: "ENG",
@@ -377,5 +397,242 @@ describe("NexiService verifyPaymentOutcome", () => {
         cause: [{ description: "Invalid amount" }],
       });
     }
+  });
+});
+
+describe("NexiService administration reads", () => {
+  test("returns an allowlisted order and all of its operations", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        securityToken: "must-not-leak",
+        orderStatus: {
+          authorizedAmount: "5000",
+          capturedAmount: "5000",
+          lastOperationTime: "2026-08-06T10:01:00Z",
+          lastOperationType: "REFUND",
+          order: {
+            orderId: "order#id",
+            amount: "5000",
+            currency: "CZK",
+            customerInfo: { cardHolderEmail: "must-not-leak@example.test" },
+          },
+        },
+        operations: [
+          {
+            orderId: "order#id",
+            operationId: "capture-id",
+            channel: "ECOMMERCE",
+            operationType: "CAPTURE",
+            operationResult: "EXECUTED",
+            operationTime: "2026-08-06T10:00:00Z",
+            operationAmount: "5000",
+            operationCurrency: "CZK",
+            securityToken: "must-not-leak",
+            paymentInstrumentInfo: "must-not-leak",
+          },
+          {
+            orderId: "order#id",
+            operationId: "refund-id",
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            operationResult: "REFUNDED",
+            operationTime: "2026-08-06T10:01:00Z",
+            operationAmount: "1000",
+            operationCurrency: "CZK",
+            cancelledOperationId: "capture-id",
+            customerInfo: { cardHolderName: "Must Not Leak" },
+          },
+        ],
+      })
+    );
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.getOrder({
+          correlationId: "correlation-id",
+          orderId: "order#id",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      orderId: "order#id",
+      amount: "5000",
+      currency: "CZK",
+      authorizedAmount: "5000",
+      capturedAmount: "5000",
+      lastOperationTime: "2026-08-06T10:01:00Z",
+      lastOperationType: "REFUND",
+      operations: [
+        {
+          orderId: "order#id",
+          operationId: "capture-id",
+          channel: "ECOMMERCE",
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          operationTime: "2026-08-06T10:00:00Z",
+          amount: "5000",
+          currency: "CZK",
+        },
+        {
+          orderId: "order#id",
+          operationId: "refund-id",
+          channel: "BACKOFFICE",
+          operationType: "REFUND",
+          operationResult: "REFUNDED",
+          operationTime: "2026-08-06T10:01:00Z",
+          amount: "1000",
+          currency: "CZK",
+          cancelledOperationId: "capture-id",
+        },
+      ],
+    });
+    expect(JSON.stringify(result)).not.toContain("securityToken");
+    expect(JSON.stringify(result)).not.toContain("customerInfo");
+    expect(JSON.stringify(result)).not.toContain("paymentInstrumentInfo");
+    expect(getUrl(fetchMock.mock.calls[0] as FetchCall)).toBe(
+      "https://nexi.example.test/api/phoenix-0.0/psp/api/v1/orders/order%23id"
+    );
+  });
+
+  test("lists sanitized operations with documented filters", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        operations: [
+          {
+            orderId: "order-id",
+            operationId: "operation-id",
+            channel: "BACKOFFICE",
+            operationType: "REFUND",
+            operationResult: "REFUNDED",
+            operationTime: "2026-08-06T10:01:00Z",
+            operationAmount: "1000",
+            operationCurrency: "CZK",
+            additionalData: { private: "must-not-leak" },
+          },
+        ],
+      })
+    );
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listOperations({
+          correlationId: "correlation-id",
+          fromTime: "2026-08-01T00:00:00Z",
+          toTime: "2026-08-07T00:00:00Z",
+          maxRecords: 100,
+          channel: "BACKOFFICE",
+          operationType: "REFUND",
+        });
+      }),
+      fetchMock
+    );
+    expect(result).toEqual([
+      {
+        orderId: "order-id",
+        operationId: "operation-id",
+        channel: "BACKOFFICE",
+        operationType: "REFUND",
+        operationResult: "REFUNDED",
+        operationTime: "2026-08-06T10:01:00Z",
+        amount: "1000",
+        currency: "CZK",
+      },
+    ]);
+    const url = new URL(getUrl(fetchMock.mock.calls[0] as FetchCall));
+    expect(url.pathname).toBe("/api/phoenix-0.0/psp/api/v1/operations");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      fromTime: "2026-08-01T00:00:00Z",
+      toTime: "2026-08-07T00:00:00Z",
+      maxRecords: "100",
+      channel: "BACKOFFICE",
+      operationType: "REFUND",
+    });
+    expect(
+      getHeader(fetchMock.mock.calls[0] as FetchCall, "Correlation-Id")
+    ).toBe("correlation-id");
+  });
+
+  test("gets one sanitized operation by encoded ID", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        orderId: "order-id",
+        operationId: "operation#id",
+        channel: "ECOMMERCE",
+        operationType: "CAPTURE",
+        operationResult: "EXECUTED",
+        operationTime: "2026-08-06T10:00:00Z",
+        operationAmount: "5000",
+        operationCurrency: "CZK",
+        securityToken: "must-not-leak",
+      })
+    );
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.getOperation({
+          correlationId: "correlation-id",
+          operationId: "operation#id",
+        });
+      }),
+      fetchMock
+    );
+    expect(result).toEqual({
+      orderId: "order-id",
+      operationId: "operation#id",
+      channel: "ECOMMERCE",
+      operationType: "CAPTURE",
+      operationResult: "EXECUTED",
+      operationTime: "2026-08-06T10:00:00Z",
+      amount: "5000",
+      currency: "CZK",
+    });
+    expect(getUrl(fetchMock.mock.calls[0] as FetchCall)).toBe(
+      "https://nexi.example.test/api/phoenix-0.0/psp/api/v1/operations/operation%23id"
+    );
+  });
+
+  test("lists orders without exposing provider customer fields", async () => {
+    const fetchMock = mockNexiFetch(
+      Response.json({
+        orders: [
+          {
+            order: {
+              orderId: "order-id",
+              amount: "5000",
+              currency: "CZK",
+              customerInfo: { cardHolderName: "Must Not Leak" },
+            },
+            capturedAmount: "5000",
+            lastOperationType: "CAPTURE",
+            lastOperationTime: "2026-08-06T10:00:00Z",
+          },
+        ],
+      })
+    );
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const nexi = yield* NexiService;
+        return yield* nexi.listOrders({
+          correlationId: "correlation-id",
+          maxRecords: 50,
+        });
+      }),
+      fetchMock
+    );
+    expect(result).toEqual([
+      {
+        orderId: "order-id",
+        amount: "5000",
+        currency: "CZK",
+        capturedAmount: "5000",
+        lastOperationTime: "2026-08-06T10:00:00Z",
+        lastOperationType: "CAPTURE",
+        operations: [],
+      },
+    ]);
+    expect(JSON.stringify(result)).not.toContain("customerInfo");
   });
 });

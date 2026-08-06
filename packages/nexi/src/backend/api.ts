@@ -13,6 +13,9 @@ import {
   ErrorResponse,
   make,
   type NexiClient,
+  type Operation,
+  type OperationListResponse,
+  type OrderListResponse,
   type OrderResponse,
 } from "../generated/effect.gen";
 
@@ -58,6 +61,24 @@ interface INexiGeneratedClient {
     readonly correlationId: string;
     readonly orderId: string;
   }) => Effect.Effect<OrderResponse, ExternalAPIError | NetworkError>;
+  readonly listOrders: (input: {
+    readonly correlationId: string;
+    readonly fromTime?: string;
+    readonly toTime?: string;
+    readonly maxRecords?: number;
+  }) => Effect.Effect<OrderListResponse, ExternalAPIError | NetworkError>;
+  readonly getOperation: (input: {
+    readonly correlationId: string;
+    readonly operationId: string;
+  }) => Effect.Effect<Operation, ExternalAPIError | NetworkError>;
+  readonly listOperations: (input: {
+    readonly correlationId: string;
+    readonly fromTime?: string;
+    readonly toTime?: string;
+    readonly maxRecords?: number;
+    readonly channel?: string;
+    readonly operationType?: string;
+  }) => Effect.Effect<OperationListResponse, ExternalAPIError | NetworkError>;
 }
 
 type GeneratedClientError = {
@@ -101,8 +122,29 @@ const makeNexiGeneratedClient = Effect.gen(function* () {
       ),
     getOrder: ({ correlationId, orderId }) =>
       runNexiRequest(
-        clientFor(correlationId).getOrder(orderId, undefined),
+        clientFor(correlationId).getOrder(
+          encodeURIComponent(orderId),
+          undefined
+        ),
         "Get order"
+      ),
+    listOrders: ({ correlationId, ...options }) =>
+      runNexiRequest(
+        clientFor(correlationId).listOrders({ params: options }),
+        "List orders"
+      ),
+    getOperation: ({ correlationId, operationId }) =>
+      runNexiRequest(
+        clientFor(correlationId).getOperation(
+          encodeURIComponent(operationId),
+          undefined
+        ),
+        "Get operation"
+      ),
+    listOperations: ({ correlationId, ...options }) =>
+      runNexiRequest(
+        clientFor(correlationId).listOperations({ params: options }),
+        "List operations"
       ),
   } satisfies INexiGeneratedClient;
 });

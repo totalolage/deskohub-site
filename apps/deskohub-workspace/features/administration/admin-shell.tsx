@@ -6,6 +6,8 @@ import {
   CalendarRange,
   ChevronRight,
   CircleGauge,
+  CreditCard,
+  ListChecks,
   Menu,
   Percent,
   Ticket,
@@ -44,6 +46,13 @@ const navigation = [
       },
       { href: "/admin/bookings", icon: CalendarCheck2, label: "Bookings" },
       { href: "/admin/customers", icon: Users, label: "Customers" },
+    ],
+  },
+  {
+    label: "Payments",
+    items: [
+      { href: "/admin/orders", icon: CreditCard, label: "Orders" },
+      { href: "/admin/operations", icon: ListChecks, label: "Operations" },
     ],
   },
   {
@@ -123,6 +132,8 @@ const breadcrumbNames: Record<string, string> = {
   customers: "Customers",
   "create-code": "Create discount code",
   discounts: "Discounts",
+  operations: "Operations",
+  orders: "Orders",
   reservations: "Reservations",
   sales: "Sales",
 };
@@ -146,6 +157,8 @@ export function AdministrationBreadcrumbs({
         codes: "Code",
         bookings: "Booking",
         customers: "Customer",
+        operations: "Operation",
+        orders: "Order",
         reservations: "Reservation",
       }[segments[index - 1] ?? ""] ??
         segment),

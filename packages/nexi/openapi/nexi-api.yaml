@@ -7,6 +7,42 @@ servers:
 security:
   - ApiKeyAuth: []
 paths:
+  /orders:
+    get:
+      operationId: listOrders
+      summary: List orders in reverse chronological order
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: fromTime
+          in: query
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          schema:
+            type: string
+        - name: maxRecords
+          in: query
+          schema:
+            type: integer
+        - name: customField
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Orders found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderListResponse"
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /orders/hpp:
     post:
       operationId: createHostedPaymentPage
@@ -51,6 +87,75 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OrderResponse"
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /operations:
+    get:
+      operationId: listOperations
+      summary: List operations in a time interval
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: fromTime
+          in: query
+          schema:
+            type: string
+        - name: toTime
+          in: query
+          schema:
+            type: string
+        - name: maxRecords
+          in: query
+          schema:
+            type: integer
+        - name: channel
+          in: query
+          schema:
+            type: string
+        - name: operationType
+          in: query
+          schema:
+            type: string
+        - name: customField
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Operations found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OperationListResponse"
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /operations/{operationId}:
+    get:
+      operationId: getOperation
+      summary: Get one operation
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: operationId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Operation found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Operation"
         default:
           description: Nexi API error
           content:
@@ -142,6 +247,10 @@ components:
               type: string
               minLength: 3
               maxLength: 3
+            customerId:
+              type: string
+            customerInfo:
+              $ref: "#/components/schemas/CustomerInfo"
         paymentSession:
           $ref: "#/components/schemas/PaymentSession"
         paymentService:
@@ -152,6 +261,23 @@ components:
           type: string
           enum:
             - IMPLICIT
+    CustomerInfo:
+      type: object
+      required:
+        - cardHolderName
+      properties:
+        cardHolderName:
+          type: string
+          minLength: 1
+        cardHolderEmail:
+          type: string
+          format: email
+        mobilePhoneCountryCode:
+          type: string
+          minLength: 1
+        mobilePhone:
+          type: string
+          minLength: 1
     CreateHostedPaymentPageResponse:
       type: object
       required:
@@ -169,27 +295,16 @@ components:
     Operation:
       type: object
       properties:
+        orderId:
+          type: string
         operationId:
+          type: string
+        channel:
           type: string
         operationType:
           type: string
-          enum:
-            - AUTHORIZATION
-            - CAPTURE
         operationResult:
           type: string
-          enum:
-            - AUTHORIZED
-            - PENDING
-            - EXECUTED
-            - DECLINED
-            - DENIED_BY_RISK
-            - DENIED
-            - THREEDS_FAILED
-            - FAILED
-            - CANCELED
-            - VOIDED
-            - REFUNDED
         amount:
           $ref: "#/components/schemas/Amount"
         operationAmount:
@@ -202,6 +317,8 @@ components:
         securityToken:
           type: string
         operationTime:
+          type: string
+        cancelledOperationId:
           type: string
     OrderStatusOrder:
       type: object
@@ -245,6 +362,20 @@ components:
           type: string
         orderStatus:
           $ref: "#/components/schemas/OrderStatus"
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Operation"
+    OrderListResponse:
+      type: object
+      properties:
+        orders:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrderStatus"
+    OperationListResponse:
+      type: object
+      properties:
         operations:
           type: array
           items:

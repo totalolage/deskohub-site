@@ -60,8 +60,8 @@ const eventPresentation = {
     tone: "neutral",
   },
   "payment completed": {
-    title: "Payment received",
-    description: "The payment was received.",
+    title: "Payment recorded by Deskohub",
+    description: "Deskohub recorded the completed payment.",
     tone: "positive",
   },
   "payment abandoned": {
