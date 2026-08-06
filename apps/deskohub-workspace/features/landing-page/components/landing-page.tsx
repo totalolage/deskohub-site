@@ -1,5 +1,4 @@
 import type { Locale } from "@/features/i18n";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
@@ -22,7 +21,6 @@ export function LandingPage({ locale, saleBanner }: LandingPageProps) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
-  const reservationHref = getCoworkReservationPath(locale);
   const contactAddress = workspaceSiteConstants.location.address;
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
 
@@ -31,8 +29,6 @@ export function LandingPage({ locale, saleBanner }: LandingPageProps) {
       <LandingPageHeroSection
         locale={locale}
         overviewSectionId={siteHeaderSectionIds.overview}
-        reservationHref={reservationHref}
-        eventsHref={contactHref}
         saleBanner={saleBanner}
       />
 

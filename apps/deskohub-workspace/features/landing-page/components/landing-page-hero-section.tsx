@@ -1,6 +1,8 @@
 import Image, { getImageProps } from "next/image";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { getCoworkReservationPath } from "@/features/reservation/routes";
 import Arrow1 from "@/shared/components/icons/arrow-1";
 import CornerAccent from "@/shared/components/icons/corner-accent";
 import Understroke1 from "@/shared/components/icons/understroke-1";
@@ -20,8 +22,6 @@ import {
 type LandingPageHeroSectionProps = {
   locale: Locale;
   overviewSectionId: string;
-  reservationHref: string;
-  eventsHref: string;
   saleBanner?: LandingPageSaleBannerContent;
 };
 
@@ -30,13 +30,12 @@ export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
     "--hero-bottom-section-height": "16rem",
   };
 
-export function LandingPageHeroSection({
+export async function LandingPageHeroSection({
   locale,
   overviewSectionId,
-  reservationHref,
-  eventsHref,
   saleBanner,
 }: LandingPageHeroSectionProps) {
+  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
   const { props: cornerMaskProps } = getImageProps({
     ...cornerMask,
     alt: "",
@@ -54,41 +53,51 @@ export function LandingPageHeroSection({
         {m.landingHeroSubtitle({}, { locale })}
       </p>
 
-      <div className="mt-20 flex w-full flex-col items-center justify-center gap-x-8 gap-y-16 sm:mt-9 sm:flex-row">
-        <Button
-          asChild
-          className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+      <div className="mt-20 flex w-full flex-col items-center gap-12 sm:mt-9">
+        <div className="flex flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
+          {meetingRoomPageEnabled && (
+            <Button
+              asChild
+              className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+            >
+              <a href={`/${locale}/meeting-room`}>
+                <Arrow1
+                  height="100"
+                  className="absolute bottom-6 right-full pr-4 text-white"
+                />
+                {m.landingHeroMeetingRoomCta({}, { locale })}
+                <Understroke1
+                  width="100%"
+                  className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
+                />
+              </a>
+            </Button>
+          )}
+          <Button
+            asChild
+            variant="secondary"
+            className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
+          >
+            <a href={getCoworkReservationPath(locale)}>
+              <CornerAccent
+                width={40}
+                className="absolute -left-4 -top-5"
+                style={{ strokeWidth: "40px" }}
+              />
+              {m.landingHeroPrimaryCta({}, { locale })}
+              <Understroke2
+                width="80%"
+                className="absolute top-full mt-2 right-0"
+              />
+            </a>
+          </Button>
+        </div>
+        <a
+          href={`/${locale}/contact`}
+          className="text-sm text-white/80 underline decoration-white/40 underline-offset-4 transition-colors hover:text-white hover:decoration-burned-orange focus-visible:text-white focus-visible:decoration-burned-orange"
         >
-          <a href={eventsHref}>
-            <Arrow1
-              height="100"
-              className="absolute bottom-6 right-full pr-4 text-white"
-            />
-            {m.landingHeroSecondaryCta({}, { locale })}
-            <Understroke1
-              width="100%"
-              className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
-            />
-          </a>
-        </Button>
-        <Button
-          asChild
-          variant="secondary"
-          className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
-        >
-          <a href={reservationHref}>
-            <CornerAccent
-              width={40}
-              className="absolute -left-4 -top-5"
-              style={{ strokeWidth: "40px" }}
-            />
-            {m.landingHeroPrimaryCta({}, { locale })}
-            <Understroke2
-              width="80%"
-              className="absolute top-full mt-2 right-0"
-            />
-          </a>
-        </Button>
+          {m.landingHeroSecondaryCta({}, { locale })}
+        </a>
       </div>
     </>
   );
