@@ -52,6 +52,7 @@ export const paymentAttempts = pgTable(
     lastProviderOperationId: text("last_provider_operation_id"),
     lastProviderStatus: text("last_provider_status"),
     failureCode: text("failure_code"),
+    providerOrderCreatedAt: instant("provider_order_created_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },

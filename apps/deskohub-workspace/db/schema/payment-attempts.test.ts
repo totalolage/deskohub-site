@@ -56,4 +56,21 @@ describe("payment attempt providers", () => {
       'ADD CONSTRAINT "payment_attempts_amount_check" CHECK (("provider" = \'nexi\' and "amount_value" > 0) or ("provider" = \'internal\' and "amount_value" = 0)) NOT VALID'
     );
   });
+
+  test("records the durable Nexi order creation milestone", async () => {
+    const config = getTableConfig(paymentAttempts);
+    expect(
+      config.columns.find(({ name }) => name === "provider_order_created_at")
+        ?.notNull
+    ).toBe(false);
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260806131357_marvelous_corsair/migration.sql",
+        import.meta.url
+      )
+    ).text();
+    expect(migration).toContain(
+      'ADD COLUMN "provider_order_created_at" timestamp with time zone'
+    );
+  });
 });

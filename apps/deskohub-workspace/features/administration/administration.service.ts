@@ -30,6 +30,12 @@ import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date
 import { workspaceSiteConstants } from "@/shared/utils";
 import { getAdministrationPagination } from "./listing";
 import {
+  type AdministrationOrder,
+  type IPaymentAdministrationService,
+  PaymentAdministrationService,
+} from "./payment-administration.service";
+import { getProviderValueLabel } from "./payment-presentation";
+import {
   mergeReservationHistory,
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
@@ -133,6 +139,7 @@ export type AdministrationBookingDetail = {
 
 export type AdministrationPaymentAttempt = {
   readonly id: string;
+  readonly providerOrderId: string | null;
   readonly providerLabel: string;
   readonly stateLabel: string;
   readonly amount: {
@@ -141,6 +148,7 @@ export type AdministrationPaymentAttempt = {
     readonly currency: string;
   };
   readonly createdAt: string;
+  readonly providerOrderCreatedAt: string | null;
   readonly updatedAt: string;
 };
 
@@ -160,12 +168,14 @@ export type AdministrationTimelineItem = {
   readonly description: string;
   readonly occurredAt: string;
   readonly tone: "neutral" | "positive" | "warning";
+  readonly href?: string;
 };
 
 export type AdministrationReservationDetail = {
   readonly reservation: AdministrationReservationSummary;
   readonly timeline: readonly AdministrationTimelineItem[];
   readonly paymentAttempts: readonly AdministrationPaymentAttempt[];
+  readonly orders: readonly AdministrationOrder[];
   readonly discounts: readonly AdministrationDiscountApplication[];
   readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
   readonly sameDateReservations: readonly AdministrationReservationSummary[];
@@ -402,8 +412,8 @@ const buildTimeline = (row: SafeReservationRow) => {
   );
   add(
     "payment-paid",
-    "Payment received",
-    "The reservation payment completed.",
+    "Payment recorded by Deskohub",
+    "Deskohub verified the provider payment and marked the reservation paid.",
     row.paidAt,
     "positive"
   );
@@ -438,6 +448,94 @@ const buildTimeline = (row: SafeReservationRow) => {
   return items.toSorted((left, right) =>
     left.occurredAt.localeCompare(right.occurredAt)
   );
+};
+
+const operationFailureResults = new Set([
+  "CANCELED",
+  "DECLINED",
+  "DENIED",
+  "DENIED_BY_RISK",
+  "FAILED",
+  "REFUNDED",
+  "THREEDS_FAILED",
+  "VOIDED",
+]);
+
+const getOperationTimelineTitle = (
+  operationType: string | undefined,
+  operationResult: string | undefined
+) => {
+  if (operationType === "AUTHORIZATION" && operationResult === "AUTHORIZED") {
+    return "Payment authorized by Nexi";
+  }
+  if (
+    (operationType === "AUTHORIZATION" || operationType === "CAPTURE") &&
+    operationResult === "EXECUTED"
+  ) {
+    return "Payment executed by Nexi";
+  }
+  if (operationType === "REFUND") return "Refund reported by Nexi";
+  if (operationType === "CANCEL" || operationType === "VOID") {
+    return "Payment reversal reported by Nexi";
+  }
+  const typeLabel = operationType
+    ? getProviderValueLabel(operationType)
+    : "Payment operation";
+  return operationResult
+    ? `${typeLabel}: ${getProviderValueLabel(operationResult)}`
+    : typeLabel;
+};
+
+const getOrderTimeline = (
+  orders: readonly AdministrationOrder[]
+): readonly AdministrationTimelineItem[] => {
+  const items: AdministrationTimelineItem[] = [];
+  for (const order of orders) {
+    if (order.link?.providerOrderCreatedAt) {
+      items.push({
+        id: `order-${order.orderId}-created`,
+        title: "Nexi order created",
+        description: "Nexi accepted the hosted-payment request.",
+        occurredAt: order.link.providerOrderCreatedAt,
+        tone: "neutral",
+        href: `/admin/orders/${encodeURIComponent(order.orderId)}`,
+      });
+    }
+    for (const [index, operation] of (
+      order.provider?.operations ?? []
+    ).entries()) {
+      if (!operation.operationTime) continue;
+      let occurredAt: string;
+      try {
+        occurredAt = Temporal.Instant.from(operation.operationTime).toString();
+      } catch {
+        continue;
+      }
+      const result = operation.operationResult?.toUpperCase();
+      const operationId = operation.operationId;
+      items.push({
+        id: operationId
+          ? `nexi-operation-${operationId}`
+          : `nexi-operation-${order.orderId}-${index}`,
+        title: getOperationTimelineTitle(
+          operation.operationType?.toUpperCase(),
+          result
+        ),
+        description: operation.channel
+          ? `Nexi reported this ${getProviderValueLabel(operation.channel)} operation.`
+          : "Nexi reported this payment operation.",
+        occurredAt,
+        tone:
+          result && operationFailureResults.has(result)
+            ? "warning"
+            : "positive",
+        ...(operationId && {
+          href: `/admin/operations/${encodeURIComponent(operationId)}`,
+        }),
+      });
+    }
+  }
+  return items;
 };
 
 export class AdministrationService extends Context.Service<
@@ -491,6 +589,10 @@ export class AdministrationService extends Context.Service<
       readonly customerId: string;
       readonly page?: number;
     }) => Effect.Effect<AdministrationReservationPage, unknown>;
+    readonly listOrders: IPaymentAdministrationService["listOrders"];
+    readonly loadOrder: IPaymentAdministrationService["loadOrder"];
+    readonly listOperations: IPaymentAdministrationService["listOperations"];
+    readonly loadOperation: IPaymentAdministrationService["loadOperation"];
   }
 >()("@deskohub-workspace/administration/AdministrationService") {
   static Live = Layer.effect(
@@ -499,6 +601,7 @@ export class AdministrationService extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
       const dotypos = yield* DotyposService;
       const reservationHistory = yield* PostHogReservationHistory;
+      const paymentAdministration = yield* PaymentAdministrationService;
 
       const loadLiveReservation = Effect.fn(
         "AdministrationService.loadLiveReservation"
@@ -646,55 +749,64 @@ export class AdministrationService extends Context.Service<
           .limit(1);
         if (!row) return null;
 
-        const { applicationRows, attemptRows, history, live, otherRows } =
-          yield* Effect.all(
-            {
-              applicationRows: db
-                .select({
-                  id: discountApplications.id,
-                  label: discountApplications.label,
-                  appliedAmountValue: discountApplications.appliedAmountValue,
-                  appliedAmountExponent:
-                    discountApplications.appliedAmountExponent,
-                  appliedAmountCurrency:
-                    discountApplications.appliedAmountCurrency,
-                })
-                .from(discountApplications)
-                .where(eq(discountApplications.workspaceReservationId, row.id))
-                .orderBy(discountApplications.sequence),
-              attemptRows: db
-                .select({
-                  id: paymentAttempts.id,
-                  provider: paymentAttempts.provider,
-                  state: paymentAttempts.state,
-                  amountValue: paymentAttempts.amountValue,
-                  amountExponent: paymentAttempts.amountExponent,
-                  currency: paymentAttempts.currency,
-                  createdAt: paymentAttempts.createdAt,
-                  updatedAt: paymentAttempts.updatedAt,
-                })
-                .from(paymentAttempts)
-                .where(eq(paymentAttempts.workspaceReservationId, row.id))
-                .orderBy(paymentAttempts.createdAt),
-              history: reservationHistory.load(row.id),
-              live: loadLiveReservation(row),
-              otherRows: db
-                .select(safeReservationSelection)
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(
-                      workspaceReservations.dotyposCustomerId,
-                      row.dotyposCustomerId
-                    ),
-                    sql`${workspaceReservations.id} <> ${row.id}`
-                  )
+        const {
+          applicationRows,
+          attemptRows,
+          history,
+          live,
+          orders,
+          otherRows,
+        } = yield* Effect.all(
+          {
+            applicationRows: db
+              .select({
+                id: discountApplications.id,
+                label: discountApplications.label,
+                appliedAmountValue: discountApplications.appliedAmountValue,
+                appliedAmountExponent:
+                  discountApplications.appliedAmountExponent,
+                appliedAmountCurrency:
+                  discountApplications.appliedAmountCurrency,
+              })
+              .from(discountApplications)
+              .where(eq(discountApplications.workspaceReservationId, row.id))
+              .orderBy(discountApplications.sequence),
+            attemptRows: db
+              .select({
+                id: paymentAttempts.id,
+                providerOrderId: paymentAttempts.providerOrderId,
+                provider: paymentAttempts.provider,
+                state: paymentAttempts.state,
+                amountValue: paymentAttempts.amountValue,
+                amountExponent: paymentAttempts.amountExponent,
+                currency: paymentAttempts.currency,
+                createdAt: paymentAttempts.createdAt,
+                providerOrderCreatedAt: paymentAttempts.providerOrderCreatedAt,
+                updatedAt: paymentAttempts.updatedAt,
+              })
+              .from(paymentAttempts)
+              .where(eq(paymentAttempts.workspaceReservationId, row.id))
+              .orderBy(paymentAttempts.createdAt),
+            history: reservationHistory.load(row.id),
+            live: loadLiveReservation(row),
+            orders: paymentAdministration.loadReservationOrders(row.id),
+            otherRows: db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(
+                    workspaceReservations.dotyposCustomerId,
+                    row.dotyposCustomerId
+                  ),
+                  sql`${workspaceReservations.id} <> ${row.id}`
                 )
-                .orderBy(desc(workspaceReservations.updatedAt))
-                .limit(4),
-            },
-            { concurrency: 5 }
-          );
+              )
+              .orderBy(desc(workspaceReservations.updatedAt))
+              .limit(4),
+          },
+          { concurrency: 6 }
+        );
 
         let sameDateRows: readonly SafeReservationRow[] = [];
         if (live.reservation) {
@@ -732,11 +844,12 @@ export class AdministrationService extends Context.Service<
         return {
           reservation: toReservationSummary({ live, row }),
           timeline: mergeReservationHistory({
-            durable: buildTimeline(row),
+            durable: [...buildTimeline(row), ...getOrderTimeline(orders)],
             history,
           }),
           paymentAttempts: attemptRows.map((attempt) => ({
             id: attempt.id,
+            providerOrderId: attempt.providerOrderId,
             providerLabel:
               attempt.provider === "internal" ? "Included" : "Online payment",
             stateLabel: paymentAttemptStateLabels[attempt.state],
@@ -746,8 +859,11 @@ export class AdministrationService extends Context.Service<
               currency: attempt.currency,
             },
             createdAt: toIsoString(attempt.createdAt),
+            providerOrderCreatedAt:
+              attempt.providerOrderCreatedAt?.toString() ?? null,
             updatedAt: toIsoString(attempt.updatedAt),
           })),
+          orders,
           discounts: applicationRows.map((application) => ({
             id: application.id,
             label: application.label,
@@ -1119,6 +1235,10 @@ export class AdministrationService extends Context.Service<
         loadBooking,
         listCustomers,
         loadCustomerReservations,
+        listOrders: paymentAdministration.listOrders,
+        loadOrder: paymentAdministration.loadOrder,
+        listOperations: paymentAdministration.listOperations,
+        loadOperation: paymentAdministration.loadOperation,
       };
     })
   );

@@ -190,6 +190,17 @@ export interface CreateHostedPaymentPageInput {
   readonly resultUrl: string;
   readonly cancelUrl: string;
   readonly notificationUrl: string;
+  readonly customer?: HostedPaymentCustomer;
+}
+
+export interface HostedPaymentCustomer {
+  readonly id?: string;
+  readonly name: string;
+  readonly email?: string;
+  readonly mobilePhone?: {
+    readonly countryCallingCode: string;
+    readonly nationalNumber: string;
+  };
 }
 
 export interface VerifyPaymentOutcomeInput {
@@ -218,4 +229,53 @@ export interface PaymentVerificationResult {
   readonly mismatches: ReadonlyArray<
     "orderId" | "amount" | "currency" | "securityToken"
   >;
+}
+
+export interface GetNexiOrderInput {
+  readonly orderId: string;
+  readonly correlationId: string;
+}
+
+export interface ListNexiOrdersInput {
+  readonly correlationId: string;
+  readonly fromTime?: string;
+  readonly toTime?: string;
+  readonly maxRecords?: number;
+}
+
+export interface GetNexiOperationInput {
+  readonly correlationId: string;
+  readonly operationId: string;
+}
+
+export interface ListNexiOperationsInput {
+  readonly correlationId: string;
+  readonly fromTime?: string;
+  readonly toTime?: string;
+  readonly maxRecords?: number;
+  readonly channel?: string;
+  readonly operationType?: string;
+}
+
+export interface NexiOperation {
+  readonly orderId?: string;
+  readonly operationId?: string;
+  readonly channel?: string;
+  readonly operationType?: string;
+  readonly operationResult?: string;
+  readonly operationTime?: string;
+  readonly amount?: string;
+  readonly currency?: string;
+  readonly cancelledOperationId?: string;
+}
+
+export interface NexiOrder {
+  readonly orderId: string;
+  readonly amount?: string;
+  readonly currency?: string;
+  readonly authorizedAmount?: string;
+  readonly capturedAmount?: string;
+  readonly lastOperationTime?: string;
+  readonly lastOperationType?: string;
+  readonly operations: readonly NexiOperation[];
 }

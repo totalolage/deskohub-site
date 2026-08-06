@@ -6,6 +6,7 @@ import {
   formatAdministrationDate,
   formatAdministrationDateTime,
   formatAdministrationMoney,
+  PaymentAttemptList,
   RelatedReservationLink,
   ReservationReferences,
   ReservationStatusBadge,
@@ -91,35 +92,29 @@ export default async function ReservationAdministrationDetailPage({
           </section>
 
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Payment</h2>
+            <h2 className="text-xl">Payments and orders</h2>
             {detail.paymentAttempts.length === 0 ? (
               <p className="mt-4 text-sm text-navy-blue/65">
                 No payment attempt has started.
               </p>
             ) : (
-              <ul className="mt-4 divide-y divide-navy-blue/10">
-                {detail.paymentAttempts.map((attempt) => (
-                  <li
-                    className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
-                    key={attempt.id}
-                  >
-                    <div>
-                      <p className="font-semibold">{attempt.providerLabel}</p>
-                      <p className="mt-1 text-sm text-navy-blue/65">
-                        {formatAdministrationDateTime(attempt.createdAt)}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-semibold">
-                        {formatAdministrationMoney(attempt.amount)}
-                      </p>
-                      <p className="mt-1 text-sm text-navy-blue/65">
-                        {attempt.stateLabel}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <PaymentAttemptList attempts={detail.paymentAttempts} />
+            )}
+            {detail.orders.some(
+              ({ providerStatus }) => providerStatus === "not_found"
+            ) && (
+              <p className="mt-4 rounded-lg border border-burned-orange/30 bg-burned-orange/10 px-3 py-2 text-sm">
+                Nexi did not find at least one locally referenced order. Follow
+                its order link to investigate the mismatch.
+              </p>
+            )}
+            {detail.orders.some(
+              ({ providerStatus }) => providerStatus === "unavailable"
+            ) && (
+              <p className="mt-4 rounded-lg border border-sunset-yellow/35 bg-sunset-yellow/10 px-3 py-2 text-sm">
+                Some live Nexi order details are temporarily unavailable. The
+                local order links remain available.
+              </p>
             )}
             {detail.discounts.length > 0 && (
               <div className="mt-5 border-t border-navy-blue/10 pt-5">

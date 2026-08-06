@@ -68,6 +68,7 @@ Advertised, signed, and freshly affirmed quotes and local payment attempts alway
 | Checkout session and attempt idempotency | Deskohub workflow | Store only the HMAC session and attempt keys. The object payloads used to derive them are transient and must not be persisted. |
 | Payment session and terminal state | Nexi plus Deskohub workflow | Store positive Nexi attempts with their external identifiers and store zero-total internal attempts without external fields. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
+| Administration order and operation views | Nexi, joined to Deskohub attempts | Read current orders and operations from Nexi on demand and expose only allowlisted identifiers, status, channel, timestamps, and amounts. Do not persist provider snapshots. |
 | Legal acceptance | Deskohub legal evidence | Store document keys, paths, hashes, acceptance booleans, timestamps, locale, source, and idempotency keys. Never store rendered legal documents or customer contact data. |
 
 ## No-PII Policy
@@ -86,6 +87,7 @@ Allowed local values:
 Enforcement boundary:
 
 - Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient checkout-key payloads.
+- Nexi HPP creation may transmit the signed reservation's customer name, email, and normalized phone fields as `order.customerInfo`; provider adapters must not persist or log those values.
 - Repository inputs must be shaped so PII has no destination field.
 - `jsonb` columns must use schemas that exclude customer contact fields, free-form customer notes, raw provider envelopes, and raw Dotypos responses.
 - Logs may contain PII only under the application's global filtering policy.
@@ -147,6 +149,7 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `workspace_reservation_id` | text | yes | Parent workflow row. |
 | `provider` | text enum | yes | `nexi` for positive external payment or `internal` for zero-total completion. |
 | `provider_order_id` | text | no | Nexi order ID, normally the value sent to `order.orderId`. Required and unique for Nexi; forbidden for internal attempts. |
+| `provider_order_created_at` | timestamptz | no | When Nexi accepted the hosted-payment request and returned its provider session. Set once for new Nexi attempts. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |

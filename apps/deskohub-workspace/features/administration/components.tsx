@@ -14,6 +14,7 @@ import {
 import { cn } from "@/shared/utils";
 import type {
   AdministrationBookingSummary,
+  AdministrationPaymentAttempt,
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
@@ -163,6 +164,59 @@ export const formatAdministrationMoney = ({
     currency,
     style: "currency",
   }).format(value / 10 ** exponent);
+
+export function PaymentAttemptList({
+  attempts,
+}: {
+  readonly attempts: readonly AdministrationPaymentAttempt[];
+}) {
+  return (
+    <ul className="mt-4 divide-y divide-navy-blue/10">
+      {attempts.map((attempt) => (
+        <li
+          className="flex flex-wrap items-center justify-between gap-3 py-4 first:pt-0 last:pb-0"
+          key={attempt.id}
+        >
+          <div>
+            <p className="font-semibold">{attempt.providerLabel}</p>
+            <p className="mt-1 text-sm text-navy-blue/65">
+              {formatAdministrationDateTime(attempt.createdAt)}
+            </p>
+            {attempt.providerOrderId && (
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm font-semibold text-burned-orange-ink">
+                <Link
+                  className="inline-flex items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
+                  href={`/admin/orders/${encodeURIComponent(attempt.providerOrderId)}`}
+                >
+                  <span>Nexi order</span>
+                  <span className="break-all font-mono text-xs">
+                    {attempt.providerOrderId}
+                  </span>
+                </Link>
+                <a
+                  className="text-xs underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
+                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  Open in XPay ↗
+                </a>
+              </div>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="font-semibold">
+              {formatAdministrationMoney(attempt.amount)}
+            </p>
+            <p className="mt-1 text-sm text-navy-blue/65">
+              {attempt.stateLabel}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 export function BookingStatusBadge({
   booking,
@@ -439,7 +493,18 @@ export function ReservationTimeline({
           />
           <div>
             <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <h3 className="font-semibold">{item.title}</h3>
+              <h3 className="font-semibold">
+                {item.href ? (
+                  <Link
+                    className="underline underline-offset-4"
+                    href={item.href}
+                  >
+                    {item.title}
+                  </Link>
+                ) : (
+                  item.title
+                )}
+              </h3>
               <time
                 className="text-xs text-navy-blue/65"
                 dateTime={item.occurredAt}

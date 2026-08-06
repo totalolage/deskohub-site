@@ -20,6 +20,7 @@ import {
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
   BookingTable,
+  PaymentAttemptList,
   ReservationReferences,
   ReservationTable,
   ReservationTimeline,
@@ -29,6 +30,7 @@ import {
   loadFixtureReservation,
   loadFixtureReservations,
 } from "./fixtures";
+import { OperationTable, OrderTable } from "./payment-components";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
@@ -74,8 +76,95 @@ describe("administration reservation components", () => {
     const timeline = view.getByRole("list", {
       name: "Reservation history",
     });
-    expect(within(timeline).getAllByRole("listitem")).toHaveLength(5);
+    expect(within(timeline).getAllByRole("listitem")).toHaveLength(7);
     expect(within(timeline).getByText("Payment started")).toBeDefined();
+    expect(
+      within(timeline)
+        .getByRole("link", { name: "Nexi order created" })
+        .getAttribute("href")
+    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    expect(
+      within(timeline)
+        .getByRole("link", { name: "Payment executed by Nexi" })
+        .getAttribute("href")
+    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+  });
+
+  test("links Nexi payment IDs to internal orders and the XPay dashboard", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    const attempt = detail.paymentAttempts[0];
+    expect(attempt).toBeDefined();
+    if (!attempt) return;
+
+    const view = render(
+      <PaymentAttemptList
+        attempts={[
+          ...detail.paymentAttempts,
+          {
+            ...attempt,
+            id: "fixture-internal-payment",
+            providerOrderId: null,
+            providerLabel: "Included",
+          },
+        ]}
+      />
+    );
+    const orderLink = view.getByRole("link", {
+      name: "Nexi order DADMINFIXTUREPAYMENT",
+    });
+    expect(orderLink.getAttribute("href")).toBe(
+      "/admin/orders/DADMINFIXTUREPAYMENT"
+    );
+    const dashboardLink = view.getByRole("link", { name: "Open in XPay ↗" });
+    expect(dashboardLink.getAttribute("href")).toBe(
+      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
+    );
+    expect(dashboardLink.getAttribute("target")).toBe("_blank");
+    expect(view.getAllByText("Nexi order")).toHaveLength(1);
+  });
+
+  test("links order and operation entities back to their reservation", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+    const orderView = render(<OrderTable orders={detail.orders} />);
+    expect(
+      orderView
+        .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
+        .getAttribute("href")
+    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    expect(
+      orderView
+        .getByRole("link", { name: "View reservation" })
+        .getAttribute("href")
+    ).toBe("/admin/reservations/0198-admin-fixture-attention");
+    orderView.unmount();
+
+    const operation = detail.orders[0]?.provider?.operations[0];
+    expect(operation).toBeDefined();
+    if (!operation) return;
+    const operationView = render(
+      <OperationTable
+        operations={[
+          {
+            ...operation,
+            linkedReservationId: detail.reservation.id,
+          },
+        ]}
+      />
+    );
+    expect(
+      operationView
+        .getByRole("link", { name: "DADMINFIXTUREOPERATION" })
+        .getAttribute("href")
+    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+    expect(
+      operationView
+        .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
+        .getAttribute("href")
+    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
   });
 
   test("keeps the customer visible when booking details are unavailable", () => {

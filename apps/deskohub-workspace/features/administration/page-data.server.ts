@@ -33,6 +33,43 @@ const parseDate = (value: string | undefined) => {
   }
 };
 
+const getDateTimeBounds = (
+  from: string | undefined,
+  to: string | undefined
+) => {
+  const current = getCurrentWorkspaceDate();
+  const fromDate = (() => {
+    try {
+      return from
+        ? Temporal.PlainDate.from(from)
+        : current.subtract({ days: 7 });
+    } catch {
+      return current.subtract({ days: 7 });
+    }
+  })();
+  const toDate = (() => {
+    try {
+      return to ? Temporal.PlainDate.from(to) : current;
+    } catch {
+      return current;
+    }
+  })();
+  const atStartOfDay = (date: Temporal.PlainDate) =>
+    date
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: "Europe/Prague",
+      })
+      .toInstant()
+      .toString();
+  return {
+    from: fromDate.toString(),
+    fromTime: atStartOfDay(fromDate),
+    to: toDate.toString(),
+    toTime: atStartOfDay(toDate.add({ days: 1 })),
+  };
+};
+
 const parseStatus = (
   value: string | undefined
 ): AdministrationReservationListInput["status"] =>
@@ -151,3 +188,65 @@ export const loadAdministrationCustomerReservations = async (
     return yield* administration.loadCustomerReservations({ customerId, page });
   }).pipe(runAdministration("administration.customer-reservations"));
 };
+
+export const loadAdministrationOrders = async (
+  searchParams: AdministrationSearchParams
+) => {
+  await authorizeAdministrationPage();
+  const params = await searchParams;
+  const range = getDateTimeBounds(
+    firstParam(params.from),
+    firstParam(params.to)
+  );
+  const result = await Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.listOrders({
+      fromTime: range.fromTime,
+      toTime: range.toTime,
+      maxRecords: 50,
+    });
+  }).pipe(runAdministration("administration.orders"));
+  return { range, result };
+};
+
+export const loadAdministrationOrder = cache(async (orderId: string) => {
+  await authorizeAdministrationPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.loadOrder(orderId);
+  }).pipe(runAdministration("administration.order"));
+});
+
+export const loadAdministrationOperations = async (
+  searchParams: AdministrationSearchParams
+) => {
+  await authorizeAdministrationPage();
+  const params = await searchParams;
+  const range = getDateTimeBounds(
+    firstParam(params.from),
+    firstParam(params.to)
+  );
+  const channel = firstParam(params.channel)?.trim() || undefined;
+  const operationType = firstParam(params.operationType)?.trim() || undefined;
+  const result = await Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.listOperations({
+      fromTime: range.fromTime,
+      toTime: range.toTime,
+      maxRecords: 100,
+      channel,
+      operationType,
+    });
+  }).pipe(runAdministration("administration.operations"));
+  return { input: { channel, operationType }, range, result };
+};
+
+export const loadAdministrationOperation = cache(
+  async (operationId: string) => {
+    await authorizeAdministrationPage();
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadOperation(operationId);
+    }).pipe(runAdministration("administration.operation"));
+  }
+);
