@@ -665,6 +665,10 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     expected.startsOn,
     'office start date'
   );
+  await waitUntil(() => {
+    const endsOn = document.querySelector('input[name="endsOn"]');
+    return endsOn instanceof HTMLInputElement && endsOn.value === expected.startsOn;
+  }, 'office end date did not follow the selected start date');
   await selectDate(
     'Office reservation end date',
     'endsOn',

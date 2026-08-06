@@ -936,8 +936,12 @@ test("prepares a multi-day office reservation with other people", async () => {
   });
   try {
     document.body.innerHTML = `
-      <input name="startsOn" value="${officeSlot.startsOn}" />
-      <input name="endsOn" value="${officeSlot.endsOn}" />
+      <button aria-label="Office reservation start date" type="button"></button>
+      <button aria-label="Office reservation end date" type="button"></button>
+      <div data-day="${officeSlot.startsOn}"><button type="button"></button></div>
+      <div data-day="${officeSlot.endsOn}"><button type="button"></button></div>
+      <input name="startsOn" value="" />
+      <input name="endsOn" value="" />
       <input name="additionalGuests" type="number" value="0" />
       <input name="email" />
       <input name="phone" />
@@ -945,6 +949,37 @@ test("prepares a multi-day office reservation with other people", async () => {
       <textarea name="message"></textarea>
       <button type="submit"></button>
     `;
+    let activeDateField: "startsOn" | "endsOn" = "startsOn";
+    document
+      .querySelector('button[aria-label="Office reservation start date"]')
+      ?.addEventListener("click", () => {
+        activeDateField = "startsOn";
+      });
+    document
+      .querySelector('button[aria-label="Office reservation end date"]')
+      ?.addEventListener("click", () => {
+        activeDateField = "endsOn";
+      });
+    for (const dateButton of document.querySelectorAll<HTMLButtonElement>(
+      "[data-day] button"
+    )) {
+      dateButton.addEventListener("click", () => {
+        const selectedDate = dateButton.parentElement?.dataset.day;
+        if (!selectedDate) return;
+        const input = document.querySelector<HTMLInputElement>(
+          `input[name="${activeDateField}"]`
+        );
+        if (!input) return;
+        input.value = selectedDate;
+        if (activeDateField === "startsOn") {
+          setTimeout(() => {
+            const endsOn =
+              document.querySelector<HTMLInputElement>('input[name="endsOn"]');
+            if (endsOn) endsOn.value = selectedDate;
+          }, 10);
+        }
+      });
+    }
     const run = new Function(
       "document",
       "HTMLElement",
@@ -971,6 +1006,10 @@ test("prepares a multi-day office reservation with other people", async () => {
         location
       )
     ).resolves.toBe(location.href);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="endsOn"]')?.value
+    ).toBe(officeSlot.endsOn);
     expect(
       document.querySelector<HTMLInputElement>('input[name="additionalGuests"]')
         ?.value
