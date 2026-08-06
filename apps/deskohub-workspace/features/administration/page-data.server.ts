@@ -13,6 +13,7 @@ import {
 } from "./administration.service";
 import {
   getAdministrationOperationFilters,
+  getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
 
@@ -161,7 +162,7 @@ export const loadAdministrationOrders = async (
 ) => {
   await authorizeAdministrationPage();
   const params = await searchParams;
-  const range = getAdministrationPaymentDateTimeBounds(
+  const range = getAdministrationOrderDateTimeBounds(
     firstParam(params.from),
     firstParam(params.to)
   );

@@ -14,10 +14,11 @@ export const nexiOperationTypes = [
   "VOID",
 ] as const;
 
-export const getAdministrationPaymentDateTimeBounds = (
+const getPaymentDateTimeBounds = (
   from: string | undefined,
   to: string | undefined,
-  current = getCurrentWorkspaceDate()
+  current: Temporal.PlainDate,
+  maximumMonths?: number
 ) => {
   const fromDate = (() => {
     try {
@@ -39,9 +40,11 @@ export const getAdministrationPaymentDateTimeBounds = (
     Temporal.PlainDate.compare(fromDate, toDate) <= 0
       ? [fromDate, toDate]
       : [toDate, fromDate];
-  const maximumEndDate = startDate.add({ months: 1 }).subtract({ days: 1 });
+  const maximumEndDate = maximumMonths
+    ? startDate.add({ months: maximumMonths }).subtract({ days: 1 })
+    : null;
   const boundedEndDate =
-    Temporal.PlainDate.compare(endDate, maximumEndDate) <= 0
+    !maximumEndDate || Temporal.PlainDate.compare(endDate, maximumEndDate) <= 0
       ? endDate
       : maximumEndDate;
   const atStartOfDay = (date: Temporal.PlainDate) =>
@@ -59,6 +62,18 @@ export const getAdministrationPaymentDateTimeBounds = (
     toTime: atStartOfDay(boundedEndDate.add({ days: 1 })),
   };
 };
+
+export const getAdministrationPaymentDateTimeBounds = (
+  from: string | undefined,
+  to: string | undefined,
+  current = getCurrentWorkspaceDate()
+) => getPaymentDateTimeBounds(from, to, current);
+
+export const getAdministrationOrderDateTimeBounds = (
+  from: string | undefined,
+  to: string | undefined,
+  current = getCurrentWorkspaceDate()
+) => getPaymentDateTimeBounds(from, to, current, 1);
 
 const parseProviderFilter = <Value extends string>(
   value: string | undefined,
