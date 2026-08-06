@@ -8,7 +8,7 @@ export interface CloudinaryConfig {
   readonly cloudName: string;
   readonly apiKey: string;
   readonly apiSecret: string;
-  readonly defaultMaxResults?: number;
+  readonly defaultPageSize?: number;
   readonly serviceName?: string;
   readonly timestampToleranceSeconds?: number;
 }

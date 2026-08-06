@@ -7,6 +7,7 @@ type SearchCall = {
   expression: string;
   fields: string[];
   maxResults?: number;
+  nextCursor?: string;
   sort?: readonly [string, string];
 };
 
@@ -52,6 +53,10 @@ const cloudinary = {
           call.maxResults = maxResults;
           return builder;
         }),
+        next_cursor: mock((nextCursor: string) => {
+          call.nextCursor = nextCursor;
+          return builder;
+        }),
         sort_by: mock((field: string, direction: string) => {
           call.sort = [field, direction];
           return builder;
@@ -81,7 +86,7 @@ const config = {
   cloudName: "cloud-name",
   apiKey: "api-key",
   apiSecret: "api-secret",
-  defaultMaxResults: 7,
+  defaultPageSize: 7,
 };
 
 const asset = {
@@ -234,6 +239,68 @@ describe("CloudinaryService", () => {
       api_key: "api-key",
       api_secret: "api-secret",
     });
+  });
+
+  test("follows every search cursor when no result limit is requested", async () => {
+    const secondAsset = {
+      ...asset,
+      public_id: "gallery/second-image",
+    };
+    queuedResults = [
+      { next_cursor: "next-page", resources: [asset] },
+      { resources: [secondAsset] },
+    ];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(service.searchAll());
+
+    expect(result).toEqual([asset, secondAsset]);
+    expect(searchCalls).toEqual([
+      {
+        expression: "resource_type:image",
+        fields: ["tags", "context"],
+        maxResults: 7,
+        sort: ["created_at", "desc"],
+      },
+      {
+        expression: "resource_type:image",
+        fields: ["tags", "context"],
+        maxResults: 7,
+        nextCursor: "next-page",
+        sort: ["created_at", "desc"],
+      },
+    ]);
+  });
+
+  test("treats maxResults as a total cap across search pages", async () => {
+    const firstPage = Array.from({ length: 7 }, (_, index) => ({
+      ...asset,
+      public_id: `gallery/page-one-${index + 1}`,
+    }));
+    const secondPage = Array.from({ length: 3 }, (_, index) => ({
+      ...asset,
+      public_id: `gallery/page-two-${index + 1}`,
+    }));
+    queuedResults = [
+      { next_cursor: "next-page", resources: firstPage },
+      { resources: secondPage },
+    ];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.searchAll({ maxResults: 8 })
+    );
+
+    expect(result).toEqual([...firstPage, secondPage[0]]);
+    expect(
+      searchCalls.map(({ maxResults, nextCursor }) => ({
+        maxResults,
+        nextCursor,
+      }))
+    ).toEqual([
+      { maxResults: 7, nextCursor: undefined },
+      { maxResults: 1, nextCursor: "next-page" },
+    ]);
   });
 
   test("retries 500 search failures", async () => {

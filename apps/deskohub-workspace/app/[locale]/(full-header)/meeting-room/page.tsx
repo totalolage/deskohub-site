@@ -22,7 +22,6 @@ const getMeetingRoomHeroImages = () =>
 
 const getMeetingRoomGalleryImages = () =>
   getCloudinaryImages({
-    maxResults: 5,
     sortBy: "public_id",
     sortDirection: "asc",
     tags: "meeting-room-gallery",

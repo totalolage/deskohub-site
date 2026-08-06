@@ -7,7 +7,7 @@ import {
   mock,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
   registerWorkspaceComponentTestEnv,
@@ -22,6 +22,31 @@ mock.module("@deskohub/cloudinary-image", () => ({
     alt: string;
     source: CloudinaryAsset;
   }) => <span aria-label={alt} data-public-id={source.public_id} role="img" />,
+}));
+
+mock.module("@deskohub/cloudinary-image/url", () => ({
+  getCloudinaryImageUrl: ({ asset }: { asset: CloudinaryAsset }) =>
+    `https://example.test/full/${asset.public_id}.jpg`,
+}));
+
+mock.module("yet-another-react-lightbox", () => ({
+  default: ({
+    index,
+    open,
+    slides,
+  }: {
+    index: number;
+    open: boolean;
+    slides: readonly { src: string }[];
+  }) => (
+    <output
+      data-index={index}
+      data-open={open}
+      data-slide-count={slides.length}
+      data-slide-src={slides[index]?.src}
+      data-testid="meeting-room-lightbox"
+    />
+  ),
 }));
 
 type CloudinaryCustomContext = NonNullable<
@@ -128,6 +153,35 @@ describe("MeetingRoomPage", () => {
     ).toBeTruthy();
     expect(view.getByText("01 / Planning workshop")).toBeTruthy();
     expect(view.queryByText("01 / A closer look")).toBeNull();
+  });
+
+  test("opens every gallery image in the shared lightbox", async () => {
+    const { MeetingRoomPage } = await import("./meeting-room-page");
+    const galleryImages = Array.from({ length: 7 }, (_, index) =>
+      createCloudinaryAsset(`meeting-room-gallery-${index + 1}`, {
+        "alt-en-US": `Meeting room gallery photo ${index + 1}`,
+        "caption-en-US": `Gallery caption ${index + 1}`,
+      })
+    );
+    const view = render(
+      <MeetingRoomPage galleryImages={galleryImages} locale="en-US" />
+    );
+
+    const imageButtons = view.getAllByRole("button", {
+      name: /Open Meeting room gallery photo \d in full screen/,
+    });
+
+    expect(imageButtons).toHaveLength(7);
+    fireEvent.click(imageButtons[6]!);
+
+    const lightbox = view.getByTestId("meeting-room-lightbox");
+
+    expect(lightbox.dataset.open).toBe("true");
+    expect(lightbox.dataset.index).toBe("6");
+    expect(lightbox.dataset.slideCount).toBe("7");
+    expect(lightbox.dataset.slideSrc).toBe(
+      "https://example.test/full/meeting-room-gallery-7.jpg"
+    );
   });
 
   test("renders intentional empty image states while Cloudinary tags are empty", async () => {

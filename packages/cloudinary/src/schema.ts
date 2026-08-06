@@ -33,6 +33,7 @@ export const CloudinaryAssetSchema = Schema.Struct({
 export type CloudinaryAsset = Schema.Schema.Type<typeof CloudinaryAssetSchema>;
 
 export const CloudinarySearchResponseSchema = Schema.Struct({
+  next_cursor: Schema.optional(Schema.String),
   resources: Schema.Array(CloudinaryAssetSchema),
 });
 
