@@ -977,11 +977,26 @@ test("prepares a multi-day office reservation with other people", async () => {
         if (!input) return;
         input.value = selectedDate;
         if (activeDateField === "startsOn") {
+          const submit = document.querySelector<HTMLButtonElement>(
+            'button[type="submit"]'
+          );
+          if (submit) submit.dataset.reservationPriceLoading = "true";
           setTimeout(() => {
-            const endsOn =
-              document.querySelector<HTMLInputElement>('input[name="endsOn"]');
+            const endsOn = document.querySelector<HTMLInputElement>(
+              'input[name="endsOn"]'
+            );
             if (endsOn) endsOn.value = selectedDate;
           }, 10);
+          setTimeout(() => {
+            const startsOn = document.querySelector<HTMLInputElement>(
+              'input[name="startsOn"]'
+            );
+            const endsOn = document.querySelector<HTMLInputElement>(
+              'input[name="endsOn"]'
+            );
+            if (startsOn && endsOn) endsOn.value = startsOn.value;
+            if (submit) submit.dataset.reservationPriceLoading = "false";
+          }, 600);
           return;
         }
 
@@ -992,8 +1007,9 @@ test("prepares a multi-day office reservation with other people", async () => {
         if (submit) submit.dataset.reservationPriceLoading = "true";
         setTimeout(() => {
           if (endSelectionCount === 1) {
-            const startsOn =
-              document.querySelector<HTMLInputElement>('input[name="startsOn"]');
+            const startsOn = document.querySelector<HTMLInputElement>(
+              'input[name="startsOn"]'
+            );
             if (startsOn) input.value = startsOn.value;
           }
           if (submit) submit.dataset.reservationPriceLoading = "false";
@@ -1026,7 +1042,7 @@ test("prepares a multi-day office reservation with other people", async () => {
         location
       )
     ).resolves.toBe(location.href);
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 700));
     expect(
       document.querySelector<HTMLInputElement>('input[name="endsOn"]')?.value
     ).toBe(officeSlot.endsOn);

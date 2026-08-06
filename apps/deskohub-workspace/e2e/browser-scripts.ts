@@ -721,7 +721,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     throw new Error(label + ' did not remain selected');
   };
 
-  await selectDate(
+  await selectDateAfterRequestSettles(
     'Office reservation start date',
     'startsOn',
     expected.startsOn,
