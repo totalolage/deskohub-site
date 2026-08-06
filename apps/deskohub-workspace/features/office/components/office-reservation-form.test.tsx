@@ -78,6 +78,83 @@ describe("OfficeReservationForm", () => {
     ).toBeDefined();
   });
 
+  test("shows the catalog-quoted base amount between dates and seats", () => {
+    const startsOn = decodePlainDate("2099-06-10");
+    const endsOn = decodePlainDate("2099-06-12");
+    const initialAdvertisedPrices = [0, 1, 2].map((additionalGuests) => {
+      const request = getOfficeAdvertisedPriceRequest({
+        additionalGuests,
+        endsOn,
+        locale: "en-US",
+        startsOn,
+      });
+      const quote = Effect.runSync(
+        buildOfficeReservationQuote(request.reservation.details)
+      );
+
+      return {
+        request,
+        advertisedPrice: {
+          advertisedPriceToken: `office-${additionalGuests}`,
+          kind: "office" as const,
+          quote,
+          summary: getOfficeCheckoutSummary(quote),
+        },
+      };
+    });
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={3}
+          initialAdvertisedPrices={initialAdvertisedPrices}
+          initialValues={{
+            ...officeReservationDefaultValues,
+            startsOn,
+            endsOn,
+          }}
+          locale="en-US"
+        />
+      </QueryClientProvider>
+    );
+
+    const dateRange = view.getByRole("group", { name: "Reservation dates" });
+    const basePrice = view.container.querySelector("[data-office-base-price]");
+    const seatLabel = view.getByText("How many office seats do you need?");
+
+    expect(basePrice).not.toBeNull();
+    if (!basePrice) throw new Error("Expected the office base price");
+    expect(basePrice.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "CZK 1,590"
+    );
+    expect(
+      dateRange.compareDocumentPosition(basePrice) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+    expect(
+      basePrice.compareDocumentPosition(seatLabel) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
+  });
+
+  test("does not render office prices before an advertised quote is available", () => {
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={3}
+          initialValues={officeReservationDefaultValues}
+          locale="en-US"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(view.queryByText(/CZK/)).toBeNull();
+    expect(
+      view.container.querySelector("[data-office-base-price]")?.textContent
+    ).toBe("Private office");
+  });
+
   test("offers total-seat cards up to the office table capacity", () => {
     const queryClient = new QueryClient();
     const view = render(

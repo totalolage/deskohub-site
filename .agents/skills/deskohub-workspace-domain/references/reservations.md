@@ -17,10 +17,14 @@ the per-person daily price for every attendee, including the customer. The
 submitted `additionalGuests` value counts only the other people, while the
 reservation form presents total seat counts from one through the table
 capacity and Dotypos `seats` stores that same total party size. Translate each
-displayed seat count to `additionalGuests` by subtracting one. Office product identity is `{ kind:
-"office" }` with product key `office`; dates and party size affect the quote,
-not the product identity. Persist only `{ kind: "office" }` locally and project
-confirmed timing and party size from Dotypos.
+displayed seat count to `additionalGuests` by subtracting one. On the
+reservation page, source every visible office price from the advertised quote:
+show its `accessAmount` as the base price and derive each seat choice from its
+`seatAmount` multiplied by the displayed total seat count. Do not reproduce
+catalog amounts as client-side constants. Office product identity is
+`{ kind: "office" }` with product key `office`; dates and party size affect the
+quote, not the product identity. Persist only `{ kind: "office" }` locally and
+project confirmed timing and party size from Dotypos.
 
 An office-tagged Dotypos table is exclusive for the entire reservation
 interval. Its configured seat capacity determines whether the requested party

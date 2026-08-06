@@ -16,6 +16,7 @@ import {
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
 import { ReservationDatePicker } from "@/features/reservation/components/reservation-date-picker";
 import {
@@ -188,6 +189,7 @@ export function OfficeReservationForm({
     typeof additionalGuests === "number"
       ? advertisedPricesByAdditionalGuests.get(additionalGuests)
       : undefined;
+  const advertisedOfficeQuoteItem = advertisedPrice?.quote.items[0];
   const unavailableDates = useMemo(
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
     [availabilityResult.availability]
@@ -282,6 +284,26 @@ export function OfficeReservationForm({
         </div>
       </fieldset>
 
+      <div
+        className="rounded-[1.4rem] border border-aquamarine-green/25 bg-aquamarine-green/8 px-5 py-4"
+        data-office-base-price
+      >
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <span className="font-semibold text-navy-blue">
+            {getWorkspaceOfficeProductTitle(locale)}
+          </span>
+          {advertisedOfficeQuoteItem ? (
+            <ReservationAdvertisedPrice
+              amount={advertisedOfficeQuoteItem.accessAmount}
+              className="text-lg font-bold"
+              locale={locale}
+            />
+          ) : (
+            <ReservationSkeletonBlock className="h-5 w-28 bg-aquamarine-green/15" />
+          )}
+        </div>
+      </div>
+
       <FormField
         control={form.control}
         name="additionalGuests"
@@ -307,9 +329,10 @@ export function OfficeReservationForm({
                       { count: seatCount },
                       { locale }
                     );
-                    const productItem = advertisedPricesByAdditionalGuests
-                      .get(additional)
-                      ?.summary.sections.find(({ key }) => key === "order")
+                    const optionAdvertisedPrice =
+                      advertisedPricesByAdditionalGuests.get(additional);
+                    const productItem = optionAdvertisedPrice?.summary.sections
+                      .find(({ key }) => key === "order")
                       ?.items.find(
                         (item) =>
                           "product" in item && item.product.kind === "office"
@@ -318,13 +341,14 @@ export function OfficeReservationForm({
                       productItem && "discounts" in productItem
                         ? productItem.discounts
                         : undefined;
-                    const seatPrice =
-                      productItem && "seatAmount" in productItem
-                        ? workspaceMoneyWithValue(
-                            productItem.seatAmount.value * seatCount,
-                            productItem.seatAmount
-                          )
-                        : undefined;
+                    const quotedSeatAmount =
+                      optionAdvertisedPrice?.quote.items[0].seatAmount;
+                    const seatPrice = quotedSeatAmount
+                      ? workspaceMoneyWithValue(
+                          quotedSeatAmount.value * seatCount,
+                          quotedSeatAmount
+                        )
+                      : undefined;
                     const hasDiscounts = Boolean(discounts?.length);
 
                     return (
@@ -385,6 +409,7 @@ export function OfficeReservationFormFallback({ locale }: { locale: Locale }) {
         <ReservationSkeletonField />
         <ReservationSkeletonField />
       </div>
+      <ReservationSkeletonBlock className="h-18 w-full rounded-[1.4rem]" />
       <div className="space-y-2">
         <ReservationSkeletonBlock className="h-4 w-64" />
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
