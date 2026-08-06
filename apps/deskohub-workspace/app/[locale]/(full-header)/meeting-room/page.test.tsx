@@ -2,6 +2,10 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
+mock.module("next/root-params", () => ({
+  locale: () => Promise.resolve("en-US"),
+}));
+
 type ImageSearch = {
   maxResults?: number;
   sortBy?: string;
@@ -44,9 +48,7 @@ describe("LocalizedMeetingRoomPage", () => {
   test("loads every tagged gallery image in stable public ID order", async () => {
     const { default: LocalizedMeetingRoomPage } = await import("./page");
 
-    await LocalizedMeetingRoomPage({
-      params: Promise.resolve({ locale: "en-US" }),
-    });
+    await LocalizedMeetingRoomPage();
 
     expect(imageSearches).toContainEqual({
       sortBy: "public_id",
