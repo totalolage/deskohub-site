@@ -67,6 +67,7 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
   ].includes(normalized);
   const warning = [
     "CANCELED",
+    "CANCELLED",
     "DECLINED",
     "DENIED",
     "DENIED_BY_RISK",

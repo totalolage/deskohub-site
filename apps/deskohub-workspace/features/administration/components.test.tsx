@@ -30,7 +30,11 @@ import {
   loadFixtureReservation,
   loadFixtureReservations,
 } from "./fixtures";
-import { OperationTable, OrderTable } from "./payment-components";
+import {
+  OperationTable,
+  OrderTable,
+  ProviderStatusBadge,
+} from "./payment-components";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
@@ -165,6 +169,13 @@ describe("administration reservation components", () => {
         .getByRole("link", { name: "DADMINFIXTUREPAYMENT" })
         .getAttribute("href")
     ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+  });
+
+  test("renders both Nexi cancellation spellings as warnings", () => {
+    const view = render(<ProviderStatusBadge value="CANCELLED" />);
+    expect(view.getByText("Cancelled").className).toContain(
+      "bg-burned-orange/10"
+    );
   });
 
   test("keeps the customer visible when booking details are unavailable", () => {
