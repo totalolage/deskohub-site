@@ -70,4 +70,22 @@ describe("OfficeReservationForm", () => {
       view.getByRole("group", { name: "Reservation dates" })
     ).toBeDefined();
   });
+
+  test("keeps the additional-people input compact", () => {
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          initialValues={officeReservationDefaultValues}
+          locale="en-US"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(
+      view.getByRole("spinbutton", {
+        name: "How many other people will use the office?",
+      }).className
+    ).toContain("w-28");
+  });
 });

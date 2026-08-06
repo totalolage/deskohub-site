@@ -269,6 +269,7 @@ export function OfficeReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <Input
+                className="w-28"
                 inputMode="numeric"
                 min={0}
                 name={field.name}
