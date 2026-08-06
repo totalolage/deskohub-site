@@ -43,9 +43,15 @@ jobs:
             "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" \
             --jq '.[].filename')"
 
-          if ! grep -Eq '^apps/dhw/' <<<"$changed_files"; then
+          if ! grep -Eq '^(apps/dhw/|packages/workspace-admin-api/)' <<<"$changed_files"; then
             echo "No releasable dhw files changed."
             exit 0
+          fi
+
+          if grep -Eq '^packages/workspace-admin-api/' <<<"$changed_files" &&
+            ! grep -Eq '^apps/dhw/' <<<"$changed_files"; then
+            echo "A shared CLI contract change must also update apps/dhw so Release Please attributes it to dhw." >&2
+            exit 1
           fi
 
           commit_messages="$(gh api --paginate \

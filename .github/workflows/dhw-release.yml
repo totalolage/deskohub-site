@@ -9,6 +9,7 @@ on:
     paths:
       - .github/workflows/dhw-release.yml
       - apps/dhw/**
+      - packages/workspace-admin-api/**
       - release-please-config.json
       - .release-please-manifest.json
   workflow_dispatch:

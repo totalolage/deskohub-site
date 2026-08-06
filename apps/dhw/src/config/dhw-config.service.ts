@@ -4,6 +4,7 @@ import {
   Data,
   Effect,
   Layer,
+  Option,
   Path,
   type Redacted,
   Schema,
@@ -54,11 +55,19 @@ const loadDhwConfig = Effect.gen(function* () {
     RequestHeaders,
     "DHW_REQUEST_HEADERS"
   ).pipe(Config.withDefault({}));
-  const homeDirectory = yield* Config.nonEmptyString("HOME");
   const isCi = yield* Config.boolean("CI").pipe(Config.withDefault(false));
-  const stateDirectory = yield* Config.nonEmptyString("DHW_STATE_DIR").pipe(
-    Config.withDefault(path.join(homeDirectory, ".local", "state", "dhw"))
+  const stateDirectoryOverride = yield* Config.option(
+    Config.nonEmptyString("DHW_STATE_DIR")
   );
+  const stateDirectory = yield* Option.match(stateDirectoryOverride, {
+    onNone: () =>
+      Config.nonEmptyString("HOME").pipe(
+        Effect.map((homeDirectory) =>
+          path.join(homeDirectory, ".local", "state", "dhw")
+        )
+      ),
+    onSome: (directory) => Effect.succeed(directory),
+  });
   const updateChecksDisabled = yield* Config.boolean(
     "DHW_NO_UPDATE_CHECK"
   ).pipe(Config.withDefault(false));

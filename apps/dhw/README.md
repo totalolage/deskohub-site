@@ -51,11 +51,16 @@ binary-reported version and target.
 ## Automatic releases
 
 Release Please owns `apps/dhw/package.json`, `apps/dhw/CHANGELOG.md`, and the
-`dhw-v*` tags. A pull request that changes the CLI must contain at least one
-releasable Conventional Commit:
+`dhw-v*` tags. A pull request that changes the CLI or its shared API contract
+must contain at least one releasable Conventional Commit:
 
 - `feat(dhw): ...` for a minor release
 - `fix(dhw): ...` for a patch release
+
+Because Release Please scopes the `dhw` component to `apps/dhw`, a shared
+contract change under `packages/workspace-admin-api` must also include its
+corresponding CLI change under `apps/dhw`. CI rejects contract-only changes so
+the Workspace endpoint cannot advance without a versioned CLI counterpart.
 
 When such a pull request is merged into `main`, the release workflow updates a
 transient Release Please pull request and enables auto-merge on it. Once its
