@@ -48,7 +48,7 @@ test("overlaps independent discovery with seeding before availability", async ()
     Effect.acquireUseRelease(
       Effect.sync(() => {
         availabilityStartCount += 1;
-        if (availabilityStartCount === 2) signalAvailabilityStarted();
+        if (availabilityStartCount === 3) signalAvailabilityStarted();
         return id;
       }),
       (startedId) =>
@@ -59,7 +59,11 @@ test("overlaps independent discovery with seeding before availability", async ()
   const preparation = Effect.runPromise(
     sequenceWorkspaceE2EPreparation({
       availability: Effect.all(
-        [availability("cowork"), availability("meeting-room")],
+        [
+          availability("cowork"),
+          availability("meeting-room"),
+          availability("office"),
+        ],
         { concurrency: "unbounded" }
       ),
       fixtures: Effect.acquireUseRelease(
@@ -81,11 +85,11 @@ test("overlaps independent discovery with seeding before availability", async ()
   expect(availabilityStartCount).toBe(0);
   releaseFixtures();
   await availabilityStarted;
-  expect(availabilityStartCount).toBe(2);
+  expect(availabilityStartCount).toBe(3);
   releaseAvailability();
   releaseIndependent();
   await expect(preparation).resolves.toEqual([
-    ["cowork", "meeting-room"],
+    ["cowork", "meeting-room", "office"],
     "dotypos",
   ]);
 });

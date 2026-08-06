@@ -57,7 +57,10 @@ const toLandingPageSaleBannerContent = (input: {
 
 const getBannerReservationKind = (
   sale: ActiveSale
-): ReservationOrderData["kind"] =>
-  sale.products.every(({ kind }) => kind === "meeting-room")
-    ? "meeting-room"
-    : "cowork";
+): ReservationOrderData["kind"] => {
+  if (sale.products.every(({ kind }) => kind === "meeting-room")) {
+    return "meeting-room";
+  }
+  if (sale.products.every(({ kind }) => kind === "office")) return "office";
+  return "cowork";
+};

@@ -105,11 +105,29 @@ export function useReservationCheckout({
       checkoutSessionId,
       locale,
     };
-    prepareCheckout(
-      details.reservation.kind === "cowork"
-        ? { ...details, ...identifiers, reservation: details.reservation }
-        : { ...details, ...identifiers, reservation: details.reservation }
-    );
+    switch (details.reservation.kind) {
+      case "cowork":
+        prepareCheckout({
+          ...details,
+          ...identifiers,
+          reservation: details.reservation,
+        });
+        break;
+      case "meeting-room":
+        prepareCheckout({
+          ...details,
+          ...identifiers,
+          reservation: details.reservation,
+        });
+        break;
+      case "office":
+        prepareCheckout({
+          ...details,
+          ...identifiers,
+          reservation: details.reservation,
+        });
+        break;
+    }
   };
 
   return {

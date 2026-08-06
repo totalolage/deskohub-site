@@ -15,6 +15,7 @@ export const assertPreviewEndpointsReady = (
     [
       assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
+      assertPreviewEndpointReady(config, "/en-US/reservation/office"),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
     ],
     { concurrency: "unbounded", discard: true }

@@ -48,6 +48,7 @@ const makeReservation = (
   customer,
   reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
   reservedUntil: Temporal.Instant.from("2026-06-12T11:00:00Z"),
+  guestCount: 1,
   ...overrides,
 });
 
@@ -135,6 +136,32 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).toContain("9:00–13:00");
     expect(internalHtml).not.toContain("Káva");
     expect(internalHtml).not.toContain("Monitory");
+  });
+
+  test("renders the inclusive office date range and total party size", async () => {
+    const { createReservationRows } = await import(
+      "./workspace-reservation-email.service"
+    );
+    const reservation = makeReservation({
+      reservationDetails: { kind: "office" },
+      reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+      reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
+      guestCount: 3,
+    });
+
+    expect(createReservationRows(reservation, "en-US")).toEqual([
+      { label: "Reservation", value: "Private office" },
+      {
+        label: "Reservation date",
+        value: "Friday, June 12 – Sunday, June 14, 2026",
+      },
+      { label: "People", value: "3" },
+      {
+        label: "Reservation reference",
+        value: "dotypos-reservation-id",
+      },
+      { label: "Order reference", value: "reservation-id" },
+    ]);
   });
 
   test("renders a DST whole-day meeting-room reservation as the calendar day", async () => {

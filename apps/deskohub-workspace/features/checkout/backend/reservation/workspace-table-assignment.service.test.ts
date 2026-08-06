@@ -68,6 +68,20 @@ const makeMeetingRoomReservation = (
   ...overrides,
 });
 
+const makeOfficeReservation = (
+  overrides: {
+    readonly startsOn?: string;
+    readonly endsOn?: string;
+    readonly additionalGuests?: number;
+  } = {}
+): WorkspaceTableAssignmentReservation => ({
+  kind: "office",
+  startsOn: "2099-06-10",
+  endsOn: "2099-06-10",
+  additionalGuests: 1,
+  ...overrides,
+});
+
 const makeTable = (input: {
   readonly id?: string;
   readonly name: string;
@@ -357,6 +371,31 @@ describe("WorkspaceTableAssignmentService", () => {
         ]
       )
     ).resolves.toBe("room-2");
+  });
+
+  test("rejects a partially occupied office despite sufficient remaining capacity", async () => {
+    await expect(
+      assignTableId(
+        makeOfficeReservation(),
+        [
+          makeTable({
+            id: "office",
+            name: "Office",
+            tags: ["reservation:office"],
+            seats: "8",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "office",
+            status: "CONFIRMED",
+            seats: "1",
+          }),
+        ]
+      )
+    ).rejects.toThrow(
+      "No available Dotypos workspace table matches tags: reservation:office"
+    );
   });
 
   test("ignores expired local holds while assigning a table", async () => {

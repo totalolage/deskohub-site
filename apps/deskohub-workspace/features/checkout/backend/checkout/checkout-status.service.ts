@@ -1,7 +1,7 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Effect, Layer, Match, Option } from "effect";
+import { Context, Effect, Layer, Match, Option, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
@@ -20,6 +20,8 @@ import {
 import { getDotyposReservationTiming } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
+import { dotyposReservationGuestCountSchema } from "@/features/reservation/reservation-guest-count";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
   ProviderPaymentFinalizationService,
@@ -59,9 +61,13 @@ export type CheckoutCoworkStatusSummary = CheckoutStatusSummaryBase &
 export type CheckoutMeetingRoomStatusSummary = CheckoutStatusSummaryBase &
   StoredMeetingRoomReservationDetails;
 
+export type CheckoutOfficeStatusSummary = CheckoutStatusSummaryBase &
+  StoredOfficeReservationDetails & { readonly guestCount: number };
+
 export type CheckoutStatusSummary =
   | CheckoutCoworkStatusSummary
-  | CheckoutMeetingRoomStatusSummary;
+  | CheckoutMeetingRoomStatusSummary
+  | CheckoutOfficeStatusSummary;
 
 export type CheckoutStatusContactPrefill = {
   readonly name?: string;
@@ -95,6 +101,11 @@ type CheckoutMeetingRoomStatusViewModel =
     readonly summary?: CheckoutMeetingRoomStatusSummary;
   };
 
+type CheckoutOfficeStatusViewModel = CheckoutReservationStatusViewModelBase & {
+  readonly kind: "office";
+  readonly summary?: CheckoutOfficeStatusSummary;
+};
+
 type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
   readonly status: "not_found";
   readonly summary?: undefined;
@@ -103,6 +114,7 @@ type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
 export type CheckoutStatusViewModel =
   | CheckoutCoworkStatusViewModel
   | CheckoutMeetingRoomStatusViewModel
+  | CheckoutOfficeStatusViewModel
   | CheckoutStatusNotFoundViewModel;
 
 type CheckoutStatusReconstruction = {
@@ -306,16 +318,36 @@ const implementation = Effect.gen(function* () {
         return reconstruction;
       }
 
-      const summary: CheckoutStatusSummary = {
-        ...reservation.reservationDetails,
-        ...timing,
-        price: attempt.amount,
-      };
+      const summary: CheckoutStatusSummary | undefined = Match.value(
+        reservation.reservationDetails
+      ).pipe(
+        Match.when({ kind: "cowork" }, (details) => ({
+          ...details,
+          ...timing,
+          price: attempt.amount,
+        })),
+        Match.when({ kind: "meeting-room" }, (details) => ({
+          ...details,
+          ...timing,
+          price: attempt.amount,
+        })),
+        Match.when({ kind: "office" }, (details) => {
+          const guestCount = Option.getOrUndefined(
+            Schema.decodeUnknownOption(dotyposReservationGuestCountSchema)(
+              dotyposReservation.reservation.seats
+            )
+          );
+          return guestCount
+            ? { ...details, ...timing, price: attempt.amount, guestCount }
+            : undefined;
+        }),
+        Match.exhaustive
+      );
 
       yield* Effect.logDebug("Checkout status summary reconstructed");
 
       const reconstruction: CheckoutStatusReconstruction = {
-        summary,
+        ...(summary ? { summary } : {}),
         ...(tableMap ? { tableMap } : {}),
         supportContactPrefill: getSupportContactPrefill(
           dotyposReservation.customer
@@ -434,6 +466,26 @@ const implementation = Effect.gen(function* () {
               )
             )
         ),
+        Match.when(
+          { kind: "office" },
+          (): CheckoutOfficeStatusViewModel =>
+            Match.value(reconstruction.summary).pipe(
+              Match.when(
+                { kind: "office" },
+                (summary): CheckoutOfficeStatusViewModel => ({
+                  kind: "office",
+                  ...resultBase,
+                  summary,
+                })
+              ),
+              Match.orElse(
+                (): CheckoutOfficeStatusViewModel => ({
+                  kind: "office",
+                  ...resultBase,
+                })
+              )
+            )
+        ),
         Match.exhaustive
       );
 
@@ -506,6 +558,10 @@ const implementation = Effect.gen(function* () {
               reservationKind: kind,
             })),
             Match.when({ kind: "meeting-room" }, ({ kind, status }) => ({
+              status,
+              reservationKind: kind,
+            })),
+            Match.when({ kind: "office" }, ({ kind, status }) => ({
               status,
               reservationKind: kind,
             })),

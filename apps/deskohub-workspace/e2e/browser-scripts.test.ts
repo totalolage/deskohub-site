@@ -6,14 +6,18 @@ import {
   getAssertPrefilledReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
+  getPrepareOfficeAdvertisedPriceScript,
   getSubmitCoworkReservationScript,
   getSubmitMeetingRoomReservationScript,
+  getSubmitOfficeReservationScript,
   submitPreparedCoworkReservationScript,
   submitPreparedMeetingRoomReservationScript,
+  submitPreparedOfficeReservationScript,
 } from "./browser-scripts";
 import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
+  makeOfficeCheckoutData,
 } from "./checkout/data";
 import { workspaceE2ETimeouts } from "./timeouts";
 
@@ -25,6 +29,13 @@ const getTestMeetingRoomInterval = (
   startDateTime: string,
   duration: MeetingRoomReservationDuration
 ) => getMeetingRoomReservationInterval(startDateTime, duration);
+const officeSlot = {
+  startsOn: "2099-09-01",
+  endsOn: "2099-09-02",
+  additionalGuests: 1,
+  startsAt: "2099-08-31T22:00:00Z",
+  endsAt: "2099-09-02T22:00:00Z",
+} as const;
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(
@@ -882,6 +893,117 @@ test("asserts restored whole-day meeting-room state and reset consents", async (
       <textarea name="message">${data.message}</textarea>
       <button id="reservation-privacy-consent" aria-checked="false"></button>
       <button id="reservation-marketing-consent" aria-checked="false"></button>
+    `;
+    const run = new Function(
+      "document",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      `return (${assertion})`
+    );
+
+    expect(
+      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
+    ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("prepares a multi-day office reservation with other people", async () => {
+  const data = makeOfficeCheckoutData(
+    "https://workspace.example.test",
+    officeSlot
+  );
+  const prepare = getPrepareOfficeAdvertisedPriceScript(data);
+  const combined = getSubmitOfficeReservationScript(data);
+
+  expect(prepare).toContain("Office reservation start date");
+  expect(prepare).toContain("Office reservation end date");
+  expect(prepare).toContain(
+    "office availability or advertised price did not become ready"
+  );
+  expect(prepare).not.toContain("reservation-privacy-consent");
+  expect(submitPreparedOfficeReservationScript).toContain(
+    "reservation-privacy-consent"
+  );
+  expect(combined).toContain(prepare.trim());
+  expect(() => new Function(`return ${combined}`)).not.toThrow();
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/office",
+  });
+  try {
+    document.body.innerHTML = `
+      <input name="startsOn" value="${officeSlot.startsOn}" />
+      <input name="endsOn" value="${officeSlot.endsOn}" />
+      <input name="additionalGuests" type="number" value="0" />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <button type="submit"></button>
+    `;
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${prepare.trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        Date,
+        setTimeout,
+        location
+      )
+    ).resolves.toBe(location.href);
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="additionalGuests"]')
+        ?.value
+    ).toBe("1");
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="email"]')?.value
+    ).toBe(data.email);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("asserts restored office range, party size, and reset legal consent", async () => {
+  const data = makeOfficeCheckoutData(
+    "https://workspace.example.test",
+    officeSlot
+  );
+  const assertion = getAssertPrefilledReservationScript(data);
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/office",
+  });
+  try {
+    document.body.innerHTML = `
+      <input name="startsOn" value="${officeSlot.startsOn}" />
+      <input name="endsOn" value="${officeSlot.endsOn}" />
+      <input name="additionalGuests" value="${officeSlot.additionalGuests}" />
+      <input name="email" value="${data.email}" />
+      <input name="phone" value="${data.phone}" />
+      <input name="name" value="${data.name}" />
+      <textarea name="message">${data.message}</textarea>
+      <button id="reservation-privacy-consent" aria-checked="false"></button>
     `;
     const run = new Function(
       "document",

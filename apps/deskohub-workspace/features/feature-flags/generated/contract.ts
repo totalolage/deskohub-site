@@ -8,6 +8,7 @@ export const postHogFeatureFlags = definePostHogFeatureFlags<
   "customer_discounts",
   "discount_codes",
   "meeting_room_page",
+  "office_page",
   "seating_map",
 ] as const);
 
@@ -28,6 +29,10 @@ export interface PostHogFeatureFlagDefinitions {
     readonly payload: undefined;
   };
   readonly "meeting_room_page": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "office_page": {
     readonly value: boolean;
     readonly payload: undefined;
   };

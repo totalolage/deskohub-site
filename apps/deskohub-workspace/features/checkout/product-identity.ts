@@ -13,10 +13,16 @@ import {
   workspaceMeetingRoomProductIdentitySchema,
   workspaceMeetingRoomProductKeySchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  getWorkspaceOfficeProductKey,
+  workspaceOfficeProductIdentitySchema,
+  workspaceOfficeProductKeySchema,
+} from "@/features/reservation/office-reservation";
 
 export const workspaceProductIdentitySchema = Schema.Union([
   workspaceCoworkProductIdentitySchema,
   workspaceMeetingRoomProductIdentitySchema,
+  workspaceOfficeProductIdentitySchema,
 ]);
 
 export type WorkspaceProductIdentity =
@@ -25,6 +31,7 @@ export type WorkspaceProductIdentity =
 export const workspaceProductKeySchema = Schema.Union([
   workspaceCoworkProductKeySchema,
   workspaceMeetingRoomProductKeySchema,
+  workspaceOfficeProductKeySchema,
 ]);
 
 export type WorkspaceProductKey = typeof workspaceProductKeySchema.Type;
@@ -38,6 +45,7 @@ export const workspaceProductIdentities = [
     kind: "meeting-room" as const,
     duration,
   })),
+  { kind: "office" as const },
 ] satisfies readonly WorkspaceProductIdentity[];
 
 export const getWorkspaceProductKey = (
@@ -47,6 +55,7 @@ export const getWorkspaceProductKey = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getWorkspaceCoworkProductKey,
       "meeting-room": getWorkspaceMeetingRoomProductKey,
+      office: getWorkspaceOfficeProductKey,
     })
   );
 
@@ -60,5 +69,6 @@ export const getCanonicalWorkspaceProductIdentity = (
         kind,
         duration,
       }),
+      office: ({ kind }) => ({ kind }),
     })
   );

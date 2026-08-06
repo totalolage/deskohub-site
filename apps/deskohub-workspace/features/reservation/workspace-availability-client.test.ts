@@ -35,6 +35,21 @@ describe("getWorkspaceAvailabilityUrl", () => {
     );
   });
 
+  test("serializes office interval and total guest count", () => {
+    expect(
+      getWorkspaceAvailabilityUrl({
+        kind: "office",
+        from: "2099-07-30",
+        to: "2099-08-01",
+        startsAt: "2099-07-29T22:00:00Z",
+        endsAt: "2099-08-01T22:00:00Z",
+        guestCount: 3,
+      })
+    ).toBe(
+      "/api/workspace/availability?kind=office&from=2099-07-30&to=2099-08-01&startsAt=2099-07-29T22%3A00%3A00Z&endsAt=2099-08-01T22%3A00%3A00Z&guestCount=3"
+    );
+  });
+
   test("transports replacement state outside the public availability query", async () => {
     const originalFetch = globalThis.fetch;
     const fetchMock = mock(() =>
@@ -46,6 +61,7 @@ describe("getWorkspaceAvailabilityUrl", () => {
           unavailableDates: [],
           unavailableCoworkTiers: [],
           meetingRoomUnavailable: false,
+          officeUnavailable: false,
           unavailableMonitorOptions: [],
           notices: [],
         })

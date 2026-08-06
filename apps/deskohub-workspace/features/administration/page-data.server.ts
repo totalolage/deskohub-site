@@ -79,7 +79,9 @@ export const loadAdministrationReservations = async (
     page: parsePage(firstParam(params.page)),
     status: parseStatus(firstParam(params.status)),
     type:
-      typeValue === "cowork" || typeValue === "meeting-room"
+      typeValue === "cowork" ||
+      typeValue === "meeting-room" ||
+      typeValue === "office"
         ? typeValue
         : undefined,
   };

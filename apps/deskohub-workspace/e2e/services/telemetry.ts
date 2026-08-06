@@ -19,6 +19,7 @@ export type E2EPhaseId =
   | "fixture-seeding"
   | "independent-case-phase"
   | "meeting-room-availability-preparation"
+  | "office-availability-preparation"
   | "preview-readiness"
   | "shared-fixture-phase"
   | "suite-cleanup";

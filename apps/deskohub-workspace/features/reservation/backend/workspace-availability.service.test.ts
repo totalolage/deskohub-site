@@ -164,7 +164,8 @@ const getAvailability = (input: {
   readonly startsAt?: string;
   readonly endsAt?: string;
   readonly to?: string;
-  readonly kind?: "cowork" | "meeting-room";
+  readonly kind?: "cowork" | "meeting-room" | "office";
+  readonly guestCount?: number;
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -187,24 +188,38 @@ const getAvailability = (input: {
         to: input.to ?? testDate,
       };
 
-      return yield* input.kind === "meeting-room"
-        ? service.getAvailability({
-            query: {
-              ...baseQuery,
-              kind: "meeting-room",
-              startsAt: input.startsAt,
-              endsAt: input.endsAt,
-            },
-          })
-        : service.getAvailability({
-            query: {
-              ...baseQuery,
-              kind: "cowork",
-              date: input.date,
-              entryTier: input.entryTier,
-              monitorOption: input.monitorOption,
-            },
-          });
+      if (input.kind === "meeting-room") {
+        return yield* service.getAvailability({
+          query: {
+            ...baseQuery,
+            kind: "meeting-room",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+          },
+        });
+      }
+
+      if (input.kind === "office") {
+        return yield* service.getAvailability({
+          query: {
+            ...baseQuery,
+            kind: "office",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            guestCount: input.guestCount,
+          },
+        });
+      }
+
+      return yield* service.getAvailability({
+        query: {
+          ...baseQuery,
+          kind: "cowork",
+          date: input.date,
+          entryTier: input.entryTier,
+          monitorOption: input.monitorOption,
+        },
+      });
     }),
     input
   );
@@ -427,6 +442,36 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
     expect(fullyOccupied.unavailableCoworkTiers).toContain("basic");
+  });
+
+  test("marks an office unavailable after any overlapping occupancy", async () => {
+    const officeTable = makeTable({
+      id: "office",
+      tags: ["reservation:office"],
+      seats: "8",
+    });
+    const query = {
+      kind: "office" as const,
+      startsAt: testStart,
+      endsAt: testEnd,
+      guestCount: 2,
+      tables: [officeTable],
+    };
+
+    const empty = await getAvailability(query);
+    const partiallyOccupied = await getAvailability({
+      ...query,
+      reservations: [
+        makeReservation({
+          tableId: "office",
+          status: "CONFIRMED",
+          seats: "1",
+        }),
+      ],
+    });
+
+    expect(empty.officeUnavailable).toBe(false);
+    expect(partiallyOccupied.officeUnavailable).toBe(true);
   });
 
   test("marks a meeting room unavailable after any overlapping booking", async () => {

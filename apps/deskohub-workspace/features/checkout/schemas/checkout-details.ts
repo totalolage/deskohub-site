@@ -1,6 +1,7 @@
 import { Match, Schema } from "effect";
 import { coworkCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-cowork";
 import { meetingRoomCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-meeting-room";
+import { officeCheckoutDetailsSchema } from "@/features/checkout/schemas/checkout-details-office";
 import {
   coworkReservationDetailsSchema,
   getCoworkReservationDetails,
@@ -9,11 +10,16 @@ import {
   getMeetingRoomReservationDetails,
   meetingRoomReservationDetailsSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  getOfficeReservationDetails,
+  officeReservationDetailsSchema,
+} from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export const checkoutReservationDetailsSchema = Schema.Union([
   coworkReservationDetailsSchema,
   meetingRoomReservationDetailsSchema,
+  officeReservationDetailsSchema,
 ]).annotate({
   identifier: "CheckoutReservationDetails",
   description: "PII-free reservation projection used by checkout providers.",
@@ -29,12 +35,14 @@ export const getCheckoutReservationDetails = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getCoworkReservationDetails,
       "meeting-room": getMeetingRoomReservationDetails,
+      office: getOfficeReservationDetails,
     })
   );
 
 export const checkoutDetailsSchema = Schema.Union([
   coworkCheckoutDetailsSchema,
   meetingRoomCheckoutDetailsSchema,
+  officeCheckoutDetailsSchema,
 ]).annotate({
   identifier: "CheckoutDetails",
   description: "Transient PII-free checkout provider snapshot.",

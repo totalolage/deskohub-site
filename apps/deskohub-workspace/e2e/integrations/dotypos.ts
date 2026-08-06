@@ -7,7 +7,10 @@ import type {
 } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
-import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import {
+  workspaceMeetingRoomReservationTableTag,
+  workspaceOfficeReservationTableTag,
+} from "@/features/checkout/backend/reservation/workspace-table-selection";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -138,17 +141,21 @@ export const validateDotypos = (
         timeoutMs: config.timeouts.datasource,
       }
     );
-    const meetingRoomTables = data.meetingRoom
-      ? yield* Effect.gen(function* () {
-          const dotypos = yield* DotyposService;
-          return yield* dotypos.getTables();
-        }).pipe(
-          Effect.provide(getDotyposLayer(config)),
-          Effect.mapError((cause) =>
-            toWorkspaceE2EError("validate Dotypos meeting-room table", cause)
+    const exclusiveReservationTables =
+      data.meetingRoom || data.office
+        ? yield* Effect.gen(function* () {
+            const dotypos = yield* DotyposService;
+            return yield* dotypos.getTables();
+          }).pipe(
+            Effect.provide(getDotyposLayer(config)),
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError(
+                "validate Dotypos exclusive reservation table",
+                cause
+              )
+            )
           )
-        )
-      : [];
+        : [];
 
     yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
       assert(
@@ -161,14 +168,41 @@ export const validateDotypos = (
       );
       assert(result.reservation._tableId, "Dotypos table id missing");
       assert(
-        result.reservation.seats === "1",
-        "Dotypos reservation seats should be 1"
+        result.reservation.seats ===
+          String(data.office ? data.office.additionalGuests + 1 : 1),
+        "Dotypos reservation seats do not match the checkout party"
       );
       assert(
         result.reservation.note?.includes(row.reservation_id),
         "Dotypos note missing workspace order id"
       );
-      if (data.meetingRoom) {
+      if (data.office) {
+        assert(
+          dotyposTimestampMatches(
+            result.reservation.startDate,
+            data.office.startsAt
+          ),
+          "Dotypos office start does not match the selected first day"
+        );
+        assert(
+          dotyposTimestampMatches(
+            result.reservation.endDate,
+            data.office.endsAt
+          ),
+          "Dotypos office end does not match the selected last day"
+        );
+        const assignedTable = exclusiveReservationTables.find(
+          (table) => table.id === result.reservation._tableId
+        );
+        assert(
+          assignedTable?.enabled === true && assignedTable.display === true,
+          "Dotypos office table is not active and visible"
+        );
+        assert(
+          assignedTable.tags?.includes(workspaceOfficeReservationTableTag),
+          "Dotypos reservation is not assigned to an office table"
+        );
+      } else if (data.meetingRoom) {
         assert(
           dotyposTimestampMatches(
             result.reservation.startDate,
@@ -183,7 +217,7 @@ export const validateDotypos = (
           ),
           "Dotypos meeting-room end does not match the selected time"
         );
-        const assignedTable = meetingRoomTables.find(
+        const assignedTable = exclusiveReservationTables.find(
           (table) => table.id === result.reservation._tableId
         );
         assert(

@@ -1,7 +1,10 @@
 import type { Reservation } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import "@/shared/polyfills/temporal";
-import { workspaceMeetingRoomReservationTableTag } from "@/features/checkout/backend/reservation/workspace-table-selection";
+import {
+  workspaceMeetingRoomReservationTableTag,
+  workspaceOfficeReservationTableTag,
+} from "@/features/checkout/backend/reservation/workspace-table-selection";
 import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
@@ -14,6 +17,7 @@ import {
   workspaceE2EFullDateAllocation,
   workspaceE2EProviderHeadroomRuns,
 } from "./allocation";
+import { workspaceE2EOfficeReservationGuestCount } from "./office";
 
 const provisionedRunCapacity =
   workspaceE2EConcurrentRunTarget + workspaceE2EProviderHeadroomRuns;
@@ -112,6 +116,12 @@ const capacityGroups: readonly CapacityGroup[] = [
     requiredAvailableTableCount: 1,
     requiredTableCount: provisionedRunCapacity,
     requiredTags: [workspaceMeetingRoomReservationTableTag],
+  },
+  {
+    id: workspaceOfficeReservationTableTag,
+    requiredSeatCount: workspaceE2EOfficeReservationGuestCount,
+    requiredTableCount: 1,
+    requiredTags: [workspaceOfficeReservationTableTag],
   },
 ];
 

@@ -63,6 +63,13 @@ export type CheckoutData = {
     readonly startDateTime: string;
     readonly startsAt: ReservationInterval["startsAt"];
   };
+  readonly office?: {
+    readonly additionalGuests: number;
+    readonly endsAt: ReservationInterval["endsAt"];
+    readonly endsOn: string;
+    readonly startsAt: ReservationInterval["startsAt"];
+    readonly startsOn: string;
+  };
   readonly message: string;
   readonly name: string;
   readonly orderIdHint: string;

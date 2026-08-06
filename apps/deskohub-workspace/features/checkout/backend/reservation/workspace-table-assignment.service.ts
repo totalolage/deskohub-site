@@ -11,7 +11,13 @@ import type { CoworkReservationDetails } from "@/features/reservation/cowork-res
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
+  getOfficeReservationGuestCount,
+  getOfficeReservationIntervalInput,
+  type OfficeReservationDetails,
+} from "@/features/reservation/office-reservation";
+import {
   getReservationDate,
+  getReservationIntervalNormalization,
   type ReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -26,6 +32,7 @@ import {
   getWorkspaceTableCandidates,
   selectWorkspaceTableFromCandidates,
   workspaceMeetingRoomReservationTableTag,
+  workspaceOfficeReservationTableTag,
 } from "./workspace-table-selection";
 
 type CoworkTableAssignmentReservation = StoredCoworkReservationDetails &
@@ -33,7 +40,8 @@ type CoworkTableAssignmentReservation = StoredCoworkReservationDetails &
 
 export type WorkspaceTableAssignmentReservation =
   | CoworkTableAssignmentReservation
-  | MeetingRoomReservationDetails;
+  | MeetingRoomReservationDetails
+  | OfficeReservationDetails;
 
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (
@@ -84,6 +92,9 @@ export class WorkspaceTableAssignmentService extends Context.Service<
           Effect.let("assignment", ({ reservation }) =>
             getReservationAssignment(reservation)
           ),
+          Effect.let("guestCount", ({ reservation }) =>
+            getReservationGuestCount(reservation)
+          ),
           Effect.tap(({ assignment }) =>
             Effect.logInfo("Workspace table assignment started", {
               requiredTags: assignment.requiredTags,
@@ -125,12 +136,18 @@ export class WorkspaceTableAssignmentService extends Context.Service<
           ),
           Effect.let(
             "matchingTable",
-            ({ assignment, inventory, matchingTables, occupancyByTableId }) =>
+            ({
+              assignment,
+              guestCount,
+              inventory,
+              matchingTables,
+              occupancyByTableId,
+            }) =>
               selectWorkspaceTableFromCandidates(
                 matchingTables,
                 inventory.tables,
                 occupancyByTableId,
-                workspaceBookingGuestCount,
+                guestCount,
                 assignment.requireEmptyTable
               )
           ),
@@ -180,6 +197,10 @@ const getReservationAssignment = (
         requiredTags: [workspaceMeetingRoomReservationTableTag],
         requireEmptyTable: true,
       }),
+      office: () => ({
+        requiredTags: [workspaceOfficeReservationTableTag],
+        requireEmptyTable: true,
+      }),
     })
   );
 
@@ -199,6 +220,25 @@ const getReservationOccupancyInput = (
         }),
       "meeting-room": (meetingRoomReservation) =>
         Effect.succeed(meetingRoomReservation),
+      office: (officeReservation) =>
+        getReservationIntervalNormalization(
+          getOfficeReservationIntervalInput(officeReservation)
+        ).pipe(
+          Effect.mapError(
+            (cause) => new ValidationError({ message: cause.message, cause })
+          )
+        ),
+    })
+  );
+
+const getReservationGuestCount = (
+  reservation: WorkspaceTableAssignmentReservation
+) =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () => workspaceBookingGuestCount,
+      "meeting-room": () => workspaceBookingGuestCount,
+      office: getOfficeReservationGuestCount,
     })
   );
 
@@ -254,6 +294,12 @@ const getReservationLogAnnotations = (
           interval: meetingRoomReservation,
           timeZone: workspaceSiteConstants.location.timeZone,
         }),
+      }),
+      office: (officeReservation) => ({
+        reservationKind: officeReservation.kind,
+        startsOn: officeReservation.startsOn,
+        endsOn: officeReservation.endsOn,
+        guestCount: getOfficeReservationGuestCount(officeReservation),
       }),
     })
   );

@@ -152,6 +152,27 @@ describe("selectWorkspaceTableFromCandidates", () => {
     }
   });
 
+  test("requires both an empty exclusive table and enough seats", () => {
+    const office = makeTable({ id: "office", name: "Office", seats: "2" });
+
+    expect(
+      selectWorkspaceTableFromCandidates([office], [office], new Map(), 3, true)
+    ).toBeUndefined();
+    expect(
+      selectWorkspaceTableFromCandidates(
+        [office],
+        [office],
+        new Map([["office", 1]]),
+        2,
+        true
+      )
+    ).toBeUndefined();
+    expect(
+      selectWorkspaceTableFromCandidates([office], [office], new Map(), 2, true)
+        ?.id
+    ).toBe("office");
+  });
+
   test("uses natural table order as the tie-breaker", () => {
     const tables = [
       makeTable({ id: "basic-10", name: "10" }),

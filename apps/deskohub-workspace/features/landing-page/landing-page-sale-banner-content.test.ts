@@ -18,6 +18,9 @@ const meetingRoomProducts = workspaceMeetingRoomCatalog.map(
     duration,
   })
 );
+const officeProduct = {
+  kind: "office",
+} as const satisfies WorkspaceProductIdentity;
 
 const formatLabel = (
   products: readonly WorkspaceProductIdentity[],
@@ -43,9 +46,9 @@ const formatLabel = (
 
 describe("formatLandingPageSaleBannerLabel", () => {
   test("describes a sale on every product without clarification", () => {
-    expect(formatLabel([...coworkProducts, ...meetingRoomProducts])).toBe(
-      "Summer focus: 20% off!"
-    );
+    expect(
+      formatLabel([...coworkProducts, ...meetingRoomProducts, officeProduct])
+    ).toBe("Summer focus: 20% off!");
   });
 
   test("describes a sale on every cowork product", () => {
@@ -74,6 +77,12 @@ describe("formatLandingPageSaleBannerLabel", () => {
 
   test("uses the selected-products fallback for a partial mix", () => {
     expect(formatLabel([coworkProducts[0]!, meetingRoomProducts[0]!])).toBe(
+      "Summer focus: 20% off chosen products!"
+    );
+  });
+
+  test("does not omit office from a mixed sale label", () => {
+    expect(formatLabel([...coworkProducts, officeProduct])).toBe(
       "Summer focus: 20% off chosen products!"
     );
   });
@@ -138,6 +147,22 @@ describe("getLandingPageSaleBannerContent", () => {
       }).href
     ).toBe(
       "/en-US/reservation/meeting-room?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
+    );
+  });
+
+  test("links an office-only sale to the office reservation page", () => {
+    expect(
+      getLandingPageSaleBannerContent({
+        locale: "en-US",
+        reservationKind: "office",
+        sale: {
+          title: "Office week",
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+          products: [officeProduct],
+        },
+      }).href
+    ).toBe(
+      "/en-US/reservation/office?utm_source=deskohub&utm_medium=sale_banner&utm_content=home_hero"
     );
   });
 });

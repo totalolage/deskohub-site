@@ -29,6 +29,9 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
       }
     | {
         readonly kind: "meeting-room";
+      }
+    | {
+        readonly kind: "office";
       };
 }) =>
   Match.value(input.reservation).pipe(
@@ -47,5 +50,7 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
         ),
       "meeting-room": () =>
         m.reservationMeetingRoomUnavailable({}, { locale: input.locale }),
+      office: () =>
+        m.reservationOfficeUnavailable({}, { locale: input.locale }),
     })
   );

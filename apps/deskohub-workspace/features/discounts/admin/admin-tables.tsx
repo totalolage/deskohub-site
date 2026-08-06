@@ -985,6 +985,7 @@ const productOptions = [
   { key: "cowork:basic", label: "Cowork Basic" },
   { key: "cowork:plus", label: "Cowork Plus" },
   { key: "cowork:profi", label: "Cowork Profi" },
+  { key: getWorkspaceProductKey({ kind: "office" }), label: "Private office" },
   ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
     key: getWorkspaceProductKey({ kind: "meeting-room", duration }),
     label: `Meeting room · ${getWorkspaceMeetingRoomDurationLabel(

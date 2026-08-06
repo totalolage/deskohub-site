@@ -15,6 +15,7 @@ import {
   hasAvailableWorkspaceTableCandidate,
   workspaceBookingGuestCount,
   workspaceMeetingRoomReservationTableTag,
+  workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
 import {
   getWorkspaceProductByTier,
@@ -28,6 +29,7 @@ import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
+  officeReservationKind,
 } from "@/features/reservation/reservation-kind";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -69,6 +71,9 @@ type WorkspaceTableUnavailableReservation =
     }
   | {
       readonly kind: typeof meetingRoomReservationKind;
+    }
+  | {
+      readonly kind: typeof officeReservationKind;
     };
 
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
@@ -87,6 +92,10 @@ type WorkspaceAvailabilityEnsureQuery =
     }
   | ({
       readonly kind: typeof meetingRoomReservationKind;
+    } & ReservationInterval)
+  | ({
+      readonly kind: typeof officeReservationKind;
+      readonly guestCount: number;
     } & ReservationInterval);
 
 export interface IWorkspaceAvailabilityService {
@@ -213,12 +222,16 @@ const implementation = Effect.gen(function* () {
       const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
       const occupancyByDate = new Map<string, Map<string, number>>();
       const shouldCheckRangeDateSelection =
-        !reservation || isSingleDayReservationInterval(reservation);
+        query.kind === officeReservationKind ||
+        !reservation ||
+        isSingleDayReservationInterval(reservation);
 
       for (const day of dates) {
         const dayKey = plainDateToString(day);
         const interval =
-          reservation && dayKey === selectedDate
+          query.kind !== officeReservationKind &&
+          reservation &&
+          dayKey === selectedDate
             ? reservation
             : yield* normalizeCoworkAvailabilityInterval(dayKey);
         occupancyByDate.set(
@@ -244,6 +257,10 @@ const implementation = Effect.gen(function* () {
       const selectedDateOccupancy = selectedDate
         ? (occupancyByDate.get(selectedDate) ?? new Map<string, number>())
         : new Map<string, number>();
+      const selectedOfficeRangeOccupancy =
+        query.kind === officeReservationKind && reservation
+          ? getWorkspaceTableOccupancyById(reservations, reservation)
+          : selectedDateOccupancy;
 
       const result = {
         date: selectedDate,
@@ -258,6 +275,14 @@ const implementation = Effect.gen(function* () {
         meetingRoomUnavailable: selectedDate
           ? isMeetingRoomUnavailable(tables, selectedDateOccupancy)
           : false,
+        officeUnavailable:
+          query.kind === officeReservationKind && selectedDate
+            ? isOfficeUnavailable(
+                tables,
+                selectedOfficeRangeOccupancy,
+                query.guestCount ?? workspaceBookingGuestCount
+              )
+            : false,
         unavailableMonitorOptions: selectedDate
           ? workspaceProductMonitorOptions.filter((option) =>
               isMonitorOptionUnavailable(tables, selectedDateOccupancy, option)
@@ -292,6 +317,11 @@ const implementation = Effect.gen(function* () {
                 entryTier: coworkQuery.entryTier,
                 monitorOption: coworkQuery.monitorOption,
               }),
+              office: (officeQuery) => ({
+                startsAt: officeQuery.startsAt,
+                endsAt: officeQuery.endsAt,
+                guestCount: officeQuery.guestCount,
+              }),
             })
           ),
         })
@@ -308,6 +338,8 @@ const implementation = Effect.gen(function* () {
           "meeting-room": ({ startsAt, endsAt }) =>
             normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt }),
           cowork: ({ date }) => normalizeCoworkAvailabilityInterval(date),
+          office: ({ startsAt, endsAt }) =>
+            normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt }),
         })
       );
       const availabilityRange =
@@ -322,7 +354,9 @@ const implementation = Effect.gen(function* () {
       yield* Effect.annotateLogsScoped({ availability });
 
       const unavailableDate = availability.unavailableDates[0];
-      if (!unavailableDate) {
+      const officeUnavailable =
+        query.kind === officeReservationKind && availability.officeUnavailable;
+      if (!unavailableDate && !officeUnavailable) {
         yield* Effect.logDebug("Workspace availability assurance passed");
         return;
       }
@@ -330,7 +364,7 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logInfo("Workspace availability assurance failed");
 
       return yield* new WorkspaceTableUnavailableError({
-        date: unavailableDate,
+        date: unavailableDate ?? availabilityRange.from,
         reservation: Match.value(query).pipe(
           Match.discriminatorsExhaustive("kind")({
             "meeting-room": () => ({
@@ -343,6 +377,7 @@ const implementation = Effect.gen(function* () {
                 monitorOption: coworkQuery.monitorOption,
               }),
             }),
+            office: () => ({ kind: officeReservationKind }),
           })
         ),
       });
@@ -423,6 +458,12 @@ const isUnavailableForSelection = (
           occupancyByTableId,
           coworkQuery
         ),
+      office: ({ guestCount }) =>
+        isOfficeUnavailable(
+          tables,
+          occupancyByTableId,
+          guestCount ?? workspaceBookingGuestCount
+        ),
     })
   );
 
@@ -492,6 +533,19 @@ const isMeetingRoomUnavailable = (
     [workspaceMeetingRoomReservationTableTag],
     occupancyByTableId,
     workspaceBookingGuestCount,
+    true
+  );
+
+const isOfficeUnavailable = (
+  tables: readonly Table[],
+  occupancyByTableId: ReadonlyMap<string, number>,
+  guestCount: number
+) =>
+  !hasAvailableWorkspaceTableCandidate(
+    tables,
+    [workspaceOfficeReservationTableTag],
+    occupancyByTableId,
+    guestCount,
     true
   );
 
@@ -568,6 +622,10 @@ const getAvailabilityReservation = (
       cowork: ({ date }) =>
         date
           ? normalizeCoworkAvailabilityInterval(date)
+          : Effect.void.pipe(Effect.as(undefined)),
+      office: ({ startsAt, endsAt }) =>
+        startsAt && endsAt
+          ? normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
           : Effect.void.pipe(Effect.as(undefined)),
     })
   );

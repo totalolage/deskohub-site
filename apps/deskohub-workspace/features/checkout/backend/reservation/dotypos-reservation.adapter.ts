@@ -12,6 +12,7 @@ import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationLabel,
   getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceOfficeProductTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import {
@@ -19,6 +20,10 @@ import {
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  getOfficeReservationGuestCount,
+  getOfficeReservationIntervalInput,
+} from "@/features/reservation/office-reservation";
 import {
   getReservationDate,
   getReservationIntervalNormalization,
@@ -58,6 +63,7 @@ export const createWorkspaceDotyposReservation: (
       Match.discriminatorsExhaustive("kind")({
         cowork: ({ date }) => getCoworkReservationIntervalInput(date),
         "meeting-room": (meetingRoomReservation) => meetingRoomReservation,
+        office: getOfficeReservationIntervalInput,
       })
     );
     const { startsAt, endsAt } = yield* getReservationIntervalNormalization(
@@ -68,12 +74,19 @@ export const createWorkspaceDotyposReservation: (
       )
     );
     const tableId = yield* tableAssignments.assignTableId(input.reservation);
+    const seats = Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => workspaceBookingGuestCount,
+        "meeting-room": () => workspaceBookingGuestCount,
+        office: getOfficeReservationGuestCount,
+      })
+    );
 
     const reservationInput: CreateDotyposReservationInput = {
       customerId: input.dotyposCustomerId,
       startDate: temporalInstantToDate(Temporal.Instant.from(startsAt)),
       endDate: temporalInstantToDate(Temporal.Instant.from(endsAt)),
-      seats: workspaceBookingGuestCount,
+      seats,
       tableId,
       status: input.status,
       note: formatWorkspaceReservationNote(input),
@@ -142,6 +155,14 @@ export const formatWorkspaceReservationNote = (
           )}`,
         ],
       }),
+      office: (officeReservation) => ({
+        productLabel: getWorkspaceOfficeProductTitle(checkoutDetails.locale),
+        reservationRows: [
+          `Dates: ${officeReservation.startsOn}-${officeReservation.endsOn}`,
+          `People: ${getOfficeReservationGuestCount(officeReservation)}`,
+          `Additional people: ${officeReservation.additionalGuests}`,
+        ],
+      }),
     })
   );
   const lines = [
@@ -176,6 +197,11 @@ const getReservationLogAnnotations = (
           interval: meetingRoomReservation,
           timeZone: workspaceSiteConstants.location.timeZone,
         }),
+      }),
+      office: (officeReservation) => ({
+        startsOn: officeReservation.startsOn,
+        endsOn: officeReservation.endsOn,
+        guestCount: getOfficeReservationGuestCount(officeReservation),
       }),
     })
   );

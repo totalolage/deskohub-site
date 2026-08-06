@@ -5,6 +5,7 @@ import type {
 } from "@/features/checkout/advertised-price";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import {
   buildAdvertisedPriceState,
   sealAdvertisedPriceState,
@@ -26,6 +27,7 @@ export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
         cowork: ({ quote, reservation }) =>
           getCoworkCheckoutSummary(reservation.details, quote),
         "meeting-room": ({ quote }) => getMeetingRoomCheckoutSummary(quote),
+        office: ({ quote }) => getOfficeCheckoutSummary(quote),
       })
     );
 

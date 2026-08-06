@@ -31,6 +31,11 @@ export const getWorkspaceAvailabilityUrl = (
         if (startsAt) params.set("startsAt", startsAt);
         if (endsAt) params.set("endsAt", endsAt);
       },
+      office: ({ endsAt, guestCount, startsAt }) => {
+        if (startsAt) params.set("startsAt", startsAt);
+        if (endsAt) params.set("endsAt", endsAt);
+        if (guestCount) params.set("guestCount", String(guestCount));
+      },
     })
   );
 

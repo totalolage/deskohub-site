@@ -27,50 +27,75 @@ import {
   type MeetingRoomPaymentPriceAffirmationInput,
   meetingRoomCheckoutPricing,
 } from "./meeting-room-checkout-pricing";
+import {
+  type OfficeAdvertisementAffirmation,
+  type OfficeAdvertisementAffirmationInput,
+  type OfficeAdvertisementQuote,
+  type OfficeAdvertisementQuoteInput,
+  type OfficeCheckoutPricingError,
+  type OfficeCustomerQuote,
+  type OfficeCustomerQuoteInput,
+  type OfficeDiscountCodePriceInput,
+  type OfficeDiscountCodePriceResult,
+  type OfficePaymentPriceAffirmation,
+  type OfficePaymentPriceAffirmationInput,
+  officeCheckoutPricing,
+} from "./office-checkout-pricing";
 
 export type CheckoutPricingError =
   | CoworkCheckoutPricingError
-  | MeetingRoomCheckoutPricingError;
+  | MeetingRoomCheckoutPricingError
+  | OfficeCheckoutPricingError;
 
 export type AdvertisementQuoteInput =
   | CoworkAdvertisementQuoteInput
-  | MeetingRoomAdvertisementQuoteInput;
+  | MeetingRoomAdvertisementQuoteInput
+  | OfficeAdvertisementQuoteInput;
 
 export type AdvertisementQuote =
   | CoworkAdvertisementQuote
-  | MeetingRoomAdvertisementQuote;
+  | MeetingRoomAdvertisementQuote
+  | OfficeAdvertisementQuote;
 
 export type AdvertisementAffirmationInput =
   | CoworkAdvertisementAffirmationInput
-  | MeetingRoomAdvertisementAffirmationInput;
+  | MeetingRoomAdvertisementAffirmationInput
+  | OfficeAdvertisementAffirmationInput;
 
 export type AdvertisementAffirmation =
   | CoworkAdvertisementAffirmation
-  | MeetingRoomAdvertisementAffirmation;
+  | MeetingRoomAdvertisementAffirmation
+  | OfficeAdvertisementAffirmation;
 
 export type CustomerQuoteInput =
   | CoworkCustomerQuoteInput
-  | MeetingRoomCustomerQuoteInput;
+  | MeetingRoomCustomerQuoteInput
+  | OfficeCustomerQuoteInput;
 
 export type PreparedCustomerQuote =
   | CoworkCustomerQuote
-  | MeetingRoomCustomerQuote;
+  | MeetingRoomCustomerQuote
+  | OfficeCustomerQuote;
 
 export type PaymentPriceAffirmationInput =
   | CoworkPaymentPriceAffirmationInput
-  | MeetingRoomPaymentPriceAffirmationInput;
+  | MeetingRoomPaymentPriceAffirmationInput
+  | OfficePaymentPriceAffirmationInput;
 
 export type PaymentPriceAffirmation =
   | CoworkPaymentPriceAffirmation
-  | MeetingRoomPaymentPriceAffirmation;
+  | MeetingRoomPaymentPriceAffirmation
+  | OfficePaymentPriceAffirmation;
 
 export type DiscountCodePriceInput =
   | CoworkDiscountCodePriceInput
-  | MeetingRoomDiscountCodePriceInput;
+  | MeetingRoomDiscountCodePriceInput
+  | OfficeDiscountCodePriceInput;
 
 export type DiscountCodePriceResult =
   | CoworkDiscountCodePriceResult
-  | MeetingRoomDiscountCodePriceResult;
+  | MeetingRoomDiscountCodePriceResult
+  | OfficeDiscountCodePriceResult;
 
 export interface ICheckoutPricingService {
   readonly quoteAdvertisement: (
@@ -99,6 +124,7 @@ export class CheckoutPricingService extends Context.Service<
     Effect.gen(function* () {
       const cowork = yield* coworkCheckoutPricing;
       const meetingRoom = yield* meetingRoomCheckoutPricing;
+      const office = yield* officeCheckoutPricing;
 
       const quoteAdvertisement = Effect.fn(
         "CheckoutPricingService.quoteAdvertisement"
@@ -111,6 +137,9 @@ export class CheckoutPricingService extends Context.Service<
             { reservation: { kind: "meeting-room" } },
             (meetingRoomInput) =>
               meetingRoom.quoteAdvertisement(meetingRoomInput)
+          ),
+          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+            office.quoteAdvertisement(officeInput)
           ),
           Match.exhaustive
         )
@@ -128,6 +157,9 @@ export class CheckoutPricingService extends Context.Service<
             (meetingRoomInput) =>
               meetingRoom.affirmAdvertisement(meetingRoomInput)
           ),
+          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+            office.affirmAdvertisement(officeInput)
+          ),
           Match.exhaustive
         )
       );
@@ -142,6 +174,9 @@ export class CheckoutPricingService extends Context.Service<
           Match.when(
             { reservation: { kind: "meeting-room" } },
             (meetingRoomInput) => meetingRoom.quoteForCustomer(meetingRoomInput)
+          ),
+          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+            office.quoteForCustomer(officeInput)
           ),
           Match.exhaustive
         )
@@ -158,6 +193,9 @@ export class CheckoutPricingService extends Context.Service<
             { reservation: { kind: "meeting-room" } },
             (meetingRoomInput) => meetingRoom.affirmForPayment(meetingRoomInput)
           ),
+          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+            office.affirmForPayment(officeInput)
+          ),
           Match.exhaustive
         )
       );
@@ -173,6 +211,9 @@ export class CheckoutPricingService extends Context.Service<
             { reservation: { kind: "meeting-room" } },
             (meetingRoomInput) =>
               meetingRoom.applyDiscountCode(meetingRoomInput)
+          ),
+          Match.when({ reservation: { kind: "office" } }, (officeInput) =>
+            office.applyDiscountCode(officeInput)
           ),
           Match.exhaustive
         )

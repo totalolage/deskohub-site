@@ -10,6 +10,7 @@ import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import { dotyposReservationGuestCountSchema } from "@/features/reservation/reservation-guest-count";
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
@@ -20,7 +21,8 @@ export class WorkspaceReservationDetailsError extends Data.TaggedError(
     | "reservation_load_failed"
     | "dotypos_reservation_missing"
     | "dotypos_reservation_load_failed"
-    | "dotypos_reservation_date_invalid";
+    | "dotypos_reservation_date_invalid"
+    | "dotypos_reservation_guest_count_invalid";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -37,6 +39,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly customer: Customer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
+  readonly guestCount: number;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
 };
@@ -119,6 +122,20 @@ export class WorkspaceReservationService extends Context.Service<
               reservationId: reservation.id,
               reservation: dotyposReservationDetails.reservation,
             });
+          const guestCount = yield* Schema.decodeUnknownEffect(
+            dotyposReservationGuestCountSchema
+          )(dotyposReservationDetails.reservation.seats).pipe(
+            Effect.mapError(
+              (cause) =>
+                new WorkspaceReservationDetailsError({
+                  reservationId: reservation.id,
+                  errorCode: "dotypos_reservation_guest_count_invalid",
+                  message:
+                    "Workspace Dotypos reservation guest count is invalid.",
+                  cause,
+                })
+            )
+          );
 
           const tableName = getReservationTableName(
             dotyposReservationDetails.reservation,
@@ -142,6 +159,7 @@ export class WorkspaceReservationService extends Context.Service<
             customer: dotyposReservationDetails.customer,
             reservedFrom,
             reservedUntil,
+            guestCount,
             ...(tableName && { tableName }),
             ...(tableMap && { tableMap }),
           };

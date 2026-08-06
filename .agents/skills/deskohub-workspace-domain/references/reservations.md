@@ -1,13 +1,29 @@
 # Reservation families
 
-- Workspace reservation families use `kind: "cowork" | "meeting-room"`.
+- Workspace reservation families use `kind: "cowork" | "meeting-room" | "office"`.
 - Complete family branches use `Match.discriminatorsExhaustive("kind")`.
 - `entryTier` refines cowork reservations only and never contains
   `"meeting-room"`.
 - Effect-native errors and protocol unions may still use `_tag`; this rule only
   concerns the reservation-family domain discriminator.
 
-Keep reservation-family-specific schemas and projections in the corresponding cowork or meeting-room domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
+Keep reservation-family-specific schemas and projections in the corresponding cowork, meeting-room, or office domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
+
+Office reservations span an inclusive range of Prague calendar dates. They
+always start at Prague midnight on the first date and end at Prague midnight
+after the last date, so DST days remain whole calendar days rather than fixed
+24-hour periods. Price each selected day as the base daily office price plus
+the per-additional-person daily price. The customer is one attendee; the
+submitted `additionalGuests` value counts only the other people, while Dotypos
+`seats` stores the total party size. Office product identity is `{ kind:
+"office" }` with product key `office`; dates and party size affect the quote,
+not the product identity. Persist only `{ kind: "office" }` locally and project
+confirmed timing and party size from Dotypos.
+
+An office-tagged Dotypos table is exclusive for the entire reservation
+interval. Its configured seat capacity determines whether the requested party
+fits, but any existing occupancy greater than zero makes it unavailable
+regardless of the remaining capacity.
 
 Meeting-room eligibility is bounded by the reservation's exclusive end, not its
 start. A reservation may be submitted or paid after it starts while its end has
@@ -54,6 +70,7 @@ A product key must encode the complete product identity, including its reservati
 
 - Cowork identities use `{ kind: "cowork", tier }` and keys use `cowork:${tier}`.
 - Meeting-room identities use `{ kind: "meeting-room", duration }` and keys use `meeting-room:${unit}:${amount}`.
+- Office identity uses `{ kind: "office" }` and key `office`.
 - Checkout summary item keys add the presentation prefix, for example `product:cowork:basic`.
 
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.

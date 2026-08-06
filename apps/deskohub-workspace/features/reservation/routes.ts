@@ -4,6 +4,7 @@ import type { ReservationOrderData } from "@/features/reservation/reservation-or
 
 export const coworkReservationPath = "/reservation/cowork";
 export const meetingRoomReservationPath = "/reservation/meeting-room";
+export const officeReservationPath = "/reservation/office";
 export const reservationStatusPath = "/reservation/status";
 
 export const getCoworkReservationPath = (locale: Locale) =>
@@ -11,6 +12,9 @@ export const getCoworkReservationPath = (locale: Locale) =>
 
 export const getMeetingRoomReservationPath = (locale: Locale) =>
   `/${locale}${meetingRoomReservationPath}`;
+
+export const getOfficeReservationPath = (locale: Locale) =>
+  `/${locale}${officeReservationPath}`;
 
 export const getReservationStartPath = (
   locale: Locale,
@@ -25,6 +29,10 @@ export const getReservationStartPath = (
       },
       "meeting-room": () => {
         const path = getMeetingRoomReservationPath(locale);
+        return searchParams ? `${path}?${searchParams}` : path;
+      },
+      office: () => {
+        const path = getOfficeReservationPath(locale);
         return searchParams ? `${path}?${searchParams}` : path;
       },
     })

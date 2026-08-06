@@ -5,6 +5,7 @@ import { Match } from "effect";
 import { env } from "@/env";
 import { getCoworkCheckoutAttemptDetails } from "@/features/reservation/cowork-reservation";
 import { getMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
+import { getOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 const deriveCheckoutKey = (payload: object) =>
@@ -27,6 +28,7 @@ export const deriveCheckoutAttemptKey = (input: {
     Match.discriminatorsExhaustive("kind")({
       cowork: getCoworkCheckoutAttemptDetails,
       "meeting-room": getMeetingRoomReservationDetails,
+      office: getOfficeReservationDetails,
     })
   );
 

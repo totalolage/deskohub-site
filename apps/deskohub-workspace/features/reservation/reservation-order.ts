@@ -14,10 +14,17 @@ import {
   type MeetingRoomReservationProductInput,
   meetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  getOfficeReservationProductCoffee,
+  getOfficeReservationProductMonitorOption,
+  type OfficeReservationOrderInput,
+  officeReservationOrderSchema,
+} from "@/features/reservation/office-reservation";
 
 export const reservationOrderSchema = Schema.Union([
   coworkReservationOrderSchema,
   meetingRoomReservationOrderSchema,
+  officeReservationOrderSchema,
 ]).annotate({
   identifier: "ReservationOrder",
   description: "Validated cowork or meeting-room reservation order.",
@@ -28,7 +35,8 @@ export type ReservationOrderData = typeof reservationOrderSchema.Type;
 
 export type ReservationProductProjectionInput =
   | (CoworkProductInput & Pick<CoworkReservationOrderInput, "kind">)
-  | MeetingRoomReservationProductInput;
+  | MeetingRoomReservationProductInput
+  | Pick<OfficeReservationOrderInput, "kind">;
 
 export const getReservationProductCoffee = (
   reservation: ReservationProductProjectionInput
@@ -37,6 +45,7 @@ export const getReservationProductCoffee = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getCoworkReservationProductCoffee,
       "meeting-room": getMeetingRoomReservationProductCoffee,
+      office: getOfficeReservationProductCoffee,
     })
   );
 
@@ -47,5 +56,6 @@ export const getReservationProductMonitorOption = (
     Match.discriminatorsExhaustive("kind")({
       cowork: getCoworkReservationProductMonitorOption,
       "meeting-room": getMeetingRoomReservationProductMonitorOption,
+      office: getOfficeReservationProductMonitorOption,
     })
   );

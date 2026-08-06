@@ -1,6 +1,10 @@
 import { type Locale, m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
-import { getCoworkReservationPath } from "@/features/reservation/routes";
+import { isOfficePageEnabled } from "@/features/office/backend/office-page-feature-flag";
+import {
+  getCoworkReservationPath,
+  getOfficeReservationPath,
+} from "@/features/reservation/routes";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -20,7 +24,10 @@ export const getSiteHeaderLanguageLabels = (
 });
 
 export async function getSiteHeaderConfig(locale: Locale) {
-  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
+  const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
+    isMeetingRoomPageEnabled(),
+    isOfficePageEnabled(),
+  ]);
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
 
@@ -34,6 +41,10 @@ export async function getSiteHeaderConfig(locale: Locale) {
       meetingRoomPageEnabled && {
         label: m.landingNavMeetingRoom({}, { locale }),
         href: `${localePath}/meeting-room`,
+      },
+      officePageEnabled && {
+        label: m.landingNavPrivateOffice({}, { locale }),
+        href: getOfficeReservationPath(locale),
       },
       {
         label: m.landingNavGallery({}, { locale }),

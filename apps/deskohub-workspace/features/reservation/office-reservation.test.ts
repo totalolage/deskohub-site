@@ -1,0 +1,94 @@
+import "@/shared/polyfills/temporal";
+
+import { describe, expect, test } from "bun:test";
+import { Result, Schema } from "effect";
+import { makeSchemaParser } from "@/shared/utils/schema-parser";
+import {
+  getOfficeReservationDayCount,
+  getOfficeReservationGuestCount,
+  getOfficeReservationIntervalInput,
+  getStoredOfficeReservationDetails,
+  getWorkspaceOfficeProductKey,
+  officeReservationSchema,
+  storedOfficeReservationDetailsSchema,
+  workspaceOfficeProductKeySchema,
+} from "./office-reservation";
+
+const formParser = makeSchemaParser(officeReservationSchema);
+const storedDetailsParser = makeSchemaParser(
+  storedOfficeReservationDetailsSchema,
+  { onExcessProperty: "error" }
+);
+const validCustomer = {
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420777777777",
+  message: "",
+  legalConsent: true,
+};
+
+describe("office reservation", () => {
+  test("owns the stable office product identity and key", () => {
+    expect(getWorkspaceOfficeProductKey({ kind: "office" })).toBe("office");
+    expect(
+      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office")
+    ).toBe("office");
+    expect(() =>
+      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office:person")
+    ).toThrow();
+  });
+
+  test("accepts an inclusive multi-day range and other-person count", () => {
+    const result = formParser.safeParse({
+      ...validCustomer,
+      startsOn: "2099-06-10",
+      endsOn: "2099-06-12",
+      additionalGuests: 2,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(getOfficeReservationDayCount(result.success)).toBe(3);
+      expect(getOfficeReservationGuestCount(result.success)).toBe(3);
+    }
+  });
+
+  test("rejects a backwards range and non-whole guest count", () => {
+    for (const input of [
+      { startsOn: "2099-06-12", endsOn: "2099-06-10", additionalGuests: 0 },
+      { startsOn: "2099-06-10", endsOn: "2099-06-12", additionalGuests: 1.5 },
+      { startsOn: "2099-06-10", endsOn: "2099-06-12", additionalGuests: -1 },
+    ]) {
+      expect(
+        Result.isFailure(formParser.safeParse({ ...validCustomer, ...input }))
+      ).toBe(true);
+    }
+  });
+
+  test("projects a whole Prague calendar day across DST", () => {
+    expect(
+      getOfficeReservationIntervalInput({
+        startsOn: "2026-03-29",
+        endsOn: "2026-03-29",
+      })
+    ).toEqual({
+      startsAt: "2026-03-28T23:00:00Z",
+      endsAt: "2026-03-29T22:00:00Z",
+    });
+  });
+
+  test("keeps Dotypos-owned office facts out of local persistence", () => {
+    expect(getStoredOfficeReservationDetails({ kind: "office" })).toEqual({
+      kind: "office",
+    });
+    expect(
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "office",
+          startsOn: "2099-06-10",
+          additionalGuests: 2,
+        })
+      )
+    ).toBe(true);
+  });
+});

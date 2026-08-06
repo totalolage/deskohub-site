@@ -12,18 +12,23 @@ import Link from "next/link";
 import type {
   CheckoutCoworkStatusSummary,
   CheckoutMeetingRoomStatusSummary,
+  CheckoutOfficeStatusSummary,
   CheckoutStatusKind,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
 import {
   getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatMeetingRoomReservationDisplayTime } from "@/features/reservation/reservation.i18n";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
+} from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
@@ -205,6 +210,32 @@ const getMeetingRoomSummaryRows = (
   },
 ];
 
+const getOfficeSummaryRows = (
+  summary: CheckoutOfficeStatusSummary,
+  locale: Locale
+): SummaryRow[] => [
+  {
+    label: String(m.checkoutStatusSummaryReservationLabel({}, { locale })),
+    value: getWorkspaceOfficeProductTitle(locale),
+  },
+  {
+    label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
+    value: formatReservationDisplayDateRange(
+      summary.reservedFrom,
+      summary.reservedUntil,
+      locale
+    ),
+  },
+  {
+    label: String(m.checkoutStatusSummaryPeopleLabel({}, { locale })),
+    value: String(summary.guestCount),
+  },
+  {
+    label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
+    value: formatWorkspaceMoney(summary.price, locale),
+  },
+];
+
 const getSummaryRows = (
   status: CheckoutStatusViewModel,
   locale: Locale
@@ -215,6 +246,7 @@ const getSummaryRows = (
           cowork: (summary) => getCoworkSummaryRows(summary, locale),
           "meeting-room": (summary) =>
             getMeetingRoomSummaryRows(summary, locale),
+          office: (summary) => getOfficeSummaryRows(summary, locale),
         })
       )
     : [];
@@ -229,6 +261,7 @@ const getFulfillmentFailedContactMessage = (
           cowork: ({ entryTier }) =>
             getWorkspaceProductTierTitle(entryTier, locale),
           "meeting-room": () => getWorkspaceMeetingRoomProductTitle(locale),
+          office: () => getWorkspaceOfficeProductTitle(locale),
         })
       )
     : m.checkoutStatusMissingSummary({}, { locale });
@@ -249,6 +282,9 @@ const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
       getReservationStartPath(locale, kind)
     ),
     Match.when({ kind: "meeting-room" }, ({ kind }) =>
+      getReservationStartPath(locale, kind)
+    ),
+    Match.when({ kind: "office" }, ({ kind }) =>
       getReservationStartPath(locale, kind)
     ),
     Match.exhaustive

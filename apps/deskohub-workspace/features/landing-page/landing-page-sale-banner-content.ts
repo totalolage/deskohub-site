@@ -60,30 +60,33 @@ export function formatLandingPageSaleBannerLabel(
     coworkCount === workspaceCoworkProductTiers.length;
   const hasAllMeetingRoomProducts =
     meetingRoomCount === workspaceMeetingRoomCatalog.length;
+  const hasOfficeProduct = productKeys.has(
+    getWorkspaceProductKey({ kind: "office" })
+  );
   const values = {
     title: sale.title,
     adjustment: formatDiscountAdjustment(sale.adjustment, locale),
   };
 
-  if (hasAllCoworkProducts && hasAllMeetingRoomProducts) {
+  if (hasAllCoworkProducts && hasAllMeetingRoomProducts && hasOfficeProduct) {
     return m.landingSaleBannerAllProducts(values, { locale });
   }
 
-  if (hasAllCoworkProducts && meetingRoomCount === 0) {
+  if (hasAllCoworkProducts && meetingRoomCount === 0 && !hasOfficeProduct) {
     return m.landingSaleBannerAllCoworkProducts(values, { locale });
   }
 
-  if (coworkCount === 0 && hasAllMeetingRoomProducts) {
+  if (coworkCount === 0 && hasAllMeetingRoomProducts && !hasOfficeProduct) {
     return m.landingSaleBannerAllMeetingRoomProducts(values, { locale });
   }
 
-  if (hasAllCoworkProducts && meetingRoomCount > 0) {
+  if (hasAllCoworkProducts && meetingRoomCount > 0 && !hasOfficeProduct) {
     return m.landingSaleBannerAllCoworkAndSelectedMeetingRoomProducts(values, {
       locale,
     });
   }
 
-  if (coworkCount > 0 && hasAllMeetingRoomProducts) {
+  if (coworkCount > 0 && hasAllMeetingRoomProducts && !hasOfficeProduct) {
     return m.landingSaleBannerSelectedCoworkAndAllMeetingRoomProducts(values, {
       locale,
     });

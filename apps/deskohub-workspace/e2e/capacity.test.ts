@@ -42,6 +42,7 @@ test("reports only aggregate capacity for every workspace table pool", () => {
     makeTable("provider-room-2", ["reservation:meeting-room"], 1),
     makeTable("provider-room-3", ["reservation:meeting-room"], 1),
     makeTable("provider-room-headroom", ["reservation:meeting-room"], 1),
+    makeTable("provider-office", ["reservation:office"], 8),
     makeTable("hidden-basic", ["tier:basic"], 100, { display: false }),
   ];
   const reservations: Reservation[] = [
@@ -76,12 +77,22 @@ test("reports only aggregate capacity for every workspace table pool", () => {
     seatCounts: [16],
     totalSeatCount: 16,
   });
+  expect(
+    report.groups.find(({ id }) => id === "reservation:office")
+  ).toMatchObject({
+    assignableTableCount: 1,
+    meetsRequiredCapacity: true,
+    requiredSeatCount: 2,
+    requiredTableCount: 1,
+    seatCounts: [8],
+  });
   const serialized = JSON.stringify(report);
   expect(serialized).not.toContain("basic-table");
   expect(serialized).not.toContain("provider-room-id");
   expect(serialized).not.toContain("provider-room-2");
   expect(serialized).not.toContain("provider-room-3");
   expect(serialized).not.toContain("provider-room-headroom");
+  expect(serialized).not.toContain("provider-office");
 });
 
 test("fails the aggregate contract when a monitor-specific pool is short", () => {

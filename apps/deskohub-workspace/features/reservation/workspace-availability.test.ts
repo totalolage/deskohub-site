@@ -52,6 +52,28 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     });
   });
 
+  test("parses office interval and party-size availability fields", () => {
+    expect(
+      parseWorkspaceAvailabilityQuery(
+        new URLSearchParams({
+          kind: "office",
+          from: "2099-06-10",
+          to: "2099-06-12",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-12T22:00:00Z",
+          guestCount: "3",
+        })
+      )
+    ).toEqual({
+      kind: "office",
+      from: "2099-06-10",
+      to: "2099-06-12",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-12T22:00:00Z",
+      guestCount: 3,
+    });
+  });
+
   test("drops interval fields from cowork availability queries", () => {
     const query = parseWorkspaceAvailabilityQuery(
       new URLSearchParams({
@@ -82,12 +104,14 @@ describe("parseWorkspaceAvailabilityResponse", () => {
       unavailableDates: [],
       unavailableCoworkTiers: ["plus"],
       meetingRoomUnavailable: false,
+      officeUnavailable: false,
       unavailableMonitorOptions: [],
       notices: [],
     });
 
     expect(response.unavailableCoworkTiers).toEqual(["plus"]);
     expect(response.meetingRoomUnavailable).toBe(false);
+    expect(response.officeUnavailable).toBe(false);
   });
 
   test("rejects the obsolete generic unavailableTiers field", () => {
@@ -98,6 +122,7 @@ describe("parseWorkspaceAvailabilityResponse", () => {
         unavailableDates: [],
         unavailableTiers: ["plus"],
         meetingRoomUnavailable: false,
+        officeUnavailable: false,
         unavailableMonitorOptions: [],
         notices: [],
       })

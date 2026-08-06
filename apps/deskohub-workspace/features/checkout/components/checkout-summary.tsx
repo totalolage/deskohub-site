@@ -7,6 +7,7 @@ import type {
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationTitle,
+  getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
@@ -39,6 +40,16 @@ const getSummaryItemLabel = (
         cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
         "meeting-room": ({ duration }) =>
           getWorkspaceMeetingRoomDurationTitle(duration, locale),
+        office: () =>
+          "dayCount" in item && "additionalGuests" in item
+            ? m.checkoutSummaryItemOffice(
+                {
+                  dayCount: item.dayCount,
+                  people: item.additionalGuests + 1,
+                },
+                { locale }
+              )
+            : getWorkspaceOfficeProductTitle(locale),
       })
     );
   }

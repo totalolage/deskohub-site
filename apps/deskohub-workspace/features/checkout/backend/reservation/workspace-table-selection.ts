@@ -5,6 +5,7 @@ import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
 export const workspaceMeetingRoomReservationTableTag =
   "reservation:meeting-room";
+export const workspaceOfficeReservationTableTag = "reservation:office";
 
 const fallbackRoomKey = "__workspace-table-selection:fallback-room__";
 
@@ -113,7 +114,7 @@ const hasWorkspaceTableCapacity = (
   if (!capacity) return false;
   const occupancy = occupancyByTableId.get(tableId) ?? 0;
 
-  if (requireEmpty) return occupancy === 0;
+  if (requireEmpty) return occupancy === 0 && guestCount <= capacity;
 
   // Workspace bookings are assigned as whole parties to one table. Splitting a
   // party across multiple tables would need separate assignment logic later.
@@ -179,7 +180,8 @@ export const isDisplayableWorkspaceTable = (table: Table) => {
   const tableTags = new Set(table.tags ?? []);
   return (
     workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)) ||
-    tableTags.has(workspaceMeetingRoomReservationTableTag)
+    tableTags.has(workspaceMeetingRoomReservationTableTag) ||
+    tableTags.has(workspaceOfficeReservationTableTag)
   );
 };
 

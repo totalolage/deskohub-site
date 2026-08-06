@@ -47,6 +47,25 @@ export const formatReservationDisplayDate = (
     temporalInstantToDate(date)
   );
 
+export const formatReservationDisplayDateRange = (
+  start: Temporal.Instant,
+  exclusiveEnd: Temporal.Instant,
+  locale: Locale
+) => {
+  const inclusiveEnd = Temporal.Instant.fromEpochMilliseconds(
+    exclusiveEnd.epochMilliseconds - 1
+  );
+  const formatter = new Intl.DateTimeFormat(
+    locale,
+    reservationDisplayDateFormatOptions
+  );
+
+  return formatter.formatRange(
+    temporalInstantToDate(start),
+    temporalInstantToDate(inclusiveEnd)
+  );
+};
+
 export const formatReservationInputDate = (
   date: string,
   locale: Locale,

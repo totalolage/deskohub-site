@@ -18,6 +18,7 @@ import {
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
+  officeReservationKind,
 } from "@/features/reservation/reservation-kind";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
@@ -43,9 +44,20 @@ export const meetingRoomWorkspaceAvailabilityQuerySchema = Schema.Struct({
   endsAt: Schema.optional(reservationTimestampInputSchema),
 });
 
+export const officeWorkspaceAvailabilityQuerySchema = Schema.Struct({
+  kind: Schema.Literal(officeReservationKind),
+  ...workspaceAvailabilityQueryBaseFields,
+  startsAt: Schema.optional(reservationTimestampInputSchema),
+  endsAt: Schema.optional(reservationTimestampInputSchema),
+  guestCount: Schema.optional(
+    Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
+  ),
+});
+
 export const workspaceAvailabilityQuerySchema = Schema.Union([
   coworkWorkspaceAvailabilityQuerySchema,
   meetingRoomWorkspaceAvailabilityQuerySchema,
+  officeWorkspaceAvailabilityQuerySchema,
 ]);
 
 export type WorkspaceAvailabilityQuery =
@@ -54,6 +66,8 @@ export type CoworkWorkspaceAvailabilityQuery =
   typeof coworkWorkspaceAvailabilityQuerySchema.Type;
 export type MeetingRoomWorkspaceAvailabilityQuery =
   typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
+export type OfficeWorkspaceAvailabilityQuery =
+  typeof officeWorkspaceAvailabilityQuerySchema.Type;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
@@ -76,6 +90,7 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
     workspaceCoworkProductIdentitySchema.fields.tier
   ),
   meetingRoomUnavailable: Schema.Boolean,
+  officeUnavailable: Schema.Boolean,
   unavailableMonitorOptions: Schema.Array(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
@@ -122,7 +137,15 @@ const getTierParam = (value: string | null) => {
 const getReservationKindParam = (searchParams: URLSearchParams) => {
   const kind = searchParams.get("kind")?.trim();
   if (kind === "meeting-room") return "meeting-room";
+  if (kind === "office") return "office";
   return "cowork";
+};
+
+const getGuestCountParam = (value: string | null) => {
+  const guestCount = Number(value);
+  return Number.isSafeInteger(guestCount) && guestCount >= 1
+    ? guestCount
+    : undefined;
 };
 
 const getMonitorParam = (value: string | null) => {
@@ -162,7 +185,13 @@ export const parseWorkspaceAvailabilityQuery = (
     reservationKind === "cowork" && getTierParam(searchParams.get("entryTier"));
   const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
   const interval =
-    reservationKind === "meeting-room" ? getIntervalParam(searchParams) : {};
+    reservationKind === "meeting-room" || reservationKind === "office"
+      ? getIntervalParam(searchParams)
+      : {};
+  const guestCount =
+    reservationKind === "office"
+      ? getGuestCountParam(searchParams.get("guestCount"))
+      : undefined;
 
   return Match.value(reservationKind).pipe(
     Match.when("meeting-room", () => ({
@@ -179,6 +208,14 @@ export const parseWorkspaceAvailabilityQuery = (
       ...(date && { date }),
       ...(entryTier && { entryTier }),
       ...(monitorOption && { monitorOption }),
+    })),
+    Match.when("office", () => ({
+      kind: officeReservationKind,
+      from,
+      to,
+      ...(interval.startsAt && { startsAt: interval.startsAt }),
+      ...(interval.endsAt && { endsAt: interval.endsAt }),
+      ...(guestCount && { guestCount }),
     })),
     Match.exhaustive
   );

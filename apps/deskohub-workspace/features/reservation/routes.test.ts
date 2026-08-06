@@ -5,8 +5,10 @@ import {
   coworkReservationPath,
   getCoworkReservationPath,
   getMeetingRoomReservationPath,
+  getOfficeReservationPath,
   getReservationStartPath,
   meetingRoomReservationPath,
+  officeReservationPath,
   reservationStatusPath,
 } from "./routes";
 
@@ -17,11 +19,13 @@ describe("reservation routes", () => {
   test("builds the localized reservation entry paths", () => {
     expect(coworkReservationPath).toBe("/reservation/cowork");
     expect(meetingRoomReservationPath).toBe("/reservation/meeting-room");
+    expect(officeReservationPath).toBe("/reservation/office");
     expect(reservationStatusPath).toBe("/reservation/status");
     expect(getCoworkReservationPath("en-US")).toBe("/en-US/reservation/cowork");
     expect(getMeetingRoomReservationPath("cs-CZ")).toBe(
       "/cs-CZ/reservation/meeting-room"
     );
+    expect(getOfficeReservationPath("en-US")).toBe("/en-US/reservation/office");
     expect(getReservationStartPath("en-US", "cowork")).toBe(
       "/en-US/reservation/cowork"
     );
@@ -42,6 +46,9 @@ describe("reservation routes", () => {
         new URLSearchParams({ payState: "signed-state" })
       )
     ).toBe("/cs-CZ/reservation/meeting-room?payState=signed-state");
+    expect(getReservationStartPath("en-US", "office")).toBe(
+      "/en-US/reservation/office"
+    );
   });
 
   test("keeps only the P14 route entries", () => {
@@ -52,6 +59,9 @@ describe("reservation routes", () => {
       appRouteExists(
         "[locale]/(minimal-header)/reservation/meeting-room/page.tsx"
       )
+    ).toBe(true);
+    expect(
+      appRouteExists("[locale]/(minimal-header)/reservation/office/page.tsx")
     ).toBe(true);
     expect(
       appRouteExists(

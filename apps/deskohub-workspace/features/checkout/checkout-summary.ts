@@ -8,6 +8,10 @@ import {
   meetingRoomCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-meeting-room-item";
 import {
+  officeCheckoutSummaryDiscountedProductItemSchema,
+  officeCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-office-item";
+import {
   nonNegativeWorkspaceMoneyCodec,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
@@ -30,6 +34,8 @@ export const checkoutSummaryOrderItemSchema = Schema.Union([
   meetingRoomCheckoutSummaryProductItemSchema,
   coworkCheckoutSummaryDiscountedProductItemSchema,
   coworkCheckoutSummaryProductItemSchema,
+  officeCheckoutSummaryDiscountedProductItemSchema,
+  officeCheckoutSummaryProductItemSchema,
   checkoutSummaryAddOnItemSchema,
 ]);
 

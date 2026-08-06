@@ -81,6 +81,13 @@ import {
   prepareMeetingRoomAdvertisement,
 } from "./prepare-meeting-room-pay-state";
 import {
+  ensureOfficePayStateAvailable,
+  getPreparedOfficeCheckoutDetails,
+  type PreparedOfficeAdvertisement,
+  type PreparedOfficePayState,
+  prepareOfficeAdvertisement,
+} from "./prepare-office-pay-state";
+import {
   type PreparePayStateInput,
   preparePayStateSchema,
 } from "./prepare-pay-state.schema";
@@ -97,7 +104,8 @@ const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
 
 type PreparedAdvertisement =
   | PreparedCoworkAdvertisement
-  | PreparedMeetingRoomAdvertisement;
+  | PreparedMeetingRoomAdvertisement
+  | PreparedOfficeAdvertisement;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (input: PreparePayStateInput) =>
@@ -109,6 +117,10 @@ const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
       Match.when(
         { reservation: { kind: "meeting-room" } },
         prepareMeetingRoomAdvertisement
+      ),
+      Match.when(
+        { reservation: { kind: "office" } },
+        prepareOfficeAdvertisement
       ),
       Match.exhaustive
     )
@@ -172,7 +184,10 @@ const getDotyposCustomerId = Effect.fn(
   )
 );
 
-type PreparedPayState = PreparedCoworkPayState | PreparedMeetingRoomPayState;
+type PreparedPayState =
+  | PreparedCoworkPayState
+  | PreparedMeetingRoomPayState
+  | PreparedOfficePayState;
 
 const getReservationCheckoutDetails = (input: {
   readonly locale: Locale;
@@ -185,6 +200,8 @@ const getReservationCheckoutDetails = (input: {
         getPreparedCoworkCheckoutDetails({ ...input, prepared }),
       "meeting-room": (prepared) =>
         getPreparedMeetingRoomCheckoutDetails({ ...input, prepared }),
+      office: (prepared) =>
+        getPreparedOfficeCheckoutDetails({ ...input, prepared }),
     })
   );
 
@@ -397,6 +414,11 @@ const ensureReservationAvailable = (input: {
         }),
       "meeting-room": (reservation) =>
         ensureMeetingRoomPayStateAvailable({
+          availability: input.availability,
+          reservation,
+        }),
+      office: (reservation) =>
+        ensureOfficePayStateAvailable({
           availability: input.availability,
           reservation,
         }),

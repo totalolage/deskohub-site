@@ -97,6 +97,7 @@ const availabilityResponse = {
   unavailableDates: [],
   unavailableCoworkTiers: [],
   meetingRoomUnavailable: false,
+  officeUnavailable: false,
   unavailableMonitorOptions: [],
   notices: [],
 };
