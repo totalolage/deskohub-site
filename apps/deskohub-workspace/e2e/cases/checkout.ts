@@ -343,13 +343,17 @@ export const assertFulfilledStatusPage = ({
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
       matches: (text) => {
-        const normalizedText = normalizeBrowserText(text);
+        const normalizedText = normalizeBrowserText(text).toLocaleLowerCase(
+          data.locale
+        );
 
         return (
           /Your workspace access is ready\./i.test(normalizedText) &&
           /sent by email/i.test(normalizedText) &&
           expectedReservationText.every((expected) =>
-            normalizedText.includes(normalizeBrowserText(expected))
+            normalizedText.includes(
+              normalizeBrowserText(expected).toLocaleLowerCase(data.locale)
+            )
           )
         );
       },

@@ -194,7 +194,7 @@ test("asserts office range, seats, and price on the fulfilled status page", asyn
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} Seats 2 ${expectedPrice}`,
+        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} SEATS 2 ${expectedPrice}`,
     };
   }) as Runner;
 
