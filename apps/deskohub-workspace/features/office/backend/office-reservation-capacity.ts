@@ -1,4 +1,5 @@
 import type { Table } from "@deskohub/dotypos/generated";
+import { Effect } from "effect";
 import {
   getWorkspaceTableCandidates,
   getWorkspaceTableSeatCapacity,
@@ -6,9 +7,14 @@ import {
 } from "@/features/checkout/backend/reservation";
 
 export const getOfficeReservationSeatCapacity = (tables: readonly Table[]) =>
-  getWorkspaceTableCandidates(tables, [workspaceOfficeReservationTableTag])
-    .map(getWorkspaceTableSeatCapacity)
-    .reduce<number>(
-      (capacity, candidate) => Math.max(capacity, candidate ?? 0),
-      0
-    );
+  Effect.forEach(
+    getWorkspaceTableCandidates(tables, [workspaceOfficeReservationTableTag]),
+    getWorkspaceTableSeatCapacity
+  ).pipe(
+    Effect.map((seatCapacities) =>
+      seatCapacities.reduce(
+        (capacity, seatCapacity) => Math.max(capacity, seatCapacity),
+        0
+      )
+    )
+  );

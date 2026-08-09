@@ -13,18 +13,24 @@ Office reservations span an inclusive range of Prague calendar dates. They
 always start at Prague midnight on the first date and end at Prague midnight
 after the last date, so DST days remain whole calendar days rather than fixed
 24-hour periods. Price each selected day as the base daily office price plus
-the per-person daily price for every attendee, including the customer. The
-submitted `additionalGuests` value counts only the other people, while the
-reservation form presents total seat counts from one through the table
-capacity and Dotypos `seats` stores that same total party size. Translate each
-displayed seat count to `additionalGuests` by subtracting one. On the
-reservation page, source every visible office price from the advertised quote:
-show its `accessAmount` as the base price and derive each seat choice from its
-`seatAmount` multiplied by the displayed total seat count. Do not reproduce
-catalog amounts as client-side constants. Office product identity is
-`{ kind: "office" }` with product key `office`; dates and party size affect the
-quote, not the product identity. Persist only `{ kind: "office" }` locally and
-project confirmed timing and party size from Dotypos.
+the per-seat daily price for every reserved seat. Carry the total positive
+integer as `seats` through the form, advertised price, normalized reservation,
+availability query, quote, checkout, Dotypos hold, email, and status view.
+Never translate it through guest, attendee, additional-person, or party-size
+fields. The reservation form presents seat counts from one through the table
+capacity, and Dotypos `seats` stores that same value. On the reservation page,
+source every visible office price from the advertised quote: show its
+`accessAmount` as the base price and derive each seat choice from its
+`seatAmount` multiplied by `seats`. Do not reproduce catalog amounts as
+client-side constants.
+
+Office product identity is `{ kind: "office", seats, dayCount }` with product
+key `office:${seats}:${dayCount}`. Build `dayCount` from the inclusive Prague
+date range. Persist only `{ kind: "office" }` locally because Dotypos owns the
+reservation facts; project confirmed timing and seats from Dotypos. Discount
+configuration uses a separate `{ kind: "office" }` family target that matches
+every exact office product. Do not weaken the sold-product identity to model a
+discount wildcard.
 
 An office-tagged Dotypos table is exclusive for the entire reservation
 interval. Its configured seat capacity determines whether the requested party
@@ -76,7 +82,8 @@ A product key must encode the complete product identity, including its reservati
 
 - Cowork identities use `{ kind: "cowork", tier }` and keys use `cowork:${tier}`.
 - Meeting-room identities use `{ kind: "meeting-room", duration }` and keys use `meeting-room:${unit}:${amount}`.
-- Office identity uses `{ kind: "office" }` and key `office`.
+- Office identities use `{ kind: "office", seats, dayCount }` and keys use
+  `office:${seats}:${dayCount}`.
 - Checkout summary item keys add the presentation prefix, for example `product:cowork:basic`.
 
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.

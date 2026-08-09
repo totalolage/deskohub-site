@@ -16,6 +16,9 @@ describe("workspace product identities", () => {
         duration: { unit: "hour", amount: 1 },
       })
     ).toBe("meeting-room:hour:1");
+    expect(
+      getWorkspaceProductKey({ kind: "office", seats: 3, dayCount: 2 })
+    ).toBe("office:3:2");
   });
 
   test("rejects non-canonical product keys", () => {
@@ -25,5 +28,9 @@ describe("workspace product identities", () => {
     expect(() => decode("meeting-room:4")).toThrow();
     expect(() => decode("meeting-room:240-minutes")).toThrow();
     expect(() => decode("meeting-room:1440")).toThrow();
+    expect(() => decode("office")).toThrow();
+    expect(() => decode("office:3")).toThrow();
+    expect(() => decode("office:0:2")).toThrow();
+    expect(() => decode("office:3:0")).toThrow();
   });
 });

@@ -26,7 +26,7 @@ import {
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -51,7 +51,7 @@ export type AdminDiscount = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
   readonly codeCount: number;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;

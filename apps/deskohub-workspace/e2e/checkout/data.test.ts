@@ -201,11 +201,11 @@ test("reuses a meeting-room customer while changing the interval", () => {
   expect(second.meetingRoom?.startsAt).toBe(secondInterval!.startsAt);
 });
 
-test("builds minimal office persistence data with transient range and party size", () => {
+test("builds minimal office persistence data with transient range and seats", () => {
   const slot = {
     startsOn: "2099-09-01",
     endsOn: "2099-09-02",
-    additionalGuests: 1,
+    seats: 2,
     startsAt: "2099-08-31T22:00:00Z",
     endsAt: "2099-09-02T22:00:00Z",
   } as const;
@@ -216,9 +216,7 @@ test("builds minimal office persistence data with transient range and party size
   expect(data.expectedReservationDetails).toEqual({ kind: "office" });
   expect(data.office).toEqual(slot);
   expect(data.expectedReservationDetails).not.toHaveProperty("startsOn");
-  expect(data.expectedReservationDetails).not.toHaveProperty(
-    "additionalGuests"
-  );
+  expect(data.expectedReservationDetails).not.toHaveProperty("seats");
 });
 
 test("loads availability through the provided HTTP client", async () => {
@@ -606,7 +604,7 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
   ).toBe(true);
   expect(requests).toHaveLength(3);
   expect(requests[0]?.url).toContain("kind=office");
-  expect(requests[0]?.url).toContain("guestCount=2");
+  expect(requests[0]?.url).toContain("seats=2");
   expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
     "test-protection-bypass"
   );

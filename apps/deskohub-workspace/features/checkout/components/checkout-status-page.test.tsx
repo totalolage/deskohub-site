@@ -130,6 +130,37 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("CZK 2,320")).toBeDefined();
   });
 
+  test("renders office dates and seats and links to its entry point", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          kind: "office",
+          summary: {
+            kind: "office",
+            reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
+            reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
+            seats: 3,
+            price: { value: 442_500, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Private office")).toBeDefined();
+    expect(
+      view.getByText("Friday, June 12 – Sunday, June 14, 2026")
+    ).toBeDefined();
+    expect(view.getByText("Seats").parentElement?.textContent).toBe("Seats3");
+    expect(view.getByText("CZK 4,425")).toBeDefined();
+    expect(
+      view
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/reservation/office");
+  });
+
   test("renders not found without reservation summary copy", () => {
     const view = render(
       <CheckoutStatusPage

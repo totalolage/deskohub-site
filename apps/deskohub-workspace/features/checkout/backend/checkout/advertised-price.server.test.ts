@@ -32,7 +32,7 @@ describe("buildAdvertisedPrice", () => {
           kind: "office" as const,
           startsOn: "2099-06-10",
           endsOn: "2099-06-11",
-          additionalGuests: 2,
+          seats: 3,
         },
       },
     };
@@ -113,6 +113,7 @@ describe("buildAdvertisedPrice", () => {
         },
       },
     };
+    const evaluateOfficeReservationsEnabled = mock(() => false);
 
     const result = await buildAdvertisedPrice(input).pipe(
       Effect.provide(
@@ -121,7 +122,7 @@ describe("buildAdvertisedPrice", () => {
           OfficeReservationFeatureFlagService.Live.pipe(
             Layer.provide(
               WorkspaceFeatureFlagServiceMock({
-                isEnabled: mock(() => Effect.succeed(false)),
+                isEnabled: () => Effect.sync(evaluateOfficeReservationsEnabled),
               })
             )
           )
@@ -137,6 +138,7 @@ describe("buildAdvertisedPrice", () => {
       reservation: input.reservation,
       locale: "en-US",
     });
+    expect(evaluateOfficeReservationsEnabled).not.toHaveBeenCalled();
     expect(result.kind).toBe("cowork");
     if (result.kind !== "cowork") {
       throw new Error("Expected a cowork advertised price.");

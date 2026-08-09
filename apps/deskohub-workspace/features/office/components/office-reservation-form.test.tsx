@@ -81,11 +81,11 @@ describe("OfficeReservationForm", () => {
   test("shows the catalog-quoted base amount between dates and seats", () => {
     const startsOn = decodePlainDate("2099-06-10");
     const endsOn = decodePlainDate("2099-06-12");
-    const initialAdvertisedPrices = [0, 1, 2].map((additionalGuests) => {
+    const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
       const request = getOfficeAdvertisedPriceRequest({
-        additionalGuests,
         endsOn,
         locale: "en-US",
+        seats,
         startsOn,
       });
       const quote = Effect.runSync(
@@ -95,7 +95,7 @@ describe("OfficeReservationForm", () => {
       return {
         request,
         advertisedPrice: {
-          advertisedPriceToken: `office-${additionalGuests}`,
+          advertisedPriceToken: `office-${seats}`,
           kind: "office" as const,
           quote,
           summary: getOfficeCheckoutSummary(quote),
@@ -169,9 +169,9 @@ describe("OfficeReservationForm", () => {
 
     expect(view.queryByRole("spinbutton")).toBeNull();
     expect(view.getAllByRole("radio").map(({ value }) => value)).toEqual([
-      "0",
       "1",
       "2",
+      "3",
     ]);
     expect(view.getByText("How many office seats do you need?")).toBeDefined();
     expect(view.getByText("1 seat")).toBeDefined();
@@ -211,11 +211,11 @@ describe("OfficeReservationForm", () => {
   test("marks every card with its seat surcharge", () => {
     const startsOn = decodePlainDate("2099-06-10");
     const endsOn = decodePlainDate("2099-06-10");
-    const initialAdvertisedPrices = [0, 1, 2].map((additionalGuests) => {
+    const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
       const request = getOfficeAdvertisedPriceRequest({
-        additionalGuests,
         endsOn,
         locale: "en-US",
+        seats,
         startsOn,
       });
       const quote = Effect.runSync(
@@ -225,7 +225,7 @@ describe("OfficeReservationForm", () => {
       return {
         request,
         advertisedPrice: {
-          advertisedPriceToken: `office-${additionalGuests}`,
+          advertisedPriceToken: `office-${seats}`,
           kind: "office" as const,
           quote,
           summary: getOfficeCheckoutSummary(quote),
@@ -248,18 +248,18 @@ describe("OfficeReservationForm", () => {
       </QueryClientProvider>
     );
 
-    const optionText = (additionalGuests: number) =>
+    const optionText = (seats: number) =>
       view.container
-        .querySelector(`[data-reservation-type-option="${additionalGuests}"]`)
+        .querySelector(`[data-reservation-type-option="${seats}"]`)
         ?.textContent?.replaceAll("\u00a0", " ");
 
-    expect(optionText(0)).toContain("CZK 315");
-    expect(optionText(1)).toContain("CZK 630");
-    expect(optionText(2)).toContain("CZK 945");
-    expect(optionText(0)).not.toContain("CZK 845");
+    expect(optionText(1)).toContain("CZK 315");
+    expect(optionText(2)).toContain("CZK 630");
+    expect(optionText(3)).toContain("CZK 945");
+    expect(optionText(1)).not.toContain("CZK 845");
     expect(
       view.container
-        .querySelector('[data-reservation-type-price="0"] span')
+        .querySelector('[data-reservation-type-price="1"] span')
         ?.classList.contains("before:content-['+']")
     ).toBeTrue();
   });

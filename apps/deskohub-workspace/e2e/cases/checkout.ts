@@ -315,7 +315,8 @@ export const assertFulfilledStatusPage = ({
               dotyposReservation.reservedUntil,
               data.locale
             ),
-            String(data.office.additionalGuests + 1),
+            "Seats",
+            String(data.office.seats),
             expectedPaymentPrice,
           ];
         }

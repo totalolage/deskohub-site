@@ -31,10 +31,10 @@ export const getWorkspaceAvailabilityUrl = (
         if (startsAt) params.set("startsAt", startsAt);
         if (endsAt) params.set("endsAt", endsAt);
       },
-      office: ({ endsAt, guestCount, startsAt }) => {
+      office: ({ endsAt, seats, startsAt }) => {
         if (startsAt) params.set("startsAt", startsAt);
         if (endsAt) params.set("endsAt", endsAt);
-        if (guestCount) params.set("guestCount", String(guestCount));
+        if (seats) params.set("seats", String(seats));
       },
     })
   );

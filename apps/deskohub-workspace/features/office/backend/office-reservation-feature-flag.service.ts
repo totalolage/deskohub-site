@@ -1,5 +1,3 @@
-import "server-only";
-
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 
@@ -17,15 +15,12 @@ export class OfficeReservationFeatureFlagService extends Context.Service<
       const featureFlags = yield* WorkspaceFeatureFlagService;
 
       return {
-        isEnabled: featureFlags
-          .isEnabled("office_page")
-          .pipe(
-            Effect.catch((error) =>
-              Effect.logWarning(error.message, { cause: error.cause }).pipe(
-                Effect.as(false)
-              )
-            )
+        isEnabled: featureFlags.isEnabled("office_page").pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning(error.message, { cause: error.cause })
           ),
+          Effect.orElseSucceed(() => false)
+        ),
       } satisfies IOfficeReservationFeatureFlagService;
     })
   );

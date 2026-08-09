@@ -72,13 +72,13 @@ const makeOfficeReservation = (
   overrides: {
     readonly startsOn?: string;
     readonly endsOn?: string;
-    readonly additionalGuests?: number;
+    readonly seats?: number;
   } = {}
 ): WorkspaceTableAssignmentReservation => ({
   kind: "office",
   startsOn: "2099-06-10",
   endsOn: "2099-06-10",
-  additionalGuests: 1,
+  seats: 2,
   ...overrides,
 });
 

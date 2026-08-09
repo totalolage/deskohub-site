@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import {
   getWorkspaceProductKey,
   workspaceProductIdentitySchema,
@@ -21,10 +21,17 @@ export const checkoutSummaryDiscountSchema: Schema.Codec<
   amount: appliedDiscountCodec.fields.amount,
 });
 
-const checkoutSummaryProductItemKeySchema = Schema.TemplateLiteral([
-  "product:",
-  workspaceProductKeySchema,
-]);
+const decodeWorkspaceProductKey = Schema.decodeUnknownOption(
+  workspaceProductKeySchema
+);
+const checkoutSummaryProductItemKeySchema = Schema.String.check(
+  Schema.makeFilter((key) => {
+    if (!key.startsWith("product:")) return false;
+    return Option.isSome(
+      decodeWorkspaceProductKey(key.slice("product:".length))
+    );
+  })
+);
 
 export const checkoutSummaryProductItemBaseSchema = Schema.Struct({
   key: checkoutSummaryProductItemKeySchema,

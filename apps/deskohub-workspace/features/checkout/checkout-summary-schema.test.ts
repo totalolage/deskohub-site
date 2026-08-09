@@ -83,6 +83,26 @@ describe("checkout summary schemas", () => {
     ).toThrow();
   });
 
+  test("requires the complete office identity in its product key", () => {
+    const officeItem = {
+      key: "product:office:3:2",
+      product: { kind: "office", seats: 3, dayCount: 2 },
+      dayCount: 2,
+      seats: 3,
+      accessAmount: money(106_000),
+      seatAmount: money(63_000),
+      amount: money(295_000),
+    };
+
+    expect(decodeOrderItem(officeItem)).toEqual(officeItem);
+    expect(() =>
+      decodeOrderItem({ ...officeItem, key: "product:office:2:2" })
+    ).toThrow();
+    expect(() =>
+      decodeOrderItem({ ...officeItem, product: { kind: "office" } })
+    ).toThrow();
+  });
+
   test("keeps meeting-room presentation out of the family-neutral product item", () => {
     expect(() =>
       decodeFamilyNeutralProductItem({

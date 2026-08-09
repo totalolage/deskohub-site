@@ -11,12 +11,16 @@ import {
 } from "@/features/checkout/checkout-summary-office-item";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { OfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import { getWorkspaceOfficeProductIdentity } from "@/features/reservation/office-reservation";
 
 export const getOfficeCheckoutSummary = (
   quote: OfficeReservationQuote
 ): CheckoutSummary => {
   const [item] = quote.items;
-  const product = { kind: "office" as const };
+  const product = getWorkspaceOfficeProductIdentity({
+    dayCount: item.dayCount,
+    seats: item.seats,
+  });
   const key = `product:${getWorkspaceProductKey(product)}` as const;
   const summaryDiscounts = quote.payment.discounts.map(({ amount, discount }) =>
     checkoutSummaryDiscountSchema.make({ amount, discount })
@@ -25,7 +29,7 @@ export const getOfficeCheckoutSummary = (
     key,
     product,
     dayCount: item.dayCount,
-    additionalGuests: item.additionalGuests,
+    seats: item.seats,
     accessAmount: item.accessAmount,
     seatAmount: item.seatAmount,
   };

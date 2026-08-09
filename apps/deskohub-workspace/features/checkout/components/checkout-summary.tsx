@@ -195,9 +195,8 @@ function OfficeCheckoutSummaryRows({
   readonly item: OfficeCheckoutSummaryItem;
   readonly locale: Locale;
 }) {
-  const guestCount = item.additionalGuests + 1;
   const seatTotalAmount = workspaceMoneyWithValue(
-    item.seatAmount.value * guestCount,
+    item.seatAmount.value * item.seats,
     item.seatAmount
   );
   const discountedItem =
@@ -224,7 +223,7 @@ function OfficeCheckoutSummaryRows({
         amount={seatTotalAmount}
         changed={changed}
         label={`${m.checkoutSummaryItemOfficeSeatCount(
-          { seatCount: guestCount },
+          { seatCount: item.seats },
           { locale }
         )} · ${m.checkoutSummaryItemOfficeDayCount(
           { dayCount: item.dayCount },

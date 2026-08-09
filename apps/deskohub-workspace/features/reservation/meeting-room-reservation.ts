@@ -168,14 +168,6 @@ export const getStoredMeetingRoomReservationDetails = (
   kind: meetingRoomReservationKind,
 });
 
-export const getMeetingRoomReservationProductCoffee = (
-  _reservation: MeetingRoomReservationProductInput
-) => false;
-
-export const getMeetingRoomReservationProductMonitorOption = (
-  _reservation: MeetingRoomReservationProductInput
-) => undefined;
-
 const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,
   interval: ReservationInterval

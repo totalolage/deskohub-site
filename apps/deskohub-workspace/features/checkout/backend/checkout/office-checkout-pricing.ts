@@ -9,10 +9,11 @@ import type {
   DiscountQuote,
   DiscountResolutionError,
 } from "@/features/discounts";
-import type {
-  NormalizedOfficeReservationOrder,
-  OfficeAdvertisedPriceReservation,
-  OfficeReservationPricingInput,
+import {
+  getOfficeReservationProductIdentity,
+  type NormalizedOfficeReservationOrder,
+  type OfficeAdvertisedPriceReservation,
+  type OfficeReservationPricingInput,
 } from "@/features/reservation/office-reservation";
 import {
   type ReservationAdvertisementAffirmation,
@@ -78,7 +79,7 @@ const getOfficePricingContext = Effect.fn(
   return {
     reservation,
     discountInput: {
-      product: { kind: "office" as const },
+      product: getOfficeReservationProductIdentity(reservation),
       discountableSubtotal: productItem.amount,
       reservationDate: reservation.startsOn,
     },

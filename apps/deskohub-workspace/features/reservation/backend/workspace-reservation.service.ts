@@ -10,8 +10,8 @@ import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { dotyposReservationGuestCountSchema } from "@/features/reservation/reservation-guest-count";
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
+import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -22,7 +22,7 @@ export class WorkspaceReservationDetailsError extends Data.TaggedError(
     | "dotypos_reservation_missing"
     | "dotypos_reservation_load_failed"
     | "dotypos_reservation_date_invalid"
-    | "dotypos_reservation_guest_count_invalid";
+    | "dotypos_reservation_seats_invalid";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -39,7 +39,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly customer: Customer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
-  readonly guestCount: number;
+  readonly seats: number;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
 };
@@ -122,16 +122,15 @@ export class WorkspaceReservationService extends Context.Service<
               reservationId: reservation.id,
               reservation: dotyposReservationDetails.reservation,
             });
-          const guestCount = yield* Schema.decodeUnknownEffect(
-            dotyposReservationGuestCountSchema
+          const seats = yield* Schema.decodeUnknownEffect(
+            dotyposReservationSeatsSchema
           )(dotyposReservationDetails.reservation.seats).pipe(
             Effect.mapError(
               (cause) =>
                 new WorkspaceReservationDetailsError({
                   reservationId: reservation.id,
-                  errorCode: "dotypos_reservation_guest_count_invalid",
-                  message:
-                    "Workspace Dotypos reservation guest count is invalid.",
+                  errorCode: "dotypos_reservation_seats_invalid",
+                  message: "Workspace Dotypos reservation seats are invalid.",
                   cause,
                 })
             )
@@ -159,7 +158,7 @@ export class WorkspaceReservationService extends Context.Service<
             customer: dotyposReservationDetails.customer,
             reservedFrom,
             reservedUntil,
-            guestCount,
+            seats,
             ...(tableName && { tableName }),
             ...(tableMap && { tableMap }),
           };

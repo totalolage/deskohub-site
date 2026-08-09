@@ -165,7 +165,7 @@ const getAvailability = (input: {
   readonly endsAt?: string;
   readonly to?: string;
   readonly kind?: "cowork" | "meeting-room" | "office";
-  readonly guestCount?: number;
+  readonly seats?: number;
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -206,7 +206,7 @@ const getAvailability = (input: {
             kind: "office",
             startsAt: input.startsAt,
             endsAt: input.endsAt,
-            guestCount: input.guestCount,
+            seats: input.seats,
           },
         });
       }
@@ -252,6 +252,22 @@ const getReplacementAvailability = (input: {
   );
 
 describe("WorkspaceAvailabilityService", () => {
+  test("fails when an eligible table has an invalid seat capacity", async () => {
+    await expect(
+      getAvailability({
+        date: testDate,
+        entryTier: "basic",
+        tables: [
+          makeTable({
+            id: "invalid-basic",
+            tags: ["tier:basic"],
+            seats: "not-a-number",
+          }),
+        ],
+      })
+    ).rejects.toMatchObject({ _tag: "ValidationError" });
+  });
+
   test("loads only the active reservation interval covering Prague dates", async () => {
     let interval: DotyposReservationInterval | undefined;
 
@@ -454,7 +470,7 @@ describe("WorkspaceAvailabilityService", () => {
       kind: "office" as const,
       startsAt: testStart,
       endsAt: testEnd,
-      guestCount: 2,
+      seats: 2,
       tables: [officeTable],
     };
 

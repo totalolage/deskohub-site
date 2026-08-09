@@ -131,13 +131,12 @@ const assertOfficePayPage = (
       ).days + 1;
     const dayLabel = dayCount === 1 ? "day" : "days";
     const accessTitle = `Private office access · ${dayCount} ${dayLabel}`;
-    const seatCount = office.additionalGuests + 1;
-    const seatLabel = seatCount === 1 ? "office seat" : "office seats";
-    const seatTitle = `${seatCount} ${seatLabel} · ${dayCount} ${dayLabel}`;
+    const seatLabel = office.seats === 1 ? "office seat" : "office seats";
+    const seatTitle = `${office.seats} ${seatLabel} · ${dayCount} ${dayLabel}`;
     const price = formatWorkspaceMoney(
       getWorkspaceOfficePrice({
-        additionalGuests: office.additionalGuests,
         dayCount,
+        seats: office.seats,
       }),
       data.locale
     ).replaceAll(/\s+/g, " ");

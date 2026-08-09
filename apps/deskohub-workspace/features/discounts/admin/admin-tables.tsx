@@ -29,13 +29,16 @@ import {
 } from "react";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { getWorkspaceMeetingRoomDurationLabel } from "@/features/checkout/product-catalog.i18n";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type {
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
+import {
+  getWorkspaceProductTargetKey,
+  type WorkspaceProductTarget,
+} from "@/features/discounts/product-target";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -70,7 +73,7 @@ export type DiscountTableItem = {
     readonly "en-US": string;
   };
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
   readonly codeCount: number;
 };
 
@@ -702,7 +705,7 @@ export function DiscountDefinitionFields({
   readonly discount?: DiscountTableItem;
 }) {
   const selectedProducts = new Set(
-    discount?.products.map(getWorkspaceProductKey)
+    discount?.products.map(getWorkspaceProductTargetKey)
   );
   const adjustment = discount?.adjustment;
   const [kind, setKind] = useState<"fixed" | "percentage">(
@@ -985,7 +988,10 @@ const productOptions = [
   { key: "cowork:basic", label: "Cowork Basic" },
   { key: "cowork:plus", label: "Cowork Plus" },
   { key: "cowork:profi", label: "Cowork Profi" },
-  { key: getWorkspaceProductKey({ kind: "office" }), label: "Private office" },
+  {
+    key: getWorkspaceProductTargetKey({ kind: "office" }),
+    label: "Private office",
+  },
   ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
     key: getWorkspaceProductKey({ kind: "meeting-room", duration }),
     label: `Meeting room · ${getWorkspaceMeetingRoomDurationLabel(

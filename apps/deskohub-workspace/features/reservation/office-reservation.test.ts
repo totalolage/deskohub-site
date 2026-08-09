@@ -6,13 +6,13 @@ import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getOfficeReservationDayCount,
   getOfficeReservationDefaultValues,
-  getOfficeReservationGuestCount,
   getOfficeReservationIntervalInput,
   getOfficeReservationOrder,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
   officeReservationSchema,
   storedOfficeReservationDetailsSchema,
+  workspaceOfficeProductIdentitySchema,
   workspaceOfficeProductKeySchema,
 } from "./office-reservation";
 
@@ -31,28 +31,33 @@ const validCustomer = {
 };
 
 describe("office reservation", () => {
-  test("owns the stable office product identity and key", () => {
-    expect(getWorkspaceOfficeProductKey({ kind: "office" })).toBe("office");
+  test("owns the complete office product identity and key", () => {
+    const product = { kind: "office", seats: 3, dayCount: 2 } as const;
+
+    expect(getWorkspaceOfficeProductKey(product)).toBe("office:3:2");
     expect(
-      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office")
-    ).toBe("office");
+      Schema.decodeUnknownSync(workspaceOfficeProductIdentitySchema)(product)
+    ).toEqual(product);
+    expect(
+      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office:3:2")
+    ).toBe("office:3:2");
     expect(() =>
-      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office:person")
+      Schema.decodeUnknownSync(workspaceOfficeProductKeySchema)("office")
     ).toThrow();
   });
 
-  test("accepts an inclusive multi-day range and other-person count", () => {
+  test("accepts an inclusive multi-day range and total seats", () => {
     const result = formParser.safeParse({
       ...validCustomer,
       startsOn: "2099-06-10",
       endsOn: "2099-06-12",
-      additionalGuests: 2,
+      seats: 3,
     });
 
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
       expect(getOfficeReservationDayCount(result.success)).toBe(3);
-      expect(getOfficeReservationGuestCount(result.success)).toBe(3);
+      expect(result.success.seats).toBe(3);
     }
   });
 
@@ -62,7 +67,7 @@ describe("office reservation", () => {
       marketingConsent: true,
       startsOn: "2099-06-10",
       endsOn: "2099-06-12",
-      additionalGuests: 2,
+      seats: 3,
     });
 
     expect(Result.isSuccess(result)).toBe(true);
@@ -82,17 +87,17 @@ describe("office reservation", () => {
           marketingConsent: undefined,
           startsOn: "2099-06-10",
           endsOn: "2099-06-12",
-          additionalGuests: 2,
+          seats: 3,
         })
       )
     ).toBe(true);
   });
 
-  test("rejects a backwards range and non-whole guest count", () => {
+  test("rejects a backwards range and invalid seat count", () => {
     for (const input of [
-      { startsOn: "2099-06-12", endsOn: "2099-06-10", additionalGuests: 0 },
-      { startsOn: "2099-06-10", endsOn: "2099-06-12", additionalGuests: 1.5 },
-      { startsOn: "2099-06-10", endsOn: "2099-06-12", additionalGuests: -1 },
+      { startsOn: "2099-06-12", endsOn: "2099-06-10", seats: 1 },
+      { startsOn: "2099-06-10", endsOn: "2099-06-12", seats: 1.5 },
+      { startsOn: "2099-06-10", endsOn: "2099-06-12", seats: 0 },
     ]) {
       expect(
         Result.isFailure(formParser.safeParse({ ...validCustomer, ...input }))
@@ -121,7 +126,7 @@ describe("office reservation", () => {
         storedDetailsParser.safeParse({
           kind: "office",
           startsOn: "2099-06-10",
-          additionalGuests: 2,
+          seats: 3,
         })
       )
     ).toBe(true);

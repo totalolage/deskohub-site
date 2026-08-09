@@ -1,25 +1,7 @@
-import { Match, Schema } from "effect";
-import {
-  type CoworkReservationOrderInput,
-  coworkReservationOrderSchema,
-} from "@/features/reservation/cowork-reservation";
-import {
-  type CoworkReservationProductInput as CoworkProductInput,
-  getCoworkReservationProductCoffee,
-  getCoworkReservationProductMonitorOption,
-} from "@/features/reservation/cowork-reservation-product";
-import {
-  getMeetingRoomReservationProductCoffee,
-  getMeetingRoomReservationProductMonitorOption,
-  type MeetingRoomReservationProductInput,
-  meetingRoomReservationOrderSchema,
-} from "@/features/reservation/meeting-room-reservation";
-import {
-  getOfficeReservationProductCoffee,
-  getOfficeReservationProductMonitorOption,
-  type OfficeReservationOrderInput,
-  officeReservationOrderSchema,
-} from "@/features/reservation/office-reservation";
+import { Schema } from "effect";
+import { coworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { meetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
+import { officeReservationOrderSchema } from "@/features/reservation/office-reservation";
 
 export const reservationOrderSchema = Schema.Union([
   coworkReservationOrderSchema,
@@ -32,30 +14,3 @@ export const reservationOrderSchema = Schema.Union([
 
 export type ReservationOrderInput = typeof reservationOrderSchema.Encoded;
 export type ReservationOrderData = typeof reservationOrderSchema.Type;
-
-export type ReservationProductProjectionInput =
-  | (CoworkProductInput & Pick<CoworkReservationOrderInput, "kind">)
-  | MeetingRoomReservationProductInput
-  | Pick<OfficeReservationOrderInput, "kind">;
-
-export const getReservationProductCoffee = (
-  reservation: ReservationProductProjectionInput
-) =>
-  Match.value(reservation).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: getCoworkReservationProductCoffee,
-      "meeting-room": getMeetingRoomReservationProductCoffee,
-      office: getOfficeReservationProductCoffee,
-    })
-  );
-
-export const getReservationProductMonitorOption = (
-  reservation: ReservationProductProjectionInput
-) =>
-  Match.value(reservation).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: getCoworkReservationProductMonitorOption,
-      "meeting-room": getMeetingRoomReservationProductMonitorOption,
-      office: getOfficeReservationProductMonitorOption,
-    })
-  );

@@ -14,13 +14,14 @@ import type { DiscountQuote } from "@/features/discounts/contracts";
 import {
   getOfficeReservationDayCount,
   type OfficeReservationPricingInput,
-  officeAdditionalGuestsSchema,
+  officeReservationDayCountSchema,
+  officeSeatsSchema,
 } from "@/features/reservation/office-reservation";
 
 export const officeReservationQuoteItemSchema = Schema.Struct({
   type: Schema.Literal("office"),
-  dayCount: Schema.Int.check(Schema.isGreaterThan(0)),
-  additionalGuests: officeAdditionalGuestsSchema,
+  dayCount: officeReservationDayCountSchema,
+  seats: officeSeatsSchema,
   accessAmount: positiveWorkspaceMoneyCodec,
   seatAmount: positiveWorkspaceMoneyCodec,
   amount: workspaceMoneyCodec,
@@ -39,7 +40,7 @@ export type CanonicalOfficeReservation = {
   readonly kind: "office";
   readonly startsOn: OfficeReservationPricingInput["startsOn"];
   readonly endsOn: OfficeReservationPricingInput["endsOn"];
-  readonly additionalGuests: OfficeReservationPricingInput["additionalGuests"];
+  readonly seats: OfficeReservationPricingInput["seats"];
 };
 
 export const getOfficeReservationQuote = (
@@ -48,7 +49,7 @@ export const getOfficeReservationQuote = (
 ) => {
   const dayCount = getOfficeReservationDayCount(reservation);
   const amount = getWorkspaceOfficePrice({
-    additionalGuests: reservation.additionalGuests,
+    seats: reservation.seats,
     dayCount,
   });
   const accessAmount = getWorkspaceOfficeAccessPrice(dayCount);
@@ -61,7 +62,7 @@ export const getOfficeReservationQuote = (
       {
         type: "office" as const,
         dayCount,
-        additionalGuests: reservation.additionalGuests,
+        seats: reservation.seats,
         accessAmount,
         seatAmount,
         amount,
@@ -101,5 +102,5 @@ export const getCanonicalOfficeReservation = (
   kind: "office",
   startsOn: reservation.startsOn,
   endsOn: reservation.endsOn,
-  additionalGuests: reservation.additionalGuests,
+  seats: reservation.seats,
 });

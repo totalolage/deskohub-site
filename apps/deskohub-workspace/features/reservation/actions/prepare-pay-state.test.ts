@@ -591,7 +591,7 @@ describe("prepareWorkspacePayState", () => {
         kind: "office",
         startsOn: "2099-06-10",
         endsOn: "2099-06-11",
-        additionalGuests: 2,
+        seats: 3,
         name: "Ada Lovelace",
         email: "ada@example.com",
         phone: "+420 777 777 777",

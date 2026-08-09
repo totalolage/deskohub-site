@@ -32,7 +32,7 @@ const getTestMeetingRoomInterval = (
 const officeSlot = {
   startsOn: "2099-09-01",
   endsOn: "2099-09-02",
-  additionalGuests: 1,
+  seats: 2,
   startsAt: "2099-08-31T22:00:00Z",
   endsAt: "2099-09-02T22:00:00Z",
 } as const;
@@ -911,7 +911,7 @@ test("asserts restored whole-day meeting-room state and reset consents", async (
   }
 });
 
-test("prepares a multi-day office reservation with additional seats", async () => {
+test("prepares a multi-day office reservation with selected seats", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
     officeSlot
@@ -942,8 +942,8 @@ test("prepares a multi-day office reservation with additional seats", async () =
       <div data-day="${officeSlot.endsOn}"><button type="button"></button></div>
       <input name="startsOn" value="" />
       <input name="endsOn" value="" />
-      <input checked name="additionalGuests" type="radio" value="0" />
-      <input name="additionalGuests" type="radio" value="1" />
+      <input name="seats" type="radio" value="1" />
+      <input checked name="seats" type="radio" value="2" />
       <input name="email" />
       <input name="phone" />
       <input name="name" />
@@ -1049,9 +1049,9 @@ test("prepares a multi-day office reservation with additional seats", async () =
     ).toBe(officeSlot.endsOn);
     expect(
       document.querySelector<HTMLInputElement>(
-        'input[name="additionalGuests"]:checked'
+        'input[name="seats"]:checked'
       )?.value
-    ).toBe("1");
+    ).toBe("2");
     expect(endSelectionCount).toBe(2);
     expect(
       document.querySelector<HTMLInputElement>('input[name="email"]')?.value
@@ -1062,7 +1062,7 @@ test("prepares a multi-day office reservation with additional seats", async () =
   }
 });
 
-test("asserts restored office range, party size, and reset consents", async () => {
+test("asserts restored office range, seats, and reset consents", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
     officeSlot
@@ -1076,7 +1076,7 @@ test("asserts restored office range, party size, and reset consents", async () =
     document.body.innerHTML = `
       <input name="startsOn" value="${officeSlot.startsOn}" />
       <input name="endsOn" value="${officeSlot.endsOn}" />
-      <input checked name="additionalGuests" type="radio" value="${officeSlot.additionalGuests}" />
+      <input checked name="seats" type="radio" value="${officeSlot.seats}" />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />

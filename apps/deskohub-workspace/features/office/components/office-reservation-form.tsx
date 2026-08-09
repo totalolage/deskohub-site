@@ -1,7 +1,7 @@
 "use client";
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
@@ -33,16 +33,16 @@ import {
 } from "@/features/reservation/components/reservation-type-input";
 import { useAdvertisedPrices } from "@/features/reservation/components/use-advertised-price";
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
-import { getOfficeAdditionalSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
+import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
-  getOfficeAdditionalSeatOptions,
   getOfficeReservationDefaultValues,
-  getOfficeReservationGuestCount,
   getOfficeReservationIntervalInput,
   getOfficeReservationOrder,
+  getOfficeSeatOptions,
   type NormalizedOfficeReservationOrder,
   type OfficeReservationData,
   type OfficeReservationInput,
+  officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -53,7 +53,6 @@ import {
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
-import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 type OfficeReservationFormProps = {
   readonly checkoutSessionId?: string;
@@ -68,38 +67,19 @@ type OfficeReservationFormProps = {
 const officeReservationFormSchema = Schema.toStandardSchemaV1(
   officeReservationSchema
 );
-const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
+const decodeSelection = Schema.decodeUnknownOption(
+  officeReservationDetailsSchema
+);
 const fallbackSeatCards = ["seat-1", "seat-2", "seat-3", "seat-4"];
 
 const getSelection = (
   startsOn: string | undefined,
   endsOn: string | undefined,
-  additionalGuests: number | undefined
-) => {
-  if (
-    !startsOn ||
-    !endsOn ||
-    endsOn < startsOn ||
-    typeof additionalGuests !== "number" ||
-    !Number.isInteger(additionalGuests) ||
-    additionalGuests < 0
-  ) {
-    return undefined;
-  }
-
-  try {
-    const normalizedStartsOn = decodePlainDate(startsOn);
-    const normalizedEndsOn = decodePlainDate(endsOn);
-    return {
-      kind: "office" as const,
-      startsOn: normalizedStartsOn,
-      endsOn: normalizedEndsOn,
-      additionalGuests,
-    };
-  } catch {
-    return undefined;
-  }
-};
+  seats: number | undefined
+) =>
+  Option.getOrUndefined(
+    decodeSelection({ kind: "office", startsOn, endsOn, seats })
+  );
 
 export function OfficeReservationForm({
   checkoutSessionId,
@@ -123,13 +103,13 @@ export function OfficeReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [startsOn, endsOn, additionalGuests] = useWatch({
+  const [startsOn, endsOn, seats] = useWatch({
     control: form.control,
-    name: ["startsOn", "endsOn", "additionalGuests"],
+    name: ["startsOn", "endsOn", "seats"],
   });
   const selection = useMemo(
-    () => getSelection(startsOn, endsOn, additionalGuests),
-    [additionalGuests, endsOn, startsOn]
+    () => getSelection(startsOn, endsOn, seats),
+    [endsOn, seats, startsOn]
   );
   const availabilityQuery = useMemo(():
     | OfficeWorkspaceAvailabilityQuery
@@ -142,7 +122,7 @@ export function OfficeReservationForm({
       to: selection.endsOn,
       startsAt: interval.startsAt,
       endsAt: interval.endsAt,
-      guestCount: getOfficeReservationGuestCount(selection),
+      seats: selection.seats,
     };
   }, [selection]);
   const availabilityResult = useReservationAvailability(availabilityQuery, {
@@ -152,7 +132,7 @@ export function OfficeReservationForm({
   const advertisedPriceRequests = useMemo(
     () =>
       selection
-        ? getOfficeAdditionalSeatAdvertisedPriceRequests({
+        ? getOfficeSeatAdvertisedPriceRequests({
             seatCapacity,
             locale,
             startsOn: selection.startsOn,
@@ -165,7 +145,7 @@ export function OfficeReservationForm({
     advertisedPriceRequests.map(({ request }) => request),
     initialAdvertisedPrices
   );
-  const advertisedPricesByAdditionalGuests = new Map<
+  const advertisedPricesBySeats = new Map<
     number,
     Extract<AdvertisedPrice, { readonly kind: "office" }>
   >();
@@ -173,22 +153,17 @@ export function OfficeReservationForm({
   for (const [index, result] of advertisedPriceResults.entries()) {
     const request = advertisedPriceRequests[index];
     if (request && result.data && isOfficeAdvertisedPrice(result.data)) {
-      advertisedPricesByAdditionalGuests.set(
-        request.additionalGuests,
-        result.data
-      );
+      advertisedPricesBySeats.set(request.seats, result.data);
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    (request) => request.additionalGuests === additionalGuests
+    (request) => request.seats === seats
   );
   const advertisedPriceResult =
     advertisedPriceResults[selectedAdvertisedPriceIndex];
   const advertisedPrice =
-    typeof additionalGuests === "number"
-      ? advertisedPricesByAdditionalGuests.get(additionalGuests)
-      : undefined;
+    typeof seats === "number" ? advertisedPricesBySeats.get(seats) : undefined;
   const advertisedOfficeQuoteItem = advertisedPrice?.quote.items[0];
   const unavailableDates = useMemo(
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
@@ -306,7 +281,7 @@ export function OfficeReservationForm({
 
       <FormField
         control={form.control}
-        name="additionalGuests"
+        name="seats"
         render={({ field }) => (
           <FormItem>
             <ReservationFormLabel required>
@@ -322,74 +297,71 @@ export function OfficeReservationForm({
                 onChange={(value) => field.onChange(Number(value))}
                 value={String(field.value)}
               >
-                {getOfficeAdditionalSeatOptions(seatCapacity).map(
-                  (additional) => {
-                    const seatCount = additional + 1;
-                    const optionTitle = m.reservationOfficeSeatCountOption(
-                      { count: seatCount },
-                      { locale }
+                {getOfficeSeatOptions(seatCapacity).map((seatCount) => {
+                  const optionTitle = m.reservationOfficeSeatCountOption(
+                    { count: seatCount },
+                    { locale }
+                  );
+                  const optionAdvertisedPrice =
+                    advertisedPricesBySeats.get(seatCount);
+                  const productItem = optionAdvertisedPrice?.summary.sections
+                    .find(({ key }) => key === "order")
+                    ?.items.find(
+                      (item) =>
+                        "product" in item && item.product.kind === "office"
                     );
-                    const optionAdvertisedPrice =
-                      advertisedPricesByAdditionalGuests.get(additional);
-                    const productItem = optionAdvertisedPrice?.summary.sections
-                      .find(({ key }) => key === "order")
-                      ?.items.find(
-                        (item) =>
-                          "product" in item && item.product.kind === "office"
-                      );
-                    const discounts =
-                      productItem && "discounts" in productItem
-                        ? productItem.discounts
-                        : undefined;
-                    const quotedSeatAmount =
-                      optionAdvertisedPrice?.quote.items[0].seatAmount;
-                    const seatPrice = quotedSeatAmount
-                      ? workspaceMoneyWithValue(
-                          quotedSeatAmount.value * seatCount,
-                          quotedSeatAmount
-                        )
+                  const discounts =
+                    productItem && "discounts" in productItem
+                      ? productItem.discounts
                       : undefined;
-                    const hasDiscounts = Boolean(discounts?.length);
+                  const quotedSeatAmount =
+                    optionAdvertisedPrice?.quote.items[0].seatAmount;
+                  const seatPrice = quotedSeatAmount
+                    ? workspaceMoneyWithValue(
+                        quotedSeatAmount.value * seatCount,
+                        quotedSeatAmount
+                      )
+                    : undefined;
+                  const hasDiscounts = Boolean(discounts?.length);
 
-                    return (
-                      <ReservationTypeOption
-                        key={additional}
-                        className="pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
-                        discount={
-                          hasDiscounts && discounts
-                            ? {
-                                labels: discounts.map(({ discount }) => ({
-                                  id: discount.id,
-                                  label: discount.label,
-                                })),
-                                details: (
-                                  <CheckoutSummaryDiscountDetails
-                                    discounts={discounts}
-                                    locale={locale}
-                                    productLabel={getWorkspaceOfficeProductTitle(
-                                      locale
-                                    )}
-                                  />
-                                ),
-                              }
-                            : undefined
-                        }
-                        price={
-                          seatPrice ? (
-                            <span className="before:content-['+']">
-                              {formatWorkspaceMoney(seatPrice, locale)}
-                            </span>
-                          ) : (
-                            <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
-                          )
-                        }
-                        priceReady={Boolean(seatPrice)}
-                        title={optionTitle}
-                        value={String(additional)}
-                      />
-                    );
-                  }
-                )}
+                  return (
+                    <ReservationTypeOption
+                      key={seatCount}
+                      className="pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
+                      discount={
+                        hasDiscounts && discounts
+                          ? {
+                              labels: discounts.map(({ discount }) => ({
+                                id: discount.id,
+                                label: discount.label,
+                              })),
+                              details: (
+                                <CheckoutSummaryDiscountDetails
+                                  discounts={discounts}
+                                  locale={locale}
+                                  productLabel={getWorkspaceOfficeProductTitle(
+                                    locale
+                                  )}
+                                />
+                              ),
+                            }
+                          : undefined
+                      }
+                      price={
+                        seatPrice ? (
+                          <span className="before:content-['+']">
+                            {formatWorkspaceMoney(seatPrice, locale)}
+                          </span>
+                        ) : (
+                          <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />
+                        )
+                      }
+                      priceReady={Boolean(seatPrice)}
+                      title={optionTitle}
+                      value={String(seatCount)}
+                    />
+                  );
+                })}
               </ReservationTypeInput>
             </FormControl>
             <FormMessage />

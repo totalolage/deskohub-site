@@ -1,8 +1,8 @@
 import { Schema } from "effect";
 import {
-  getWorkspaceProductKey,
-  workspaceProductIdentitySchema,
-} from "@/features/checkout/product-identity";
+  getWorkspaceProductTargetKey,
+  workspaceProductTargetSchema,
+} from "@/features/discounts/product-target";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import { instantStringSchema } from "@/shared/utils";
@@ -37,10 +37,10 @@ export const discountAdminLabelsSchema = Schema.Struct({
 const discountDefinitionSchema = Schema.Struct({
   labels: discountAdminLabelsSchema,
   adjustment: adminDiscountAdjustmentSchema,
-  products: Schema.NonEmptyArray(workspaceProductIdentitySchema).check(
+  products: Schema.NonEmptyArray(workspaceProductTargetSchema).check(
     Schema.makeFilter(
       (products) =>
-        new Set(products.map(getWorkspaceProductKey)).size ===
+        new Set(products.map(getWorkspaceProductTargetKey)).size ===
           products.length || {
           path: [],
           issue: "product targets must be unique",

@@ -174,7 +174,7 @@ test("observes fulfillment across server and runner whitespace variants", async 
   expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
 });
 
-test("asserts office range, party size, and price on the fulfilled status page", async () => {
+test("asserts office range, seats, and price on the fulfilled status page", async () => {
   const reservedFrom = Temporal.Instant.from("2099-08-31T22:00:00Z");
   const reservedUntil = Temporal.Instant.from("2099-09-02T22:00:00Z");
   const expectedDateRange = formatReservationDisplayDateRange(
@@ -194,7 +194,7 @@ test("asserts office range, party size, and price on the fulfilled status page",
       stderr: "",
       stdout: readsUrl
         ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
-        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} 2 ${expectedPrice}`,
+        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} Seats 2 ${expectedPrice}`,
     };
   }) as Runner;
 
@@ -212,7 +212,7 @@ test("asserts office range, party size, and price on the fulfilled status page",
       data: {
         locale: "en-US",
         office: {
-          additionalGuests: 1,
+          seats: 2,
           startsOn: "2099-09-01",
           endsOn: "2099-09-02",
           startsAt: reservedFrom.toString(),

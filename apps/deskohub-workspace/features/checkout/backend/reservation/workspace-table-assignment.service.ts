@@ -4,6 +4,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
+import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer, Match } from "effect";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -11,7 +12,6 @@ import type { CoworkReservationDetails } from "@/features/reservation/cowork-res
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { MeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import {
-  getOfficeReservationGuestCount,
   getOfficeReservationIntervalInput,
   type OfficeReservationDetails,
 } from "@/features/reservation/office-reservation";
@@ -26,7 +26,7 @@ import {
   excludeDotyposReservationsById,
   getWorkspaceReservationIntervalDates,
   getWorkspaceTableOccupancyById,
-  workspaceBookingGuestCount,
+  workspaceBookingSeatCount,
 } from "./workspace-table-occupancy";
 import {
   getWorkspaceTableCandidates,
@@ -92,8 +92,8 @@ export class WorkspaceTableAssignmentService extends Context.Service<
           Effect.let("assignment", ({ reservation }) =>
             getReservationAssignment(reservation)
           ),
-          Effect.let("guestCount", ({ reservation }) =>
-            getReservationGuestCount(reservation)
+          Effect.let("seats", ({ reservation }) =>
+            getReservationSeats(reservation)
           ),
           Effect.tap(({ assignment }) =>
             Effect.logInfo("Workspace table assignment started", {
@@ -134,11 +134,11 @@ export class WorkspaceTableAssignmentService extends Context.Service<
               assignment.requiredTags
             )
           ),
-          Effect.let(
+          Effect.bind(
             "matchingTable",
             ({
               assignment,
-              guestCount,
+              seats,
               inventory,
               matchingTables,
               occupancyByTableId,
@@ -147,7 +147,7 @@ export class WorkspaceTableAssignmentService extends Context.Service<
                 matchingTables,
                 inventory.tables,
                 occupancyByTableId,
-                guestCount,
+                seats,
                 assignment.requireEmptyTable
               )
           ),
@@ -231,20 +231,20 @@ const getReservationOccupancyInput = (
     })
   );
 
-const getReservationGuestCount = (
+const getReservationSeats = (
   reservation: WorkspaceTableAssignmentReservation
 ) =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: () => workspaceBookingGuestCount,
-      "meeting-room": () => workspaceBookingGuestCount,
-      office: getOfficeReservationGuestCount,
+      cowork: () => workspaceBookingSeatCount,
+      "meeting-room": () => workspaceBookingSeatCount,
+      office: ({ seats }) => seats,
     })
   );
 
 const validateTableAssignment = (input: {
   readonly assignment: ReturnType<typeof getReservationAssignment>;
-  readonly matchingTable: ReturnType<typeof selectWorkspaceTableFromCandidates>;
+  readonly matchingTable: Table | undefined;
   readonly matchingTables: ReturnType<typeof getWorkspaceTableCandidates>;
 }) =>
   Effect.succeed(input).pipe(
@@ -299,7 +299,7 @@ const getReservationLogAnnotations = (
         reservationKind: officeReservation.kind,
         startsOn: officeReservation.startsOn,
         endsOn: officeReservation.endsOn,
-        guestCount: getOfficeReservationGuestCount(officeReservation),
+        seats: officeReservation.seats,
       }),
     })
   );

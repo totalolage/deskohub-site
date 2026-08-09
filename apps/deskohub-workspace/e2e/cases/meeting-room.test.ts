@@ -39,7 +39,9 @@ test("keeps a held interval available while another meeting-room table is empty"
   const reservations = [makeMeetingRoomReservation("room-a")];
 
   expect(
-    isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
+    Effect.runSync(
+      isMeetingRoomUnavailableFromInventory({ reservations, slot, tables })
+    )
   ).toBe(false);
 });
 
@@ -76,11 +78,13 @@ test("treats a held interval as unavailable when every meeting room is occupied"
   };
 
   expect(
-    isMeetingRoomUnavailableFromInventory({
-      reservations: [makeMeetingRoomReservation("room-a")],
-      slot,
-      tables: [makeMeetingRoomTable("room-a")],
-    })
+    Effect.runSync(
+      isMeetingRoomUnavailableFromInventory({
+        reservations: [makeMeetingRoomReservation("room-a")],
+        slot,
+        tables: [makeMeetingRoomTable("room-a")],
+      })
+    )
   ).toBe(true);
 });
 

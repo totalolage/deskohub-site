@@ -169,8 +169,8 @@ export const validateDotypos = (
       assert(result.reservation._tableId, "Dotypos table id missing");
       assert(
         result.reservation.seats ===
-          String(data.office ? data.office.additionalGuests + 1 : 1),
-        "Dotypos reservation seats do not match the checkout party"
+          String(data.office ? data.office.seats : 1),
+        "Dotypos reservation seats do not match the checkout"
       );
       assert(
         result.reservation.note?.includes(row.reservation_id),

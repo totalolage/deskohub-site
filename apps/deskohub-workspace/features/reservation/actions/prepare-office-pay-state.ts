@@ -15,7 +15,6 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   getOfficeAdvertisedPriceReservation,
-  getOfficeReservationGuestCount,
   getOfficeReservationIntervalInput,
   type NormalizedOfficeReservationOrder,
   officeAdvertisedPriceReservationEquals,
@@ -107,7 +106,7 @@ export const ensureOfficePayStateAvailable = (input: {
       input.availability.ensureAvailable({
         kind: input.reservation.kind,
         ...interval,
-        guestCount: getOfficeReservationGuestCount(input.reservation),
+        seats: input.reservation.seats,
       })
     )
   );

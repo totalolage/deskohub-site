@@ -227,8 +227,8 @@ const getOfficeSummaryRows = (
     ),
   },
   {
-    label: String(m.checkoutStatusSummaryPeopleLabel({}, { locale })),
-    value: String(summary.guestCount),
+    label: String(m.checkoutStatusSummarySeatsLabel({}, { locale })),
+    value: String(summary.seats),
   },
   {
     label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
@@ -275,20 +275,13 @@ const getFulfillmentFailedContactMessage = (
   );
 };
 
-const getReserveAgainPath = (status: CheckoutStatusViewModel, locale: Locale) =>
-  Match.value(status).pipe(
-    Match.when({ status: "not_found" }, () => getCoworkReservationPath(locale)),
-    Match.when({ kind: "cowork" }, ({ kind }) =>
-      getReservationStartPath(locale, kind)
-    ),
-    Match.when({ kind: "meeting-room" }, ({ kind }) =>
-      getReservationStartPath(locale, kind)
-    ),
-    Match.when({ kind: "office" }, ({ kind }) =>
-      getReservationStartPath(locale, kind)
-    ),
-    Match.exhaustive
-  );
+const getReserveAgainPath = (
+  status: CheckoutStatusViewModel,
+  locale: Locale
+) => {
+  if (status.status === "not_found") return getCoworkReservationPath(locale);
+  return getReservationStartPath(locale, status.kind);
+};
 
 const getFulfillmentFailedContactHref = (
   status: CheckoutStatusViewModel,

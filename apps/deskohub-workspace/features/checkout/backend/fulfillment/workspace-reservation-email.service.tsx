@@ -230,8 +230,8 @@ const createReservationDetails = (
           ),
         },
         {
-          label: m.reservationEmailPeopleLabel({}, { locale }),
-          value: String(reservation.guestCount),
+          label: m.reservationEmailSeatsLabel({}, { locale }),
+          value: String(reservation.seats),
         },
       ],
     })

@@ -20,10 +20,7 @@ import {
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import {
-  getOfficeReservationGuestCount,
-  getOfficeReservationIntervalInput,
-} from "@/features/reservation/office-reservation";
+import { getOfficeReservationIntervalInput } from "@/features/reservation/office-reservation";
 import {
   getReservationDate,
   getReservationIntervalNormalization,
@@ -34,7 +31,7 @@ import {
   type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
 } from "./workspace-table-assignment.service";
-import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
+import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;
@@ -76,9 +73,9 @@ export const createWorkspaceDotyposReservation: (
     const tableId = yield* tableAssignments.assignTableId(input.reservation);
     const seats = Match.value(input.reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
-        cowork: () => workspaceBookingGuestCount,
-        "meeting-room": () => workspaceBookingGuestCount,
-        office: getOfficeReservationGuestCount,
+        cowork: () => workspaceBookingSeatCount,
+        "meeting-room": () => workspaceBookingSeatCount,
+        office: ({ seats }) => seats,
       })
     );
 
@@ -159,8 +156,7 @@ export const formatWorkspaceReservationNote = (
         productLabel: getWorkspaceOfficeProductTitle(checkoutDetails.locale),
         reservationRows: [
           `Dates: ${officeReservation.startsOn}-${officeReservation.endsOn}`,
-          `People: ${getOfficeReservationGuestCount(officeReservation)}`,
-          `Additional people: ${officeReservation.additionalGuests}`,
+          `Seats: ${officeReservation.seats}`,
         ],
       }),
     })
@@ -201,7 +197,7 @@ const getReservationLogAnnotations = (
       office: (officeReservation) => ({
         startsOn: officeReservation.startsOn,
         endsOn: officeReservation.endsOn,
-        guestCount: getOfficeReservationGuestCount(officeReservation),
+        seats: officeReservation.seats,
       }),
     })
   );

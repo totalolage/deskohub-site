@@ -5,7 +5,7 @@ import { loadOfficeReservationSeatCapacity } from "@/features/office/backend/off
 import { isOfficePageEnabled } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
-import { getOfficeAdditionalSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
+import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDefaultValues,
   officeReservationDefaultValues,
@@ -47,7 +47,7 @@ export const officeReservationPage = createReservationPage({
     };
     const seatCapacity = await loadOfficeReservationSeatCapacity();
     const initialAdvertisedPrices = await loadAdvertisedPrices(
-      getOfficeAdditionalSeatAdvertisedPriceRequests({
+      getOfficeSeatAdvertisedPriceRequests({
         seatCapacity,
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),

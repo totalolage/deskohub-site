@@ -29,7 +29,7 @@ export const getOfficeCheckoutDetails = (input: {
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,
-    discounts: [...input.quote.payment.discounts],
+    discounts: input.quote.payment.discounts,
     items: input.quote.items,
   },
   legal: input.legalEvidence,

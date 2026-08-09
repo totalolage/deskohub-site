@@ -52,7 +52,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     });
   });
 
-  test("parses office interval and party-size availability fields", () => {
+  test("parses office interval and seat availability fields", () => {
     expect(
       parseWorkspaceAvailabilityQuery(
         new URLSearchParams({
@@ -61,7 +61,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
           to: "2099-06-12",
           startsAt: "2099-06-09T22:00:00Z",
           endsAt: "2099-06-12T22:00:00Z",
-          guestCount: "3",
+          seats: "3",
         })
       )
     ).toEqual({
@@ -70,8 +70,26 @@ describe("parseWorkspaceAvailabilityQuery", () => {
       to: "2099-06-12",
       startsAt: "2099-06-09T22:00:00Z",
       endsAt: "2099-06-12T22:00:00Z",
-      guestCount: 3,
+      seats: 3,
     });
+  });
+
+  test.each([
+    "0",
+    "-1",
+    "1.5",
+    "invalid",
+  ])("drops an invalid office seat count of %s", (seats) => {
+    const query = parseWorkspaceAvailabilityQuery(
+      new URLSearchParams({
+        kind: "office",
+        from: "2099-06-10",
+        to: "2099-06-12",
+        seats,
+      })
+    );
+
+    expect(query).not.toHaveProperty("seats");
   });
 
   test("drops interval fields from cowork availability queries", () => {

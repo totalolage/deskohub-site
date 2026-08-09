@@ -5,10 +5,10 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-  workspaceProductIdentitySchema,
-} from "@/features/checkout/product-identity";
+  getWorkspaceProductTargetKey,
+  type WorkspaceProductTarget,
+  workspaceProductTargetSchema,
+} from "@/features/discounts/product-target";
 import { locales } from "@/features/i18n";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
@@ -20,7 +20,7 @@ export type DiscountDefinition = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
 };
 
 export type DiscountDefinitionRow = StoredDiscount & {
@@ -68,7 +68,7 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
 const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   Schema.Struct({
     discountId: storedDiscountIdSchema,
-    productIdentity: workspaceProductIdentitySchema,
+    productIdentity: workspaceProductTargetSchema,
   });
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
@@ -84,7 +84,7 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
       (targets) =>
         new Set(
           targets.map(({ productIdentity }) =>
-            getWorkspaceProductKey(productIdentity)
+            getWorkspaceProductTargetKey(productIdentity)
           )
         ).size === targets.length || {
           path: [],

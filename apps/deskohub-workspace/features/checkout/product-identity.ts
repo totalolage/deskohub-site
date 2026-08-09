@@ -1,9 +1,5 @@
 import { Match, Schema } from "effect";
 import {
-  workspaceCoworkProductCatalog,
-  workspaceMeetingRoomCatalog,
-} from "@/features/checkout/product-catalog";
-import {
   getWorkspaceCoworkProductKey,
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
@@ -36,18 +32,6 @@ export const workspaceProductKeySchema = Schema.Union([
 
 export type WorkspaceProductKey = typeof workspaceProductKeySchema.Type;
 
-export const workspaceProductIdentities = [
-  ...workspaceCoworkProductCatalog.map(({ tier }) => ({
-    kind: "cowork" as const,
-    tier,
-  })),
-  ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
-    kind: "meeting-room" as const,
-    duration,
-  })),
-  { kind: "office" as const },
-] satisfies readonly WorkspaceProductIdentity[];
-
 export const getWorkspaceProductKey = (
   product: WorkspaceProductIdentity
 ): WorkspaceProductKey =>
@@ -69,6 +53,6 @@ export const getCanonicalWorkspaceProductIdentity = (
         kind,
         duration,
       }),
-      office: ({ kind }) => ({ kind }),
+      office: ({ dayCount, kind, seats }) => ({ kind, seats, dayCount }),
     })
   );

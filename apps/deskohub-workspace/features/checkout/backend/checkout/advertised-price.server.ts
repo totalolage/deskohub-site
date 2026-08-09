@@ -15,9 +15,13 @@ import { CheckoutPricingService } from "./checkout-pricing.service";
 
 export const buildAdvertisedPrice = Effect.fn("buildAdvertisedPrice")(
   function* (input: AdvertisedPriceRequest) {
-    if (input.reservation.kind === "office") {
-      yield* ensureOfficeReservationsEnabled;
-    }
+    yield* Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => Effect.void,
+        "meeting-room": () => Effect.void,
+        office: () => ensureOfficeReservationsEnabled,
+      })
+    );
 
     const pricing = yield* CheckoutPricingService;
     const advertised = yield* pricing.quoteAdvertisement(input);

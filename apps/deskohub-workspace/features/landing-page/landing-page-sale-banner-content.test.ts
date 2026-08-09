@@ -3,27 +3,27 @@ import {
   workspaceCoworkProductTiers,
   workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import {
   formatLandingPageSaleBannerLabel,
   getLandingPageSaleBannerContent,
 } from "./landing-page-sale-banner-content";
 
 const coworkProducts = workspaceCoworkProductTiers.map(
-  (tier): WorkspaceProductIdentity => ({ kind: "cowork", tier })
+  (tier): WorkspaceProductTarget => ({ kind: "cowork", tier })
 );
 const meetingRoomProducts = workspaceMeetingRoomCatalog.map(
-  ({ duration }): WorkspaceProductIdentity => ({
+  ({ duration }): WorkspaceProductTarget => ({
     kind: "meeting-room",
     duration,
   })
 );
 const officeProduct = {
   kind: "office",
-} as const satisfies WorkspaceProductIdentity;
+} as const satisfies WorkspaceProductTarget;
 
 const formatLabel = (
-  products: readonly WorkspaceProductIdentity[],
+  products: readonly WorkspaceProductTarget[],
   adjustment:
     | { readonly kind: "percentage"; readonly basisPoints: number }
     | {

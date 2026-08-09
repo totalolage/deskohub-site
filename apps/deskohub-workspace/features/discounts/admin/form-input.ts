@@ -1,8 +1,8 @@
 import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-  workspaceProductIdentities,
-} from "@/features/checkout/product-identity";
+  getWorkspaceProductTargetKey,
+  type WorkspaceProductTarget,
+  workspaceProductTargets,
+} from "@/features/discounts/product-target";
 import { findWorkspaceCurrencyDefinition } from "@/shared/money/currencies";
 import {
   localDateTimeToTemporalInstantString,
@@ -47,7 +47,7 @@ export const readDiscountForm = (
       .getAll("products")
       .flatMap((value) =>
         typeof value === "string" ? (productIdentities[value] ?? []) : []
-      ) as [WorkspaceProductIdentity, ...WorkspaceProductIdentity[]],
+      ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
   };
 };
 
@@ -105,10 +105,10 @@ const readOptionalNumber = (formData: FormData, field: string) => {
 };
 
 const productIdentities: Readonly<
-  Record<string, readonly WorkspaceProductIdentity[]>
+  Record<string, readonly WorkspaceProductTarget[]>
 > = Object.fromEntries(
-  workspaceProductIdentities.map((product) => [
-    getWorkspaceProductKey(product),
+  workspaceProductTargets.map((product) => [
+    getWorkspaceProductTargetKey(product),
     [product],
   ])
 );

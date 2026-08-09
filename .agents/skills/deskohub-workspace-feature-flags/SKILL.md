@@ -9,6 +9,12 @@ Use the Workspace app-owned generated PostHog contract and request-subject-aware
 
 Server consumers resolve `WorkspaceFeatureFlagService` from Effect Context. The capability owns request-subject selection and the process-scoped typed Node client; feature-specific services own fail-closed logging and fallback behavior. Do not import the Node client or request-subject resolver directly from feature code, and do not redeclare generated flag-key or package snapshot types.
 
+Compose a feature-specific fail-closed lookup as `Effect.tapError` followed by
+`Effect.orElseSucceed(() => false)`. Keep logging and fallback as peer
+operators; do not nest a logging pipe inside `catch`. When a release gate
+applies to only one reservation family, dispatch exhaustively by `kind` so
+unrelated families do not even evaluate the gated lookup.
+
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
 
 Follow the architecture documented in [FEATURE_FLAGS.md](../../../docs/FEATURE_FLAGS.md). Update the generated contract through the documented sync workflow, keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.

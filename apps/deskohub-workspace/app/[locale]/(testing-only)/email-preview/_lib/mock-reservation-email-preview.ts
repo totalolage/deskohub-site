@@ -37,7 +37,7 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   customer: workspaceReservationEmailPreviewCustomer,
   reservedFrom: mockDate,
   reservedUntil: mockEndDate,
-  guestCount: 1,
+  seats: 1,
   tableName: workspaceReservationEmailPreviewTableName,
   tableMap: {
     assignedTableId: "desk-12",

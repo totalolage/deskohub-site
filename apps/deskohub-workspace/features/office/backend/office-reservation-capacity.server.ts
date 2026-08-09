@@ -9,7 +9,7 @@ import { getOfficeReservationSeatCapacity } from "./office-reservation-capacity"
 export const loadOfficeReservationSeatCapacity = () =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
-    return getOfficeReservationSeatCapacity(yield* dotypos.getTables());
+    return yield* getOfficeReservationSeatCapacity(yield* dotypos.getTables());
   }).pipe(
     Effect.provide(DotyposServiceLive),
     runWorkspaceEffect("reservation.office.load-seat-capacity", {

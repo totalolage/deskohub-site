@@ -114,20 +114,15 @@ type PreparedAdvertisement =
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (input: PreparePayStateInput) =>
-    Match.value(input).pipe(
-      Match.when(
-        { reservation: { kind: "cowork" } },
-        prepareCoworkAdvertisement
-      ),
-      Match.when(
-        { reservation: { kind: "meeting-room" } },
-        prepareMeetingRoomAdvertisement
-      ),
-      Match.when(
-        { reservation: { kind: "office" } },
-        prepareOfficeAdvertisement
-      ),
-      Match.exhaustive
+    Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: (reservation) =>
+          prepareCoworkAdvertisement({ ...input, reservation }),
+        "meeting-room": (reservation) =>
+          prepareMeetingRoomAdvertisement({ ...input, reservation }),
+        office: (reservation) =>
+          prepareOfficeAdvertisement({ ...input, reservation }),
+      })
     )
 );
 
@@ -672,9 +667,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
-    if (input.reservation.kind === "office") {
-      yield* ensureOfficeReservationsEnabled;
-    }
+    yield* Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => Effect.void,
+        "meeting-room": () => Effect.void,
+        office: () => ensureOfficeReservationsEnabled,
+      })
+    );
 
     const advertisement = yield* prepareAdvertisement(input);
     const reservation = advertisement.reservation;

@@ -154,14 +154,12 @@ export function getWorkspaceMeetingRoomPriceForDuration(
 }
 
 export function getWorkspaceOfficePrice(input: {
-  readonly additionalGuests: number;
+  readonly seats: number;
   readonly dayCount: number;
 }): WorkspaceMoney {
-  const guestCount = input.additionalGuests + 1;
-
   return currencyCZK(
     (workspaceOfficeBaseDailyPrice.value +
-      workspaceOfficeSeatDailyPrice.value * guestCount) *
+      workspaceOfficeSeatDailyPrice.value * input.seats) *
       input.dayCount
   );
 }

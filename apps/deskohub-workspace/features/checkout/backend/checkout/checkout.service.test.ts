@@ -11,6 +11,7 @@ import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-su
 import type { CoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
   CanonicalDiscountCode,
@@ -25,6 +26,7 @@ import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { normalizedMeetingRoomReservationOrderSchema } from "@/features/reservation/meeting-room-reservation";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -310,6 +312,43 @@ const buildEndedMeetingRoomReservation = () => {
     phone: "+420 777 777 777",
   });
 };
+
+const buildEndedOfficeReservation = () => {
+  const yesterday = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  )
+    .toPlainDate()
+    .subtract({ days: 1 });
+
+  return normalizedOfficeReservationOrderSchema.make({
+    kind: "office",
+    startsOn: yesterday.toString(),
+    endsOn: yesterday.toString(),
+    seats: 3,
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+};
+
+const buildOfficePayStateToken = (input: {
+  readonly orderId: string;
+  readonly reservation: ReturnType<typeof buildEndedOfficeReservation>;
+}) =>
+  Effect.runSync(
+    Effect.gen(function* () {
+      const quote = yield* buildOfficeReservationQuote(input.reservation);
+      const state = yield* buildSignedPayState({
+        locale: "en-US",
+        reservation: input.reservation,
+        quote,
+        orderId: input.orderId,
+        checkoutSessionId: "office-checkout-session-id",
+        ttlMilliseconds: 10 * 60 * 1000,
+      });
+      return yield* sealPayState(state);
+    })
+  );
 
 const makeAttempt = (input: {
   readonly id: string;
@@ -1164,7 +1203,35 @@ describe("CheckoutService", () => {
 
     expect(error).toMatchObject({
       _tag: "CheckoutError",
-      message: "Meeting-room reservation has already ended.",
+      code: "meeting_room_reservation_ended",
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("rejects payment after an office reservation ends", async () => {
+    const endedReservation = buildEndedOfficeReservation();
+    const orderId = "office-ended";
+    const harness = await createCheckoutHarness({
+      orderId,
+      payStateToken: buildOfficePayStateToken({
+        orderId,
+        reservation: endedReservation,
+      }),
+      reservationOverrides: {
+        productTier: null,
+        productCoffee: false,
+        productMonitorOption: null,
+        reservationDetails: { kind: "office" },
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      code: "office_reservation_ended",
     });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();

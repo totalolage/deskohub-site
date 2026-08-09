@@ -3,11 +3,12 @@ import {
   workspaceCoworkProductTiers,
   workspaceMeetingRoomCatalog,
 } from "@/features/checkout/product-catalog";
-import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-} from "@/features/checkout/product-identity";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import {
+  getWorkspaceProductTargetKey,
+  type WorkspaceProductTarget,
+} from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { getReservationStartPath } from "@/features/reservation/routes";
@@ -16,7 +17,7 @@ import type { LandingPageSaleBannerContent } from "./components/landing-page-sal
 type LandingPageSale = {
   readonly title: string;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
 };
 
 export function getLandingPageSaleBannerContent({
@@ -49,7 +50,7 @@ export function formatLandingPageSaleBannerLabel(
   sale: LandingPageSale,
   locale: Locale
 ) {
-  const productKeys = new Set(sale.products.map(getWorkspaceProductKey));
+  const productKeys = new Set(sale.products.map(getWorkspaceProductTargetKey));
   const coworkCount = workspaceCoworkProductTiers.filter((tier) =>
     productKeys.has(`cowork:${tier}`)
   ).length;
@@ -61,7 +62,7 @@ export function formatLandingPageSaleBannerLabel(
   const hasAllMeetingRoomProducts =
     meetingRoomCount === workspaceMeetingRoomCatalog.length;
   const hasOfficeProduct = productKeys.has(
-    getWorkspaceProductKey({ kind: "office" })
+    getWorkspaceProductTargetKey({ kind: "office" })
   );
   const values = {
     title: sale.title,

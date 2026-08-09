@@ -2,13 +2,14 @@ import {
   decodeStandardSchema,
   parseStandardSchema,
 } from "@deskohub/standard-schema";
-import { Match, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
+import { officeSeatsSchema } from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
@@ -19,6 +20,7 @@ import {
   coworkReservationKind,
   meetingRoomReservationKind,
   officeReservationKind,
+  workspaceReservationKindSchema,
 } from "@/features/reservation/reservation-kind";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
@@ -49,9 +51,7 @@ export const officeWorkspaceAvailabilityQuerySchema = Schema.Struct({
   ...workspaceAvailabilityQueryBaseFields,
   startsAt: Schema.optional(reservationTimestampInputSchema),
   endsAt: Schema.optional(reservationTimestampInputSchema),
-  guestCount: Schema.optional(
-    Schema.Int.check(Schema.isGreaterThanOrEqualTo(1))
-  ),
+  seats: Schema.optional(officeSeatsSchema),
 });
 
 export const workspaceAvailabilityQuerySchema = Schema.Union([
@@ -134,19 +134,22 @@ const getTierParam = (value: string | null) => {
   return isWorkspaceCoworkProductTier(normalized) ? normalized : undefined;
 };
 
-const getReservationKindParam = (searchParams: URLSearchParams) => {
-  const kind = searchParams.get("kind")?.trim();
-  if (kind === "meeting-room") return "meeting-room";
-  if (kind === "office") return "office";
-  return "cowork";
-};
+const decodeReservationKindParam = Schema.decodeUnknownOption(
+  workspaceReservationKindSchema
+);
 
-const getGuestCountParam = (value: string | null) => {
-  const guestCount = Number(value);
-  return Number.isSafeInteger(guestCount) && guestCount >= 1
-    ? guestCount
-    : undefined;
-};
+const getReservationKindParam = (searchParams: URLSearchParams) =>
+  Option.getOrElse(
+    decodeReservationKindParam(searchParams.get("kind")?.trim()),
+    () => coworkReservationKind
+  );
+
+const decodeOfficeSeatsParam = Schema.decodeUnknownOption(
+  Schema.NumberFromString.pipe(Schema.decodeTo(officeSeatsSchema))
+);
+
+const getOfficeSeatsParam = (value: string | null) =>
+  Option.getOrUndefined(decodeOfficeSeatsParam(value));
 
 const getMonitorParam = (value: string | null) => {
   const normalized = value?.trim();
@@ -179,44 +182,44 @@ export const parseWorkspaceAvailabilityQuery = (
   const from = getDateParam(searchParams, "from") ?? today.toString();
   const to =
     getDateParam(searchParams, "to") ?? today.add({ months: 6 }).toString();
-  const date = getDateParam(searchParams, "date");
   const reservationKind = getReservationKindParam(searchParams);
-  const entryTier =
-    reservationKind === "cowork" && getTierParam(searchParams.get("entryTier"));
-  const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
-  const interval =
-    reservationKind === "meeting-room" || reservationKind === "office"
-      ? getIntervalParam(searchParams)
-      : {};
-  const guestCount =
-    reservationKind === "office"
-      ? getGuestCountParam(searchParams.get("guestCount"))
-      : undefined;
 
   return Match.value(reservationKind).pipe(
-    Match.when("meeting-room", () => ({
-      kind: meetingRoomReservationKind,
-      from,
-      to,
-      ...(interval.startsAt && { startsAt: interval.startsAt }),
-      ...(interval.endsAt && { endsAt: interval.endsAt }),
-    })),
-    Match.when("cowork", () => ({
-      kind: coworkReservationKind,
-      from,
-      to,
-      ...(date && { date }),
-      ...(entryTier && { entryTier }),
-      ...(monitorOption && { monitorOption }),
-    })),
-    Match.when("office", () => ({
-      kind: officeReservationKind,
-      from,
-      to,
-      ...(interval.startsAt && { startsAt: interval.startsAt }),
-      ...(interval.endsAt && { endsAt: interval.endsAt }),
-      ...(guestCount && { guestCount }),
-    })),
+    Match.when("meeting-room", () => {
+      const interval = getIntervalParam(searchParams);
+      return {
+        kind: meetingRoomReservationKind,
+        from,
+        to,
+        ...(interval.startsAt && { startsAt: interval.startsAt }),
+        ...(interval.endsAt && { endsAt: interval.endsAt }),
+      };
+    }),
+    Match.when("cowork", () => {
+      const date = getDateParam(searchParams, "date");
+      const entryTier = getTierParam(searchParams.get("entryTier"));
+      const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
+      return {
+        kind: coworkReservationKind,
+        from,
+        to,
+        ...(date && { date }),
+        ...(entryTier && { entryTier }),
+        ...(monitorOption && { monitorOption }),
+      };
+    }),
+    Match.when("office", () => {
+      const interval = getIntervalParam(searchParams);
+      const seats = getOfficeSeatsParam(searchParams.get("seats"));
+      return {
+        kind: officeReservationKind,
+        from,
+        to,
+        ...(interval.startsAt && { startsAt: interval.startsAt }),
+        ...(interval.endsAt && { endsAt: interval.endsAt }),
+        ...(seats && { seats }),
+      };
+    }),
     Match.exhaustive
   );
 };

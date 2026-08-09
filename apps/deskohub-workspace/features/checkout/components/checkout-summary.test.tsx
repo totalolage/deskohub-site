@@ -99,13 +99,13 @@ describe("CheckoutSummary", () => {
     expect(view.queryByText("Meeting room - 24 hours")).toBeNull();
   });
 
-  test("aggregates every attendee seat into one singular-day row", () => {
+  test("aggregates every reserved seat into one singular-day row", () => {
     const quote = Effect.runSync(
       getOfficeReservationQuote({
         kind: "office",
         startsOn: "2099-06-10",
         endsOn: "2099-06-10",
-        additionalGuests: 2,
+        seats: 3,
       })
     );
     const view = render(
@@ -129,7 +129,7 @@ describe("CheckoutSummary", () => {
         kind: "office",
         startsOn: "2099-06-10",
         endsOn: "2099-06-11",
-        additionalGuests: 0,
+        seats: 1,
       })
     );
     const view = render(
@@ -149,7 +149,7 @@ describe("CheckoutSummary", () => {
         kind: "office",
         startsOn: "2099-06-10",
         endsOn: "2099-06-10",
-        additionalGuests: 2,
+        seats: 3,
       })
     );
     const view = render(
@@ -175,11 +175,11 @@ describe("CheckoutSummary", () => {
           kind: "office",
           startsOn: "2099-06-10",
           endsOn: "2099-06-10",
-          additionalGuests: 1,
+          seats: 2,
         },
         {
           discountQuote: {
-            product: { kind: "office" },
+            product: { kind: "office", seats: 2, dayCount: 1 },
             discountableSubtotal: money(116_000),
             discounts: [
               {

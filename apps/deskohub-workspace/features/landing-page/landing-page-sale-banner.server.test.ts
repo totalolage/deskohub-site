@@ -4,9 +4,9 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Logger, References, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 
 mock.module("server-only", () => ({}));
 
@@ -21,17 +21,17 @@ const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const coworkProduct = {
   kind: "cowork",
   tier: "basic",
-} satisfies WorkspaceProductIdentity;
+} satisfies WorkspaceProductTarget;
 const meetingRoomProduct = {
   kind: "meeting-room",
   duration: workspaceMeetingRoomCatalog[0]!.duration,
-} satisfies WorkspaceProductIdentity;
+} satisfies WorkspaceProductTarget;
 const officeProduct = {
   kind: "office",
-} satisfies WorkspaceProductIdentity;
+} satisfies WorkspaceProductTarget;
 
 const sale = (
-  products: readonly WorkspaceProductIdentity[],
+  products: readonly WorkspaceProductTarget[],
   id = "summer-focus"
 ): ActiveSale => ({
   discount: {

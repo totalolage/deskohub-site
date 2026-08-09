@@ -17,33 +17,55 @@ import {
 const decodeInstant = Schema.decodeUnknownSync(instantStringSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 
-export const officeAdditionalGuestsSchema = Schema.Int.check(
-  Schema.isGreaterThanOrEqualTo(0, {
-    message: m.reservationValidationOfficeAdditionalGuests(),
+export const officeSeatsSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(1, {
+    message: m.reservationValidationOfficeSeats(),
   })
 ).annotate({
-  identifier: "OfficeAdditionalGuests",
-  description:
-    "Number of office guests in addition to the customer making the reservation.",
+  identifier: "OfficeSeats",
+  description: "Total number of seats reserved in the office.",
+});
+
+export const officeReservationDayCountSchema = Schema.Int.check(
+  Schema.isGreaterThan(0)
+).annotate({
+  identifier: "OfficeReservationDayCount",
+  description: "Inclusive number of whole calendar days reserved.",
 });
 
 export const workspaceOfficeProductIdentitySchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
+  seats: officeSeatsSchema,
+  dayCount: officeReservationDayCountSchema,
 });
 
 export type WorkspaceOfficeProductIdentity =
   typeof workspaceOfficeProductIdentitySchema.Type;
 
-export const workspaceOfficeProductKeySchema = Schema.Literal(
-  officeReservationKind
-);
+export const workspaceOfficeProductKeySchema = Schema.TemplateLiteral([
+  officeReservationKind,
+  ":",
+  Schema.Number,
+  ":",
+  Schema.Number,
+]).check(Schema.isPattern(/^office:[1-9]\d*:[1-9]\d*$/));
 
 export type WorkspaceOfficeProductKey =
   typeof workspaceOfficeProductKeySchema.Type;
 
 export const getWorkspaceOfficeProductKey = (
-  _product: WorkspaceOfficeProductIdentity
-): WorkspaceOfficeProductKey => officeReservationKind;
+  product: WorkspaceOfficeProductIdentity
+): WorkspaceOfficeProductKey =>
+  `${product.kind}:${product.seats}:${product.dayCount}`;
+
+export const getWorkspaceOfficeProductIdentity = (
+  product: Pick<WorkspaceOfficeProductIdentity, "seats" | "dayCount">
+): WorkspaceOfficeProductIdentity =>
+  workspaceOfficeProductIdentitySchema.make({
+    kind: officeReservationKind,
+    seats: product.seats,
+    dayCount: product.dayCount,
+  });
 
 const officeDateSchema = Schema.String.check(
   isPlainDateString({ message: m.reservationValidationDateRequired() })
@@ -81,7 +103,7 @@ const officeReservationSelectionChecks = [
 const officeReservationSelectionFields = {
   startsOn: officeDateSchema,
   endsOn: officeDateSchema,
-  additionalGuests: officeAdditionalGuestsSchema,
+  seats: officeSeatsSchema,
 } as const;
 
 const officeReservationOrderBaseSchema = Schema.Struct({
@@ -110,7 +132,7 @@ export const normalizedOfficeReservationOrderSchema = Schema.Struct({
   ...normalizedReservationCustomerSchema.fields,
   startsOn: plainDateStringSchema,
   endsOn: plainDateStringSchema,
-  additionalGuests: officeAdditionalGuestsSchema,
+  seats: officeSeatsSchema,
 });
 
 export const normalizedOfficeReservationFormSchema = Schema.Struct({
@@ -128,11 +150,14 @@ export const officeReservationDetailsSchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
   startsOn: plainDateStringSchema,
   endsOn: plainDateStringSchema,
-  additionalGuests: officeAdditionalGuestsSchema,
-}).annotate({
-  identifier: "OfficeReservationDetails",
-  description: "PII-free office reservation projection for external consumers.",
-});
+  seats: officeSeatsSchema,
+})
+  .check(...officeReservationSelectionChecks)
+  .annotate({
+    identifier: "OfficeReservationDetails",
+    description:
+      "PII-free office reservation projection for external consumers.",
+  });
 
 export type OfficeReservationDetails =
   typeof officeReservationDetailsSchema.Type;
@@ -158,20 +183,20 @@ export const officeAdvertisedPriceReservationEquals = Schema.toEquivalence(
 export const getOfficeReservationDetails = (
   reservation: Pick<
     NormalizedOfficeReservationOrder,
-    "kind" | "startsOn" | "endsOn" | "additionalGuests"
+    "kind" | "startsOn" | "endsOn" | "seats"
   >
 ): OfficeReservationDetails =>
   officeReservationDetailsSchema.make({
     kind: officeReservationKind,
     startsOn: reservation.startsOn,
     endsOn: reservation.endsOn,
-    additionalGuests: reservation.additionalGuests,
+    seats: reservation.seats,
   });
 
 export const getOfficeAdvertisedPriceReservation = (
   reservation: Pick<
     NormalizedOfficeReservationOrder,
-    "startsOn" | "endsOn" | "additionalGuests"
+    "startsOn" | "endsOn" | "seats"
   >
 ): OfficeAdvertisedPriceReservation => ({
   kind: officeReservationKind,
@@ -196,21 +221,9 @@ export const getStoredOfficeReservationDetails = (
   _reservation: Pick<OfficeReservationOrderInput, "kind">
 ): StoredOfficeReservationDetails => ({ kind: officeReservationKind });
 
-export const getOfficeReservationProductCoffee = (
-  _reservation: Pick<OfficeReservationOrderInput, "kind">
-) => false;
-
-export const getOfficeReservationProductMonitorOption = (
-  _reservation: Pick<OfficeReservationOrderInput, "kind">
-) => undefined;
-
-export const getOfficeReservationGuestCount = (
-  reservation: Pick<OfficeReservationDetails, "additionalGuests">
-) => reservation.additionalGuests + 1;
-
-export const getOfficeAdditionalSeatOptions = (seatCapacity: number) =>
-  Array.from({ length: seatCapacity }, (_, additionalGuests) =>
-    officeAdditionalGuestsSchema.make(additionalGuests)
+export const getOfficeSeatOptions = (seatCapacity: number) =>
+  Array.from({ length: seatCapacity }, (_, index) =>
+    officeSeatsSchema.make(index + 1)
   );
 
 export const getOfficeReservationDayCount = (
@@ -220,6 +233,14 @@ export const getOfficeReservationDayCount = (
     Temporal.PlainDate.from(reservation.endsOn),
     { largestUnit: "day" }
   ).days + 1;
+
+export const getOfficeReservationProductIdentity = (
+  reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn" | "seats">
+): WorkspaceOfficeProductIdentity =>
+  getWorkspaceOfficeProductIdentity({
+    seats: reservation.seats,
+    dayCount: getOfficeReservationDayCount(reservation),
+  });
 
 export const getOfficeReservationIntervalInput = (
   reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn">
@@ -262,7 +283,7 @@ export const normalizeOfficeReservationOrder = (
     ...(reservation.message !== undefined && { message: reservation.message }),
     startsOn: decodePlainDate(reservation.startsOn),
     endsOn: decodePlainDate(reservation.endsOn),
-    additionalGuests: reservation.additionalGuests,
+    seats: reservation.seats,
   });
 
 const decodeOfficeReservationOrder = Schema.decodeUnknownSync(
@@ -300,7 +321,7 @@ export type OfficeReservationData = typeof officeReservationSchema.Type;
 export const officeReservationDefaultValues: OfficeReservationInput = {
   startsOn: "",
   endsOn: "",
-  additionalGuests: 0,
+  seats: 1,
   name: "",
   email: "",
   phone: "",
@@ -321,7 +342,7 @@ export const getOfficeReservationDefaultValues = (
 ): OfficeReservationInput => ({
   startsOn: reservation.startsOn,
   endsOn: reservation.endsOn,
-  additionalGuests: reservation.additionalGuests,
+  seats: reservation.seats,
   name: reservation.name,
   email: reservation.email,
   phone: reservation.phone,

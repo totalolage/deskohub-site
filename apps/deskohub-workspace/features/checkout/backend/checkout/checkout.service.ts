@@ -117,28 +117,31 @@ export class CheckoutError extends Data.TaggedError("CheckoutError")<{
 const ensureReservationHasNotEnded = Effect.fn(
   "checkout.ensureReservationHasNotEnded"
 )(function* (reservation: SignedPayState["reservation"]) {
-  const ended = Match.value(reservation).pipe(
+  const error = Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: () => false,
-      "meeting-room": hasReservationIntervalEnded,
-      office: hasOfficeReservationEnded,
+      cowork: () => undefined,
+      "meeting-room": (meetingRoomReservation) => {
+        if (!hasReservationIntervalEnded(meetingRoomReservation)) return;
+        return new CheckoutError({
+          code: "meeting_room_reservation_ended",
+          message: "Meeting-room reservation has already ended.",
+        });
+      },
+      office: (officeReservation) => {
+        if (!hasOfficeReservationEnded(officeReservation)) return;
+        return new CheckoutError({
+          code: "office_reservation_ended",
+          message: "Office reservation has already ended.",
+        });
+      },
     })
   );
-  if (!ended) return;
+  if (!error) return;
 
   yield* Effect.logInfo(
     "Hosted payment checkout rejected: reservation already ended"
   );
-  return yield* new CheckoutError({
-    code:
-      reservation.kind === "office"
-        ? "office_reservation_ended"
-        : "meeting_room_reservation_ended",
-    message:
-      reservation.kind === "office"
-        ? "Office reservation has already ended."
-        : "Meeting-room reservation has already ended.",
-  });
+  return yield* error;
 });
 
 export interface CheckoutService {

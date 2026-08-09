@@ -34,7 +34,8 @@ const getEligibleLandingPageSaleBanner = Effect.fn(
 }) {
   if (input.activeSales.length !== 1) return undefined;
 
-  const sale = input.activeSales[0]!;
+  const sale = input.activeSales[0];
+  if (!sale) return undefined;
   if (sale.products.some(({ kind }) => kind === "office")) {
     const officeFeatureFlag = yield* OfficeReservationFeatureFlagService;
     if (!(yield* officeFeatureFlag.isEnabled)) return undefined;

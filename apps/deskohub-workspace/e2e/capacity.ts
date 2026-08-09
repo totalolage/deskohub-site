@@ -17,7 +17,7 @@ import {
   workspaceE2EFullDateAllocation,
   workspaceE2EProviderHeadroomRuns,
 } from "./allocation";
-import { workspaceE2EOfficeReservationGuestCount } from "./office";
+import { workspaceE2EOfficeReservationSeats } from "./office";
 
 const provisionedRunCapacity =
   workspaceE2EConcurrentRunTarget + workspaceE2EProviderHeadroomRuns;
@@ -119,7 +119,7 @@ const capacityGroups: readonly CapacityGroup[] = [
   },
   {
     id: workspaceOfficeReservationTableTag,
-    requiredSeatCount: workspaceE2EOfficeReservationGuestCount,
+    requiredSeatCount: workspaceE2EOfficeReservationSeats,
     requiredTableCount: 1,
     requiredTags: [workspaceOfficeReservationTableTag],
   },

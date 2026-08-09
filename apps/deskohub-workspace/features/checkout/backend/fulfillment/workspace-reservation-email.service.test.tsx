@@ -48,7 +48,7 @@ const makeReservation = (
   customer,
   reservedFrom: Temporal.Instant.from("2026-06-12T07:00:00Z"),
   reservedUntil: Temporal.Instant.from("2026-06-12T11:00:00Z"),
-  guestCount: 1,
+  seats: 1,
   ...overrides,
 });
 
@@ -138,7 +138,7 @@ describe("workspace reservation email details", () => {
     expect(internalHtml).not.toContain("Monitory");
   });
 
-  test("renders the inclusive office date range and total party size", async () => {
+  test("renders the inclusive office date range and seats", async () => {
     const { createReservationRows } = await import(
       "./workspace-reservation-email.service"
     );
@@ -146,7 +146,7 @@ describe("workspace reservation email details", () => {
       reservationDetails: { kind: "office" },
       reservedFrom: Temporal.Instant.from("2026-06-11T22:00:00Z"),
       reservedUntil: Temporal.Instant.from("2026-06-14T22:00:00Z"),
-      guestCount: 3,
+      seats: 3,
     });
 
     expect(createReservationRows(reservation, "en-US")).toEqual([
@@ -155,7 +155,7 @@ describe("workspace reservation email details", () => {
         label: "Reservation date",
         value: "Friday, June 12 – Sunday, June 14, 2026",
       },
-      { label: "People", value: "3" },
+      { label: "Seats", value: "3" },
       {
         label: "Reservation reference",
         value: "dotypos-reservation-id",

@@ -37,9 +37,8 @@ import {
   workspaceE2EError,
 } from "../errors";
 import {
-  workspaceE2EOfficeReservationAdditionalGuests,
   workspaceE2EOfficeReservationDayCount,
-  workspaceE2EOfficeReservationGuestCount,
+  workspaceE2EOfficeReservationSeats,
 } from "../office";
 import { assert, log } from "../runtime";
 import type { CheckoutData, CheckoutFlow } from "../types";
@@ -58,9 +57,9 @@ export type MeetingRoomAvailability = {
 };
 
 export type OfficeCheckoutSlot = {
-  readonly additionalGuests: number;
   readonly endsAt: ReservationInterval["endsAt"];
   readonly endsOn: string;
+  readonly seats: number;
   readonly startsAt: ReservationInterval["startsAt"];
   readonly startsOn: string;
 };
@@ -599,7 +598,7 @@ export const selectAvailableOfficeSlot = (
     }
 
     return yield* workspaceE2EError(
-      `No available reservation:office ${workspaceE2EOfficeReservationDayCount}-day range for ${workspaceE2EOfficeReservationGuestCount} people found in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}`,
+      `No available reservation:office ${workspaceE2EOfficeReservationDayCount}-day range with ${workspaceE2EOfficeReservationSeats} seats found in ${formatWorkspaceE2EAllocation(allocation)} for supported concurrency ${workspaceE2EConcurrentRunTarget}`,
       { operation: "select available office checkout range" }
     );
   });
@@ -615,14 +614,14 @@ const makeOfficeCheckoutSlot = (
       kind: "office",
       startsOn,
       endsOn,
-      additionalGuests: workspaceE2EOfficeReservationAdditionalGuests,
+      seats: workspaceE2EOfficeReservationSeats,
     });
     const interval = getOfficeReservationIntervalInput(details);
 
     return {
       startsOn,
       endsOn,
-      additionalGuests: workspaceE2EOfficeReservationAdditionalGuests,
+      seats: workspaceE2EOfficeReservationSeats,
       startsAt: interval.startsAt,
       endsAt: interval.endsAt,
     };
@@ -643,7 +642,7 @@ export const loadOfficeAvailability = (
       to: slot.endsOn,
       startsAt: slot.startsAt,
       endsAt: slot.endsAt,
-      guestCount: String(slot.additionalGuests + 1),
+      seats: String(slot.seats),
     });
     const httpClient = yield* HttpClient.HttpClient;
     const request = HttpClientRequest.get(

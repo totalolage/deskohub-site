@@ -35,7 +35,7 @@ describe("getWorkspaceAvailabilityUrl", () => {
     );
   });
 
-  test("serializes office interval and total guest count", () => {
+  test("serializes office interval and seats", () => {
     expect(
       getWorkspaceAvailabilityUrl({
         kind: "office",
@@ -43,10 +43,10 @@ describe("getWorkspaceAvailabilityUrl", () => {
         to: "2099-08-01",
         startsAt: "2099-07-29T22:00:00Z",
         endsAt: "2099-08-01T22:00:00Z",
-        guestCount: 3,
+        seats: 3,
       })
     ).toBe(
-      "/api/workspace/availability?kind=office&from=2099-07-30&to=2099-08-01&startsAt=2099-07-29T22%3A00%3A00Z&endsAt=2099-08-01T22%3A00%3A00Z&guestCount=3"
+      "/api/workspace/availability?kind=office&from=2099-07-30&to=2099-08-01&startsAt=2099-07-29T22%3A00%3A00Z&endsAt=2099-08-01T22%3A00%3A00Z&seats=3"
     );
   });
 

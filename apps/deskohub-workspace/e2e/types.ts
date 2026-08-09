@@ -64,9 +64,9 @@ export type CheckoutData = {
     readonly startsAt: ReservationInterval["startsAt"];
   };
   readonly office?: {
-    readonly additionalGuests: number;
     readonly endsAt: ReservationInterval["endsAt"];
     readonly endsOn: string;
+    readonly seats: number;
     readonly startsAt: ReservationInterval["startsAt"];
     readonly startsOn: string;
   };

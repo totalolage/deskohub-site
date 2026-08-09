@@ -61,13 +61,17 @@ describe("workspace product catalog", () => {
     });
   });
 
-  test("prices the office base and every person per calendar day", () => {
-    expect(
-      getWorkspaceOfficePrice({ additionalGuests: 0, dayCount: 1 })
-    ).toEqual({ value: 84_500, exponent: 2, currency: "CZK" });
-    expect(
-      getWorkspaceOfficePrice({ additionalGuests: 2, dayCount: 2 })
-    ).toEqual({ value: 295_000, exponent: 2, currency: "CZK" });
+  test("prices the office base and every seat per calendar day", () => {
+    expect(getWorkspaceOfficePrice({ seats: 1, dayCount: 1 })).toEqual({
+      value: 84_500,
+      exponent: 2,
+      currency: "CZK",
+    });
+    expect(getWorkspaceOfficePrice({ seats: 3, dayCount: 2 })).toEqual({
+      value: 295_000,
+      exponent: 2,
+      currency: "CZK",
+    });
   });
 
   test("keeps duration keys aligned and catalog prices in CZK", () => {
