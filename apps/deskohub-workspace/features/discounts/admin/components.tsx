@@ -96,35 +96,46 @@ export function CodesAdministrationPage({
       activeSection="codes"
       count={codes.length}
       notice={notice}
-      title="Discount codes"
+      title="Codes"
     >
-      <section>
-        {discounts.length === 0 ? (
-          <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-6 text-sm text-navy-blue/65">
-            Create a discount before adding a code.
+      <div className="space-y-9">
+        <DiscountDefinitionsSection discounts={discounts} />
+        <section aria-labelledby="discount-codes-heading">
+          <div className="mb-3">
+            <h2 className="text-xl" id="discount-codes-heading">
+              Codes
+            </h2>
+            <p className="mt-1 text-sm text-navy-blue/65">
+              Create customer-facing codes from the definitions above.
+            </p>
           </div>
-        ) : (
-          <details className="group rounded-xl border border-navy-blue/10 bg-white">
-            <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-              <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-                <Plus aria-hidden className="size-4" />
-              </span>
-              Create a discount code
-            </summary>
-            <div className="px-5 pb-6">
-              <CreateDiscountCodeForm discounts={discounts} />
+          {discounts.length === 0 ? (
+            <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-6 text-sm text-navy-blue/65">
+              Create a discount before adding a code.
             </div>
-          </details>
-        )}
-
-        <div className="mt-4">
-          {codes.length === 0 ? (
-            <EmptyState message="No discount codes yet." />
           ) : (
-            <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+            <details className="group rounded-xl border border-navy-blue/10 bg-white">
+              <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
+                <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
+                  <Plus aria-hidden className="size-4" />
+                </span>
+                Create a discount code
+              </summary>
+              <div className="px-5 pb-6">
+                <CreateDiscountCodeForm discounts={discounts} />
+              </div>
+            </details>
           )}
-        </div>
-      </section>
+
+          <div className="mt-4">
+            {codes.length === 0 ? (
+              <EmptyState message="No discount codes yet." />
+            ) : (
+              <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+            )}
+          </div>
+        </section>
+      </div>
     </AdminPageShell>
   );
 }
@@ -133,15 +144,56 @@ export function SalesAdministrationPage({
   dashboard,
   notice,
 }: DiscountAdministrationProps) {
+  const discounts = toDiscountTableItems(dashboard);
   return (
     <AdminPageShell
       activeSection="sales"
       count={dashboard.calendar.events.length}
       notice={notice}
-      title="Calendar sales"
+      title="Sales"
     >
-      <CalendarSection calendar={dashboard.calendar} />
+      <div className="space-y-9">
+        <CalendarSection calendar={dashboard.calendar} />
+        <DiscountDefinitionsSection discounts={discounts} />
+      </div>
     </AdminPageShell>
+  );
+}
+
+function DiscountDefinitionsSection({
+  discounts,
+}: {
+  readonly discounts: readonly DiscountTableItem[];
+}) {
+  return (
+    <section aria-labelledby="discount-definitions-heading">
+      <div className="mb-3">
+        <h2 className="text-xl" id="discount-definitions-heading">
+          Discount definitions
+        </h2>
+        <p className="mt-1 text-sm text-navy-blue/65">
+          Shared pricing rules used by codes and Calendar sales.
+        </p>
+      </div>
+      <details className="group rounded-xl border border-navy-blue/10 bg-white">
+        <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
+          <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
+            <Plus aria-hidden className="size-4" />
+          </span>
+          Create a discount definition
+        </summary>
+        <div className="px-5 pb-6">
+          <CreateDiscountForm />
+        </div>
+      </details>
+      <div className="mt-4">
+        {discounts.length === 0 ? (
+          <EmptyState message="No discount definitions yet." />
+        ) : (
+          <DiscountsAdminTable discounts={discounts} />
+        )}
+      </div>
+    </section>
   );
 }
 

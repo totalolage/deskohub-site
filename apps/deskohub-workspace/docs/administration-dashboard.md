@@ -1,6 +1,10 @@
 # Workspace administration dashboard
 
-The Workspace administration dashboard is a read-oriented operational view for reservations, customers, discounts, codes, and calendar sales. Its reservation and customer pages do not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records.
+The Workspace administration dashboard is a read-oriented operational view for reservations, customers, codes, discounts, calendar sales, and their related payment records. Its reservation and customer pages do not mutate checkout state, refresh payment state, retry fulfillment, or repair provider records.
+
+The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
+
+Discount definitions are managed from both Codes and Sales so operators can configure a definition in the same context where it will be used. `/admin/discounts` redirects to Codes for compatibility with existing links.
 
 ## Data ownership
 
@@ -8,11 +12,18 @@ The dashboard composes three sources without creating a second customer or reser
 
 - Workspace Postgres defines which reservations belong to Workspace and supplies current workflow state, durable milestone timestamps, payment attempts, and applied-discount snapshots.
 - Dotypos supplies current booking dates and customer contact details. A missing or unavailable Dotypos record does not hide an existing Workspace reservation.
+- Nexi supplies live order and operation details when an order ID is linked to a local payment attempt. Provider IDs remain visible and link directly to XPay even when Nexi is unavailable.
 - PostHog can add selected historical lifecycle observations to an individual reservation timeline. It never determines the current status and is not queried for reservation or customer lists.
 
 Fuzzy customer search by name or email remains a protected server action. Customer contact data is not placed in URLs or persisted by the dashboard. The selected Dotypos customer ID, status groups, reservation types, dates, and page numbers may be represented in URLs.
 
 The administration projection deliberately excludes Workspace access codes, payment security tokens, provider redirect URLs, Dotypos notes, raw provider responses, and raw PostHog property bags.
+
+## Reservation lifecycle
+
+The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
+
+The Overview activity counts use live Dotypos booking start dates intersected with the reservations known to Workspace. If Dotypos is unavailable, the affected count is shown as unavailable rather than replaced with a locally derived value that answers a different question.
 
 ## PostHog history configuration
 

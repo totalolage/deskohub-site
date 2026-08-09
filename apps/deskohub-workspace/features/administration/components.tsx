@@ -25,6 +25,14 @@ export type AdministrationNotice = {
   readonly status: "error" | "success";
 };
 
+export const getBookingTableLabel = (
+  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
+) => {
+  if (!booking) return "Unavailable";
+  if (booking.tableName) return booking.tableName;
+  return booking.tableId ? "Details unavailable" : "Not assigned";
+};
+
 export function AdministrationPage({
   children,
   className,
@@ -183,23 +191,19 @@ export function PaymentAttemptList({
               {formatAdministrationDateTime(attempt.createdAt)}
             </p>
             {attempt.providerOrderId && (
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm font-semibold text-burned-orange-ink">
-                <Link
-                  className="inline-flex items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
-                  href={`/admin/orders/${encodeURIComponent(attempt.providerOrderId)}`}
+              <div className="mt-2 text-sm font-semibold text-burned-orange-ink">
+                <a
+                  aria-label={`Nexi order ${attempt.providerOrderId} (opens in XPay)`}
+                  className="inline-flex flex-wrap items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
+                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   <span>Nexi order</span>
                   <span className="break-all font-mono text-xs">
                     {attempt.providerOrderId}
                   </span>
-                </Link>
-                <a
-                  className="text-xs underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
-                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open in XPay ↗
+                  <span aria-hidden>↗</span>
                 </a>
               </div>
             )}
@@ -365,14 +369,15 @@ export function ReservationTable({
   return (
     <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
       <div className="hidden overflow-x-auto md:block">
-        <Table aria-label="Reservations" className="min-w-[760px]">
+        <Table aria-label="Reservations" className="min-w-[1060px]">
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Reservation</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Booking</TableHead>
+              <TableHead>Date</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead className="text-right">Updated</TableHead>
+              <TableHead>Customer</TableHead>
+              <TableHead>Reservation</TableHead>
+              <TableHead>Created</TableHead>
+              <TableHead>Payment</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -383,11 +388,16 @@ export function ReservationTable({
                     className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
                     href={`/admin/reservations/${reservation.id}`}
                   >
-                    {reservation.typeLabel}
+                    {reservation.startsAt
+                      ? formatAdministrationDateTime(reservation.startsAt)
+                      : "Date unavailable"}
                   </Link>
-                  <p className="mt-1 font-mono text-xs text-navy-blue/65">
-                    {reservation.id.slice(0, 12)}…
+                  <p className="mt-1 text-xs text-navy-blue/65">
+                    {reservation.typeLabel}
                   </p>
+                </TableCell>
+                <TableCell>
+                  <ReservationStatusBadge status={reservation.status} />
                 </TableCell>
                 <TableCell>
                   {reservation.customer ? (
@@ -411,26 +421,43 @@ export function ReservationTable({
                   )}
                 </TableCell>
                 <TableCell>
-                  {reservation.startsAt ? (
-                    <>
-                      <p className="font-medium">
-                        {formatAdministrationDateTime(reservation.startsAt)}
-                      </p>
-                      <p className="mt-1 text-xs text-navy-blue/65">
-                        {reservation.typeLabel}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Unavailable
-                    </span>
-                  )}
+                  <p className="font-medium">{reservation.typeLabel}</p>
+                  <p className="mt-1 font-mono text-xs text-navy-blue/65">
+                    {reservation.id.slice(0, 12)}…
+                  </p>
+                </TableCell>
+                <TableCell className="text-sm text-navy-blue/65">
+                  {formatAdministrationDateTime(reservation.createdAt)}
                 </TableCell>
                 <TableCell>
-                  <ReservationStatusBadge status={reservation.status} />
-                </TableCell>
-                <TableCell className="text-right text-sm text-navy-blue/65">
-                  {formatAdministrationDateTime(reservation.updatedAt)}
+                  {reservation.latestPayment ? (
+                    <>
+                      <p className="font-medium">
+                        {formatAdministrationMoney(
+                          reservation.latestPayment.amount
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-navy-blue/65">
+                        {reservation.latestPayment.stateLabel} ·{" "}
+                        {formatAdministrationDateTime(
+                          reservation.latestPayment.updatedAt
+                        )}
+                      </p>
+                      {reservation.latestPayment.providerOrderId && (
+                        <a
+                          aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
+                          className="relative z-10 mt-1 block max-w-44 break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+                          href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          {reservation.latestPayment.providerOrderId} ↗
+                        </a>
+                      )}
+                    </>
+                  ) : (
+                    <span className="text-sm text-navy-blue/45">—</span>
+                  )}
                 </TableCell>
               </TableRow>
             ))}
@@ -440,14 +467,17 @@ export function ReservationTable({
       <ul className="divide-y divide-navy-blue/10 md:hidden">
         {reservations.map((reservation) => (
           <li key={reservation.id}>
-            <Link
-              className="block px-4 py-4 transition-colors hover:bg-navy-blue/[0.025]"
-              href={`/admin/reservations/${reservation.id}`}
-            >
+            <div className="px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="font-semibold">
-                    {reservation.customer?.displayName ?? reservation.typeLabel}
+                    <Link
+                      className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+                      href={`/admin/reservations/${reservation.id}`}
+                    >
+                      {reservation.customer?.displayName ??
+                        reservation.typeLabel}
+                    </Link>
                   </p>
                   <p className="mt-1 text-sm text-navy-blue/65">
                     {reservation.startsAt
@@ -459,8 +489,28 @@ export function ReservationTable({
               </div>
               <p className="mt-3 text-xs text-navy-blue/65">
                 {reservation.typeLabel}
+                {reservation.latestPayment && (
+                  <>
+                    {" "}
+                    ·{" "}
+                    {formatAdministrationMoney(
+                      reservation.latestPayment.amount
+                    )}
+                  </>
+                )}
               </p>
-            </Link>
+              {reservation.latestPayment?.providerOrderId ? (
+                <a
+                  aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
+                  className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {reservation.latestPayment.providerOrderId} ↗
+                </a>
+              ) : null}
+            </div>
           </li>
         ))}
       </ul>
@@ -567,8 +617,7 @@ export function ReservationReferences({
       />
       {references.dotyposReservationId && (
         <Reference
-          href={`/admin/bookings/${references.dotyposReservationId}`}
-          label="Booking record"
+          label="Dotypos booking"
           value={references.dotyposReservationId}
         />
       )}

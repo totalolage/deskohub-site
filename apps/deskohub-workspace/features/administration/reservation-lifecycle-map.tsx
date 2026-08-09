@@ -1,233 +1,161 @@
-"use client";
-
-import {
-  Background,
-  type Edge,
-  Handle,
-  MarkerType,
-  type Node,
-  type NodeHandle,
-  type NodeProps,
-  Position,
-  ReactFlow,
-} from "@xyflow/react";
+import { ArrowDown, ArrowRight, Check, CircleAlert } from "lucide-react";
 import { cn } from "@/shared/utils";
+import type {
+  AdministrationLifecycleStage,
+  AdministrationReservationLifecycle,
+} from "./reservation-status";
 
-type LifecycleNodeData = {
-  readonly label: string;
-  readonly note: string;
-  readonly tone: "neutral" | "positive" | "warning";
+const lifecycleStages = [
+  { stage: "started", label: "Started", note: "Checkout workflow created" },
+  { stage: "held", label: "Held", note: "Reservation is held" },
+  { stage: "paid", label: "Paid", note: "Payment was recorded" },
+  { stage: "complete", label: "Complete", note: "Access was delivered" },
+] as const;
+
+type CancellationLifecycleStage = Extract<
+  AdministrationLifecycleStage,
+  "hold_expired" | "cancelling" | "cancellation_failed" | "cancelled"
+>;
+
+const cancellationStagePresentation: Record<
+  CancellationLifecycleStage,
+  { readonly label: string; readonly note: string }
+> = {
+  hold_expired: {
+    label: "Hold expired",
+    note: "Waiting for the held booking to be released",
+  },
+  cancelling: {
+    label: "Cancelling",
+    note: "The held booking is being released",
+  },
+  cancellation_failed: {
+    label: "Cancellation issue",
+    note: "The held booking still needs attention",
+  },
+  cancelled: { label: "Cancelled", note: "The hold was released" },
 };
 
-const lifecycleHandles: NodeHandle[] = [
-  { id: null, position: Position.Left, type: "target", x: 0, y: 33 },
-  { id: null, position: Position.Right, type: "source", x: 176, y: 33 },
-  { id: "top-source", position: Position.Top, type: "source", x: 88, y: 0 },
-  { id: "top-target", position: Position.Top, type: "target", x: 88, y: 0 },
-  {
-    id: "bottom-source",
-    position: Position.Bottom,
-    type: "source",
-    x: 88,
-    y: 66,
-  },
-  {
-    id: "bottom-target",
-    position: Position.Bottom,
-    type: "target",
-    x: 88,
-    y: 66,
-  },
-];
+const isCancellationStage = (
+  stage: AdministrationLifecycleStage
+): stage is CancellationLifecycleStage =>
+  stage in cancellationStagePresentation;
 
-const nodes: Node<LifecycleNodeData>[] = [
-  {
-    handles: lifecycleHandles,
-    id: "started",
-    height: 66,
-    position: { x: 20, y: 140 },
-    data: { label: "Started", note: "Checkout created", tone: "neutral" },
-    type: "lifecycle",
-    width: 176,
-  },
-  {
-    handles: lifecycleHandles,
-    id: "held",
-    height: 66,
-    position: { x: 245, y: 140 },
-    data: { label: "Held", note: "Awaiting payment", tone: "neutral" },
-    type: "lifecycle",
-    width: 176,
-  },
-  {
-    handles: lifecycleHandles,
-    id: "paid",
-    height: 66,
-    position: { x: 470, y: 140 },
-    data: { label: "Paid", note: "Being confirmed", tone: "neutral" },
-    type: "lifecycle",
-    width: 176,
-  },
-  {
-    handles: lifecycleHandles,
-    id: "complete",
-    height: 66,
-    position: { x: 695, y: 140 },
-    data: { label: "Complete", note: "Access delivered", tone: "positive" },
-    type: "lifecycle",
-    width: 176,
-  },
-  {
-    handles: lifecycleHandles,
-    id: "cancelled",
-    height: 66,
-    position: { x: 245, y: 235 },
-    data: { label: "Cancelled", note: "Hold released", tone: "warning" },
-    type: "lifecycle",
-    width: 176,
-  },
-];
-
-const directionalEdge = {
-  markerEnd: {
-    color: "rgba(0, 2, 79, 0.55)",
-    height: 16,
-    type: MarkerType.ArrowClosed,
-    width: 16,
-  },
-  style: { stroke: "rgba(0, 2, 79, 0.55)", strokeWidth: 1.5 },
-  type: "smoothstep",
-} as const;
-
-const edges: Edge[] = [
-  {
-    ...directionalEdge,
-    id: "started-held",
-    source: "started",
-    target: "held",
-  },
-  {
-    ...directionalEdge,
-    id: "held-paid",
-    source: "held",
-    target: "paid",
-  },
-  {
-    ...directionalEdge,
-    id: "paid-complete",
-    source: "paid",
-    target: "complete",
-  },
-  {
-    ...directionalEdge,
-    id: "held-cancelled",
-    source: "held",
-    sourceHandle: "bottom-source",
-    target: "cancelled",
-    targetHandle: "top-target",
-  },
-];
-
-function LifecycleNode({ data }: NodeProps<Node<LifecycleNodeData>>) {
+export function ReservationLifecycleMap({
+  lifecycle,
+}: {
+  readonly lifecycle: AdministrationReservationLifecycle;
+}) {
+  const cancellationStage = isCancellationStage(lifecycle.currentStage)
+    ? lifecycle.currentStage
+    : "cancelled";
+  const cancellation = cancellationStagePresentation[cancellationStage];
   return (
-    <div
-      className={cn(
-        "w-44 rounded-xl border bg-white px-4 py-3 shadow-[0_8px_24px_rgba(0,2,79,0.06)]",
-        data.tone === "neutral" && "border-navy-blue/15",
-        data.tone === "positive" && "border-aquamarine-green/55",
-        data.tone === "warning" && "border-burned-orange/35"
-      )}
-    >
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        position={Position.Left}
-        type="target"
-      />
-      <p className="text-sm font-semibold text-navy-blue">{data.label}</p>
-      <p className="mt-1 text-xs text-navy-blue/65">{data.note}</p>
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        position={Position.Right}
-        type="source"
-      />
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        id="top-source"
-        position={Position.Top}
-        type="source"
-      />
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        id="top-target"
-        position={Position.Top}
-        type="target"
-      />
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        id="bottom-source"
-        position={Position.Bottom}
-        type="source"
-      />
-      <Handle
-        className="!size-0 !border-0 !bg-transparent"
-        id="bottom-target"
-        position={Position.Bottom}
-        type="target"
-      />
+    <div className="rounded-xl border border-navy-blue/10 bg-white p-4 sm:p-5">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+        {lifecycleStages.map((item, index) => (
+          <div className="contents" key={item.stage}>
+            <LifecycleStageCard lifecycle={lifecycle} {...item} />
+            {index < lifecycleStages.length - 1 && (
+              <ArrowRight
+                aria-hidden
+                className={cn(
+                  "mx-auto hidden size-4 md:block",
+                  lifecycle.reachedStages.includes(
+                    lifecycleStages[index + 1]?.stage ?? "started"
+                  )
+                    ? "text-navy-blue/55"
+                    : "text-navy-blue/18"
+                )}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-3 grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="md:col-start-3">
+          <ArrowDown
+            aria-hidden
+            className={cn(
+              "mx-auto mb-3 size-4",
+              isCancellationStage(lifecycle.currentStage)
+                ? "text-navy-blue/55"
+                : "text-navy-blue/18"
+            )}
+          />
+          <LifecycleStageCard
+            label={cancellation.label}
+            lifecycle={lifecycle}
+            note={cancellation.note}
+            stage={cancellationStage}
+          />
+        </div>
+      </div>
     </div>
   );
 }
 
-const nodeTypes = { lifecycle: LifecycleNode };
-
-export function ReservationLifecycleMap() {
+function LifecycleStageCard({
+  label,
+  lifecycle,
+  note,
+  stage,
+}: {
+  readonly label: string;
+  readonly lifecycle: AdministrationReservationLifecycle;
+  readonly note: string;
+  readonly stage: AdministrationLifecycleStage;
+}) {
+  const current = lifecycle.currentStage === stage;
+  const reached = lifecycle.reachedStages.includes(stage);
+  const attention = current && lifecycle.tone === "attention";
   return (
-    <>
-      <div
-        aria-hidden="true"
-        className="hidden h-80 overflow-hidden rounded-xl border border-navy-blue/10 bg-white lg:block"
-      >
-        <ReactFlow
-          edges={edges}
-          edgesFocusable={false}
-          elementsSelectable={false}
-          fitView
-          fitViewOptions={{ padding: 0.1 }}
-          nodes={nodes}
-          nodesConnectable={false}
-          nodesDraggable={false}
-          nodesFocusable={false}
-          nodeTypes={nodeTypes}
-          panOnDrag={false}
-          preventScrolling={false}
-          proOptions={{ hideAttribution: true }}
-          zoomOnDoubleClick={false}
-          zoomOnPinch={false}
-          zoomOnScroll={false}
-        >
-          <Background color="rgba(0,2,79,0.08)" gap={24} size={1} />
-        </ReactFlow>
+    <div
+      aria-current={current ? "step" : undefined}
+      className={cn(
+        "relative min-h-20 rounded-xl border px-4 py-3",
+        !reached &&
+          "border-navy-blue/10 bg-navy-blue/[0.018] text-navy-blue/60",
+        reached && !current && "border-navy-blue/15 bg-white text-navy-blue/70",
+        current &&
+          !attention &&
+          "border-aquamarine-green/60 bg-aquamarine-green/[0.07] text-navy-blue",
+        attention &&
+          "border-burned-orange/45 bg-burned-orange/[0.07] text-navy-blue"
+      )}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold">{label}</p>
+          <p className="mt-1 text-xs leading-5">
+            {current ? lifecycle.label : note}
+          </p>
+        </div>
+        {reached && !current && (
+          <span className="grid size-5 shrink-0 place-items-center rounded-full bg-navy-blue/8">
+            <Check aria-hidden className="size-3" />
+            <span className="sr-only">Reached</span>
+          </span>
+        )}
+        {current && (
+          <span
+            className={cn(
+              "grid size-5 shrink-0 place-items-center rounded-full",
+              attention
+                ? "bg-burned-orange text-white"
+                : "bg-aquamarine-ink text-white"
+            )}
+          >
+            {attention ? (
+              <CircleAlert aria-hidden className="size-3" />
+            ) : (
+              <span aria-hidden className="size-1.5 rounded-full bg-white" />
+            )}
+            <span className="sr-only">Current stage</span>
+          </span>
+        )}
       </div>
-      <ol className="space-y-3 lg:sr-only">
-        <li className="rounded-lg border border-navy-blue/10 bg-white p-4">
-          <strong>Started → Held</strong>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Checkout creates a hold and waits for payment.
-          </p>
-        </li>
-        <li className="rounded-lg border border-navy-blue/10 bg-white p-4">
-          <strong>Held → Paid → Complete</strong>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Payment is followed by confirmation and customer access delivery.
-          </p>
-        </li>
-        <li className="rounded-lg border border-navy-blue/10 bg-white p-4">
-          <strong>Held → Cancelled</strong>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Unpaid or abandoned holds are released.
-          </p>
-        </li>
-      </ol>
-    </>
+    </div>
   );
 }

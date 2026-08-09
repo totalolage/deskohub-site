@@ -6,10 +6,15 @@ import { useId, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
 
-export function ReservationLookup() {
+export function ReservationLookup({
+  compact = false,
+}: {
+  readonly compact?: boolean;
+}) {
   const identifierId = useId();
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +46,10 @@ export function ReservationLookup() {
   return (
     <div className="space-y-4">
       <form
-        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+        className={cn(
+          "grid gap-3 rounded-xl border border-navy-blue/10 bg-white md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+          compact ? "p-4" : "p-5"
+        )}
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);

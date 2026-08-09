@@ -4,7 +4,10 @@ import type {
   PaymentState,
   ReservationState,
 } from "@/db/schema";
-import { getAdministrationReservationStatus } from "./reservation-status";
+import {
+  getAdministrationReservationLifecycle,
+  getAdministrationReservationStatus,
+} from "./reservation-status";
 
 const status = (
   reservationState: ReservationState,
@@ -34,6 +37,7 @@ describe("administration reservation status", () => {
     ["confirmed", "paid", "processing", "Confirming", "in_progress"],
     ["held", "pending", "not_started", "Payment pending", "in_progress"],
     ["held", "failed", "not_started", "Payment failed", "in_progress"],
+    ["held", "expired", "not_started", "Payment expired", "in_progress"],
     ["held", "not_started", "not_started", "Awaiting payment", "in_progress"],
     ["draft", "not_started", "not_started", "Starting", "in_progress"],
     ["creating_hold", "not_started", "not_started", "Starting", "in_progress"],
@@ -53,5 +57,63 @@ describe("administration reservation status", () => {
       group: "attention",
       label: "Cancellation issue",
     });
+  });
+});
+
+describe("administration reservation lifecycle", () => {
+  test.each([
+    ["draft", "not_started", "not_started", "started", "neutral"],
+    ["held", "pending", "not_started", "held", "neutral"],
+    ["held", "failed", "not_started", "held", "attention"],
+    ["confirmed", "paid", "processing", "paid", "neutral"],
+    ["confirmed", "paid", "failed", "paid", "attention"],
+    ["confirmed", "paid", "fulfilled", "complete", "positive"],
+    ["cancelling", "cancelled", "not_started", "cancelling", "neutral"],
+    ["cancelled", "cancelled", "not_started", "cancelled", "neutral"],
+    [
+      "cancellation_failed",
+      "cancelled",
+      "not_started",
+      "cancellation_failed",
+      "attention",
+    ],
+    ["hold_expired", "expired", "not_started", "hold_expired", "attention"],
+  ] as const)("%s / %s / %s places the journey at %s", (reservationState, paymentState, fulfillmentState, currentStage, tone) => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState,
+        paymentState,
+        reservationState,
+      })
+    ).toMatchObject({ currentStage, tone });
+  });
+
+  test("does not claim an expired payment cancelled a live hold", () => {
+    expect(
+      getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        paymentState: "expired",
+        reservationState: "held",
+      })
+    ).toEqual({
+      currentStage: "held",
+      label: "Payment expired",
+      reachedStages: ["started", "held"],
+      tone: "attention",
+    });
+  });
+
+  test.each([
+    ["hold_expired", "hold_expired"],
+    ["cancelling", "cancelling"],
+    ["cancellation_failed", "cancellation_failed"],
+  ] as const)("does not mark %s as cancelled", (reservationState, currentStage) => {
+    const lifecycle = getAdministrationReservationLifecycle({
+      fulfillmentState: "not_started",
+      paymentState: "expired",
+      reservationState,
+    });
+    expect(lifecycle.currentStage).toBe(currentStage);
+    expect(lifecycle.reachedStages).not.toContain("cancelled");
   });
 });

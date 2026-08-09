@@ -205,11 +205,20 @@ export function CustomerAdministrationDetailPage({
   return (
     <AdministrationPage>
       <AdministrationPageHeader
-        description="Customer details, associated reservations, and discount access."
-        eyebrow="Customer"
+        description={
+          [profile.customer.email, profile.customer.phone]
+            .filter(Boolean)
+            .join(" · ") || "No contact details"
+        }
         title={profile.customer.displayName}
       />
       <AdministrationNoticeBanner notice={notice} />
+
+      <dl className="mb-7 grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-3">
+        <SummaryFact label="Reservations" value={reservations.total} />
+        <SummaryFact label="Discount group" value={currentGroupLabel} />
+        <SummaryFact label="Available codes" value={visibleCodes.length} />
+      </dl>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-7">

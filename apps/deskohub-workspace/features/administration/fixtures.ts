@@ -1,10 +1,12 @@
 import type {
   AdministrationBookingPage,
   AdministrationBookingSummary,
+  AdministrationPaymentAttempt,
   AdministrationReservationDetail,
   AdministrationReservationListInput,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { getAdministrationReservationLifecycle } from "./reservation-status";
 
 const timeZone = "Europe/Prague";
 
@@ -41,6 +43,25 @@ const fixtureCustomers = {
   },
 } as const;
 
+const makeFixturePayment = (
+  id: string,
+  updatedAt: string
+): AdministrationPaymentAttempt => ({
+  id: `payment-${id}`,
+  state: "paid",
+  providerOrderId: `ORDER-${id}`,
+  providerLabel: "Online payment",
+  stateLabel: "Paid",
+  amount: { value: 27_500, exponent: 2, currency: "CZK" },
+  createdAt: Temporal.Instant.from(updatedAt)
+    .subtract({ minutes: 5 })
+    .toString(),
+  providerOrderCreatedAt: Temporal.Instant.from(updatedAt)
+    .subtract({ minutes: 4 })
+    .toString(),
+  updatedAt,
+});
+
 const makeReservations = (): readonly AdministrationReservationSummary[] => {
   const currentDate = today();
   const yesterday = currentDate.subtract({ days: 1 });
@@ -58,6 +79,11 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "meeting-room",
       typeLabel: "Meeting Room",
       status: { group: "attention", label: "Confirmation issue" },
+      createdAt: atTime(currentDate, 8),
+      latestPayment: makeFixturePayment(
+        "0198-admin-fixture-attention",
+        atTime(currentDate, 10)
+      ),
       updatedAt: atTime(currentDate, 10),
     },
     {
@@ -71,6 +97,15 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Profi",
       status: { group: "in_progress", label: "Payment pending" },
+      createdAt: atTime(currentDate, 8),
+      latestPayment: {
+        ...makeFixturePayment(
+          "0198-admin-fixture-pending",
+          atTime(currentDate, 9)
+        ),
+        state: "pending",
+        stateLabel: "Pending",
+      },
       updatedAt: atTime(currentDate, 9),
     },
     {
@@ -84,6 +119,11 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Plus",
       status: { group: "in_progress", label: "Confirming" },
+      createdAt: atTime(yesterday, 16),
+      latestPayment: makeFixturePayment(
+        "0198-admin-fixture-confirming",
+        atTime(yesterday, 17)
+      ),
       updatedAt: atTime(yesterday, 17),
     },
     {
@@ -97,6 +137,11 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Basic",
       status: { group: "complete", label: "Complete" },
+      createdAt: atTime(lastWeek, 7),
+      latestPayment: makeFixturePayment(
+        "0198-admin-fixture-complete",
+        atTime(lastWeek, 8)
+      ),
       updatedAt: atTime(lastWeek, 8),
     },
     {
@@ -110,6 +155,8 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "meeting-room",
       typeLabel: "Meeting Room",
       status: { group: "cancelled", label: "Cancelled" },
+      createdAt: atTime(yesterday, 7),
+      latestPayment: null,
       updatedAt: atTime(yesterday, 8),
     },
   ];
@@ -145,6 +192,41 @@ const makeBookings = (): readonly AdministrationBookingSummary[] =>
       .toString(),
     updatedAt: reservation.updatedAt,
   }));
+
+const getFixtureLifecycle = (reservation: AdministrationReservationSummary) => {
+  switch (reservation.status.label) {
+    case "Confirmation issue":
+      return getAdministrationReservationLifecycle({
+        fulfillmentState: "failed",
+        paymentState: "paid",
+        reservationState: "confirmed",
+      });
+    case "Complete":
+      return getAdministrationReservationLifecycle({
+        fulfillmentState: "fulfilled",
+        paymentState: "paid",
+        reservationState: "confirmed",
+      });
+    case "Cancelled":
+      return getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        paymentState: "cancelled",
+        reservationState: "cancelled",
+      });
+    case "Confirming":
+      return getAdministrationReservationLifecycle({
+        fulfillmentState: "processing",
+        paymentState: "paid",
+        reservationState: "confirming",
+      });
+    default:
+      return getAdministrationReservationLifecycle({
+        fulfillmentState: "not_started",
+        paymentState: "pending",
+        reservationState: "held",
+      });
+  }
+};
 
 export const loadFixtureReservations = (
   input: AdministrationReservationListInput
@@ -235,7 +317,7 @@ export const loadFixtureReservation = (
         description: "Nexi accepted the hosted-payment request.",
         occurredAt: providerOrderCreatedAt,
         tone: "neutral",
-        href: "/admin/orders/DADMINFIXTUREPAYMENT",
+        href: "#order-DADMINFIXTUREPAYMENT",
       },
       {
         id: "fixture-operation",
@@ -245,7 +327,7 @@ export const loadFixtureReservation = (
           .subtract({ minutes: 1 })
           .toString(),
         tone: "positive",
-        href: "/admin/operations/DADMINFIXTUREOPERATION",
+        href: "#operation-DADMINFIXTUREOPERATION",
       },
       {
         id: "fixture-paid",
@@ -270,6 +352,7 @@ export const loadFixtureReservation = (
     paymentAttempts: [
       {
         id: "fixture-payment",
+        state: "paid",
         providerOrderId: "DADMINFIXTUREPAYMENT",
         providerLabel: "Online payment",
         stateLabel: "Paid",
@@ -281,6 +364,11 @@ export const loadFixtureReservation = (
         updatedAt: paidAt,
       },
     ],
+    booking:
+      makeBookings().find(
+        ({ linkedReservation }) => linkedReservation?.id === reservation.id
+      ) ?? null,
+    lifecycle: getFixtureLifecycle(reservation),
     orders: [
       {
         orderId: "DADMINFIXTUREPAYMENT",

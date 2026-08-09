@@ -6,6 +6,7 @@ import {
   formatAdministrationDate,
   formatAdministrationDateTime,
   formatAdministrationMoney,
+  getBookingTableLabel,
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationReferences,
@@ -13,6 +14,8 @@ import {
   ReservationTimeline,
 } from "@/features/administration/components";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
+import { ReservationOrderList } from "@/features/administration/payment-components";
+import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 
 export const dynamic = "force-dynamic";
 
@@ -23,39 +26,62 @@ export default async function ReservationAdministrationDetailPage({
 }) {
   const { reservationId } = await params;
   const detail = await loadAdministrationReservation(reservationId);
-  const { reservation } = detail;
+  const { booking, reservation } = detail;
   return (
     <AdministrationPage>
       <AdministrationPageHeader
         actions={<ReservationStatusBadge status={reservation.status} />}
-        description={
+        description={[
+          reservation.customer?.displayName,
           reservation.startsAt
-            ? `${reservation.typeLabel} · ${formatAdministrationDateTime(reservation.startsAt)}`
-            : `${reservation.typeLabel} · Booking details unavailable`
-        }
-        eyebrow="Reservation"
-        title={reservation.customer?.displayName ?? reservation.typeLabel}
+            ? formatAdministrationDateTime(reservation.startsAt)
+            : "Booking details unavailable",
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        title={reservation.typeLabel}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section aria-labelledby="lifecycle-heading">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-xl" id="lifecycle-heading">
+              Reservation lifecycle
+            </h2>
+            <p className="mt-1 text-sm text-navy-blue/65">
+              The highlighted stage reflects the current local workflow state.
+            </p>
+          </div>
+          <span className="text-sm font-semibold text-navy-blue/68">
+            {detail.lifecycle.label}
+          </span>
+        </div>
+        <ReservationLifecycleMap lifecycle={detail.lifecycle} />
+      </section>
+
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-6">
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Current reservation</h2>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl">Reservation details</h2>
+                <p className="mt-1 text-sm text-navy-blue/60">
+                  Workspace and live Dotypos booking facts.
+                </p>
+              </div>
+              {booking && (
+                <span className="rounded-full border border-navy-blue/12 bg-navy-blue/5 px-2.5 py-1 text-xs font-semibold text-navy-blue/65">
+                  Dotypos {booking.statusLabel.toLowerCase()}
+                </span>
+              )}
+            </div>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <ReservationFact
-                label="Status"
-                value={reservation.status.label}
-              />
-              <ReservationFact
-                label="Reservation"
-                value={reservation.typeLabel}
-              />
               <ReservationFact
                 label="Starts"
                 value={
                   reservation.startsAt
                     ? formatAdministrationDateTime(reservation.startsAt)
-                    : "Booking details unavailable"
+                    : "Unavailable"
                 }
               />
               <ReservationFact
@@ -63,66 +89,83 @@ export default async function ReservationAdministrationDetailPage({
                 value={
                   reservation.endsAt
                     ? formatAdministrationDateTime(reservation.endsAt)
-                    : "Booking details unavailable"
+                    : "Unavailable"
                 }
               />
+              <ReservationFact label="Product" value={reservation.typeLabel} />
               <ReservationFact
-                label="Customer"
-                value={
-                  reservation.customer?.displayName ??
-                  "Customer details unavailable"
-                }
+                label="Table"
+                value={getBookingTableLabel(booking)}
               />
               <ReservationFact
-                label="Last changed"
-                value={formatAdministrationDateTime(reservation.updatedAt)}
+                label="Guests"
+                value={booking?.seats ?? "Unavailable"}
+              />
+              <ReservationFact
+                label="Created"
+                value={formatAdministrationDateTime(reservation.createdAt)}
               />
             </dl>
           </section>
 
-          <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <div className="mb-6">
-              <h2 className="text-xl">History</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                A chronological view of confirmed milestones and available
-                activity.
+          <div className="grid gap-4 md:grid-cols-3">
+            <SummarySection title="Customer">
+              {reservation.customer ? (
+                <Link
+                  className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
+                  href={`/admin/customers/${reservation.customerId}`}
+                >
+                  {reservation.customer.displayName}
+                </Link>
+              ) : (
+                <p className="font-medium">Details unavailable</p>
+              )}
+              <p className="mt-1 text-sm text-navy-blue/60">
+                {reservation.customer?.email ??
+                  reservation.customer?.phone ??
+                  "No contact details"}
               </p>
-            </div>
-            <ReservationTimeline items={detail.timeline} />
-          </section>
+            </SummarySection>
 
-          <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
-            <h2 className="text-xl">Payments and orders</h2>
-            {detail.paymentAttempts.length === 0 ? (
-              <p className="mt-4 text-sm text-navy-blue/65">
-                No payment attempt has started.
-              </p>
-            ) : (
-              <PaymentAttemptList attempts={detail.paymentAttempts} />
-            )}
-            {detail.orders.some(
-              ({ providerStatus }) => providerStatus === "not_found"
-            ) && (
-              <p className="mt-4 rounded-lg border border-burned-orange/30 bg-burned-orange/10 px-3 py-2 text-sm">
-                Nexi did not find at least one locally referenced order. Follow
-                its order link to investigate the mismatch.
-              </p>
-            )}
-            {detail.orders.some(
-              ({ providerStatus }) => providerStatus === "unavailable"
-            ) && (
-              <p className="mt-4 rounded-lg border border-sunset-yellow/35 bg-sunset-yellow/10 px-3 py-2 text-sm">
-                Some live Nexi order details are temporarily unavailable. The
-                local order links remain available.
-              </p>
-            )}
-            {detail.discounts.length > 0 && (
-              <div className="mt-5 border-t border-navy-blue/10 pt-5">
-                <h3 className="text-sm font-semibold">Applied discounts</h3>
-                <ul className="mt-3 space-y-2 text-sm">
+            <SummarySection title="Payment">
+              {reservation.latestPayment ? (
+                <>
+                  <p className="font-semibold">
+                    {formatAdministrationMoney(
+                      reservation.latestPayment.amount
+                    )}
+                  </p>
+                  <p className="mt-1 text-sm text-navy-blue/60">
+                    {reservation.latestPayment.stateLabel} ·{" "}
+                    {formatAdministrationDateTime(
+                      reservation.latestPayment.updatedAt
+                    )}
+                  </p>
+                  {reservation.latestPayment.providerOrderId && (
+                    <a
+                      aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
+                      className="mt-2 block break-all font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
+                      href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
+                      rel="noreferrer"
+                      target="_blank"
+                    >
+                      {reservation.latestPayment.providerOrderId} ↗
+                    </a>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm text-navy-blue/60">
+                  No payment attempt started.
+                </p>
+              )}
+            </SummarySection>
+
+            <SummarySection title="Discounts">
+              {detail.discounts.length > 0 ? (
+                <ul className="space-y-2 text-sm">
                   {detail.discounts.map((discount) => (
                     <li
-                      className="flex justify-between gap-4"
+                      className="flex justify-between gap-3"
                       key={discount.id}
                     >
                       <span>{discount.label}</span>
@@ -132,8 +175,42 @@ export default async function ReservationAdministrationDetailPage({
                     </li>
                   ))}
                 </ul>
+              ) : (
+                <p className="text-sm text-navy-blue/60">
+                  No discount was applied.
+                </p>
+              )}
+            </SummarySection>
+          </div>
+
+          <section aria-labelledby="payment-records-heading">
+            <div className="mb-3">
+              <h2 className="text-xl" id="payment-records-heading">
+                Payment records
+              </h2>
+              <p className="mt-1 text-sm text-navy-blue/65">
+                Local attempts followed by the live Nexi orders and operations
+                attached to them.
+              </p>
+            </div>
+            {detail.paymentAttempts.length > 0 && (
+              <div className="mb-4 rounded-xl border border-navy-blue/10 bg-white p-5">
+                <h3 className="text-sm font-semibold">Local attempts</h3>
+                <PaymentAttemptList attempts={detail.paymentAttempts} />
               </div>
             )}
+            <ReservationOrderList orders={detail.orders} />
+          </section>
+
+          <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
+            <div className="mb-6">
+              <h2 className="text-xl">History</h2>
+              <p className="mt-1 text-sm text-navy-blue/65">
+                Durable Deskohub milestones and the available provider activity
+                in chronological order.
+              </p>
+            </div>
+            <ReservationTimeline items={detail.timeline} />
           </section>
 
           <details className="rounded-xl border border-navy-blue/10 bg-white">
@@ -145,27 +222,6 @@ export default async function ReservationAdministrationDetailPage({
         </div>
 
         <aside className="space-y-5 xl:sticky xl:top-24 xl:h-fit">
-          <RelatedSection title="Customer">
-            {reservation.customer ? (
-              <Link
-                className="block rounded-lg px-3 py-3 hover:bg-navy-blue/[0.035]"
-                href={`/admin/customers/${reservation.customerId}`}
-              >
-                <span className="block font-semibold">
-                  {reservation.customer.displayName}
-                </span>
-                <span className="mt-1 block text-sm text-navy-blue/65">
-                  {reservation.customer.email ??
-                    reservation.customer.phone ??
-                    "View customer"}
-                </span>
-              </Link>
-            ) : (
-              <p className="px-3 py-3 text-sm text-navy-blue/65">
-                Customer details unavailable.
-              </p>
-            )}
-          </RelatedSection>
           <RelatedSection title="Other reservations">
             {detail.otherCustomerReservations.length > 0 ? (
               detail.otherCustomerReservations.map((related) => (
@@ -182,7 +238,7 @@ export default async function ReservationAdministrationDetailPage({
           </RelatedSection>
           {reservation.date && (
             <RelatedSection
-              title={`Reservations on ${formatAdministrationDate(reservation.date)}`}
+              title={`Also on ${formatAdministrationDate(reservation.date)}`}
             >
               {detail.sameDateReservations.length > 0 ? (
                 detail.sameDateReservations.map((related) => (
@@ -222,6 +278,23 @@ function ReservationFact({
       </dt>
       <dd className="mt-1.5 font-medium">{value}</dd>
     </div>
+  );
+}
+
+function SummarySection({
+  children,
+  title,
+}: {
+  readonly children: React.ReactNode;
+  readonly title: string;
+}) {
+  return (
+    <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
+      <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
+        {title}
+      </h2>
+      {children}
+    </section>
   );
 }
 

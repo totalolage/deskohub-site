@@ -27,68 +27,70 @@ export default async function ReservationsAdministrationPage({
     <AdministrationPage>
       <AdministrationPageHeader
         count={result.total}
-        description="Current statuses with booking and customer details."
-        eyebrow="Operations"
+        description="Bookings, customer details, and payment status in one operational view."
         title="Reservations"
       />
 
-      <div className="mb-5">
-        <ReservationLookup />
+      <div className="mb-4">
+        <ReservationLookup compact />
       </div>
+
+      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[11rem_13rem_12rem_auto_auto] xl:items-end xl:justify-start">
+        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+          Status
+          <select
+            className={selectClassName}
+            defaultValue={input.status ?? ""}
+            name="status"
+          >
+            <option value="">All statuses</option>
+            <option value="in_progress">In progress</option>
+            <option value="complete">Complete</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+          Reservation type
+          <select
+            className={selectClassName}
+            defaultValue={input.type ?? ""}
+            name="type"
+          >
+            <option value="">All reservation types</option>
+            <option value="cowork">Coworking</option>
+            <option value="meeting-room">Meeting room</option>
+          </select>
+        </label>
+        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+          Start date
+          <input
+            className={selectClassName}
+            defaultValue={input.date ?? ""}
+            name="date"
+            type="date"
+          />
+        </label>
+        {input.customerId && (
+          <input name="customerId" type="hidden" value={input.customerId} />
+        )}
+        <Button className="min-h-10" size="sm" type="submit">
+          Apply filters
+        </Button>
+        {(input.customerId || input.date || input.status || input.type) && (
+          <Button asChild className="min-h-10" size="sm" variant="ghost">
+            <Link href="/admin/reservations">Clear</Link>
+          </Button>
+        )}
+      </form>
 
       {input.customerId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
           <p>Showing reservations for the selected customer.</p>
           <Link
             className="font-semibold hover:underline"
-            href="/admin/reservations"
+            href={`/admin/reservations${input.date ? `?date=${input.date}` : ""}`}
           >
             Clear customer
-          </Link>
-        </div>
-      )}
-
-      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[11rem_13rem_auto] md:justify-start">
-        <select
-          aria-label="Status"
-          className={selectClassName}
-          defaultValue={input.status ?? ""}
-          name="status"
-        >
-          <option value="">All statuses</option>
-          <option value="in_progress">In progress</option>
-          <option value="complete">Complete</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select
-          aria-label="Reservation type"
-          className={selectClassName}
-          defaultValue={input.type ?? ""}
-          name="type"
-        >
-          <option value="">All reservation types</option>
-          <option value="cowork">Coworking</option>
-          <option value="meeting-room">Meeting room</option>
-        </select>
-        {input.customerId && (
-          <input name="customerId" type="hidden" value={input.customerId} />
-        )}
-        {input.date && <input name="date" type="hidden" value={input.date} />}
-        <Button size="sm" type="submit">
-          Apply filters
-        </Button>
-      </form>
-
-      {input.date && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
-          <p>
-            Showing reservations from <strong>{input.date}</strong>.
-          </p>
-          <Link
-            className="font-semibold hover:underline"
-            href="/admin/reservations"
-          >
-            Clear date
           </Link>
         </div>
       )}

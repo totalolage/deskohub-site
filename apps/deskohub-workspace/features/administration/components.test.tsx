@@ -20,6 +20,7 @@ import {
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
   BookingTable,
+  getBookingTableLabel,
   PaymentAttemptList,
   ReservationReferences,
   ReservationTable,
@@ -34,7 +35,9 @@ import {
   OperationTable,
   OrderTable,
   ProviderStatusBadge,
+  ReservationOrderList,
 } from "./payment-components";
+import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
@@ -56,14 +59,28 @@ describe("administration reservation components", () => {
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
     );
-    expect(
-      within(table).getAllByRole("link", { name: "Meeting Room" })[0].className
-    ).toContain("before:absolute");
+    const reservationLink = within(table)
+      .getAllByRole("link")
+      .find(
+        (link) =>
+          link.getAttribute("href") ===
+          "/admin/reservations/0198-admin-fixture-attention"
+      );
+    expect(reservationLink?.className).toContain("before:absolute");
     expect(
       within(table)
-        .getAllByRole("link", { name: "Meeting Room" })[0]
+        .getByRole("link", {
+          name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
+        })
         .getAttribute("href")
-    ).toBe("/admin/reservations/0198-admin-fixture-attention");
+    ).toBe(
+      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/ORDER-0198-admin-fixture-attention"
+    );
+    expect(
+      view.getAllByRole("link", {
+        name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
+      })
+    ).toHaveLength(2);
   });
 
   test("renders ordered operational history without forbidden fields", () => {
@@ -86,15 +103,15 @@ describe("administration reservation components", () => {
       within(timeline)
         .getByRole("link", { name: "Nexi order created" })
         .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    ).toBe("#order-DADMINFIXTUREPAYMENT");
     expect(
       within(timeline)
         .getByRole("link", { name: "Payment executed by Nexi" })
         .getAttribute("href")
-    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+    ).toBe("#operation-DADMINFIXTUREOPERATION");
   });
 
-  test("links Nexi payment IDs to internal orders and the XPay dashboard", () => {
+  test("links Nexi payment IDs directly to the XPay dashboard", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
     expect(detail).not.toBeNull();
     if (!detail) return;
@@ -116,17 +133,49 @@ describe("administration reservation components", () => {
       />
     );
     const orderLink = view.getByRole("link", {
-      name: "Nexi order DADMINFIXTUREPAYMENT",
+      name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
     });
     expect(orderLink.getAttribute("href")).toBe(
-      "/admin/orders/DADMINFIXTUREPAYMENT"
-    );
-    const dashboardLink = view.getByRole("link", { name: "Open in XPay ↗" });
-    expect(dashboardLink.getAttribute("href")).toBe(
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
-    expect(dashboardLink.getAttribute("target")).toBe("_blank");
+    expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
+  });
+
+  test("folds Nexi orders and operations into the reservation", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+
+    const view = render(<ReservationOrderList orders={detail.orders} />);
+    expect(
+      view
+        .getByRole("link", {
+          name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
+        })
+        .getAttribute("href")
+    ).toBe(
+      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
+    );
+    expect(view.getByText("DADMINFIXTUREOPERATION")).toBeDefined();
+    expect(view.container.querySelector('a[href^="/admin/orders"]')).toBeNull();
+    expect(
+      view.container.querySelector('a[href^="/admin/operations"]')
+    ).toBeNull();
+  });
+
+  test("marks the actual lifecycle stage accessibly", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+
+    const view = render(
+      <ReservationLifecycleMap lifecycle={detail.lifecycle} />
+    );
+    expect(
+      view.getByText("Paid").closest('[aria-current="step"]')
+    ).not.toBeNull();
+    expect(view.getByText("Confirmation issue")).toBeDefined();
   });
 
   test("links order and operation entities back to their reservation", () => {
@@ -202,6 +251,22 @@ describe("administration reservation components", () => {
     expect(view.queryByText("Details unavailable")).toBeNull();
   });
 
+  test("distinguishes an unassigned table from unavailable table details", () => {
+    expect(getBookingTableLabel(null)).toBe("Unavailable");
+    expect(
+      getBookingTableLabel({ tableId: "dotypos-table", tableName: null })
+    ).toBe("Details unavailable");
+    expect(getBookingTableLabel({ tableId: null, tableName: null })).toBe(
+      "Not assigned"
+    );
+    expect(
+      getBookingTableLabel({
+        tableId: "dotypos-table",
+        tableName: "Meeting room",
+      })
+    ).toBe("Meeting room");
+  });
+
   test("links reservation references to their related entities", () => {
     const view = render(
       <ReservationReferences
@@ -216,9 +281,8 @@ describe("administration reservation components", () => {
     expect(
       view.getByRole("link", { name: "dotypos-customer" }).getAttribute("href")
     ).toBe("/admin/customers/dotypos-customer");
-    expect(
-      view.getByRole("link", { name: "dotypos-booking" }).getAttribute("href")
-    ).toBe("/admin/bookings/dotypos-booking");
+    expect(view.getByText("dotypos-booking")).toBeDefined();
+    expect(view.queryByRole("link", { name: "dotypos-booking" })).toBeNull();
   });
 
   test("renders Dotypos bookings with linked customers and reservations", () => {
