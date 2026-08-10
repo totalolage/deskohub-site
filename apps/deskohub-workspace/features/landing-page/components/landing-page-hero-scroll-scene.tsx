@@ -10,6 +10,8 @@ import { type ReactNode, useRef } from "react";
 import { Container } from "@/shared/components/container";
 
 type LandingPageHeroScrollSceneProps = {
+  ariaBusy: boolean;
+  ariaLabelledBy: string;
   id: string;
   className?: string;
   background: ReactNode;
@@ -19,6 +21,8 @@ type LandingPageHeroScrollSceneProps = {
 };
 
 export function LandingPageHeroScrollScene({
+  ariaBusy,
+  ariaLabelledBy,
   id,
   className,
   background,
@@ -38,7 +42,13 @@ export function LandingPageHeroScrollScene({
   const contentOpacity = useTransform(scrollYProgress, [0, 0.58], [1, 0]);
 
   return (
-    <section className={className} id={id} ref={sectionRef}>
+    <section
+      aria-busy={ariaBusy}
+      aria-labelledby={ariaLabelledBy}
+      className={className}
+      id={id}
+      ref={sectionRef}
+    >
       <motion.div
         className="absolute inset-x-0 -top-[24dvh] -bottom-[32dvh] -z-1 will-change-transform"
         style={

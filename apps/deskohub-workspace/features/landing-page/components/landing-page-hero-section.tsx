@@ -2,7 +2,6 @@ import Image, { getImageProps } from "next/image";
 import Link from "next/link";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import Arrow1 from "@/shared/components/icons/arrow-1";
 import CornerAccent from "@/shared/components/icons/corner-accent";
@@ -21,7 +20,9 @@ import {
 } from "./landing-page-sale-banner";
 
 type LandingPageHeroSectionProps = {
+  isPending: boolean;
   locale: Locale;
+  meetingRoomPageEnabled: boolean;
   overviewSectionId: string;
   saleBanner?: LandingPageSaleBannerContent;
 };
@@ -31,12 +32,13 @@ export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
     "--hero-bottom-section-height": "16rem",
   };
 
-export async function LandingPageHeroSection({
+export function LandingPageHeroSection({
+  isPending,
   locale,
+  meetingRoomPageEnabled,
   overviewSectionId,
   saleBanner,
 }: LandingPageHeroSectionProps) {
-  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
   const { props: cornerMaskProps } = getImageProps({
     ...cornerMask,
     alt: "",
@@ -47,7 +49,10 @@ export async function LandingPageHeroSection({
 
   const heroContent = (
     <>
-      <h1 className="text-5xl leading-[0.95] text-balance sm:text-6xl lg:text-7xl">
+      <h1
+        className="text-5xl leading-[0.95] text-balance sm:text-6xl lg:text-7xl"
+        id="landing-page-heading"
+      >
         {m.landingHeroTitle({}, { locale })}
       </h1>
       <p className="mt-6 max-w-xl text-lg leading-8 text-white/82 sm:text-xl">
@@ -133,6 +138,8 @@ export async function LandingPageHeroSection({
 
   return (
     <LandingPageHeroScrollScene
+      ariaBusy={isPending}
+      ariaLabelledBy="landing-page-heading"
       background={<Background />}
       bottomSection={orangeMaskSection}
       className={
