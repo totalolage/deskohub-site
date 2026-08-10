@@ -6,6 +6,7 @@ import {
   ChevronRight,
   CircleGauge,
   Menu,
+  SquareTerminal,
   Ticket,
   Users,
 } from "lucide-react";
@@ -43,6 +44,11 @@ const navigation = [
       { href: "/admin/customers", icon: Users, label: "Customers" },
       { href: "/admin/codes", icon: Ticket, label: "Codes" },
       { href: "/admin/sales", icon: BadgePercent, label: "Sales" },
+      {
+        href: "/admin/cli/sessions",
+        icon: SquareTerminal,
+        label: "CLI sessions",
+      },
     ],
   },
 ] as const;
@@ -110,14 +116,17 @@ function NavigationLink({
 const breadcrumbNames: Record<string, string> = {
   admin: "Overview",
   bookings: "Bookings",
+  cli: "CLI",
   codes: "Codes",
   customers: "Customers",
   "create-code": "Create discount code",
   discounts: "Discounts",
+  authenticate: "Authenticate",
   operations: "Operations",
   orders: "Orders",
   reservations: "Reservations",
   sales: "Sales",
+  sessions: "Sessions",
 };
 
 export function AdministrationBreadcrumbs({

@@ -2,6 +2,18 @@ import { defineRelations } from "drizzle-orm";
 import * as schema from "./schema";
 
 export const relations = defineRelations(schema, (r) => ({
+  cliSessions: {
+    authenticationRequest: r.one.cliAuthenticationRequests({
+      from: r.cliSessions.id,
+      to: r.cliAuthenticationRequests.sessionId,
+    }),
+  },
+  cliAuthenticationRequests: {
+    session: r.one.cliSessions({
+      from: r.cliAuthenticationRequests.sessionId,
+      to: r.cliSessions.id,
+    }),
+  },
   discounts: {
     productTargets: r.many.discountProductTargets(),
     codes: r.many.discountCodes(),

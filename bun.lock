@@ -159,6 +159,7 @@
         "@tanstack/react-query": "^5.101.0",
         "@tanstack/react-table": "^8.21.3",
         "@vercel/analytics": "^2.0.1",
+        "@vercel/firewall": "^1.2.4",
         "@vercel/functions": "^3.6.0",
         "@vercel/otel": "2.1.3",
         "@vercel/queue": "^0.3.1",
@@ -222,7 +223,7 @@
     },
     "apps/dhw": {
       "name": "dhw",
-      "version": "0.0.0",
+      "version": "1.0.0",
       "dependencies": {
         "@deskohub/workspace-admin-api": "workspace:*",
         "@effect/platform-bun": "4.0.0-beta.85",
@@ -1214,6 +1215,8 @@
     "@vercel/analytics": ["@vercel/analytics@1.6.1", "", { "peerDependencies": { "@remix-run/react": "^2", "@sveltejs/kit": "^1 || ^2", "next": ">= 13", "react": "^18 || ^19 || ^19.0.0-rc", "svelte": ">= 4", "vue": "^3", "vue-router": "^4" }, "optionalPeers": ["@remix-run/react", "@sveltejs/kit", "next", "react", "svelte", "vue", "vue-router"] }, "sha512-oH9He/bEM+6oKlv3chWuOOcp8Y6fo6/PSro8hEkgCW3pu9/OiCXiUpRUogDh3Fs3LH2sosDrx8CxeOLBEE+afg=="],
 
     "@vercel/blob": ["@vercel/blob@2.4.0", "", { "dependencies": { "async-retry": "^1.3.3", "is-buffer": "^2.0.5", "is-node-process": "^1.2.0", "throttleit": "^2.1.0", "undici": "^6.23.0" } }, "sha512-ncQ8CRb6XoEAYJwjOTRGpACRT6h/AeY+/33gLyeVxG5BIes27OPm1jmqreF+JHjcTmGhClTP+kBpmyLfbV0xew=="],
+
+    "@vercel/firewall": ["@vercel/firewall@1.2.4", "", {}, "sha512-xAInVzYeohOabdjN9H+BWtwqLzsusXQ61gEPuOt26Wo7xYtjT8gRBty8gVKS1Kn4mhiOjHbWBF0SNrWYrLAGOQ=="],
 
     "@vercel/functions": ["@vercel/functions@3.6.0", "", { "dependencies": { "@vercel/oidc": "3.4.1" }, "peerDependencies": { "@aws-sdk/credential-provider-web-identity": "*" }, "optionalPeers": ["@aws-sdk/credential-provider-web-identity"] }, "sha512-Xj68JYqqJwtqFWJN7EWmFN7MOiUjv5whjw48UEKqQbg8r7hRkhuJhncTU0ba3jJCh/wxEuLWckrtsKcrHQraxw=="],
 

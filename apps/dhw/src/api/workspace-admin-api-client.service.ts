@@ -1,8 +1,20 @@
 import {
   type AdminCliInfoType,
+  type CliAccessTokenType,
+  type CliAuthenticationCodeType,
+  CliAuthenticationRateLimited,
+  type CliAuthenticationStatusType,
+  CliGrantRejected,
+  CliServiceUnavailable,
+  type CliSessionType,
+  CliSessionUnauthorized,
+  type ExchangeCliGrantType,
+  type GrantedCliSessionType,
+  type StartCliAuthenticationType,
+  type StartedCliAuthenticationType,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
-import { Context, Effect, Layer, Redacted, type Schema } from "effect";
+import { Context, Data, Effect, Layer, Redacted, type Schema } from "effect";
 import {
   HttpClient,
   type HttpClientError,
@@ -15,6 +27,30 @@ interface IWorkspaceAdminApiClient {
   readonly getInfo: Effect.Effect<
     AdminCliInfoType,
     HttpClientError.HttpClientError | Schema.SchemaError
+  >;
+  readonly startAuthentication: (
+    input: StartCliAuthenticationType
+  ) => Effect.Effect<
+    StartedCliAuthenticationType,
+    CliApiRequestError | CliAuthenticationRateLimited | CliServiceUnavailable
+  >;
+  readonly getAuthenticationStatus: (
+    code: CliAuthenticationCodeType
+  ) => Effect.Effect<
+    CliAuthenticationStatusType,
+    CliApiRequestError | CliServiceUnavailable
+  >;
+  readonly exchangeGrant: (
+    input: ExchangeCliGrantType
+  ) => Effect.Effect<
+    GrantedCliSessionType,
+    CliApiRequestError | CliGrantRejected | CliServiceUnavailable
+  >;
+  readonly getCurrentSession: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    CliSessionType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
 }
 
@@ -47,5 +83,99 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getInfo: Effect.fn("WorkspaceAdminApiClient.getInfo")(() =>
       client.cli.getInfo({})
     )(),
+    startAuthentication: Effect.fn(
+      "WorkspaceAdminApiClient.startAuthentication"
+    )((input: StartCliAuthenticationType) =>
+      client.cli
+        .startAuthentication({ payload: input })
+        .pipe(Effect.mapError(sanitizeStartError))
+    ),
+    getAuthenticationStatus: Effect.fn(
+      "WorkspaceAdminApiClient.getAuthenticationStatus"
+    )((code: CliAuthenticationCodeType) =>
+      client.cli
+        .getAuthenticationStatus({ query: { code } })
+        .pipe(Effect.mapError(sanitizeRequestError))
+    ),
+    exchangeGrant: Effect.fn("WorkspaceAdminApiClient.exchangeGrant")(
+      (input: ExchangeCliGrantType) =>
+        client.cli
+          .exchangeGrant({ payload: input })
+          .pipe(Effect.mapError(sanitizeGrantError))
+    ),
+    getCurrentSession: Effect.fn("WorkspaceAdminApiClient.getCurrentSession")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        client.cli
+          .getCurrentSession({
+            headers: {
+              authorization: `Bearer ${Redacted.value(accessToken)}`,
+            },
+          })
+          .pipe(Effect.mapError(sanitizeSessionError))
+    ),
   };
 });
+
+export class CliApiRequestError extends Data.TaggedError("CliApiRequestError")<{
+  readonly message: string;
+}> {}
+
+const sanitizedRequestError = () =>
+  new CliApiRequestError({
+    message: "The CLI authentication request could not be completed.",
+  });
+
+const sanitizeRequestError = (
+  cause:
+    | CliServiceUnavailable
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => (cause instanceof CliServiceUnavailable ? cause : sanitizedRequestError());
+
+const sanitizeStartError = (
+  cause:
+    | CliAuthenticationRateLimited
+    | CliServiceUnavailable
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => {
+  if (
+    cause instanceof CliAuthenticationRateLimited ||
+    cause instanceof CliServiceUnavailable
+  ) {
+    return cause;
+  }
+  return sanitizedRequestError();
+};
+
+const sanitizeGrantError = (
+  cause:
+    | CliGrantRejected
+    | CliServiceUnavailable
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => {
+  if (
+    cause instanceof CliGrantRejected ||
+    cause instanceof CliServiceUnavailable
+  ) {
+    return cause;
+  }
+  return sanitizedRequestError();
+};
+
+const sanitizeSessionError = (
+  cause:
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => {
+  if (
+    cause instanceof CliServiceUnavailable ||
+    cause instanceof CliSessionUnauthorized
+  ) {
+    return cause;
+  }
+  return sanitizedRequestError();
+};

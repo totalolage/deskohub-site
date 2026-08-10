@@ -43,7 +43,7 @@ jobs:
             --filter=dhw
           bun --cwd apps/dhw test
           bun apps/dhw/src/build.ts development
-          expected_version="$(jq -r '.version' apps/dhw/package.json)"
+          expected_version="$(jq -r '.version' apps/dhw/package.json)+development"
           build_info="$(apps/dhw/dist/dhw version --json)"
           test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
           test "$(jq -r '.target' <<<"$build_info")" = "development"
