@@ -1,4 +1,3 @@
-import { Temporal } from "@js-temporal/polyfill";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";

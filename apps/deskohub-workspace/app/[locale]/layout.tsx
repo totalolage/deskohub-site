@@ -6,6 +6,7 @@ import { type ReactNode, Suspense } from "react";
 import { env } from "@/env";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
+import { PostHogProvider } from "@/features/cookie-consent/components/posthog-analytics";
 import { isLocale, locales } from "@/features/i18n";
 import "../globals.css";
 
@@ -62,14 +63,16 @@ export default async function LocaleLayout({
         <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />
       )}
       <body>
-        <CookieConsentProvider locale={locale} />
-        <Suspense fallback={null}>
-          <ConsentAwareAnalytics
-            featureFlagOverrides={env.POSTHOG_FEATURE_FLAG_OVERRIDES}
-            posthogEnvironment={env.VERCEL_ENV}
-          />
-        </Suspense>
-        {children}
+        <PostHogProvider>
+          <CookieConsentProvider locale={locale} />
+          <Suspense fallback={null}>
+            <ConsentAwareAnalytics
+              featureFlagOverrides={env.POSTHOG_FEATURE_FLAG_OVERRIDES}
+              posthogEnvironment={env.VERCEL_ENV}
+            />
+          </Suspense>
+          {children}
+        </PostHogProvider>
       </body>
     </html>
   );

@@ -1,12 +1,15 @@
+import "./shared/testing/workspace-test-environment";
+
 import { defineConfig } from "@playwright/test";
 import { parseWorkspaceE2EBaseUrl } from "./e2e/config";
 import { workspaceE2ETimeouts } from "./e2e/timeouts";
+import { env } from "./env";
 
-const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
+const remoteBaseUrl = env.WORKSPACE_E2E_BASE_URL;
 const baseUrl = remoteBaseUrl
   ? parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl
   : "http://localhost:3000";
-const browserExecutablePath = process.env.AGENT_BROWSER_EXECUTABLE_PATH;
+const browserExecutablePath = env.AGENT_BROWSER_EXECUTABLE_PATH;
 
 export default defineConfig({
   expect: { timeout: workspaceE2ETimeouts.browserAction },
