@@ -39,12 +39,12 @@ const clientNavigationCases = [
     destinationPath: galleryPath,
     expectDestination: expectGalleryShell,
     expectResolved: expectGalleryContentToResolve,
-    linkName: "Gallery",
+    linkName: "Photos",
   },
   {
     destinationPath: contactPath,
     expectDestination: expectContactPage,
-    linkName: "Contact us",
+    linkName: "Contact",
   },
 ] as const;
 
