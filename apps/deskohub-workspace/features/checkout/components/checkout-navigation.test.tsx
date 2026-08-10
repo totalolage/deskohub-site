@@ -82,7 +82,7 @@ test("uses a Next Link without prefetch to reopen signed reservation state", asy
   });
 });
 
-test("keeps status-page actions as Next Links without background prefetch", async () => {
+test("prefetches reserve-again while protecting status-page context links", async () => {
   const { CheckoutStatusPage } = await import("./checkout-status-page");
 
   const view = render(
@@ -115,7 +115,7 @@ test("keeps status-page actions as Next Links without background prefetch", asyn
   });
   expect(capturedLinks).toContainEqual({
     href: "/en-US/reservation/cowork",
-    prefetch: false,
+    prefetch: undefined,
   });
   expect(capturedLinks).toContainEqual({
     href: "/en-US",
