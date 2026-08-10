@@ -177,7 +177,7 @@ describe("accounting document snapshot", () => {
     ]);
   });
 
-  test("resolves the active immutable environment key by ID", async () => {
+  test("resolves a nonempty environment passphrase by key ID", async () => {
     const key = await Effect.gen(function* () {
       const keys = yield* AccountingSnapshotKeyService;
       return yield* keys.getActive;
@@ -187,6 +187,6 @@ describe("accounting document snapshot", () => {
     );
 
     expect(key.id).toBe("K202608");
-    expect(key.secret).toHaveLength(43);
+    expect(key.secret).toBe("synthetic accounting snapshot secret!");
   });
 });

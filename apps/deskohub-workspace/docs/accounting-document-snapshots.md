@@ -30,8 +30,12 @@ ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID=K202608
 Each key is a separate immutable Vercel Sensitive environment variable:
 
 ```text
-ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608=<32 random bytes encoded as 43-character base64url>
+ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608=<random secret; 32 random bytes encoded as base64url is recommended>
 ```
+
+The runtime requires the selected secret to be present but does not require a
+particular encoding. `pgcrypto` treats it as a passphrase and derives the
+encryption key itself.
 
 Before adding a key to Vercel, store it in the company password manager or other approved recovery system. Vercel cannot reveal a Sensitive value after it has been set, and ciphertext cannot be recovered without the matching key.
 

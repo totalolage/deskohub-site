@@ -4,7 +4,6 @@ import { Context, Data, Effect, Layer } from "effect";
 import { env, getAccountingDocumentSnapshotSecret } from "@/env";
 
 const snapshotKeyIdPattern = /^[A-Z][A-Z0-9_]{2,31}$/;
-const snapshotSecretPattern = /^[A-Za-z0-9_-]{43}$/;
 
 export class AccountingSnapshotKeyError extends Data.TaggedError(
   "AccountingSnapshotKeyError"
@@ -29,11 +28,7 @@ const getAccountingSnapshotKey = Effect.fn(
   }
 
   const secret = getAccountingDocumentSnapshotSecret(keyId);
-  if (
-    !secret ||
-    !snapshotSecretPattern.test(secret) ||
-    Buffer.from(secret, "base64url").byteLength !== 32
-  ) {
+  if (!secret) {
     return yield* new AccountingSnapshotKeyError({
       keyId,
       message: "Accounting snapshot key is unavailable or invalid.",
