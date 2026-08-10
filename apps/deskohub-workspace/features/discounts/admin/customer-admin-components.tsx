@@ -313,7 +313,7 @@ export function CustomerAdministrationDetailPage({
           <section>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
               <h2 className="text-xl">Discount codes</h2>
-              <Button asChild className="text-black" size="sm">
+              <Button asChild size="sm">
                 <Link
                   href={`/admin/customers/${profile.customer.id}/create-code`}
                 >
@@ -510,7 +510,13 @@ function CustomerConsent({
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
-            <span className="font-semibold text-navy-blue">
+            <span
+              className={
+                consent.accepted
+                  ? "font-semibold text-aquamarine-ink"
+                  : "font-semibold text-red-600"
+              }
+            >
               {consent.accepted ? "Accepted" : "Declined"}
             </span>{" "}
             · {formatAdministrationDateTime(consent.acceptedAt)}
@@ -532,7 +538,7 @@ function CustomerTransactionHistory({
   readonly transactions: readonly AdministrationCustomerTransaction[];
 }) {
   if (transactions.length === 0) {
-    return <EmptyState message="This customer has no payment attempts." />;
+    return <EmptyState message="This customer has no payments." />;
   }
   return (
     <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">

@@ -12,7 +12,10 @@ import {
   DiscountsAdminTable,
   type DiscountTableItem,
 } from "./admin-tables";
-import { DiscountCodeCreationForm } from "./customer-code-creation";
+import {
+  DiscountCodeCreationDialog,
+  SaleDiscountCreationDialog,
+} from "./creation-dialogs";
 import type { DiscountAdminDashboard } from "./discount-administration.service";
 
 type DiscountAdministrationProps = {
@@ -94,17 +97,9 @@ export function CodesAdministrationPage({
           <h2 className="sr-only" id="discount-codes-heading">
             Codes
           </h2>
-          <details className="group rounded-xl border border-navy-blue/10 bg-white">
-            <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-              <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-                <Plus aria-hidden className="size-4" />
-              </span>
-              Create a discount code
-            </summary>
-            <div className="px-5 pb-6">
-              <DiscountCodeCreationForm discounts={discounts} />
-            </div>
-          </details>
+          <div className="flex justify-end">
+            <DiscountCodeCreationDialog discounts={discounts} />
+          </div>
 
           <div className="mt-4">
             {codes.length === 0 ? (
@@ -134,17 +129,9 @@ export function SalesAdministrationPage({
     >
       <h1 className="sr-only">Sales</h1>
       <div className="space-y-4">
-        <details className="group rounded-xl border border-navy-blue/10 bg-white">
-          <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-            <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-              <Plus aria-hidden className="size-4" />
-            </span>
-            Create a sale discount
-          </summary>
-          <div className="px-5 pb-6">
-            <CreateDiscountForm />
-          </div>
-        </details>
+        <div className="flex justify-end">
+          <SaleDiscountCreationDialog />
+        </div>
         <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
       </div>
     </AdminPageShell>

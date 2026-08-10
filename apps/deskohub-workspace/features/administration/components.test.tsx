@@ -93,6 +93,68 @@ describe("administration reservation components", () => {
     expect(view.getAllByText("Dotypos reports cancelled")).toHaveLength(2);
   });
 
+  test("formats reservation dates according to their family", () => {
+    const reservation = loadFixtureReservations({}).items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...reservation,
+            id: "cowork-date-only",
+            type: "cowork",
+            typeLabel: "Cowork Basic",
+            date: "2026-08-10",
+            startsAt: "2026-08-09T22:00:00Z",
+          },
+          {
+            ...reservation,
+            id: "meeting-room-with-time",
+            type: "meeting-room",
+            typeLabel: "Meeting Room",
+            date: "2026-08-10",
+            startsAt: "2026-08-10T08:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const coworkDates = view.getAllByText("10 Aug 2026");
+    expect(coworkDates).toHaveLength(2);
+    expect(coworkDates[0]?.textContent).not.toContain("00:00");
+    expect(view.getAllByText("10 Aug 2026, 10:00")).toHaveLength(2);
+  });
+
+  test("links sortable reservation headers to server-side ordering", () => {
+    const reservations = loadFixtureReservations({}).items;
+    const view = render(
+      <ReservationTable
+        reservations={reservations}
+        sorting={{
+          basePath: "/admin/reservations",
+          direction: "asc",
+          field: "reservation",
+          params: { status: "complete" },
+        }}
+      />
+    );
+    const table = view.getByRole("table", { name: "Reservations" });
+    const reservationHeader = within(table).getByRole("link", {
+      name: "Reservation",
+    });
+
+    expect(reservationHeader.closest("th")?.getAttribute("aria-sort")).toBe(
+      "ascending"
+    );
+    expect(reservationHeader.getAttribute("href")).toBe(
+      "/admin/reservations?status=complete&sort=reservation&direction=desc"
+    );
+    expect(
+      within(table).getByRole("link", { name: "Status" }).getAttribute("href")
+    ).toBe("/admin/reservations?status=complete&sort=status&direction=asc");
+  });
+
   test("shows live provider discrepancies on related reservations", () => {
     const { items } = loadFixtureReservations({});
     const reservation = items[0];

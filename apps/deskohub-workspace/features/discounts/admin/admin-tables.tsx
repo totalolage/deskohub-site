@@ -55,6 +55,7 @@ import {
   workspaceCurrencyDefinitions,
 } from "@/shared/money/currencies";
 import {
+  cn,
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -237,12 +238,16 @@ export function DiscountCodesAdminTable({
       data={codes}
       expandedId={expandedId}
       getId={(code) => code.id}
+      onRowActivate={(code, expanded) =>
+        setExpandedId(expanded ? null : code.id)
+      }
       renderActions={(code, expanded) => (
         <RowActions
           confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
           deleteLabel={`Delete ${code.code}`}
           editLabel={`Edit ${code.code}`}
           expanded={expanded}
+          keepDeleteVisible
           onDelete={() => ({ kind: "delete-code", id: code.id })}
           onEdit={() => setExpandedId(expanded ? null : code.id)}
         />
@@ -274,11 +279,7 @@ function CodeAndDiscountEditor({
     <div className="grid gap-7">
       <section>
         <h3 className="mb-4 font-semibold">Code</h3>
-        <DiscountCodeEditor
-          code={code}
-          discounts={discounts}
-          onDeleted={onDeleted}
-        />
+        <DiscountCodeEditor code={code} discounts={discounts} />
       </section>
       {discount && (
         <section className="border-t border-navy-blue/10 pt-6">
@@ -426,7 +427,11 @@ function CalendarAssociationBadge({
   return <Badge variant="subtle">No discount ID</Badge>;
 }
 
-export function CreateDiscountForm() {
+export function CreateDiscountForm({
+  onCreated,
+}: {
+  readonly onCreated?: (message: string) => void;
+} = {}) {
   return (
     <MutationForm
       actionName="createDiscount"
@@ -434,6 +439,7 @@ export function CreateDiscountForm() {
         kind: "create-discount",
         discount: readDiscountForm(formData),
       })}
+      onSuccess={onCreated}
       submitLabel="Create discount"
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
@@ -450,6 +456,7 @@ function AdminDataTable<T>({
   getId,
   renderActions,
   renderEditor,
+  onRowActivate,
 }: {
   readonly ariaLabel: string;
   readonly columns: readonly ColumnDef<T>[];
@@ -458,6 +465,7 @@ function AdminDataTable<T>({
   readonly getId: (item: T) => string;
   readonly renderActions: (item: T, expanded: boolean) => ReactNode;
   readonly renderEditor: (item: T) => ReactNode;
+  readonly onRowActivate?: (item: T, expanded: boolean) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const tableColumns = useMemo(() => [...columns], [columns]);
@@ -511,7 +519,39 @@ function AdminDataTable<T>({
             const expanded = row.id === expandedId;
             return (
               <Fragment key={row.id}>
-                <TableRow className={expanded ? "bg-navy-blue/[0.025]" : ""}>
+                <TableRow
+                  aria-expanded={onRowActivate ? expanded : undefined}
+                  className={cn(
+                    onRowActivate &&
+                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
+                    expanded && "bg-navy-blue/[0.025]"
+                  )}
+                  onClick={(event) => {
+                    if (!onRowActivate) return;
+                    const target = event.target;
+                    if (
+                      target instanceof Element &&
+                      target.closest(
+                        "a, button, input, select, textarea, label, summary"
+                      )
+                    ) {
+                      return;
+                    }
+                    onRowActivate(row.original, expanded);
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      !onRowActivate ||
+                      event.target !== event.currentTarget ||
+                      (event.key !== "Enter" && event.key !== " ")
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    onRowActivate(row.original, expanded);
+                  }}
+                  tabIndex={onRowActivate ? 0 : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(
@@ -560,6 +600,7 @@ function RowActions({
   expanded,
   onDelete,
   onEdit,
+  keepDeleteVisible = false,
 }: {
   readonly confirmation: string;
   readonly deleteLabel: string;
@@ -567,10 +608,11 @@ function RowActions({
   readonly expanded: boolean;
   readonly onDelete: () => DiscountAdminMutation;
   readonly onEdit: () => void;
+  readonly keepDeleteVisible?: boolean;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      {!expanded && (
+      {(!expanded || keepDeleteVisible) && (
         <DeleteButton
           confirmation={confirmation}
           iconOnly
@@ -580,6 +622,7 @@ function RowActions({
       )}
       <Button
         aria-label={editLabel}
+        aria-expanded={expanded}
         aria-pressed={expanded}
         onClick={onEdit}
         size="icon"
@@ -639,11 +682,9 @@ function DiscountEditor({
 function DiscountCodeEditor({
   code,
   discounts,
-  onDeleted,
 }: {
   readonly code: DiscountCodeTableItem;
   readonly discounts: readonly DiscountTableItem[];
-  readonly onDeleted: () => void;
 }) {
   return (
     <div>
@@ -659,14 +700,6 @@ function DiscountCodeEditor({
             ...readDiscountCodeForm(formData),
           },
         })}
-        deleteControl={
-          <DeleteButton
-            confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
-            label={`Delete ${code.code}`}
-            mutation={() => ({ kind: "delete-code", id: code.id })}
-            onDeleted={onDeleted}
-          />
-        }
         requireDirty
         submitLabel="Save code"
         submitIcon={<Save aria-hidden className="size-4" />}
@@ -685,6 +718,7 @@ function MutationForm({
   requireDirty = false,
   submitIcon,
   submitLabel,
+  onSuccess,
 }: {
   readonly actionName: string;
   readonly buildMutation: (formData: FormData) => DiscountAdminMutation;
@@ -693,6 +727,7 @@ function MutationForm({
   readonly requireDirty?: boolean;
   readonly submitIcon: ReactNode;
   readonly submitLabel: string;
+  readonly onSuccess?: (message: string) => void;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -711,12 +746,11 @@ function MutationForm({
         initialFingerprint.current = fingerprintForm(form);
       }
       setDirty(false);
-      setFeedback({
-        kind: "success",
-        message: data.createdDiscountId
-          ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
-          : data.notice,
-      });
+      const message = data.createdDiscountId
+        ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
+        : data.notice;
+      if (onSuccess) onSuccess(message);
+      else setFeedback({ kind: "success", message });
       router.refresh();
     },
     onError: ({ error }) => {

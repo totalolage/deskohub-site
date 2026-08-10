@@ -303,6 +303,53 @@ describe("discount administration pages", () => {
     expect(within(table).getByText("96")).toBeDefined();
   });
 
+  test("expands a code from its row while preserving nested actions", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const table = view.getByRole("table", { name: "Discount codes" });
+    const codeLink = within(table).getByRole("link", { name: "SUMMER10" });
+    const codeRow = codeLink.closest("tr");
+    expect(codeRow).not.toBeNull();
+    if (!codeRow) return;
+
+    expect(
+      within(codeRow).getByRole("button", { name: "Delete SUMMER10" })
+    ).toBeDefined();
+    fireEvent.click(within(codeRow).getByText("2 customers"));
+
+    expect(view.getByRole("button", { name: "Save code" })).toBeDefined();
+    expect(
+      within(codeRow).getByRole("button", { name: "Delete SUMMER10" })
+    ).toBeDefined();
+    expect(
+      view.getAllByRole("button", { name: "Delete SUMMER10" })
+    ).toHaveLength(1);
+
+    fireEvent.click(codeLink);
+    expect(view.getByRole("button", { name: "Save code" })).toBeDefined();
+
+    fireEvent.click(within(codeRow).getByText("2 customers"));
+    expect(view.queryByRole("button", { name: "Save code" })).toBeNull();
+  });
+
+  test("expands a code row from the keyboard", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+    const table = view.getByRole("table", { name: "Discount codes" });
+    const codeRow = within(table)
+      .getByRole("link", { name: "SUMMER10" })
+      .closest("tr");
+    expect(codeRow).not.toBeNull();
+    if (!codeRow) return;
+
+    expect(codeRow.getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(codeRow, { key: "Enter" });
+    expect(view.getByRole("button", { name: "Save code" })).toBeDefined();
+
+    fireEvent.keyDown(codeRow, { key: " " });
+    expect(view.queryByRole("button", { name: "Save code" })).toBeNull();
+  });
+
   test("creates a code and its discount together when no definitions exist", async () => {
     const { CodesAdministrationPage } = await import("./components");
     const view = render(
@@ -311,7 +358,14 @@ describe("discount administration pages", () => {
       />
     );
 
+    expect(
+      view.queryByRole("form", { name: "Create discount code" })
+    ).toBeNull();
     fireEvent.click(view.getByText("Create a discount code"));
+    expect(view.getByRole("dialog")).toBeDefined();
+    expect(
+      view.getByRole("heading", { name: "Create a discount code" })
+    ).toBeDefined();
     expect(
       view.getByRole("radio", { name: "Create a new discount" })
     ).toHaveProperty("checked", true);
@@ -488,6 +542,14 @@ describe("discount administration pages", () => {
               acceptedAt: paidReservation.updatedAt,
               locale: "en-US",
             },
+            {
+              documentKey: "marketingCommunications",
+              documentPath: "/legal/marketing-communications-v1.md",
+              documentHash: "marketing-hash",
+              accepted: false,
+              acceptedAt: paidReservation.updatedAt,
+              locale: "en-US",
+            },
           ],
         }}
         profile={profile}
@@ -497,11 +559,14 @@ describe("discount administration pages", () => {
       name: "Customer code eligibility",
     });
 
-    expect(
-      view
-        .getByRole("link", { name: "Create discount code" })
-        .getAttribute("href")
-    ).toBe("/admin/customers/dotypos-customer/create-code");
+    const createCodeLink = view.getByRole("link", {
+      name: "Create discount code",
+    });
+    expect(createCodeLink.getAttribute("href")).toBe(
+      "/admin/customers/dotypos-customer/create-code"
+    );
+    expect(createCodeLink.className).toContain("text-white");
+    expect(createCodeLink.className).not.toContain("text-black");
 
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
@@ -509,6 +574,10 @@ describe("discount administration pages", () => {
     expect(view.getByText("1 (+ 1)")).toBeDefined();
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
+    expect(view.getByText("Accepted").className).toContain(
+      "text-aquamarine-ink"
+    );
+    expect(view.getByText("Declined").className).toContain("text-red-600");
     expect(
       view.getByText("Showing the 24 most recently updated reservations.")
     ).toBeDefined();
@@ -558,6 +627,44 @@ describe("discount administration pages", () => {
     expect(
       view.getByRole("button", { name: "Keep available to all" })
     ).toBeDefined();
+  });
+
+  test("describes an empty customer transaction history as payments", async () => {
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const view = render(
+      <CustomerAdministrationDetailPage
+        activity={{
+          reservations: [],
+          reservationHistoryTruncated: false,
+          transactions: [],
+          transactionHistoryTruncated: false,
+          stats: {
+            reservationCount: 0,
+            favoriteProduct: null,
+            revenue: [],
+            discountSavings: [],
+          },
+          consents: [],
+        }}
+        profile={{
+          customer: {
+            id: "dotypos-customer",
+            displayName: "Test Customer",
+            email: "test@example.com",
+            phone: null,
+            discountGroupId: null,
+          },
+          discountGroups: [],
+          codes: [],
+          claims: [],
+        }}
+      />
+    );
+
+    expect(view.getByText("This customer has no payments.")).toBeDefined();
+    expect(view.queryByText(/payment attempts/i)).toBeNull();
   });
 
   test("creates a customer code with an existing discount or a new definition", async () => {
@@ -646,6 +753,17 @@ describe("discount administration pages", () => {
     const { SalesAdministrationPage } = await import("./components");
     const view = render(<SalesAdministrationPage dashboard={dashboard} />);
 
+    expect(view.queryByRole("dialog")).toBeNull();
+    fireEvent.click(
+      view.getByRole("button", { name: "Create a sale discount" })
+    );
+    expect(view.getByRole("dialog")).toBeDefined();
+    expect(
+      view.getByRole("heading", { name: "Create a sale discount" })
+    ).toBeDefined();
+    fireEvent.click(view.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
+
     expect(view.getByRole("table", { name: "Calendar sales" })).toBeDefined();
     expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
     expect(view.getByText("Associated").className).toContain("text-white");
@@ -659,5 +777,55 @@ describe("discount administration pages", () => {
       )
     ).not.toBeNull();
     expect(view.getByRole("button", { name: "Save discount" })).toBeDefined();
+  });
+
+  test("confirms sale discount creation before allowing another submission", async () => {
+    let onSuccess:
+      | ((result: {
+          data?: {
+            notice: string;
+            createdDiscountId?: string;
+          };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      const candidate = options as {
+        actionName?: string;
+        onSuccess?: typeof onSuccess;
+      };
+      if (candidate.actionName === "createDiscount") {
+        onSuccess = candidate.onSuccess;
+      }
+      return {
+        execute: mock(),
+        isExecuting: false,
+        result: {},
+      };
+    });
+    const { SalesAdministrationPage } = await import("./components");
+    const view = render(<SalesAdministrationPage dashboard={dashboard} />);
+
+    fireEvent.click(
+      view.getByRole("button", { name: "Create a sale discount" })
+    );
+    expect(view.getByRole("button", { name: "Create discount" })).toBeDefined();
+
+    act(() =>
+      onSuccess?.({
+        data: {
+          notice: "Discount created.",
+          createdDiscountId: "calendar-discount-id",
+        },
+      })
+    );
+
+    expect(view.getByRole("status").textContent).toContain(
+      "Calendar ID: calendar-discount-id"
+    );
+    expect(view.queryByRole("button", { name: "Create discount" })).toBeNull();
+    fireEvent.click(
+      view.getByRole("button", { name: "Create another discount" })
+    );
+    expect(view.getByRole("button", { name: "Create discount" })).toBeDefined();
   });
 });

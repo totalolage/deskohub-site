@@ -6,6 +6,7 @@ import type {
 } from "@deskohub/dotypos/generated";
 import {
   and,
+  asc,
   count,
   countDistinct,
   desc,
@@ -72,10 +73,19 @@ const paymentAttemptStateLabels = {
 export type AdministrationReservationListInput = {
   readonly customerId?: string;
   readonly date?: string;
+  readonly direction?: AdministrationReservationSortDirection;
   readonly page?: number;
+  readonly sort?: AdministrationReservationSort;
   readonly status?: Exclude<AdministrationStatusGroup, "attention">;
   readonly type?: "cowork" | "meeting-room";
 };
+
+export type AdministrationReservationSort =
+  | "created"
+  | "reservation"
+  | "status";
+
+export type AdministrationReservationSortDirection = "asc" | "desc";
 
 type ReservationListInput = AdministrationReservationListInput & {
   readonly pageSize?: number;
@@ -512,6 +522,47 @@ const statusCondition = (
     sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
     sql`${workspaceReservations.reservationState} not in ('cancelled', 'hold_expired', 'cancellation_failed')`
   )!;
+};
+
+const reservationStatusSort = sql<string>`case
+  when ${workspaceReservations.fulfillmentState} = 'failed' then 'Confirmation issue'
+  when ${workspaceReservations.reservationState} = 'cancellation_failed' then 'Cancellation issue'
+  when ${workspaceReservations.reservationState} = 'cancelled' then 'Cancelled'
+  when ${workspaceReservations.fulfillmentState} = 'fulfilled' then 'Complete'
+  when ${workspaceReservations.reservationState} = 'cancelling' then 'Cancelling'
+  when ${workspaceReservations.reservationState} = 'hold_expired' then 'Expired'
+  when ${workspaceReservations.paymentState} = 'paid'
+    or ${workspaceReservations.fulfillmentState} = 'processing'
+    or ${workspaceReservations.reservationState} in ('confirming', 'confirmed')
+    then 'Confirming'
+  when ${workspaceReservations.paymentState} = 'pending' then 'Payment pending'
+  when ${workspaceReservations.paymentState} = 'failed'
+    and ${workspaceReservations.reservationState} = 'held' then 'Payment failed'
+  when ${workspaceReservations.paymentState} = 'expired'
+    and ${workspaceReservations.reservationState} = 'held' then 'Payment expired'
+  when ${workspaceReservations.reservationState} = 'held'
+    and ${workspaceReservations.paymentState} in ('not_started', 'cancelled')
+    then 'Awaiting payment'
+  when ${workspaceReservations.reservationState} in ('draft', 'creating_hold')
+    then 'Starting'
+  else 'In progress'
+end`;
+
+const reservationTypeSort = sql<string>`case
+  when ${workspaceReservations.reservationDetails}->>'kind' = 'meeting-room'
+    then 'Meeting Room'
+  else 'Cowork ' || initcap(${workspaceReservations.reservationDetails}->>'entryTier')
+end`;
+
+const getReservationOrderBy = (input: AdministrationReservationListInput) => {
+  const order = input.direction === "asc" ? asc : desc;
+  const fields = {
+    created: workspaceReservations.createdAt,
+    reservation: reservationTypeSort,
+    status: reservationStatusSort,
+  } as const;
+  const field = fields[input.sort ?? "created"];
+  return [order(field), order(workspaceReservations.id)] as const;
 };
 
 const buildTimeline = (row: SafeReservationRow) => {
@@ -976,7 +1027,7 @@ export class AdministrationService extends Context.Service<
           .select(safeReservationSelection)
           .from(workspaceReservations)
           .where(where)
-          .orderBy(desc(workspaceReservations.updatedAt))
+          .orderBy(...getReservationOrderBy(input))
           .limit(pageSize)
           .offset(pagination.offset);
         return {

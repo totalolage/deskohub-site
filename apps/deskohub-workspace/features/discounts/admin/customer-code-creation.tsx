@@ -207,7 +207,7 @@ export function DiscountCodeCreationForm({
             Cancel
           </Button>
         )}
-        <Button className="text-black" disabled={isExecuting} type="submit">
+        <Button disabled={isExecuting} type="submit">
           <Plus aria-hidden className="size-4" />
           {isExecuting ? "Creating…" : "Create discount code"}
         </Button>

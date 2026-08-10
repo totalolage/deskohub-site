@@ -2,9 +2,10 @@ import Link from "next/link";
 import {
   AdministrationPage,
   EmptyState,
-  formatAdministrationDate,
   formatAdministrationDateTime,
   formatAdministrationMoney,
+  formatAdministrationPlainDate,
+  formatAdministrationReservationDate,
   getBookingTableLabel,
   PaymentAttemptList,
   RelatedReservationLink,
@@ -50,22 +51,34 @@ export default async function ReservationAdministrationDetailPage({
               )}
             </div>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
-              <ReservationFact
-                label="Starts"
-                value={
-                  reservation.startsAt
-                    ? formatAdministrationDateTime(reservation.startsAt)
-                    : "Unavailable"
-                }
-              />
-              <ReservationFact
-                label="Ends"
-                value={
-                  reservation.endsAt
-                    ? formatAdministrationDateTime(reservation.endsAt)
-                    : "Unavailable"
-                }
-              />
+              {reservation.type === "cowork" ? (
+                <ReservationFact
+                  label="Date"
+                  value={
+                    formatAdministrationReservationDate(reservation) ??
+                    "Unavailable"
+                  }
+                />
+              ) : (
+                <>
+                  <ReservationFact
+                    label="Starts"
+                    value={
+                      reservation.startsAt
+                        ? formatAdministrationDateTime(reservation.startsAt)
+                        : "Unavailable"
+                    }
+                  />
+                  <ReservationFact
+                    label="Ends"
+                    value={
+                      reservation.endsAt
+                        ? formatAdministrationDateTime(reservation.endsAt)
+                        : "Unavailable"
+                    }
+                  />
+                </>
+              )}
               <ReservationFact label="Product" value={reservation.typeLabel} />
               <ReservationFact
                 label="Table"
@@ -204,7 +217,7 @@ export default async function ReservationAdministrationDetailPage({
           </RelatedSection>
           {reservation.date && (
             <RelatedSection
-              title={`Also on ${formatAdministrationDate(reservation.date)}`}
+              title={`Also on ${formatAdministrationPlainDate(reservation.date)}`}
             >
               {detail.sameDateReservations.length > 0 ? (
                 detail.sameDateReservations.map((related) => (

@@ -9,6 +9,7 @@ import {
   loadAdministrationReservations,
 } from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
+import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 
 export const dynamic = "force-dynamic";
@@ -27,9 +28,13 @@ export default async function ReservationsAdministrationPage({
       <h1 className="sr-only">Reservations</h1>
       <div className="mb-5 grid gap-5 rounded-xl border border-navy-blue/10 bg-white p-4 2xl:grid-cols-[minmax(22rem,1fr)_auto] 2xl:items-end">
         <div className="grid gap-3 sm:grid-cols-[auto_minmax(18rem,1fr)] sm:items-end">
-          <p className="pb-2 text-sm font-semibold text-navy-blue/70">
-            {result.total} reservations
-          </p>
+          <Badge
+            aria-label={`${result.total} reservations`}
+            className="mb-2 w-fit"
+            variant="subtle"
+          >
+            {result.total}
+          </Badge>
           <ReservationLookup variant="toolbar" />
         </div>
 
@@ -71,6 +76,8 @@ export default async function ReservationsAdministrationPage({
           {input.customerId && (
             <input name="customerId" type="hidden" value={input.customerId} />
           )}
+          <input name="sort" type="hidden" value={input.sort} />
+          <input name="direction" type="hidden" value={input.direction} />
           <Button className="min-h-10" size="sm" type="submit">
             Apply filters
           </Button>
@@ -99,7 +106,20 @@ export default async function ReservationsAdministrationPage({
           shortly.
         </output>
       )}
-      <ReservationTable reservations={result.items} />
+      <ReservationTable
+        reservations={result.items}
+        sorting={{
+          basePath: "/admin/reservations",
+          direction: input.direction ?? "desc",
+          field: input.sort ?? "created",
+          params: {
+            date: input.date,
+            customerId: input.customerId,
+            status: input.status,
+            type: input.type,
+          },
+        }}
+      />
       <Pagination
         basePath="/admin/reservations"
         page={result.page}
@@ -107,6 +127,8 @@ export default async function ReservationsAdministrationPage({
         params={{
           date: input.date,
           customerId: input.customerId,
+          direction: input.direction,
+          sort: input.sort,
           status: input.status,
           type: input.type,
         }}

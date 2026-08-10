@@ -45,6 +45,16 @@ const parseStatus = (
     ? value
     : undefined;
 
+const parseReservationSort = (
+  value: string | undefined
+): NonNullable<AdministrationReservationListInput["sort"]> =>
+  value === "reservation" || value === "status" ? value : "created";
+
+const parseSortDirection = (
+  value: string | undefined
+): NonNullable<AdministrationReservationListInput["direction"]> =>
+  value === "asc" ? "asc" : "desc";
+
 const runAdministration =
   (operation: string) =>
   <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
@@ -81,7 +91,9 @@ export const loadAdministrationReservations = async (
   const input: AdministrationReservationListInput = {
     customerId: firstParam(params.customerId),
     date: firstParam(params.date),
+    direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
+    sort: parseReservationSort(firstParam(params.sort)),
     status: parseStatus(firstParam(params.status)),
     type:
       typeValue === "cowork" || typeValue === "meeting-room"

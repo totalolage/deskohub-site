@@ -18,7 +18,24 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
-import type { AdministrationReservationStatus } from "./reservation-status";
+import { EmptyState } from "./empty-state";
+import {
+  formatAdministrationDateTime,
+  formatAdministrationMoney,
+  formatAdministrationReservationDate,
+} from "./formatters";
+
+export { EmptyState } from "./empty-state";
+export {
+  formatAdministrationDateTime,
+  formatAdministrationMoney,
+  formatAdministrationPlainDate,
+  formatAdministrationReservationDate,
+} from "./formatters";
+export {
+  ReservationStatusBadge,
+  ReservationTable,
+} from "./reservation-table";
 
 export type AdministrationNotice = {
   readonly message: string;
@@ -115,63 +132,6 @@ export function AdministrationNoticeBanner({
     </div>
   );
 }
-
-export function ReservationStatusBadge({
-  status,
-}: {
-  readonly status: AdministrationReservationStatus;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        status.group === "attention" &&
-          "border-burned-orange/25 bg-burned-orange/10 text-burned-orange-ink",
-        status.group === "in_progress" &&
-          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
-        status.group === "complete" &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        status.group === "cancelled" &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
-      )}
-    >
-      {status.label}
-    </span>
-  );
-}
-
-const workspaceTimeZone = "Europe/Prague";
-
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: workspaceTimeZone,
-});
-
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeZone: workspaceTimeZone,
-});
-
-export const formatAdministrationDateTime = (value: string) =>
-  dateTimeFormatter.format(new Date(value));
-
-export const formatAdministrationDate = (value: string) =>
-  dateFormatter.format(new Date(value));
-
-export const formatAdministrationMoney = ({
-  currency,
-  exponent,
-  value,
-}: {
-  readonly currency: string;
-  readonly exponent: number;
-  readonly value: number;
-}) =>
-  new Intl.NumberFormat("en-GB", {
-    currency,
-    style: "currency",
-  }).format(value / 10 ** exponent);
 
 export function PaymentAttemptList({
   attempts,
@@ -358,189 +318,6 @@ export function BookingTable({
   );
 }
 
-export function ReservationTable({
-  emptyMessage = "No reservations match this view.",
-  reservations,
-  showCustomer = true,
-}: {
-  readonly emptyMessage?: string;
-  readonly reservations: readonly AdministrationReservationSummary[];
-  readonly showCustomer?: boolean;
-}) {
-  if (reservations.length === 0) return <EmptyState message={emptyMessage} />;
-  return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-      <div className="hidden overflow-x-auto md:block">
-        <Table
-          aria-label="Reservations"
-          className={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
-        >
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Date</TableHead>
-              <TableHead>Status</TableHead>
-              {showCustomer && <TableHead>Customer</TableHead>}
-              <TableHead>Reservation</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead>Payment</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reservations.map((reservation) => (
-              <TableRow className="relative" key={reservation.id}>
-                <TableCell>
-                  <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                    href={`/admin/reservations/${reservation.id}`}
-                  >
-                    {reservation.startsAt
-                      ? formatAdministrationDateTime(reservation.startsAt)
-                      : "Date unavailable"}
-                  </Link>
-                  <p className="mt-1 text-xs text-navy-blue/65">
-                    {reservation.typeLabel}
-                  </p>
-                </TableCell>
-                <TableCell>
-                  <div className="space-y-1.5">
-                    <ReservationStatusBadge status={reservation.status} />
-                    {reservation.statusNote && (
-                      <p className="text-xs font-medium text-burned-orange-ink">
-                        {reservation.statusNote}
-                      </p>
-                    )}
-                  </div>
-                </TableCell>
-                {showCustomer && (
-                  <TableCell>
-                    {reservation.customer ? (
-                      <>
-                        <Link
-                          className="relative z-10 font-medium hover:underline"
-                          href={`/admin/customers/${reservation.customerId}`}
-                        >
-                          {reservation.customer.displayName}
-                        </Link>
-                        <p className="mt-1 text-xs text-navy-blue/65">
-                          {reservation.customer.email ??
-                            reservation.customer.phone ??
-                            "No contact details"}
-                        </p>
-                      </>
-                    ) : (
-                      <span className="text-sm text-navy-blue/65">
-                        Details unavailable
-                      </span>
-                    )}
-                  </TableCell>
-                )}
-                <TableCell>
-                  <p className="font-medium">{reservation.typeLabel}</p>
-                  <p className="mt-1 font-mono text-xs text-navy-blue/65">
-                    {reservation.id.slice(0, 12)}…
-                  </p>
-                </TableCell>
-                <TableCell className="text-sm text-navy-blue/65">
-                  {formatAdministrationDateTime(reservation.createdAt)}
-                </TableCell>
-                <TableCell>
-                  {reservation.latestPayment ? (
-                    <>
-                      <p className="font-medium">
-                        {formatAdministrationMoney(
-                          reservation.latestPayment.amount
-                        )}
-                      </p>
-                      <p className="mt-1 text-xs text-navy-blue/65">
-                        {reservation.latestPayment.stateLabel} ·{" "}
-                        {formatAdministrationDateTime(
-                          reservation.latestPayment.updatedAt
-                        )}
-                      </p>
-                      {reservation.latestPayment.providerOrderId && (
-                        <a
-                          aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
-                          className="relative z-10 mt-1 block max-w-44 break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
-                          href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          {reservation.latestPayment.providerOrderId} ↗
-                        </a>
-                      )}
-                    </>
-                  ) : (
-                    <span className="text-sm text-navy-blue/45">—</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <ul className="divide-y divide-navy-blue/10 md:hidden">
-        {reservations.map((reservation) => (
-          <li key={reservation.id}>
-            <div className="px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    <Link
-                      className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                      href={`/admin/reservations/${reservation.id}`}
-                    >
-                      {showCustomer
-                        ? (reservation.customer?.displayName ??
-                          reservation.typeLabel)
-                        : reservation.typeLabel}
-                    </Link>
-                  </p>
-                  <p className="mt-1 text-sm text-navy-blue/65">
-                    {reservation.startsAt
-                      ? formatAdministrationDateTime(reservation.startsAt)
-                      : "Booking details unavailable"}
-                  </p>
-                </div>
-                <div className="space-y-1.5 text-right">
-                  <ReservationStatusBadge status={reservation.status} />
-                  {reservation.statusNote && (
-                    <p className="max-w-32 text-xs font-medium text-burned-orange-ink">
-                      {reservation.statusNote}
-                    </p>
-                  )}
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-navy-blue/65">
-                {reservation.typeLabel}
-                {reservation.latestPayment && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    {formatAdministrationMoney(
-                      reservation.latestPayment.amount
-                    )}
-                  </>
-                )}
-              </p>
-              {reservation.latestPayment?.providerOrderId ? (
-                <a
-                  aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
-                  className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
-                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  {reservation.latestPayment.providerOrderId} ↗
-                </a>
-              ) : null}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function ReservationTimeline({
   items,
 }: {
@@ -607,9 +384,8 @@ export function RelatedReservationLink({
     >
       <span>
         <span className="block text-sm font-semibold">
-          {reservation.startsAt
-            ? formatAdministrationDateTime(reservation.startsAt)
-            : reservation.typeLabel}
+          {formatAdministrationReservationDate(reservation) ??
+            reservation.typeLabel}
         </span>
         <span className="mt-1 block text-xs text-navy-blue/65">
           {reservation.status.label}
@@ -740,13 +516,5 @@ export function Pagination({
         )}
       </Button>
     </nav>
-  );
-}
-
-export function EmptyState({ message }: { readonly message: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-navy-blue/15 bg-white px-5 py-12 text-center text-sm text-navy-blue/65">
-      {message}
-    </div>
   );
 }
