@@ -117,6 +117,31 @@ describe("WorkspaceAdminApiClient", () => {
           );
           return Response.json(session);
         }
+        if (url.pathname.endsWith("/overview")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            today: { unavailable: false, value: 3 },
+            upcoming: { unavailable: false, value: 8 },
+            lastSevenDays: { unavailable: false, value: 5 },
+          });
+        }
+        if (url.pathname.endsWith("/reservations")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("2");
+          expect(url.searchParams.get("status")).toBe("complete");
+          return Response.json({
+            items: [],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+            dateFilterUnavailable: false,
+            dateSortUnavailable: false,
+          });
+        }
         return new Response(null, { status: 404 });
       },
     });
@@ -146,6 +171,11 @@ describe("WorkspaceAdminApiClient", () => {
         yield* client.getAuthenticationStatus(code);
         yield* client.exchangeGrant({ code, grantToken, verifier });
         yield* client.getCurrentSession(Redacted.make(accessToken));
+        yield* client.getOverview(Redacted.make(accessToken));
+        yield* client.listReservations(Redacted.make(accessToken), {
+          page: 2,
+          status: "complete",
+        });
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -153,6 +183,8 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/status" },
         { method: "POST", path: "/api/v1/cli/grant" },
         { method: "GET", path: "/api/v1/cli/session" },
+        { method: "GET", path: "/api/v1/cli/overview" },
+        { method: "GET", path: "/api/v1/cli/reservations" },
       ]);
     } finally {
       server.stop(true);

@@ -35,6 +35,27 @@ Firewall Rate Limiting SDK. The Workspace Vercel project must define an
 `@vercel/firewall` rate limit with the ID `cli-authentication-start`, allowing
 10 requests per IP per minute and returning 429 after the limit.
 
+## Read-only administration
+
+Authenticated read commands use the same application services as the Admin UI:
+
+```bash
+dhw overview
+dhw reservations list
+dhw reservations list --date 2026-08-10 --status complete --page 2
+```
+
+Pass the root `--json` flag for schema-decoded machine output, for example
+`dhw --json reservations list`. Human output is intentionally compact; JSON
+retains the complete typed response.
+
+RFC 10008 `QUERY` is the preferred eventual transport for searches with request
+content. The installed Effect V4 HTTP method model and Next.js App Route runtime
+do not yet accept `QUERY`, so bounded filters currently use schema-typed GET
+query parameters. The service operations and shared schemas remain transport
+independent so adopting `QUERY` does not require changing CLI commands or Admin
+UI application services.
+
 ## Development
 
 ```bash

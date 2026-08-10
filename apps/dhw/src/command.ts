@@ -1,8 +1,12 @@
 import {
+  type AdministrationOverviewMetricType,
+  type AdministrationReservationQueryType,
+  type CliAccessTokenType,
+  CliSessionUnauthorized,
   makeCliAuthenticationChallenge,
   makeCliAuthenticationVerifier,
 } from "@deskohub/workspace-admin-api";
-import { Console, Data, Effect, Option } from "effect";
+import { Console, Data, Effect, Option, type Redacted } from "effect";
 import { Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
@@ -53,6 +57,103 @@ const apiInfoCommand = Command.make("info", {}, () =>
 const apiCommand = Command.make("api").pipe(
   Command.withDescription("Inspect the administration API"),
   Command.withSubcommands([apiInfoCommand])
+);
+
+const overviewCommand = Command.make("overview", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const overview = yield* api.getOverview(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(overview));
+        return;
+      }
+      yield* Console.log(
+        [
+          formatOverviewMetric("Today", overview.today),
+          formatOverviewMetric("Upcoming", overview.upcoming),
+          formatOverviewMetric("Last 7 days", overview.lastSevenDays),
+        ].join("\n")
+      );
+    })
+  )
+).pipe(Command.withDescription("Show the administration overview"));
+
+const reservationsListCommand = Command.make(
+  "list",
+  {
+    customer: Flag.string("customer").pipe(
+      Flag.optional,
+      Flag.withDescription("Filter by customer ID")
+    ),
+    date: Flag.string("date").pipe(
+      Flag.optional,
+      Flag.withDescription("Filter by reservation date (YYYY-MM-DD)")
+    ),
+    direction: Flag.choice("direction", ["asc", "desc"]).pipe(
+      Flag.optional,
+      Flag.withDescription("Sort direction")
+    ),
+    page: Flag.integer("page").pipe(
+      Flag.optional,
+      Flag.withDescription("Results page")
+    ),
+    sort: Flag.choice("sort", [
+      "created",
+      "date",
+      "reservation",
+      "status",
+    ]).pipe(Flag.optional, Flag.withDescription("Sort field")),
+    status: Flag.choice("status", [
+      "in_progress",
+      "complete",
+      "cancelled",
+    ]).pipe(Flag.optional, Flag.withDescription("Reservation status")),
+    type: Flag.choice("type", ["cowork", "meeting-room"]).pipe(
+      Flag.optional,
+      Flag.withDescription("Reservation type")
+    ),
+  },
+  ({ customer, date, direction, page, sort, status, type }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query: AdministrationReservationQueryType = {
+          ...(Option.isSome(customer) && { customerId: customer.value }),
+          ...(Option.isSome(date) && { date: date.value }),
+          ...(Option.isSome(direction) && { direction: direction.value }),
+          ...(Option.isSome(page) && { page: page.value }),
+          ...(Option.isSome(sort) && { sort: sort.value }),
+          ...(Option.isSome(status) && { status: status.value }),
+          ...(Option.isSome(type) && { type: type.value }),
+        };
+        const result = yield* api.listReservations(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Reservations: ${result.total} total · page ${result.page}/${result.pageCount}`
+        );
+        for (const reservation of result.items) {
+          const customerName =
+            reservation.customer?.displayName ?? reservation.customerId;
+          const when = reservation.date ?? reservation.startsAt ?? "Unknown";
+          yield* Console.log(
+            [
+              reservation.id,
+              when,
+              reservation.typeLabel,
+              customerName,
+              reservation.status.label,
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List and filter reservations"));
+
+const reservationsCommand = Command.make("reservations").pipe(
+  Command.withDescription("Inspect Workspace reservations"),
+  Command.withSubcommands([reservationsListCommand])
 );
 
 const authCommand = Command.make(
@@ -166,6 +267,8 @@ export const dhwCommand = rootCommand.pipe(
     versionCommand,
     apiCommand,
     authCommand,
+    overviewCommand,
+    reservationsCommand,
     updateCommand,
   ])
 );
@@ -221,6 +324,10 @@ class AuthenticationFlowError extends Data.TaggedError(
   "AuthenticationFlowError"
 )<{ readonly message: string }> {}
 
+class AuthenticationRequiredError extends Data.TaggedError(
+  "AuthenticationRequiredError"
+)<{ readonly message: string }> {}
+
 const runCommand = <A, E, R>(
   operation: (json: boolean) => Effect.Effect<A, E, R>
 ) =>
@@ -230,6 +337,38 @@ const runCommand = <A, E, R>(
     yield* offerAutomaticUpdate(json);
     return result;
   });
+
+const runAuthenticatedCommand = <A, E, R>(
+  operation: (
+    api: WorkspaceAdminApiClient["Service"],
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    json: boolean
+  ) => Effect.Effect<A, E, R>
+) =>
+  runCommand((json) =>
+    Effect.gen(function* () {
+      const authentication = yield* AuthenticationService;
+      const current = yield* authentication.current;
+      if (Option.isNone(current)) {
+        return yield* new AuthenticationRequiredError({
+          message: "Run dhw auth before using administration commands.",
+        });
+      }
+      const api = yield* WorkspaceAdminApiClient;
+      return yield* operation(api, current.value.accessToken, json).pipe(
+        Effect.tapError((cause) =>
+          cause instanceof CliSessionUnauthorized
+            ? authentication.clear
+            : Effect.void
+        )
+      );
+    })
+  );
+
+const formatOverviewMetric = (
+  label: string,
+  metric: AdministrationOverviewMetricType
+) => `${label}: ${metric.unavailable ? "unavailable" : metric.value}`;
 
 const offerAutomaticUpdate = (json: boolean) =>
   Effect.gen(function* () {

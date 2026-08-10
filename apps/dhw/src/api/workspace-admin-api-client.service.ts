@@ -1,5 +1,8 @@
 import {
   type AdminCliInfoType,
+  type AdministrationOverviewType,
+  type AdministrationReservationPageType,
+  type AdministrationReservationQueryType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
   CliAuthenticationRateLimited,
@@ -52,6 +55,19 @@ interface IWorkspaceAdminApiClient {
     CliSessionType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
+  readonly getOverview: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationOverviewType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listReservations: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationReservationQueryType
+  ) => Effect.Effect<
+    AdministrationReservationPageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
 }
 
 export class WorkspaceAdminApiClient extends Context.Service<
@@ -66,18 +82,26 @@ export class WorkspaceAdminApiClient extends Context.Service<
 
 const makeWorkspaceAdminApiClient = Effect.gen(function* () {
   const config = yield* DhwConfig;
+  const httpClient = yield* HttpClient.HttpClient;
   const requestHeaders = Object.fromEntries(
     Object.entries(config.requestHeaders).map(([name, value]) => [
       name,
       Redacted.value(value),
     ])
   );
-  const client = yield* HttpApiClient.make(WorkspaceAdminApi, {
-    baseUrl: config.baseUrl,
-    transformClient: HttpClient.mapRequest(
-      HttpClientRequest.setHeaders(requestHeaders)
-    ),
-  });
+  const makeClient = (accessToken?: Redacted.Redacted<CliAccessTokenType>) =>
+    HttpApiClient.make(WorkspaceAdminApi, {
+      baseUrl: config.baseUrl,
+      transformClient: HttpClient.mapRequest(
+        HttpClientRequest.setHeaders({
+          ...requestHeaders,
+          ...(accessToken && {
+            authorization: `Bearer ${Redacted.value(accessToken)}`,
+          }),
+        })
+      ),
+    }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient));
+  const client = yield* makeClient();
 
   return {
     getInfo: Effect.fn("WorkspaceAdminApiClient.getInfo")(() =>
@@ -105,13 +129,31 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     ),
     getCurrentSession: Effect.fn("WorkspaceAdminApiClient.getCurrentSession")(
       (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
-        client.cli
-          .getCurrentSession({
-            headers: {
-              authorization: `Bearer ${Redacted.value(accessToken)}`,
-            },
-          })
-          .pipe(Effect.mapError(sanitizeSessionError))
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) => authorized.cli.getCurrentSession({})),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getOverview: Effect.fn("WorkspaceAdminApiClient.getOverview")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getOverview({})
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listReservations: Effect.fn("WorkspaceAdminApiClient.listReservations")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationReservationQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listReservations({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
     ),
   };
 });

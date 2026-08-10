@@ -25,6 +25,8 @@ describe("AuthenticationService", () => {
             message: "The CLI session has been revoked.",
           })
         ),
+      getOverview: () => Effect.die("not used"),
+      listReservations: () => Effect.die("not used"),
     } satisfies WorkspaceAdminApiClient["Service"]);
     const credentialLayer = Layer.succeed(CliSessionCredential, {
       get: Effect.succeed(Redacted.make(accessToken)),

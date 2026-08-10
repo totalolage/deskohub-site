@@ -1,14 +1,18 @@
 import {
   CliAuthenticationRateLimited,
+  CliBearerAuthentication,
   CliGrantRejected,
   CliServiceUnavailable,
   CliSessionUnauthorized,
+  CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { AdministrationLive } from "@/features/administration/administration.runtime";
+import { AdministrationService } from "@/features/administration/administration.service";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 
@@ -53,18 +57,46 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
               )
             )
         )
-        .handle("getCurrentSession", ({ headers }) =>
-          authentication
-            .authenticateSession(headers.authorization)
-            .pipe(
-              Effect.mapError((cause) =>
-                cause instanceof CliSessionUnauthorized
-                  ? cause
-                  : makeServiceUnavailable()
-              )
-            )
+        .handle("getCurrentSession", () => CurrentCliSession);
+    })
+);
+
+export const AdminCliReadApiHandlers = HttpApiBuilder.group(
+  WorkspaceAdminApi,
+  "administration",
+  (handlers) =>
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return handlers
+        .handle("getOverview", () =>
+          administration.loadOverview().pipe(mapServiceFailure)
+        )
+        .handle("listReservations", ({ query }) =>
+          administration.listReservations(query).pipe(mapServiceFailure)
         );
     })
+);
+
+const CliBearerAuthenticationLive = Layer.effect(
+  CliBearerAuthentication,
+  Effect.gen(function* () {
+    const authentication = yield* CliAuthentication;
+    return {
+      bearer: (httpEffect, { credential }) =>
+        authentication
+          .authenticateSession(`Bearer ${Redacted.value(credential)}`)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof CliSessionUnauthorized
+                ? cause
+                : makeServiceUnavailable()
+            ),
+            Effect.flatMap((session) =>
+              Effect.provideService(httpEffect, CurrentCliSession, session)
+            )
+          ),
+    } satisfies CliBearerAuthentication["Service"];
+  })
 );
 
 const makeServiceUnavailable = () =>
@@ -90,6 +122,9 @@ const noStore = HttpRouter.middleware(
 const WorkspaceAdminApiLive = Layer.merge(
   HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
     Layer.provide(AdminCliApiHandlers),
+    Layer.provide(AdminCliReadApiHandlers),
+    Layer.provide(CliBearerAuthenticationLive),
+    Layer.provide(AdministrationLive),
     Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)
   ),

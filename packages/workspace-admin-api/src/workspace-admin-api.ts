@@ -1,9 +1,11 @@
-import { Schema } from "effect";
+import { Context, Schema } from "effect";
 import {
   HttpApi,
   HttpApiEndpoint,
   HttpApiGroup,
+  HttpApiMiddleware,
   HttpApiSchema,
+  HttpApiSecurity,
 } from "effect/unstable/httpapi";
 
 export const WORKSPACE_ADMIN_API_VERSION = "v1" as const;
@@ -137,6 +139,11 @@ export const CliSession = Schema.Struct({
 });
 export type CliSession = typeof CliSession.Type;
 
+export class CurrentCliSession extends Context.Service<
+  CurrentCliSession,
+  CliSession
+>()("@deskohub/workspace-admin-api/CurrentCliSession") {}
+
 export const GrantedCliSession = Schema.Struct({
   accessToken: CliAccessToken,
   session: CliSession,
@@ -171,6 +178,140 @@ export class CliServiceUnavailable extends Schema.TaggedErrorClass<CliServiceUna
   static schema = this.pipe(HttpApiSchema.status("ServiceUnavailable"));
 }
 
+export class CliBearerAuthentication extends HttpApiMiddleware.Service<
+  CliBearerAuthentication,
+  { provides: CurrentCliSession }
+>()("@deskohub/workspace-admin-api/CliBearerAuthentication", {
+  error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
+  security: { bearer: HttpApiSecurity.bearer },
+}) {}
+
+export const AdministrationOverviewMetric = Schema.Struct({
+  unavailable: Schema.Boolean,
+  value: Schema.Number,
+});
+export type AdministrationOverviewMetric =
+  typeof AdministrationOverviewMetric.Type;
+
+export const AdministrationOverview = Schema.Struct({
+  today: AdministrationOverviewMetric,
+  upcoming: AdministrationOverviewMetric,
+  lastSevenDays: AdministrationOverviewMetric,
+});
+export type AdministrationOverview = typeof AdministrationOverview.Type;
+
+export const AdministrationReservationSort = Schema.Literals([
+  "created",
+  "date",
+  "reservation",
+  "status",
+]);
+export type AdministrationReservationSort =
+  typeof AdministrationReservationSort.Type;
+
+export const AdministrationReservationSortDirection = Schema.Literals([
+  "asc",
+  "desc",
+]);
+export type AdministrationReservationSortDirection =
+  typeof AdministrationReservationSortDirection.Type;
+
+export const AdministrationReservationStatusGroup = Schema.Literals([
+  "attention",
+  "in_progress",
+  "complete",
+  "cancelled",
+]);
+export type AdministrationReservationStatusGroup =
+  typeof AdministrationReservationStatusGroup.Type;
+
+export const AdministrationReservationQuery = Schema.Struct({
+  customerId: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  date: Schema.optional(
+    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
+  ),
+  direction: Schema.optional(AdministrationReservationSortDirection),
+  page: Schema.optional(
+    Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
+  ),
+  sort: Schema.optional(AdministrationReservationSort),
+  status: Schema.optional(
+    Schema.Literals(["in_progress", "complete", "cancelled"])
+  ),
+  type: Schema.optional(Schema.Literals(["cowork", "meeting-room"])),
+});
+export type AdministrationReservationQuery =
+  typeof AdministrationReservationQuery.Type;
+
+export const AdministrationCustomer = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  phone: Schema.NullOr(Schema.String),
+});
+export type AdministrationCustomer = typeof AdministrationCustomer.Type;
+
+export const AdministrationMoney = Schema.Struct({
+  value: Schema.Number,
+  exponent: Schema.Number,
+  currency: Schema.String,
+});
+export type AdministrationMoney = typeof AdministrationMoney.Type;
+
+export const AdministrationPaymentAttempt = Schema.Struct({
+  id: Schema.String,
+  state: Schema.Literals([
+    "created",
+    "pending",
+    "paid",
+    "failed",
+    "cancelled",
+    "expired",
+  ]),
+  providerOrderId: Schema.NullOr(Schema.String),
+  providerLabel: Schema.String,
+  stateLabel: Schema.String,
+  amount: AdministrationMoney,
+  createdAt: Schema.String,
+  providerOrderCreatedAt: Schema.NullOr(Schema.String),
+  updatedAt: Schema.String,
+});
+export type AdministrationPaymentAttempt =
+  typeof AdministrationPaymentAttempt.Type;
+
+export const AdministrationReservationSummary = Schema.Struct({
+  id: Schema.String,
+  customerId: Schema.String,
+  customer: Schema.NullOr(AdministrationCustomer),
+  liveDetailsAvailable: Schema.Boolean,
+  startsAt: Schema.NullOr(Schema.String),
+  endsAt: Schema.NullOr(Schema.String),
+  date: Schema.NullOr(Schema.String),
+  type: Schema.Literals(["cowork", "meeting-room"]),
+  typeLabel: Schema.String,
+  status: Schema.Struct({
+    group: AdministrationReservationStatusGroup,
+    label: Schema.String,
+  }),
+  statusNote: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  latestPayment: Schema.NullOr(AdministrationPaymentAttempt),
+  updatedAt: Schema.String,
+});
+export type AdministrationReservationSummary =
+  typeof AdministrationReservationSummary.Type;
+
+export const AdministrationReservationPage = Schema.Struct({
+  items: Schema.Array(AdministrationReservationSummary),
+  page: Schema.Number,
+  pageCount: Schema.Number,
+  total: Schema.Number,
+  dateFilterUnavailable: Schema.Boolean,
+  dateSortUnavailable: Schema.Boolean,
+});
+export type AdministrationReservationPage =
+  typeof AdministrationReservationPage.Type;
+
 export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
@@ -203,12 +344,26 @@ export const AdminCliApi = HttpApiGroup.make("cli")
   )
   .add(
     HttpApiEndpoint.get("getCurrentSession", "/session", {
-      headers: { authorization: Schema.String },
       success: CliSession,
-      error: [CliSessionUnauthorized.schema, CliServiceUnavailable.schema],
-    })
+    }).middleware(CliBearerAuthentication)
   )
   .prefix("/api/v1/cli");
 
-export const WorkspaceAdminApi =
-  HttpApi.make("workspaceAdminApi").add(AdminCliApi);
+export const AdminCliReadApi = HttpApiGroup.make("administration")
+  .add(
+    HttpApiEndpoint.get("getOverview", "/overview", {
+      success: AdministrationOverview,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listReservations", "/reservations", {
+      query: AdministrationReservationQuery,
+      success: AdministrationReservationPage,
+    })
+  )
+  .middleware(CliBearerAuthentication)
+  .prefix("/api/v1/cli");
+
+export const WorkspaceAdminApi = HttpApi.make("workspaceAdminApi")
+  .add(AdminCliApi)
+  .add(AdminCliReadApi);
