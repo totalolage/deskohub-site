@@ -1,12 +1,17 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "73cae526-26a0-40ec-8b4d-0a47440533b0",
+  "id": "047c9902-947f-44fe-a3bc-4ce8803ebee3",
   "prevIds": [
-    "9550e8c8-bdd9-4498-a6cf-c85e76861150",
-    "cc693e45-2aa8-42fc-bc76-767d0df3c71a"
+    "ae6e0505-d552-4c6f-a7f2-2f82ecdd484c"
   ],
   "ddl": [
+    {
+      "isRlsEnabled": false,
+      "name": "accounting_document_snapshots",
+      "entityType": "tables",
+      "schema": "public"
+    },
     {
       "isRlsEnabled": false,
       "name": "cli_authentication_requests",
@@ -90,6 +95,84 @@
       "name": "workspace_reservations",
       "entityType": "tables",
       "schema": "public"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "payment_attempt_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "workspace_reservation_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "type": "integer",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "schema_version",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "key_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "type": "bytea",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "encrypted_snapshot",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
     },
     {
       "type": "text",
@@ -2058,6 +2141,34 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "workspace_reservation_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        },
+        {
+          "value": "payment_attempt_id",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": true,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "accounting_document_snapshots_reservation_attempt_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "code_hash",
           "isExpression": false,
           "asc": true,
@@ -2722,6 +2833,40 @@
     {
       "nameExplicit": false,
       "columns": [
+        "payment_attempt_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "payment_attempts",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "accounting_document_snapshots_cDmkhBzQnD2K_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
+        "workspace_reservation_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "workspace_reservations",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "NO ACTION",
+      "name": "accounting_document_snapshots_Wc9A0G66NEaO_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "session_id"
       ],
       "schemaTo": "public",
@@ -2975,6 +3120,16 @@
     },
     {
       "columns": [
+        "payment_attempt_id"
+      ],
+      "nameExplicit": false,
+      "name": "accounting_document_snapshots_pkey",
+      "schema": "public",
+      "table": "accounting_document_snapshots",
+      "entityType": "pks"
+    },
+    {
+      "columns": [
         "id"
       ],
       "nameExplicit": false,
@@ -3104,6 +3259,20 @@
       "schema": "public",
       "table": "workspace_reservations",
       "entityType": "uniques"
+    },
+    {
+      "value": "\"schema_version\" > 0",
+      "name": "accounting_document_snapshots_schema_version_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
+    },
+    {
+      "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",
+      "name": "accounting_document_snapshots_key_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "accounting_document_snapshots"
     },
     {
       "value": "\"expires_at\" > \"created_at\"",
