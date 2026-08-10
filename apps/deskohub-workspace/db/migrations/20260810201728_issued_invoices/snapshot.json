@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "c99e95a1-e7a5-4099-a969-bab966256b0c",
+  "id": "1745ad33-e3d5-41e2-bd7c-682961da20ec",
   "prevIds": [
     "73cae526-26a0-40ec-8b4d-0a47440533b0",
     "ae6e0505-d552-4c6f-a7f2-2f82ecdd484c"
@@ -1431,19 +1431,6 @@
       "generated": null,
       "identity": null,
       "name": "numbering_sequence",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "invoices"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "schema_version",
       "entityType": "columns",
       "schema": "public",
       "table": "invoices"
@@ -3898,13 +3885,6 @@
     {
       "value": "\"numbering_sequence\" between 1 and 999999",
       "name": "invoices_numbering_sequence_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "invoices"
-    },
-    {
-      "value": "\"schema_version\" > 0",
-      "name": "invoices_schema_version_check",
       "entityType": "checks",
       "schema": "public",
       "table": "invoices"
