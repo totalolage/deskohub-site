@@ -151,7 +151,7 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const isError = (value: unknown): value is Error => value instanceof Error;
+const isError = (value: unknown): value is Error => Error.isError(value);
 
 const redactUrlSearchParams = (url: URL): void => {
   for (const key of Array.from(url.searchParams.keys())) {

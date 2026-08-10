@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runInNewContext } from "node:vm";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import {
   InMemoryLogRecordExporter,
@@ -281,6 +282,16 @@ describe("censorLogValue", () => {
     expect(censored.promise).toBe(promise);
     expect(JSON.stringify(censored)).not.toContain("boom");
     expect(JSON.stringify(censored)).not.toContain("nested private value");
+  });
+
+  test("projects native errors from another realm", () => {
+    const error = runInNewContext('new Error("cross-realm private value")');
+
+    expect(error).not.toBeInstanceOf(Error);
+    expect(censorLogValue(error)).toEqual({
+      errorType: "Error",
+      message: CENSORED_LOG_VALUE,
+    });
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
