@@ -11,12 +11,14 @@ import {
   getOfficeAdvertisedPriceReservation,
   officeReservationOrderSchema,
 } from "@/features/reservation/office-reservation";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { officeCheckoutPricing } from "./office-checkout-pricing";
 
+const startsOn = getCurrentWorkspaceDate().add({ days: 1 });
 const reservation = Schema.decodeUnknownSync(officeReservationOrderSchema)({
   kind: "office",
-  startsOn: "2099-06-10",
-  endsOn: "2099-06-11",
+  startsOn: startsOn.toString(),
+  endsOn: startsOn.add({ days: 1 }).toString(),
   seats: 3,
   name: "Ada Lovelace",
   email: "ada@example.com",
@@ -58,7 +60,7 @@ describe("office checkout pricing", () => {
     expect(discoverAdvertisedDiscounts).toHaveBeenCalledWith({
       product,
       discountableSubtotal: money,
-      reservationDate: "2099-06-10",
+      reservationDate: startsOn.toString(),
       locale: "en-US",
     });
     expect(result.quote.payment.expectedPrice).toEqual(money);
