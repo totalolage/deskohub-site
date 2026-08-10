@@ -22,8 +22,13 @@ import {
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
+  type AdminDiscountCode,
+  type AdminDiscountCodeClaim,
+  type AdminDiscountCodeDetail,
+  type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
+import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { CliAuthentication } from "./cli-authentication.service";
@@ -80,6 +85,7 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
       return handlers
         .handle("getOverview", () =>
@@ -98,6 +104,12 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
                     message: "The reservation was not found.",
                   })
             )
+          )
+        )
+        .handle("findReservation", ({ query }) =>
+          administration.findReservationId(query.identifier).pipe(
+            Effect.map((reservationId) => ({ reservationId })),
+            mapServiceFailure
           )
         )
         .handle("listBookings", ({ query }) =>
@@ -185,6 +197,33 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
               page: query.page,
             })
             .pipe(mapServiceFailure)
+        )
+        .handle("getDiscountDashboard", () =>
+          discounts
+            .loadDashboard()
+            .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+        )
+        .handle("getDiscountCode", ({ params }) =>
+          discounts
+            .loadCodeDetail({ codeId: params.codeId as DiscountCodeId })
+            .pipe(
+              Effect.map(toCliDiscountCodeDetail),
+              Effect.catchTag(
+                "DiscountAdminNotFoundError",
+                () =>
+                  new CliResourceNotFound({
+                    message: "The discount code was not found.",
+                  })
+              ),
+              Effect.mapError((cause) =>
+                cause instanceof CliResourceNotFound
+                  ? cause
+                  : makeServiceUnavailable()
+              )
+            )
+        )
+        .handle("listSessions", () =>
+          authentication.listSessions().pipe(mapServiceFailure)
         );
     })
 );
@@ -221,20 +260,40 @@ const mapServiceFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
-  codes: profile.codes.map((code) => ({
-    ...code,
-    validFrom: code.validFrom?.toString() ?? null,
-    validUntil: code.validUntil?.toString() ?? null,
-    createdAt: code.createdAt.toString(),
-    updatedAt: code.updatedAt.toString(),
+  codes: profile.codes.map(toCliDiscountCode),
+  claims: profile.claims.map(toCliDiscountCodeClaim),
+});
+
+const toCliDiscountCode = <Code extends AdminDiscountCode>(code: Code) => ({
+  ...code,
+  validFrom: code.validFrom?.toString() ?? null,
+  validUntil: code.validUntil?.toString() ?? null,
+  createdAt: code.createdAt.toString(),
+  updatedAt: code.updatedAt.toString(),
+});
+
+const toCliDiscountCodeClaim = (claim: AdminDiscountCodeClaim) => ({
+  ...claim,
+  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservedAt: claim.reservedAt.toString(),
+  redeemedAt: claim.redeemedAt?.toString() ?? null,
+  releasedAt: claim.releasedAt?.toString() ?? null,
+});
+
+const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
+  ...dashboard,
+  discounts: dashboard.discounts.map((discount) => ({
+    ...discount,
+    createdAt: discount.createdAt.toString(),
+    updatedAt: discount.updatedAt.toString(),
   })),
-  claims: profile.claims.map((claim) => ({
-    ...claim,
-    reservationExpiresAt: claim.reservationExpiresAt.toString(),
-    reservedAt: claim.reservedAt.toString(),
-    redeemedAt: claim.redeemedAt?.toString() ?? null,
-    releasedAt: claim.releasedAt?.toString() ?? null,
-  })),
+  codes: dashboard.codes.map(toCliDiscountCode),
+});
+
+const toCliDiscountCodeDetail = (detail: AdminDiscountCodeDetail) => ({
+  ...detail,
+  code: toCliDiscountCode(detail.code),
+  claims: detail.claims.map(toCliDiscountCodeClaim),
 });
 
 const noStore = HttpRouter.middleware(

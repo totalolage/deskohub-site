@@ -1,6 +1,7 @@
 import {
   type AdministrationBookingQueryType,
   type AdministrationCustomerQueryType,
+  type AdministrationDiscountAdjustmentType,
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
@@ -173,9 +174,31 @@ const reservationsGetCommand = Command.make(
     )
 ).pipe(Command.withDescription("Show a reservation and its history"));
 
+const reservationsFindCommand = Command.make(
+  "find",
+  { identifier: Argument.string("identifier") },
+  ({ identifier }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const result = yield* api.findReservation(accessToken, identifier);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(result.reservationId ?? "No reservation matched.");
+      })
+    )
+).pipe(
+  Command.withDescription("Find a reservation by reservation or payment ID")
+);
+
 const reservationsCommand = Command.make("reservations").pipe(
   Command.withDescription("Inspect Workspace reservations"),
-  Command.withSubcommands([reservationsListCommand, reservationsGetCommand])
+  Command.withSubcommands([
+    reservationsListCommand,
+    reservationsGetCommand,
+    reservationsFindCommand,
+  ])
 );
 
 const bookingsListCommand = Command.make(
@@ -559,6 +582,159 @@ const customersCommand = Command.make("customers").pipe(
   ])
 );
 
+const discountsListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const dashboard = yield* api.getDiscountDashboard(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(dashboard.discounts));
+        return;
+      }
+      yield* Console.log(`Discounts: ${dashboard.discounts.length}`);
+      for (const discount of dashboard.discounts) {
+        yield* Console.log(
+          [
+            discount.id,
+            discount.labels["en-US"],
+            formatDiscountAdjustment(discount.adjustment),
+            `${discount.products.length} products`,
+            `${discount.codeCount} codes`,
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List managed discounts"));
+
+const discountsCommand = Command.make("discounts").pipe(
+  Command.withDescription("Inspect managed discounts"),
+  Command.withSubcommands([discountsListCommand])
+);
+
+const codesListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const dashboard = yield* api.getDiscountDashboard(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(dashboard.codes));
+        return;
+      }
+      yield* Console.log(`Discount codes: ${dashboard.codes.length}`);
+      const discountLabels = new Map(
+        dashboard.discounts.map((discount) => [
+          discount.id,
+          discount.labels["en-US"],
+        ])
+      );
+      for (const code of dashboard.codes) {
+        yield* Console.log(
+          [
+            code.id,
+            code.code,
+            discountLabels.get(code.discountId) ?? code.discountId,
+            code.enabled ? "Enabled" : "Disabled",
+            code.remainingUses ?? "Unlimited",
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List managed discount codes"));
+
+const codesGetCommand = Command.make(
+  "get",
+  { codeId: Argument.string("code-id") },
+  ({ codeId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getDiscountCode(accessToken, codeId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        yield* Console.log(
+          [
+            detail.code.id,
+            detail.code.code,
+            detail.discountLabel,
+            detail.code.enabled ? "Enabled" : "Disabled",
+            detail.code.remainingUses ?? "Unlimited uses",
+          ].join("\t")
+        );
+        yield* Console.log(
+          `${detail.customers.length} customers · ${detail.claims.length} claims`
+        );
+      })
+    )
+).pipe(Command.withDescription("Show a discount code and its claims"));
+
+const codesCommand = Command.make("codes").pipe(
+  Command.withDescription("Inspect managed discount codes"),
+  Command.withSubcommands([codesListCommand, codesGetCommand])
+);
+
+const salesListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const dashboard = yield* api.getDiscountDashboard(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(dashboard.calendar));
+        return;
+      }
+      const calendar = dashboard.calendar;
+      yield* Console.log(
+        `Calendar sales: ${calendar.events.length} · ${calendar.from} to ${calendar.to}${calendar.unavailable ? " · unavailable" : ""}`
+      );
+      for (const sale of calendar.events) {
+        yield* Console.log(
+          [
+            sale.eventReference,
+            sale.start,
+            sale.end,
+            sale.title,
+            sale.association.kind,
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List calendar-managed sales"));
+
+const salesCommand = Command.make("sales").pipe(
+  Command.withDescription("Inspect calendar-managed sales"),
+  Command.withSubcommands([salesListCommand])
+);
+
+const sessionsListCommand = Command.make("list", {}, () =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const sessions = yield* api.listSessions(accessToken);
+      if (json) {
+        yield* Console.log(JSON.stringify(sessions));
+        return;
+      }
+      yield* Console.log(`CLI sessions: ${sessions.length}`);
+      for (const session of sessions) {
+        yield* Console.log(
+          [
+            session.id,
+            session.clientName,
+            session.cliVersion,
+            session.buildTarget,
+            session.lastUsedAt,
+            session.revokedAt ? "Revoked" : "Active",
+          ].join("\t")
+        );
+      }
+    })
+  )
+).pipe(Command.withDescription("List issued CLI sessions"));
+
+const sessionsCommand = Command.make("sessions").pipe(
+  Command.withDescription("Inspect CLI sessions"),
+  Command.withSubcommands([sessionsListCommand])
+);
+
 const authCommand = Command.make(
   "auth",
   {
@@ -671,11 +847,15 @@ export const dhwCommand = rootCommand.pipe(
     apiCommand,
     authCommand,
     bookingsCommand,
+    codesCommand,
     customersCommand,
+    discountsCommand,
     operationsCommand,
     ordersCommand,
     overviewCommand,
     reservationsCommand,
+    salesCommand,
+    sessionsCommand,
     updateCommand,
   ])
 );
@@ -787,6 +967,13 @@ const formatReservationRow = (
     reservation.customer?.displayName ?? reservation.customerId,
     reservation.status.label,
   ].join("\t");
+
+const formatDiscountAdjustment = (
+  adjustment: AdministrationDiscountAdjustmentType
+) =>
+  adjustment.kind === "percentage"
+    ? `${adjustment.basisPoints / 100}%`
+    : `${adjustment.amount.value / 10 ** adjustment.amount.exponent} ${adjustment.amount.currency}`;
 
 const offerAutomaticUpdate = (json: boolean) =>
   Effect.gen(function* () {

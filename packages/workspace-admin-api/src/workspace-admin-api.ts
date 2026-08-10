@@ -250,6 +250,18 @@ export const AdministrationReservationQuery = Schema.Struct({
 export type AdministrationReservationQuery =
   typeof AdministrationReservationQuery.Type;
 
+export const AdministrationReservationLookupQuery = Schema.Struct({
+  identifier: Schema.Trim.check(Schema.isNonEmpty(), Schema.isMaxLength(200)),
+});
+export type AdministrationReservationLookupQuery =
+  typeof AdministrationReservationLookupQuery.Type;
+
+export const AdministrationReservationLookupResult = Schema.Struct({
+  reservationId: Schema.NullOr(Schema.String),
+});
+export type AdministrationReservationLookupResult =
+  typeof AdministrationReservationLookupResult.Type;
+
 export const AdministrationCustomer = Schema.Struct({
   id: Schema.String,
   displayName: Schema.String,
@@ -709,6 +721,114 @@ export const AdministrationCustomerReservationPage = Schema.Struct({
 export type AdministrationCustomerReservationPage =
   typeof AdministrationCustomerReservationPage.Type;
 
+export const AdministrationWorkspaceProduct = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("cowork"),
+    tier: Schema.Literals(["basic", "plus", "profi"]),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("meeting-room"),
+    duration: Schema.Union([
+      Schema.Struct({
+        unit: Schema.Literal("hour"),
+        amount: Schema.Literal(1),
+      }),
+      Schema.Struct({
+        unit: Schema.Literal("hour"),
+        amount: Schema.Literal(4),
+      }),
+      Schema.Struct({ unit: Schema.Literal("day"), amount: Schema.Literal(1) }),
+    ]),
+  }),
+]);
+export type AdministrationWorkspaceProduct =
+  typeof AdministrationWorkspaceProduct.Type;
+
+export const AdministrationDiscountAdjustment = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("percentage"),
+    basisPoints: Schema.Number,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("fixed"),
+    amount: AdministrationMoney,
+  }),
+]);
+export type AdministrationDiscountAdjustment =
+  typeof AdministrationDiscountAdjustment.Type;
+
+export const AdministrationDiscount = Schema.Struct({
+  id: Schema.String,
+  labels: Schema.Struct({
+    "en-US": Schema.String,
+    "cs-CZ": Schema.String,
+  }),
+  adjustment: AdministrationDiscountAdjustment,
+  products: Schema.Array(AdministrationWorkspaceProduct),
+  codeCount: Schema.Number,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+});
+export type AdministrationDiscount = typeof AdministrationDiscount.Type;
+
+export const AdministrationCalendarSale = Schema.Struct({
+  eventReference: Schema.String,
+  title: Schema.String,
+  description: Schema.String,
+  start: Schema.String,
+  end: Schema.String,
+  status: Schema.String,
+  eventUrl: Schema.String,
+  association: Schema.Union([
+    Schema.Struct({
+      kind: Schema.Literal("associated"),
+      discountId: Schema.String,
+      discountLabel: Schema.String,
+    }),
+    Schema.Struct({ kind: Schema.Literal("missing-description") }),
+    Schema.Struct({ kind: Schema.Literal("invalid-description") }),
+    Schema.Struct({
+      kind: Schema.Literal("missing-discount"),
+      discountId: Schema.String,
+    }),
+  ]),
+});
+export type AdministrationCalendarSale = typeof AdministrationCalendarSale.Type;
+
+export const AdministrationDiscountDashboard = Schema.Struct({
+  discounts: Schema.Array(AdministrationDiscount),
+  codes: Schema.Array(AdministrationDiscountCode),
+  calendar: Schema.Struct({
+    events: Schema.Array(AdministrationCalendarSale),
+    unavailable: Schema.Boolean,
+    calendarUrl: Schema.String,
+    from: Schema.String,
+    to: Schema.String,
+  }),
+});
+export type AdministrationDiscountDashboard =
+  typeof AdministrationDiscountDashboard.Type;
+
+export const AdministrationDiscountCodeDetail = Schema.Struct({
+  code: AdministrationDiscountCode,
+  discountLabel: Schema.String,
+  customers: Schema.Array(
+    Schema.Struct({
+      customerId: Schema.String,
+      customer: Schema.NullOr(AdministrationExternalCustomer),
+    })
+  ),
+  claims: Schema.Array(AdministrationDiscountCodeClaim),
+});
+export type AdministrationDiscountCodeDetail =
+  typeof AdministrationDiscountCodeDetail.Type;
+
+export const CliSessionAdministration = Schema.Struct({
+  ...CliSession.fields,
+  revokedAt: Schema.NullOr(Schema.String),
+});
+export type CliSessionAdministration = typeof CliSessionAdministration.Type;
+
 export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
@@ -763,6 +883,12 @@ export const AdminCliReadApi = HttpApiGroup.make("administration")
       params: { reservationId: Schema.String },
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("findReservation", "/reservations/find", {
+      query: AdministrationReservationLookupQuery,
+      success: AdministrationReservationLookupResult,
     })
   )
   .add(
@@ -830,6 +956,23 @@ export const AdminCliReadApi = HttpApiGroup.make("administration")
         success: AdministrationCustomerReservationPage,
       }
     )
+  )
+  .add(
+    HttpApiEndpoint.get("getDiscountDashboard", "/discounts", {
+      success: AdministrationDiscountDashboard,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getDiscountCode", "/codes/:codeId", {
+      params: { codeId: Schema.String },
+      success: AdministrationDiscountCodeDetail,
+      error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listSessions", "/sessions", {
+      success: Schema.Array(CliSessionAdministration),
+    })
   )
   .middleware(CliBearerAuthentication)
   .prefix("/api/v1/cli");

@@ -10,6 +10,8 @@ import {
   type AdministrationCustomerReservationsQueryType,
   type AdministrationCustomerSearchQueryType,
   type AdministrationCustomerSearchResultType,
+  type AdministrationDiscountCodeDetailType,
+  type AdministrationDiscountDashboardType,
   type AdministrationOperationDetailType,
   type AdministrationOperationListType,
   type AdministrationOperationQueryType,
@@ -18,6 +20,7 @@ import {
   type AdministrationOrderType,
   type AdministrationOverviewType,
   type AdministrationReservationDetailType,
+  type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
   type CliAccessTokenType,
@@ -27,6 +30,7 @@ import {
   CliGrantRejected,
   CliResourceNotFound,
   CliServiceUnavailable,
+  type CliSessionAdministrationType,
   type CliSessionType,
   CliSessionUnauthorized,
   type ExchangeCliGrantType,
@@ -95,6 +99,13 @@ interface IWorkspaceAdminApiClient {
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
+  >;
+  readonly findReservation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    identifier: string
+  ) => Effect.Effect<
+    AdministrationReservationLookupResultType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listBookings: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -168,6 +179,28 @@ interface IWorkspaceAdminApiClient {
     query: AdministrationCustomerReservationsQueryType
   ) => Effect.Effect<
     AdministrationCustomerReservationPageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getDiscountDashboard: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    AdministrationDiscountDashboardType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getDiscountCode: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    codeId: string
+  ) => Effect.Effect<
+    AdministrationDiscountCodeDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly listSessions: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>
+  ) => Effect.Effect<
+    ReadonlyArray<CliSessionAdministrationType>,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
 }
@@ -269,6 +302,20 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             })
           ),
           Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    findReservation: Effect.fn("WorkspaceAdminApiClient.findReservation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        identifier: string
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.findReservation({
+              query: { identifier },
+            })
+          ),
+          Effect.mapError(sanitizeSessionError)
         )
     ),
     listBookings: Effect.fn("WorkspaceAdminApiClient.listBookings")(
@@ -389,6 +436,34 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
               params: { customerId },
               query,
             })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getDiscountDashboard: Effect.fn(
+      "WorkspaceAdminApiClient.getDiscountDashboard"
+    )((accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+      makeClient(accessToken).pipe(
+        Effect.flatMap((authorized) =>
+          authorized.administration.getDiscountDashboard({})
+        ),
+        Effect.mapError(sanitizeSessionError)
+      )
+    ),
+    getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>, codeId: string) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getDiscountCode({ params: { codeId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    listSessions: Effect.fn("WorkspaceAdminApiClient.listSessions")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listSessions({})
           ),
           Effect.mapError(sanitizeSessionError)
         )

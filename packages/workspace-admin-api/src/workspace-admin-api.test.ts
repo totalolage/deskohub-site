@@ -8,6 +8,7 @@ import {
   AdministrationCustomerSearchQuery,
   AdministrationOperationQuery,
   AdministrationOrderQuery,
+  AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   CliClientName,
   StartCliAuthentication,
@@ -45,6 +46,7 @@ describe("administration read contract", () => {
     expect(AdminCliReadApi.endpoints.getOverview?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listReservations?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.getReservation?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.findReservation?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listBookings?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.getBooking?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listOrders?.method).toBe("GET");
@@ -57,6 +59,9 @@ describe("administration read contract", () => {
     expect(AdminCliReadApi.endpoints.listCustomerReservations?.method).toBe(
       "GET"
     );
+    expect(AdminCliReadApi.endpoints.getDiscountDashboard?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getDiscountCode?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listSessions?.method).toBe("GET");
     expect(
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         page: 2,
@@ -72,6 +77,11 @@ describe("administration read contract", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         date: "10-08-2026",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationLookupQuery)({
+        identifier: "   ",
       })
     ).toThrow();
   });

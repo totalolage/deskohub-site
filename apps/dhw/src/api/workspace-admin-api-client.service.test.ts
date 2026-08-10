@@ -218,6 +218,13 @@ describe("WorkspaceAdminApiClient", () => {
             },
           });
         }
+        if (url.pathname.endsWith("/reservations/find")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("identifier")).toBe("payment-1");
+          return Response.json({ reservationId: reservation.id });
+        }
         if (url.pathname.endsWith("/bookings/booking-1")) {
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
@@ -338,6 +345,67 @@ describe("WorkspaceAdminApiClient", () => {
             total: 60,
           });
         }
+        if (url.pathname.endsWith("/discounts")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            discounts: [
+              {
+                id: "discount-1",
+                labels: {
+                  "en-US": "Summer sale",
+                  "cs-CZ": "Letní sleva",
+                },
+                adjustment: { kind: "percentage", basisPoints: 1000 },
+                products: [{ kind: "cowork", tier: "basic" }],
+                codeCount: 1,
+                createdAt: expiresAt,
+                updatedAt: expiresAt,
+              },
+            ],
+            codes: [],
+            calendar: {
+              events: [],
+              unavailable: false,
+              calendarUrl: "https://calendar.example.com",
+              from: "2026-08-01",
+              to: "2026-08-31",
+            },
+          });
+        }
+        if (url.pathname.endsWith("/codes/code-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            code: {
+              id: "code-1",
+              discountId: "discount-1",
+              code: "SUMMER10",
+              enabled: true,
+              validFrom: null,
+              validUntil: null,
+              maxUses: null,
+              audienceSize: 0,
+              reservedUses: 0,
+              redeemedUses: 0,
+              releasedUses: 0,
+              remainingUses: null,
+              createdAt: expiresAt,
+              updatedAt: expiresAt,
+            },
+            discountLabel: "Summer sale",
+            customers: [],
+            claims: [],
+          });
+        }
+        if (url.pathname.endsWith("/sessions")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json([{ ...session, revokedAt: null }]);
+        }
         return new Response(null, { status: 404 });
       },
     });
@@ -376,6 +444,7 @@ describe("WorkspaceAdminApiClient", () => {
           Redacted.make(accessToken),
           reservation.id
         );
+        yield* client.findReservation(Redacted.make(accessToken), "payment-1");
         yield* client.listBookings(Redacted.make(accessToken), {
           date: "2026-08-10",
           page: 2,
@@ -407,6 +476,9 @@ describe("WorkspaceAdminApiClient", () => {
           reservation.customerId,
           { page: 2 }
         );
+        yield* client.getDiscountDashboard(Redacted.make(accessToken));
+        yield* client.getDiscountCode(Redacted.make(accessToken), "code-1");
+        yield* client.listSessions(Redacted.make(accessToken));
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -420,6 +492,7 @@ describe("WorkspaceAdminApiClient", () => {
           method: "GET",
           path: "/api/v1/cli/reservations/reservation-1",
         },
+        { method: "GET", path: "/api/v1/cli/reservations/find" },
         { method: "GET", path: "/api/v1/cli/bookings" },
         { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
         { method: "GET", path: "/api/v1/cli/orders" },
@@ -433,6 +506,9 @@ describe("WorkspaceAdminApiClient", () => {
           method: "GET",
           path: "/api/v1/cli/customers/customer-1/reservations",
         },
+        { method: "GET", path: "/api/v1/cli/discounts" },
+        { method: "GET", path: "/api/v1/cli/codes/code-1" },
+        { method: "GET", path: "/api/v1/cli/sessions" },
       ]);
     } finally {
       server.stop(true);

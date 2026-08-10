@@ -44,6 +44,7 @@ dhw overview
 dhw reservations list
 dhw reservations list --date 2026-08-10 --status complete --page 2
 dhw reservations get <reservation-id>
+dhw reservations find <reservation-or-payment-id>
 dhw bookings list --date 2026-08-10
 dhw bookings get <booking-id>
 dhw orders list --from 2026-08-01 --to 2026-08-10
@@ -54,6 +55,11 @@ dhw customers list
 dhw customers search "Ada"
 dhw customers get <customer-id>
 dhw customers reservations <customer-id> --page 2
+dhw discounts list
+dhw codes list
+dhw codes get <code-id>
+dhw sales list
+dhw sessions list
 ```
 
 Pass the root `--json` flag for schema-decoded machine output, for example
