@@ -112,7 +112,7 @@ test("uses document navigation for every alternate-locale full-header link", asy
   }
 });
 
-test("keeps disabled full-header items visible without making them links", async () => {
+test("hides disabled full-header items while preserving desktop geometry", async () => {
   const { SiteHeader } = await import("./site-header");
   const meetingRoomHref = "/en-US/meeting-room";
   const view = render(
@@ -132,9 +132,20 @@ test("keeps disabled full-header items visible without making them links", async
     />
   );
 
+  const desktopNavigation = view.container.querySelector(
+    'nav[aria-label="Primary"]'
+  );
+  const mobileNavigation = view.container.querySelector(
+    'nav[aria-label="Mobile primary"]'
+  );
+
+  expect(desktopNavigation?.textContent).toContain("Meeting room");
   expect(
-    view.container.querySelectorAll('[aria-disabled="true"]')
-  ).toHaveLength(2);
+    desktopNavigation
+      ?.querySelector('[aria-hidden="true"]')
+      ?.getAttribute("class")
+  ).toContain("invisible");
+  expect(mobileNavigation?.textContent).not.toContain("Meeting room");
   expect(
     view.container.querySelectorAll(`a[href="${meetingRoomHref}"]`)
   ).toHaveLength(0);

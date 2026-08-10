@@ -37,7 +37,7 @@ describe("getSiteHeaderConfig", () => {
         href: "/en-US/meeting-room",
       })
     );
-    expect(config.disabledMenuItems).toEqual({});
+    expect(config.disabledMenuItems).toEqual({ meetingRoom: false });
   });
 
   test("provides a useful header shell without waiting for release flags", async () => {

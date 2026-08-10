@@ -27,12 +27,12 @@ export type SiteHeaderMenuItem = {
 };
 
 export type DisabledSiteHeaderMenuItems = Partial<
-  Record<SiteHeaderMenuItemId, true>
+  Record<SiteHeaderMenuItemId, boolean>
 >;
 
-const meetingRoomDisabled = {
+const meetingRoomDisabled: DisabledSiteHeaderMenuItems = {
   meetingRoom: true,
-} satisfies DisabledSiteHeaderMenuItems;
+};
 
 export const getSiteHeaderLanguageLabels = (
   locale: Locale
@@ -44,10 +44,9 @@ export const getSiteHeaderLanguageLabels = (
 export async function getSiteHeaderConfig(locale: Locale) {
   const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
 
-  return createSiteHeaderConfig(
-    locale,
-    meetingRoomPageEnabled ? {} : meetingRoomDisabled
-  );
+  return createSiteHeaderConfig(locale, {
+    meetingRoom: !meetingRoomPageEnabled,
+  });
 }
 
 export const getSiteHeaderShellConfig = (locale: Locale) =>

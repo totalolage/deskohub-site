@@ -158,11 +158,10 @@ function SiteHeaderMenuLink({
   }[variant];
 
   if (disabled) {
+    if (variant === "mobile") return null;
+
     return (
-      <span
-        aria-disabled="true"
-        className={cn(className, "cursor-not-allowed opacity-50")}
-      >
+      <span aria-hidden="true" className={cn(className, "invisible")}>
         {link.label}
       </span>
     );
