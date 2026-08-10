@@ -1,13 +1,12 @@
 import { GoogleTagManager } from "@next/third-parties/google";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import type { ReactNode } from "react";
+import { notFound } from "next/navigation";
+import { type ReactNode, Suspense } from "react";
 import { env } from "@/env";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
-import { locales } from "@/features/i18n";
-import { getRequestLocale } from "@/features/i18n/server/request-locale";
-import { QueryProvider } from "@/shared/components/query-provider";
+import { isLocale, locales } from "@/features/i18n";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -47,10 +46,15 @@ export function generateStaticParams() {
 
 type LocaleLayoutProps = {
   children: ReactNode;
+  params: Promise<{ locale: string }>;
 };
 
-export default async function LocaleLayout({ children }: LocaleLayoutProps) {
-  const locale = await getRequestLocale();
+export default async function LocaleLayout({
+  children,
+  params,
+}: LocaleLayoutProps) {
+  const { locale } = await params;
+  if (!isLocale(locale)) notFound();
 
   return (
     <html lang={locale} className={sculpin.variable}>
@@ -59,12 +63,13 @@ export default async function LocaleLayout({ children }: LocaleLayoutProps) {
       )}
       <body>
         <CookieConsentProvider locale={locale} />
-        <ConsentAwareAnalytics
-          featureFlagOverrides={env.POSTHOG_FEATURE_FLAG_OVERRIDES}
-          posthogEnvironment={env.VERCEL_ENV}
-        >
-          <QueryProvider>{children}</QueryProvider>
-        </ConsentAwareAnalytics>
+        <Suspense fallback={null}>
+          <ConsentAwareAnalytics
+            featureFlagOverrides={env.POSTHOG_FEATURE_FLAG_OVERRIDES}
+            posthogEnvironment={env.VERCEL_ENV}
+          />
+        </Suspense>
+        {children}
       </body>
     </html>
   );

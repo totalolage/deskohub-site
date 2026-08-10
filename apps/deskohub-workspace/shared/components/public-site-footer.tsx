@@ -1,6 +1,8 @@
-import { cacheLife } from "next/cache";
+import { Temporal } from "@js-temporal/polyfill";
 import Link from "next/link";
-import { m } from "@/features/i18n";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
@@ -12,7 +14,6 @@ export async function PublicSiteFooter() {
   const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
-  const copyrightYear = await getFooterCopyrightYear();
 
   return (
     <footer className="border-t border-white/12 bg-navy-blue text-white">
@@ -147,40 +148,33 @@ export async function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
-          {m.footerCopyright(
-            {
-              year: copyrightYear,
-              companyName: workspaceSiteConstants.brand.legalName,
-            },
-            { locale }
-          )}
+          <Suspense
+            fallback={
+              <span
+                aria-hidden="true"
+                className="inline-block h-5 w-72 max-w-full animate-pulse rounded-full bg-white/8"
+              />
+            }
+          >
+            <FooterCopyright locale={locale} />
+          </Suspense>
         </div>
       </Container>
     </footer>
   );
 }
 
-async function getFooterCopyrightYear() {
-  "use cache";
-
-  const now = Temporal.Now.zonedDateTimeISO(
+async function FooterCopyright({ locale }: { readonly locale: Locale }) {
+  await connection();
+  const year = Temporal.Now.zonedDateTimeISO(
     workspaceSiteConstants.location.timeZone
-  );
-  const nextYear = Temporal.ZonedDateTime.from({
-    timeZone: workspaceSiteConstants.location.timeZone,
-    year: now.year + 1,
-    month: 1,
-    day: 1,
-  });
-  const secondsUntilNextYear = Math.max(
-    1,
-    Math.ceil((nextYear.epochMilliseconds - now.epochMilliseconds) / 1000)
-  );
-  cacheLife({
-    stale: 0,
-    revalidate: secondsUntilNextYear,
-    expire: secondsUntilNextYear,
-  });
+  ).year;
 
-  return now.year;
+  return m.footerCopyright(
+    {
+      year,
+      companyName: workspaceSiteConstants.brand.legalName,
+    },
+    { locale }
+  );
 }

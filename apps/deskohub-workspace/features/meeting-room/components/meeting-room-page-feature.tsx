@@ -1,5 +1,7 @@
 "use client";
 
+import { PostHogProvider } from "@posthog/react";
+import posthog from "posthog-js";
 import type { ReactNode } from "react";
 import { useFeatureFlagEnabled } from "@/features/feature-flags/react";
 
@@ -9,6 +11,19 @@ type MeetingRoomPageFeatureProps = {
 };
 
 export function MeetingRoomPageFeature({
+  children,
+  initialEnabled,
+}: MeetingRoomPageFeatureProps) {
+  return (
+    <PostHogProvider client={posthog}>
+      <MeetingRoomPageFeatureContent initialEnabled={initialEnabled}>
+        {children}
+      </MeetingRoomPageFeatureContent>
+    </PostHogProvider>
+  );
+}
+
+function MeetingRoomPageFeatureContent({
   children,
   initialEnabled,
 }: MeetingRoomPageFeatureProps) {
