@@ -112,9 +112,10 @@ test("uses document navigation for every alternate-locale full-header link", asy
   }
 });
 
-test("hides disabled full-header items while preserving desktop geometry", async () => {
+test("omits disabled full-header items while preserving desktop layout slots", async () => {
   const { SiteHeader } = await import("./site-header");
   const meetingRoomHref = "/en-US/meeting-room";
+  const galleryHref = "/en-US/gallery";
   const view = render(
     <SiteHeader
       contactHref="/en-US/reservation/cowork"
@@ -128,6 +129,11 @@ test("hides disabled full-header items while preserving desktop geometry", async
           href: meetingRoomHref,
           label: "Meeting room",
         },
+        {
+          id: "gallery",
+          href: galleryHref,
+          label: "Gallery",
+        },
       ]}
     />
   );
@@ -139,16 +145,16 @@ test("hides disabled full-header items while preserving desktop geometry", async
     'nav[aria-label="Mobile primary"]'
   );
 
-  expect(desktopNavigation?.textContent).toContain("Meeting room");
-  expect(
-    desktopNavigation
-      ?.querySelector('[aria-hidden="true"]')
-      ?.getAttribute("class")
-  ).toContain("invisible");
+  expect(desktopNavigation?.textContent).not.toContain("Meeting room");
   expect(mobileNavigation?.textContent).not.toContain("Meeting room");
   expect(
     view.container.querySelectorAll(`a[href="${meetingRoomHref}"]`)
   ).toHaveLength(0);
+  expect(
+    desktopNavigation
+      ?.querySelector(`a[href="${galleryHref}"]`)
+      ?.getAttribute("class")
+  ).toContain("col-start-3");
 });
 
 test("uses document navigation for the alternate-locale minimal-header link", async () => {

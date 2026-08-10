@@ -48,7 +48,10 @@ export function SiteHeader({
           />
         </Link>
 
-        <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
+        <nav
+          aria-label="Primary"
+          className="hidden w-[42rem] grid-cols-6 items-center xl:grid"
+        >
           {links.map((link) => (
             <SiteHeaderMenuLink
               key={link.id}
@@ -150,22 +153,23 @@ function SiteHeaderMenuLink({
   onClick,
   variant,
 }: SiteHeaderMenuLinkProps) {
+  if (disabled) return null;
+
   const className = {
-    desktop:
-      "text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow",
+    desktop: cn(
+      "col-span-1 text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow",
+      {
+        contact: "col-start-6",
+        faqContact: "col-start-5",
+        founders: "col-start-4",
+        gallery: "col-start-3",
+        locationMap: "col-start-1",
+        meetingRoom: "col-start-2",
+      }[link.id]
+    ),
     mobile:
       "rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow",
   }[variant];
-
-  if (disabled) {
-    if (variant === "mobile") return null;
-
-    return (
-      <span aria-hidden="true" className={cn(className, "invisible")}>
-        {link.label}
-      </span>
-    );
-  }
 
   return (
     <Link href={link.href} className={className} onClick={onClick}>
