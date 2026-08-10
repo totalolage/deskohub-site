@@ -1,6 +1,6 @@
-import { revokeCliSession } from "@/features/admin-cli/actions";
 import { loadCliSessions } from "@/features/admin-cli/page-data.server";
 import { RenameCliSession } from "@/features/admin-cli/rename-cli-session";
+import { RevokeCliSession } from "@/features/admin-cli/revoke-cli-session";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
@@ -8,7 +8,6 @@ import {
   formatAdministrationDateTime,
 } from "@/features/administration/components";
 import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
 import {
   Table,
   TableBody,
@@ -94,21 +93,11 @@ export default async function CliSessionsPage({
                           clientName={session.clientName}
                           sessionId={session.id}
                         />
-                        <form action={revokeCliSession}>
-                          <input
-                            name="sessionId"
-                            type="hidden"
-                            value={session.id}
-                          />
-                          <Button
-                            disabled={session.revokedAt !== null}
-                            size="sm"
-                            type="submit"
-                            variant="secondary"
-                          >
-                            Revoke
-                          </Button>
-                        </form>
+                        <RevokeCliSession
+                          clientName={session.clientName}
+                          revoked={session.revokedAt !== null}
+                          sessionId={session.id}
+                        />
                       </div>
                     </TableCell>
                   </TableRow>
