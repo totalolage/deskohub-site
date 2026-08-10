@@ -155,7 +155,7 @@ describe("discount persistence contracts", () => {
   test("migrates identities to canonical family targets with rollout compatibility", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260810200943_family_discount_targets/migration.sql",
+        "../migrations/20260810143301_late_morbius/migration.sql",
         import.meta.url
       )
     ).text();
