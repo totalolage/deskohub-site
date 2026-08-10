@@ -128,12 +128,7 @@ export function SalesAdministrationPage({
       title="Sales"
     >
       <h1 className="sr-only">Sales</h1>
-      <div className="space-y-4">
-        <div className="flex justify-end">
-          <SaleDiscountCreationDialog />
-        </div>
-        <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
-      </div>
+      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
     </AdminPageShell>
   );
 }
@@ -180,27 +175,33 @@ function CalendarSection({
   }
 
   return (
-    <section>
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div>{calendarContent}</div>
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section aria-labelledby="calendar-sales-heading">
+        <h2 className="sr-only" id="calendar-sales-heading">
+          Calendar sales
+        </h2>
+        <div className="flex justify-end">
+          <SaleDiscountCreationDialog />
+        </div>
+        <div className="mt-4">{calendarContent}</div>
+      </section>
 
-        <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-4 lg:sticky lg:top-4">
-          <h2 className="text-base font-semibold">Link a sale</h2>
-          <ol className="mt-3 space-y-2 text-sm leading-5 text-navy-blue/78">
-            <li>1. Open the Calendar event.</li>
-            <li>2. Set it as all-day.</li>
-            <li>3. Put only the discount UUID in the event description.</li>
-            <li>4. Save, then refresh this page.</li>
-          </ol>
-          <Button asChild className="mt-4 w-full" size="sm" variant="secondary">
-            <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
-              Open calendar
-              <ArrowUpRight aria-hidden className="size-3.5" />
-            </a>
-          </Button>
-        </aside>
-      </div>
-    </section>
+      <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5 xl:sticky xl:top-24">
+        <h2 className="text-base font-semibold">Link a sale</h2>
+        <ol className="mt-3 space-y-2 text-sm leading-5 text-navy-blue/78">
+          <li>1. Open the Calendar event.</li>
+          <li>2. Set it as all-day.</li>
+          <li>3. Put only the discount UUID in the event description.</li>
+          <li>4. Save, then refresh this page.</li>
+        </ol>
+        <Button asChild className="mt-4 w-full" size="sm" variant="secondary">
+          <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
+            Open calendar
+            <ArrowUpRight aria-hidden className="size-3.5" />
+          </a>
+        </Button>
+      </aside>
+    </div>
   );
 }
 

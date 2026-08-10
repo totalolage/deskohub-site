@@ -807,11 +807,22 @@ describe("discount administration pages", () => {
     expect(view.getByRole("table", { name: "Calendar sales" })).toBeDefined();
     expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
     expect(view.queryByText("2026-07-01 — 2027-07-01")).toBeNull();
+    const calendarSalesTable = view.getByRole("table", {
+      name: "Calendar sales",
+    });
+    const salesMainColumn = calendarSalesTable.closest("section");
+    expect(salesMainColumn).not.toBeNull();
+    expect(
+      salesMainColumn?.contains(
+        view.getByRole("button", { name: "Create a sale discount" })
+      )
+    ).toBe(true);
     const linkSalePanel = view
       .getByRole("heading", { name: "Link a sale" })
       .closest("aside");
     expect(linkSalePanel).not.toBeNull();
     if (!linkSalePanel) return;
+    expect(linkSalePanel.parentElement).toBe(salesMainColumn?.parentElement);
     expect(
       within(linkSalePanel)
         .getByRole("link", { name: "Open calendar" })
