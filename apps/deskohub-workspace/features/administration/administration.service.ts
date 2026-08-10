@@ -23,6 +23,7 @@ import {
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
+  customerMarketingConsents,
   discountApplications,
   legalEvidenceEvents,
   type PaymentAttemptState,
@@ -192,13 +193,11 @@ export type AdministrationCustomerTransaction = {
   >;
 };
 
-export type AdministrationCustomerConsent = {
-  readonly documentKey: "privacyPolicy" | "marketingCommunications";
-  readonly documentPath: string;
+export type AdministrationCustomerMarketingConsent = {
   readonly documentHash: string;
-  readonly accepted: boolean;
-  readonly acceptedAt: string;
   readonly locale: string;
+  readonly grantedAt: string;
+  readonly withdrawnAt: string | null;
 };
 
 export type AdministrationCustomerActivity = {
@@ -212,7 +211,7 @@ export type AdministrationCustomerActivity = {
     readonly revenue: readonly AdministrationMoney[];
     readonly discountSavings: readonly AdministrationMoney[];
   };
-  readonly consents: readonly AdministrationCustomerConsent[];
+  readonly marketingConsent: AdministrationCustomerMarketingConsent | null;
 };
 
 export type AdministrationDiscountApplication = {
@@ -1501,36 +1500,60 @@ export class AdministrationService extends Context.Service<
       const loadCustomerActivity = Effect.fn(
         "AdministrationService.loadCustomerActivity"
       )(function* (customerId: string) {
-        const { attemptRowsWithSentinel, recentRows } = yield* Effect.all(
-          {
-            recentRows: db
-              .select(safeReservationSelection)
-              .from(workspaceReservations)
-              .where(eq(workspaceReservations.dotyposCustomerId, customerId))
-              .orderBy(desc(workspaceReservations.updatedAt))
-              .limit(customerActivityReservationLimit + 1),
-            attemptRowsWithSentinel: db
-              .select({
-                attempt: safePaymentAttemptSelection,
-                reservation: {
-                  id: workspaceReservations.id,
-                  reservationDetails: workspaceReservations.reservationDetails,
-                },
-              })
-              .from(paymentAttempts)
-              .innerJoin(
-                workspaceReservations,
-                eq(
-                  paymentAttempts.workspaceReservationId,
-                  workspaceReservations.id
+        const { attemptRowsWithSentinel, marketingConsentRows, recentRows } =
+          yield* Effect.all(
+            {
+              recentRows: db
+                .select(safeReservationSelection)
+                .from(workspaceReservations)
+                .where(eq(workspaceReservations.dotyposCustomerId, customerId))
+                .orderBy(desc(workspaceReservations.updatedAt))
+                .limit(customerActivityReservationLimit + 1),
+              attemptRowsWithSentinel: db
+                .select({
+                  attempt: safePaymentAttemptSelection,
+                  reservation: {
+                    id: workspaceReservations.id,
+                    reservationDetails:
+                      workspaceReservations.reservationDetails,
+                  },
+                })
+                .from(paymentAttempts)
+                .innerJoin(
+                  workspaceReservations,
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    workspaceReservations.id
+                  )
                 )
-              )
-              .where(eq(workspaceReservations.dotyposCustomerId, customerId))
-              .orderBy(desc(paymentAttempts.createdAt))
-              .limit(customerActivityTransactionLimit + 1),
-          },
-          { concurrency: 2 }
-        );
+                .where(eq(workspaceReservations.dotyposCustomerId, customerId))
+                .orderBy(desc(paymentAttempts.createdAt))
+                .limit(customerActivityTransactionLimit + 1),
+              marketingConsentRows: db
+                .select({
+                  documentHash: customerMarketingConsents.documentHash,
+                  grantedAt: customerMarketingConsents.grantedAt,
+                  locale: customerMarketingConsents.locale,
+                  withdrawnAt: customerMarketingConsents.withdrawnAt,
+                })
+                .from(customerMarketingConsents)
+                .where(
+                  eq(customerMarketingConsents.dotyposCustomerId, customerId)
+                )
+                .limit(1),
+            },
+            { concurrency: 3 }
+          );
+        const marketingConsentRow = marketingConsentRows[0];
+        const marketingConsent = marketingConsentRow
+          ? {
+              ...marketingConsentRow,
+              grantedAt: toIsoString(marketingConsentRow.grantedAt),
+              withdrawnAt: marketingConsentRow.withdrawnAt
+                ? toIsoString(marketingConsentRow.withdrawnAt)
+                : null,
+            }
+          : null;
 
         if (recentRows.length === 0) {
           return {
@@ -1544,7 +1567,7 @@ export class AdministrationService extends Context.Service<
               revenue: [],
               discountSavings: [],
             },
-            consents: [],
+            marketingConsent,
           } satisfies AdministrationCustomerActivity;
         }
 
@@ -1556,17 +1579,8 @@ export class AdministrationService extends Context.Service<
           ${workspaceReservations.reservationDetails}->>'entryTier'
         `;
         const productCount = count();
-        const evidenceSelection = {
-          accepted: legalEvidenceEvents.accepted,
-          acceptedAt: legalEvidenceEvents.acceptedAt,
-          documentHash: legalEvidenceEvents.documentHash,
-          documentKey: legalEvidenceEvents.documentKey,
-          documentPath: legalEvidenceEvents.documentPath,
-          locale: legalEvidenceEvents.locale,
-        } as const;
         const {
           applicationRows,
-          evidenceRows,
           productRows,
           reservationCountRows,
           reservations,
@@ -1630,30 +1644,6 @@ export class AdministrationService extends Context.Service<
                 discountApplications.appliedAmountExponent,
                 discountApplications.appliedAmountCurrency
               ),
-            evidenceRows: Effect.all(
-              (["privacyPolicy", "marketingCommunications"] as const).map(
-                (documentKey) =>
-                  db
-                    .select(evidenceSelection)
-                    .from(legalEvidenceEvents)
-                    .innerJoin(
-                      workspaceReservations,
-                      eq(
-                        legalEvidenceEvents.workspaceReservationId,
-                        workspaceReservations.id
-                      )
-                    )
-                    .where(
-                      and(
-                        eq(workspaceReservations.dotyposCustomerId, customerId),
-                        eq(legalEvidenceEvents.documentKey, documentKey)
-                      )
-                    )
-                    .orderBy(desc(legalEvidenceEvents.acceptedAt))
-                    .limit(1)
-              ),
-              { concurrency: 2 }
-            ),
             productRows: db
               .select({
                 count: productCount,
@@ -1680,21 +1670,6 @@ export class AdministrationService extends Context.Service<
           0,
           customerActivityTransactionLimit
         );
-        const consents: AdministrationCustomerConsent[] = [];
-        for (const [evidence] of evidenceRows) {
-          if (!evidence) continue;
-          if (
-            evidence.documentKey !== "privacyPolicy" &&
-            evidence.documentKey !== "marketingCommunications"
-          ) {
-            continue;
-          }
-          consents.push({
-            ...evidence,
-            documentKey: evidence.documentKey,
-            acceptedAt: toIsoString(evidence.acceptedAt),
-          });
-        }
         const favoriteProduct = productRows[0];
         let favoriteProductLabel: string | null = null;
         if (favoriteProduct?.kind === "meeting-room") {
@@ -1722,7 +1697,7 @@ export class AdministrationService extends Context.Service<
             revenue: toMoneyTotals(revenueRows),
             discountSavings: toMoneyTotals(applicationRows),
           },
-          consents,
+          marketingConsent,
         } satisfies AdministrationCustomerActivity;
       });
 

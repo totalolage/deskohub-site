@@ -91,6 +91,10 @@ export type DiscountCodeTableItem = {
   readonly remainingUses: number | null;
 };
 
+const isTableRowControl = (target: EventTarget | null) =>
+  target instanceof Element &&
+  Boolean(target.closest("a, button, input, select, textarea, label, summary"));
+
 export function DiscountsAdminTable({
   discounts,
 }: {
@@ -329,9 +333,39 @@ export function CalendarSalesAdminTable({
                 ? discountsById.get(event.association.discountId)
                 : undefined;
             const expanded = expandedReference === event.eventReference;
+            const toggleEditor = () =>
+              setExpandedReference((current) =>
+                current === event.eventReference ? null : event.eventReference
+              );
             return (
               <Fragment key={event.eventReference}>
-                <TableRow>
+                <TableRow
+                  aria-expanded={discount ? expanded : undefined}
+                  className={cn(
+                    discount &&
+                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
+                    expanded && "bg-navy-blue/[0.025]"
+                  )}
+                  onClick={(clickEvent) => {
+                    if (!discount || isTableRowControl(clickEvent.target)) {
+                      return;
+                    }
+                    toggleEditor();
+                  }}
+                  onKeyDown={(keyboardEvent) => {
+                    if (
+                      !discount ||
+                      keyboardEvent.target !== keyboardEvent.currentTarget ||
+                      (keyboardEvent.key !== "Enter" &&
+                        keyboardEvent.key !== " ")
+                    ) {
+                      return;
+                    }
+                    keyboardEvent.preventDefault();
+                    toggleEditor();
+                  }}
+                  tabIndex={discount ? 0 : undefined}
+                >
                   <TableCell>
                     <p className="font-semibold">{event.title}</p>
                     <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
@@ -361,13 +395,10 @@ export function CalendarSalesAdminTable({
                       </Button>
                       {discount && (
                         <Button
+                          aria-expanded={expanded}
                           aria-label={`Edit discount for ${event.title}`}
                           aria-pressed={expanded}
-                          onClick={() =>
-                            setExpandedReference(
-                              expanded ? null : event.eventReference
-                            )
-                          }
+                          onClick={toggleEditor}
                           size="icon"
                           type="button"
                           variant="ghost"
@@ -528,15 +559,7 @@ function AdminDataTable<T>({
                   )}
                   onClick={(event) => {
                     if (!onRowActivate) return;
-                    const target = event.target;
-                    if (
-                      target instanceof Element &&
-                      target.closest(
-                        "a, button, input, select, textarea, label, summary"
-                      )
-                    ) {
-                      return;
-                    }
+                    if (isTableRowControl(event.target)) return;
                     onRowActivate(row.original, expanded);
                   }}
                   onKeyDown={(event) => {

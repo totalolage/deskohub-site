@@ -476,7 +476,7 @@ describe("discount administration pages", () => {
         id: "dotypos-customer",
         displayName: "Test Customer",
         email: "test@example.com",
-        phone: null,
+        phone: "+420 123 456 789",
         discountGroupId: null,
       },
       discountGroups: [],
@@ -533,24 +533,12 @@ describe("discount administration pages", () => {
             revenue: [paidReservation.latestPayment.amount],
             discountSavings: [{ value: 7500, exponent: 2, currency: "CZK" }],
           },
-          consents: [
-            {
-              documentKey: "privacyPolicy",
-              documentPath: "/legal/privacy-policy-v2.md",
-              documentHash: "privacy-hash",
-              accepted: true,
-              acceptedAt: paidReservation.updatedAt,
-              locale: "en-US",
-            },
-            {
-              documentKey: "marketingCommunications",
-              documentPath: "/legal/marketing-communications-v1.md",
-              documentHash: "marketing-hash",
-              accepted: false,
-              acceptedAt: paidReservation.updatedAt,
-              locale: "en-US",
-            },
-          ],
+          marketingConsent: {
+            documentHash: "marketing-hash",
+            grantedAt: paidReservation.updatedAt,
+            locale: "en-US",
+            withdrawnAt: null,
+          },
         }}
         profile={profile}
       />
@@ -574,10 +562,17 @@ describe("discount administration pages", () => {
     expect(view.getByText("1 (+ 1)")).toBeDefined();
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
-    expect(view.getByText("Accepted").className).toContain(
+    expect(view.getByText("Granted").className).toContain(
       "text-aquamarine-ink"
     );
-    expect(view.getByText("Declined").className).toContain("text-red-600");
+    expect(view.queryByText("Declined")).toBeNull();
+    expect(view.queryByText("Privacy policy")).toBeNull();
+    expect(
+      view.container.textContent?.match(/test@example\.com/g)
+    ).toHaveLength(1);
+    expect(
+      view.container.textContent?.match(/\+420 123 456 789/g)
+    ).toHaveLength(1);
     expect(
       view.getByText("Showing the 24 most recently updated reservations.")
     ).toBeDefined();
@@ -646,7 +641,7 @@ describe("discount administration pages", () => {
             revenue: [],
             discountSavings: [],
           },
-          consents: [],
+          marketingConsent: null,
         }}
         profile={{
           customer: {
@@ -664,7 +659,52 @@ describe("discount administration pages", () => {
     );
 
     expect(view.getByText("This customer has no payments.")).toBeDefined();
+    expect(view.getByText("Not granted")).toBeDefined();
     expect(view.queryByText(/payment attempts/i)).toBeNull();
+  });
+
+  test("distinguishes withdrawn customer marketing consent", async () => {
+    const { CustomerAdministrationDetailPage } = await import(
+      "./customer-admin-components"
+    );
+    const view = render(
+      <CustomerAdministrationDetailPage
+        activity={{
+          reservations: [],
+          reservationHistoryTruncated: false,
+          transactions: [],
+          transactionHistoryTruncated: false,
+          stats: {
+            reservationCount: 0,
+            favoriteProduct: null,
+            revenue: [],
+            discountSavings: [],
+          },
+          marketingConsent: {
+            documentHash: "marketing-hash",
+            grantedAt: "2026-08-09T10:00:00Z",
+            locale: "en-US",
+            withdrawnAt: "2026-08-10T11:00:00Z",
+          },
+        }}
+        profile={{
+          customer: {
+            id: "dotypos-customer",
+            displayName: "Test Customer",
+            email: "test@example.com",
+            phone: null,
+            discountGroupId: null,
+          },
+          discountGroups: [],
+          codes: [],
+          claims: [],
+        }}
+      />
+    );
+
+    expect(view.getByText("Withdrawn").className).toContain("text-red-600");
+    expect(view.getByText(/Granted 9 Aug 2026/)).toBeDefined();
+    expect(view.queryByText("Declined")).toBeNull();
   });
 
   test("creates a customer code with an existing discount or a new definition", async () => {
@@ -766,8 +806,32 @@ describe("discount administration pages", () => {
 
     expect(view.getByRole("table", { name: "Calendar sales" })).toBeDefined();
     expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
+    expect(view.queryByText("2026-07-01 — 2027-07-01")).toBeNull();
+    const linkSalePanel = view
+      .getByRole("heading", { name: "Link a sale" })
+      .closest("aside");
+    expect(linkSalePanel).not.toBeNull();
+    if (!linkSalePanel) return;
+    expect(
+      within(linkSalePanel)
+        .getByRole("link", { name: "Open calendar" })
+        .getAttribute("href")
+    ).toBe("https://calendar.google.com/");
     expect(view.getByText("Associated").className).toContain("text-white");
     expect(view.getByText("tentative").className).toContain("text-navy-blue");
+    const saleRow = view.getByText("Summer sale").closest("tr");
+    expect(saleRow?.getAttribute("tabindex")).toBe("0");
+    fireEvent.click(
+      view.getByRole("link", {
+        name: "Open Summer sale in Google Calendar",
+      })
+    );
+    expect(view.queryByRole("button", { name: "Save discount" })).toBeNull();
+    fireEvent.click(view.getByText("Summer sale"));
+    expect(view.getByRole("button", { name: "Save discount" })).toBeDefined();
+    if (!saleRow) return;
+    fireEvent.keyDown(saleRow, { key: "Enter" });
+    expect(view.queryByRole("button", { name: "Save discount" })).toBeNull();
     fireEvent.click(
       view.getByRole("button", { name: "Edit discount for Summer sale" })
     );

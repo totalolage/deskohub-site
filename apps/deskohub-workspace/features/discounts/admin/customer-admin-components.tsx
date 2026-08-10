@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import Link from "next/link";
 import type {
   AdministrationCustomerActivity,
-  AdministrationCustomerConsent,
+  AdministrationCustomerMarketingConsent,
   AdministrationCustomerTransaction,
   AdministrationMoney,
 } from "@/features/administration/administration.service";
@@ -218,14 +218,7 @@ export function CustomerAdministrationDetailPage({
   const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        description={
-          [profile.customer.email, profile.customer.phone]
-            .filter(Boolean)
-            .join(" · ") || "No contact details"
-        }
-        title={profile.customer.displayName}
-      />
+      <AdministrationPageHeader title={profile.customer.displayName} />
       <AdministrationNoticeBanner notice={notice} />
 
       <div className="mb-7 grid gap-5 lg:grid-cols-2">
@@ -233,7 +226,7 @@ export function CustomerAdministrationDetailPage({
           activity={activity}
           availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
         />
-        <CustomerConsents consents={activity.consents} />
+        <CustomerConsents consent={activity.marketingConsent} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
@@ -473,25 +466,15 @@ function CustomerStat({
 }
 
 function CustomerConsents({
-  consents,
+  consent,
 }: {
-  readonly consents: readonly AdministrationCustomerConsent[];
+  readonly consent: AdministrationCustomerMarketingConsent | null;
 }) {
-  const byKey = new Map(
-    consents.map((consent) => [consent.documentKey, consent])
-  );
   return (
     <section>
       <h2 className="mb-3 text-xl">Consents</h2>
       <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-        <CustomerConsent
-          consent={byKey.get("privacyPolicy")}
-          label="Privacy policy"
-        />
-        <CustomerConsent
-          consent={byKey.get("marketingCommunications")}
-          label="Marketing communications"
-        />
+        <CustomerConsent consent={consent} />
       </dl>
     </section>
   );
@@ -499,33 +482,37 @@ function CustomerConsents({
 
 function CustomerConsent({
   consent,
-  label,
 }: {
-  readonly consent?: AdministrationCustomerConsent;
-  readonly label: string;
+  readonly consent: AdministrationCustomerMarketingConsent | null;
 }) {
+  const withdrawnAt = consent?.withdrawnAt;
   return (
     <div className="grid gap-1 border-b border-navy-blue/8 px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-      <dt className="font-medium">{label}</dt>
+      <dt className="font-medium">Marketing communications</dt>
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
             <span
               className={
-                consent.accepted
-                  ? "font-semibold text-aquamarine-ink"
-                  : "font-semibold text-red-600"
+                withdrawnAt
+                  ? "font-semibold text-red-600"
+                  : "font-semibold text-aquamarine-ink"
               }
             >
-              {consent.accepted ? "Accepted" : "Declined"}
+              {withdrawnAt ? "Withdrawn" : "Granted"}
             </span>{" "}
-            · {formatAdministrationDateTime(consent.acceptedAt)}
-            <span className="mt-0.5 block text-xs">
-              {consent.documentPath.split("/").at(-1)} · {consent.locale}
+            · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
+            <span className="mt-0.5 block break-all text-xs">
+              {withdrawnAt && (
+                <>
+                  Granted {formatAdministrationDateTime(consent.grantedAt)} ·{" "}
+                </>
+              )}
+              {consent.locale} · {consent.documentHash}
             </span>
           </>
         ) : (
-          "Not recorded"
+          "Not granted"
         )}
       </dd>
     </div>

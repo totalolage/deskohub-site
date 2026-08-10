@@ -176,25 +176,11 @@ function CalendarSection({
       <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
     );
   } else if (calendar.events.length === 0) {
-    calendarContent = (
-      <EmptyState message="No Calendar events found in this window." />
-    );
+    calendarContent = <EmptyState message="No Calendar sale events found." />;
   }
 
   return (
     <section>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-navy-blue/65">
-          {calendar.from} — {calendar.to}
-        </p>
-        <Button asChild size="sm" variant="secondary">
-          <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
-            Open calendar
-            <ArrowUpRight aria-hidden className="size-3.5" />
-          </a>
-        </Button>
-      </div>
-
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div>{calendarContent}</div>
 
@@ -206,6 +192,12 @@ function CalendarSection({
             <li>3. Put only the discount UUID in the event description.</li>
             <li>4. Save, then refresh this page.</li>
           </ol>
+          <Button asChild className="mt-4 w-full" size="sm" variant="secondary">
+            <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
+              Open calendar
+              <ArrowUpRight aria-hidden className="size-3.5" />
+            </a>
+          </Button>
         </aside>
       </div>
     </section>
