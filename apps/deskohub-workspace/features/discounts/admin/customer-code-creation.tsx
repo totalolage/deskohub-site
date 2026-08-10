@@ -36,17 +36,21 @@ export function DiscountCodeCreationForm({
     discounts.length > 0 ? "existing" : "new"
   );
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const customerPath = customerId ? `/admin/customers/${customerId}` : null;
   const close = () => {
-    if (!customerPath) {
-      router.refresh();
-    } else if (completion === "back") router.back();
-    else router.replace(customerPath);
+    if (completion === "back") router.back();
+    else if (customerPath) router.replace(customerPath);
   };
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
     actionName: "createCustomerDiscountCode",
     onSuccess: ({ data }) => {
       if (!data) return;
+      if (!customerPath) {
+        setSuccess(data.notice);
+        router.refresh();
+        return;
+      }
       close();
     },
     onError: ({ error: actionError }) =>
@@ -58,6 +62,25 @@ export function DiscountCodeCreationForm({
     onTransportError: () =>
       setError("The discount code could not be created. Try again."),
   });
+
+  if (success) {
+    return (
+      <output
+        aria-live="polite"
+        className="rounded-xl bg-aquamarine-green/12 px-4 py-4 text-aquamarine-ink"
+      >
+        <p className="font-semibold">{success}</p>
+        <Button
+          className="mt-4"
+          onClick={() => setSuccess(null)}
+          type="button"
+          variant="secondary"
+        >
+          Create another code
+        </Button>
+      </output>
+    );
+  }
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

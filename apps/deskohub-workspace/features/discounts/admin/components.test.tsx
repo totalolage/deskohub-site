@@ -320,6 +320,48 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  test("confirms a general code creation before allowing another submission", async () => {
+    let onSuccess:
+      | ((result: { data?: { notice: string } }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      const candidate = options as {
+        actionName?: string;
+        onSuccess?: typeof onSuccess;
+      };
+      if (candidate.actionName === "createCustomerDiscountCode") {
+        onSuccess = candidate.onSuccess;
+      }
+      return {
+        execute: mock(),
+        isExecuting: false,
+        result: {},
+      };
+    });
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    expect(
+      view.getByRole("form", { name: "Create discount code" })
+    ).toBeDefined();
+
+    act(() => onSuccess?.({ data: { notice: "Discount code created." } }));
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(view.getByRole("status").textContent).toContain(
+      "Discount code created."
+    );
+    expect(
+      view.queryByRole("form", { name: "Create discount code" })
+    ).toBeNull();
+
+    fireEvent.click(view.getByRole("button", { name: "Create another code" }));
+    expect(
+      view.getByRole("form", { name: "Create discount code" })
+    ).toBeDefined();
+  });
+
   test("manages code audiences while keeping claim history read-only", async () => {
     const { CodeAdministrationDetailPage } = await import(
       "./customer-admin-components"
