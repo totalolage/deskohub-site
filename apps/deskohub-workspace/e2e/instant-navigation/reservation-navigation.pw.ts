@@ -79,24 +79,6 @@ test("serves the reservation status shell on direct navigation", async ({
   );
 });
 
-test("serves the payment shell on direct navigation", async ({
-  baseURL,
-  page,
-}) => {
-  await instant(
-    page,
-    async () => {
-      await page.goto("/en-US/checkout/pay");
-
-      await expectReservationSteps(page);
-      await expect(
-        page.getByRole("status", { name: "Preparing secure payment..." })
-      ).toHaveAttribute("aria-busy", "true");
-    },
-    { baseURL: requireBaseUrl(baseURL) }
-  );
-});
-
 const clientNavigationCases = [
   {
     contentName: "Reservation date",

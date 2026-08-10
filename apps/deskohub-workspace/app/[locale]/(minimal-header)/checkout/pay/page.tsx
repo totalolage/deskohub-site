@@ -45,7 +45,10 @@ type LocalizedCheckoutPayPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
 
-export const instant = true;
+// Keep the pay route non-instant: it is reached from a Server Action redirect,
+// and making its intermediate shell interactive can let a follow-up navigation
+// race the still-settling checkout transition.
+export const instant = false;
 
 export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
