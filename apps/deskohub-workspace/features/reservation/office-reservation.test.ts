@@ -14,13 +14,16 @@ import {
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
   officeReservationDetailsSchema,
+  officeReservationOrderSchema,
   officeReservationSchema,
   storedOfficeReservationDetailsSchema,
   workspaceOfficeProductIdentitySchema,
   workspaceOfficeProductKeySchema,
 } from "./office-reservation";
+import { getCurrentWorkspaceDate } from "./reservation-date";
 
 const formParser = makeSchemaParser(officeReservationSchema);
+const orderParser = makeSchemaParser(officeReservationOrderSchema);
 const detailsParser = makeSchemaParser(officeReservationDetailsSchema);
 const storedDetailsParser = makeSchemaParser(
   storedOfficeReservationDetailsSchema,
@@ -162,6 +165,25 @@ describe("office reservation", () => {
           ...validCustomer,
           startsOn: today.toString(),
           dayCount,
+          seats: 1,
+        })
+      )
+    ).toBe(true);
+  });
+
+  test("rejects an order that starts before the current Prague date", () => {
+    const today = getCurrentWorkspaceDate();
+
+    expect(
+      Result.isFailure(
+        orderParser.safeParse({
+          kind: "office",
+          name: validCustomer.name,
+          email: validCustomer.email,
+          phone: validCustomer.phone,
+          message: validCustomer.message,
+          startsOn: today.subtract({ days: 1 }).toString(),
+          endsOn: today.toString(),
           seats: 1,
         })
       )

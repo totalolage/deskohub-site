@@ -98,6 +98,14 @@ const officeReservationRangeChecks = [
 const officeReservationOrderInputChecks = [
   ...officeReservationRangeChecks,
   Schema.makeFilter<OfficeReservationRangeInput>(
+    ({ startsOn }) =>
+      startsOn === "" ||
+      isOfficeReservationStartOnOrAfterToday({ startsOn }) || {
+        path: ["startsOn"],
+        issue: m.reservationValidationOfficeStartPassed(),
+      }
+  ),
+  Schema.makeFilter<OfficeReservationRangeInput>(
     ({ endsOn }) =>
       endsOn === "" ||
       Temporal.PlainDate.from(endsOn)
@@ -146,6 +154,14 @@ export const officeReservationFormInputSchema = Schema.Struct({
   ...officeReservationFormSelectionFields,
   marketingConsent: Schema.Boolean,
 }).check(
+  Schema.makeFilter(
+    ({ startsOn }) =>
+      startsOn === "" ||
+      isOfficeReservationStartOnOrAfterToday({ startsOn }) || {
+        path: ["startsOn"],
+        issue: m.reservationValidationOfficeStartPassed(),
+      }
+  ),
   Schema.makeFilter(({ dayCount, startsOn }) => {
     if (startsOn === "") return true;
 
@@ -305,6 +321,11 @@ export const getOfficeReservationEndsOn = (reservation: {
 export const getOfficeReservationMaximumEndsOn = (
   today = getCurrentWorkspaceDate()
 ) => today.add({ months: 1 });
+
+export const isOfficeReservationStartOnOrAfterToday = (
+  reservation: Pick<OfficeReservationRangeInput, "startsOn">,
+  today = getCurrentWorkspaceDate()
+) => reservation.startsOn >= today.toString();
 
 export const isOfficeReservationWithinBookingHorizon = (
   reservation: Pick<OfficeReservationRangeInput, "endsOn">,

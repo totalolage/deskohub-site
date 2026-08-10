@@ -618,6 +618,7 @@
   "reservationValidationOfficeSeats": "Vyber celý počet míst.",
   "reservationValidationOfficeEndBeforeStart": "Poslední den nesmí být před prvním dnem.",
   "reservationValidationOfficeEnded": "Vyber termín kanceláře, který ještě neskončil.",
+  "reservationValidationOfficeStartPassed": "Vyber datum začátku rezervace kanceláře, které ještě neuplynulo.",
   "reservationValidationOfficeMaximumEnd": "Poslední den rezervace nesmí být později než za měsíc od dneška.",
   "reservationValidationMonitorRequired": "U Profi Workstation vyber monitorový setup.",
   "reservationValidationMonitorUnavailable": "Monitorový setup je dostupný jen u Profi Workstation.",

@@ -612,6 +612,7 @@
   "reservationValidationOfficeSeats": "Select a whole number of seats.",
   "reservationValidationOfficeEndBeforeStart": "The last day cannot be before the first day.",
   "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
+  "reservationValidationOfficeStartPassed": "Choose an office start date that has not already passed.",
   "reservationValidationOfficeMaximumEnd": "The last reservation day must be no later than one month from today.",
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
