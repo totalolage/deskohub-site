@@ -8,6 +8,7 @@ import {
 
 const galleryPath = "/en-US/gallery";
 const contactPath = "/en-US/contact";
+const homePath = "/en-US";
 
 test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
@@ -94,7 +95,64 @@ test.describe("client navigation", () => {
       }
     });
   }
+
+  test("uses the prefetched homepage shell for section navigation", async ({
+    page,
+  }) => {
+    await page.goto(galleryPath);
+
+    const locationLink = page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Location" });
+    await locationLink.hover();
+    await expect.poll(() => hasLoadedResource(page, homePath)).toBe(true);
+    await page.evaluate((path) => {
+      document.documentElement.dataset.navigationSource = path;
+    }, galleryPath);
+
+    await instant(page, async () => {
+      await locationLink.click();
+
+      await expect(page).toHaveURL(/\/en-US#location-map$/);
+      await expect
+        .poll(() =>
+          page.evaluate(
+            () => document.documentElement.dataset.navigationSource
+          )
+        )
+        .toBe(galleryPath);
+      await expectPublicSiteShell(page);
+      await expectHomeShell(page);
+    });
+
+    await expect(
+      page.getByRole("region", { name: homeHeading })
+    ).not.toHaveAttribute("aria-busy", "true");
+    await expect(
+      page.locator(`[aria-label="${carouselName}"][aria-busy="true"]`)
+    ).toHaveCount(0);
+  });
 });
+
+const homeHeading = "The first self-service workspace on Palmovka.";
+const carouselName = "Deskohub workspace photo carousel";
+
+async function expectHomeShell(page: Page) {
+  await expect(
+    page.getByRole("heading", { level: 1, name: homeHeading })
+  ).toBeVisible();
+  await expect(page.getByRole("region", { name: homeHeading })).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Reserve cowork" })
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", {
+      level: 2,
+      name: "Two minutes from Palmovka metro",
+    })
+  ).toBeVisible();
+  await expect(page.locator("#hero-gallery")).toBeVisible();
+}
 
 async function expectGalleryShell(page: Page) {
   await expect(

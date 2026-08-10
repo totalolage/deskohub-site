@@ -3,21 +3,17 @@ import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
 import { LandingPageFoundersSection } from "./landing-page-founders-section";
-import {
-  LandingPageHeroSection,
-  landingPageHeroVars,
-} from "./landing-page-hero-section";
+import { LandingPageHero } from "./landing-page-hero";
+import { landingPageHeroVars } from "./landing-page-hero-section";
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
-import type { LandingPageSaleBannerContent } from "./landing-page-sale-banner";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 
 type LandingPageProps = {
   locale: Locale;
-  saleBanner?: LandingPageSaleBannerContent;
 };
 
-export function LandingPage({ locale, saleBanner }: LandingPageProps) {
+export function LandingPage({ locale }: LandingPageProps) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
@@ -26,10 +22,9 @@ export function LandingPage({ locale, saleBanner }: LandingPageProps) {
 
   return (
     <main className="overflow-x-clip bg-navy-blue" style={landingPageHeroVars}>
-      <LandingPageHeroSection
+      <LandingPageHero
         locale={locale}
         overviewSectionId={siteHeaderSectionIds.overview}
-        saleBanner={saleBanner}
       />
 
       <LandingPagePhotoCarouselSection />

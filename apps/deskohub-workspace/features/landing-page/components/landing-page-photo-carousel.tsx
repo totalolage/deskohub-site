@@ -2,7 +2,7 @@
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
-import { use, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import {
@@ -14,7 +14,8 @@ import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
 
 type LandingPagePhotoCarouselProps = {
-  imagesPromise: Promise<readonly CloudinaryAsset[]>;
+  ariaLabel: string;
+  images: readonly CloudinaryAsset[];
   autoPlayInterval?: number;
   className?: string;
 };
@@ -93,12 +94,13 @@ const getSlideZIndex = (offset: number) => {
 };
 
 const AUTO_PLAY_INTERVAL = 3600;
+
 export function LandingPagePhotoCarousel({
-  imagesPromise,
+  ariaLabel,
+  images,
   autoPlayInterval = AUTO_PLAY_INTERVAL,
   className,
 }: LandingPagePhotoCarouselProps) {
-  const images = use(imagesPromise);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const {
     activeIndex,
@@ -164,7 +166,7 @@ export function LandingPagePhotoCarousel({
 
   return (
     <section
-      aria-label="Deskohub workspace photo carousel"
+      aria-label={ariaLabel}
       className={cn("overflow-visible space-y-8", className)}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
