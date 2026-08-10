@@ -59,6 +59,12 @@ export const CLI_BUILD_TARGETS = [
 export const CliBuildTarget = Schema.Literals(CLI_BUILD_TARGETS);
 export type CliBuildTarget = typeof CliBuildTarget.Type;
 
+export const CliClientName = Schema.Trim.check(
+  Schema.isNonEmpty(),
+  Schema.isMaxLength(80)
+);
+export type CliClientName = typeof CliClientName.Type;
+
 export const AdminCliInfo = Schema.Struct({
   apiVersion: Schema.Literal(WORKSPACE_ADMIN_API_VERSION),
   service: Schema.Literal("deskohub-workspace"),
@@ -67,9 +73,7 @@ export type AdminCliInfo = typeof AdminCliInfo.Type;
 
 export const StartCliAuthentication = Schema.Struct({
   challenge: CliAuthenticationChallenge,
-  clientName: Schema.String.check(Schema.isPattern(/\S/)).check(
-    Schema.isMaxLength(80)
-  ),
+  clientName: CliClientName,
   cliVersion: Schema.String.check(Schema.isMinLength(1)).check(
     Schema.isMaxLength(32)
   ),
@@ -125,7 +129,7 @@ export type ExchangeCliGrant = typeof ExchangeCliGrant.Type;
 
 export const CliSession = Schema.Struct({
   id: CliSessionId,
-  clientName: Schema.String,
+  clientName: CliClientName,
   cliVersion: Schema.String,
   buildTarget: CliBuildTarget,
   createdAt: Schema.String,

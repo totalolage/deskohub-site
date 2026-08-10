@@ -17,6 +17,11 @@ request behind the existing `/admin` Basic authentication, the CLI exchanges a
 single-use grant bound to its local verifier and stores the resulting opaque
 bearer in macOS Keychain or the Linux Secret Service.
 
+New sessions default to the recognizable label `dhw on <machine-name>`. Pass
+`--name` to choose the initial label explicitly, or rename an issued session
+later from `/admin/cli/sessions`. The label is descriptive only; the opaque
+session ID remains its identity and renaming does not change access.
+
 Permanent bearer values are never stored by the server; only their SHA-256
 digests are persisted. `/admin/cli/sessions` lists issued sessions and revokes
 them. Every authenticated CLI operation validates its session, and a revoked

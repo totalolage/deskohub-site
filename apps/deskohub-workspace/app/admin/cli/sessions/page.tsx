@@ -1,5 +1,6 @@
 import { revokeCliSession } from "@/features/admin-cli/actions";
 import { loadCliSessions } from "@/features/admin-cli/page-data.server";
+import { RenameCliSession } from "@/features/admin-cli/rename-cli-session";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
@@ -88,21 +89,27 @@ export default async function CliSessionsPage({
                       </Badge>
                     </TableCell>
                     <TableCell className="text-right">
-                      <form action={revokeCliSession}>
-                        <input
-                          name="sessionId"
-                          type="hidden"
-                          value={session.id}
+                      <div className="flex justify-end gap-2">
+                        <RenameCliSession
+                          clientName={session.clientName}
+                          sessionId={session.id}
                         />
-                        <Button
-                          disabled={session.revokedAt !== null}
-                          size="sm"
-                          type="submit"
-                          variant="secondary"
-                        >
-                          Revoke
-                        </Button>
-                      </form>
+                        <form action={revokeCliSession}>
+                          <input
+                            name="sessionId"
+                            type="hidden"
+                            value={session.id}
+                          />
+                          <Button
+                            disabled={session.revokedAt !== null}
+                            size="sm"
+                            type="submit"
+                            variant="secondary"
+                          >
+                            Revoke
+                          </Button>
+                        </form>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

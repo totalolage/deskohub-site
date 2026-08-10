@@ -22,6 +22,8 @@ export {
   type CliAuthenticationVerifier as CliAuthenticationVerifierType,
   CliBuildTarget,
   type CliBuildTarget as CliBuildTargetType,
+  CliClientName,
+  type CliClientName as CliClientNameType,
   CliGrantRejected,
   CliGrantToken,
   type CliGrantToken as CliGrantTokenType,

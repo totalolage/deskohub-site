@@ -2,6 +2,7 @@ import {
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
   type CliAuthenticationStatusType,
+  type CliClientNameType,
   CliGrantRejected,
   type CliGrantTokenType,
   type CliSessionIdType,
@@ -109,6 +110,10 @@ interface ICliAuthentication {
   readonly revoke: (
     sessionId: CliSessionIdType
   ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
+  readonly renameSession: (input: {
+    readonly sessionId: CliSessionIdType;
+    readonly clientName: CliClientNameType;
+  }) => Effect.Effect<boolean, EffectDrizzleQueryError>;
 }
 
 export class CliAuthentication extends Context.Service<
@@ -410,6 +415,20 @@ export class CliAuthentication extends Context.Service<
         return revoked.length > 0;
       });
 
+      const renameSession = Effect.fn("CliAuthentication.renameSession")(
+        function* (input: {
+          readonly sessionId: CliSessionIdType;
+          readonly clientName: CliClientNameType;
+        }) {
+          const renamed = yield* db
+            .update(cliSessions)
+            .set({ clientName: input.clientName })
+            .where(eq(cliSessions.id, input.sessionId))
+            .returning({ id: cliSessions.id });
+          return renamed.length > 0;
+        }
+      );
+
       return {
         start,
         status,
@@ -419,6 +438,7 @@ export class CliAuthentication extends Context.Service<
         approve,
         listSessions,
         revoke,
+        renameSession,
       } satisfies ICliAuthentication;
     })
   );

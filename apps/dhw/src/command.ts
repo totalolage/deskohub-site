@@ -6,6 +6,7 @@ import { Console, Data, Effect, Option } from "effect";
 import { Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
+import { ClientIdentity } from "./authentication/client-identity.service";
 import { DHW_BUILD_TARGET, DHW_VERSION, isReleaseBuild } from "./build-info";
 import { DhwConfig } from "./config/dhw-config.service";
 import { UpdateService } from "./update/update.service";
@@ -54,7 +55,7 @@ const authCommand = Command.make(
   "auth",
   {
     name: Flag.string("name").pipe(
-      Flag.withDefault(`dhw ${DHW_BUILD_TARGET}`),
+      Flag.optional,
       Flag.withDescription("Name shown for this client in the admin interface")
     ),
   },
@@ -77,12 +78,16 @@ const authCommand = Command.make(
         }
 
         const api = yield* WorkspaceAdminApiClient;
+        const identity = yield* ClientIdentity;
         const config = yield* DhwConfig;
+        const clientName = Option.isSome(name)
+          ? name.value
+          : yield* identity.defaultName;
         const verifier = yield* makeCliAuthenticationVerifier;
         const challenge = yield* makeCliAuthenticationChallenge(verifier);
         const started = yield* api.startAuthentication({
           challenge,
-          clientName: name,
+          clientName,
           cliVersion: DHW_VERSION,
           buildTarget: DHW_BUILD_TARGET,
         });
