@@ -30,10 +30,6 @@ import {
 } from "@/features/checkout/backend/checkout/checkout-session-key.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
-  LegalEvidenceEventRepository,
-  LegalEvidenceEventRepositoryLive,
-} from "@/features/checkout/backend/repositories";
-import {
   createWorkspaceDotyposReservation,
   splitCustomerName,
   WorkspaceCheckoutAccessCodeService,
@@ -41,14 +37,12 @@ import {
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
-import {
-  legalEvidenceMapSchema,
-  reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/legal-evidence";
+import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
 import {
   ensureOfficeReservationsEnabled,
   OfficeReservationFeatureFlagService,
@@ -103,6 +97,7 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
     onExcessProperty: "error",
   }
 );
+const emptyLegalEvidence = decodeLegalEvidenceMap({});
 
 const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
   now.add({ milliseconds: payStateDefaultTtlMilliseconds });
@@ -204,45 +199,6 @@ const getReservationCheckoutDetails = (input: {
         getPreparedOfficeCheckoutDetails({ ...input, prepared }),
     })
   );
-
-const getReservationLegalEvidence = Effect.fn(
-  "preparePayState.getReservationLegalEvidence"
-)(function* (input: {
-  readonly locale: Locale;
-  readonly acceptedAt: string;
-  readonly privacyAccepted: boolean;
-  readonly marketingAccepted: boolean;
-}) {
-  const documents = yield* getLegalAcceptanceSnapshot(input.locale);
-  return decodeLegalEvidenceMap({
-    [documents.privacyPolicy.hash]: {
-      documentKey: "privacyPolicy",
-      documentHash: documents.privacyPolicy.hash,
-      accepted: input.privacyAccepted,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: reservationSubmitLegalEvidenceSource,
-      document: {
-        path: documents.privacyPolicy.path,
-        hash: documents.privacyPolicy.hash,
-        hashAlgorithm: documents.privacyPolicy.hashAlgorithm,
-      },
-    },
-    [documents.marketingCommunications.hash]: {
-      documentKey: "marketingCommunications",
-      documentHash: documents.marketingCommunications.hash,
-      accepted: input.marketingAccepted,
-      acceptedAt: input.acceptedAt,
-      locale: input.locale,
-      source: reservationSubmitLegalEvidenceSource,
-      document: {
-        path: documents.marketingCommunications.path,
-        hash: documents.marketingCommunications.hash,
-        hashAlgorithm: documents.marketingCommunications.hashAlgorithm,
-      },
-    },
-  });
-});
 
 const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
   function* (input: {
@@ -430,7 +386,6 @@ const prepareReservationDraft = Effect.fn(
 )(function* (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
-  readonly marketingConsent: boolean;
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
@@ -447,7 +402,6 @@ const prepareReservationDraft = Effect.fn(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
-      marketingConsent: input.marketingConsent,
       reservation: input.reservation,
     });
 
@@ -684,7 +638,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutAttemptKey = deriveCheckoutAttemptKey({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
-      marketingConsent: input.marketingConsent === true,
       reservation,
     });
     yield* Effect.annotateLogsScoped({
@@ -694,43 +647,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       checkoutAttemptKey,
     });
     yield* Effect.logInfo("Workspace reservation submit started");
-
-    const acceptedAt = Temporal.Now.instant().toString();
-    const reservationLegalEvidence = yield* getReservationLegalEvidence({
-      locale: input.locale,
-      acceptedAt,
-      privacyAccepted: input.legalConsent === true,
-      marketingAccepted:
-        input.legalConsent === true && input.marketingConsent === true,
-    });
-    yield* Effect.annotateLogsScoped({ reservationLegalEvidence });
-    const legalEvents = yield* LegalEvidenceEventRepository;
-
-    if (input.legalConsent !== true) {
-      yield* Effect.logInfo(
-        "Workspace reservation submit rejected: missing legal consent"
-      );
-
-      yield* legalEvents
-        .recordMany(
-          Object.values(reservationLegalEvidence).map((evidence) => ({
-            evidence,
-          }))
-        )
-        .pipe(
-          Effect.tapError((cause) =>
-            Effect.logError("Reservation legal evidence recording failed", {
-              cause,
-            })
-          ),
-          Effect.ignore
-        );
-
-      return {
-        status: "error" as const,
-        message: m.reservationValidationLegalConsentRequired(),
-      };
-    }
 
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
@@ -748,6 +664,25 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
+    if (input.marketingConsent === true) {
+      yield* Effect.gen(function* () {
+        const documents = yield* getLegalAcceptanceSnapshot(input.locale);
+        const consents = yield* CustomerMarketingConsentRepository;
+        yield* consents.grant({
+          dotyposCustomerId,
+          documentHash: documents.marketingCommunications.hash,
+          locale: input.locale,
+          grantedAt: Temporal.Now.instant(),
+        });
+      }).pipe(
+        Effect.tapError((cause) =>
+          Effect.logError("Customer marketing consent recording failed", {
+            cause,
+          })
+        )
+      );
+    }
+
     const prepared = yield* quotePreparedReservation({
       advertisement,
       dotyposCustomerId,
@@ -763,7 +698,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const preparedDraft = yield* prepareReservationDraft({
       checkoutSessionId: input.checkoutSessionId,
       checkoutAttemptId: input.checkoutAttemptId,
-      marketingConsent: input.marketingConsent === true,
       reservation,
       draft: {
         dotyposCustomerId,
@@ -786,12 +720,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservationDetails: getStoredWorkspaceReservationDetails(reservation),
         locale: input.locale,
       });
-      yield* legalEvents.recordMany(
-        Object.values(reservationLegalEvidence).map((evidence) => ({
-          workspaceReservationId: reservationDraft.id,
-          evidence,
-        }))
-      );
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return yield* toReadyResult({
@@ -833,12 +761,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservationDetails: getStoredWorkspaceReservationDetails(reservation),
           locale: input.locale,
         });
-        yield* legalEvents.recordMany(
-          Object.values(reservationLegalEvidence).map((evidence) => ({
-            workspaceReservationId: claimConflictReservation.id,
-            evidence,
-          }))
-        );
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
         return yield* toReadyResult({
@@ -864,7 +786,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const checkoutDetails = getReservationCheckoutDetails({
       locale: input.locale,
       prepared,
-      legalEvidence: reservationLegalEvidence,
+      legalEvidence: emptyLegalEvidence,
     });
     yield* Effect.annotateLogsScoped({ checkoutDetails });
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
@@ -1011,13 +933,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       timestamp: reservationCreatedAt,
     });
 
-    yield* legalEvents.recordMany(
-      Object.values(reservationLegalEvidence).map((evidence) => ({
-        workspaceReservationId: reservationDraft.id,
-        evidence,
-      }))
-    );
-
     yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
     return yield* toReadyResult({
@@ -1055,7 +970,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 const PreparePayStateLive = Layer.mergeAll(
   Layer.mergeAll(
     WorkspaceReservationRepositoryLive,
-    LegalEvidenceEventRepositoryLive
+    CustomerMarketingConsentRepository.Live
   ).pipe(Layer.provide(WorkspaceDatabaseLive)),
   WorkspaceAvailabilityService.LiveWithDependencies,
   WorkspaceTableAssignmentService.Live.pipe(

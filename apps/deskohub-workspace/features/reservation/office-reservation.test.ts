@@ -26,7 +26,6 @@ const validCustomer = {
   email: "ada@example.com",
   phone: "+420777777777",
   message: "",
-  legalConsent: true,
   marketingConsent: false,
 };
 

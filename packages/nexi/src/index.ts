@@ -4,10 +4,17 @@ export { NexiRuntimeConfig } from "./config";
 export { ExternalAPIError, NetworkError } from "./errors";
 export type {
   CreateHostedPaymentPageInput,
+  GetNexiOperationInput,
+  GetNexiOrderInput,
+  HostedPaymentCustomer,
+  ListNexiOperationsInput,
+  ListNexiOrdersInput,
   Locale,
   NexiAmount,
   NexiCurrency,
   NexiFailureStatusKind,
+  NexiOperation,
+  NexiOrder,
   NexiPaymentMetadata,
   NexiWebhookEventIdentity,
   NexiWebhookEventIdentitySource,

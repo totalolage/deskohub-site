@@ -57,9 +57,7 @@ test("keeps advertised-price preparation separable from form submission", () => 
     `Date.now() + ${workspaceE2ETimeouts.uiTransition}`
   );
   expect(prepare).not.toContain("reservation-privacy-consent");
-  expect(submitPreparedCoworkReservationScript).toContain(
-    "reservation-privacy-consent"
-  );
+  expect(submitPreparedCoworkReservationScript).toContain("reservation-submit");
   expect(submitPreparedCoworkReservationScript).toContain("Date.now() + 60000");
   expect(submitPreparedCoworkReservationScript).not.toContain("button.click");
   expect(combined).toContain(prepare.trim());
@@ -296,7 +294,7 @@ test("selects an edited cowork date and waits for its advertised price", async (
   }
 });
 
-test("drives meeting-room date, time, duration, and consent controls", () => {
+test("drives meeting-room date, time, and duration controls", () => {
   const interval = getTestMeetingRoomInterval(
     "2099-09-01T10:00",
     fourHourMeetingRoomDuration
@@ -326,7 +324,7 @@ test("drives meeting-room date, time, duration, and consent controls", () => {
   expect(prepare).toContain('"time":"10:00"');
   expect(prepare).not.toContain("setField('input[name=\"startDateTime\"]'");
   expect(submitPreparedMeetingRoomReservationScript).toContain(
-    "reservation-privacy-consent"
+    "reservation-submit"
   );
   expect(submitPreparedMeetingRoomReservationScript).not.toContain(
     "meeting-room-privacy-consent"
@@ -862,7 +860,7 @@ test("follows the current meeting-room duration control after rerender", async (
   }
 });
 
-test("asserts restored whole-day meeting-room state and reset consents", async () => {
+test("asserts restored whole-day meeting-room state and reset marketing consent", async () => {
   const interval = getTestMeetingRoomInterval(
     "2099-09-01T00:00",
     wholeDayMeetingRoomDuration
@@ -891,7 +889,6 @@ test("asserts restored whole-day meeting-room state and reset consents", async (
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />
       <textarea name="message">${data.message}</textarea>
-      <button id="reservation-privacy-consent" aria-checked="false"></button>
       <button id="reservation-marketing-consent" aria-checked="false"></button>
     `;
     const run = new Function(
@@ -925,7 +922,8 @@ test("prepares a multi-day office reservation with selected seats", async () => 
     "office availability or advertised price did not become ready"
   );
   expect(prepare).not.toContain("reservation-privacy-consent");
-  expect(submitPreparedOfficeReservationScript).toContain(
+  expect(submitPreparedOfficeReservationScript).toContain("reservation-submit");
+  expect(submitPreparedOfficeReservationScript).not.toContain(
     "reservation-privacy-consent"
   );
   expect(combined).toContain(prepare.trim());
@@ -1062,7 +1060,7 @@ test("prepares a multi-day office reservation with selected seats", async () => 
   }
 });
 
-test("asserts restored office range, seats, and reset consents", async () => {
+test("asserts restored office range, seats, and reset marketing consent", async () => {
   const data = makeOfficeCheckoutData(
     "https://workspace.example.test",
     officeSlot
@@ -1081,7 +1079,6 @@ test("asserts restored office range, seats, and reset consents", async () => {
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />
       <textarea name="message">${data.message}</textarea>
-      <button id="reservation-privacy-consent" aria-checked="false"></button>
       <button id="reservation-marketing-consent" aria-checked="false"></button>
     `;
     const run = new Function(

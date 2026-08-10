@@ -9,7 +9,6 @@ import {
 import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
-  reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import { checkoutDetailsSchema } from "@/features/checkout/schemas/checkout-details";
 import {
@@ -257,15 +256,13 @@ describe("checkout details persistence", () => {
     const parsed = decodeLegalEvidenceMap({
       [document.hash]: legalEvidence({
         accepted: false,
-        source: reservationSubmitLegalEvidenceSource,
+        source: "legacy_reservation_submit",
       }),
     });
 
     expect(Object.keys(parsed)).toEqual([document.hash]);
     expect(parsed[document.hash]?.accepted).toBe(false);
-    expect(parsed[document.hash]?.source).toBe(
-      reservationSubmitLegalEvidenceSource
-    );
+    expect(parsed[document.hash]?.source).toBe("legacy_reservation_submit");
   });
 
   test("rejects legal evidence map key and document hash mismatches", () => {
@@ -285,13 +282,12 @@ describe("checkout details persistence", () => {
     ).toThrow();
   });
 
-  test("keeps source as free storage string while canonical constants construct known sources", () => {
+  test("keeps source as free storage string while payment uses its canonical source", () => {
     const parsed = decodeLegalEvidenceMap({
       [document.hash]: legalEvidence({ source: "migration_backfill" }),
     });
 
     expect(paymentSubmitLegalEvidenceSource).toBe("payment_submit");
-    expect(reservationSubmitLegalEvidenceSource).toBe("reservation_submit");
     expect(parsed[document.hash]?.source).toBe("migration_backfill");
   });
 });

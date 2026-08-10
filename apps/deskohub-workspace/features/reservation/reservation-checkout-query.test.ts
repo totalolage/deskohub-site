@@ -99,7 +99,7 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
 });
 
 describe("getReservationDefaultValuesFromPayState", () => {
-  test("restores all reservation details while resetting legal consent", () => {
+  test("restores all reservation details while resetting marketing consent", () => {
     const reservation = Schema.decodeUnknownSync(
       normalizedCoworkReservationOrderSchema
     )({
@@ -123,7 +123,6 @@ describe("getReservationDefaultValuesFromPayState", () => {
       email: "ada@example.com",
       phone: "+420 777 000 111",
       message: "Please prepare the standing desk.",
-      legalConsent: false,
       marketingConsent: false,
     });
   });

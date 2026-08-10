@@ -6,9 +6,7 @@ import {
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
-import {
-  getPrefilledReservationConditionScript,
-} from "../browser-scripts";
+import { getPrefilledReservationConditionScript } from "../browser-scripts";
 import { submitReservationForPayPage } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -188,7 +186,7 @@ export const returnToPrefilledReservation = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const reservationStepSelector = `a[href^="${reservationPath}?payState="]`;
-    const consentSelector = "#reservation-privacy-consent";
+    const consentSelector = "#reservation-marketing-consent";
     const browserActionTimeoutMs = timeouts.browserAction;
     yield* activateHydratedBrowserElement(
       run,
@@ -201,20 +199,16 @@ export const returnToPrefilledReservation = ({
       matches: (value) => {
         const url = parseUrl(value);
         return (
-          url?.pathname === reservationPath &&
-          url.searchParams.has("payState")
+          url?.pathname === reservationPath && url.searchParams.has("payState")
         );
       },
       run,
       session,
       timeoutMs: timeouts.uiTransition,
     });
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      consentSelector,
-      { timeoutMs: timeouts.uiTransition }
-    );
+    yield* waitForBrowserReactHydration(run, session, consentSelector, {
+      timeoutMs: timeouts.uiTransition,
+    });
     yield* waitForBrowserCondition(
       run,
       session,

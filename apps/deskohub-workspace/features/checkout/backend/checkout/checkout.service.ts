@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import {
+  type HostedPaymentCustomer,
   type ExternalAPIError as NexiExternalAPIError,
   type NetworkError as NexiNetworkError,
   NexiService,
@@ -63,6 +64,7 @@ import {
 } from "../fulfillment/paid-fulfillment.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import { getNexiCurrencyOverride } from "../payment/nexi-currency";
+import { getNexiHostedPaymentCustomer } from "../payment/nexi-customer-info";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
@@ -497,6 +499,7 @@ export const CheckoutServiceLive = Layer.effect(
         readonly locale: Locale;
         readonly total: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
+        readonly customer: HostedPaymentCustomer;
       }) {
         yield* Effect.annotateLogsScoped({
           providerSessionInput: {
@@ -505,6 +508,7 @@ export const CheckoutServiceLive = Layer.effect(
             checkoutSessionId: input.checkoutSessionId,
             locale: input.locale,
             total: input.total,
+            hasCustomer: true,
           },
         });
         yield* Effect.logInfo("Checkout provider session start requested");
@@ -564,6 +568,7 @@ export const CheckoutServiceLive = Layer.effect(
             notificationUrl,
             resultUrl,
             cancelUrl,
+            customer: input.customer,
           })
           .pipe(
             Effect.tapError((cause) =>
@@ -983,6 +988,12 @@ export const CheckoutServiceLive = Layer.effect(
                   locale,
                   total: expectedPrice,
                   commitment: prepared.commitment,
+                  customer: getNexiHostedPaymentCustomer({
+                    id: dotyposCustomerId,
+                    name: data.name,
+                    email: data.email,
+                    phone: data.phone,
+                  }),
                 });
 
           return yield* startPayment.pipe(

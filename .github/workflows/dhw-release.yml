@@ -1,0 +1,205 @@
+name: DHW Release
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/dhw-release.yml
+      - apps/dhw/**
+      - packages/workspace-admin-api/**
+      - release-please-config.json
+      - .release-please-manifest.json
+  workflow_dispatch:
+
+concurrency:
+  group: dhw-release
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Verify the release input
+        run: |
+          set -euo pipefail
+
+          bun turbo lint \
+            --filter=@deskohub/workspace-admin-api \
+            --filter=dhw
+          bun turbo typecheck \
+            --filter=@deskohub/workspace-admin-api \
+            --filter=dhw
+          bun --cwd apps/dhw test
+          bun apps/dhw/src/build.ts development
+          expected_version="$(jq -r '.version' apps/dhw/package.json)"
+          build_info="$(apps/dhw/dist/dhw version --json)"
+          test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
+          test "$(jq -r '.target' <<<"$build_info")" = "development"
+
+  release-please:
+    needs: verify
+    runs-on: ubuntu-latest
+    outputs:
+      release-created: ${{ steps.release.outputs['apps/dhw--release_created'] }}
+      tag-name: ${{ steps.release.outputs['apps/dhw--tag_name'] }}
+
+    steps:
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        id: app-token
+        with:
+          app-id: ${{ vars.DHW_RELEASE_APP_ID }}
+          private-key: ${{ secrets.DHW_RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Require immutable releases
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          enabled="$(gh api \
+            -H 'X-GitHub-Api-Version: 2026-03-10' \
+            "repos/${GITHUB_REPOSITORY}/immutable-releases" \
+            --jq '.enabled')"
+          test "$enabled" = "true" || {
+            echo "Enable immutable releases before publishing dhw." >&2
+            exit 1
+          }
+
+      - uses: googleapis/release-please-action@0dfd8538845b8e92600d271a895a5372865d4062
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+      - name: Enable auto-merge for the release pull request
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          set -euo pipefail
+
+          pr_number="$(jq -er '.[0].number' <<<"$RELEASE_PRS")"
+          gh pr merge "$pr_number" --repo "$GITHUB_REPOSITORY" --auto --merge
+
+  build:
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-x64-baseline
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Verify release sources
+        run: |
+          bun turbo typecheck \
+            --filter=@deskohub/workspace-admin-api \
+            --filter=dhw
+          bun --cwd apps/dhw test
+
+      - name: Compile the native binary
+        env:
+          DHW_TARGET: ${{ matrix.target }}
+        run: bun apps/dhw/src/build.ts "$DHW_TARGET"
+
+      - name: Verify embedded version and target
+        env:
+          DHW_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+
+          expected_version="$(jq -r '.version' apps/dhw/package.json)"
+          build_info="$("apps/dhw/dist/dhw-${DHW_TARGET}" version --json)"
+          test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
+          test "$(jq -r '.target' <<<"$build_info")" = "$DHW_TARGET"
+
+      - uses: actions/attest-build-provenance@43d14bc2b83dec42d39ecae14e916627a18bb661
+        with:
+          subject-path: apps/dhw/dist/dhw-${{ matrix.target }}
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dhw-${{ matrix.target }}
+          path: apps/dhw/dist/dhw-${{ matrix.target }}
+          if-no-files-found: error
+
+  publish:
+    needs: [release-please, build]
+    if: needs.release-please.outputs.release-created == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          pattern: dhw-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify and checksum the release bundle
+        run: |
+          set -euo pipefail
+
+          for target in \
+            darwin-arm64 \
+            darwin-x64 \
+            linux-arm64 \
+            linux-x64-baseline; do
+            test -f "dist/dhw-${target}"
+          done
+          test "$(find dist -maxdepth 1 -type f -name 'dhw-*' | wc -l)" -eq 4
+          cd dist
+          sha256sum dhw-* > SHA256SUMS
+
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349
+        id: app-token
+        with:
+          app-id: ${{ vars.DHW_RELEASE_APP_ID }}
+          private-key: ${{ secrets.DHW_RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Upload and publish the immutable release
+        env:
+          DHW_TAG: ${{ needs.release-please.outputs.tag-name }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+
+          gh release upload "$DHW_TAG" dist/* --repo "$GITHUB_REPOSITORY"
+          gh release edit "$DHW_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest

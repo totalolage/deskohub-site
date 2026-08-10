@@ -347,7 +347,7 @@ describe("cowork reservation quotes", () => {
       entryTier: "basic",
       date: "2026-06-01",
       coffee: false,
-      legalConsent: true,
+      marketingConsent: true,
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 777 777",
@@ -358,7 +358,7 @@ describe("cowork reservation quotes", () => {
 
     expect(quote).not.toHaveProperty("order");
     expect(quote).not.toHaveProperty("date");
-    expect(quote).not.toHaveProperty("legalConsent");
+    expect(quote).not.toHaveProperty("marketingConsent");
     expect(quote).not.toHaveProperty("name");
     expect(quote).not.toHaveProperty("email");
     expect(quote).not.toHaveProperty("phone");
@@ -374,7 +374,7 @@ describe("cowork reservation quotes", () => {
       entryTier: "plus",
       date: "2026-06-01",
       coffee: false,
-      legalConsent: true,
+      marketingConsent: true,
       name: "Grace Hopper",
       email: "grace@example.com",
       phone: "+420 111 111 111",

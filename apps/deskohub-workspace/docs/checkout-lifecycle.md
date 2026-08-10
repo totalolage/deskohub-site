@@ -17,6 +17,8 @@ Do not recreate `checkout_return_state_tokens` as a state table. Return pages mu
 
 Discount configuration and audit history extend this lifecycle through `discounts`, `discount_product_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. See [Workspace discount-code operations](./discount-codes.md).
 
+Customer marketing consent is independent of a reservation and lives in `customer_marketing_consents`, keyed directly by the stable Dotypos customer ID. The reservation page always shows a privacy notice and link, but privacy-policy acknowledgement is not a consent gate and is not persisted. The optional marketing checkbox grants customer-level consent; leaving it unchecked is a no-op, not a withdrawal.
+
 ## Advertised, quoted, and payable prices
 
 Checkout has three distinct price boundaries:
@@ -68,7 +70,9 @@ Advertised, signed, and freshly affirmed quotes and local payment attempts alway
 | Checkout session and attempt idempotency | Deskohub workflow | Store only the HMAC session and attempt keys. The object payloads used to derive them are transient and must not be persisted. |
 | Payment session and terminal state | Nexi plus Deskohub workflow | Store positive Nexi attempts with their external identifiers and store zero-total internal attempts without external fields. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
-| Legal acceptance | Deskohub legal evidence | Store document keys, paths, hashes, acceptance booleans, timestamps, locale, source, and idempotency keys. Never store rendered legal documents or customer contact data. |
+| Administration order and operation views | Nexi, joined to Deskohub attempts | Read current orders and operations from Nexi on demand and expose only allowlisted identifiers, status, channel, timestamps, and amounts. Do not persist provider snapshots. |
+| Customer marketing consent | Deskohub customer consent | Store one active-or-withdrawn row per `dotypos_customer_id`, with the accepted marketing document hash, locale, and grant/withdrawal timestamps. Never store customer contact data. |
+| Reservation terms acceptance | Deskohub legal evidence | Store the accepted terms and operating-rules document keys, paths, hashes, timestamps, locale, and source. Never store rendered legal documents or customer contact data. |
 
 ## No-PII Policy
 
@@ -80,12 +84,14 @@ Allowed local values:
 - Deskohub IDs, correlation IDs, HMAC checkout session and attempt keys, payment attempt IDs, webhook event IDs, and provider operation IDs.
 - Nexi `securityToken`, because it is short-lived non-PII and needed for payment-attempt safety.
 - Legal document paths and hashes.
+- Customer marketing grant and withdrawal timestamps.
 - Local state enums, timestamps, and normalized failure codes.
 - Payment amounts, currencies, quote fingerprints, and product price metadata needed to verify a Nexi result, provided they do not include customer or reservation facts that Dotypos owns.
 
 Enforcement boundary:
 
 - Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient checkout-key payloads.
+- Nexi HPP creation may transmit the signed reservation's customer name, email, and normalized phone fields as `order.customerInfo`; provider adapters must not persist or log those values.
 - Repository inputs must be shaped so PII has no destination field.
 - `jsonb` columns must use schemas that exclude customer contact fields, free-form customer notes, raw provider envelopes, and raw Dotypos responses.
 - Logs may contain PII only under the application's global filtering policy.
@@ -147,6 +153,7 @@ One row per payment attempt. Positive totals create Nexi HPP/session attempts. E
 | `workspace_reservation_id` | text | yes | Parent workflow row. |
 | `provider` | text enum | yes | `nexi` for positive external payment or `internal` for zero-total completion. |
 | `provider_order_id` | text | no | Nexi order ID, normally the value sent to `order.orderId`. Required and unique for Nexi; forbidden for internal attempts. |
+| `provider_order_created_at` | timestamptz | no | When Nexi accepted the hosted-payment request and returned its provider session. Set once for new Nexi attempts. |
 | `security_token` | text | no | Nexi HPP security token. Short-lived non-PII. |
 | `state` | text enum | yes | Attempt-level payment state. |
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
@@ -193,30 +200,42 @@ One row per Nexi webhook event identity for dedupe and normalized processing sta
 
 No raw notification payload, `securityToken`, `customerInfo`, warnings, `additionalData`, card data, or provider response body may be stored.
 
+### `customer_marketing_consents`
+
+One row per Dotypos customer with a marketing-consent history state. There is no local customer foreign key because Dotypos owns customer identity.
+
+| Column | Type | Required | Purpose |
+| --- | --- | --- | --- |
+| `dotypos_customer_id` | text | yes | Primary key identifying the consenting Dotypos customer. |
+| `document_hash` | text | yes | Hash of the marketing communication document that was accepted. |
+| `locale` | text | yes | Locale of the accepted document. |
+| `granted_at` | timestamptz | yes | Server timestamp for the current grant. |
+| `withdrawn_at` | timestamptz | no | Withdrawal timestamp. Null means the consent is active. |
+
+Granting consent inserts a missing row, leaves an already-active row unchanged, and reactivates a withdrawn row with the newly submitted evidence. An unchecked reservation form never withdraws consent. No historical backfill is required.
+
 ### `legal_evidence_events`
 
-Append-only legal acceptance/rejection evidence. Legal hashes may also be used during workflow decisions, but this table is the durable legal event stream.
+Append-only reservation terms acceptance evidence written when the customer submits payment. Customer marketing consent does not belong in this table.
 
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local legal evidence event ID. |
 | `workspace_reservation_id` | text | no | Associated workflow row when known. |
-| `idempotency_key` | text | yes | Submit HMAC or other non-PII dedupe key. |
 | `document_key` | text | yes | Stable internal document key. |
 | `document_path` | text | yes | Path of accepted document version. |
 | `document_hash` | text | yes | SHA-256 hash of accepted/rejected document. |
 | `hash_algorithm` | text enum | yes | Initial value: `sha256`. |
-| `accepted` | boolean | yes | Whether the customer accepted this document/acknowledgement. |
+| `accepted` | boolean | yes | Whether the customer accepted this document. Current payment writes are accepted terms and operating rules. |
 | `accepted_at` | timestamptz | yes | Server timestamp for the acceptance decision. |
 | `locale` | text | yes | Locale of the legal document shown. |
-| `source` | text | yes | Normalized source, for example `reservation_submit`, `retry_submit`, or `migration_backfill`. |
+| `source` | text | yes | Normalized source. Current checkout writes use `payment_submit`. |
 | `created_at` | timestamptz | yes | DB-managed creation timestamp. |
 
 Indexes and constraints:
 
 - Primary key on `id`.
 - Index on `workspace_reservation_id`.
-- Index on `(idempotency_key, document_hash)`.
 - `hash_algorithm = 'sha256'`.
 - No rendered document bodies or PII-bearing consent payloads.
 
@@ -312,7 +331,7 @@ becomes retryable after one minute.
 
 ## Checkout Session And Attempt HMACs
 
-`checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed form value or a new form mount creates a new attempt.
+`checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed reservation value or a new form mount creates a new attempt. Marketing consent is customer-scoped and is deliberately excluded from the reservation attempt HMAC.
 
 Only HMAC digests are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
 
@@ -341,13 +360,16 @@ sequenceDiagram
   participant DB as Local DB
   participant Dotypos
 
-  Customer->>App: Submit reservation/contact/legal form
+  Customer->>App: Submit reservation/contact form with optional marketing consent
   App->>App: Open anonymous advertised-price snapshot
-  App->>App: Validate input and legal consent
+  App->>App: Validate reservation input
   App->>App: Affirm only its advertised anonymous automatic discounts
   App->>App: Derive checkout session and attempt HMACs
   App->>Dotypos: Find or create customer using PII
   Dotypos-->>App: dotyposCustomerId
+  opt marketing checkbox checked
+    App->>DB: Grant customer_marketing_consents
+  end
   App->>App: Evaluate customer discount for the first signed summary
   alt same attempt is already held
     App->>DB: Reuse exact attempt row
@@ -362,7 +384,6 @@ sequenceDiagram
   App->>Dotypos: Create NEW reservation hold
   Dotypos-->>App: dotyposReservationId
   App->>DB: Set reservation_state=held and hold deadline
-  App->>DB: Insert legal_evidence_events
   alt advertised price still matches
     App-->>Customer: Show signed order summary, which may first add the customer discount
   else advertised discount unavailable
@@ -509,13 +530,12 @@ sequenceDiagram
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
 | Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
-| Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
 
 ## Live Test Safety Checklist
 
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.
 - Confirm migrations do not create `checkout_return_state_tokens`.
-- Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, and `legal_evidence_events` have no PII-capable columns or raw payload columns.
+- Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, `legal_evidence_events`, and `customer_marketing_consents` have no PII-capable columns or raw payload columns.
 - Confirm checkout session/attempt key derivation stores only HMAC digests and uses `JSON.stringify` on fixed object payloads.
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.

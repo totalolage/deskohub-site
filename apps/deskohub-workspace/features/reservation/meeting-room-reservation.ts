@@ -7,7 +7,6 @@ import {
   meetingRoomReservationDurationSchema,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
-import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
@@ -337,7 +336,6 @@ const meetingRoomReservationBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
   startDateTime: meetingRoomStartDateTimeSchema,
   duration: meetingRoomReservationDurationKeySchema,
-  legalConsent: reservationLegalConsentSchema,
   marketingConsent: Schema.Boolean,
 });
 
@@ -385,7 +383,6 @@ export const meetingRoomReservationDefaultValues: MeetingRoomReservationInput =
     email: "",
     phone: "",
     message: "",
-    legalConsent: false,
     marketingConsent: false,
   };
 
@@ -408,7 +405,6 @@ export const getMeetingRoomReservationDefaultValues = (
     email: reservation.email,
     phone: reservation.phone,
     ...(reservation.message !== undefined && { message: reservation.message }),
-    legalConsent: false,
     marketingConsent: false,
   };
 };

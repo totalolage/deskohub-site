@@ -832,6 +832,15 @@ describe("CheckoutService", () => {
       expect.objectContaining({
         amount: "55000",
         currency: "EUR",
+        customer: {
+          id: "stored-dotypos-customer-id",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          mobilePhone: {
+            countryCallingCode: "420",
+            nationalNumber: "777777777",
+          },
+        },
         resultUrl:
           "http://deskohub.test/cs-CZ/checkout/pay/return/reservation-affirms-code",
         cancelUrl:

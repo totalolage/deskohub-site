@@ -11,6 +11,11 @@ import {
   type AdministrationReservationListInput,
   AdministrationService,
 } from "./administration.service";
+import {
+  getAdministrationOperationFilters,
+  getAdministrationOrderDateTimeBounds,
+  getAdministrationPaymentDateTimeBounds,
+} from "./payment-administration-filters";
 
 export type AdministrationSearchParams = Promise<
   Record<string, string | readonly string[] | undefined>
@@ -153,3 +158,67 @@ export const loadAdministrationCustomerReservations = async (
     return yield* administration.loadCustomerReservations({ customerId, page });
   }).pipe(runAdministration("administration.customer-reservations"));
 };
+
+export const loadAdministrationOrders = async (
+  searchParams: AdministrationSearchParams
+) => {
+  await authorizeAdministrationPage();
+  const params = await searchParams;
+  const range = getAdministrationOrderDateTimeBounds(
+    firstParam(params.from),
+    firstParam(params.to)
+  );
+  const result = await Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.listOrders({
+      fromTime: range.fromTime,
+      toTime: range.toTime,
+      maxRecords: 50,
+    });
+  }).pipe(runAdministration("administration.orders"));
+  return { range, result };
+};
+
+export const loadAdministrationOrder = cache(async (orderId: string) => {
+  await authorizeAdministrationPage();
+  return Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.loadOrder(orderId);
+  }).pipe(runAdministration("administration.order"));
+});
+
+export const loadAdministrationOperations = async (
+  searchParams: AdministrationSearchParams
+) => {
+  await authorizeAdministrationPage();
+  const params = await searchParams;
+  const range = getAdministrationPaymentDateTimeBounds(
+    firstParam(params.from),
+    firstParam(params.to)
+  );
+  const { channel, operationType } = getAdministrationOperationFilters({
+    channel: firstParam(params.channel),
+    operationType: firstParam(params.operationType),
+  });
+  const result = await Effect.gen(function* () {
+    const administration = yield* AdministrationService;
+    return yield* administration.listOperations({
+      fromTime: range.fromTime,
+      toTime: range.toTime,
+      maxRecords: 100,
+      channel,
+      operationType,
+    });
+  }).pipe(runAdministration("administration.operations"));
+  return { input: { channel, operationType }, range, result };
+};
+
+export const loadAdministrationOperation = cache(
+  async (operationId: string) => {
+    await authorizeAdministrationPage();
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadOperation(operationId);
+    }).pipe(runAdministration("administration.operation"));
+  }
+);

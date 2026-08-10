@@ -1,10 +1,20 @@
 import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { ExternalAPIError, NetworkError } from "../errors";
-import type { CreateHostedPaymentPageRequest } from "../generated/effect.gen";
+import type {
+  CreateHostedPaymentPageRequest,
+  Operation,
+  OrderStatus,
+} from "../generated/effect.gen";
 import type {
   CreateHostedPaymentPageInput,
+  GetNexiOperationInput,
+  GetNexiOrderInput,
+  ListNexiOperationsInput,
+  ListNexiOrdersInput,
   Locale,
+  NexiOperation,
+  NexiOrder,
   PaymentOutcomeStatus,
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
@@ -67,18 +77,45 @@ const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
   currency: input.currency,
 });
 
+const getHostedPaymentPageLogAnnotations = (
+  input: CreateHostedPaymentPageInput
+) => ({
+  orderId: input.orderId,
+  correlationId: input.correlationId,
+  amount: input.amount,
+  currency: input.currency,
+  locale: input.locale,
+  hasCustomerId: Boolean(input.customer?.id),
+  hasCustomerEmail: Boolean(input.customer?.email),
+  hasCustomerPhone: Boolean(input.customer?.mobilePhone),
+});
+
 const makeNexiService = Effect.gen(function* () {
   const nexiClient = yield* NexiGeneratedClient;
 
   const createHostedPaymentPage = Effect.fn("createHostedPaymentPage")(
     function* (input: CreateHostedPaymentPageInput) {
-      yield* Effect.annotateLogsScoped({ input });
+      yield* Effect.annotateLogsScoped(
+        getHostedPaymentPageLogAnnotations(input)
+      );
 
       const request: CreateHostedPaymentPageRequest = {
         order: {
           orderId: input.orderId,
           amount: input.amount,
           currency: input.currency,
+          ...(input.customer && {
+            customerId: input.customer.id,
+            customerInfo: {
+              cardHolderName: input.customer.name,
+              cardHolderEmail: input.customer.email,
+              ...(input.customer.mobilePhone && {
+                mobilePhoneCountryCode:
+                  input.customer.mobilePhone.countryCallingCode,
+                mobilePhone: input.customer.mobilePhone.nationalNumber,
+              }),
+            },
+          }),
         },
         paymentSession: {
           amount: input.amount,
@@ -92,7 +129,6 @@ const makeNexiService = Effect.gen(function* () {
         },
       };
 
-      yield* Effect.annotateLogsScoped({ requestBody: request });
       yield* Effect.logInfo("Nexi hosted payment page request started");
 
       const response = yield* nexiClient
@@ -109,7 +145,9 @@ const makeNexiService = Effect.gen(function* () {
           )
         );
 
-      yield* Effect.annotateLogsScoped({ providerResponse: response });
+      yield* Effect.annotateLogsScoped({
+        providerOrderId: response.orderId ?? input.orderId,
+      });
 
       const result = {
         orderId: response.orderId ?? input.orderId,
@@ -117,13 +155,15 @@ const makeNexiService = Effect.gen(function* () {
         securityToken: response.securityToken,
       };
 
-      yield* Effect.annotateLogsScoped({ result });
       yield* Effect.logInfo("Nexi hosted payment page request completed");
 
       return result;
     },
     (effect, input) =>
-      effect.pipe(Effect.annotateLogs({ ...input }), Effect.scoped)
+      effect.pipe(
+        Effect.annotateLogs(getHostedPaymentPageLogAnnotations(input)),
+        Effect.scoped
+      )
   );
 
   const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
@@ -142,7 +182,10 @@ const makeNexiService = Effect.gen(function* () {
           )
         );
 
-      yield* Effect.logDebug("Nexi order lookup result", { order });
+      yield* Effect.logDebug("Nexi order lookup result", {
+        operationCount: order.operations?.length ?? 0,
+        orderId: order.orderStatus?.order.orderId ?? order.orderId,
+      });
 
       const providerOrder = order.orderStatus?.order;
       const operations = order.operations ?? [];
@@ -163,8 +206,12 @@ const makeNexiService = Effect.gen(function* () {
         executedPaymentOperation?.operationId ?? failedOperation?.operationId;
 
       yield* Effect.logDebug("Nexi selected payment operations", {
-        executedPaymentOperation,
-        failedOperation,
+        executedOperationId: executedPaymentOperation?.operationId,
+        executedOperationResult: executedPaymentOperation?.operationResult,
+        executedOperationType: executedPaymentOperation?.operationType,
+        failedOperationId: failedOperation?.operationId,
+        failedOperationResult: failedOperation?.operationResult,
+        failedOperationType: failedOperation?.operationType,
       });
 
       const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
@@ -224,8 +271,100 @@ const makeNexiService = Effect.gen(function* () {
       )
   );
 
+  const getOrder = Effect.fn("NexiService.getOrder")(
+    function* (input: GetNexiOrderInput) {
+      yield* Effect.logInfo("Nexi order details lookup started", {
+        orderId: input.orderId,
+      });
+      const response = yield* nexiClient
+        .getOrder(input)
+        .pipe(Effect.retry(retryPolicy));
+      const providerOrder = response.orderStatus?.order;
+      const orderId =
+        providerOrder?.orderId ?? response.orderId ?? input.orderId;
+      const operations = (response.operations ?? []).map((operation) =>
+        toNexiOperation(operation, orderId)
+      );
+      const amount = response.amount ?? providerOrder;
+      const result: NexiOrder = {
+        orderId,
+        ...(amount?.amount && { amount: amount.amount }),
+        ...(amount?.currency && { currency: amount.currency }),
+        ...(response.orderStatus?.authorizedAmount && {
+          authorizedAmount: response.orderStatus.authorizedAmount,
+        }),
+        ...(response.orderStatus?.capturedAmount && {
+          capturedAmount: response.orderStatus.capturedAmount,
+        }),
+        ...(response.orderStatus?.lastOperationTime && {
+          lastOperationTime: response.orderStatus.lastOperationTime,
+        }),
+        ...(response.orderStatus?.lastOperationType && {
+          lastOperationType: response.orderStatus.lastOperationType,
+        }),
+        operations,
+      };
+      yield* Effect.logInfo("Nexi order details lookup completed", {
+        operationCount: operations.length,
+        orderId,
+      });
+      return result;
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.annotateLogs({
+          correlationId: input.correlationId,
+          orderId: input.orderId,
+        })
+      )
+  );
+
+  const listOrders = Effect.fn("NexiService.listOrders")(
+    function* (input: ListNexiOrdersInput) {
+      const response = yield* nexiClient
+        .listOrders(input)
+        .pipe(Effect.retry(retryPolicy));
+      return (response.orders ?? []).map(toNexiOrderStatus);
+    },
+    (effect, input) =>
+      effect.pipe(Effect.annotateLogs({ correlationId: input.correlationId }))
+  );
+
+  const getOperation = Effect.fn("NexiService.getOperation")(
+    function* (input: GetNexiOperationInput) {
+      const response = yield* nexiClient
+        .getOperation(input)
+        .pipe(Effect.retry(retryPolicy));
+      return toNexiOperation(response);
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.annotateLogs({
+          correlationId: input.correlationId,
+          operationId: input.operationId,
+        })
+      )
+  );
+
+  const listOperations = Effect.fn("NexiService.listOperations")(
+    function* (input: ListNexiOperationsInput) {
+      const response = yield* nexiClient
+        .listOperations(input)
+        .pipe(Effect.retry(retryPolicy));
+      return (response.operations ?? []).map((operation) =>
+        toNexiOperation(operation)
+      );
+    },
+    (effect, input) =>
+      effect.pipe(Effect.annotateLogs({ correlationId: input.correlationId }))
+  );
+
   return {
     createHostedPaymentPage,
+    getOperation,
+    getOrder,
+    listOperations,
+    listOrders,
     verifyPaymentOutcome,
   };
 });
@@ -269,3 +408,45 @@ const getOperationAmount = (
     currency: operation.operationCurrency,
   };
 };
+
+const toNexiOperation = (
+  operation: Operation,
+  fallbackOrderId?: string
+): NexiOperation => {
+  const amount = getOperationAmount(operation);
+  const orderId = operation.orderId ?? fallbackOrderId;
+  return {
+    ...(orderId && { orderId }),
+    ...(operation.operationId && { operationId: operation.operationId }),
+    ...(operation.channel && { channel: operation.channel }),
+    ...(operation.operationType && {
+      operationType: operation.operationType,
+    }),
+    ...(operation.operationResult && {
+      operationResult: operation.operationResult,
+    }),
+    ...(operation.operationTime && {
+      operationTime: operation.operationTime,
+    }),
+    ...(amount?.amount && { amount: amount.amount }),
+    ...(amount?.currency && { currency: amount.currency }),
+    ...(operation.cancelledOperationId && {
+      cancelledOperationId: operation.cancelledOperationId,
+    }),
+  };
+};
+
+const toNexiOrderStatus = (status: OrderStatus): NexiOrder => ({
+  orderId: status.order.orderId,
+  amount: status.order.amount,
+  currency: status.order.currency,
+  ...(status.authorizedAmount && { authorizedAmount: status.authorizedAmount }),
+  ...(status.capturedAmount && { capturedAmount: status.capturedAmount }),
+  ...(status.lastOperationTime && {
+    lastOperationTime: status.lastOperationTime,
+  }),
+  ...(status.lastOperationType && {
+    lastOperationType: status.lastOperationType,
+  }),
+  operations: [],
+});

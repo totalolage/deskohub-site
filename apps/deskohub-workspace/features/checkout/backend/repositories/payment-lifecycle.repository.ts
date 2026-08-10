@@ -466,13 +466,15 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly securityToken: string;
         readonly providerRedirectUrl: string;
       }) {
+        const providerOrderCreatedAt = Temporal.Now.instant();
         const [attempt] = yield* db
           .update(paymentAttempts)
           .set({
             state: "pending",
             securityToken: input.securityToken,
             providerRedirectUrl: input.providerRedirectUrl,
-            updatedAt: Temporal.Now.instant(),
+            providerOrderCreatedAt,
+            updatedAt: providerOrderCreatedAt,
           })
           .where(
             and(

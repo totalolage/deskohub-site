@@ -198,6 +198,9 @@ export const loadFixtureReservation = (
   const paidAt = Temporal.Instant.from(reservation.updatedAt)
     .subtract({ minutes: 35 })
     .toString();
+  const providerOrderCreatedAt = Temporal.Instant.from(paidAt)
+    .subtract({ minutes: 2 })
+    .toString();
   return {
     reservation,
     timeline: [
@@ -227,9 +230,28 @@ export const loadFixtureReservation = (
         tone: "neutral",
       },
       {
+        id: "fixture-order-created",
+        title: "Nexi order created",
+        description: "Nexi accepted the hosted-payment request.",
+        occurredAt: providerOrderCreatedAt,
+        tone: "neutral",
+        href: "/admin/orders/DADMINFIXTUREPAYMENT",
+      },
+      {
+        id: "fixture-operation",
+        title: "Payment executed by Nexi",
+        description: "Nexi reported this Ecommerce operation.",
+        occurredAt: Temporal.Instant.from(paidAt)
+          .subtract({ minutes: 1 })
+          .toString(),
+        tone: "positive",
+        href: "/admin/operations/DADMINFIXTUREOPERATION",
+      },
+      {
         id: "fixture-paid",
-        title: "Payment received",
-        description: "The reservation payment completed.",
+        title: "Payment recorded by Deskohub",
+        description:
+          "Deskohub verified the provider payment and marked the reservation paid.",
         occurredAt: paidAt,
         tone: "positive",
       },
@@ -248,13 +270,58 @@ export const loadFixtureReservation = (
     paymentAttempts: [
       {
         id: "fixture-payment",
+        providerOrderId: "DADMINFIXTUREPAYMENT",
         providerLabel: "Online payment",
         stateLabel: "Paid",
         amount: { value: 240000, exponent: 2, currency: "CZK" },
         createdAt: Temporal.Instant.from(paidAt)
           .subtract({ minutes: 3 })
           .toString(),
+        providerOrderCreatedAt,
         updatedAt: paidAt,
+      },
+    ],
+    orders: [
+      {
+        orderId: "DADMINFIXTUREPAYMENT",
+        providerAvailable: true,
+        providerStatus: "available",
+        provider: {
+          orderId: "DADMINFIXTUREPAYMENT",
+          amount: "240000",
+          currency: "CZK",
+          capturedAmount: "240000",
+          lastOperationTime: Temporal.Instant.from(paidAt)
+            .subtract({ minutes: 1 })
+            .toString(),
+          lastOperationType: "CAPTURE",
+          operations: [
+            {
+              orderId: "DADMINFIXTUREPAYMENT",
+              operationId: "DADMINFIXTUREOPERATION",
+              channel: "ECOMMERCE",
+              operationType: "CAPTURE",
+              operationResult: "EXECUTED",
+              operationTime: Temporal.Instant.from(paidAt)
+                .subtract({ minutes: 1 })
+                .toString(),
+              amount: "240000",
+              currency: "CZK",
+            },
+          ],
+        },
+        link: {
+          paymentAttemptId: "fixture-payment",
+          reservationId: reservation.id,
+          state: "paid",
+          stateLabel: "Paid",
+          amount: { value: 240000, exponent: 2, currency: "CZK" },
+          attemptCreatedAt: Temporal.Instant.from(paidAt)
+            .subtract({ minutes: 3 })
+            .toString(),
+          providerOrderCreatedAt,
+          providerOrderCreatedAtEstimated: false,
+        },
       },
     ],
     discounts: [

@@ -21,7 +21,6 @@ export const deriveCheckoutSessionKey = (checkoutSessionId: string) =>
 export const deriveCheckoutAttemptKey = (input: {
   readonly checkoutSessionId: string;
   readonly checkoutAttemptId: string;
-  readonly marketingConsent: boolean;
   readonly reservation: ReservationOrderData;
 }) => {
   const reservationDetails = Match.value(input.reservation).pipe(
@@ -35,7 +34,6 @@ export const deriveCheckoutAttemptKey = (input: {
   return deriveCheckoutKey({
     checkoutSessionId: input.checkoutSessionId,
     checkoutAttemptId: input.checkoutAttemptId,
-    marketingConsent: input.marketingConsent,
     reservation: {
       name: input.reservation.name,
       email: input.reservation.email,

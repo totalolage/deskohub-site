@@ -1,6 +1,5 @@
 import { Schema, SchemaGetter } from "effect";
 import { m } from "@/features/i18n";
-import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
@@ -125,7 +124,6 @@ export const officeReservationOrderInputSchema = Schema.Struct({
 
 export const officeReservationFormInputSchema = Schema.Struct({
   ...officeReservationOrderBaseSchema.fields,
-  legalConsent: reservationLegalConsentSchema,
   marketingConsent: Schema.Boolean,
 }).check(...officeReservationSelectionChecks);
 
@@ -144,7 +142,6 @@ export const normalizedOfficeReservationOrderSchema = Schema.Struct({
 
 export const normalizedOfficeReservationFormSchema = Schema.Struct({
   ...normalizedOfficeReservationOrderSchema.fields,
-  legalConsent: Schema.Boolean,
   marketingConsent: Schema.Boolean,
 });
 
@@ -309,7 +306,6 @@ export const normalizeOfficeReservationForm = (
   reservation: OfficeReservationFormInput
 ): NormalizedOfficeReservationForm => ({
   ...normalizeOfficeReservationOrder(reservation),
-  legalConsent: reservation.legalConsent,
   marketingConsent: reservation.marketingConsent,
 });
 
@@ -333,14 +329,13 @@ export const officeReservationDefaultValues: OfficeReservationInput = {
   email: "",
   phone: "",
   message: "",
-  legalConsent: false,
   marketingConsent: false,
 };
 
 export const getOfficeReservationOrder = (
   form: NormalizedOfficeReservationForm
 ): NormalizedOfficeReservationOrder => {
-  const { legalConsent: _, marketingConsent: __, ...reservation } = form;
+  const { marketingConsent: _, ...reservation } = form;
   return normalizedOfficeReservationOrderSchema.make(reservation);
 };
 
@@ -354,6 +349,5 @@ export const getOfficeReservationDefaultValues = (
   email: reservation.email,
   phone: reservation.phone,
   ...(reservation.message !== undefined && { message: reservation.message }),
-  legalConsent: false,
   marketingConsent: false,
 });

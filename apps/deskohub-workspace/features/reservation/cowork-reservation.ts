@@ -15,7 +15,6 @@ import {
   normalizedProfiCoworkReservationProductSchema,
   type WorkspaceCoworkProductTier,
 } from "@/features/reservation/cowork-reservation-product";
-import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
@@ -64,7 +63,6 @@ export const coworkReservationOrderInputSchema = Schema.Struct({
 export const coworkReservationFormInputSchema =
   coworkReservationOrderBaseSchema.mapFields((fields) => ({
     ...fields,
-    legalConsent: reservationLegalConsentSchema,
     marketingConsent: Schema.Boolean,
   }));
 
@@ -103,17 +101,14 @@ export const normalizedCoworkReservationOrderSchema = Schema.Union([
 export const normalizedCoworkReservationFormSchema = Schema.Union([
   Schema.Struct({
     ...normalizedBasicCoworkReservationOrderSchema.fields,
-    legalConsent: Schema.Boolean,
     marketingConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedPlusCoworkReservationOrderSchema.fields,
-    legalConsent: Schema.Boolean,
     marketingConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedProfiCoworkReservationOrderSchema.fields,
-    legalConsent: Schema.Boolean,
     marketingConsent: Schema.Boolean,
   }),
 ]);
@@ -358,7 +353,6 @@ export const normalizeCoworkReservationForm = (
   data: CoworkReservationFormInput
 ): NormalizedCoworkReservationForm => ({
   ...normalizeCoworkReservationOrder(data),
-  legalConsent: data.legalConsent,
   marketingConsent: data.marketingConsent,
 });
 
@@ -367,11 +361,11 @@ export const getCoworkReservationOrder = (
 ): NormalizedCoworkReservationOrder =>
   Match.value(form).pipe(
     Match.discriminatorsExhaustive("entryTier")({
-      basic: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
+      basic: ({ marketingConsent: _, ...reservation }) =>
         normalizedBasicCoworkReservationOrderSchema.make(reservation),
-      plus: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
+      plus: ({ marketingConsent: _, ...reservation }) =>
         normalizedPlusCoworkReservationOrderSchema.make(reservation),
-      profi: ({ legalConsent: _, marketingConsent: __, ...reservation }) =>
+      profi: ({ marketingConsent: _, ...reservation }) =>
         normalizedProfiCoworkReservationOrderSchema.make(reservation),
     })
   );
@@ -401,7 +395,6 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
   email: "",
   phone: "",
   message: "",
-  legalConsent: false,
   marketingConsent: false,
 };
 

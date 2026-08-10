@@ -52,6 +52,7 @@ export const paymentAttempts = pgTable(
     lastProviderOperationId: text("last_provider_operation_id"),
     lastProviderStatus: text("last_provider_status"),
     failureCode: text("failure_code"),
+    providerOrderCreatedAt: instant("provider_order_created_at"),
     createdAt: instant("created_at").notNull().default(sql`now()`),
     updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
@@ -71,7 +72,7 @@ export const paymentAttempts = pgTable(
     ),
     check(
       "payment_attempts_provider_fields_check",
-      sql`(${t.provider} = 'nexi' and ${t.providerOrderId} is not null) or (${t.provider} = 'internal' and ${t.providerOrderId} is null and ${t.securityToken} is null and ${t.providerRedirectUrl} is null and ${t.lastWebhookEventId} is null and ${t.lastProviderOperationId} is null and ${t.lastProviderStatus} is null)`
+      sql`(${t.provider} = 'nexi' and ${t.providerOrderId} is not null) or (${t.provider} = 'internal' and ${t.providerOrderId} is null and ${t.securityToken} is null and ${t.providerRedirectUrl} is null and ${t.lastWebhookEventId} is null and ${t.lastProviderOperationId} is null and ${t.lastProviderStatus} is null and ${t.providerOrderCreatedAt} is null)`
     ),
     check(
       "payment_attempts_internal_state_check",

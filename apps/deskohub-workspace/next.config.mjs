@@ -34,7 +34,11 @@ const nextConfig = {
     useTypeScriptCli: false,
   },
   reactCompiler: true,
-  transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
+  transpilePackages: [
+    "@deskohub/cloudinary",
+    "@deskohub/cloudinary-image",
+    "@deskohub/workspace-admin-api",
+  ],
   async redirects() {
     return [
       {

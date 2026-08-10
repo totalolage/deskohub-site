@@ -115,6 +115,22 @@ describe("PaymentLifecycleRepository", () => {
     );
   });
 
+  test("sets the provider order creation timestamp when the Nexi session attaches", async () => {
+    const source = await readRepository();
+    const attachProviderSession = sliceFrom(
+      source,
+      "const attachProviderSession = Effect.fn(",
+      "      const markPaid"
+    );
+    expect(attachProviderSession).toContain(
+      "const providerOrderCreatedAt = Temporal.Now.instant()"
+    );
+    expect(attachProviderSession).toContain("providerOrderCreatedAt,");
+    expect(attachProviderSession).toContain(
+      "updatedAt: providerOrderCreatedAt"
+    );
+  });
+
   test("locks the code and leaves claim release to owning terminal transitions", async () => {
     const source = await readRepository();
     const reserveClaim = sliceFrom(
