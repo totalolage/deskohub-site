@@ -437,7 +437,7 @@ export function CoworkReservationForm({
                                 ? advertisedProductItem.originalAmount
                                 : undefined
                             }
-                            suffix={m.pricingTariffPricePeriodSuffix(
+                            suffix={m.coworkReservationPricePeriodSuffix(
                               {},
                               { locale }
                             )}

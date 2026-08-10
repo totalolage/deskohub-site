@@ -11,7 +11,7 @@ backend services.
 | App | Purpose | Stack |
 | --- | --- | --- |
 | `apps/deskohub-boardgame-bar` | Public DeskoHub bar site at `bar.deskohub.cz`: home page, Dotypos-backed menu, gallery, board-game catalogue, contact, ChoiceQR table reservations, training room pages, cookie consent, and Dotypos admin setup flows. | Next.js 16, React 19, Tailwind CSS 3, Paraglide, Effect, Dotypos, Cloudinary, Resend |
-| `apps/deskohub-workspace` | Deskohub Workspace site at `workspace.deskohub.cz`: landing pages, pricing, gallery, legal pages, availability, checkout, Nexi payments, reservation holds, fulfillment, email notifications, and operational E2E tooling. | Next.js 16, React 19, Tailwind CSS 4, Paraglide, Effect, Drizzle/Postgres, Nexi, Dotypos, Google Calendar, PostHog |
+| `apps/deskohub-workspace` | Deskohub Workspace site at `workspace.deskohub.cz`: landing pages, gallery, legal pages, availability, checkout, Nexi payments, reservation holds, fulfillment, email notifications, and operational E2E tooling. | Next.js 16, React 19, Tailwind CSS 4, Paraglide, Effect, Drizzle/Postgres, Nexi, Dotypos, Google Calendar, PostHog |
 | `apps/deskohub-portal` | Localized portal at `www.deskohub.cz` that redirects/routes visitors into the Deskohub properties. | Astro 6, Paraglide, Vercel adapter |
 | `apps/dhw` | Native macOS/Linux CLI for the Deskohub Workspace administration API, with Effect CLI/HTTP and secure self-updates. | Bun native binary, Effect CLI, Effect HTTP |
 
