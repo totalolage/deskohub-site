@@ -58,8 +58,12 @@ describe("administration reservation components", () => {
     const view = render(
       <ReservationTable
         reservations={items.map((item, index) =>
-          index === 0
-            ? { ...item, statusNote: "Dotypos reports cancelled" }
+          index === 1
+            ? {
+                ...item,
+                status: { group: "in_progress", label: "Awaiting payment" },
+                statusNote: "Cancelled in Dotypos",
+              }
             : item
         )}
       />
@@ -90,7 +94,8 @@ describe("administration reservation components", () => {
         name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
       })
     ).toHaveLength(2);
-    expect(view.getAllByText("Dotypos reports cancelled")).toHaveLength(2);
+    expect(view.getAllByText("Cancelled in Dotypos")).toHaveLength(2);
+    expect(view.getAllByText("Deskohub: Awaiting payment")).toHaveLength(2);
   });
 
   test("formats reservation dates according to their family", () => {
@@ -165,12 +170,14 @@ describe("administration reservation components", () => {
       <RelatedReservationLink
         reservation={{
           ...reservation,
-          statusNote: "Dotypos reports cancelled",
+          status: { group: "in_progress", label: "Awaiting payment" },
+          statusNote: "Cancelled in Dotypos",
         }}
       />
     );
 
-    expect(view.getByText("Dotypos reports cancelled")).toBeDefined();
+    expect(view.getByText("Cancelled in Dotypos")).toBeDefined();
+    expect(view.getByText("Deskohub: Awaiting payment")).toBeDefined();
   });
 
   test("renders ordered operational history without forbidden fields", () => {

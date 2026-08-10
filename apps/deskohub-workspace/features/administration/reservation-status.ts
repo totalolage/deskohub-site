@@ -151,9 +151,6 @@ export const getAdministrationReservationStatus = (
   if (input.fulfillmentState === "fulfilled") {
     return { group: "complete", label: "Complete" };
   }
-  if (input.dotyposStatus === "CANCELLED") {
-    return { group: "attention", label: "Cancelled in Dotypos" };
-  }
   if (input.reservationState === "cancelling") {
     return { group: "in_progress", label: "Cancelling" };
   }

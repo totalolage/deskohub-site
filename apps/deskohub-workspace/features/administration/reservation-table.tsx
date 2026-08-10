@@ -231,16 +231,22 @@ function ReservationStatus({
 }) {
   return (
     <div className={alignRight ? "space-y-1.5 text-right" : "space-y-1.5"}>
-      <ReservationStatusBadge status={reservation.status} />
+      {reservation.statusNote ? (
+        <ReservationStatusBadge
+          status={{ group: "attention", label: reservation.statusNote }}
+        />
+      ) : (
+        <ReservationStatusBadge status={reservation.status} />
+      )}
       {reservation.statusNote && (
         <p
           className={
             alignRight
-              ? "max-w-32 text-xs font-medium text-burned-orange-ink"
-              : "text-xs font-medium text-burned-orange-ink"
+              ? "max-w-32 text-xs text-navy-blue/65"
+              : "text-xs text-navy-blue/65"
           }
         >
-          {reservation.statusNote}
+          Deskohub: {reservation.status.label}
         </p>
       )}
     </div>

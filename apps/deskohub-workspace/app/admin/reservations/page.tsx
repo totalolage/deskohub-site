@@ -54,7 +54,7 @@ export default async function ReservationsAdministrationPage({
 
         <form className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[11rem_13rem_12rem_auto_auto] 2xl:items-end 2xl:justify-end">
           <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-            Status
+            Deskohub status
             <select
               className={selectClassName}
               defaultValue={input.status ?? ""}

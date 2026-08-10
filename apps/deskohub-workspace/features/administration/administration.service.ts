@@ -429,7 +429,7 @@ const toReservationSummary = ({
     statusNote:
       live.reservation?.status === "CANCELLED" &&
       row.reservationState !== "cancelled"
-        ? "Dotypos reports cancelled"
+        ? "Cancelled in Dotypos"
         : null,
     createdAt: toIsoString(row.createdAt),
     latestPayment,

@@ -387,12 +387,19 @@ export function RelatedReservationLink({
           {formatAdministrationReservationDate(reservation) ??
             reservation.typeLabel}
         </span>
-        <span className="mt-1 block text-xs text-navy-blue/65">
-          {reservation.status.label}
+        <span
+          className={cn(
+            "mt-1 block text-xs",
+            reservation.statusNote
+              ? "font-medium text-burned-orange-ink"
+              : "text-navy-blue/65"
+          )}
+        >
+          {reservation.statusNote ?? reservation.status.label}
         </span>
         {reservation.statusNote && (
-          <span className="mt-1 block text-xs font-medium text-burned-orange-ink">
-            {reservation.statusNote}
+          <span className="mt-1 block text-xs text-navy-blue/65">
+            Deskohub: {reservation.status.label}
           </span>
         )}
       </span>

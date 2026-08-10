@@ -66,6 +66,9 @@ describe("ReservationsAdministrationPage", () => {
     );
 
     expect(view.getByLabelText("115 reservations").textContent).toBe("115");
+    expect(
+      view.getByRole("combobox", { name: "Deskohub status" })
+    ).toBeDefined();
     expect(view.queryByText("115 reservations")).toBeNull();
   });
 
