@@ -606,6 +606,14 @@ export const findFirstTextFieldRef = (snapshot: string) => {
   }
 };
 
+export const findFirstEnabledTextFieldRef = (snapshot: string) => {
+  for (const line of snapshot.split("\n")) {
+    if (hasDisabledSnapshotState(line)) continue;
+    const ref = getSnapshotRef(line);
+    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
+  }
+};
+
 export const summarizeHostedPaymentSnapshot = (snapshot: string) => {
   const lines = snapshot
     .split("\n")
@@ -749,7 +757,7 @@ export const findEnabledSnapshotRef = (
   labels: readonly string[]
 ) => {
   for (const line of snapshot.split("\n")) {
-    if (/\[disabled\]/i.test(line)) continue;
+    if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -762,7 +770,7 @@ export const findEnabledSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
-    if (/\[disabled\]/i.test(line)) continue;
+    if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -771,6 +779,9 @@ export const findEnabledSnapshotRef = (
       return ref;
   }
 };
+
+const hasDisabledSnapshotState = (line: string) =>
+  /\[[^\]]*\bdisabled\b[^\]]*\]/i.test(line);
 
 export const requireSnapshotRef = ({
   description,
