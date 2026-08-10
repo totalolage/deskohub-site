@@ -27,7 +27,6 @@ export const invoices = pgTable(
     invoiceNumber: text("invoice_number").notNull(),
     numberingYear: integer("numbering_year").notNull(),
     numberingSequence: integer("numbering_sequence").notNull(),
-    schemaVersion: integer("schema_version").notNull(),
     keyId: text("key_id").notNull(),
     encryptedDocument: bytea("encrypted_document").notNull(),
     issuedAt: instant("issued_at").notNull(),
@@ -45,7 +44,6 @@ export const invoices = pgTable(
       "invoices_numbering_sequence_check",
       sql`${t.numberingSequence} between 1 and 999999`
     ),
-    check("invoices_schema_version_check", sql`${t.schemaVersion} > 0`),
     check("invoices_key_id_check", sql`${t.keyId} ~ '^[A-Z][A-Z0-9_]{2,31}$'`),
     check(
       "invoices_issued_at_year_check",

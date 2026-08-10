@@ -7,6 +7,7 @@ import {
 import {
   type AccountingBuyer,
   type AccountingDocumentSnapshot,
+  accountingDocumentIdentitySchema,
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
 } from "./accounting-document-snapshot";
@@ -25,20 +26,22 @@ export const invoiceNumberSchema = Schema.String.check(
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 
 const invoiceIdentitySchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+  ...accountingDocumentIdentitySchema.fields,
   paymentAttemptId: Schema.NonEmptyString,
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
 });
 
 const coworkInvoiceDocumentSchema = Schema.Struct({
-  ...coworkAccountingDocumentSnapshotSchema.fields,
   ...invoiceIdentitySchema.fields,
+  reservation: coworkAccountingDocumentSnapshotSchema.fields.reservation,
+  quote: coworkAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 const meetingRoomInvoiceDocumentSchema = Schema.Struct({
-  ...meetingRoomAccountingDocumentSnapshotSchema.fields,
   ...invoiceIdentitySchema.fields,
+  reservation: meetingRoomAccountingDocumentSnapshotSchema.fields.reservation,
+  quote: meetingRoomAccountingDocumentSnapshotSchema.fields.quote,
 });
 
 export const invoiceDocumentSchema = Schema.Union([
@@ -83,10 +86,11 @@ export const makeInvoiceDocument = (input: {
   readonly paymentAttemptId: string;
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
-}): InvoiceDocument =>
-  invoiceDocumentSchema.make({
-    ...input.source,
-    schemaVersion: 1,
+}): InvoiceDocument => {
+  const { schemaVersion: _sourceSchemaVersion, ...source } = input.source;
+
+  return invoiceDocumentSchema.make({
+    ...source,
     buyer: input.buyer,
     paymentAttemptId: input.paymentAttemptId,
     invoiceNumber: input.invoiceNumber,
@@ -94,3 +98,4 @@ export const makeInvoiceDocument = (input: {
       temporalInstantToIsoString(input.issuedAt)
     ),
   });
+};

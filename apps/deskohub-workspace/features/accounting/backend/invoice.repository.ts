@@ -132,7 +132,6 @@ export class InvoiceRepository extends Context.Service<
             paymentAttemptId: invoices.paymentAttemptId,
             dotyposCustomerId: invoices.dotyposCustomerId,
             invoiceNumber: invoices.invoiceNumber,
-            schemaVersion: invoices.schemaVersion,
             issuedAt: invoices.issuedAt,
             documentJson: decryptAccountingSnapshot(
               invoices.encryptedDocument,
@@ -367,7 +366,6 @@ export class InvoiceRepository extends Context.Service<
                 invoiceNumber,
                 numberingYear,
                 numberingSequence: counter.sequence,
-                schemaVersion: document.schemaVersion,
                 keyId: key.id,
                 encryptedDocument: encryptAccountingSnapshot(
                   JSON.stringify(document),
@@ -419,7 +417,6 @@ const validateStoredInvoice = Effect.fn(
     readonly paymentAttemptId: string;
     readonly dotyposCustomerId: string;
     readonly invoiceNumber: string;
-    readonly schemaVersion: number;
     readonly issuedAt: Temporal.Instant;
   };
   readonly document: InvoiceDocument;
@@ -430,7 +427,6 @@ const validateStoredInvoice = Effect.fn(
     document.paymentAttemptId !== row.paymentAttemptId ||
     document.dotyposCustomerId !== row.dotyposCustomerId ||
     document.invoiceNumber !== row.invoiceNumber ||
-    document.schemaVersion !== row.schemaVersion ||
     Temporal.Instant.compare(
       Temporal.Instant.from(document.issuedAt),
       row.issuedAt

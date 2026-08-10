@@ -61,11 +61,13 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
     const schema = await readAppFile("db/schema/invoices.ts");
     const migration = await readAppFile(
-      "db/migrations/20260810182916_issued_invoices/migration.sql"
+      "db/migrations/20260810195950_issued_invoices/migration.sql"
     );
 
     expect(schema).toContain('bytea("encrypted_document")');
     expect(schema).not.toContain("jsonb(");
+    expect(schema).not.toContain("schemaVersion");
+    expect(migration).not.toContain('"schema_version"');
     for (const fragment of piiColumnFragments) {
       expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
     }

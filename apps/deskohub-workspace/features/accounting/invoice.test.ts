@@ -84,7 +84,6 @@ describe("invoice", () => {
     });
 
     expect(document).toMatchObject({
-      schemaVersion: 1,
       workspaceReservationId: "reservation-id",
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: "WS-FV-2026-000042",
@@ -97,13 +96,14 @@ describe("invoice", () => {
         legalName: "Invoice Buyer s.r.o.",
       },
     });
+    expect(document).not.toHaveProperty("schemaVersion");
     expect(source.buyer).toEqual({
       kind: "person",
       legalName: "Original Buyer",
     });
   });
 
-  test("round-trips strictly through the versioned document schema", async () => {
+  test("round-trips strictly through the document schema", async () => {
     const document = makeInvoiceDocument({
       source,
       buyer: source.buyer,

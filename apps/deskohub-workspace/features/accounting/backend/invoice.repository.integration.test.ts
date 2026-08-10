@@ -126,6 +126,7 @@ describeIntegration("invoice repository PostgreSQL integration", () => {
     ).toHaveLength(1);
     expect(results.filter(({ changed }) => changed)).toHaveLength(1);
     expect(results[0]?.invoice.document.buyer).toEqual(buyer);
+    expect(results[0]?.invoice.document).not.toHaveProperty("schemaVersion");
 
     const issued = results[0]?.invoice;
     expect(issued).toBeDefined();

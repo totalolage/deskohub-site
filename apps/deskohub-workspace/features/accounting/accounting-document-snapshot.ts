@@ -99,8 +99,7 @@ const accountingSupplierSchema = Schema.Struct({
   contactEmail: Schema.NonEmptyString,
 });
 
-const accountingSnapshotIdentitySchema = Schema.Struct({
-  schemaVersion: Schema.Literal(1),
+export const accountingDocumentIdentitySchema = Schema.Struct({
   workspaceReservationId: workspaceReservationIdSchema,
   dotyposReservationId: DotyposReservationIdSchema,
   dotyposCustomerId: DotyposCustomerIdSchema,
@@ -110,7 +109,7 @@ const accountingSnapshotIdentitySchema = Schema.Struct({
 });
 
 export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+  ...accountingDocumentIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
     date: plainDateStringSchema,
@@ -119,7 +118,7 @@ export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
 });
 
 export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+  ...accountingDocumentIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),
     startsAt: instantStringSchema,
@@ -129,7 +128,7 @@ export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
 });
 
 const officeAccountingDocumentSnapshotSchema = Schema.Struct({
-  ...accountingSnapshotIdentitySchema.fields,
+  ...accountingDocumentIdentitySchema.fields,
   reservation: officeReservationDetailsSchema,
   quote: officeReservationQuoteSchema,
 });
@@ -169,7 +168,6 @@ export const makeAccountingDocumentSnapshot = (input: {
   readonly buyer?: AccountingBuyer;
 }): AccountingDocumentSnapshot => {
   const identity = {
-    schemaVersion: 1 as const,
     workspaceReservationId: input.workspaceReservationId,
     dotyposReservationId: input.dotyposReservationId,
     dotyposCustomerId: input.dotyposCustomerId,
