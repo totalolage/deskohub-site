@@ -7,7 +7,8 @@ import {
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import type { ReadableSpan, SpanExporter } from "@opentelemetry/sdk-trace-base";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Logger, type LogLevel, References } from "effect";
+import { Cause, Effect, Logger, type LogLevel, References } from "effect";
+import { getSensitiveDatabaseQueryParameterIndexes } from "./database-query-parameter-classifier";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -231,7 +232,8 @@ const censorQueryParameter = (
   }
 };
 
-const censorQueryParams = (
+const censorQueryParamsInternal = (
+  query: string | undefined,
   value: unknown,
   seen: WeakMap<object, unknown>
 ): unknown => {
@@ -240,25 +242,38 @@ const censorQueryParams = (
   const existing = seen.get(value);
   if (existing) return existing;
 
+  const sensitiveIndexes = query
+    ? getSensitiveDatabaseQueryParameterIndexes(query)
+    : new Set<number>();
   const result: unknown[] = [];
   seen.set(value, result);
 
   for (let index = 0; index < value.length; index += 1) {
-    if (index in value) {
-      result[index] = censorQueryParameter(value[index], seen);
-    }
+    if (!(index in value)) continue;
+    result[index] = sensitiveIndexes.has(index)
+      ? CENSORED_LOG_VALUE
+      : censorQueryParameter(value[index], seen);
   }
 
   return result;
 };
 
+export const censorDatabaseQueryParams = (
+  query: string,
+  params: readonly unknown[]
+): readonly unknown[] =>
+  censorQueryParamsInternal(query, params, new WeakMap()) as readonly unknown[];
+
 const censorLogRecordValue = (
   key: string,
   value: unknown,
-  seen: WeakMap<object, unknown>
+  seen: WeakMap<object, unknown>,
+  databaseQuery?: string
 ): unknown => {
   if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
-  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  if (key.toLowerCase() === "params") {
+    return censorQueryParamsInternal(databaseQuery, value, seen);
+  }
   return censorLogValueInternal(value, seen);
 };
 
@@ -350,7 +365,29 @@ const censorLogValueInternal = (
       query: value.query,
     };
     seen.set(value, result);
-    result.params = censorQueryParams(value.params, seen);
+    result.params = censorQueryParamsInternal(value.query, value.params, seen);
+    return result;
+  }
+
+  if (Error.isError(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+
+    const result: Record<string, unknown> = {
+      errorType: value.name,
+      message: CENSORED_LOG_VALUE,
+    };
+    seen.set(value, result);
+
+    for (const [key, nestedValue] of Object.entries(value)) {
+      if (key === "name" || key === "message" || key === "stack") continue;
+      result[key] = censorLogRecordValue(key, nestedValue, seen);
+    }
+
+    if ("cause" in value && !("cause" in result)) {
+      result.cause = censorLogValueInternal(value.cause, seen);
+    }
+
     return result;
   }
 
@@ -361,9 +398,11 @@ const censorLogValueInternal = (
 
   const result: Record<string, unknown> = {};
   seen.set(value, result);
+  const databaseQuery =
+    typeof value.query === "string" ? value.query : undefined;
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = censorLogRecordValue(key, nestedValue, seen);
+    result[key] = censorLogRecordValue(key, nestedValue, seen, databaseQuery);
   }
 
   return result;
@@ -374,6 +413,19 @@ export const censorTelemetryValue = (value: unknown): unknown =>
 
 export const censorLogValue = censorTelemetryValue;
 
+const censorCause = (cause: Cause.Cause<unknown>): Cause.Cause<unknown> =>
+  Cause.fromReasons(
+    cause.reasons.map((reason) => {
+      if (Cause.isFailReason(reason)) {
+        return Cause.makeFailReason(censorLogValue(reason.error));
+      }
+      if (Cause.isDieReason(reason)) {
+        return Cause.makeDieReason(censorLogValue(reason.defect));
+      }
+      return reason;
+    })
+  );
+
 export const censorLoggerOptions = (
   options: Logger.Options<unknown>
 ): Logger.Options<unknown> => {
@@ -381,6 +433,7 @@ export const censorLoggerOptions = (
 
   return {
     ...options,
+    cause: censorCause(options.cause),
     message: censorLogValue(options.message),
     fiber: {
       ...fiber,

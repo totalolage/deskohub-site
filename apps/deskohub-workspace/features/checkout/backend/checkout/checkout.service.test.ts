@@ -863,6 +863,11 @@ describe("CheckoutService", () => {
       amount: money(0),
       commitment: fullyDiscountedCommitment,
       locale: "en-US",
+      accountingSnapshot: expect.objectContaining({
+        schemaVersion: 1,
+        workspaceReservationId: "reservation-zero-total",
+        buyer: { kind: "person", legalName: "Ada Lovelace" },
+      }),
     });
     expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();

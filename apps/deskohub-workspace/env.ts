@@ -5,10 +5,21 @@ import {
   workspaceServerEnvSchema,
 } from "./env.schema";
 
+// Next only transforms statically named environment accesses. Key rotation is
+// additive: configure the new variable, add its direct access here, deploy,
+// and only then change the active key ID.
+const accountingDocumentSnapshotSecrets: Readonly<
+  Record<string, string | undefined>
+> = {
+  K202608: process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608,
+};
+
 export const env = createEnv({
   server: workspaceServerEnvSchema.fields,
   client: workspaceClientEnvSchema.fields,
   runtimeEnv: {
+    ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID:
+      process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID,
     AGENT_BROWSER_EXECUTABLE_PATH: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
@@ -96,3 +107,6 @@ export const env = createEnv({
     );
   },
 });
+
+export const getAccountingDocumentSnapshotSecret = (keyId: string) =>
+  accountingDocumentSnapshotSecrets[keyId];
