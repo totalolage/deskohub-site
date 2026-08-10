@@ -187,13 +187,19 @@ export interface IDiscountAdministration {
     input: DeleteDiscountInput
   ) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
   >;
   readonly createCode: (
     input: CreateManagedDiscountCodeAdminInput
   ) => Effect.Effect<
     DiscountCodeId,
-    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
   >;
   readonly createCustomerCode: (
     input: CreateCustomerDiscountCodeAdminInput
@@ -205,18 +211,25 @@ export interface IDiscountAdministration {
     | NetworkError
     | ValidationError
     | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
   >;
   readonly updateCode: (
     input: UpdateDiscountCodeAdminInput
   ) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
   >;
   readonly deleteCode: (
     input: DeleteCodeInput
   ) => Effect.Effect<
     void,
-    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+    | EffectDrizzleQueryError
+    | SqlError
+    | DiscountAdminNotFoundError
+    | DiscountAdminConflictError
   >;
   readonly loadCodeDetail: (input: {
     readonly codeId: DiscountCodeId;
@@ -880,11 +893,11 @@ export class DiscountAdministration extends Context.Service<
 
       return {
         addCodeCustomer,
-        createCode,
-        createCustomerCode,
+        createCode: withDiscountAdminConflict(createCode),
+        createCustomerCode: withDiscountAdminConflict(createCustomerCode),
         createDiscount,
-        deleteCode,
-        deleteDiscount,
+        deleteCode: withDiscountAdminConflict(deleteCode),
+        deleteDiscount: withDiscountAdminConflict(deleteDiscount),
         loadCodeDetail,
         loadCustomerCodeCreation,
         loadCustomerProfile,
@@ -893,7 +906,7 @@ export class DiscountAdministration extends Context.Service<
         removeCodeCustomer,
         searchCustomers,
         setCustomerDiscountGroup,
-        updateCode,
+        updateCode: withDiscountAdminConflict(updateCode),
         updateDiscount,
       } satisfies IDiscountAdministration;
     })
@@ -918,6 +931,74 @@ export class DiscountAdminAudienceError extends Data.TaggedError(
 )<{
   readonly message: string;
 }> {}
+
+export class DiscountAdminConflictError extends Data.TaggedError(
+  "DiscountAdminConflictError"
+)<{
+  readonly message: string;
+}> {}
+
+const discountAdminConstraintMessages = new Map([
+  [
+    "discount_codes_code_unique_idx",
+    "A discount code with this value already exists.",
+  ],
+  [
+    "discount_codes_discount_id_discounts_id_fk",
+    "This discount is still referenced by a discount code and cannot be deleted.",
+  ],
+  [
+    "discount_code_redemptions_code_id_discount_codes_id_fk",
+    "This discount code has claims and cannot be deleted.",
+  ],
+]);
+
+const withDiscountAdminConflict =
+  <Input, A, E, R>(operation: (input: Input) => Effect.Effect<A, E, R>) =>
+  (input: Input): Effect.Effect<A, E | DiscountAdminConflictError, R> =>
+    operation(input).pipe(
+      Effect.mapError((cause) => {
+        return findDiscountAdminConflict(cause) ?? cause;
+      })
+    );
+
+export const findDiscountAdminConflict = (
+  cause: unknown
+): DiscountAdminConflictError | undefined => {
+  const constraint = findConstraintName(cause);
+  const message = constraint
+    ? discountAdminConstraintMessages.get(constraint)
+    : undefined;
+  return message ? new DiscountAdminConflictError({ message }) : undefined;
+};
+
+const findConstraintName = (
+  cause: unknown,
+  visited: Set<unknown> = new Set()
+): string | undefined => {
+  if (
+    !cause ||
+    visited.has(cause) ||
+    (typeof cause !== "object" && typeof cause !== "function")
+  ) {
+    return undefined;
+  }
+  visited.add(cause);
+  if (
+    "constraint" in cause &&
+    typeof cause.constraint === "string" &&
+    cause.constraint.length > 0
+  ) {
+    return cause.constraint;
+  }
+  if ("reason" in cause) {
+    const constraint = findConstraintName(cause.reason, visited);
+    if (constraint) return constraint;
+  }
+  return "cause" in cause
+    ? findConstraintName(cause.cause, visited)
+    : undefined;
+};
 
 type AdminDiscountRow = StoredDiscount & {
   readonly productTargets: readonly DiscountProductTarget[];

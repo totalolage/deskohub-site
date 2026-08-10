@@ -51,6 +51,11 @@ export const CliSessionId = uuidSchema
   .annotate({ identifier: "CliSessionId" });
 export type CliSessionId = typeof CliSessionId.Type;
 
+export const CliMutationRequestId = uuidSchema
+  .pipe(Schema.brand("CliMutationRequestId"))
+  .annotate({ identifier: "CliMutationRequestId" });
+export type CliMutationRequestId = typeof CliMutationRequestId.Type;
+
 export const CLI_BUILD_TARGETS = [
   "development",
   "darwin-arm64",
@@ -184,6 +189,23 @@ export class CliResourceNotFound extends Schema.TaggedErrorClass<CliResourceNotF
   { message: Schema.String }
 ) {
   static schema = this.pipe(HttpApiSchema.status("NotFound"));
+}
+
+export class CliMutationRejected extends Schema.TaggedErrorClass<CliMutationRejected>()(
+  "CliMutationRejected",
+  { message: Schema.String }
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
+}
+
+export class CliMutationInProgress extends Schema.TaggedErrorClass<CliMutationInProgress>()(
+  "CliMutationInProgress",
+  {
+    message: Schema.String,
+    requestId: CliMutationRequestId,
+  }
+) {
+  static schema = this.pipe(HttpApiSchema.status("Conflict"));
 }
 
 export class CliBearerAuthentication extends HttpApiMiddleware.Service<
@@ -764,6 +786,247 @@ export const AdministrationDiscountAdjustment = Schema.Union([
 export type AdministrationDiscountAdjustment =
   typeof AdministrationDiscountAdjustment.Type;
 
+export const AdministrationStoredDiscountId = uuidSchema
+  .pipe(Schema.brand("DiscountId"))
+  .pipe(Schema.brand("StoredDiscountId"))
+  .annotate({ identifier: "StoredDiscountId" });
+export type AdministrationStoredDiscountId =
+  typeof AdministrationStoredDiscountId.Type;
+
+export const AdministrationDiscountCodeId = Schema.NonEmptyString.pipe(
+  Schema.brand("DiscountCodeId")
+).annotate({ identifier: "DiscountCodeId" });
+export type AdministrationDiscountCodeId =
+  typeof AdministrationDiscountCodeId.Type;
+
+export const AdministrationDotyposCustomerId = Schema.NonEmptyString.pipe(
+  Schema.brand("DotyposCustomerId")
+).annotate({ identifier: "DotyposCustomerId" });
+export type AdministrationDotyposCustomerId =
+  typeof AdministrationDotyposCustomerId.Type;
+
+export const AdministrationCanonicalDiscountCode = Schema.String.check(
+  Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
+)
+  .pipe(Schema.brand("CanonicalDiscountCode"))
+  .annotate({ identifier: "CanonicalDiscountCode" });
+export type AdministrationCanonicalDiscountCode =
+  typeof AdministrationCanonicalDiscountCode.Type;
+
+const administrationDiscountLabel = Schema.Trim.check(Schema.isNonEmpty());
+
+export const AdministrationDiscountLabels = Schema.Struct({
+  "cs-CZ": administrationDiscountLabel,
+  "en-US": administrationDiscountLabel,
+});
+export type AdministrationDiscountLabels =
+  typeof AdministrationDiscountLabels.Type;
+
+const administrationDiscountAdjustmentInput =
+  AdministrationDiscountAdjustment.check(
+    Schema.makeFilter((adjustment) => {
+      if (adjustment.kind === "percentage") {
+        return (
+          Number.isInteger(adjustment.basisPoints) &&
+          adjustment.basisPoints >= 1 &&
+          adjustment.basisPoints <= 10_000
+        );
+      }
+      return (
+        Number.isInteger(adjustment.amount.value) &&
+        adjustment.amount.value > 0 &&
+        adjustment.amount.exponent === 2 &&
+        (adjustment.amount.currency === "CZK" ||
+          adjustment.amount.currency === "EUR")
+      );
+    })
+  );
+
+const administrationWorkspaceProductKey = (
+  product: AdministrationWorkspaceProduct
+) =>
+  product.kind === "cowork"
+    ? `${product.kind}:${product.tier}`
+    : `${product.kind}:${product.duration.unit}:${product.duration.amount}`;
+
+const administrationDiscountProducts = Schema.NonEmptyArray(
+  AdministrationWorkspaceProduct
+).check(
+  Schema.makeFilter(
+    (products) =>
+      new Set(products.map(administrationWorkspaceProductKey)).size ===
+      products.length
+  )
+);
+
+export const AdministrationDiscountDefinitionInput = Schema.Struct({
+  labels: AdministrationDiscountLabels,
+  adjustment: administrationDiscountAdjustmentInput,
+  products: administrationDiscountProducts,
+});
+export type AdministrationDiscountDefinitionInput =
+  typeof AdministrationDiscountDefinitionInput.Type;
+
+export const AdministrationDiscountUpdateInput = Schema.Struct({
+  id: AdministrationStoredDiscountId,
+  ...AdministrationDiscountDefinitionInput.fields,
+});
+export type AdministrationDiscountUpdateInput =
+  typeof AdministrationDiscountUpdateInput.Type;
+
+export const AdministrationInstant = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      Temporal.Instant.from(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })
+)
+  .pipe(Schema.brand("Instant"))
+  .annotate({ identifier: "Instant" });
+export type AdministrationInstant = typeof AdministrationInstant.Type;
+
+const administrationDiscountCodeWindow = Schema.makeFilter<{
+  readonly validFrom: string | null;
+  readonly validUntil: string | null;
+}>(
+  ({ validFrom, validUntil }) =>
+    validFrom === null ||
+    validUntil === null ||
+    Temporal.Instant.compare(
+      Temporal.Instant.from(validUntil),
+      Temporal.Instant.from(validFrom)
+    ) > 0
+);
+
+export const AdministrationDiscountCodeConfigurationInput = Schema.Struct({
+  code: AdministrationCanonicalDiscountCode,
+  enabled: Schema.Boolean,
+  validFrom: Schema.NullOr(AdministrationInstant),
+  validUntil: Schema.NullOr(AdministrationInstant),
+  maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
+}).check(administrationDiscountCodeWindow);
+export type AdministrationDiscountCodeConfigurationInput =
+  typeof AdministrationDiscountCodeConfigurationInput.Type;
+
+export const AdministrationExistingDiscountCodeCreateInput = Schema.Struct({
+  discountId: AdministrationStoredDiscountId,
+  ...AdministrationDiscountCodeConfigurationInput.fields,
+}).check(administrationDiscountCodeWindow);
+export type AdministrationExistingDiscountCodeCreateInput =
+  typeof AdministrationExistingDiscountCodeCreateInput.Type;
+
+const AdministrationDiscountSelection = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("existing"),
+    discountId: AdministrationStoredDiscountId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("new"),
+    discount: AdministrationDiscountDefinitionInput,
+  }),
+]);
+
+export const AdministrationDiscountCodeCreateInput = Schema.Struct({
+  code: AdministrationDiscountCodeConfigurationInput,
+  discount: AdministrationDiscountSelection,
+});
+export type AdministrationDiscountCodeCreateInput =
+  typeof AdministrationDiscountCodeCreateInput.Type;
+
+export const AdministrationCustomerDiscountCodeCreateInput = Schema.Struct({
+  customerId: AdministrationDotyposCustomerId,
+  ...AdministrationDiscountCodeCreateInput.fields,
+});
+export type AdministrationCustomerDiscountCodeCreateInput =
+  typeof AdministrationCustomerDiscountCodeCreateInput.Type;
+
+export const AdministrationDiscountCodeUpdateInput = Schema.Struct({
+  id: AdministrationDiscountCodeId,
+  discountId: AdministrationStoredDiscountId,
+  ...AdministrationDiscountCodeConfigurationInput.fields,
+}).check(administrationDiscountCodeWindow);
+export type AdministrationDiscountCodeUpdateInput =
+  typeof AdministrationDiscountCodeUpdateInput.Type;
+
+export const ADMINISTRATION_DISCOUNT_MUTATION_KINDS = [
+  "create-discount",
+  "update-discount",
+  "delete-discount",
+  "create-code",
+  "create-customer-code",
+  "update-code",
+  "delete-code",
+  "add-code-customer",
+  "remove-code-customer",
+  "make-code-unrestricted",
+  "set-customer-discount-group",
+] as const;
+
+export const AdministrationDiscountMutation = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("create-discount"),
+    discount: AdministrationDiscountDefinitionInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("update-discount"),
+    discount: AdministrationDiscountUpdateInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("delete-discount"),
+    id: AdministrationStoredDiscountId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create-code"),
+    ...AdministrationDiscountCodeCreateInput.fields,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("create-customer-code"),
+    ...AdministrationCustomerDiscountCodeCreateInput.fields,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("update-code"),
+    code: AdministrationDiscountCodeUpdateInput,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("delete-code"),
+    id: AdministrationDiscountCodeId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("add-code-customer"),
+    codeId: AdministrationDiscountCodeId,
+    customerId: AdministrationDotyposCustomerId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("remove-code-customer"),
+    codeId: AdministrationDiscountCodeId,
+    customerId: AdministrationDotyposCustomerId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("make-code-unrestricted"),
+    codeId: AdministrationDiscountCodeId,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("set-customer-discount-group"),
+    customerId: AdministrationDotyposCustomerId,
+    discountGroupId: Schema.NullOr(Schema.Trim.check(Schema.isNonEmpty())),
+  }),
+]).annotate({
+  parseOptions: { errors: "all", onExcessProperty: "error" },
+});
+export type AdministrationDiscountMutation =
+  typeof AdministrationDiscountMutation.Type;
+
+export const AdministrationDiscountMutationResult = Schema.Struct({
+  kind: Schema.Literals(ADMINISTRATION_DISCOUNT_MUTATION_KINDS),
+  createdDiscountId: Schema.NullOr(AdministrationStoredDiscountId),
+  createdCodeId: Schema.NullOr(AdministrationDiscountCodeId),
+});
+export type AdministrationDiscountMutationResult =
+  typeof AdministrationDiscountMutationResult.Type;
+
 export const AdministrationDiscount = Schema.Struct({
   id: Schema.String,
   labels: Schema.Struct({
@@ -836,6 +1099,14 @@ export const CliSessionAdministration = Schema.Struct({
 });
 export type CliSessionAdministration = typeof CliSessionAdministration.Type;
 
+export const RenameCliSession = Schema.Struct({ clientName: CliClientName });
+export type RenameCliSession = typeof RenameCliSession.Type;
+
+export const CliSessionMutationResult = Schema.Struct({
+  changed: Schema.Boolean,
+});
+export type CliSessionMutationResult = typeof CliSessionMutationResult.Type;
+
 export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
@@ -873,7 +1144,7 @@ export const AdminCliApi = HttpApiGroup.make("cli")
   )
   .prefix("/api/v1/cli");
 
-export const AdminCliReadApi = HttpApiGroup.make("administration")
+export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   .add(
     HttpApiEndpoint.get("getOverview", "/overview", {
       success: AdministrationOverview,
@@ -981,9 +1252,39 @@ export const AdminCliReadApi = HttpApiGroup.make("administration")
       success: Schema.Array(CliSessionAdministration),
     })
   )
+  .add(
+    HttpApiEndpoint.post("mutateDiscounts", "/discounts/mutations", {
+      payload: Schema.Struct({
+        requestId: CliMutationRequestId,
+        mutation: AdministrationDiscountMutation,
+      }).annotate({
+        parseOptions: { errors: "all", onExcessProperty: "error" },
+      }),
+      success: AdministrationDiscountMutationResult,
+      error: [
+        CliMutationInProgress.schema,
+        CliMutationRejected.schema,
+        CliResourceNotFound.schema,
+      ],
+    })
+  )
+  .add(
+    HttpApiEndpoint.patch("renameSession", "/sessions/:sessionId", {
+      params: { sessionId: CliSessionId },
+      payload: RenameCliSession,
+      success: CliSessionMutationResult,
+      error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.delete("revokeSession", "/sessions/:sessionId", {
+      params: { sessionId: CliSessionId },
+      success: CliSessionMutationResult,
+    })
+  )
   .middleware(CliBearerAuthentication)
   .prefix("/api/v1/cli");
 
 export const WorkspaceAdminApi = HttpApi.make("workspaceAdminApi")
   .add(AdminCliApi)
-  .add(AdminCliReadApi);
+  .add(AdminCliAdministrationApi);
