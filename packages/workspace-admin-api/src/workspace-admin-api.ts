@@ -232,11 +232,44 @@ export const AdministrationReservationStatusGroup = Schema.Literals([
 export type AdministrationReservationStatusGroup =
   typeof AdministrationReservationStatusGroup.Type;
 
+const isLeapYear = (year: number) =>
+  year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+
+const isCalendarDate = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return false;
+  }
+
+  const year = Number(value.slice(0, 4));
+  const month = Number(value.slice(5, 7));
+  const day = Number(value.slice(8, 10));
+  const daysInMonth = [
+    31,
+    isLeapYear(year) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ][month - 1];
+
+  return daysInMonth !== undefined && day >= 1 && day <= daysInMonth;
+};
+
+const administrationCalendarDate = Schema.String.check(
+  Schema.makeFilter(isCalendarDate, {
+    description: "A calendar date in YYYY-MM-DD format.",
+  })
+).annotate({ format: "date" });
+
 export const AdministrationReservationQuery = Schema.Struct({
   customerId: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
-  date: Schema.optional(
-    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
-  ),
+  date: Schema.optional(administrationCalendarDate),
   direction: Schema.optional(AdministrationReservationSortDirection),
   page: Schema.optional(
     Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
@@ -361,9 +394,7 @@ export const AdministrationBookingPage = Schema.Struct({
 export type AdministrationBookingPage = typeof AdministrationBookingPage.Type;
 
 export const AdministrationBookingQuery = Schema.Struct({
-  date: Schema.optional(
-    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
-  ),
+  date: Schema.optional(administrationCalendarDate),
   page: Schema.optional(
     Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
   ),
@@ -448,12 +479,8 @@ export const AdministrationOrderList = Schema.Struct({
 export type AdministrationOrderList = typeof AdministrationOrderList.Type;
 
 const administrationDateRangeQuery = {
-  from: Schema.optional(
-    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
-  ),
-  to: Schema.optional(
-    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
-  ),
+  from: Schema.optional(administrationCalendarDate),
+  to: Schema.optional(administrationCalendarDate),
 };
 
 export const AdministrationOrderQuery = Schema.Struct(

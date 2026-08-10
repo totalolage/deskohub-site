@@ -80,6 +80,11 @@ describe("administration read contract", () => {
       })
     ).toThrow();
     expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        date: "2026-13-01",
+      })
+    ).toThrow();
+    expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationLookupQuery)({
         identifier: "   ",
       })
@@ -127,15 +132,20 @@ describe("administration read contract", () => {
         date: "10-08-2026",
       })
     ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "2026-02-30",
+      })
+    ).toThrow();
   });
 
   test("validates payment date filters", () => {
     expect(
       Schema.decodeUnknownSync(AdministrationOrderQuery)({
-        from: "2026-08-01",
+        from: "2024-02-29",
         to: "2026-08-10",
       })
-    ).toEqual({ from: "2026-08-01", to: "2026-08-10" });
+    ).toEqual({ from: "2024-02-29", to: "2026-08-10" });
     expect(
       Schema.decodeUnknownSync(AdministrationOperationQuery)({
         channel: "ECOMMERCE",
@@ -144,6 +154,11 @@ describe("administration read contract", () => {
     ).toEqual({ channel: "ECOMMERCE", operationType: "CAPTURE" });
     expect(() =>
       Schema.decodeUnknownSync(AdministrationOrderQuery)({ from: "tomorrow" })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+        from: "2026-02-29",
+      })
     ).toThrow();
   });
 });
