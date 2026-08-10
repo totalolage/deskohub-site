@@ -151,8 +151,6 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const isError = (value: unknown): value is Error => Error.isError(value);
-
 const redactUrlSearchParams = (url: URL): void => {
   for (const key of Array.from(url.searchParams.keys())) {
     if (isSensitiveLogRecordKey(key)) {
@@ -371,7 +369,7 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (isError(value)) {
+  if (Error.isError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
 
