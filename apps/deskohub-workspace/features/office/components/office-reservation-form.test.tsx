@@ -9,12 +9,13 @@ import {
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { Effect, Schema } from "effect";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
 import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
 import { discountIdSchema } from "@/features/discounts";
+import { m } from "@/features/i18n";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationDefaultValues } from "@/features/reservation/office-reservation";
 import {
@@ -29,6 +30,7 @@ import { plainDateStringSchema } from "@/shared/utils/temporal";
 
 const execute = mock(() => undefined);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
+const originalFetch = globalThis.fetch;
 
 mock.module("@/features/cookie-consent", () => ({
   useCookieConsent: () => ({ isAccepted: () => false }),
@@ -57,13 +59,14 @@ describe("OfficeReservationForm", () => {
   afterEach(() => {
     cleanup();
     execute.mockClear();
+    globalThis.fetch = originalFetch;
   });
 
   afterAll(() => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("renders the date range as an accessible field group", () => {
+  test("renders one start date and a day-count input", () => {
     const queryClient = new QueryClient();
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -71,6 +74,7 @@ describe("OfficeReservationForm", () => {
           seatCapacity={3}
           initialValues={officeReservationDefaultValues}
           locale="en-US"
+          today={decodePlainDate("2026-08-10")}
         />
       </QueryClientProvider>
     );
@@ -78,11 +82,85 @@ describe("OfficeReservationForm", () => {
     expect(
       view.getByRole("group", { name: "Reservation dates" })
     ).toBeDefined();
+    expect(
+      view.getByRole("button", { name: "Office reservation start date" })
+    ).toBeDefined();
+    expect(
+      view.queryByRole("button", { name: "Office reservation end date" })
+    ).toBeNull();
+    expect(
+      view.getByRole<HTMLInputElement>("spinbutton", {
+        name: "Number of days",
+      }).value
+    ).toBe("1");
+  });
+
+  test("loads the month calendar without seat or interval filters and bounds the stay before an unavailable date", async () => {
+    const today = decodePlainDate("2026-08-10");
+    const requests: URL[] = [];
+    globalThis.fetch = mock((request: RequestInfo | URL) => {
+      const url = new URL(String(request), "https://workspace.example.test");
+      requests.push(url);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            date: undefined,
+            from: "2026-08-10",
+            to: "2026-09-10",
+            unavailableDates: ["2026-08-12"],
+            unavailableCoworkTiers: [],
+            meetingRoomUnavailable: false,
+            officeUnavailable: false,
+            unavailableMonitorOptions: [],
+            notices: [],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        )
+      );
+    }) as typeof fetch;
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={3}
+          initialValues={{
+            ...officeReservationDefaultValues,
+            startsOn: today,
+            dayCount: 2,
+          }}
+          locale="en-US"
+          today={today}
+        />
+      </QueryClientProvider>
+    );
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(Object.fromEntries(requests[0]?.searchParams ?? [])).toEqual({
+      kind: "office",
+      from: "2026-08-10",
+      to: "2026-09-10",
+    });
+
+    await waitFor(() => {
+      expect(
+        view.getByRole<HTMLInputElement>("spinbutton", {
+          name: "Number of days",
+        }).max
+      ).toBe("2");
+    });
+  });
+
+  test("describes office unavailability without suggesting a seat change", () => {
+    expect(m.reservationOfficeUnavailable({}, { locale: "en-US" })).toBe(
+      "The office is not available for all the selected days. Try another start date or a shorter stay."
+    );
   });
 
   test("shows the catalog-quoted base amount between dates and seats", () => {
-    const startsOn = decodePlainDate("2099-06-10");
-    const endsOn = decodePlainDate("2099-06-12");
+    const startsOn = decodePlainDate("2026-08-10");
+    const endsOn = decodePlainDate("2026-08-12");
     const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
       const request = getOfficeAdvertisedPriceRequest({
         endsOn,
@@ -113,9 +191,10 @@ describe("OfficeReservationForm", () => {
           initialValues={{
             ...officeReservationDefaultValues,
             startsOn,
-            endsOn,
+            dayCount: 3,
           }}
           locale="en-US"
+          today={startsOn}
         />
       </QueryClientProvider>
     );
@@ -141,7 +220,7 @@ describe("OfficeReservationForm", () => {
   });
 
   test("does not render office prices before an advertised quote is available", () => {
-    const date = decodePlainDate("2099-06-10");
+    const date = decodePlainDate("2026-08-10");
     const queryClient = new QueryClient();
     const view = render(
       <QueryClientProvider client={queryClient}>
@@ -150,9 +229,9 @@ describe("OfficeReservationForm", () => {
           initialValues={{
             ...officeReservationDefaultValues,
             startsOn: date,
-            endsOn: date,
           }}
           locale="en-US"
+          today={date}
         />
       </QueryClientProvider>
     );
@@ -171,11 +250,17 @@ describe("OfficeReservationForm", () => {
           seatCapacity={3}
           initialValues={officeReservationDefaultValues}
           locale="en-US"
+          today={decodePlainDate("2026-08-10")}
         />
       </QueryClientProvider>
     );
 
-    expect(view.queryByRole("spinbutton")).toBeNull();
+    expect(
+      view.getByRole("spinbutton", { name: "Number of days" })
+    ).toBeDefined();
+    expect(
+      view.container.querySelector('input[name="seats"][type="number"]')
+    ).toBeNull();
     expect(view.getAllByRole("radio").map(({ value }) => value)).toEqual([
       "1",
       "2",
@@ -197,6 +282,7 @@ describe("OfficeReservationForm", () => {
           seatCapacity={6}
           initialValues={officeReservationDefaultValues}
           locale="en-US"
+          today={decodePlainDate("2026-08-10")}
         />
       </QueryClientProvider>
     );
@@ -217,8 +303,8 @@ describe("OfficeReservationForm", () => {
   });
 
   test("marks every card with its seat surcharge", () => {
-    const startsOn = decodePlainDate("2099-06-10");
-    const endsOn = decodePlainDate("2099-06-10");
+    const startsOn = decodePlainDate("2026-08-10");
+    const endsOn = startsOn;
     const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
       const request = getOfficeAdvertisedPriceRequest({
         endsOn,
@@ -249,9 +335,9 @@ describe("OfficeReservationForm", () => {
           initialValues={{
             ...officeReservationDefaultValues,
             startsOn,
-            endsOn,
           }}
           locale="en-US"
+          today={startsOn}
         />
       </QueryClientProvider>
     );
@@ -273,8 +359,8 @@ describe("OfficeReservationForm", () => {
   });
 
   test("presents a quoted office sale around the form, not the seat cards", () => {
-    const startsOn = decodePlainDate("2099-06-10");
-    const endsOn = decodePlainDate("2099-06-10");
+    const startsOn = decodePlainDate("2026-08-10");
+    const endsOn = startsOn;
     const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
       const request = getOfficeAdvertisedPriceRequest({
         endsOn,
@@ -332,9 +418,9 @@ describe("OfficeReservationForm", () => {
           initialValues={{
             ...officeReservationDefaultValues,
             startsOn,
-            endsOn,
           }}
           locale="en-US"
+          today={startsOn}
         />
       </QueryClientProvider>
     );

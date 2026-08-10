@@ -2,7 +2,7 @@
 
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { Option, Schema } from "effect";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useForm, useWatch } from "react-hook-form";
 import {
   type AdvertisedPrice,
@@ -36,7 +36,9 @@ import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/off
 import {
   getOfficeReservationDayCount,
   getOfficeReservationDefaultValues,
-  getOfficeReservationIntervalInput,
+  getOfficeReservationEndsOn,
+  getOfficeReservationMaximumDayCount,
+  getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
   getOfficeSeatOptions,
   type NormalizedOfficeReservationOrder,
@@ -45,14 +47,15 @@ import {
   officeReservationDetailsSchema,
   officeReservationSchema,
 } from "@/features/reservation/office-reservation";
-import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { OfficeWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormMessage,
 } from "@/shared/components/ui/form";
+import { Input } from "@/shared/components/ui/input";
 
 type OfficeReservationFormProps = {
   readonly checkoutSessionId?: string;
@@ -62,6 +65,7 @@ type OfficeReservationFormProps = {
   readonly initialValues: OfficeReservationInput;
   readonly locale: Locale;
   readonly replacementToken?: string;
+  readonly today: string;
 };
 
 const officeReservationFormSchema = Schema.toStandardSchemaV1(
@@ -74,12 +78,20 @@ const fallbackSeatCards = ["seat-1", "seat-2", "seat-3", "seat-4"];
 
 const getSelection = (
   startsOn: string | undefined,
-  endsOn: string | undefined,
+  dayCount: number | undefined,
   seats: number | undefined
-) =>
-  Option.getOrUndefined(
-    decodeSelection({ kind: "office", startsOn, endsOn, seats })
+) => {
+  if (!(startsOn && dayCount)) return undefined;
+
+  return Option.getOrUndefined(
+    decodeSelection({
+      kind: "office",
+      startsOn,
+      endsOn: getOfficeReservationEndsOn({ startsOn, dayCount }),
+      seats,
+    })
   );
+};
 
 export function OfficeReservationForm({
   checkoutSessionId,
@@ -89,6 +101,7 @@ export function OfficeReservationForm({
   initialValues,
   locale,
   replacementToken,
+  today,
 }: OfficeReservationFormProps) {
   const defaultValues = useMemo(
     () =>
@@ -103,30 +116,27 @@ export function OfficeReservationForm({
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const [startsOn, endsOn, seats] = useWatch({
+  const [startsOn, dayCount, seats] = useWatch({
     control: form.control,
-    name: ["startsOn", "endsOn", "seats"],
+    name: ["startsOn", "dayCount", "seats"],
   });
   const selection = useMemo(
-    () => getSelection(startsOn, endsOn, seats),
-    [endsOn, seats, startsOn]
+    () => getSelection(startsOn, dayCount, seats),
+    [dayCount, seats, startsOn]
   );
-  const availabilityQuery = useMemo(():
-    | OfficeWorkspaceAvailabilityQuery
-    | undefined => {
-    if (!selection) return undefined;
-    const interval = getOfficeReservationIntervalInput(selection);
-    return {
+  const maximumEndsOn = useMemo(
+    () => getOfficeReservationMaximumEndsOn(Temporal.PlainDate.from(today)),
+    [today]
+  );
+  const availabilityQuery = useMemo(
+    (): OfficeWorkspaceAvailabilityQuery => ({
       kind: "office",
-      from: selection.startsOn,
-      to: selection.endsOn,
-      startsAt: interval.startsAt,
-      endsAt: interval.endsAt,
-      seats: selection.seats,
-    };
-  }, [selection]);
+      from: today,
+      to: maximumEndsOn.toString(),
+    }),
+    [maximumEndsOn, today]
+  );
   const availabilityResult = useReservationAvailability(availabilityQuery, {
-    debounceMs: 250,
     replacementToken,
   });
   const advertisedPriceRequests = useMemo(
@@ -172,12 +182,31 @@ export function OfficeReservationForm({
     () => new Set(availabilityResult.availability?.unavailableDates ?? []),
     [availabilityResult.availability]
   );
-  const unavailable = Boolean(
-    selection &&
-      (availabilityResult.availability?.officeUnavailable ||
-        availabilityResult.availability?.unavailableDates.length)
+  const maximumDayCount = useMemo(
+    () =>
+      startsOn
+        ? getOfficeReservationMaximumDayCount({
+            startsOn,
+            maximumEndsOn,
+            unavailableDates: [...unavailableDates],
+          })
+        : 0,
+    [maximumEndsOn, startsOn, unavailableDates]
   );
-  const minimumDate = getCurrentWorkspaceDate().toString();
+  useEffect(() => {
+    if (
+      maximumDayCount > 0 &&
+      typeof dayCount === "number" &&
+      dayCount > maximumDayCount
+    ) {
+      form.setValue("dayCount", maximumDayCount, { shouldValidate: true });
+    }
+  }, [dayCount, form, maximumDayCount]);
+  const unavailable = Boolean(
+    startsOn &&
+      (maximumDayCount === 0 ||
+        (typeof dayCount === "number" && dayCount > maximumDayCount))
+  );
   const basePriceLabel = selection
     ? m.reservationOfficeBasePriceLabel(
         { dayCount: getOfficeReservationDayCount(selection) },
@@ -230,14 +259,10 @@ export function OfficeReservationForm({
                     unavailableDates.has(date.toString())
                   }
                   locale={locale}
-                  minimum={minimumDate}
+                  maximum={maximumEndsOn.toString()}
+                  minimum={today}
                   name={field.name}
-                  onChange={(value) => {
-                    field.onChange(value);
-                    if (!endsOn || endsOn < value) {
-                      form.setValue("endsOn", value, { shouldValidate: true });
-                    }
-                  }}
+                  onChange={field.onChange}
                   placeholder={m.reservationDatePlaceholder({}, { locale })}
                   value={field.value}
                   variant={fieldState.error ? "error" : "default"}
@@ -248,25 +273,46 @@ export function OfficeReservationForm({
           />
           <FormField
             control={form.control}
-            name="endsOn"
+            name="dayCount"
             render={({ field, fieldState }) => (
               <FormItem>
-                <p className="text-xs font-semibold text-navy-blue/55">
-                  {m.reservationOfficeEndDateLabel({}, { locale })}
-                </p>
-                <ReservationDatePicker
-                  ariaLabel={m.reservationOfficeEndDateLabel({}, { locale })}
-                  isDateDisabled={(date) =>
-                    unavailableDates.has(date.toString())
-                  }
-                  locale={locale}
-                  minimum={startsOn || minimumDate}
-                  name={field.name}
-                  onChange={field.onChange}
-                  placeholder={m.reservationDatePlaceholder({}, { locale })}
-                  value={field.value}
-                  variant={fieldState.error ? "error" : "default"}
-                />
+                <ReservationFormLabel required>
+                  {m.reservationOfficeDayCountLabel({}, { locale })}
+                </ReservationFormLabel>
+                <FormControl>
+                  <Input
+                    className="w-28"
+                    disabled={maximumDayCount === 0}
+                    inputMode="numeric"
+                    max={Math.max(1, maximumDayCount)}
+                    min={1}
+                    name={field.name}
+                    onBlur={field.onBlur}
+                    onChange={(event) => {
+                      const nextValue = event.currentTarget.valueAsNumber;
+                      if (Number.isFinite(nextValue)) {
+                        field.onChange(
+                          Math.min(
+                            Math.max(1, nextValue),
+                            Math.max(1, maximumDayCount)
+                          )
+                        );
+                      }
+                    }}
+                    ref={field.ref}
+                    type="number"
+                    value={field.value}
+                    variant={fieldState.error ? "error" : "default"}
+                  />
+                </FormControl>
+                {maximumDayCount > 0 && (
+                  <FormDescription>
+                    {m.reservationOfficeMaximumDayCount(
+                      { dayCount: maximumDayCount },
+                      { locale }
+                    )}
+                  </FormDescription>
+                )}
                 <FormMessage />
               </FormItem>
             )}

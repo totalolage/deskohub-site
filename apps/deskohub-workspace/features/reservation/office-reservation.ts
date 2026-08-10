@@ -4,6 +4,7 @@ import {
   normalizedReservationCustomerSchema,
   reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import { officeReservationKind } from "@/features/reservation/reservation-kind";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
@@ -77,13 +78,13 @@ const officeDateSchema = Schema.String.check(
   isPlainDateString({ message: m.reservationValidationDateRequired() })
 );
 
-type OfficeReservationSelectionInput = {
+type OfficeReservationRangeInput = {
   readonly startsOn: string;
   readonly endsOn: string;
 };
 
 const officeReservationRangeChecks = [
-  Schema.makeFilter<OfficeReservationSelectionInput>(
+  Schema.makeFilter<OfficeReservationRangeInput>(
     ({ endsOn, startsOn }) =>
       startsOn === "" ||
       endsOn === "" ||
@@ -94,9 +95,9 @@ const officeReservationRangeChecks = [
   ),
 ] as const;
 
-const officeReservationInputChecks = [
+const officeReservationOrderInputChecks = [
   ...officeReservationRangeChecks,
-  Schema.makeFilter<OfficeReservationSelectionInput>(
+  Schema.makeFilter<OfficeReservationRangeInput>(
     ({ endsOn }) =>
       endsOn === "" ||
       Temporal.PlainDate.from(endsOn)
@@ -108,9 +109,17 @@ const officeReservationInputChecks = [
         issue: m.reservationValidationOfficeEnded(),
       }
   ),
+  Schema.makeFilter<OfficeReservationRangeInput>(
+    ({ endsOn }) =>
+      endsOn === "" ||
+      isOfficeReservationWithinBookingHorizon({ endsOn }) || {
+        path: ["endsOn"],
+        issue: m.reservationValidationOfficeMaximumEnd(),
+      }
+  ),
 ] as const;
 
-const officeReservationSelectionFields = {
+const officeReservationOrderSelectionFields = {
   startsOn: officeDateSchema,
   endsOn: officeDateSchema,
   seats: officeSeatsSchema,
@@ -118,18 +127,51 @@ const officeReservationSelectionFields = {
 
 const officeReservationOrderBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
-  ...officeReservationSelectionFields,
+  ...officeReservationOrderSelectionFields,
 });
 
 export const officeReservationOrderInputSchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
   ...officeReservationOrderBaseSchema.fields,
-}).check(...officeReservationInputChecks);
+}).check(...officeReservationOrderInputChecks);
+
+const officeReservationFormSelectionFields = {
+  startsOn: officeDateSchema,
+  dayCount: officeReservationDayCountSchema,
+  seats: officeSeatsSchema,
+} as const;
 
 export const officeReservationFormInputSchema = Schema.Struct({
-  ...officeReservationOrderBaseSchema.fields,
+  ...reservationCustomerSchema.fields,
+  ...officeReservationFormSelectionFields,
   marketingConsent: Schema.Boolean,
-}).check(...officeReservationInputChecks);
+}).check(
+  Schema.makeFilter(({ dayCount, startsOn }) => {
+    if (startsOn === "") return true;
+
+    const endsOn = getOfficeReservationEndsOn({ startsOn, dayCount });
+    return (
+      Temporal.PlainDate.from(endsOn)
+        .add({ days: 1 })
+        .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+        .toInstant().epochMilliseconds >=
+        Temporal.Now.instant().epochMilliseconds || {
+        path: ["startsOn"],
+        issue: m.reservationValidationOfficeEnded(),
+      }
+    );
+  }),
+  Schema.makeFilter(
+    ({ dayCount, startsOn }) =>
+      startsOn === "" ||
+      isOfficeReservationWithinBookingHorizon({
+        endsOn: getOfficeReservationEndsOn({ startsOn, dayCount }),
+      }) || {
+        path: ["dayCount"],
+        issue: m.reservationValidationOfficeMaximumEnd(),
+      }
+  )
+);
 
 export type OfficeReservationOrderInput =
   typeof officeReservationOrderInputSchema.Type;
@@ -145,7 +187,10 @@ export const normalizedOfficeReservationOrderSchema = Schema.Struct({
 });
 
 export const normalizedOfficeReservationFormSchema = Schema.Struct({
-  ...normalizedOfficeReservationOrderSchema.fields,
+  ...normalizedReservationCustomerSchema.fields,
+  startsOn: plainDateStringSchema,
+  dayCount: officeReservationDayCountSchema,
+  seats: officeSeatsSchema,
   marketingConsent: Schema.Boolean,
 });
 
@@ -175,11 +220,17 @@ export type OfficeReservationPricingInput = OfficeReservationDetails;
 export const officeAdvertisedPriceReservationSchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
   details: officeReservationDetailsSchema,
-}).annotate({
-  identifier: "OfficeAdvertisedPriceReservation",
-  description:
-    "PII-free normalized office reservation inputs whose price is advertised.",
-});
+})
+  .check(
+    Schema.makeFilter(({ details }) =>
+      isOfficeReservationWithinBookingHorizon(details)
+    )
+  )
+  .annotate({
+    identifier: "OfficeAdvertisedPriceReservation",
+    description:
+      "PII-free normalized office reservation inputs whose price is advertised.",
+  });
 
 export type OfficeAdvertisedPriceReservation =
   typeof officeAdvertisedPriceReservationSchema.Type;
@@ -234,13 +285,56 @@ export const getOfficeSeatOptions = (seatCapacity: number) =>
     officeSeatsSchema.make(index + 1)
   );
 
-export const getOfficeReservationDayCount = (
-  reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn">
-) =>
+export const getOfficeReservationDayCount = (reservation: {
+  readonly startsOn: string;
+  readonly endsOn: string;
+}) =>
   Temporal.PlainDate.from(reservation.startsOn).until(
     Temporal.PlainDate.from(reservation.endsOn),
     { largestUnit: "day" }
   ).days + 1;
+
+export const getOfficeReservationEndsOn = (reservation: {
+  readonly startsOn: string;
+  readonly dayCount: number;
+}) =>
+  Temporal.PlainDate.from(reservation.startsOn)
+    .add({ days: reservation.dayCount - 1 })
+    .toString();
+
+export const getOfficeReservationMaximumEndsOn = (
+  today = getCurrentWorkspaceDate()
+) => today.add({ months: 1 });
+
+export const isOfficeReservationWithinBookingHorizon = (
+  reservation: Pick<OfficeReservationRangeInput, "endsOn">,
+  today = getCurrentWorkspaceDate()
+) =>
+  Temporal.PlainDate.compare(
+    Temporal.PlainDate.from(reservation.endsOn),
+    getOfficeReservationMaximumEndsOn(today)
+  ) <= 0;
+
+export const getOfficeReservationMaximumDayCount = (input: {
+  readonly startsOn: string;
+  readonly maximumEndsOn: Temporal.PlainDate;
+  readonly unavailableDates: readonly string[];
+}) => {
+  const startsOn = Temporal.PlainDate.from(input.startsOn);
+  if (Temporal.PlainDate.compare(startsOn, input.maximumEndsOn) > 0) return 0;
+
+  const maximumEndsOn = input.maximumEndsOn.toString();
+  const firstUnavailableDate = input.unavailableDates
+    .filter((date) => date >= input.startsOn && date <= maximumEndsOn)
+    .sort()[0];
+  const availableEndsOn = firstUnavailableDate
+    ? Temporal.PlainDate.from(firstUnavailableDate).subtract({ days: 1 })
+    : input.maximumEndsOn;
+
+  if (Temporal.PlainDate.compare(availableEndsOn, startsOn) < 0) return 0;
+
+  return startsOn.until(availableEndsOn, { largestUnit: "day" }).days + 1;
+};
 
 export const getOfficeReservationProductIdentity = (
   reservation: Pick<OfficeReservationDetails, "startsOn" | "endsOn" | "seats">
@@ -281,7 +375,7 @@ export const hasOfficeReservationEnded = (
   ) < 0;
 
 export const normalizeOfficeReservationOrder = (
-  reservation: OfficeReservationOrderInput | OfficeReservationFormInput
+  reservation: OfficeReservationOrderInput
 ): NormalizedOfficeReservationOrder =>
   normalizedOfficeReservationOrderSchema.make({
     kind: officeReservationKind,
@@ -308,16 +402,34 @@ export const officeReservationOrderSchema =
 
 export const normalizeOfficeReservationForm = (
   reservation: OfficeReservationFormInput
-): NormalizedOfficeReservationForm => ({
-  ...normalizeOfficeReservationOrder(reservation),
-  marketingConsent: reservation.marketingConsent,
-});
+): NormalizedOfficeReservationForm =>
+  normalizedOfficeReservationFormSchema.make({
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    ...(reservation.message !== undefined && { message: reservation.message }),
+    startsOn: decodePlainDate(reservation.startsOn),
+    dayCount: reservation.dayCount,
+    seats: reservation.seats,
+    marketingConsent: reservation.marketingConsent,
+  });
 
 export const officeReservationSchema = officeReservationFormInputSchema.pipe(
   Schema.decodeTo(normalizedOfficeReservationFormSchema, {
     decode: SchemaGetter.transform(normalizeOfficeReservationForm),
     encode: SchemaGetter.transform(
-      (reservation): OfficeReservationFormInput => reservation
+      (reservation): OfficeReservationFormInput => ({
+        name: reservation.name,
+        email: reservation.email,
+        phone: reservation.phone,
+        ...(reservation.message !== undefined && {
+          message: reservation.message,
+        }),
+        startsOn: reservation.startsOn,
+        dayCount: reservation.dayCount,
+        seats: reservation.seats,
+        marketingConsent: reservation.marketingConsent,
+      })
     ),
   })
 );
@@ -327,7 +439,7 @@ export type OfficeReservationData = typeof officeReservationSchema.Type;
 
 export const officeReservationDefaultValues: OfficeReservationInput = {
   startsOn: "",
-  endsOn: "",
+  dayCount: 1,
   seats: 1,
   name: "",
   email: "",
@@ -338,16 +450,23 @@ export const officeReservationDefaultValues: OfficeReservationInput = {
 
 export const getOfficeReservationOrder = (
   form: NormalizedOfficeReservationForm
-): NormalizedOfficeReservationOrder => {
-  const { marketingConsent: _, ...reservation } = form;
-  return normalizedOfficeReservationOrderSchema.make(reservation);
-};
+): NormalizedOfficeReservationOrder =>
+  normalizedOfficeReservationOrderSchema.make({
+    kind: officeReservationKind,
+    name: form.name,
+    email: form.email,
+    phone: form.phone,
+    ...(form.message !== undefined && { message: form.message }),
+    startsOn: form.startsOn,
+    endsOn: decodePlainDate(getOfficeReservationEndsOn(form)),
+    seats: form.seats,
+  });
 
 export const getOfficeReservationDefaultValues = (
   reservation: NormalizedOfficeReservationOrder
 ): OfficeReservationInput => ({
   startsOn: reservation.startsOn,
-  endsOn: reservation.endsOn,
+  dayCount: getOfficeReservationDayCount(reservation),
   seats: reservation.seats,
   name: reservation.name,
   email: reservation.email,

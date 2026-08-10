@@ -341,11 +341,11 @@
   "reservationOfficeMetadataTitle": "Private office reservation | Deskohub Workspace",
   "reservationOfficeMetadataDescription": "Reserve a private office at Deskohub Workspace for one or more whole days and choose the seats you need.",
   "reservationOfficeFormTitle": "Reserve a private office.",
-  "reservationOfficeFormDescription": "Choose the first and last day, select the number of office seats, and continue to secure payment.",
+  "reservationOfficeFormDescription": "Choose a start date and number of days, select the office seats, and continue to secure payment.",
   "reservationOfficeDateRangeLabel": "Reservation dates",
-  "reservationOfficeDateRangePlaceholder": "Choose a date range",
   "reservationOfficeStartDateLabel": "Office reservation start date",
-  "reservationOfficeEndDateLabel": "Office reservation end date",
+  "reservationOfficeDayCountLabel": "Number of days",
+  "reservationOfficeMaximumDayCount": "Up to {dayCount} days from this start date.",
   "reservationOfficeSeatCountLabel": "How many office seats do you need?",
   "reservationOfficeSeatCountOption": [
     {
@@ -358,7 +358,7 @@
     }
   ],
   "reservationOfficeMessagePlaceholder": "Company name, office setup, invoice note, or anything we should know.",
-  "reservationOfficeUnavailable": "The office is not available for all the selected days and seats. Try another date range or number of seats.",
+  "reservationOfficeUnavailable": "The office is not available for all the selected days. Try another start date or a shorter stay.",
   "reservationCoffeeLabel": "Coffee",
   "reservationMonitorLabel": "Monitor setup",
   "reservationMonitor2x27QhdTitle": "2x 27 QHD",
@@ -612,6 +612,7 @@
   "reservationValidationOfficeSeats": "Select a whole number of seats.",
   "reservationValidationOfficeEndBeforeStart": "The last day cannot be before the first day.",
   "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
+  "reservationValidationOfficeMaximumEnd": "The last reservation day must be no later than one month from today.",
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",

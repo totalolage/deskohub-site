@@ -17,6 +17,7 @@ type ReservationDatePickerProps = {
   readonly displayValue?: string;
   readonly isDateDisabled?: (date: Temporal.PlainDate) => boolean;
   readonly locale?: string;
+  readonly maximum?: string | (() => string);
   readonly minimum?: string | (() => string);
   readonly name?: string;
   readonly onChange?: (value: string) => void;
@@ -54,6 +55,7 @@ export function ReservationDatePicker({
   displayValue,
   isDateDisabled,
   locale,
+  maximum,
   minimum,
   name,
   onChange,
@@ -63,6 +65,9 @@ export function ReservationDatePicker({
 }: ReservationDatePickerProps) {
   const [open, setOpen] = useState(false);
   const selectedDate = parsePlainDate(value);
+  const maximumDate = parsePlainDate(
+    typeof maximum === "function" ? maximum() : maximum
+  );
   const minimumDate = parsePlainDate(
     typeof minimum === "function" ? minimum() : minimum
   );
@@ -107,6 +112,8 @@ export function ReservationDatePicker({
               return Boolean(
                 (minimumDate &&
                   Temporal.PlainDate.compare(plainDate, minimumDate) < 0) ||
+                  (maximumDate &&
+                    Temporal.PlainDate.compare(plainDate, maximumDate) > 0) ||
                   isDateDisabled?.(plainDate)
               );
             }}
@@ -118,6 +125,8 @@ export function ReservationDatePicker({
               if (
                 (minimumDate &&
                   Temporal.PlainDate.compare(plainDate, minimumDate) < 0) ||
+                (maximumDate &&
+                  Temporal.PlainDate.compare(plainDate, maximumDate) > 0) ||
                 isDateDisabled?.(plainDate)
               ) {
                 return;

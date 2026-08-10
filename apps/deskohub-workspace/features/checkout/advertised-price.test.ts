@@ -69,6 +69,24 @@ describe("advertised price contract", () => {
     expect(Option.isSome(decoded)).toBe(true);
   });
 
+  test("rejects office price requests beyond the one-month booking horizon", () => {
+    const startsOn = Temporal.Now.plainDateISO();
+    const decoded = decodeRequest({
+      locale: "en-US",
+      reservation: {
+        kind: "office",
+        details: {
+          kind: "office",
+          startsOn: startsOn.toString(),
+          endsOn: startsOn.add({ months: 1, days: 1 }).toString(),
+          seats: 1,
+        },
+      },
+    });
+
+    expect(Option.isNone(decoded)).toBe(true);
+  });
+
   test("rejects interval data outside meeting-room pricing inputs", () => {
     const decoded = decodeRequest({
       locale: "en-US",

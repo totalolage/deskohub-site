@@ -17,8 +17,10 @@ import {
 } from "@/features/reservation/meeting-room-reservation-time";
 import {
   getOfficeReservationIntervalInput,
+  getOfficeReservationMaximumEndsOn,
   officeReservationDetailsSchema,
 } from "@/features/reservation/office-reservation";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
   formatWorkspaceE2EAllocation,
@@ -563,9 +565,16 @@ export const selectAvailableOfficeSlot = (
   HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
-    const lastCandidateDate = getWorkspaceE2ECandidateDate(
+    const allocationLastCandidateDate = getWorkspaceE2ECandidateDate(
       allocation.toOffsetDays
     );
+    const bookingHorizon = getOfficeReservationMaximumEndsOn(
+      getCurrentWorkspaceDate()
+    ).toString();
+    const lastCandidateDate =
+      allocationLastCandidateDate < bookingHorizon
+        ? allocationLastCandidateDate
+        : bookingHorizon;
 
     for (
       let offset = allocation.fromOffsetDays;
@@ -573,9 +582,12 @@ export const selectAvailableOfficeSlot = (
       offset += 1
     ) {
       const startsOn = getWorkspaceE2ECandidateDate(offset);
+      const officeBlockIndex =
+        (offset - allocation.fromOffsetDays) /
+        workspaceE2EOfficeReservationDayCount;
       if (
-        Temporal.PlainDate.from(startsOn).dayOfWeek !== 4 ||
-        !isWorkspaceE2EAllocatedWeekday(startsOn, allocation)
+        !Number.isInteger(officeBlockIndex) ||
+        officeBlockIndex % allocation.shardCount !== allocation.shardIndex
       ) {
         continue;
       }

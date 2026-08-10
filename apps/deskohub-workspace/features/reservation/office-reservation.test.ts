@@ -6,7 +6,10 @@ import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getOfficeReservationDayCount,
   getOfficeReservationDefaultValues,
+  getOfficeReservationEndsOn,
   getOfficeReservationIntervalInput,
+  getOfficeReservationMaximumDayCount,
+  getOfficeReservationMaximumEndsOn,
   getOfficeReservationOrder,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
@@ -48,26 +51,57 @@ describe("office reservation", () => {
   });
 
   test("accepts an inclusive multi-day range and total seats", () => {
+    const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
     const result = formParser.safeParse({
       ...validCustomer,
-      startsOn: "2099-06-10",
-      endsOn: "2099-06-12",
+      startsOn,
+      dayCount: 3,
       seats: 3,
     });
 
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
-      expect(getOfficeReservationDayCount(result.success)).toBe(3);
+      expect(result.success.dayCount).toBe(3);
+      const reservation = getOfficeReservationOrder(result.success);
+      expect(getOfficeReservationDayCount(reservation)).toBe(3);
+      expect(reservation.endsOn).toBe(
+        Temporal.PlainDate.from(startsOn).add({ days: 2 }).toString()
+      );
       expect(result.success.seats).toBe(3);
     }
   });
 
+  test("caps a stay before the first unavailable date and the one-month horizon", () => {
+    const today = Temporal.PlainDate.from("2026-08-10");
+    const maximumEndsOn = getOfficeReservationMaximumEndsOn(today);
+
+    expect(maximumEndsOn.toString()).toBe("2026-09-10");
+    expect(
+      getOfficeReservationMaximumDayCount({
+        startsOn: "2026-08-20",
+        maximumEndsOn,
+        unavailableDates: ["2026-08-23", "2026-09-01"],
+      })
+    ).toBe(3);
+    expect(
+      getOfficeReservationMaximumDayCount({
+        startsOn: "2026-09-09",
+        maximumEndsOn,
+        unavailableDates: [],
+      })
+    ).toBe(2);
+    expect(
+      getOfficeReservationEndsOn({ startsOn: "2026-08-20", dayCount: 3 })
+    ).toBe("2026-08-22");
+  });
+
   test("keeps marketing consent in form state and resets it on restoration", () => {
+    const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
     const result = formParser.safeParse({
       ...validCustomer,
       marketingConsent: true,
-      startsOn: "2099-06-10",
-      endsOn: "2099-06-12",
+      startsOn,
+      dayCount: 3,
       seats: 3,
     });
 
@@ -79,6 +113,13 @@ describe("office reservation", () => {
       expect(
         getOfficeReservationDefaultValues(reservation).marketingConsent
       ).toBe(false);
+      expect(getOfficeReservationDefaultValues(reservation)).toMatchObject({
+        startsOn,
+        dayCount: 3,
+      });
+      expect(getOfficeReservationDefaultValues(reservation)).not.toHaveProperty(
+        "endsOn"
+      );
     }
 
     expect(
@@ -86,24 +127,45 @@ describe("office reservation", () => {
         formParser.safeParse({
           ...validCustomer,
           marketingConsent: undefined,
-          startsOn: "2099-06-10",
-          endsOn: "2099-06-12",
+          startsOn,
+          dayCount: 3,
           seats: 3,
         })
       )
     ).toBe(true);
   });
 
-  test("rejects a backwards range and invalid seat count", () => {
+  test("rejects invalid day and seat counts", () => {
+    const startsOn = Temporal.Now.plainDateISO().add({ days: 1 }).toString();
     for (const input of [
-      { startsOn: "2099-06-12", endsOn: "2099-06-10", seats: 1 },
-      { startsOn: "2099-06-10", endsOn: "2099-06-12", seats: 1.5 },
-      { startsOn: "2099-06-10", endsOn: "2099-06-12", seats: 0 },
+      { startsOn, dayCount: 0, seats: 1 },
+      { startsOn, dayCount: 1.5, seats: 1 },
+      { startsOn, dayCount: 3, seats: 1.5 },
+      { startsOn, dayCount: 3, seats: 0 },
     ]) {
       expect(
         Result.isFailure(formParser.safeParse({ ...validCustomer, ...input }))
       ).toBe(true);
     }
+  });
+
+  test("rejects a reservation whose last day is beyond one month", () => {
+    const today = Temporal.Now.plainDateISO();
+    const dayCount =
+      today.until(today.add({ months: 1 }), {
+        largestUnit: "day",
+      }).days + 2;
+
+    expect(
+      Result.isFailure(
+        formParser.safeParse({
+          ...validCustomer,
+          startsOn: today.toString(),
+          dayCount,
+          seats: 1,
+        })
+      )
+    ).toBe(true);
   });
 
   test("keeps historical persisted details decodable while validating order", () => {

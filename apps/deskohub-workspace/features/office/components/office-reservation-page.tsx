@@ -8,6 +8,7 @@ import { createReservationPage } from "@/features/reservation/components/create-
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
   getOfficeReservationDefaultValues,
+  getOfficeReservationEndsOn,
   officeReservationDefaultValues,
 } from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
@@ -43,15 +44,17 @@ export const officeReservationPage = createReservationPage({
     const initialValues = restoredInitialValues ?? {
       ...officeReservationDefaultValues,
       startsOn: today,
-      endsOn: today,
     };
+    const initialEndsOn = decodePlainDate(
+      getOfficeReservationEndsOn(initialValues)
+    );
     const seatCapacity = await loadOfficeReservationSeatCapacity();
     const initialAdvertisedPrices = await loadAdvertisedPrices(
       getOfficeSeatAdvertisedPriceRequests({
         seatCapacity,
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),
-        endsOn: decodePlainDate(initialValues.endsOn),
+        endsOn: initialEndsOn,
       })
     ).pipe(
       Effect.provide(CheckoutPricingServiceLiveWithDependencies),
@@ -68,6 +71,7 @@ export const officeReservationPage = createReservationPage({
         initialValues={initialValues}
         locale={locale}
         replacementToken={replacementToken}
+        today={today}
       />
     );
   },

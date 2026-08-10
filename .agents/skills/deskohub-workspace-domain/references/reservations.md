@@ -24,6 +24,15 @@ source every visible office price from the advertised quote: show its
 `seatAmount` multiplied by `seats`. Do not reproduce catalog amounts as
 client-side constants.
 
+The office form captures one `startsOn` date and a positive `dayCount`, then
+derives the inclusive `endsOn` date at the form-to-order boundary. Query office
+calendar availability without seats or an interval for every date from the
+current Prague date through one calendar month later. Use the returned
+`unavailableDates` both to disable start dates and to cap `dayCount` at the day
+before the first unavailable date. The inclusive last reservation day must
+never be later than the current Prague date plus one calendar month; enforce
+that at both the form and untrusted server input boundaries.
+
 Office product identity is `{ kind: "office", seats, dayCount }` with product
 key `office:${seats}:${dayCount}`. Build `dayCount` from the inclusive Prague
 date range. Persist only `{ kind: "office" }` locally because Dotypos owns the

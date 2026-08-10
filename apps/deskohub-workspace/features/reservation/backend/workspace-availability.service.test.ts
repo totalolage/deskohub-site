@@ -490,6 +490,33 @@ describe("WorkspaceAvailabilityService", () => {
     expect(partiallyOccupied.officeUnavailable).toBe(true);
   });
 
+  test("returns occupied office dates without a selected interval or seats", async () => {
+    const availability = await getAvailability({
+      kind: "office",
+      from: testDate,
+      to: nextTestDate,
+      tables: [
+        makeTable({
+          id: "office",
+          tags: ["reservation:office"],
+          seats: "8",
+        }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "office",
+          status: "CONFIRMED",
+          seats: "1",
+          startDate: "2099-06-10T22:00:00Z",
+          endDate: "2099-06-11T22:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.unavailableDates).toContain(nextTestDate);
+  });
+
   test("marks a meeting room unavailable after any overlapping booking", async () => {
     const availability = await getAvailability({
       kind: "meeting-room",

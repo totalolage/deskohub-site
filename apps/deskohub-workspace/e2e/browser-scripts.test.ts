@@ -917,7 +917,8 @@ test("prepares a multi-day office reservation with selected seats", async () => 
   const combined = getSubmitOfficeReservationScript(data);
 
   expect(prepare).toContain("Office reservation start date");
-  expect(prepare).toContain("Office reservation end date");
+  expect(prepare).toContain('input[name="dayCount"]');
+  expect(prepare).not.toContain("Office reservation end date");
   expect(prepare).toContain(
     "office availability or advertised price did not become ready"
   );
@@ -935,11 +936,9 @@ test("prepares a multi-day office reservation with selected seats", async () => 
   try {
     document.body.innerHTML = `
       <button aria-label="Office reservation start date" type="button"></button>
-      <button aria-label="Office reservation end date" type="button"></button>
       <div data-day="${officeSlot.startsOn}"><button type="button"></button></div>
-      <div data-day="${officeSlot.endsOn}"><button type="button"></button></div>
       <input name="startsOn" value="" />
-      <input name="endsOn" value="" />
+      <input name="dayCount" type="number" value="1" />
       <input name="seats" type="radio" value="1" />
       <input checked name="seats" type="radio" value="2" />
       <input name="email" />
@@ -952,18 +951,6 @@ test("prepares a multi-day office reservation with selected seats", async () => 
         type="submit"
       ></button>
     `;
-    let activeDateField: "startsOn" | "endsOn" = "startsOn";
-    let endSelectionCount = 0;
-    document
-      .querySelector('button[aria-label="Office reservation start date"]')
-      ?.addEventListener("click", () => {
-        activeDateField = "startsOn";
-      });
-    document
-      .querySelector('button[aria-label="Office reservation end date"]')
-      ?.addEventListener("click", () => {
-        activeDateField = "endsOn";
-      });
     for (const dateButton of document.querySelectorAll<HTMLButtonElement>(
       "[data-day] button"
     )) {
@@ -971,48 +958,17 @@ test("prepares a multi-day office reservation with selected seats", async () => 
         const selectedDate = dateButton.parentElement?.dataset.day;
         if (!selectedDate) return;
         const input = document.querySelector<HTMLInputElement>(
-          `input[name="${activeDateField}"]`
+          'input[name="startsOn"]'
         );
         if (!input) return;
         input.value = selectedDate;
-        if (activeDateField === "startsOn") {
-          const submit = document.querySelector<HTMLButtonElement>(
-            'button[type="submit"]'
-          );
-          if (submit) submit.dataset.reservationPriceLoading = "true";
-          setTimeout(() => {
-            const endsOn = document.querySelector<HTMLInputElement>(
-              'input[name="endsOn"]'
-            );
-            if (endsOn) endsOn.value = selectedDate;
-          }, 10);
-          setTimeout(() => {
-            const startsOn = document.querySelector<HTMLInputElement>(
-              'input[name="startsOn"]'
-            );
-            const endsOn = document.querySelector<HTMLInputElement>(
-              'input[name="endsOn"]'
-            );
-            if (startsOn && endsOn) endsOn.value = startsOn.value;
-            if (submit) submit.dataset.reservationPriceLoading = "false";
-          }, 600);
-          return;
-        }
-
-        endSelectionCount += 1;
         const submit = document.querySelector<HTMLButtonElement>(
           'button[type="submit"]'
         );
         if (submit) submit.dataset.reservationPriceLoading = "true";
         setTimeout(() => {
-          if (endSelectionCount === 1) {
-            const startsOn = document.querySelector<HTMLInputElement>(
-              'input[name="startsOn"]'
-            );
-            if (startsOn) input.value = startsOn.value;
-          }
           if (submit) submit.dataset.reservationPriceLoading = "false";
-        }, 10);
+        }, 20);
       });
     }
     const run = new Function(
@@ -1041,16 +997,13 @@ test("prepares a multi-day office reservation with selected seats", async () => 
         location
       )
     ).resolves.toBe(location.href);
-    await new Promise((resolve) => setTimeout(resolve, 700));
     expect(
-      document.querySelector<HTMLInputElement>('input[name="endsOn"]')?.value
-    ).toBe(officeSlot.endsOn);
-    expect(
-      document.querySelector<HTMLInputElement>(
-        'input[name="seats"]:checked'
-      )?.value
+      document.querySelector<HTMLInputElement>('input[name="dayCount"]')?.value
     ).toBe("2");
-    expect(endSelectionCount).toBe(2);
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="seats"]:checked')
+        ?.value
+    ).toBe("2");
     expect(
       document.querySelector<HTMLInputElement>('input[name="email"]')?.value
     ).toBe(data.email);
@@ -1073,7 +1026,7 @@ test("asserts restored office range, seats, and reset marketing consent", async 
   try {
     document.body.innerHTML = `
       <input name="startsOn" value="${officeSlot.startsOn}" />
-      <input name="endsOn" value="${officeSlot.endsOn}" />
+      <input name="dayCount" type="number" value="2" />
       <input checked name="seats" type="radio" value="${officeSlot.seats}" />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />

@@ -5,6 +5,12 @@ import {
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData } from "./types";
 
+const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
+  Temporal.PlainDate.from(office.startsOn).until(
+    Temporal.PlainDate.from(office.endsOn),
+    { largestUnit: "day" }
+  ).days + 1;
+
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
     return getAssertPrefilledMeetingRoomReservationScript(data);
@@ -130,7 +136,7 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
 (() => {
   const expected = ${JSON.stringify({
     email: data.email,
-    endsOn: data.office.endsOn,
+    dayCount: getOfficeDayCount(data.office),
     message: data.message,
     name: data.name,
     phone: data.phone,
@@ -147,7 +153,7 @@ const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
   };
 
   if (value('input[name="startsOn"]', 'start date') !== expected.startsOn) fail('start date');
-  if (value('input[name="endsOn"]', 'end date') !== expected.endsOn) fail('end date');
+  if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
   const seats = document.querySelector('input[name="seats"]:checked');
   if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
   if (value('input[name="email"]', 'email') !== expected.email) fail('email');
@@ -563,7 +569,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
 (async () => {
   const expected = ${JSON.stringify({
     email: data.email,
-    endsOn: data.office.endsOn,
+    dayCount: getOfficeDayCount(data.office),
     message: data.message,
     name: data.name,
     phone: data.phone,
@@ -722,16 +728,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     expected.startsOn,
     'office start date'
   );
-  await waitUntil(() => {
-    const endsOn = document.querySelector('input[name="endsOn"]');
-    return endsOn instanceof HTMLInputElement && endsOn.value === expected.startsOn;
-  }, 'office end date did not follow the selected start date');
-  await selectDateAfterRequestSettles(
-    'Office reservation end date',
-    'endsOn',
-    expected.endsOn,
-    'office end date'
-  );
+  setField('input[name="dayCount"]', String(expected.dayCount));
   const seatsOption = document.querySelector(
     'input[name="seats"][value="' + expected.seats + '"]'
   );
@@ -747,7 +744,7 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
   let priceRetryAttempted = false;
   await waitUntil(() => {
     const startsOn = document.querySelector('input[name="startsOn"]');
-    const endsOn = document.querySelector('input[name="endsOn"]');
+    const dayCount = document.querySelector('input[name="dayCount"]');
     const seats = document.querySelector('input[name="seats"]:checked');
     const submit = document.querySelector('button[type="submit"]');
     const priceRetry = document.querySelector('#reservation-advertised-price-retry');
@@ -762,8 +759,8 @@ export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
     return (
       startsOn instanceof HTMLInputElement &&
       startsOn.value === expected.startsOn &&
-      endsOn instanceof HTMLInputElement &&
-      endsOn.value === expected.endsOn &&
+      dayCount instanceof HTMLInputElement &&
+      dayCount.value === String(expected.dayCount) &&
       seats instanceof HTMLInputElement &&
       seats.value === String(expected.seats) &&
       submit instanceof HTMLButtonElement &&

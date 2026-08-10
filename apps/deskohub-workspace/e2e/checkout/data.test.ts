@@ -598,8 +598,8 @@ test("selects disjoint multi-day office ranges across allocation shards", async 
   expect(
     slots.every(
       ({ endsOn, startsOn }) =>
-        Temporal.PlainDate.from(startsOn).dayOfWeek === 4 &&
-        Temporal.PlainDate.from(startsOn).add({ days: 1 }).toString() === endsOn
+        Temporal.PlainDate.from(startsOn).add({ days: 1 }).toString() ===
+          endsOn && endsOn <= "2099-08-17"
     )
   ).toBe(true);
   expect(requests).toHaveLength(3);
@@ -635,7 +635,9 @@ test("skips an unavailable office range before selecting the next owned range", 
   );
 
   expect(requestCount).toBe(2);
-  expect(Temporal.PlainDate.from(slot.startsOn).dayOfWeek).toBe(4);
+  expect(slot.endsOn).toBe(
+    Temporal.PlainDate.from(slot.startsOn).add({ days: 1 }).toString()
+  );
 });
 
 test("rejects meeting-room slots that touch an unavailable date", async () => {
