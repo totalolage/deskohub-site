@@ -10,7 +10,6 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
@@ -69,15 +68,12 @@ export const discounts = pgTable(
 );
 
 export const discountProductTargets = pgTable(
-  "discount_product_targets",
+  "discount_targets",
   {
     discountId: text("discount_id")
       .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id, { onDelete: "cascade" }),
-    legacyProductIdentity: jsonb("product_identity")
-      .notNull()
-      .$type<WorkspaceProductIdentity>(),
     productTarget: jsonb("product_target")
       .notNull()
       .$type<WorkspaceProductTarget>(),
@@ -85,7 +81,7 @@ export const discountProductTargets = pgTable(
   (t) => [
     primaryKey({
       name: "discount_product_targets_pk",
-      columns: [t.discountId, t.legacyProductIdentity],
+      columns: [t.discountId, t.productTarget],
     }),
   ]
 );

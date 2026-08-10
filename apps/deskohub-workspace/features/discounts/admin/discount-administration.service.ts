@@ -26,11 +26,7 @@ import {
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
-import {
-  getLegacyWorkspaceProductIdentities,
-  getUniqueWorkspaceProductTargets,
-  type WorkspaceProductTarget,
-} from "@/features/discounts/product-target";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -1016,9 +1012,7 @@ const toAdminDiscount = (row: AdminDiscountRow): AdminDiscount => ({
           kind: "percentage",
           basisPoints: row.percentageBasisPoints,
         },
-  products: getUniqueWorkspaceProductTargets(
-    row.productTargets.map(({ productTarget }) => productTarget)
-  ),
+  products: row.productTargets.map(({ productTarget }) => productTarget),
   codeCount: row.codes.length,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -1043,16 +1037,7 @@ const toDiscountValues = (
 const toDiscountProductTargetRows = (
   discountId: StoredDiscountId,
   productTargets: readonly WorkspaceProductTarget[]
-) =>
-  productTargets.flatMap((productTarget) =>
-    getLegacyWorkspaceProductIdentities(productTarget).map(
-      (legacyProductIdentity) => ({
-        discountId,
-        legacyProductIdentity,
-        productTarget,
-      })
-    )
-  );
+) => productTargets.map((productTarget) => ({ discountId, productTarget }));
 
 const toDiscountCodeValues = (
   input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput

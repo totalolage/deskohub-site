@@ -8,10 +8,7 @@ import {
   discounts,
 } from "@/db/schema";
 import type { DatabaseClient } from "@/db/database-client";
-import {
-  getLegacyWorkspaceProductIdentities,
-  type WorkspaceProductTarget,
-} from "@/features/discounts/product-target";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
@@ -154,15 +151,10 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             yield* tx
               .insert(discountProductTargets)
               .values(
-                definition.products.flatMap((productTarget) =>
-                  getLegacyWorkspaceProductIdentities(productTarget).map(
-                    (legacyProductIdentity) => ({
-                      discountId: definition.id,
-                      legacyProductIdentity,
-                      productTarget,
-                    })
-                  )
-                )
+                definition.products.map((productTarget) => ({
+                  discountId: definition.id,
+                  productTarget,
+                }))
               )
               .onConflictDoNothing();
           }
@@ -298,15 +290,10 @@ export const setE2ECalendarSaleCoworkEligibility = (
       eligible
         ? db
             .insert(discountProductTargets)
-            .values(
-              getLegacyWorkspaceProductIdentities(product).map(
-                (legacyProductIdentity) => ({
-                  discountId: E2E_CALENDAR_SALE_DISCOUNT_ID,
-                  legacyProductIdentity,
-                  productTarget: product,
-                })
-              )
-            )
+            .values({
+              discountId: E2E_CALENDAR_SALE_DISCOUNT_ID,
+              productTarget: product,
+            })
             .onConflictDoNothing()
         : db.delete(discountProductTargets).where(
             and(

@@ -95,36 +95,6 @@ describe("stored discount definitions", () => {
     expect(result.products).toEqual([{ kind: "meeting-room" }]);
   });
 
-  test("collapses duplicate family targets left by an overlapping deployment", async () => {
-    const result = await Effect.runPromise(
-      decode(
-        percentageRow({
-          productTargets: [
-            { discountId, productTarget: { kind: "cowork" } },
-            { discountId, productTarget: { kind: "cowork" } },
-          ],
-        })
-      )
-    );
-
-    expect(result.products).toEqual([{ kind: "cowork" }]);
-  });
-
-  test("ignores compatibility-only fields on stored target rows", async () => {
-    const row = percentageRow();
-    const result = await Effect.runPromise(
-      decode({
-        ...row,
-        productTargets: row.productTargets.map((target) => ({
-          ...target,
-          legacyProductIdentity: { kind: "cowork", tier: "basic" },
-        })),
-      })
-    );
-
-    expect(result.products).toEqual([{ kind: "cowork" }]);
-  });
-
   test.each([
     [
       "missing locale label",
@@ -162,6 +132,15 @@ describe("stored discount definitions", () => {
       }),
     ],
     ["empty targets", percentageRow({ productTargets: [] })],
+    [
+      "duplicate family targets",
+      percentageRow({
+        productTargets: [
+          { discountId, productTarget: { kind: "cowork" } },
+          { discountId, productTarget: { kind: "cowork" } },
+        ],
+      }),
+    ],
     [
       "target from another discount",
       percentageRow({

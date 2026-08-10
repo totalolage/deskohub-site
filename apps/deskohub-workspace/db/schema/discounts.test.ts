@@ -96,12 +96,12 @@ describe("discount persistence contracts", () => {
   test("uses family targets for discounts and composite customer allowlists", () => {
     const targetConfig = configOf(discountProductTargets);
 
+    expect(targetConfig.name).toBe("discount_targets");
     expect(namesOf(targetConfig.primaryKeys)).toEqual([
       "discount_product_targets_pk",
     ]);
     expect(targetConfig.columns.map(({ name }) => name)).toEqual([
       "discount_id",
-      "product_identity",
       "product_target",
     ]);
     expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
@@ -154,40 +154,33 @@ describe("discount persistence contracts", () => {
     );
   });
 
-  test("backfills family targets while old and new deployments overlap", async () => {
+  test("migrates identities to canonical family targets with rollout compatibility", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260810125902_family_discount_targets/migration.sql",
+        "../migrations/20260810140725_cloudy_wildside/migration.sql",
         import.meta.url
       )
     ).text();
 
-    expect(migration).toContain('SET "product_target" = jsonb_build_object(');
-    expect(migration).toContain("\"product_identity\" ->> 'kind'");
+    expect(migration).toContain('CREATE TABLE "discount_targets"');
+    expect(migration).toContain('PRIMARY KEY("discount_id","product_target")');
     expect(migration).toContain(
-      'ADD COLUMN IF NOT EXISTS "product_target" jsonb'
+      "SELECT DISTINCT\n\t\"discount_id\",\n\tjsonb_build_object('kind', \"product_identity\" ->> 'kind')"
     );
     expect(migration).toContain(
-      'ADD COLUMN IF NOT EXISTS "product_identity" jsonb'
+      'CREATE TRIGGER "sync_legacy_discount_product_targets"'
     );
     expect(migration).toContain(
-      'CREATE TRIGGER "discount_product_targets_sync_columns"'
-    );
-    expect(migration).toContain(
-      'UPDATE OF "product_identity", "product_target"'
-    );
-    expect(migration).toContain('ALTER COLUMN "product_target" SET NOT NULL');
-    expect(migration).toContain(
-      'ADD CONSTRAINT "discount_product_targets_pk" PRIMARY KEY("discount_id", "product_identity")'
+      'CREATE TRIGGER "sync_discount_targets_to_legacy"'
     );
     expect(migration).toContain("'tier', 'profi'");
     expect(migration).toContain(
       "'duration', jsonb_build_object('unit', 'day', 'amount', 1)"
     );
+    expect(migration).not.toContain('DROP TABLE "discount_product_targets"');
     expect(migration).not.toContain('DROP COLUMN "product_identity"');
-    expect(migration).not.toContain('RENAME COLUMN "product_identity"');
     expect(migration).toContain(
-      "Cannot migrate an unknown discount product target"
+      "Cannot migrate an unknown discount product identity"
     );
   });
 

@@ -5,7 +5,6 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
-  getUniqueWorkspaceProductTargets,
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
@@ -48,9 +47,7 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
       Effect.let("products", ({ targets }) =>
-        getUniqueWorkspaceProductTargets(
-          targets.map(({ productTarget }) => productTarget)
-        )
+        targets.map(({ productTarget }) => productTarget)
       ),
       Effect.mapError(
         (cause) =>
@@ -84,6 +81,14 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
         targets.every((target) => target.discountId === discountId) || {
           path: [],
           issue: "product targets must belong to the discount definition",
+        }
+    ),
+    Schema.makeFilter(
+      (targets) =>
+        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
+          targets.length || {
+          path: [],
+          issue: "product targets must be unique",
         }
     )
   );
@@ -124,9 +129,4 @@ const decodeDefinitionTargets = (input: {
   Schema.decodeUnknownEffect(discountTargetsSchema(input.row.id), {
     errors: "all",
     onExcessProperty: "error",
-  })(
-    input.row.productTargets.map(({ discountId, productTarget }) => ({
-      discountId,
-      productTarget,
-    }))
-  );
+  })(input.row.productTargets);

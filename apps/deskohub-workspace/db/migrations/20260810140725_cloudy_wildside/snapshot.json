@@ -1,9 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "3842a94d-5e67-4d7a-a9ec-80e9ed1faa95",
+  "id": "d0231cc4-6316-4d8e-9198-8632e33b07ed",
   "prevIds": [
-    "9550e8c8-bdd9-4498-a6cf-c85e76861150"
+    "3842a94d-5e67-4d7a-a9ec-80e9ed1faa95"
   ],
   "ddl": [
     {
@@ -38,7 +38,7 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_product_targets",
+      "name": "discount_targets",
       "entityType": "tables",
       "schema": "public"
     },
@@ -733,20 +733,7 @@
       "name": "discount_id",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_product_targets"
-    },
-    {
-      "type": "jsonb",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "product_identity",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "type": "jsonb",
@@ -759,7 +746,7 @@
       "name": "product_target",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "type": "text",
@@ -2367,10 +2354,10 @@
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "discount_product_targets_discount_id_discounts_id_fk",
+      "name": "discount_targets_discount_id_discounts_id_fkey",
       "entityType": "fks",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "nameExplicit": false,
@@ -2437,13 +2424,13 @@
     {
       "columns": [
         "discount_id",
-        "product_identity"
+        "product_target"
       ],
       "nameExplicit": true,
       "name": "discount_product_targets_pk",
       "entityType": "pks",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "columns": [

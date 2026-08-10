@@ -1,7 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  getLegacyWorkspaceProductIdentities,
-  getUniqueWorkspaceProductTargets,
   getWorkspaceProductTarget,
   workspaceProductTargetMatches,
   workspaceProductTargets,
@@ -29,24 +27,6 @@ describe("workspace product targets", () => {
     expect(
       getWorkspaceProductTarget({ kind: "office", seats: 4, dayCount: 3 })
     ).toEqual({ kind: "office" });
-  });
-
-  test("keeps valid purchase identities for overlapping deployments", () => {
-    for (const target of workspaceProductTargets) {
-      for (const identity of getLegacyWorkspaceProductIdentities(target)) {
-        expect(getWorkspaceProductTarget(identity)).toEqual(target);
-      }
-    }
-  });
-
-  test("deduplicates legacy rows by reservation family", () => {
-    expect(
-      getUniqueWorkspaceProductTargets([
-        { kind: "meeting-room" },
-        { kind: "cowork" },
-        { kind: "meeting-room" },
-      ])
-    ).toEqual([{ kind: "cowork" }, { kind: "meeting-room" }]);
   });
 
   test("targets every exact cowork product through the cowork family", () => {
