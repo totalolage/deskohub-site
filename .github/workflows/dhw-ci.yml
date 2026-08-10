@@ -101,7 +101,85 @@ jobs:
           set -euo pipefail
 
           bun apps/dhw/src/build.ts development
-          expected_version="$(jq -r '.version' apps/dhw/package.json)"
+          expected_version="$(jq -r '.version' apps/dhw/package.json)+development"
           build_info="$(apps/dhw/dist/dhw version --json)"
           test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
           test "$(jq -r '.target' <<<"$build_info")" = "development"
+
+  build-pr-binaries:
+    if: >-
+      github.event.action != 'converted_to_draft' &&
+      github.event.pull_request.draft == false
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: darwin-arm64
+            runner: macos-15
+          - target: darwin-x64
+            runner: macos-15-intel
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+          - target: linux-x64-baseline
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Describe the PR build
+        id: build
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "short_sha=${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+          echo "version_tag=pr.${PR_NUMBER}.${HEAD_SHA:0:12}" >> "$GITHUB_OUTPUT"
+
+      - name: Compile the native PR binary
+        env:
+          DHW_BUILD_VERSION_TAG: ${{ steps.build.outputs.version_tag }}
+          DHW_TARGET: ${{ matrix.target }}
+        run: bun apps/dhw/src/build.ts "$DHW_TARGET"
+
+      - name: Verify and package the PR binary
+        env:
+          DHW_BUILD_VERSION_TAG: ${{ steps.build.outputs.version_tag }}
+          DHW_TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+
+          binary="apps/dhw/dist/dhw-${DHW_TARGET}"
+          test -x "$binary"
+          expected_version="$(jq -r '.version' apps/dhw/package.json)+${DHW_BUILD_VERSION_TAG}"
+          build_info="$("$binary" version --json)"
+          test "$(jq -r '.version' <<<"$build_info")" = "$expected_version"
+          test "$(jq -r '.target' <<<"$build_info")" = "$DHW_TARGET"
+
+          (
+            cd apps/dhw/dist
+            shasum -a 256 "dhw-${DHW_TARGET}" > "dhw-${DHW_TARGET}.sha256"
+            tar -czf "dhw-${DHW_TARGET}.tar.gz" \
+              "dhw-${DHW_TARGET}" \
+              "dhw-${DHW_TARGET}.sha256"
+            shasum -a 256 "dhw-${DHW_TARGET}.tar.gz" \
+              > "dhw-${DHW_TARGET}.tar.gz.sha256"
+          )
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dhw-pr-${{ github.event.pull_request.number }}-${{ steps.build.outputs.short_sha }}-${{ matrix.target }}
+          path: |
+            apps/dhw/dist/dhw-${{ matrix.target }}.tar.gz
+            apps/dhw/dist/dhw-${{ matrix.target }}.tar.gz.sha256
+          if-no-files-found: error
+          retention-days: 7

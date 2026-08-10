@@ -8,3 +8,11 @@ export const GET = defineWorkspaceHttpApiRoute(
   },
   (request) => handleWorkspaceAdminApiRequest(request)
 );
+
+export const POST = defineWorkspaceHttpApiRoute(
+  {
+    operation: "workspaceAdminApi",
+    cancellation: "interrupt-on-disconnect",
+  },
+  (request) => handleWorkspaceAdminApiRequest(request)
+);

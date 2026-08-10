@@ -3,10 +3,11 @@ import { Effect, Layer } from "effect";
 import { Command } from "effect/unstable/cli";
 import { FetchHttpClient, Headers } from "effect/unstable/http";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
+import { AuthenticationService } from "./authentication/authentication.service";
+import { ClientIdentity } from "./authentication/client-identity.service";
 import { DHW_VERSION } from "./build-info";
 import { dhwCommand } from "./command";
 import { DhwConfig } from "./config/dhw-config.service";
-import { CredentialStore } from "./credentials/credential-store.service";
 import { ExecutableInstaller } from "./update/executable-installer.service";
 import { GithubReleaseService } from "./update/github-release.service";
 import { UpdateService } from "./update/update.service";
@@ -20,7 +21,8 @@ const UpdateLive = UpdateService.Live.pipe(
 
 const ApplicationLive = Layer.mergeAll(
   WorkspaceAdminApiClient.Live,
-  CredentialStore.Live,
+  AuthenticationService.LiveWithDependencies,
+  ClientIdentity.Live,
   UpdateLive
 ).pipe(
   Layer.provideMerge(DhwConfig.Live),
