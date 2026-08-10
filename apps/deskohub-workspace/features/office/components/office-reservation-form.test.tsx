@@ -9,7 +9,7 @@ import {
   test,
 } from "bun:test";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { Effect, Schema } from "effect";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
@@ -56,8 +56,9 @@ describe("OfficeReservationForm", () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     cleanup();
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
     execute.mockClear();
     globalThis.fetch = originalFetch;
   });
