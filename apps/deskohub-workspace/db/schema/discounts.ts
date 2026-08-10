@@ -80,7 +80,7 @@ export const discountProductTargets = pgTable(
   },
   (t) => [
     primaryKey({
-      name: "discount_product_targets_pk",
+      name: "discount_targets_pk",
       columns: [t.discountId, t.productTarget],
     }),
   ]

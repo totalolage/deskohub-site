@@ -97,9 +97,7 @@ describe("discount persistence contracts", () => {
     const targetConfig = configOf(discountProductTargets);
 
     expect(targetConfig.name).toBe("discount_targets");
-    expect(namesOf(targetConfig.primaryKeys)).toEqual([
-      "discount_product_targets_pk",
-    ]);
+    expect(namesOf(targetConfig.primaryKeys)).toEqual(["discount_targets_pk"]);
     expect(targetConfig.columns.map(({ name }) => name)).toEqual([
       "discount_id",
       "product_target",
@@ -157,13 +155,15 @@ describe("discount persistence contracts", () => {
   test("migrates identities to canonical family targets with rollout compatibility", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260810140725_cloudy_wildside/migration.sql",
+        "../migrations/20260810143301_late_morbius/migration.sql",
         import.meta.url
       )
     ).text();
 
     expect(migration).toContain('CREATE TABLE "discount_targets"');
-    expect(migration).toContain('PRIMARY KEY("discount_id","product_target")');
+    expect(migration).toContain(
+      'CONSTRAINT "discount_targets_pk" PRIMARY KEY("discount_id","product_target")'
+    );
     expect(migration).toContain(
       "SELECT DISTINCT\n\t\"discount_id\",\n\tjsonb_build_object('kind', \"product_identity\" ->> 'kind')"
     );

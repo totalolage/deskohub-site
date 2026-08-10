@@ -1,7 +1,7 @@
 CREATE TABLE "discount_targets" (
 	"discount_id" text,
 	"product_target" jsonb,
-	CONSTRAINT "discount_product_targets_pk" PRIMARY KEY("discount_id","product_target")
+	CONSTRAINT "discount_targets_pk" PRIMARY KEY("discount_id","product_target")
 );
 --> statement-breakpoint
 DO $migration$
