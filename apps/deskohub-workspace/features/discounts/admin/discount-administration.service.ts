@@ -42,6 +42,7 @@ import type {
   CreateCustomerDiscountCodeAdminInput,
   CreateDiscountAdminInput,
   CreateDiscountCodeAdminInput,
+  CreateManagedDiscountCodeAdminInput,
   DiscountAdminCustomerSearch,
   UpdateDiscountAdminInput,
   UpdateDiscountCodeAdminInput,
@@ -189,8 +190,11 @@ export interface IDiscountAdministration {
     EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
   >;
   readonly createCode: (
-    input: CreateDiscountCodeAdminInput
-  ) => Effect.Effect<DiscountCodeId, EffectDrizzleQueryError | SqlError>;
+    input: CreateManagedDiscountCodeAdminInput
+  ) => Effect.Effect<
+    DiscountCodeId,
+    EffectDrizzleQueryError | SqlError | DiscountAdminNotFoundError
+  >;
   readonly createCustomerCode: (
     input: CreateCustomerDiscountCodeAdminInput
   ) => Effect.Effect<
@@ -455,21 +459,57 @@ export class DiscountAdministration extends Context.Service<
       );
 
       const createCode = Effect.fn("DiscountAdministration.createCode")(
-        (input: CreateDiscountCodeAdminInput) =>
-          db
-            .insert(discountCodes)
-            .values(toDiscountCodeValues(input))
-            .returning({ id: discountCodes.id })
-            .pipe(
-              Effect.flatMap((rows) => {
-                const row = rows[0];
-                return row
-                  ? Effect.succeed(row.id)
-                  : Effect.die(
-                      new Error("Discount code insert returned no identifier.")
-                    );
-              })
-            )
+        (input: CreateManagedDiscountCodeAdminInput) =>
+          db.transaction((tx) =>
+            Effect.gen(function* () {
+              const discountId = yield* Match.value(input.discount).pipe(
+                Match.discriminatorsExhaustive("kind")({
+                  existing: ({ discountId }) =>
+                    tx
+                      .select({ id: discounts.id })
+                      .from(discounts)
+                      .where(eq(discounts.id, discountId))
+                      .for("update")
+                      .pipe(
+                        Effect.flatMap((rows) =>
+                          requireUpdatedRow(rows, "discount", discountId)
+                        ),
+                        Effect.as(discountId)
+                      ),
+                  new: ({ discount }) =>
+                    Effect.gen(function* () {
+                      const rows = yield* tx
+                        .insert(discounts)
+                        .values(toDiscountValues(discount))
+                        .returning({ id: discounts.id });
+                      const row = rows[0];
+                      if (!row) {
+                        return yield* Effect.die(
+                          new Error("Discount insert returned no identifier.")
+                        );
+                      }
+                      yield* tx.insert(discountProductTargets).values(
+                        discount.products.map((productIdentity) => ({
+                          discountId: row.id,
+                          productIdentity,
+                        }))
+                      );
+                      return row.id;
+                    }),
+                })
+              );
+              const codeRows = yield* tx
+                .insert(discountCodes)
+                .values(toDiscountCodeValues({ ...input.code, discountId }))
+                .returning({ id: discountCodes.id });
+              const codeRow = codeRows[0];
+              return codeRow
+                ? codeRow.id
+                : yield* Effect.die(
+                    new Error("Discount code insert returned no identifier.")
+                  );
+            })
+          )
       );
 
       const createCustomerCode = Effect.fn(

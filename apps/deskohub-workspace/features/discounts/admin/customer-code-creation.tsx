@@ -20,15 +20,15 @@ import {
   readDiscountForm,
 } from "./form-input";
 
-export function CustomerDiscountCodeCreationForm({
+export function DiscountCodeCreationForm({
   completion,
   customerId,
   customerName,
   discounts,
 }: {
-  readonly completion: "back" | "customer";
-  readonly customerId: string;
-  readonly customerName: string;
+  readonly completion?: "back" | "customer";
+  readonly customerId?: string;
+  readonly customerName?: string;
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {
   const router = useRouter();
@@ -36,9 +36,11 @@ export function CustomerDiscountCodeCreationForm({
     discounts.length > 0 ? "existing" : "new"
   );
   const [error, setError] = useState<string | null>(null);
-  const customerPath = `/admin/customers/${customerId}`;
+  const customerPath = customerId ? `/admin/customers/${customerId}` : null;
   const close = () => {
-    if (completion === "back") router.back();
+    if (!customerPath) {
+      router.refresh();
+    } else if (completion === "back") router.back();
     else router.replace(customerPath);
   };
   const { execute, isExecuting } = useWorkspaceAction(mutateDiscountAdmin, {
@@ -70,21 +72,28 @@ export function CustomerDiscountCodeCreationForm({
               ?.toString() as StoredDiscountId,
           }
         : { kind: "new", discount: readDiscountForm(formData) };
-    execute({
-      kind: "create-customer-code",
-      customerId,
-      code: readDiscountCodeConfigurationForm(formData),
-      discount,
-    });
+    const code = readDiscountCodeConfigurationForm(formData);
+    if (customerId) {
+      execute({
+        kind: "create-customer-code",
+        customerId,
+        code,
+        discount,
+      });
+    } else {
+      execute({ kind: "create-code", code, discount });
+    }
   };
 
   return (
     <form aria-label="Create discount code" onSubmit={submit}>
-      <div className="rounded-xl bg-aquamarine-green/12 px-4 py-3 text-sm text-aquamarine-ink">
-        The new code will only be available to {customerName}.
-      </div>
+      {customerName && (
+        <div className="rounded-xl bg-aquamarine-green/12 px-4 py-3 text-sm text-aquamarine-ink">
+          The new code will only be available to {customerName}.
+        </div>
+      )}
 
-      <fieldset className="mt-6">
+      <fieldset className={customerName ? "mt-6" : undefined}>
         <legend className="text-sm font-semibold">Discount</legend>
         <p className="mt-1 text-sm text-navy-blue/65">
           Choose what the code should apply.
@@ -170,14 +179,37 @@ export function CustomerDiscountCodeCreationForm({
       )}
 
       <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-navy-blue/10 pt-5">
-        <Button onClick={close} type="button" variant="secondary">
-          Cancel
-        </Button>
+        {customerId && (
+          <Button onClick={close} type="button" variant="secondary">
+            Cancel
+          </Button>
+        )}
         <Button className="text-black" disabled={isExecuting} type="submit">
           <Plus aria-hidden className="size-4" />
           {isExecuting ? "Creating…" : "Create discount code"}
         </Button>
       </div>
     </form>
+  );
+}
+
+export function CustomerDiscountCodeCreationForm({
+  completion,
+  customerId,
+  customerName,
+  discounts,
+}: {
+  readonly completion: "back" | "customer";
+  readonly customerId: string;
+  readonly customerName: string;
+  readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
+}) {
+  return (
+    <DiscountCodeCreationForm
+      completion={completion}
+      customerId={customerId}
+      customerName={customerName}
+      discounts={discounts}
+    />
   );
 }

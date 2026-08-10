@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   AdministrationPage,
-  AdministrationPageHeader,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
@@ -25,63 +24,63 @@ export default async function ReservationsAdministrationPage({
   const { input, result } = await loadAdministrationReservations(searchParams);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        count={result.total}
-        description="Bookings, customer details, and payment status in one operational view."
-        title="Reservations"
-      />
+      <h1 className="sr-only">Reservations</h1>
+      <div className="mb-5 grid gap-5 rounded-xl border border-navy-blue/10 bg-white p-4 xl:grid-cols-[minmax(22rem,1fr)_auto] xl:items-end">
+        <div className="grid gap-3 sm:grid-cols-[auto_minmax(18rem,1fr)] sm:items-end">
+          <p className="pb-2 text-sm font-semibold text-navy-blue/70">
+            {result.total} reservations
+          </p>
+          <ReservationLookup variant="toolbar" />
+        </div>
 
-      <div className="mb-4">
-        <ReservationLookup compact />
-      </div>
-
-      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 sm:grid-cols-2 xl:grid-cols-[11rem_13rem_12rem_auto_auto] xl:items-end xl:justify-start">
-        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-          Status
-          <select
-            className={selectClassName}
-            defaultValue={input.status ?? ""}
-            name="status"
-          >
-            <option value="">All statuses</option>
-            <option value="in_progress">In progress</option>
-            <option value="complete">Complete</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </label>
-        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-          Reservation type
-          <select
-            className={selectClassName}
-            defaultValue={input.type ?? ""}
-            name="type"
-          >
-            <option value="">All reservation types</option>
-            <option value="cowork">Coworking</option>
-            <option value="meeting-room">Meeting room</option>
-          </select>
-        </label>
-        <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-          Start date
-          <input
-            className={selectClassName}
-            defaultValue={input.date ?? ""}
-            name="date"
-            type="date"
-          />
-        </label>
-        {input.customerId && (
-          <input name="customerId" type="hidden" value={input.customerId} />
-        )}
-        <Button className="min-h-10" size="sm" type="submit">
-          Apply filters
-        </Button>
-        {(input.customerId || input.date || input.status || input.type) && (
-          <Button asChild className="min-h-10" size="sm" variant="ghost">
-            <Link href="/admin/reservations">Clear</Link>
+        <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[11rem_13rem_12rem_auto_auto] xl:items-end xl:justify-end">
+          <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+            Status
+            <select
+              className={selectClassName}
+              defaultValue={input.status ?? ""}
+              name="status"
+            >
+              <option value="">All statuses</option>
+              <option value="in_progress">In progress</option>
+              <option value="complete">Complete</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+            Reservation type
+            <select
+              className={selectClassName}
+              defaultValue={input.type ?? ""}
+              name="type"
+            >
+              <option value="">All reservation types</option>
+              <option value="cowork">Coworking</option>
+              <option value="meeting-room">Meeting room</option>
+            </select>
+          </label>
+          <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+            Start date
+            <input
+              className={selectClassName}
+              defaultValue={input.date ?? ""}
+              name="date"
+              type="date"
+            />
+          </label>
+          {input.customerId && (
+            <input name="customerId" type="hidden" value={input.customerId} />
+          )}
+          <Button className="min-h-10" size="sm" type="submit">
+            Apply filters
           </Button>
-        )}
-      </form>
+          {(input.customerId || input.date || input.status || input.type) && (
+            <Button asChild className="min-h-10" size="sm" variant="ghost">
+              <Link href="/admin/reservations">Clear</Link>
+            </Button>
+          )}
+        </form>
+      </div>
 
       {input.customerId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">

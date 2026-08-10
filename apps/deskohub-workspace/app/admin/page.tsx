@@ -1,8 +1,5 @@
 import type { AdministrationOverviewMetric } from "@/features/administration/administration.service";
-import {
-  AdministrationPage,
-  AdministrationPageHeader,
-} from "@/features/administration/components";
+import { AdministrationPage } from "@/features/administration/components";
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
@@ -13,19 +10,11 @@ export default async function AdminPage() {
   const overview = await loadAdministrationOverview();
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        description="A quick read on reservation activity and direct access to the record you need."
-        title="Overview"
-      />
-
       <section aria-labelledby="reservation-activity-heading">
         <div className="mb-3">
-          <h2 className="text-xl" id="reservation-activity-heading">
+          <h1 className="text-xl" id="reservation-activity-heading">
             Reservation activity
-          </h2>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Counts are based on the live booking start date in Prague.
-          </p>
+          </h1>
         </div>
         <dl className="grid gap-3 lg:grid-cols-3">
           <OverviewMetric
@@ -51,10 +40,6 @@ export default async function AdminPage() {
           <h2 className="text-xl" id="find-heading">
             Find a record
           </h2>
-          <p className="mt-1 text-sm text-navy-blue/65">
-            Search by any reservation or payment identifier, or by customer
-            details.
-          </p>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
           <ReservationLookup />

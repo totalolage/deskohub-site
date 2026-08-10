@@ -16,6 +16,7 @@ export type AdministrationReservationStatus = {
 };
 
 export type ReservationStatusInput = {
+  readonly dotyposStatus?: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly fulfillmentState: FulfillmentState;
   readonly paymentState: PaymentState;
   readonly reservationState: ReservationState;
@@ -57,20 +58,28 @@ export const getAdministrationReservationLifecycle = (
       tone: "attention",
     };
   }
-  if (input.fulfillmentState === "fulfilled") {
-    return {
-      currentStage: "complete",
-      label: "Access delivered",
-      reachedStages: ["started", "held", "paid", "complete"],
-      tone: "positive",
-    };
-  }
   if (input.reservationState === "cancelled") {
     return {
       currentStage: "cancelled",
       label: "Hold released",
       reachedStages: ["started", "held", "cancelled"],
       tone: "neutral",
+    };
+  }
+  if (input.dotyposStatus === "CANCELLED") {
+    return {
+      currentStage: "cancelled",
+      label: "Cancelled in Dotypos",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    };
+  }
+  if (input.fulfillmentState === "fulfilled") {
+    return {
+      currentStage: "complete",
+      label: "Access delivered",
+      reachedStages: ["started", "held", "paid", "complete"],
+      tone: "positive",
     };
   }
   if (input.reservationState === "cancelling") {
@@ -136,11 +145,14 @@ export const getAdministrationReservationStatus = (
   if (input.reservationState === "cancellation_failed") {
     return { group: "attention", label: "Cancellation issue" };
   }
-  if (input.fulfillmentState === "fulfilled") {
-    return { group: "complete", label: "Complete" };
-  }
   if (input.reservationState === "cancelled") {
     return { group: "cancelled", label: "Cancelled" };
+  }
+  if (input.dotyposStatus === "CANCELLED") {
+    return { group: "cancelled", label: "Cancelled" };
+  }
+  if (input.fulfillmentState === "fulfilled") {
+    return { group: "complete", label: "Complete" };
   }
   if (input.reservationState === "cancelling") {
     return { group: "in_progress", label: "Cancelling" };

@@ -163,6 +163,38 @@ export type AdministrationPaymentAttempt = {
   readonly updatedAt: string;
 };
 
+export type AdministrationMoney = {
+  readonly value: number;
+  readonly exponent: number;
+  readonly currency: string;
+};
+
+export type AdministrationCustomerTransaction = {
+  readonly attempt: AdministrationPaymentAttempt;
+  readonly reservation: AdministrationReservationSummary;
+};
+
+export type AdministrationCustomerConsent = {
+  readonly documentKey: "privacyPolicy" | "marketingCommunications";
+  readonly documentPath: string;
+  readonly documentHash: string;
+  readonly accepted: boolean;
+  readonly acceptedAt: string;
+  readonly locale: string;
+};
+
+export type AdministrationCustomerActivity = {
+  readonly reservations: readonly AdministrationReservationSummary[];
+  readonly transactions: readonly AdministrationCustomerTransaction[];
+  readonly stats: {
+    readonly reservationCount: number;
+    readonly favoriteProduct: string | null;
+    readonly revenue: readonly AdministrationMoney[];
+    readonly discountSavings: readonly AdministrationMoney[];
+  };
+  readonly consents: readonly AdministrationCustomerConsent[];
+};
+
 export type AdministrationDiscountApplication = {
   readonly id: string;
   readonly label: string;
@@ -316,6 +348,47 @@ const toAdministrationPaymentAttempt = (
   updatedAt: toIsoString(attempt.updatedAt),
 });
 
+const sumMoney = (
+  items: readonly {
+    readonly value: number;
+    readonly exponent: number;
+    readonly currency: string;
+  }[]
+): readonly AdministrationMoney[] => {
+  const totals = new Map<string, AdministrationMoney>();
+  for (const item of items) {
+    const key = `${item.currency}:${item.exponent}`;
+    const current = totals.get(key);
+    totals.set(key, {
+      ...item,
+      value: (current?.value ?? 0) + item.value,
+    });
+  }
+  return [...totals.values()].toSorted((left, right) =>
+    left.currency.localeCompare(right.currency)
+  );
+};
+
+const getFavoriteProduct = (rows: readonly SafeReservationRow[]) => {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (
+      row.reservationState === "cancelled" ||
+      row.reservationState === "hold_expired"
+    ) {
+      continue;
+    }
+    const label = getReservationTypeLabel(row);
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  return (
+    [...counts.entries()].toSorted(
+      ([leftLabel, leftCount], [rightLabel, rightCount]) =>
+        rightCount - leftCount || leftLabel.localeCompare(rightLabel)
+    )[0]?.[0] ?? null
+  );
+};
+
 const getReservationTypeLabel = (row: SafeReservationRow) => {
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
   const tier = row.reservationDetails.entryTier;
@@ -357,6 +430,7 @@ const toReservationSummary = ({
     type: row.reservationDetails.kind,
     typeLabel: getReservationTypeLabel(row),
     status: getAdministrationReservationStatus({
+      dotyposStatus: live.reservation?.status,
       fulfillmentState: row.fulfillmentState,
       paymentState: row.paymentState,
       reservationState: row.reservationState,
@@ -696,6 +770,9 @@ export class AdministrationService extends Context.Service<
       readonly customerId: string;
       readonly page?: number;
     }) => Effect.Effect<AdministrationReservationPage, unknown>;
+    readonly loadCustomerActivity: (
+      customerId: string
+    ) => Effect.Effect<AdministrationCustomerActivity, unknown>;
     readonly listOrders: IPaymentAdministrationService["listOrders"];
     readonly loadOrder: IPaymentAdministrationService["loadOrder"];
     readonly listOperations: IPaymentAdministrationService["listOperations"];
@@ -1044,6 +1121,7 @@ export class AdministrationService extends Context.Service<
                 })
               : null,
           lifecycle: getAdministrationReservationLifecycle({
+            dotyposStatus: live.reservation?.status,
             fulfillmentState: row.fulfillmentState,
             paymentState: row.paymentState,
             reservationState: row.reservationState,
@@ -1381,6 +1459,192 @@ export class AdministrationService extends Context.Service<
         };
       });
 
+      const loadCustomerActivity = Effect.fn(
+        "AdministrationService.loadCustomerActivity"
+      )(function* (customerId: string) {
+        const rows = yield* db
+          .select(safeReservationSelection)
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.dotyposCustomerId, customerId))
+          .orderBy(desc(workspaceReservations.updatedAt));
+
+        if (rows.length === 0) {
+          return {
+            reservations: [],
+            transactions: [],
+            stats: {
+              reservationCount: 0,
+              favoriteProduct: null,
+              revenue: [],
+              discountSavings: [],
+            },
+            consents: [],
+          } satisfies AdministrationCustomerActivity;
+        }
+
+        const reservationIds = rows.map(({ id }) => id);
+        const { applicationRows, attemptRows, evidenceRows, liveReservations } =
+          yield* Effect.all(
+            {
+              attemptRows: db
+                .select(safePaymentAttemptSelection)
+                .from(paymentAttempts)
+                .where(
+                  inArray(
+                    paymentAttempts.workspaceReservationId,
+                    reservationIds
+                  )
+                )
+                .orderBy(desc(paymentAttempts.createdAt)),
+              applicationRows: db
+                .select({
+                  value: discountApplications.appliedAmountValue,
+                  exponent: discountApplications.appliedAmountExponent,
+                  currency: discountApplications.appliedAmountCurrency,
+                })
+                .from(discountApplications)
+                .innerJoin(
+                  paymentAttempts,
+                  eq(discountApplications.paymentAttemptId, paymentAttempts.id)
+                )
+                .where(
+                  and(
+                    inArray(
+                      discountApplications.workspaceReservationId,
+                      reservationIds
+                    ),
+                    eq(paymentAttempts.state, "paid")
+                  )
+                ),
+              evidenceRows: db
+                .select({
+                  accepted: legalEvidenceEvents.accepted,
+                  acceptedAt: legalEvidenceEvents.acceptedAt,
+                  documentHash: legalEvidenceEvents.documentHash,
+                  documentKey: legalEvidenceEvents.documentKey,
+                  documentPath: legalEvidenceEvents.documentPath,
+                  locale: legalEvidenceEvents.locale,
+                })
+                .from(legalEvidenceEvents)
+                .where(
+                  and(
+                    inArray(
+                      legalEvidenceEvents.workspaceReservationId,
+                      reservationIds
+                    ),
+                    inArray(legalEvidenceEvents.documentKey, [
+                      "privacyPolicy",
+                      "marketingCommunications",
+                    ])
+                  )
+                )
+                .orderBy(desc(legalEvidenceEvents.acceptedAt)),
+              liveReservations: dotypos
+                .listReservations({
+                  customerId,
+                  order: "startDateDescending",
+                })
+                .pipe(
+                  Effect.catch((cause) =>
+                    Effect.logWarning(
+                      "Customer reservation dates unavailable",
+                      { cause, customerId }
+                    ).pipe(Effect.as([] as const))
+                  )
+                ),
+            },
+            { concurrency: 4 }
+          );
+
+        const liveById = new Map(
+          liveReservations.flatMap((reservation) =>
+            reservation.id ? [[reservation.id, reservation] as const] : []
+          )
+        );
+        const latestPaymentByReservation = new Map<
+          string,
+          AdministrationPaymentAttempt
+        >();
+        for (const attempt of attemptRows) {
+          if (!latestPaymentByReservation.has(attempt.workspaceReservationId)) {
+            latestPaymentByReservation.set(
+              attempt.workspaceReservationId,
+              toAdministrationPaymentAttempt(attempt)
+            );
+          }
+        }
+        const reservations = rows.map((row) =>
+          toReservationSummary({
+            latestPayment: latestPaymentByReservation.get(row.id) ?? null,
+            live: {
+              customer: null,
+              reservation: row.dotyposReservationId
+                ? (liveById.get(row.dotyposReservationId) ?? null)
+                : null,
+            },
+            row,
+          })
+        );
+        const reservationsById = new Map(
+          reservations.map((reservation) => [reservation.id, reservation])
+        );
+        const latestConsentByKey = new Map<
+          AdministrationCustomerConsent["documentKey"],
+          AdministrationCustomerConsent
+        >();
+        for (const evidence of evidenceRows) {
+          if (
+            evidence.documentKey !== "privacyPolicy" &&
+            evidence.documentKey !== "marketingCommunications"
+          ) {
+            continue;
+          }
+          if (!latestConsentByKey.has(evidence.documentKey)) {
+            latestConsentByKey.set(evidence.documentKey, {
+              ...evidence,
+              documentKey: evidence.documentKey,
+              acceptedAt: toIsoString(evidence.acceptedAt),
+            });
+          }
+        }
+
+        return {
+          reservations,
+          transactions: attemptRows.flatMap((row) => {
+            const reservation = reservationsById.get(
+              row.workspaceReservationId
+            );
+            return reservation
+              ? [
+                  {
+                    attempt: toAdministrationPaymentAttempt(row),
+                    reservation,
+                  },
+                ]
+              : [];
+          }),
+          stats: {
+            reservationCount: rows.length,
+            favoriteProduct: getFavoriteProduct(rows),
+            revenue: sumMoney(
+              attemptRows.flatMap((attempt) =>
+                attempt.state === "paid"
+                  ? [
+                      {
+                        value: attempt.amountValue,
+                        exponent: attempt.amountExponent,
+                        currency: attempt.currency,
+                      },
+                    ]
+                  : []
+              )
+            ),
+            discountSavings: sumMoney(applicationRows),
+          },
+          consents: [...latestConsentByKey.values()],
+        } satisfies AdministrationCustomerActivity;
+      });
+
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* () {
           const currentDate = getCurrentWorkspaceDate();
@@ -1425,6 +1689,7 @@ export class AdministrationService extends Context.Service<
         loadBooking,
         listCustomers,
         loadCustomerReservations,
+        loadCustomerActivity,
         listOrders: paymentAdministration.listOrders,
         loadOrder: paymentAdministration.loadOrder,
         listOperations: paymentAdministration.listOperations,

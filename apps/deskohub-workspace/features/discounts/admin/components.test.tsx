@@ -17,6 +17,7 @@ import {
   within,
 } from "@testing-library/react";
 import { Profiler, StrictMode } from "react";
+import { loadFixtureReservations } from "@/features/administration/fixtures";
 import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
@@ -258,6 +259,7 @@ describe("discount administration pages", () => {
     const view = render(<CodesAdministrationPage dashboard={dashboard} />);
 
     expect(view.getByRole("table", { name: "Discount codes" })).toBeDefined();
+    expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
     fireEvent.click(
       view.getByRole("button", {
         name: "Edit SUMMER10",
@@ -269,6 +271,12 @@ describe("discount administration pages", () => {
     ) as HTMLInputElement;
     expect(validFrom.type).toBe("datetime-local");
     expect(validFrom.value).toBe("2026-08-01T10:00");
+    expect(
+      view.container.querySelector(
+        "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
+      )
+    ).not.toBeNull();
+    expect(view.getByRole("button", { name: "Save discount" })).toBeDefined();
 
     act(() => {
       actionOptions?.onError({
@@ -293,6 +301,23 @@ describe("discount administration pages", () => {
     ).toBe("/admin/codes/019c91dd-c560-7e55-b9d8-c95065efd52d");
     expect(within(table).getByText("2 customers")).toBeDefined();
     expect(within(table).getByText("96")).toBeDefined();
+  });
+
+  test("creates a code and its discount together when no definitions exist", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(
+      <CodesAdministrationPage
+        dashboard={{ ...dashboard, codes: [], discounts: [] }}
+      />
+    );
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    expect(
+      view.getByRole("radio", { name: "Create a new discount" })
+    ).toHaveProperty("checked", true);
+    expect(
+      view.getByRole("textbox", { name: "English (en-US)" })
+    ).toBeDefined();
   });
 
   test("manages code audiences while keeping claim history read-only", async () => {
@@ -386,10 +411,42 @@ describe("discount administration pages", () => {
       ],
       claims: [],
     };
+    const reservations = loadFixtureReservations({
+      customerId: "customer-alex",
+    }).items;
+    const paidReservation = reservations.find(
+      ({ latestPayment }) => latestPayment?.state === "paid"
+    );
+    expect(paidReservation?.latestPayment).toBeDefined();
+    if (!paidReservation?.latestPayment) return;
     const view = render(
       <CustomerAdministrationDetailPage
+        activity={{
+          reservations,
+          transactions: [
+            {
+              attempt: paidReservation.latestPayment,
+              reservation: paidReservation,
+            },
+          ],
+          stats: {
+            reservationCount: reservations.length,
+            favoriteProduct: "Cowork Basic",
+            revenue: [paidReservation.latestPayment.amount],
+            discountSavings: [{ value: 7500, exponent: 2, currency: "CZK" }],
+          },
+          consents: [
+            {
+              documentKey: "privacyPolicy",
+              documentPath: "/legal/privacy-policy-v2.md",
+              documentHash: "privacy-hash",
+              accepted: true,
+              acceptedAt: paidReservation.updatedAt,
+              locale: "en-US",
+            },
+          ],
+        }}
         profile={profile}
-        reservations={{ items: [], page: 1, pageCount: 1, total: 0 }}
       />
     );
     const table = view.getByRole("table", {
@@ -405,6 +462,22 @@ describe("discount administration pages", () => {
     expect(within(table).getByText("ONLYME")).toBeDefined();
     expect(within(table).getByText("OPEN")).toBeDefined();
     expect(within(table).queryByText("SOMEONEELSE")).toBeNull();
+    expect(view.getByText("1 (+ 1)")).toBeDefined();
+    expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
+    expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
+    expect(
+      view.getByRole("table", { name: "Customer transaction history" })
+    ).toBeDefined();
+    const pastReservations = view
+      .getByText(/Past reservations \(/)
+      .closest("details");
+    expect(pastReservations?.hasAttribute("open")).toBe(false);
+    expect(
+      view.queryByText("Reservations associated with this customer.")
+    ).toBeNull();
+    expect(
+      view.queryByText(/Codes explicitly available to this customer/)
+    ).toBeNull();
     expect(
       within(table).queryByRole("columnheader", { name: "Status" })
     ).toBeNull();
@@ -417,13 +490,14 @@ describe("discount administration pages", () => {
         name: "Remove Test Customer from ONLYME",
       })
     );
-    expect(view.getByRole("dialog")).toBeDefined();
+    expect(await view.findByRole("dialog")).toBeDefined();
     expect(view.getByRole("button", { name: "Delete code" })).toBeDefined();
     expect(
       view.getByRole("button", { name: "Make available to all" })
     ).toBeDefined();
 
     fireEvent.click(view.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(view.queryByRole("dialog")).toBeNull());
     fireEvent.click(
       within(table).getByRole("button", {
         name: "Add Test Customer to OPEN",
@@ -509,7 +583,7 @@ describe("discount administration pages", () => {
     );
 
     expect(
-      view.getByRole("heading", { name: "Add Test Customer to TEAM?" })
+      await view.findByRole("heading", { name: "Add Test Customer to TEAM?" })
     ).toBeDefined();
     expect(
       view.getByText(
@@ -524,7 +598,17 @@ describe("discount administration pages", () => {
     const view = render(<SalesAdministrationPage dashboard={dashboard} />);
 
     expect(view.getByRole("table", { name: "Calendar sales" })).toBeDefined();
+    expect(view.queryByRole("table", { name: "Discounts" })).toBeNull();
     expect(view.getByText("Associated").className).toContain("text-white");
     expect(view.getByText("tentative").className).toContain("text-navy-blue");
+    fireEvent.click(
+      view.getByRole("button", { name: "Edit discount for Summer sale" })
+    );
+    expect(
+      view.container.querySelector(
+        "#labelEn-019c91dd-c560-7e55-b9d8-c95065efd51d"
+      )
+    ).not.toBeNull();
+    expect(view.getByRole("button", { name: "Save discount" })).toBeDefined();
   });
 });

@@ -4,7 +4,7 @@ The Workspace administration dashboard is a read-oriented operational view for r
 
 The visible navigation is intentionally limited to Overview, Reservations, Customers, Codes, and Sales. Bookings, Nexi orders, and Nexi operations are shown in the reservation that owns them instead of competing as separate operator workflows. The old provider-oriented routes remain available as diagnostic fallbacks for records that cannot be linked to a Workspace reservation, but they are not part of the primary navigation.
 
-Discount definitions are managed from both Codes and Sales so operators can configure a definition in the same context where it will be used. `/admin/discounts` redirects to Codes for compatibility with existing links.
+Discount definitions are managed through the code or Calendar sale that uses them instead of through a standalone definitions table. Code creation can create its discount atomically, and associated Calendar-sale rows expose their discount editor. `/admin/discounts` redirects to Codes for compatibility with existing links.
 
 ## Data ownership
 
@@ -21,7 +21,7 @@ The administration projection deliberately excludes Workspace access codes, paym
 
 ## Reservation lifecycle
 
-The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
+The lifecycle diagram is a projection of the selected reservation, not a generic explanation. It combines the local reservation state, payment-attempt state, and fulfillment outcome into Started, Held, Paid, Complete, or the exact cancellation substate (Hold expired, Cancelling, Cancellation issue, or Cancelled). A live Dotypos `CANCELLED` status is overlaid as an attention-state cancellation when the local row is stale, because Dotypos owns the current booking fact. This read-only overlay never writes a local transition or authorizes repair. A failed or expired payment does not by itself mark a still-held reservation as cancelled, and an in-progress or failed release is never presented as complete. The chronological history below the diagram shows the durable local milestones plus any available Nexi and PostHog observations.
 
 The Overview activity counts use live Dotypos booking start dates intersected with the reservations known to Workspace. If Dotypos is unavailable, the affected count is shown as unavailable rather than replaced with a locally derived value that answers a different question.
 
@@ -53,7 +53,7 @@ The current history can be incomplete because:
 - current Workspace rows store current state and selected milestone timestamps, not every transition;
 - the non-production direct-fulfillment path does not emit the same fulfillment event as the production delivery path.
 
-Workspace lifecycle state is the canonical, filterable current status. Neither Dotypos nor PostHog observations may override it, authorize customer access, trigger recovery, or prove that a transition occurred.
+Workspace lifecycle state remains the canonical, filterable status. The operator presentation may overlay a live Dotypos cancellation to expose a stale local hold, but that display does not persist a transition, authorize customer access, trigger recovery, or prove that Deskohub completed cancellation. PostHog observations never determine current status.
 
 Bringing reservation lifecycle history up to auditability requires a durable append-only domain transition stream written transactionally with the state change. Each transition should include a stable event ID, reservation ID, previous and new states, occurrence time, normalized reason, actor or source, correlation and causation IDs, and schema version. Delivery to PostHog should happen through an outbox with retry and delivery status. A complete audit design must also define retention, tamper evidence, access logging, redaction, repair, and backfill policy while preserving the no-PII boundary.
 

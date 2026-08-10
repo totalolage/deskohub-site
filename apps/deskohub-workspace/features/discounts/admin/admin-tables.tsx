@@ -12,6 +12,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ArrowUpRight,
   Pencil,
   Plus,
   Save,
@@ -60,6 +61,7 @@ import {
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
+import type { AdminCalendarSale } from "./discount-administration.service";
 import { getDiscountAdminValidationMessage } from "./form-feedback";
 import { readDiscountCodeForm, readDiscountForm } from "./form-input";
 
@@ -246,14 +248,182 @@ export function DiscountCodesAdminTable({
         />
       )}
       renderEditor={(code) => (
-        <DiscountCodeEditor
+        <CodeAndDiscountEditor
           code={code}
+          discount={discounts.find(({ id }) => id === code.discountId)}
           discounts={discounts}
           onDeleted={() => setExpandedId(null)}
         />
       )}
     />
   );
+}
+
+function CodeAndDiscountEditor({
+  code,
+  discount,
+  discounts,
+  onDeleted,
+}: {
+  readonly code: DiscountCodeTableItem;
+  readonly discount?: DiscountTableItem;
+  readonly discounts: readonly DiscountTableItem[];
+  readonly onDeleted: () => void;
+}) {
+  return (
+    <div className="grid gap-7">
+      <section>
+        <h3 className="mb-4 font-semibold">Code</h3>
+        <DiscountCodeEditor
+          code={code}
+          discounts={discounts}
+          onDeleted={onDeleted}
+        />
+      </section>
+      {discount && (
+        <section className="border-t border-navy-blue/10 pt-6">
+          <h3 className="mb-4 font-semibold">Discount</h3>
+          <DiscountEditor
+            deletable={false}
+            discount={discount}
+            onDeleted={onDeleted}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
+export function CalendarSalesAdminTable({
+  discounts,
+  events,
+}: {
+  readonly discounts: readonly DiscountTableItem[];
+  readonly events: readonly AdminCalendarSale[];
+}) {
+  const [expandedReference, setExpandedReference] = useState<string | null>(
+    null
+  );
+  const discountsById = useMemo(
+    () => new Map(discounts.map((discount) => [discount.id, discount])),
+    [discounts]
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+      <Table aria-label="Calendar sales" className="min-w-[760px]">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Event</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Calendar status</TableHead>
+            <TableHead>Association</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {events.map((event) => {
+            const discount =
+              event.association.kind === "associated"
+                ? discountsById.get(event.association.discountId)
+                : undefined;
+            const expanded = expandedReference === event.eventReference;
+            return (
+              <Fragment key={event.eventReference}>
+                <TableRow>
+                  <TableCell>
+                    <p className="font-semibold">{event.title}</p>
+                    <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
+                      {event.description || "Empty description"}
+                    </code>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-navy-blue/70">
+                    {event.start} → {event.end}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="subtle">{event.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <CalendarAssociationBadge association={event.association} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button asChild size="icon" variant="ghost">
+                        <a
+                          aria-label={`Open ${event.title} in Google Calendar`}
+                          href={event.eventUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ArrowUpRight aria-hidden className="size-4" />
+                        </a>
+                      </Button>
+                      {discount && (
+                        <Button
+                          aria-label={`Edit discount for ${event.title}`}
+                          aria-pressed={expanded}
+                          onClick={() =>
+                            setExpandedReference(
+                              expanded ? null : event.eventReference
+                            )
+                          }
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Pencil aria-hidden className="size-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {expanded && discount && (
+                  <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
+                    <TableCell
+                      className="border-t border-navy-blue/10 p-5"
+                      colSpan={5}
+                    >
+                      <DiscountEditor
+                        deletable={false}
+                        discount={discount}
+                        onDeleted={() => setExpandedReference(null)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function CalendarAssociationBadge({
+  association,
+}: {
+  readonly association: AdminCalendarSale["association"];
+}) {
+  if (association.kind === "associated") {
+    return (
+      <div>
+        <Badge className="border-burned-orange-ink bg-burned-orange-ink text-white">
+          Associated
+        </Badge>
+        <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
+          {association.discountLabel}
+        </p>
+      </div>
+    );
+  }
+  if (association.kind === "missing-discount") {
+    return <Badge variant="emphasis">Discount not found</Badge>;
+  }
+  if (association.kind === "invalid-description") {
+    return <Badge variant="emphasis">Invalid description</Badge>;
+  }
+  return <Badge variant="subtle">No discount ID</Badge>;
 }
 
 export function CreateDiscountForm() {
@@ -268,26 +438,6 @@ export function CreateDiscountForm() {
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
       <DiscountDefinitionFields />
-    </MutationForm>
-  );
-}
-
-export function CreateDiscountCodeForm({
-  discounts,
-}: {
-  readonly discounts: readonly DiscountTableItem[];
-}) {
-  return (
-    <MutationForm
-      actionName="createDiscountCode"
-      buildMutation={(formData) => ({
-        kind: "create-code",
-        code: readDiscountCodeForm(formData),
-      })}
-      submitLabel="Create code"
-      submitIcon={<Plus aria-hidden className="size-4" />}
-    >
-      <DiscountCodeFields discounts={discounts} />
     </MutationForm>
   );
 }
@@ -443,9 +593,11 @@ function RowActions({
 }
 
 function DiscountEditor({
+  deletable = true,
   discount,
   onDeleted,
 }: {
+  readonly deletable?: boolean;
   readonly discount: DiscountTableItem;
   readonly onDeleted: () => void;
 }) {
@@ -465,12 +617,14 @@ function DiscountEditor({
           },
         })}
         deleteControl={
-          <DeleteButton
-            confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
-            label={`Delete ${discount.labels["en-US"]}`}
-            mutation={() => ({ kind: "delete-discount", id: discount.id })}
-            onDeleted={onDeleted}
-          />
+          deletable ? (
+            <DeleteButton
+              confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
+              label={`Delete ${discount.labels["en-US"]}`}
+              mutation={() => ({ kind: "delete-discount", id: discount.id })}
+              onDeleted={onDeleted}
+            />
+          ) : undefined
         }
         requireDirty
         submitLabel="Save discount"
@@ -557,7 +711,12 @@ function MutationForm({
         initialFingerprint.current = fingerprintForm(form);
       }
       setDirty(false);
-      setFeedback({ kind: "success", message: data.notice });
+      setFeedback({
+        kind: "success",
+        message: data.createdDiscountId
+          ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
+          : data.notice,
+      });
       router.refresh();
     },
     onError: ({ error }) => {

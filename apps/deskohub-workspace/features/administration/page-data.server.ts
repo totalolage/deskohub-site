@@ -157,6 +157,16 @@ export const loadAdministrationCustomerReservations = async (
   }).pipe(runAdministration("administration.customer-reservations"));
 };
 
+export const loadAdministrationCustomerActivity = cache(
+  async (customerId: string) => {
+    await authorizeAdministrationPage();
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerActivity(customerId);
+    }).pipe(runAdministration("administration.customer-activity"));
+  }
+);
+
 export const loadAdministrationOrders = async (
   searchParams: AdministrationSearchParams
 ) => {

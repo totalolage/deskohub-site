@@ -1,7 +1,6 @@
 import Link from "next/link";
 import {
   AdministrationPage,
-  AdministrationPageHeader,
   EmptyState,
   formatAdministrationDate,
   formatAdministrationDateTime,
@@ -10,7 +9,6 @@ import {
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationReferences,
-  ReservationStatusBadge,
   ReservationTimeline,
 } from "@/features/administration/components";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
@@ -29,33 +27,12 @@ export default async function ReservationAdministrationDetailPage({
   const { booking, reservation } = detail;
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
-        actions={<ReservationStatusBadge status={reservation.status} />}
-        description={[
-          reservation.customer?.displayName,
-          reservation.startsAt
-            ? formatAdministrationDateTime(reservation.startsAt)
-            : "Booking details unavailable",
-        ]
-          .filter(Boolean)
-          .join(" · ")}
-        title={reservation.typeLabel}
-      />
+      <h1 className="sr-only">{reservation.typeLabel}</h1>
 
       <section aria-labelledby="lifecycle-heading">
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl" id="lifecycle-heading">
-              Reservation lifecycle
-            </h2>
-            <p className="mt-1 text-sm text-navy-blue/65">
-              The highlighted stage reflects the current local workflow state.
-            </p>
-          </div>
-          <span className="text-sm font-semibold text-navy-blue/68">
-            {detail.lifecycle.label}
-          </span>
-        </div>
+        <h2 className="sr-only" id="lifecycle-heading">
+          Reservation lifecycle
+        </h2>
         <ReservationLifecycleMap lifecycle={detail.lifecycle} />
       </section>
 
@@ -65,9 +42,6 @@ export default async function ReservationAdministrationDetailPage({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl">Reservation details</h2>
-                <p className="mt-1 text-sm text-navy-blue/60">
-                  Workspace and live Dotypos booking facts.
-                </p>
               </div>
               {booking && (
                 <span className="rounded-full border border-navy-blue/12 bg-navy-blue/5 px-2.5 py-1 text-xs font-semibold text-navy-blue/65">
@@ -188,10 +162,6 @@ export default async function ReservationAdministrationDetailPage({
               <h2 className="text-xl" id="payment-records-heading">
                 Payment records
               </h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                Local attempts followed by the live Nexi orders and operations
-                attached to them.
-              </p>
             </div>
             {detail.paymentAttempts.length > 0 && (
               <div className="mb-4 rounded-xl border border-navy-blue/10 bg-white p-5">
@@ -205,10 +175,6 @@ export default async function ReservationAdministrationDetailPage({
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5 sm:p-6">
             <div className="mb-6">
               <h2 className="text-xl">History</h2>
-              <p className="mt-1 text-sm text-navy-blue/65">
-                Durable Deskohub milestones and the available provider activity
-                in chronological order.
-              </p>
             </div>
             <ReservationTimeline items={detail.timeline} />
           </section>

@@ -11,9 +11,9 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { getAdministrationReservation } from "./actions";
 
 export function ReservationLookup({
-  compact = false,
+  variant = "card",
 }: {
-  readonly compact?: boolean;
+  readonly variant?: "card" | "toolbar";
 }) {
   const identifierId = useId();
   const router = useRouter();
@@ -47,8 +47,9 @@ export function ReservationLookup({
     <div className="space-y-4">
       <form
         className={cn(
-          "grid gap-3 rounded-xl border border-navy-blue/10 bg-white md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
-          compact ? "p-4" : "p-5"
+          "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+          variant === "card" &&
+            "rounded-xl border border-navy-blue/10 bg-white p-5"
         )}
         onSubmit={(event) => {
           event.preventDefault();

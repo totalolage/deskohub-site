@@ -61,6 +61,26 @@ describe("administration reservation status", () => {
 });
 
 describe("administration reservation lifecycle", () => {
+  test("shows a live Dotypos cancellation instead of the stale local hold", () => {
+    const input = {
+      dotyposStatus: "CANCELLED" as const,
+      fulfillmentState: "not_started" as const,
+      paymentState: "not_started" as const,
+      reservationState: "held" as const,
+    };
+
+    expect(getAdministrationReservationStatus(input)).toEqual({
+      group: "cancelled",
+      label: "Cancelled",
+    });
+    expect(getAdministrationReservationLifecycle(input)).toEqual({
+      currentStage: "cancelled",
+      label: "Cancelled in Dotypos",
+      reachedStages: ["started", "held", "cancelled"],
+      tone: "attention",
+    });
+  });
+
   test.each([
     ["draft", "not_started", "not_started", "started", "neutral"],
     ["held", "pending", "not_started", "held", "neutral"],

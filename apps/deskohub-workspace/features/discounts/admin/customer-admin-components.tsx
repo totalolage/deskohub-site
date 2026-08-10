@@ -1,13 +1,20 @@
 import { Plus } from "lucide-react";
 import Link from "next/link";
-import type { AdministrationReservationPage } from "@/features/administration/administration.service";
+import type {
+  AdministrationCustomerActivity,
+  AdministrationCustomerConsent,
+  AdministrationCustomerTransaction,
+  AdministrationMoney,
+} from "@/features/administration/administration.service";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
   AdministrationPageHeader,
-  Pagination,
+  formatAdministrationDateTime,
+  formatAdministrationMoney,
   ReservationTable,
 } from "@/features/administration/components";
+import { groupCustomerReservations } from "@/features/administration/customer-activity";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -178,13 +185,13 @@ export function CodeAdministrationDetailPage({
 }
 
 export function CustomerAdministrationDetailPage({
+  activity,
   notice,
   profile,
-  reservations,
 }: {
+  readonly activity: AdministrationCustomerActivity;
   readonly notice?: Notice;
   readonly profile: AdminCustomerProfile;
-  readonly reservations: AdministrationReservationPage;
 }) {
   const currentGroup = profile.discountGroups.find(
     ({ id }) => id === profile.customer.discountGroupId
@@ -202,6 +209,13 @@ export function CustomerAdministrationDetailPage({
         Number(right.eligible) - Number(left.eligible) ||
         left.code.localeCompare(right.code)
     );
+  const targetedCodeCount = profile.codes.filter(
+    (code) => code.eligible && code.audienceSize > 0
+  ).length;
+  const universalCodeCount = profile.codes.filter(
+    (code) => code.audienceSize === 0
+  ).length;
+  const reservationGroups = groupCustomerReservations(activity.reservations);
   return (
     <AdministrationPage>
       <AdministrationPageHeader
@@ -214,47 +228,68 @@ export function CustomerAdministrationDetailPage({
       />
       <AdministrationNoticeBanner notice={notice} />
 
-      <dl className="mb-7 grid gap-px overflow-hidden rounded-xl border border-navy-blue/10 bg-navy-blue/10 sm:grid-cols-3">
-        <SummaryFact label="Reservations" value={reservations.total} />
-        <SummaryFact label="Discount group" value={currentGroupLabel} />
-        <SummaryFact label="Available codes" value={visibleCodes.length} />
-      </dl>
+      <div className="mb-7 grid gap-5 lg:grid-cols-2">
+        <CustomerStats
+          activity={activity}
+          availableCodes={`${targetedCodeCount} (+ ${universalCodeCount})`}
+        />
+        <CustomerConsents consents={activity.consents} />
+      </div>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="min-w-0 space-y-7">
           <section>
-            <div className="mb-3 flex items-end justify-between gap-3">
-              <div>
-                <h2 className="text-xl">Reservations</h2>
-                <p className="mt-1 text-sm text-navy-blue/65">
-                  Reservations associated with this customer.
-                </p>
-              </div>
-              <span className="text-sm text-navy-blue/65">
-                {reservations.total} total
-              </span>
+            <h2 className="mb-3 text-xl">Reservations</h2>
+            <div className="space-y-4">
+              <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+                <summary className="cursor-pointer px-5 py-4 font-semibold">
+                  Past reservations ({reservationGroups.past.length})
+                </summary>
+                <div className="border-t border-navy-blue/10 p-3">
+                  <ReservationTable
+                    emptyMessage="This customer has no past reservations."
+                    reservations={reservationGroups.past}
+                  />
+                </div>
+              </details>
+
+              <section aria-labelledby="current-reservations-heading">
+                <h3
+                  className="mb-3 font-semibold"
+                  id="current-reservations-heading"
+                >
+                  Current and future reservations
+                </h3>
+                <ReservationTable
+                  emptyMessage="This customer has no current or future reservations."
+                  reservations={reservationGroups.currentAndFuture}
+                />
+              </section>
+
+              {reservationGroups.unavailable.length > 0 && (
+                <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+                  <summary className="cursor-pointer px-5 py-4 font-semibold">
+                    Reservations with unavailable dates (
+                    {reservationGroups.unavailable.length})
+                  </summary>
+                  <div className="border-t border-navy-blue/10 p-3">
+                    <ReservationTable
+                      reservations={reservationGroups.unavailable}
+                    />
+                  </div>
+                </details>
+              )}
             </div>
-            <ReservationTable
-              emptyMessage="This customer has no reservations."
-              reservations={reservations.items}
-            />
-            <Pagination
-              basePath={`/admin/customers/${profile.customer.id}`}
-              page={reservations.page}
-              pageCount={reservations.pageCount}
-              pageParam="reservationsPage"
-            />
+          </section>
+
+          <section>
+            <h2 className="mb-3 text-xl">Transactions</h2>
+            <CustomerTransactionHistory transactions={activity.transactions} />
           </section>
 
           <section>
             <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <h2 className="text-xl">Discount codes</h2>
-                <p className="mt-1 text-sm text-navy-blue/65">
-                  Codes explicitly available to this customer, followed by codes
-                  available to everyone.
-                </p>
-              </div>
+              <h2 className="text-xl">Discount codes</h2>
               <Button asChild className="text-black" size="sm">
                 <Link
                   href={`/admin/customers/${profile.customer.id}/create-code`}
@@ -365,6 +400,180 @@ export function CustomerAdministrationDetailPage({
     </AdministrationPage>
   );
 }
+
+function CustomerStats({
+  activity,
+  availableCodes,
+}: {
+  readonly activity: AdministrationCustomerActivity;
+  readonly availableCodes: string;
+}) {
+  return (
+    <section>
+      <h2 className="mb-3 text-xl">Stats</h2>
+      <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+        <CustomerStat
+          label="Reservations"
+          value={activity.stats.reservationCount}
+        />
+        <CustomerStat
+          label="Total revenue"
+          value={formatMoneyTotals(activity.stats.revenue)}
+        />
+        <CustomerStat
+          label="Favourite product"
+          value={activity.stats.favoriteProduct ?? "—"}
+        />
+        <CustomerStat
+          label="Discount savings"
+          value={formatMoneyTotals(activity.stats.discountSavings)}
+        />
+        <CustomerStat label="Available codes" value={availableCodes} />
+      </dl>
+    </section>
+  );
+}
+
+function CustomerStat({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-navy-blue/8 px-4 py-2.5 last:border-b-0 odd:bg-navy-blue/[0.025]">
+      <dt className="text-sm text-navy-blue/72">{label}</dt>
+      <dd className="text-right font-semibold">{value}</dd>
+    </div>
+  );
+}
+
+function CustomerConsents({
+  consents,
+}: {
+  readonly consents: readonly AdministrationCustomerConsent[];
+}) {
+  const byKey = new Map(
+    consents.map((consent) => [consent.documentKey, consent])
+  );
+  return (
+    <section>
+      <h2 className="mb-3 text-xl">Consents</h2>
+      <dl className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+        <CustomerConsent
+          consent={byKey.get("privacyPolicy")}
+          label="Privacy policy"
+        />
+        <CustomerConsent
+          consent={byKey.get("marketingCommunications")}
+          label="Marketing communications"
+        />
+      </dl>
+    </section>
+  );
+}
+
+function CustomerConsent({
+  consent,
+  label,
+}: {
+  readonly consent?: AdministrationCustomerConsent;
+  readonly label: string;
+}) {
+  return (
+    <div className="grid gap-1 border-b border-navy-blue/8 px-4 py-3 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <dt className="font-medium">{label}</dt>
+      <dd className="text-sm text-navy-blue/65 sm:text-right">
+        {consent ? (
+          <>
+            <span className="font-semibold text-navy-blue">
+              {consent.accepted ? "Accepted" : "Declined"}
+            </span>{" "}
+            · {formatAdministrationDateTime(consent.acceptedAt)}
+            <span className="mt-0.5 block text-xs">
+              {consent.documentPath.split("/").at(-1)} · {consent.locale}
+            </span>
+          </>
+        ) : (
+          "Not recorded"
+        )}
+      </dd>
+    </div>
+  );
+}
+
+function CustomerTransactionHistory({
+  transactions,
+}: {
+  readonly transactions: readonly AdministrationCustomerTransaction[];
+}) {
+  if (transactions.length === 0) {
+    return <EmptyState message="This customer has no payment attempts." />;
+  }
+  return (
+    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+      <Table
+        aria-label="Customer transaction history"
+        className="min-w-[760px]"
+      >
+        <TableHeader>
+          <TableRow>
+            <TableHead>Date</TableHead>
+            <TableHead>Status</TableHead>
+            <TableHead>Reservation</TableHead>
+            <TableHead>Amount</TableHead>
+            <TableHead>Payment ID</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {transactions.map(({ attempt, reservation }) => (
+            <TableRow key={attempt.id}>
+              <TableCell className="whitespace-nowrap text-navy-blue/68">
+                {formatAdministrationDateTime(attempt.updatedAt)}
+              </TableCell>
+              <TableCell>
+                <Badge
+                  variant={attempt.state === "paid" ? "default" : "subtle"}
+                >
+                  {attempt.stateLabel}
+                </Badge>
+              </TableCell>
+              <TableCell>
+                <Link
+                  className="font-semibold underline decoration-navy-blue/20 underline-offset-4"
+                  href={`/admin/reservations/${reservation.id}`}
+                >
+                  {reservation.typeLabel}
+                </Link>
+              </TableCell>
+              <TableCell className="whitespace-nowrap font-semibold">
+                {formatAdministrationMoney(attempt.amount)}
+              </TableCell>
+              <TableCell>
+                {attempt.providerOrderId ? (
+                  <a
+                    className="font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
+                    href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {attempt.providerOrderId} ↗
+                  </a>
+                ) : (
+                  <span className="font-mono text-xs">{attempt.id}</span>
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+const formatMoneyTotals = (totals: readonly AdministrationMoney[]) =>
+  totals.length > 0 ? totals.map(formatAdministrationMoney).join(" + ") : "—";
 
 function CodeSummary({
   code,
