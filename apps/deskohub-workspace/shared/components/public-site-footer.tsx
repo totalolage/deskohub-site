@@ -1,5 +1,7 @@
 import Link from "next/link";
-import { m } from "@/features/i18n";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { type Locale, m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { getCoworkReservationPath } from "@/features/reservation/routes";
 import { Container } from "@/shared/components/container";
@@ -11,7 +13,6 @@ export async function PublicSiteFooter() {
   const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
-  const copyrightYear = await getFooterCopyrightYear();
 
   return (
     <footer className="border-t border-white/12 bg-navy-blue text-white">
@@ -97,7 +98,6 @@ export async function PublicSiteFooter() {
               </Link>
               <Link
                 href={reservationPath}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPricingLink({}, { locale })}
@@ -138,7 +138,6 @@ export async function PublicSiteFooter() {
               </Link>
               <Link
                 href={reservationPath}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerReservationLink({}, { locale })}
@@ -148,19 +147,33 @@ export async function PublicSiteFooter() {
         </div>
 
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
-          {m.footerCopyright(
-            {
-              year: copyrightYear,
-              companyName: workspaceSiteConstants.brand.legalName,
-            },
-            { locale }
-          )}
+          <Suspense
+            fallback={
+              <span
+                aria-hidden="true"
+                className="inline-block h-5 w-72 max-w-full animate-pulse rounded-full bg-white/8"
+              />
+            }
+          >
+            <FooterCopyright locale={locale} />
+          </Suspense>
         </div>
       </Container>
     </footer>
   );
 }
 
-async function getFooterCopyrightYear() {
-  return new Date().getFullYear();
+async function FooterCopyright({ locale }: { readonly locale: Locale }) {
+  await connection();
+  const year = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  ).year;
+
+  return m.footerCopyright(
+    {
+      year,
+      companyName: workspaceSiteConstants.brand.legalName,
+    },
+    { locale }
+  );
 }

@@ -1,6 +1,7 @@
 import { describe, expect, mock, test } from "bun:test";
 import { isValidElement, Suspense } from "react";
 import type { Locale } from "@/features/i18n";
+import { QueryProvider } from "@/shared/components/query-provider";
 
 mock.module("server-only", () => ({}));
 
@@ -35,13 +36,23 @@ const getReservationPageSuspenseBoundary = async () => {
 };
 
 describe("ReservationPage", () => {
-  test("keeps dynamic reservation content inside the localized loading boundary", async () => {
+  test("keeps the query provider and dynamic content inside the localized loading boundary", async () => {
     const suspenseBoundary = await getReservationPageSuspenseBoundary();
+    const suspenseProps = suspenseBoundary.props as {
+      children: unknown;
+      fallback: unknown;
+    };
 
     expect(suspenseBoundary.type).toBe(Suspense);
-    expect(suspenseBoundary.props).toMatchObject({
+    expect(suspenseProps.fallback).toBe("reservation fallback");
+
+    if (!isValidElement(suspenseProps.children)) {
+      throw new Error("ReservationPage did not render a query provider");
+    }
+
+    expect(suspenseProps.children.type).toBe(QueryProvider);
+    expect(suspenseProps.children.props).toMatchObject({
       children: "reservation form",
-      fallback: "reservation fallback",
     });
   });
 });

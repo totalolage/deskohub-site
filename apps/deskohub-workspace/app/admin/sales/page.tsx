@@ -4,8 +4,6 @@ import {
   loadDiscountAdminPageData,
 } from "@/features/discounts/admin/page-data.server";
 
-export const dynamic = "force-dynamic";
-
 export default async function SalesAdminPage({
   searchParams,
 }: {

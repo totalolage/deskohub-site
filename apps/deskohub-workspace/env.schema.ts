@@ -17,6 +17,7 @@ const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
 
 export const workspaceServerEnvSchema = Schema.Struct({
+  AGENT_BROWSER_EXECUTABLE_PATH: optionalStringSchema,
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
   DATABASE_URL: urlEnvSchema,
@@ -73,6 +74,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
+  WORKSPACE_E2E_BASE_URL: optionalUrlEnvSchema,
 }).check(postHogFeatureFlagOverridesEnvironmentCheck);
 
 export const workspaceClientEnvSchema = Schema.Struct({

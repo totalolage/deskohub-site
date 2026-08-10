@@ -12,8 +12,6 @@ import {
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
-export const dynamic = "force-dynamic";
-
 const selectClassName =
   "h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15";
 

@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
+  findEnabledSnapshotRef,
   waitForBrowserCondition,
 } from "./browser";
 import type { Runner } from "./runtime";
@@ -50,4 +51,13 @@ test("waits for an application state condition instead of sampling it once", asy
   expect(calls.map(({ args }) => args.slice(2))).toEqual([
     ["wait", "--fn", condition],
   ]);
+});
+
+test("ignores disabled snapshot targets with additional state attributes", () => {
+  const snapshot = [
+    '- textbox "Card number" [disabled, ref=e1]',
+    '- textbox "Card number" [ref=e2]',
+  ].join("\n");
+
+  expect(findEnabledSnapshotRef(snapshot, ["Card number"])).toBe("@e2");
 });

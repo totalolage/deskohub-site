@@ -5,6 +5,8 @@ type TestingOnlyLayoutProps = {
   children: ReactNode;
 };
 
+export const instant = false;
+
 export default function TestingOnlyLayout({
   children,
 }: TestingOnlyLayoutProps) {

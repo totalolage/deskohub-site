@@ -1,9 +1,6 @@
 import { handleWorkspaceAdminApiRequest } from "@/features/admin-cli/workspace-admin-api.server";
 import { defineWorkspaceHttpApiRoute } from "@/shared/backend/workspace-http-api-route";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 export const GET = defineWorkspaceHttpApiRoute(
   {
     operation: "workspaceAdminApi",

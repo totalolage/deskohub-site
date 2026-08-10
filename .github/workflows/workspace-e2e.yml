@@ -446,6 +446,11 @@ jobs:
           echo "| **Post-allocation setup critical path** | **${post_allocation_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
           echo "| **Total test job setup critical path** | **${test_job_seconds}s** |" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Run instant navigation E2E
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bun --cwd apps/deskohub-workspace test:instant-navigation
+
       - name: Run checkout E2E
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}

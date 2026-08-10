@@ -13,6 +13,7 @@ export function MeetingRoomPageFeature({
   initialEnabled,
 }: MeetingRoomPageFeatureProps) {
   const enabled = useFeatureFlagEnabled("meeting_room_page", initialEnabled);
+  if (!enabled) return null;
 
-  return enabled ? children : null;
+  return children;
 }

@@ -391,7 +391,7 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={getReserveAgainPath(status, locale)} prefetch={false}>
+            <Link href={getReserveAgainPath(status, locale)}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>

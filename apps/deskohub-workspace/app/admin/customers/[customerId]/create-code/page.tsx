@@ -6,8 +6,6 @@ import { CustomerDiscountCodeCreationForm } from "@/features/discounts/admin/cus
 import { loadDiscountAdminCustomerCodeCreationPageData } from "@/features/discounts/admin/page-data.server";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
-export const dynamic = "force-dynamic";
-
 export default async function CustomerDiscountCodeCreationPage({
   params,
 }: {
