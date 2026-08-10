@@ -2,6 +2,7 @@ import {
   type AdminCliInfoType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
+  CliAuthenticationRateLimited,
   type CliAuthenticationStatusType,
   CliGrantRejected,
   CliServiceUnavailable,
@@ -31,7 +32,7 @@ interface IWorkspaceAdminApiClient {
     input: StartCliAuthenticationType
   ) => Effect.Effect<
     StartedCliAuthenticationType,
-    CliApiRequestError | CliServiceUnavailable
+    CliApiRequestError | CliAuthenticationRateLimited | CliServiceUnavailable
   >;
   readonly getAuthenticationStatus: (
     code: CliAuthenticationCodeType
@@ -87,7 +88,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     )((input: StartCliAuthenticationType) =>
       client.cli
         .startAuthentication({ payload: input })
-        .pipe(Effect.mapError(sanitizeRequestError))
+        .pipe(Effect.mapError(sanitizeStartError))
     ),
     getAuthenticationStatus: Effect.fn(
       "WorkspaceAdminApiClient.getAuthenticationStatus"
@@ -130,6 +131,22 @@ const sanitizeRequestError = (
     | HttpClientError.HttpClientError
     | Schema.SchemaError
 ) => (cause instanceof CliServiceUnavailable ? cause : sanitizedRequestError());
+
+const sanitizeStartError = (
+  cause:
+    | CliAuthenticationRateLimited
+    | CliServiceUnavailable
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => {
+  if (
+    cause instanceof CliAuthenticationRateLimited ||
+    cause instanceof CliServiceUnavailable
+  ) {
+    return cause;
+  }
+  return sanitizedRequestError();
+};
 
 const sanitizeGrantError = (
   cause:

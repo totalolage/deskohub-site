@@ -146,6 +146,13 @@ export class CliGrantRejected extends Schema.TaggedErrorClass<CliGrantRejected>(
   static schema = this.pipe(HttpApiSchema.status("Unauthorized"));
 }
 
+export class CliAuthenticationRateLimited extends Schema.TaggedErrorClass<CliAuthenticationRateLimited>()(
+  "CliAuthenticationRateLimited",
+  { message: Schema.String }
+) {
+  static schema = this.pipe(HttpApiSchema.status("TooManyRequests"));
+}
+
 export class CliSessionUnauthorized extends Schema.TaggedErrorClass<CliSessionUnauthorized>()(
   "CliSessionUnauthorized",
   { message: Schema.String }
@@ -170,7 +177,10 @@ export const AdminCliApi = HttpApiGroup.make("cli")
     HttpApiEndpoint.post("startAuthentication", "/auth", {
       payload: StartCliAuthentication,
       success: StartedCliAuthentication,
-      error: CliServiceUnavailable.schema,
+      error: [
+        CliAuthenticationRateLimited.schema,
+        CliServiceUnavailable.schema,
+      ],
     })
   )
   .add(

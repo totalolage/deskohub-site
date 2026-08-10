@@ -15,6 +15,7 @@ export {
   type CliAuthenticationChallenge as CliAuthenticationChallengeType,
   CliAuthenticationCode,
   type CliAuthenticationCode as CliAuthenticationCodeType,
+  CliAuthenticationRateLimited,
   CliAuthenticationStatus,
   type CliAuthenticationStatus as CliAuthenticationStatusType,
   CliAuthenticationVerifier,

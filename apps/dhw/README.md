@@ -22,6 +22,11 @@ digests are persisted. `/admin/cli/sessions` lists issued sessions and revokes
 them. Every authenticated CLI operation validates its session, and a revoked
 credential is removed from secure storage as soon as the API reports it.
 
+The public authentication-start endpoint is fail-closed behind the Vercel
+Firewall Rate Limiting SDK. The Workspace Vercel project must define an
+`@vercel/firewall` rate limit with the ID `cli-authentication-start`, allowing
+10 requests per IP per minute and returning 429 after the limit.
+
 ## Development
 
 ```bash

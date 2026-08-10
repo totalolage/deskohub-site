@@ -1,4 +1,5 @@
 import {
+  CliAuthenticationRateLimited,
   CliGrantRejected,
   CliServiceUnavailable,
   CliSessionUnauthorized,
@@ -9,6 +10,7 @@ import { Effect, Layer } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { CliAuthentication } from "./cli-authentication.service";
+import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 
 export const AdminCliApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
@@ -16,6 +18,7 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const authentication = yield* CliAuthentication;
+      const admission = yield* CliAuthenticationAdmission;
       return handlers
         .handle("getInfo", () =>
           Effect.succeed({
@@ -24,7 +27,17 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
           })
         )
         .handle("startAuthentication", ({ payload }) =>
-          authentication.start(payload).pipe(mapServiceFailure)
+          Effect.gen(function* () {
+            const allowed =
+              yield* admission.isStartAllowed.pipe(mapServiceFailure);
+            if (!allowed) {
+              return yield* new CliAuthenticationRateLimited({
+                message:
+                  "Too many CLI authentication requests were started. Try again shortly.",
+              });
+            }
+            return yield* authentication.start(payload).pipe(mapServiceFailure);
+          })
         )
         .handle("getAuthenticationStatus", ({ query }) =>
           authentication.status(query.code).pipe(mapServiceFailure)
@@ -77,6 +90,7 @@ const noStore = HttpRouter.middleware(
 const WorkspaceAdminApiLive = Layer.merge(
   HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
     Layer.provide(AdminCliApiHandlers),
+    Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)
   ),
   noStore
