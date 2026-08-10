@@ -7,8 +7,6 @@ import { loadAdministrationOrders } from "@/features/administration/page-data.se
 import { OrderTable } from "@/features/administration/payment-components";
 import { Button } from "@/shared/components/ui/button";
 
-export const dynamic = "force-dynamic";
-
 export default async function OrdersAdministrationPage({
   searchParams,
 }: {

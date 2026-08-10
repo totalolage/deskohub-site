@@ -1,4 +1,5 @@
 import Image, { getImageProps } from "next/image";
+import Link from "next/link";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
@@ -60,7 +61,7 @@ export async function LandingPageHeroSection({
               asChild
               className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
             >
-              <a href={`/${locale}/meeting-room`}>
+              <Link href={`/${locale}/meeting-room`}>
                 <Arrow1
                   height="100"
                   className="absolute bottom-6 right-full pr-4 text-white"
@@ -70,7 +71,7 @@ export async function LandingPageHeroSection({
                   width="100%"
                   className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
                 />
-              </a>
+              </Link>
             </Button>
           )}
           <Button
@@ -78,7 +79,7 @@ export async function LandingPageHeroSection({
             variant="secondary"
             className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
           >
-            <a href={getCoworkReservationPath(locale)}>
+            <Link href={getCoworkReservationPath(locale)}>
               <CornerAccent
                 width={40}
                 className="absolute -left-4 -top-5"
@@ -89,15 +90,15 @@ export async function LandingPageHeroSection({
                 width="80%"
                 className="absolute top-full mt-2 right-0"
               />
-            </a>
+            </Link>
           </Button>
         </div>
-        <a
+        <Link
           href={`/${locale}/contact`}
           className="text-sm text-white/80 underline decoration-white/40 underline-offset-4 transition-colors hover:text-white hover:decoration-burned-orange focus-visible:text-white focus-visible:decoration-burned-orange"
         >
           {m.landingHeroSecondaryCta({}, { locale })}
-        </a>
+        </Link>
       </div>
     </>
   );

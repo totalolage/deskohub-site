@@ -10,8 +10,6 @@ import {
 } from "@/features/administration/page-data.server";
 import { Button } from "@/shared/components/ui/button";
 
-export const dynamic = "force-dynamic";
-
 export default async function BookingsAdministrationPage({
   searchParams,
 }: {

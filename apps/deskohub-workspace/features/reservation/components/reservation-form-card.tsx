@@ -25,6 +25,7 @@ export function ReservationFormCard({
           "glow-border glow-border-purple-300 glow-border-count-1 glow-border-duration-5000 border-purple-300/60 ring-4 ring-purple-500/10"
       )}
       data-reservation-sale={sale ? "active" : undefined}
+      role={ariaLabel ? "region" : undefined}
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       {sale}

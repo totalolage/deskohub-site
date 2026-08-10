@@ -18,7 +18,15 @@ type CheckoutStepsProps = {
   readonly stepLinks?: Partial<Record<CheckoutStepKey, CheckoutStepLink>>;
 };
 
-type CheckoutStepLink = Pick<ComponentProps<typeof Link>, "href" | "prefetch">;
+type CheckoutStepLink =
+  | ({ readonly navigation?: "client" } & Pick<
+      ComponentProps<typeof Link>,
+      "href" | "prefetch"
+    >)
+  | {
+      readonly href: string;
+      readonly navigation: "document";
+    };
 
 export const checkoutFlowSteps = [
   { key: "order", getLabel: m.checkoutOrderStepReservation },
@@ -63,16 +71,29 @@ export function CheckoutSteps({
           link &&
             "transition hover:border-white/28 hover:bg-white/12 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
         );
+        let stepContent = <div className={className}>{content}</div>;
+
+        if (link?.navigation === "document") {
+          stepContent = (
+            <a className={className} href={link.href}>
+              {content}
+            </a>
+          );
+        } else if (link) {
+          stepContent = (
+            <Link
+              className={className}
+              href={link.href}
+              prefetch={link.prefetch}
+            >
+              {content}
+            </Link>
+          );
+        }
 
         return (
           <li key={step.key} aria-current={isCurrentStep ? "step" : undefined}>
-            {link ? (
-              <Link className={className} {...link}>
-                {content}
-              </Link>
-            ) : (
-              <div className={className}>{content}</div>
-            )}
+            {stepContent}
           </li>
         );
       })}

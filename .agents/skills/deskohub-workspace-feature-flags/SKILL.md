@@ -23,6 +23,12 @@ Deployment-scoped overrides use the optional server-only `POSTHOG_FEATURE_FLAG_O
 
 Keep feature-flag-specific environment schemas and their focused tests in the feature-flag module; the root environment schema should import and compose them. T3 Env's field dictionary drops cross-field Effect Struct checks, so apply deployment validation through a named final-schema composer and cover that integration path with a regression test. Type browser override clients directly against `PostHogFeatureFlagOverrides<Definitions>` instead of casting the typed map to an arbitrary record.
 
+Keep the PostHog React provider at the localized application root so one context
+wraps every client feature-flag consumer. Do not add page- or feature-local
+providers. Consent-aware initialization and analytics rendering may suspend
+independently inside that global provider so dynamic consent state does not gate
+the application's cacheable navigation shells.
+
 Use overrides only for isolated development or protected-preview validation, never for rollout management or mutation of PostHog's stored flag definitions. Safe example:
 
 ```env

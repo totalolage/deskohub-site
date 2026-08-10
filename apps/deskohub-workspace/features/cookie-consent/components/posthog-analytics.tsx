@@ -1,7 +1,7 @@
 "use client";
 
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
-import { PostHogProvider } from "@posthog/react";
+import { PostHogProvider as ReactPostHogProvider } from "@posthog/react";
 import posthog from "posthog-js";
 import { type ReactNode, useEffect } from "react";
 import { env } from "@/env";
@@ -19,6 +19,16 @@ const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 let hasInitializedPostHog = false;
 let analyticsSendingEnabled = false;
 
+export function PostHogProvider({
+  children,
+}: {
+  readonly children: ReactNode;
+}) {
+  return (
+    <ReactPostHogProvider client={posthog}>{children}</ReactPostHogProvider>
+  );
+}
+
 type PostHogAnalyticsProps = {
   analyticsAccepted: boolean;
   children: ReactNode;
@@ -35,7 +45,7 @@ export function PostHogAnalytics({
   const posthogProjectToken = env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
   return (
-    <PostHogProvider client={posthog}>
+    <>
       {posthogProjectToken && (
         <PostHogClient
           analyticsAccepted={analyticsAccepted}
@@ -46,7 +56,7 @@ export function PostHogAnalytics({
         />
       )}
       {children}
-    </PostHogProvider>
+    </>
   );
 }
 

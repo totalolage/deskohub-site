@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import "@xyflow/react/dist/style.css";
 import { AdminShell } from "@/features/administration/admin-shell";
@@ -26,7 +27,9 @@ export const metadata: Metadata = {
   },
 };
 
-export default function AdminLayout({
+export const instant = false;
+
+export default async function AdminLayout({
   breadcrumb,
   children,
   modal,
@@ -35,6 +38,8 @@ export default function AdminLayout({
   readonly children: ReactNode;
   readonly modal: ReactNode;
 }) {
+  await connection();
+
   return (
     <html lang="en" className={sculpin.variable} data-scroll-behavior="smooth">
       <body>
