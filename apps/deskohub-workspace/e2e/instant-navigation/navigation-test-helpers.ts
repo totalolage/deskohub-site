@@ -29,7 +29,11 @@ export async function expectPublicSiteShell(page: Page) {
 export async function hasLoadedResource(page: Page, pathname: string) {
   return page.evaluate((targetPathname) => {
     return performance.getEntriesByType("resource").some((entry) => {
-      return new URL(entry.name).pathname === targetPathname;
+      try {
+        return new URL(entry.name, window.location.href).pathname === targetPathname;
+      } catch {
+        return false;
+      }
     });
   }, pathname);
 }
