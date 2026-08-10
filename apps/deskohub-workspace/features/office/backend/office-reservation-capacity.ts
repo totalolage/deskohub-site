@@ -12,13 +12,12 @@ export const getOfficeReservationSeatCapacity = (tables: readonly Table[]) =>
     const candidates = getWorkspaceTableCandidates(tables, [
       workspaceOfficeReservationTableTag,
     ]);
-    if (candidates.length > 1) {
+    if (candidates.length !== 1) {
       return yield* new ValidationError({
         message:
           "Office reservations require exactly one assignable office table.",
       });
     }
 
-    const officeTable = candidates[0];
-    return officeTable ? yield* getWorkspaceTableSeatCapacity(officeTable) : 0;
+    return yield* getWorkspaceTableSeatCapacity(candidates[0]!);
   });

@@ -27,7 +27,7 @@ describe("getOfficeReservationSeatCapacity", () => {
     ).toThrow("exactly one assignable office table");
   });
 
-  test("ignores unavailable office tables", () => {
+  test("ignores unavailable office tables when one assignable table remains", () => {
     expect(
       getSeatCapacity([
         makeTable({ id: "disabled", enabled: false, seats: "12" }),
@@ -36,7 +36,12 @@ describe("getOfficeReservationSeatCapacity", () => {
         makeTable({ id: "office", seats: "3" }),
       ])
     ).toBe(3);
-    expect(getSeatCapacity([])).toBe(0);
+  });
+
+  test("rejects a missing assignable office table", () => {
+    expect(() => getSeatCapacity([])).toThrow(
+      "exactly one assignable office table"
+    );
   });
 
   test("rejects an assignable office table with invalid seats", () => {
