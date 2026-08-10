@@ -30,7 +30,10 @@ import {
 } from "@/db/schema";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { getAdministrationPagination } from "./listing";
+import {
+  filterAdministrationReservationsByStatus,
+  getAdministrationPagination,
+} from "./listing";
 import {
   type AdministrationOrder,
   type IPaymentAdministrationService,
@@ -499,34 +502,6 @@ const getDateBounds = (date: string) => {
   return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
 };
 
-const statusCondition = (
-  status: Exclude<AdministrationStatusGroup, "attention">
-): SQL => {
-  if (status === "complete") {
-    return and(
-      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
-      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
-      eq(workspaceReservations.fulfillmentState, "fulfilled")
-    )!;
-  }
-  if (status === "cancelled") {
-    return and(
-      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
-      sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
-      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
-      or(
-        eq(workspaceReservations.reservationState, "cancelled"),
-        eq(workspaceReservations.reservationState, "hold_expired")
-      )
-    )!;
-  }
-  return and(
-    sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
-    sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
-    sql`${workspaceReservations.reservationState} not in ('cancelled', 'hold_expired', 'cancellation_failed')`
-  )!;
-};
-
 const buildTimeline = (row: SafeReservationRow) => {
   const items: AdministrationTimelineItem[] = [
     {
@@ -739,6 +714,7 @@ export class AdministrationService extends Context.Service<
     ) => Effect.Effect<
       AdministrationReservationPage & {
         readonly dateFilterUnavailable: boolean;
+        readonly statusFilterUnavailable: boolean;
       },
       unknown
     >;
@@ -824,7 +800,10 @@ export class AdministrationService extends Context.Service<
       });
 
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
-        function* (rows: readonly SafeReservationRow[]) {
+        function* (
+          rows: readonly SafeReservationRow[],
+          projectedReservations?: ReadonlyMap<string, DotyposReservation>
+        ) {
           if (rows.length === 0) return [];
           const attemptRows = yield* db
             .select(safePaymentAttemptSelection)
@@ -851,18 +830,30 @@ export class AdministrationService extends Context.Service<
             }
           }
           return yield* Effect.all(
-            rows.map((row) =>
-              loadLiveReservation(row).pipe(
-                Effect.map((live) =>
+            rows.map((row) => {
+              const live = loadLiveReservation(row).pipe(
+                Effect.map((details) =>
+                  projectedReservations && row.dotyposReservationId
+                    ? {
+                        ...details,
+                        reservation:
+                          projectedReservations.get(row.dotyposReservationId) ??
+                          null,
+                      }
+                    : details
+                )
+              );
+              return live.pipe(
+                Effect.map((details) =>
                   toReservationSummary({
                     latestPayment:
                       latestPaymentByReservation.get(row.id) ?? null,
-                    live,
+                    live: details,
                     row,
                   })
                 )
-              )
-            ),
+              );
+            }),
             { concurrency: 5 }
           );
         }
@@ -959,7 +950,6 @@ export class AdministrationService extends Context.Service<
             eq(workspaceReservations.dotyposCustomerId, input.customerId)
           );
         }
-        if (input.status) conditions.push(statusCondition(input.status));
         if (input.type) {
           conditions.push(
             sql`${workspaceReservations.reservationDetails}->>'kind' = ${input.type}`
@@ -974,6 +964,76 @@ export class AdministrationService extends Context.Service<
           );
         }
         const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+        if (input.status) {
+          const projectedReservations =
+            dateReservations !== undefined
+              ? dateReservations
+              : yield* dotypos
+                  .listReservations({ order: "startDateDescending" })
+                  .pipe(
+                    Effect.map(
+                      (reservations) =>
+                        new Map(
+                          reservations.flatMap((reservation) =>
+                            reservation.id
+                              ? [[reservation.id, reservation] as const]
+                              : []
+                          )
+                        )
+                    ),
+                    Effect.catch((cause) =>
+                      Effect.logWarning(
+                        "Live reservation status filter unavailable",
+                        { cause }
+                      ).pipe(Effect.as(null))
+                    )
+                  );
+          if (projectedReservations === null) {
+            return {
+              items: [],
+              page: 1,
+              pageCount: 1,
+              total: 0,
+              dateFilterUnavailable: Boolean(input.date),
+              statusFilterUnavailable: true,
+            };
+          }
+          const candidateRows = yield* db
+            .select(safeReservationSelection)
+            .from(workspaceReservations)
+            .where(where)
+            .orderBy(desc(workspaceReservations.updatedAt));
+          const matchingRows = filterAdministrationReservationsByStatus(
+            candidateRows,
+            input.status,
+            new Map(
+              [...projectedReservations].map(([id, reservation]) => [
+                id,
+                reservation.status,
+              ])
+            )
+          );
+          const total = matchingRows.length;
+          const pagination = getAdministrationPagination({
+            pageSize,
+            requestedPage: input.page,
+            total,
+          });
+          const rows = matchingRows.slice(
+            pagination.offset,
+            pagination.offset + pageSize
+          );
+          return {
+            items: yield* enrichRows(rows, projectedReservations),
+            page: pagination.page,
+            pageCount: pagination.pageCount,
+            total,
+            dateFilterUnavailable: false,
+            statusFilterUnavailable: false,
+          };
+        }
+
         const countRows = yield* db
           .select({ value: count() })
           .from(workspaceReservations)
@@ -999,6 +1059,7 @@ export class AdministrationService extends Context.Service<
           dateFilterUnavailable: Boolean(
             input.date && dateReservations === null
           ),
+          statusFilterUnavailable: false,
         };
       });
 

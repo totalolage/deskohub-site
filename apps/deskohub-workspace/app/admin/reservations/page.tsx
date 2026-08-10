@@ -25,7 +25,7 @@ export default async function ReservationsAdministrationPage({
   return (
     <AdministrationPage>
       <h1 className="sr-only">Reservations</h1>
-      <div className="mb-5 grid gap-5 rounded-xl border border-navy-blue/10 bg-white p-4 xl:grid-cols-[minmax(22rem,1fr)_auto] xl:items-end">
+      <div className="mb-5 grid gap-5 rounded-xl border border-navy-blue/10 bg-white p-4 2xl:grid-cols-[minmax(22rem,1fr)_auto] 2xl:items-end">
         <div className="grid gap-3 sm:grid-cols-[auto_minmax(18rem,1fr)] sm:items-end">
           <p className="pb-2 text-sm font-semibold text-navy-blue/70">
             {result.total} reservations
@@ -33,7 +33,7 @@ export default async function ReservationsAdministrationPage({
           <ReservationLookup variant="toolbar" />
         </div>
 
-        <form className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[11rem_13rem_12rem_auto_auto] xl:items-end xl:justify-end">
+        <form className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[11rem_13rem_12rem_auto_auto] 2xl:items-end 2xl:justify-end">
           <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
             Status
             <select
@@ -97,6 +97,12 @@ export default async function ReservationsAdministrationPage({
         <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
           Booking dates are temporarily unavailable. Try this date again
           shortly.
+        </output>
+      )}
+      {result.statusFilterUnavailable && (
+        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+          Live reservation statuses are temporarily unavailable. Clear the
+          status filter or try again shortly.
         </output>
       )}
 

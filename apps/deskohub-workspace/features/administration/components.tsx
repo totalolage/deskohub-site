@@ -361,20 +361,25 @@ export function BookingTable({
 export function ReservationTable({
   emptyMessage = "No reservations match this view.",
   reservations,
+  showCustomer = true,
 }: {
   readonly emptyMessage?: string;
   readonly reservations: readonly AdministrationReservationSummary[];
+  readonly showCustomer?: boolean;
 }) {
   if (reservations.length === 0) return <EmptyState message={emptyMessage} />;
   return (
     <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
       <div className="hidden overflow-x-auto md:block">
-        <Table aria-label="Reservations" className="min-w-[1060px]">
+        <Table
+          aria-label="Reservations"
+          className={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
+        >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
               <TableHead>Date</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Customer</TableHead>
+              {showCustomer && <TableHead>Customer</TableHead>}
               <TableHead>Reservation</TableHead>
               <TableHead>Created</TableHead>
               <TableHead>Payment</TableHead>
@@ -399,27 +404,29 @@ export function ReservationTable({
                 <TableCell>
                   <ReservationStatusBadge status={reservation.status} />
                 </TableCell>
-                <TableCell>
-                  {reservation.customer ? (
-                    <>
-                      <Link
-                        className="relative z-10 font-medium hover:underline"
-                        href={`/admin/customers/${reservation.customerId}`}
-                      >
-                        {reservation.customer.displayName}
-                      </Link>
-                      <p className="mt-1 text-xs text-navy-blue/65">
-                        {reservation.customer.email ??
-                          reservation.customer.phone ??
-                          "No contact details"}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Details unavailable
-                    </span>
-                  )}
-                </TableCell>
+                {showCustomer && (
+                  <TableCell>
+                    {reservation.customer ? (
+                      <>
+                        <Link
+                          className="relative z-10 font-medium hover:underline"
+                          href={`/admin/customers/${reservation.customerId}`}
+                        >
+                          {reservation.customer.displayName}
+                        </Link>
+                        <p className="mt-1 text-xs text-navy-blue/65">
+                          {reservation.customer.email ??
+                            reservation.customer.phone ??
+                            "No contact details"}
+                        </p>
+                      </>
+                    ) : (
+                      <span className="text-sm text-navy-blue/65">
+                        Details unavailable
+                      </span>
+                    )}
+                  </TableCell>
+                )}
                 <TableCell>
                   <p className="font-medium">{reservation.typeLabel}</p>
                   <p className="mt-1 font-mono text-xs text-navy-blue/65">
@@ -475,8 +482,10 @@ export function ReservationTable({
                       className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
                       href={`/admin/reservations/${reservation.id}`}
                     >
-                      {reservation.customer?.displayName ??
-                        reservation.typeLabel}
+                      {showCustomer
+                        ? (reservation.customer?.displayName ??
+                          reservation.typeLabel)
+                        : reservation.typeLabel}
                     </Link>
                   </p>
                   <p className="mt-1 text-sm text-navy-blue/65">

@@ -29,8 +29,8 @@ describe("customer reservation groups", () => {
       Temporal.Instant.from("2026-08-10T12:00:00Z")
     );
 
-    expect(groups.past.map(({ id }) => id)).toEqual(["past"]);
-    expect(groups.currentAndFuture.map(({ id }) => id)).toEqual(["current"]);
+    expect(groups.past.map(({ id }) => id)).toEqual(["past", "current"]);
+    expect(groups.currentAndFuture.map(({ id }) => id)).toEqual([]);
     expect(groups.unavailable.map(({ id }) => id)).toEqual(["unknown"]);
   });
 });

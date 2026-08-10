@@ -50,31 +50,26 @@ export function ReservationLifecycleMap({
     ? lifecycle.currentStage
     : "cancelled";
   const cancellation = cancellationStagePresentation[cancellationStage];
+  const [started, held, paid, complete] = lifecycleStages;
   return (
     <div className="rounded-xl border border-navy-blue/10 bg-white p-4 sm:p-5">
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
-        {lifecycleStages.map((item, index) => (
-          <div className="contents" key={item.stage}>
-            <LifecycleStageCard lifecycle={lifecycle} {...item} />
-            {index < lifecycleStages.length - 1 && (
-              <ArrowRight
-                aria-hidden
-                className={cn(
-                  "mx-auto hidden size-4 md:block",
-                  lifecycle.reachedStages.includes(
-                    lifecycleStages[index + 1]?.stage ?? "started"
-                  )
-                    ? "text-navy-blue/55"
-                    : "text-navy-blue/18"
-                )}
-              />
-            )}
-          </div>
-        ))}
-      </div>
+        <LifecycleStageCard
+          className="md:col-start-1 md:row-start-1"
+          lifecycle={lifecycle}
+          {...started}
+        />
+        <LifecycleConnector
+          className="md:col-start-2 md:row-start-1"
+          reached={lifecycle.reachedStages.includes("held")}
+        />
+        <LifecycleStageCard
+          className="md:col-start-3 md:row-start-1"
+          lifecycle={lifecycle}
+          {...held}
+        />
 
-      <div className="mt-3 grid md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)_auto_minmax(0,1fr)]">
-        <div className="md:col-start-3">
+        <div className="md:col-start-3 md:row-start-2">
           <ArrowDown
             aria-hidden
             className={cn(
@@ -91,17 +86,62 @@ export function ReservationLifecycleMap({
             stage={cancellationStage}
           />
         </div>
+
+        <LifecycleConnector
+          className="md:col-start-4 md:row-start-1"
+          mobileLabel="Or continue to payment"
+          reached={lifecycle.reachedStages.includes("paid")}
+        />
+        <LifecycleStageCard
+          className="md:col-start-5 md:row-start-1"
+          lifecycle={lifecycle}
+          {...paid}
+        />
+        <LifecycleConnector
+          className="md:col-start-6 md:row-start-1"
+          reached={lifecycle.reachedStages.includes("complete")}
+        />
+        <LifecycleStageCard
+          className="md:col-start-7 md:row-start-1"
+          lifecycle={lifecycle}
+          {...complete}
+        />
       </div>
     </div>
   );
 }
 
+function LifecycleConnector({
+  className,
+  mobileLabel,
+  reached,
+}: {
+  readonly className?: string;
+  readonly mobileLabel?: string;
+  readonly reached: boolean;
+}) {
+  const color = reached ? "text-navy-blue/55" : "text-navy-blue/18";
+  return (
+    <div className={cn("grid justify-items-center", className)}>
+      {mobileLabel && (
+        <span className="mb-1 text-xs font-semibold text-navy-blue/55 md:hidden">
+          {mobileLabel}
+        </span>
+      )}
+      <ArrowDown aria-hidden className={cn("size-4 md:hidden", color)} />
+      <ArrowRight aria-hidden className={cn("hidden size-4 md:block", color)} />
+    </div>
+  );
+}
+
 function LifecycleStageCard({
+  className,
   label,
   lifecycle,
   note,
   stage,
 }: {
+  readonly className?: string;
   readonly label: string;
   readonly lifecycle: AdministrationReservationLifecycle;
   readonly note: string;
@@ -122,7 +162,8 @@ function LifecycleStageCard({
           !attention &&
           "border-aquamarine-green/60 bg-aquamarine-green/[0.07] text-navy-blue",
         attention &&
-          "border-burned-orange/45 bg-burned-orange/[0.07] text-navy-blue"
+          "border-burned-orange/45 bg-burned-orange/[0.07] text-navy-blue",
+        className
       )}
     >
       <div className="flex items-start justify-between gap-3">

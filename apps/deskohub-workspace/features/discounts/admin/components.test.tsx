@@ -413,7 +413,7 @@ describe("discount administration pages", () => {
     };
     const reservations = loadFixtureReservations({
       customerId: "customer-alex",
-    }).items;
+    }).items.map((reservation) => ({ ...reservation, customer: null }));
     const paidReservation = reservations.find(
       ({ latestPayment }) => latestPayment?.state === "paid"
     );
@@ -472,6 +472,7 @@ describe("discount administration pages", () => {
       .getByText(/Past reservations \(/)
       .closest("details");
     expect(pastReservations?.hasAttribute("open")).toBe(false);
+    expect(view.queryByText("Details unavailable")).toBeNull();
     expect(
       view.queryByText("Reservations associated with this customer.")
     ).toBeNull();

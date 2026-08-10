@@ -176,6 +176,12 @@ describe("administration reservation components", () => {
       view.getByText("Paid").closest('[aria-current="step"]')
     ).not.toBeNull();
     expect(view.getByText("Confirmation issue")).toBeDefined();
+    expect(
+      view
+        .getByText("Cancelled")
+        .compareDocumentPosition(view.getByText("Paid")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
   });
 
   test("links order and operation entities back to their reservation", () => {

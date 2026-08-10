@@ -1,3 +1,33 @@
+import {
+  type AdministrationStatusGroup,
+  getAdministrationReservationStatus,
+  type ReservationStatusInput,
+} from "./reservation-status";
+
+type FilterableReservation = Omit<ReservationStatusInput, "dotyposStatus"> & {
+  readonly dotyposReservationId: string | null;
+};
+
+export const filterAdministrationReservationsByStatus = <
+  Reservation extends FilterableReservation,
+>(
+  reservations: readonly Reservation[],
+  status: Exclude<AdministrationStatusGroup, "attention">,
+  liveStatuses: ReadonlyMap<
+    string,
+    NonNullable<ReservationStatusInput["dotyposStatus"]>
+  >
+) =>
+  reservations.filter(
+    (reservation) =>
+      getAdministrationReservationStatus({
+        ...reservation,
+        dotyposStatus: reservation.dotyposReservationId
+          ? liveStatuses.get(reservation.dotyposReservationId)
+          : undefined,
+      }).group === status
+  );
+
 export const getAdministrationPagination = ({
   pageSize,
   requestedPage,

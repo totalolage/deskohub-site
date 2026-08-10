@@ -249,6 +249,7 @@ export function CustomerAdministrationDetailPage({
                   <ReservationTable
                     emptyMessage="This customer has no past reservations."
                     reservations={reservationGroups.past}
+                    showCustomer={false}
                   />
                 </div>
               </details>
@@ -263,6 +264,7 @@ export function CustomerAdministrationDetailPage({
                 <ReservationTable
                   emptyMessage="This customer has no current or future reservations."
                   reservations={reservationGroups.currentAndFuture}
+                  showCustomer={false}
                 />
               </section>
 
@@ -275,6 +277,7 @@ export function CustomerAdministrationDetailPage({
                   <div className="border-t border-navy-blue/10 p-3">
                     <ReservationTable
                       reservations={reservationGroups.unavailable}
+                      showCustomer={false}
                     />
                   </div>
                 </details>

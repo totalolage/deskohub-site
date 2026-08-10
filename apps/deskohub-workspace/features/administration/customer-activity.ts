@@ -17,7 +17,7 @@ export const groupCustomerReservations = (
   for (const reservation of reservations) {
     if (!reservation.endsAt) {
       unavailable.push(reservation);
-    } else if (Temporal.Instant.compare(reservation.endsAt, now) < 0) {
+    } else if (Temporal.Instant.compare(reservation.endsAt, now) <= 0) {
       past.push(reservation);
     } else {
       currentAndFuture.push(reservation);
