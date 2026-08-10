@@ -7,7 +7,7 @@ Discount codes are managed directly in the Workspace Postgres database until an 
 - `discounts` stores a source-neutral percentage or fixed-money benefit. Its
   `labels` JSONB value contains the complete customer-facing label map for every
   supported locale.
-- `discount_product_targets` stores at least one product target for every usable benefit.
+- `discount_targets` stores at least one product target for every usable benefit.
 - `discount_codes` stores scheduling, enabled state, and the optional global-use limit.
 - `discount_code_customers` is an allowlist. Zero rows for a code means every customer is eligible; one or more rows restrict eligibility to those Dotypos customer IDs.
 - `discount_applications` and `discount_code_redemptions` are application-managed audit records. Inspect them, but never insert, edit, or delete them manually.
@@ -68,7 +68,7 @@ INSERT INTO discounts (
 )
 RETURNING id AS discount_id \gset
 
-INSERT INTO discount_product_targets (
+INSERT INTO discount_targets (
   discount_id,
   product_target
 ) VALUES (
@@ -163,7 +163,7 @@ Setting `max_uses` to `NULL` removes only the global limit. It does not remove t
 Add targets using the strict reservation-family target:
 
 ```sql
-INSERT INTO discount_product_targets (
+INSERT INTO discount_targets (
   discount_id,
   product_target
 )

@@ -15,7 +15,7 @@ The core checkout lifecycle uses these tables:
 
 Do not recreate `checkout_return_state_tokens` as a state table. Return pages must derive enough context from signed URL state, route parameters, Nexi verification, and the durable rows above.
 
-Discount configuration and audit history extend this lifecycle through `discounts`, `discount_product_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. See [Workspace discount-code operations](./discount-codes.md).
+Discount configuration and audit history extend this lifecycle through `discounts`, `discount_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. See [Workspace discount-code operations](./discount-codes.md).
 
 Customer marketing consent is independent of a reservation and lives in `customer_marketing_consents`, keyed directly by the stable Dotypos customer ID. The reservation page always shows a privacy notice and link, but privacy-policy acknowledgement is not a consent gate and is not persisted. The optional marketing checkbox grants customer-level consent; leaving it unchecked is a no-op, not a withdrawal.
 

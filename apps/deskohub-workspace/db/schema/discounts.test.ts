@@ -184,6 +184,19 @@ describe("discount persistence contracts", () => {
     );
   });
 
+  test("documents writes against the canonical discount target table", async () => {
+    const documentation = await Bun.file(
+      new URL("../../docs/discount-codes.md", import.meta.url)
+    ).text();
+
+    expect(documentation).not.toContain(
+      "INSERT INTO discount_product_targets (\n  discount_id,\n  product_target"
+    );
+    expect(
+      documentation.match(/INSERT INTO discount_targets \(/g)
+    ).toHaveLength(2);
+  });
+
   test("removes the superseded scalar discount label", async () => {
     const migration = await Bun.file(
       new URL(
