@@ -34,7 +34,10 @@ import {
 } from "@/db/schema";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { getAdministrationPagination } from "./listing";
+import {
+  getAdministrationExternalOrderPageIds,
+  getAdministrationPagination,
+} from "./listing";
 import {
   type AdministrationOrder,
   type IPaymentAdministrationService,
@@ -83,6 +86,7 @@ export type AdministrationReservationListInput = {
 
 export type AdministrationReservationSort =
   | "created"
+  | "date"
   | "reservation"
   | "status";
 
@@ -553,7 +557,10 @@ const reservationTypeSort = sql<string>`case
   else 'Cowork ' || initcap(${workspaceReservations.reservationDetails}->>'entryTier')
 end`;
 
-const getReservationOrderBy = (input: AdministrationReservationListInput) => {
+const getReservationOrderBy = (input: {
+  readonly direction?: AdministrationReservationSortDirection;
+  readonly sort?: Exclude<AdministrationReservationSort, "date">;
+}) => {
   const order = input.direction === "asc" ? asc : desc;
   const fields = {
     created: workspaceReservations.createdAt,
@@ -776,6 +783,7 @@ export class AdministrationService extends Context.Service<
     ) => Effect.Effect<
       AdministrationReservationPage & {
         readonly dateFilterUnavailable: boolean;
+        readonly dateSortUnavailable: boolean;
       },
       unknown
     >;
@@ -950,6 +958,42 @@ export class AdministrationService extends Context.Service<
         );
       };
 
+      const loadReservationDateOrder = Effect.fn(
+        "AdministrationService.loadReservationDateOrder"
+      )(function* (
+        input: AdministrationReservationListInput,
+        dateReservations:
+          | ReadonlyMap<string, DotyposReservation>
+          | null
+          | undefined
+      ) {
+        if (input.date) {
+          if (!dateReservations) return null;
+          const providerIds = [...dateReservations.keys()];
+          return input.direction === "asc"
+            ? providerIds
+            : providerIds.toReversed();
+        }
+        return yield* dotypos
+          .listReservations({
+            ...(input.customerId && { customerId: input.customerId }),
+            order:
+              input.direction === "asc"
+                ? "startDateAscending"
+                : "startDateDescending",
+          })
+          .pipe(
+            Effect.map((reservations) =>
+              reservations.flatMap(({ id }) => (id ? [id] : []))
+            ),
+            Effect.catch((cause) =>
+              Effect.logWarning("Reservation date sorting unavailable", {
+                cause,
+              }).pipe(Effect.as(null))
+            )
+          );
+      });
+
       const loadReservationPeriodCount = Effect.fn(
         "AdministrationService.loadReservationPeriodCount"
       )(function* (input: {
@@ -1022,13 +1066,51 @@ export class AdministrationService extends Context.Service<
           requestedPage: input.page,
           total,
         });
-        const rows = yield* db
-          .select(safeReservationSelection)
-          .from(workspaceReservations)
-          .where(where)
-          .orderBy(...getReservationOrderBy(input))
-          .limit(pageSize)
-          .offset(pagination.offset);
+        const orderedProviderIds =
+          input.sort === "date"
+            ? yield* loadReservationDateOrder(input, dateReservations)
+            : undefined;
+        let rows: readonly SafeReservationRow[];
+        if (orderedProviderIds) {
+          const references = yield* db
+            .select({
+              id: workspaceReservations.id,
+              externalId: workspaceReservations.dotyposReservationId,
+            })
+            .from(workspaceReservations)
+            .where(where);
+          const pageIds = getAdministrationExternalOrderPageIds({
+            offset: pagination.offset,
+            orderedExternalIds: orderedProviderIds,
+            pageSize,
+            references,
+          });
+          const pageRows =
+            pageIds.length === 0
+              ? []
+              : yield* db
+                  .select(safeReservationSelection)
+                  .from(workspaceReservations)
+                  .where(inArray(workspaceReservations.id, pageIds));
+          const rowById = new Map(pageRows.map((row) => [row.id, row]));
+          rows = pageIds.flatMap((id) => {
+            const row = rowById.get(id);
+            return row ? [row] : [];
+          });
+        } else {
+          rows = yield* db
+            .select(safeReservationSelection)
+            .from(workspaceReservations)
+            .where(where)
+            .orderBy(
+              ...getReservationOrderBy({
+                direction: input.direction,
+                sort: input.sort === "date" ? "created" : input.sort,
+              })
+            )
+            .limit(pageSize)
+            .offset(pagination.offset);
+        }
         return {
           items: yield* enrichRows(rows),
           page: pagination.page,
@@ -1037,6 +1119,8 @@ export class AdministrationService extends Context.Service<
           dateFilterUnavailable: Boolean(
             input.date && dateReservations === null
           ),
+          dateSortUnavailable:
+            input.sort === "date" && orderedProviderIds === null,
         };
       });
 

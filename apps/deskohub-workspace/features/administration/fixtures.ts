@@ -249,6 +249,7 @@ export const loadFixtureReservations = (
     pageCount: 1,
     total: items.length,
     dateFilterUnavailable: false,
+    dateSortUnavailable: false,
   };
 };
 

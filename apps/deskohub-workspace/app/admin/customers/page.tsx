@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {
   AdministrationPage,
+  AdministrationTableToolbar,
   EmptyState,
   formatAdministrationDateTime,
   Pagination,
@@ -29,12 +30,11 @@ export default async function DiscountCustomersAdminPage({
   return (
     <AdministrationPage>
       <h1 className="sr-only">Customers</h1>
-      <div className="grid gap-4 rounded-xl border border-navy-blue/10 bg-white p-4 lg:grid-cols-[auto_minmax(22rem,32rem)] lg:items-end lg:justify-between">
-        <p className="pb-2 text-sm font-semibold text-navy-blue/70">
-          {customers.total} customers
-        </p>
-        <CustomerSearch variant="toolbar" />
-      </div>
+      <AdministrationTableToolbar
+        count={customers.total}
+        itemLabel="customer"
+        primaryControls={<CustomerSearch variant="toolbar" />}
+      />
       <section className="mt-7">
         {customers.items.length === 0 ? (
           <EmptyState message="No customers have reservations yet." />

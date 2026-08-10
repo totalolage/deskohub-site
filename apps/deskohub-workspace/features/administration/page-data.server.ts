@@ -48,7 +48,9 @@ const parseStatus = (
 const parseReservationSort = (
   value: string | undefined
 ): NonNullable<AdministrationReservationListInput["sort"]> =>
-  value === "reservation" || value === "status" ? value : "created";
+  value === "date" || value === "reservation" || value === "status"
+    ? value
+    : "created";
 
 const parseSortDirection = (
   value: string | undefined

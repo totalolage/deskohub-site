@@ -36,6 +36,7 @@ export {
   ReservationStatusBadge,
   ReservationTable,
 } from "./reservation-table";
+export { AdministrationTableToolbar } from "./table-toolbar";
 
 export type AdministrationNotice = {
   readonly message: string;

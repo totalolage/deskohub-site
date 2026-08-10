@@ -158,6 +158,11 @@ describe("administration reservation components", () => {
     expect(
       within(table).getByRole("link", { name: "Status" }).getAttribute("href")
     ).toBe("/admin/reservations?status=complete&sort=status&direction=asc");
+    const dateHeader = within(table).getByRole("link", { name: "Date" });
+    expect(dateHeader.closest("th")?.getAttribute("aria-sort")).toBe("none");
+    expect(dateHeader.getAttribute("href")).toBe(
+      "/admin/reservations?status=complete&sort=date&direction=asc"
+    );
   });
 
   test("shows live provider discrepancies on related reservations", () => {

@@ -23,6 +23,7 @@ type LoadedReservationPage = {
   readonly input: AdministrationReservationListInput;
   readonly result: AdministrationReservationPage & {
     readonly dateFilterUnavailable: boolean;
+    readonly dateSortUnavailable: boolean;
   };
 };
 
@@ -34,6 +35,7 @@ const defaultReservationPage: LoadedReservationPage = {
     pageCount: 1,
     total: 115,
     dateFilterUnavailable: false,
+    dateSortUnavailable: false,
   },
 };
 
@@ -98,6 +100,7 @@ describe("ReservationsAdministrationPage", () => {
         pageCount: 3,
         total: 49,
         dateFilterUnavailable: false,
+        dateSortUnavailable: false,
       },
     };
     const { default: ReservationsAdministrationPage } = await import("./page");
@@ -157,5 +160,27 @@ describe("ReservationsAdministrationPage", () => {
     ).toBe(
       "/admin/reservations?date=2026-08-10&direction=asc&sort=status&status=complete&type=cowork"
     );
+  });
+
+  test("explains the fallback when provider date sorting is unavailable", async () => {
+    reservationPage = {
+      input: { direction: "asc", sort: "date" },
+      result: {
+        ...defaultReservationPage.result,
+        dateSortUnavailable: true,
+      },
+    };
+    const { default: ReservationsAdministrationPage } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationPage({
+        searchParams: Promise.resolve({ direction: "asc", sort: "date" }),
+      })
+    );
+
+    expect(
+      view.getByText(
+        "Reservation dates are temporarily unavailable for sorting. Showing newest records instead."
+      )
+    ).toBeDefined();
   });
 });

@@ -77,7 +77,9 @@ export function ReservationTable({
         >
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead>Date</TableHead>
+              <ReservationSortHead field="date" sorting={sorting}>
+                Date
+              </ReservationSortHead>
               <ReservationSortHead field="status" sorting={sorting}>
                 Status
               </ReservationSortHead>
