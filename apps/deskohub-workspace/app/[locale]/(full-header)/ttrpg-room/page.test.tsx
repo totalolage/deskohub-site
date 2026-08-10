@@ -49,9 +49,13 @@ describe("TtrpgRoomPage", () => {
   });
 
   test("starts a meeting-room reservation from the workspace room option", async () => {
-    const { TtrpgRoomPage } = await import("./page");
+    const { RoomCarouselFallback, TtrpgRoomPage } = await import("./page");
     const view = render(
-      <TtrpgRoomPage barImages={[]} locale="en-US" workspaceImages={[]} />
+      <TtrpgRoomPage
+        barCarousel={<RoomCarouselFallback label="Bar room photos" />}
+        locale="en-US"
+        workspaceCarousel={<RoomCarouselFallback label="Workspace photos" />}
+      />
     );
 
     expect(
@@ -62,5 +66,23 @@ describe("TtrpgRoomPage", () => {
         .getByRole("link", { name: "Contact Deskohub Bar" })
         .getAttribute("href")
     ).toStartWith("https://bar.deskohub.cz/en-US/contact?");
+    expect(view.getAllByRole("region")).toHaveLength(2);
+    for (const carousel of view.getAllByRole("region")) {
+      expect(carousel.getAttribute("aria-busy")).toBe("true");
+    }
+  });
+
+  test("reserves the carousel layout while room images load", async () => {
+    const { RoomCarouselFallback } = await import("./page");
+    const view = render(<RoomCarouselFallback label="Loading room photos" />);
+    const fallback = view.getByRole("region", {
+      name: "Loading room photos",
+    });
+
+    expect(fallback.getAttribute("aria-busy")).toBe("true");
+    expect(fallback.getAttribute("class")).toContain("space-y-3");
+    expect(fallback.firstElementChild?.getAttribute("class")).toContain(
+      "aspect-[4/3]"
+    );
   });
 });
