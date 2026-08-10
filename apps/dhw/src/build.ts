@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import packageMetadata from "../package.json";
 import { ReleaseBuildTarget } from "./build-info";
+import { makeDhwBuildVersion } from "./build-version";
 
 const buildTarget = Schema.decodeUnknownSync(
   Schema.Union([ReleaseBuildTarget, Schema.Literal("development")])
@@ -17,6 +18,11 @@ const bunTarget =
   buildTarget === "development" ? undefined : bunTargets[buildTarget];
 
 const outputName = buildTarget === "development" ? "dhw" : `dhw-${buildTarget}`;
+const buildVersion = makeDhwBuildVersion(
+  packageMetadata.version,
+  buildTarget,
+  Bun.env.DHW_BUILD_VERSION_TAG
+);
 
 const result = await Bun.build({
   entrypoints: [new URL("./main.ts", import.meta.url).pathname],
@@ -27,7 +33,7 @@ const result = await Bun.build({
     autoloadBunfig: false,
   },
   define: {
-    __DHW_VERSION__: JSON.stringify(packageMetadata.version),
+    __DHW_VERSION__: JSON.stringify(buildVersion),
     __DHW_BUILD_TARGET__: JSON.stringify(buildTarget),
   },
 });

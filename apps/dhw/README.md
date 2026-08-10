@@ -49,6 +49,11 @@ Windows is intentionally unsupported. Asset selection never infers a target
 from the host OS, architecture, or `uname`; the updater uses only the build
 target embedded at compilation.
 
+Non-release binaries identify their provenance in SemVer build metadata.
+Development builds use `<version>+development`, and PR artifacts use
+`<version>+pr.<number>.<head-sha>`. Published releases keep the plain package
+version.
+
 ## Configuration
 
 - `DHW_BASE` changes the Workspace origin. It must be HTTPS, except for HTTP on
