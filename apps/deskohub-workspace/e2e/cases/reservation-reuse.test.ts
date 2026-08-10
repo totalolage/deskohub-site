@@ -8,7 +8,7 @@ import type { Runner } from "../runtime";
 import { workspaceE2ETimeouts } from "../timeouts";
 import { returnToPrefilledReservation } from "./reservation-reuse";
 
-test("waits for the meeting-room consent control before checking restored state", async () => {
+test("waits for the meeting-room marketing control before checking restored state", async () => {
   const interval = getMeetingRoomReservationInterval("2099-09-01T10:00", {
     unit: "hour",
     amount: 1,
@@ -47,5 +47,5 @@ test("waits for the meeting-room consent control before checking restored state"
     .map((args) => args.at(-1))
     .filter((script) => script?.includes("__reactProps$"));
   expect(hydrationScripts).toHaveLength(2);
-  expect(hydrationScripts[1]).toContain("#reservation-privacy-consent");
+  expect(hydrationScripts[1]).toContain("#reservation-marketing-consent");
 });
