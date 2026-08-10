@@ -154,7 +154,7 @@ async function expectReservationSteps(page: Page) {
 async function hasLoadedResource(page: Page, pathname: string) {
   return page.evaluate((targetPathname) => {
     return performance.getEntriesByType("resource").some((entry) => {
-      return new URL(entry.name).pathname === targetPathname;
+      return new URL(entry.name, document.baseURI).pathname === targetPathname;
     });
   }, pathname);
 }
