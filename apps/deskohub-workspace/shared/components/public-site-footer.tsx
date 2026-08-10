@@ -162,7 +162,25 @@ export async function PublicSiteFooter() {
 
 async function getFooterCopyrightYear() {
   "use cache";
-  cacheLife("days");
 
-  return new Date().getFullYear();
+  const now = Temporal.Now.zonedDateTimeISO(
+    workspaceSiteConstants.location.timeZone
+  );
+  const nextYear = Temporal.ZonedDateTime.from({
+    timeZone: workspaceSiteConstants.location.timeZone,
+    year: now.year + 1,
+    month: 1,
+    day: 1,
+  });
+  const secondsUntilNextYear = Math.max(
+    1,
+    Math.ceil((nextYear.epochMilliseconds - now.epochMilliseconds) / 1000)
+  );
+  cacheLife({
+    stale: 0,
+    revalidate: secondsUntilNextYear,
+    expire: secondsUntilNextYear,
+  });
+
+  return now.year;
 }
