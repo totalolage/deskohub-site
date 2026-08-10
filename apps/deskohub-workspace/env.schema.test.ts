@@ -100,6 +100,17 @@ describe("workspace environment schemas", () => {
     expect(() => decodeKeyId("K")).toThrow();
   });
 
+  test("declares accounting snapshot secrets through static Next env access", async () => {
+    const source = await Bun.file(new URL("./env.ts", import.meta.url)).text();
+
+    expect(source).toContain(
+      "K202608: process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608"
+    );
+    expect(source).not.toContain(
+      "process.env[`ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_"
+    );
+  });
+
   test("exposes fields through Standard Schema for T3 Env", async () => {
     const result =
       await workspaceServerEnvSchema.fields.DOTYPOS_API_TIMEOUT[

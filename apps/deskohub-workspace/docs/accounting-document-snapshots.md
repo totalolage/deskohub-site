@@ -39,9 +39,10 @@ Rotation is additive:
 
 1. Generate and externally escrow a new 32-byte key.
 2. Add a new immutable variable such as `ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202609`.
-3. Deploy it while the old key variable remains available.
-4. Change `ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID` to `K202609` in a second deployment.
-5. Retain every historical key for at least as long as snapshots encrypted by it must remain readable.
+3. Add its direct, statically named `process.env` access to `accountingDocumentSnapshotSecrets` in `env.ts`; Next does not transform computed environment-variable names.
+4. Deploy it while the old key variable and registry entry remain available.
+5. Change `ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID` to `K202609` in a second deployment.
+6. Retain every historical key and registry entry for at least as long as snapshots encrypted by it must remain readable.
 
 Never overwrite or remove an old key merely because it is no longer active. The key ID on each row selects the correct runtime variable during decryption; no endpoint may expose key material.
 
