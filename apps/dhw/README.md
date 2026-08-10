@@ -46,6 +46,10 @@ dhw reservations list --date 2026-08-10 --status complete --page 2
 dhw reservations get <reservation-id>
 dhw bookings list --date 2026-08-10
 dhw bookings get <booking-id>
+dhw orders list --from 2026-08-01 --to 2026-08-10
+dhw orders get <order-id>
+dhw operations list --channel ECOMMERCE --operation-type CAPTURE
+dhw operations get <operation-id>
 dhw customers list
 dhw customers search "Ada"
 dhw customers get <customer-id>

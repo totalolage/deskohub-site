@@ -6,6 +6,8 @@ import {
   AdministrationCustomerQuery,
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
+  AdministrationOperationQuery,
+  AdministrationOrderQuery,
   AdministrationReservationQuery,
   CliClientName,
   StartCliAuthentication,
@@ -45,6 +47,10 @@ describe("administration read contract", () => {
     expect(AdminCliReadApi.endpoints.getReservation?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listBookings?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.getBooking?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listOrders?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getOrder?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listOperations?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getOperation?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listCustomers?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.searchCustomers?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.getCustomer?.method).toBe("GET");
@@ -110,6 +116,24 @@ describe("administration read contract", () => {
       Schema.decodeUnknownSync(AdministrationBookingQuery)({
         date: "10-08-2026",
       })
+    ).toThrow();
+  });
+
+  test("validates payment date filters", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+        from: "2026-08-01",
+        to: "2026-08-10",
+      })
+    ).toEqual({ from: "2026-08-01", to: "2026-08-10" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationOperationQuery)({
+        channel: "ECOMMERCE",
+        operationType: "CAPTURE",
+      })
+    ).toEqual({ channel: "ECOMMERCE", operationType: "CAPTURE" });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({ from: "tomorrow" })
     ).toThrow();
   });
 });

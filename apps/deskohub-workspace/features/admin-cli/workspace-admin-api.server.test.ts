@@ -123,6 +123,8 @@ describe("Workspace Admin API", () => {
     const bookingInputs: unknown[] = [];
     const customerReservationInputs: unknown[] = [];
     const customerSearches: unknown[] = [];
+    const operationInputs: unknown[] = [];
+    const orderInputs: unknown[] = [];
     const reservationInputs: unknown[] = [];
     const timestamp = "2026-08-10T10:00:00.000Z";
     const booking = {
@@ -156,6 +158,19 @@ describe("Workspace Admin API", () => {
       createdAt: timestamp,
       latestPayment: null,
       updatedAt: timestamp,
+    };
+    const order = {
+      orderId: "order-1",
+      provider: null,
+      providerAvailable: false,
+      providerStatus: "unavailable" as const,
+      link: null,
+    };
+    const operation = {
+      operationId: "operation-1",
+      operationType: "CAPTURE",
+      operationResult: "AUTHORIZED",
+      linkedReservationId: reservation.id,
     };
     const administration = Layer.succeed(AdministrationService, {
       loadOverview: () =>
@@ -262,10 +277,33 @@ describe("Workspace Admin API", () => {
           },
           marketingConsent: null,
         }),
-      listOrders: () => Effect.die("not used"),
-      loadOrder: () => Effect.die("not used"),
-      listOperations: () => Effect.die("not used"),
-      loadOperation: () => Effect.die("not used"),
+      listOrders: (input) =>
+        Effect.sync(() => {
+          orderInputs.push(input);
+          return {
+            items: [order],
+            providerAvailable: false,
+            truncated: false,
+          };
+        }),
+      loadOrder: () => Effect.succeed(order),
+      listOperations: (input) =>
+        Effect.sync(() => {
+          operationInputs.push(input);
+          return {
+            items: [operation],
+            providerAvailable: true,
+            truncated: false,
+          };
+        }),
+      loadOperation: (operationId) =>
+        Effect.succeed({
+          operationId,
+          operation,
+          providerAvailable: true,
+          providerStatus: "available" as const,
+          linkedReservationId: reservation.id,
+        }),
     } satisfies AdministrationService["Service"]);
     const discounts = Layer.succeed(DiscountAdministration, {
       ...({} as DiscountAdministration["Service"]),
@@ -297,6 +335,23 @@ describe("Workspace Admin API", () => {
       const missingBooking = yield* client.administration
         .getBooking({ params: { bookingId: "missing" } })
         .pipe(Effect.flip);
+      const orders = yield* client.administration.listOrders({
+        query: { from: "2026-08-01", to: "2026-08-10" },
+      });
+      const orderDetail = yield* client.administration.getOrder({
+        params: { orderId: order.orderId },
+      });
+      const operations = yield* client.administration.listOperations({
+        query: {
+          from: "2026-08-01",
+          to: "2026-08-10",
+          channel: "ECOMMERCE",
+          operationType: "CAPTURE",
+        },
+      });
+      const operationDetail = yield* client.administration.getOperation({
+        params: { operationId: "operation-1" },
+      });
       const customers = yield* client.administration.listCustomers({
         query: { page: 3 },
       });
@@ -319,6 +374,10 @@ describe("Workspace Admin API", () => {
         customerReservations,
         customers,
         missingBooking,
+        operationDetail,
+        operations,
+        orderDetail,
+        orders,
         overview,
         reservationDetail,
         reservations,
@@ -339,6 +398,10 @@ describe("Workspace Admin API", () => {
     expect(result.bookings.page).toBe(4);
     expect(result.bookingDetail.booking.id).toBe(booking.id);
     expect(result.missingBooking).toBeInstanceOf(CliResourceNotFound);
+    expect(result.orders.items[0]?.orderId).toBe(order.orderId);
+    expect(result.orderDetail.orderId).toBe(order.orderId);
+    expect(result.operations.items[0]?.operationId).toBe("operation-1");
+    expect(result.operationDetail.providerStatus).toBe("available");
     expect(result.customers.page).toBe(3);
     expect(result.customerSearch.kind).toBe("not-found");
     expect(result.customer.profile).toBeNull();
@@ -349,6 +412,14 @@ describe("Workspace Admin API", () => {
     expect(bookingInputs).toEqual([{ date: "2026-08-10", page: 4 }]);
     expect(customerReservationInputs).toEqual([
       { customerId: reservation.customerId, page: 5 },
+    ]);
+    expect(orderInputs).toEqual([expect.objectContaining({ maxRecords: 50 })]);
+    expect(operationInputs).toEqual([
+      expect.objectContaining({
+        channel: "ECOMMERCE",
+        maxRecords: 100,
+        operationType: "CAPTURE",
+      }),
     ]);
   });
 });

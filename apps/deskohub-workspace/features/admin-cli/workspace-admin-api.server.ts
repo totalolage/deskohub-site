@@ -14,6 +14,11 @@ import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
 import { AdministrationService } from "@/features/administration/administration.service";
+import {
+  getAdministrationOperationFilters,
+  getAdministrationOrderDateTimeBounds,
+  getAdministrationPaymentDateTimeBounds,
+} from "@/features/administration/payment-administration-filters";
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
 import {
   type AdminCustomerProfile,
@@ -114,6 +119,42 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
                   })
             )
           )
+        )
+        .handle("listOrders", ({ query }) => {
+          const range = getAdministrationOrderDateTimeBounds(
+            query.from,
+            query.to
+          );
+          return administration
+            .listOrders({
+              fromTime: range.fromTime,
+              toTime: range.toTime,
+              maxRecords: 50,
+            })
+            .pipe(mapServiceFailure);
+        })
+        .handle("getOrder", ({ params }) =>
+          administration.loadOrder(params.orderId).pipe(mapServiceFailure)
+        )
+        .handle("listOperations", ({ query }) => {
+          const range = getAdministrationPaymentDateTimeBounds(
+            query.from,
+            query.to
+          );
+          const filters = getAdministrationOperationFilters(query);
+          return administration
+            .listOperations({
+              fromTime: range.fromTime,
+              toTime: range.toTime,
+              maxRecords: 100,
+              ...filters,
+            })
+            .pipe(mapServiceFailure);
+        })
+        .handle("getOperation", ({ params }) =>
+          administration
+            .loadOperation(params.operationId)
+            .pipe(mapServiceFailure)
         )
         .handle("listCustomers", ({ query }) =>
           administration.listCustomers(query).pipe(mapServiceFailure)

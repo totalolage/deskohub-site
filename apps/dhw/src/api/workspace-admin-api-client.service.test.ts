@@ -117,6 +117,19 @@ describe("WorkspaceAdminApiClient", () => {
       latestPayment: null,
       updatedAt: expiresAt,
     };
+    const order = {
+      orderId: "order-1",
+      provider: null,
+      providerAvailable: false,
+      providerStatus: "unavailable" as const,
+      link: null,
+    };
+    const operation = {
+      operationId: "operation-1",
+      operationType: "CAPTURE",
+      operationResult: "AUTHORIZED",
+      linkedReservationId: reservation.id,
+    };
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
     const server = Bun.serve({
@@ -231,6 +244,48 @@ describe("WorkspaceAdminApiClient", () => {
             total: 50,
           });
         }
+        if (url.pathname.endsWith("/orders/order-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json(order);
+        }
+        if (url.pathname.endsWith("/orders")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("from")).toBe("2026-08-01");
+          expect(url.searchParams.get("to")).toBe("2026-08-10");
+          return Response.json({
+            items: [order],
+            providerAvailable: false,
+            truncated: false,
+          });
+        }
+        if (url.pathname.endsWith("/operations/operation-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            operationId: "operation-1",
+            operation,
+            providerAvailable: true,
+            providerStatus: "available",
+            linkedReservationId: reservation.id,
+          });
+        }
+        if (url.pathname.endsWith("/operations")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("channel")).toBe("ECOMMERCE");
+          expect(url.searchParams.get("operationType")).toBe("CAPTURE");
+          return Response.json({
+            items: [operation],
+            providerAvailable: true,
+            truncated: false,
+          });
+        }
         if (url.pathname.endsWith("/customers/search")) {
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
@@ -326,6 +381,19 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
         });
         yield* client.getBooking(Redacted.make(accessToken), booking.id);
+        yield* client.listOrders(Redacted.make(accessToken), {
+          from: "2026-08-01",
+          to: "2026-08-10",
+        });
+        yield* client.getOrder(Redacted.make(accessToken), order.orderId);
+        yield* client.listOperations(Redacted.make(accessToken), {
+          channel: "ECOMMERCE",
+          operationType: "CAPTURE",
+        });
+        yield* client.getOperation(
+          Redacted.make(accessToken),
+          operation.operationId
+        );
         yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
         yield* client.searchCustomers(Redacted.make(accessToken), {
           query: "Ada",
@@ -354,6 +422,10 @@ describe("WorkspaceAdminApiClient", () => {
         },
         { method: "GET", path: "/api/v1/cli/bookings" },
         { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
+        { method: "GET", path: "/api/v1/cli/orders" },
+        { method: "GET", path: "/api/v1/cli/orders/order-1" },
+        { method: "GET", path: "/api/v1/cli/operations" },
+        { method: "GET", path: "/api/v1/cli/operations/operation-1" },
         { method: "GET", path: "/api/v1/cli/customers" },
         { method: "GET", path: "/api/v1/cli/customers/search" },
         { method: "GET", path: "/api/v1/cli/customers/customer-1" },

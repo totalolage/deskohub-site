@@ -428,6 +428,59 @@ export const AdministrationOrder = Schema.Struct({
 });
 export type AdministrationOrder = typeof AdministrationOrder.Type;
 
+export const AdministrationOrderList = Schema.Struct({
+  items: Schema.Array(AdministrationOrder),
+  providerAvailable: Schema.Boolean,
+  truncated: Schema.Boolean,
+});
+export type AdministrationOrderList = typeof AdministrationOrderList.Type;
+
+const administrationDateRangeQuery = {
+  from: Schema.optional(
+    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
+  ),
+  to: Schema.optional(
+    Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/))
+  ),
+};
+
+export const AdministrationOrderQuery = Schema.Struct(
+  administrationDateRangeQuery
+);
+export type AdministrationOrderQuery = typeof AdministrationOrderQuery.Type;
+
+export const AdministrationOperation = Schema.Struct({
+  ...AdministrationNexiOperation.fields,
+  linkedReservationId: Schema.NullOr(Schema.String),
+});
+export type AdministrationOperation = typeof AdministrationOperation.Type;
+
+export const AdministrationOperationList = Schema.Struct({
+  items: Schema.Array(AdministrationOperation),
+  providerAvailable: Schema.Boolean,
+  truncated: Schema.Boolean,
+});
+export type AdministrationOperationList =
+  typeof AdministrationOperationList.Type;
+
+export const AdministrationOperationQuery = Schema.Struct({
+  ...administrationDateRangeQuery,
+  channel: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  operationType: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+});
+export type AdministrationOperationQuery =
+  typeof AdministrationOperationQuery.Type;
+
+export const AdministrationOperationDetail = Schema.Struct({
+  operationId: Schema.String,
+  operation: Schema.NullOr(AdministrationNexiOperation),
+  providerAvailable: Schema.Boolean,
+  providerStatus: Schema.Literals(["available", "not_found", "unavailable"]),
+  linkedReservationId: Schema.NullOr(Schema.String),
+});
+export type AdministrationOperationDetail =
+  typeof AdministrationOperationDetail.Type;
+
 export const AdministrationReservationLifecycleStage = Schema.Literals([
   "started",
   "held",
@@ -723,6 +776,30 @@ export const AdminCliReadApi = HttpApiGroup.make("administration")
       params: { bookingId: Schema.String },
       success: AdministrationBookingDetail,
       error: CliResourceNotFound.schema,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listOrders", "/orders", {
+      query: AdministrationOrderQuery,
+      success: AdministrationOrderList,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getOrder", "/orders/:orderId", {
+      params: { orderId: Schema.String },
+      success: AdministrationOrder,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listOperations", "/operations", {
+      query: AdministrationOperationQuery,
+      success: AdministrationOperationList,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("getOperation", "/operations/:operationId", {
+      params: { operationId: Schema.String },
+      success: AdministrationOperationDetail,
     })
   )
   .add(

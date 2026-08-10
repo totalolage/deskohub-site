@@ -1,6 +1,8 @@
 import {
   type AdministrationBookingQueryType,
   type AdministrationCustomerQueryType,
+  type AdministrationOperationQueryType,
+  type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationQueryType,
   type AdministrationReservationSummaryType,
@@ -256,6 +258,160 @@ const bookingsGetCommand = Command.make(
 const bookingsCommand = Command.make("bookings").pipe(
   Command.withDescription("Inspect Dotypos bookings"),
   Command.withSubcommands([bookingsListCommand, bookingsGetCommand])
+);
+
+const administrationDateRangeFlags = {
+  from: Flag.string("from").pipe(
+    Flag.optional,
+    Flag.withDescription("Start date (YYYY-MM-DD)")
+  ),
+  to: Flag.string("to").pipe(
+    Flag.optional,
+    Flag.withDescription("End date (YYYY-MM-DD)")
+  ),
+};
+
+const ordersListCommand = Command.make(
+  "list",
+  administrationDateRangeFlags,
+  ({ from, to }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query: AdministrationOrderQueryType = {
+          ...(Option.isSome(from) && { from: from.value }),
+          ...(Option.isSome(to) && { to: to.value }),
+        };
+        const result = yield* api.listOrders(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Orders: ${result.items.length}${result.truncated ? "+" : ""} · provider ${result.providerAvailable ? "available" : "unavailable"}`
+        );
+        for (const order of result.items) {
+          yield* Console.log(
+            [
+              order.orderId,
+              order.providerStatus,
+              order.link?.stateLabel ?? "Not linked",
+              order.link?.reservationId ?? "No reservation",
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List payment provider orders"));
+
+const ordersGetCommand = Command.make(
+  "get",
+  { orderId: Argument.string("order-id") },
+  ({ orderId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const order = yield* api.getOrder(accessToken, orderId);
+        if (json) {
+          yield* Console.log(JSON.stringify(order));
+          return;
+        }
+        yield* Console.log(
+          [
+            order.orderId,
+            order.providerStatus,
+            order.link?.stateLabel ?? "Not linked",
+            order.link?.reservationId ?? "No reservation",
+          ].join("\t")
+        );
+        if (order.provider) {
+          yield* Console.log(
+            `${order.provider.operations.length} provider operations`
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("Show a payment provider order"));
+
+const ordersCommand = Command.make("orders").pipe(
+  Command.withDescription("Inspect payment provider orders"),
+  Command.withSubcommands([ordersListCommand, ordersGetCommand])
+);
+
+const operationsListCommand = Command.make(
+  "list",
+  {
+    ...administrationDateRangeFlags,
+    channel: Flag.string("channel").pipe(
+      Flag.optional,
+      Flag.withDescription("Filter by provider channel")
+    ),
+    operationType: Flag.string("operation-type").pipe(
+      Flag.optional,
+      Flag.withDescription("Filter by provider operation type")
+    ),
+  },
+  ({ channel, from, operationType, to }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query: AdministrationOperationQueryType = {
+          ...(Option.isSome(from) && { from: from.value }),
+          ...(Option.isSome(to) && { to: to.value }),
+          ...(Option.isSome(channel) && { channel: channel.value }),
+          ...(Option.isSome(operationType) && {
+            operationType: operationType.value,
+          }),
+        };
+        const result = yield* api.listOperations(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Operations: ${result.items.length}${result.truncated ? "+" : ""} · provider ${result.providerAvailable ? "available" : "unavailable"}`
+        );
+        for (const operation of result.items) {
+          yield* Console.log(
+            [
+              operation.operationId ?? "Unknown operation",
+              operation.operationTime ?? "Unknown time",
+              operation.operationType ?? "Unknown type",
+              operation.operationResult ?? "Unknown result",
+              operation.orderId ?? "No order",
+              operation.linkedReservationId ?? "No reservation",
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List payment provider operations"));
+
+const operationsGetCommand = Command.make(
+  "get",
+  { operationId: Argument.string("operation-id") },
+  ({ operationId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getOperation(accessToken, operationId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        yield* Console.log(
+          [
+            detail.operationId,
+            detail.providerStatus,
+            detail.operation?.operationType ?? "Unknown type",
+            detail.operation?.operationResult ?? "Unknown result",
+            detail.operation?.orderId ?? "No order",
+            detail.linkedReservationId ?? "No reservation",
+          ].join("\t")
+        );
+      })
+    )
+).pipe(Command.withDescription("Show a payment provider operation"));
+
+const operationsCommand = Command.make("operations").pipe(
+  Command.withDescription("Inspect payment provider operations"),
+  Command.withSubcommands([operationsListCommand, operationsGetCommand])
 );
 
 const customersListCommand = Command.make(
@@ -516,6 +672,8 @@ export const dhwCommand = rootCommand.pipe(
     authCommand,
     bookingsCommand,
     customersCommand,
+    operationsCommand,
+    ordersCommand,
     overviewCommand,
     reservationsCommand,
     updateCommand,

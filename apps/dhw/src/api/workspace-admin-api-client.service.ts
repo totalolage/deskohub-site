@@ -10,6 +10,12 @@ import {
   type AdministrationCustomerReservationsQueryType,
   type AdministrationCustomerSearchQueryType,
   type AdministrationCustomerSearchResultType,
+  type AdministrationOperationDetailType,
+  type AdministrationOperationListType,
+  type AdministrationOperationQueryType,
+  type AdministrationOrderListType,
+  type AdministrationOrderQueryType,
+  type AdministrationOrderType,
   type AdministrationOverviewType,
   type AdministrationReservationDetailType,
   type AdministrationReservationPageType,
@@ -106,6 +112,34 @@ interface IWorkspaceAdminApiClient {
     | CliResourceNotFound
     | CliSessionUnauthorized
     | CliServiceUnavailable
+  >;
+  readonly listOrders: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationOrderQueryType
+  ) => Effect.Effect<
+    AdministrationOrderListType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getOrder: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    orderId: string
+  ) => Effect.Effect<
+    AdministrationOrderType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listOperations: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationOperationQueryType
+  ) => Effect.Effect<
+    AdministrationOperationListType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getOperation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    operationId: string
+  ) => Effect.Effect<
+    AdministrationOperationDetailType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listCustomers: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -256,6 +290,53 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
             authorized.administration.getBooking({ params: { bookingId } })
           ),
           Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    listOrders: Effect.fn("WorkspaceAdminApiClient.listOrders")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationOrderQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listOrders({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getOrder: Effect.fn("WorkspaceAdminApiClient.getOrder")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>, orderId: string) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getOrder({ params: { orderId } })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listOperations: Effect.fn("WorkspaceAdminApiClient.listOperations")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationOperationQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listOperations({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getOperation: Effect.fn("WorkspaceAdminApiClient.getOperation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        operationId: string
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getOperation({
+              params: { operationId },
+            })
+          ),
+          Effect.mapError(sanitizeSessionError)
         )
     ),
     listCustomers: Effect.fn("WorkspaceAdminApiClient.listCustomers")(
