@@ -148,6 +148,7 @@ export const makeDiscountE2ECases = ({
     const customerDiscountExpectation = makeCustomerDiscountExpectation(
       customerDiscountGroup.basisPoints
     );
+    const coworkAutomaticDiscounts = [calendarDiscountExpectation] as const;
     const checkoutDates = yield* selectCoworkDates(
       preparation.availableBasicDates,
       unavailableCodeScenarios.length + 9,
@@ -199,7 +200,10 @@ export const makeDiscountE2ECases = ({
           data: codeCheckoutData,
           datasourceConfig,
           discountCode: discountCodeFixtures.partial.code,
-          expectedDiscounts: [codeDiscountExpectation],
+          expectedDiscounts: [
+            ...coworkAutomaticDiscounts,
+            codeDiscountExpectation,
+          ],
           flowId: "cowork-discount-code",
           resources,
           run,
@@ -261,7 +265,7 @@ export const makeDiscountE2ECases = ({
           config,
           data: calendarCheckoutData,
           datasourceConfig,
-          expectedDiscounts: [calendarDiscountExpectation],
+          expectedDiscounts: coworkAutomaticDiscounts,
           flowId: "cowork-calendar-sale",
           resources,
           run,
@@ -297,7 +301,7 @@ export const makeDiscountE2ECases = ({
           datasourceConfig,
           discountCode: discountCodeFixtures.partial.code,
           expectedDiscounts: [
-            calendarDiscountExpectation,
+            ...coworkAutomaticDiscounts,
             codeDiscountExpectation,
           ],
           flowId: "cowork-calendar-sale-and-code",
@@ -380,7 +384,10 @@ export const makeDiscountE2ECases = ({
           yield* requireCheckoutDate(checkoutDates, nextDateIndex),
           "cowork-customer-discount"
         ),
-        expectedDiscounts: [customerDiscountExpectation],
+        expectedDiscounts: [
+          ...coworkAutomaticDiscounts,
+          customerDiscountExpectation,
+        ],
         id: "customer-discount",
       },
       {
@@ -391,6 +398,7 @@ export const makeDiscountE2ECases = ({
         ),
         discountCode: discountCodeFixtures.partial.code,
         expectedDiscounts: [
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
@@ -404,7 +412,7 @@ export const makeDiscountE2ECases = ({
           { entryTier: "plus" }
         ),
         expectedDiscounts: [
-          calendarDiscountExpectation,
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
         ],
         id: "calendar-and-customer-discount",
@@ -418,7 +426,7 @@ export const makeDiscountE2ECases = ({
         ),
         discountCode: discountCodeFixtures.partial.code,
         expectedDiscounts: [
-          calendarDiscountExpectation,
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
