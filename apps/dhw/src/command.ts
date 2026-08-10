@@ -1,4 +1,5 @@
 import {
+  type AdministrationCustomerQueryType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationQueryType,
   type CliAccessTokenType,
@@ -7,7 +8,7 @@ import {
   makeCliAuthenticationVerifier,
 } from "@deskohub/workspace-admin-api";
 import { Console, Data, Effect, Option, type Redacted } from "effect";
-import { Command, Flag, Prompt } from "effect/unstable/cli";
+import { Argument, Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
 import {
@@ -156,6 +157,80 @@ const reservationsCommand = Command.make("reservations").pipe(
   Command.withSubcommands([reservationsListCommand])
 );
 
+const customersListCommand = Command.make(
+  "list",
+  {
+    page: Flag.integer("page").pipe(
+      Flag.optional,
+      Flag.withDescription("Results page")
+    ),
+  },
+  ({ page }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query: AdministrationCustomerQueryType = {
+          ...(Option.isSome(page) && { page: page.value }),
+        };
+        const result = yield* api.listCustomers(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Customers: ${result.total} total · page ${result.page}/${result.pageCount}`
+        );
+        for (const item of result.items) {
+          const customer = item.customer;
+          yield* Console.log(
+            [
+              item.customerId,
+              customer?.displayName ?? "Details unavailable",
+              customer?.email ?? customer?.phone ?? "No contact details",
+              `${item.reservationCount} reservations`,
+              item.lastActivityAt,
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List customers with reservations"));
+
+const customersSearchCommand = Command.make(
+  "search",
+  { query: Argument.string("query") },
+  ({ query }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const result = yield* api.searchCustomers(accessToken, { query });
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        if (result.customers.length === 0) {
+          yield* Console.log("No customer matched.");
+          return;
+        }
+        if (result.kind === "ambiguous") {
+          yield* Console.log("Multiple customers matched:");
+        }
+        for (const customer of result.customers) {
+          yield* Console.log(
+            [
+              customer.id,
+              customer.displayName,
+              customer.email ?? customer.phone ?? "No contact details",
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("Search customers by name or email"));
+
+const customersCommand = Command.make("customers").pipe(
+  Command.withDescription("Inspect Workspace customers"),
+  Command.withSubcommands([customersListCommand, customersSearchCommand])
+);
+
 const authCommand = Command.make(
   "auth",
   {
@@ -267,6 +342,7 @@ export const dhwCommand = rootCommand.pipe(
     versionCommand,
     apiCommand,
     authCommand,
+    customersCommand,
     overviewCommand,
     reservationsCommand,
     updateCommand,

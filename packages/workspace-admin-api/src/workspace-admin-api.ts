@@ -312,6 +312,58 @@ export const AdministrationReservationPage = Schema.Struct({
 export type AdministrationReservationPage =
   typeof AdministrationReservationPage.Type;
 
+export const AdministrationCustomerSummary = Schema.Struct({
+  customer: Schema.NullOr(AdministrationCustomer),
+  customerId: Schema.String,
+  reservationCount: Schema.Number,
+  lastActivityAt: Schema.String,
+});
+export type AdministrationCustomerSummary =
+  typeof AdministrationCustomerSummary.Type;
+
+export const AdministrationCustomerPage = Schema.Struct({
+  items: Schema.Array(AdministrationCustomerSummary),
+  page: Schema.Number,
+  pageCount: Schema.Number,
+  total: Schema.Number,
+});
+export type AdministrationCustomerPage = typeof AdministrationCustomerPage.Type;
+
+export const AdministrationCustomerQuery = Schema.Struct({
+  page: Schema.optional(
+    Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(1))
+  ),
+});
+export type AdministrationCustomerQuery =
+  typeof AdministrationCustomerQuery.Type;
+
+export const AdministrationCustomerSearchQuery = Schema.Struct({
+  query: Schema.Trim.check(
+    Schema.isMinLength(2),
+    Schema.isMaxLength(100),
+    Schema.isPattern(/^[^|;]+$/)
+  ),
+});
+export type AdministrationCustomerSearchQuery =
+  typeof AdministrationCustomerSearchQuery.Type;
+
+export const AdministrationExternalCustomer = Schema.Struct({
+  id: Schema.String,
+  displayName: Schema.String,
+  email: Schema.NullOr(Schema.String),
+  phone: Schema.NullOr(Schema.String),
+  discountGroupId: Schema.NullOr(Schema.String),
+});
+export type AdministrationExternalCustomer =
+  typeof AdministrationExternalCustomer.Type;
+
+export const AdministrationCustomerSearchResult = Schema.Struct({
+  kind: Schema.Literals(["matched", "not-found", "ambiguous"]),
+  customers: Schema.Array(AdministrationExternalCustomer),
+});
+export type AdministrationCustomerSearchResult =
+  typeof AdministrationCustomerSearchResult.Type;
+
 export const AdminCliApi = HttpApiGroup.make("cli")
   .add(
     HttpApiEndpoint.get("getInfo", "/info", {
@@ -359,6 +411,18 @@ export const AdminCliReadApi = HttpApiGroup.make("administration")
     HttpApiEndpoint.get("listReservations", "/reservations", {
       query: AdministrationReservationQuery,
       success: AdministrationReservationPage,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("listCustomers", "/customers", {
+      query: AdministrationCustomerQuery,
+      success: AdministrationCustomerPage,
+    })
+  )
+  .add(
+    HttpApiEndpoint.get("searchCustomers", "/customers/search", {
+      query: AdministrationCustomerSearchQuery,
+      success: AdministrationCustomerSearchResult,
     })
   )
   .middleware(CliBearerAuthentication)

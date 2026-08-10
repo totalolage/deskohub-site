@@ -27,6 +27,8 @@ describe("AuthenticationService", () => {
         ),
       getOverview: () => Effect.die("not used"),
       listReservations: () => Effect.die("not used"),
+      listCustomers: () => Effect.die("not used"),
+      searchCustomers: () => Effect.die("not used"),
     } satisfies WorkspaceAdminApiClient["Service"]);
     const credentialLayer = Layer.succeed(CliSessionCredential, {
       get: Effect.succeed(Redacted.make(accessToken)),

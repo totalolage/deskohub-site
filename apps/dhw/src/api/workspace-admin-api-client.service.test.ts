@@ -142,6 +142,25 @@ describe("WorkspaceAdminApiClient", () => {
             dateSortUnavailable: false,
           });
         }
+        if (url.pathname.endsWith("/customers/search")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("query")).toBe("Ada");
+          return Response.json({ kind: "not-found", customers: [] });
+        }
+        if (url.pathname.endsWith("/customers")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("3");
+          return Response.json({
+            items: [],
+            page: 3,
+            pageCount: 3,
+            total: 60,
+          });
+        }
         return new Response(null, { status: 404 });
       },
     });
@@ -176,6 +195,10 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
           status: "complete",
         });
+        yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
+        yield* client.searchCustomers(Redacted.make(accessToken), {
+          query: "Ada",
+        });
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -185,6 +208,8 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/session" },
         { method: "GET", path: "/api/v1/cli/overview" },
         { method: "GET", path: "/api/v1/cli/reservations" },
+        { method: "GET", path: "/api/v1/cli/customers" },
+        { method: "GET", path: "/api/v1/cli/customers/search" },
       ]);
     } finally {
       server.stop(true);

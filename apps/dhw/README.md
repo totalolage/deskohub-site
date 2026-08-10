@@ -43,6 +43,8 @@ Authenticated read commands use the same application services as the Admin UI:
 dhw overview
 dhw reservations list
 dhw reservations list --date 2026-08-10 --status complete --page 2
+dhw customers list
+dhw customers search "Ada"
 ```
 
 Pass the root `--json` flag for schema-decoded machine output, for example

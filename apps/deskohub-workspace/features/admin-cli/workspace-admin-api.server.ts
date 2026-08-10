@@ -13,6 +13,8 @@ import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
 import { AdministrationService } from "@/features/administration/administration.service";
+import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
+import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 
@@ -67,12 +69,19 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const administration = yield* AdministrationService;
+      const discounts = yield* DiscountAdministration;
       return handlers
         .handle("getOverview", () =>
           administration.loadOverview().pipe(mapServiceFailure)
         )
         .handle("listReservations", ({ query }) =>
           administration.listReservations(query).pipe(mapServiceFailure)
+        )
+        .handle("listCustomers", ({ query }) =>
+          administration.listCustomers(query).pipe(mapServiceFailure)
+        )
+        .handle("searchCustomers", ({ query }) =>
+          discounts.searchCustomers(query).pipe(mapServiceFailure)
         );
     })
 );
@@ -125,6 +134,7 @@ const WorkspaceAdminApiLive = Layer.merge(
     Layer.provide(AdminCliReadApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
+    Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)
   ),

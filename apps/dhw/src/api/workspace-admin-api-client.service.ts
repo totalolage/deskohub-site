@@ -1,5 +1,9 @@
 import {
   type AdminCliInfoType,
+  type AdministrationCustomerPageType,
+  type AdministrationCustomerQueryType,
+  type AdministrationCustomerSearchQueryType,
+  type AdministrationCustomerSearchResultType,
   type AdministrationOverviewType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
@@ -66,6 +70,20 @@ interface IWorkspaceAdminApiClient {
     query: AdministrationReservationQueryType
   ) => Effect.Effect<
     AdministrationReservationPageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listCustomers: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationCustomerQueryType
+  ) => Effect.Effect<
+    AdministrationCustomerPageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly searchCustomers: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationCustomerSearchQueryType
+  ) => Effect.Effect<
+    AdministrationCustomerSearchResultType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
 }
@@ -151,6 +169,30 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.listReservations({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listCustomers: Effect.fn("WorkspaceAdminApiClient.listCustomers")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationCustomerQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listCustomers({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    searchCustomers: Effect.fn("WorkspaceAdminApiClient.searchCustomers")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationCustomerSearchQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.searchCustomers({ query })
           ),
           Effect.mapError(sanitizeSessionError)
         )

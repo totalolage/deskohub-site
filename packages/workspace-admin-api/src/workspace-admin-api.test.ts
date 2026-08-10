@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import {
   AdminCliReadApi,
+  AdministrationCustomerQuery,
+  AdministrationCustomerSearchQuery,
   AdministrationReservationQuery,
   CliClientName,
   StartCliAuthentication,
@@ -38,6 +40,8 @@ describe("administration read contract", () => {
   test("keeps read operations safe and typed", () => {
     expect(AdminCliReadApi.endpoints.getOverview?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listReservations?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listCustomers?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.searchCustomers?.method).toBe("GET");
     expect(
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         page: 2,
@@ -53,6 +57,30 @@ describe("administration read contract", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         date: "10-08-2026",
+      })
+    ).toThrow();
+  });
+
+  test("validates customer list and search queries", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerQuery)({ page: 3 })
+    ).toEqual({ page: 3 });
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "  Ada  ",
+      })
+    ).toEqual({ query: "Ada" });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerQuery)({ page: 0 })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "A",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "Ada;drop",
       })
     ).toThrow();
   });

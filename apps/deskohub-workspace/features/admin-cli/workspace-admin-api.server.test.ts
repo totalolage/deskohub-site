@@ -10,6 +10,7 @@ import { NodeHttpServer } from "@effect/platform-node";
 import { Effect, Layer, Result, Schema } from "effect";
 import { HttpApiTest } from "effect/unstable/httpapi";
 import { AdministrationService } from "@/features/administration/administration.service";
+import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 import {
@@ -118,6 +119,7 @@ describe("Workspace Admin API", () => {
   });
 
   test("invokes the same administration service used by the UI", async () => {
+    const customerSearches: unknown[] = [];
     const reservationInputs: unknown[] = [];
     const administration = Layer.succeed(AdministrationService, {
       loadOverview: () =>
@@ -142,7 +144,13 @@ describe("Workspace Admin API", () => {
       findReservationId: () => Effect.die("not used"),
       listBookings: () => Effect.die("not used"),
       loadBooking: () => Effect.die("not used"),
-      listCustomers: () => Effect.die("not used"),
+      listCustomers: (input) =>
+        Effect.succeed({
+          items: [],
+          page: input.page ?? 1,
+          pageCount: 1,
+          total: 0,
+        }),
       loadCustomerReservations: () => Effect.die("not used"),
       loadCustomerActivity: () => Effect.die("not used"),
       listOrders: () => Effect.die("not used"),
@@ -150,6 +158,14 @@ describe("Workspace Admin API", () => {
       listOperations: () => Effect.die("not used"),
       loadOperation: () => Effect.die("not used"),
     } satisfies AdministrationService["Service"]);
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      searchCustomers: (input) =>
+        Effect.sync(() => {
+          customerSearches.push(input);
+          return { kind: "not-found" as const, customers: [] };
+        }),
+    });
 
     const result = await Effect.gen(function* () {
       const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
@@ -159,10 +175,17 @@ describe("Workspace Admin API", () => {
       const reservations = yield* client.administration.listReservations({
         query: { page: 2, status: "complete" },
       });
-      return { overview, reservations };
+      const customers = yield* client.administration.listCustomers({
+        query: { page: 3 },
+      });
+      const customerSearch = yield* client.administration.searchCustomers({
+        query: { query: "Ada" },
+      });
+      return { customerSearch, customers, overview, reservations };
     }).pipe(
       Effect.provide(AdminCliReadApiHandlers),
       Effect.provide(AuthorizedCliRequest),
+      Effect.provide(discounts),
       Effect.provide(administration),
       Effect.provide(NodeHttpServer.layerHttpServices),
       Effect.scoped,
@@ -171,6 +194,9 @@ describe("Workspace Admin API", () => {
 
     expect(result.overview.today.value).toBe(3);
     expect(result.reservations.page).toBe(2);
+    expect(result.customers.page).toBe(3);
+    expect(result.customerSearch.kind).toBe("not-found");
     expect(reservationInputs).toEqual([{ page: 2, status: "complete" }]);
+    expect(customerSearches).toEqual([{ query: "Ada" }]);
   });
 });
