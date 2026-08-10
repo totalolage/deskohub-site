@@ -92,9 +92,7 @@ jobs:
       - name: Test the CLI and Workspace API adapter
         run: |
           bun --cwd apps/dhw test
-          bun --cwd apps/deskohub-workspace test \
-            features/admin-cli/workspace-admin-api.server.test.ts \
-            'app/api/v1/cli/[...path]/route.test.ts'
+          bun turbo test:admin-cli --filter=./apps/deskohub-workspace
 
       - name: Build and smoke-test a development binary
         run: |

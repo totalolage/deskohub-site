@@ -80,6 +80,56 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       lastUsedAt: expiresAt,
     } as const;
+    const booking = {
+      id: "booking-1",
+      customerId: "customer-1",
+      customer: {
+        id: "customer-1",
+        displayName: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: null,
+      },
+      startsAt: expiresAt,
+      endsAt: expiresAt,
+      seats: "1",
+      status: "CONFIRMED" as const,
+      statusLabel: "Confirmed",
+      tableId: "table-1",
+      tableName: "Focus room",
+      tableLocation: "First floor",
+      linkedReservation: { id: "reservation-1", label: "Meeting room" },
+      createdAt: expiresAt,
+      updatedAt: expiresAt,
+    };
+    const reservation = {
+      id: "reservation-1",
+      customerId: "customer-1",
+      customer: booking.customer,
+      liveDetailsAvailable: true,
+      startsAt: expiresAt,
+      endsAt: expiresAt,
+      date: null,
+      type: "meeting-room" as const,
+      typeLabel: "Meeting room",
+      status: { group: "complete" as const, label: "Complete" },
+      statusNote: null,
+      createdAt: expiresAt,
+      latestPayment: null,
+      updatedAt: expiresAt,
+    };
+    const order = {
+      orderId: "order-1",
+      provider: null,
+      providerAvailable: false,
+      providerStatus: "unavailable" as const,
+      link: null,
+    };
+    const operation = {
+      operationId: "operation-1",
+      operationType: "CAPTURE",
+      operationResult: "AUTHORIZED",
+      linkedReservationId: reservation.id,
+    };
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
     const server = Bun.serve({
@@ -117,6 +167,245 @@ describe("WorkspaceAdminApiClient", () => {
           );
           return Response.json(session);
         }
+        if (url.pathname.endsWith("/overview")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            today: { unavailable: false, value: 3 },
+            upcoming: { unavailable: false, value: 8 },
+            lastSevenDays: { unavailable: false, value: 5 },
+          });
+        }
+        if (url.pathname === "/api/v1/cli/reservations") {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("2");
+          expect(url.searchParams.get("status")).toBe("complete");
+          return Response.json({
+            items: [],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+            dateFilterUnavailable: false,
+            dateSortUnavailable: false,
+          });
+        }
+        if (url.pathname.endsWith("/reservations/reservation-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            reservation,
+            booking,
+            lifecycle: {
+              currentStage: "complete",
+              label: "Access delivered",
+              reachedStages: ["started", "held", "paid", "complete"],
+              tone: "positive",
+            },
+            timeline: [],
+            paymentAttempts: [],
+            orders: [],
+            discounts: [],
+            otherCustomerReservations: [],
+            sameDateReservations: [],
+            references: {
+              workspaceReservationId: reservation.id,
+              dotyposReservationId: booking.id,
+              customerId: reservation.customerId,
+            },
+          });
+        }
+        if (url.pathname.endsWith("/reservations/find")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("identifier")).toBe("payment-1");
+          return Response.json({ reservationId: reservation.id });
+        }
+        if (url.pathname.endsWith("/bookings/booking-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            booking,
+            references: {
+              bookingId: booking.id,
+              customerId: booking.customerId,
+              workspaceReservationId: reservation.id,
+            },
+          });
+        }
+        if (url.pathname.endsWith("/bookings")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("date")).toBe("2026-08-10");
+          expect(url.searchParams.get("page")).toBe("2");
+          return Response.json({
+            items: [booking],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+          });
+        }
+        if (url.pathname.endsWith("/orders/order-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json(order);
+        }
+        if (url.pathname.endsWith("/orders")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("from")).toBe("2026-08-01");
+          expect(url.searchParams.get("to")).toBe("2026-08-10");
+          return Response.json({
+            items: [order],
+            providerAvailable: false,
+            truncated: false,
+          });
+        }
+        if (url.pathname.endsWith("/operations/operation-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            operationId: "operation-1",
+            operation,
+            providerAvailable: true,
+            providerStatus: "available",
+            linkedReservationId: reservation.id,
+          });
+        }
+        if (url.pathname.endsWith("/operations")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("channel")).toBe("ECOMMERCE");
+          expect(url.searchParams.get("operationType")).toBe("CAPTURE");
+          return Response.json({
+            items: [operation],
+            providerAvailable: true,
+            truncated: false,
+          });
+        }
+        if (url.pathname.endsWith("/customers/search")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("query")).toBe("Ada");
+          return Response.json({ kind: "not-found", customers: [] });
+        }
+        if (url.pathname.endsWith("/customers/customer-1/reservations")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("2");
+          return Response.json({
+            items: [reservation],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+          });
+        }
+        if (url.pathname.endsWith("/customers/customer-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            profile: null,
+            activity: {
+              reservations: [reservation],
+              reservationHistoryTruncated: false,
+              transactions: [],
+              transactionHistoryTruncated: false,
+              stats: {
+                reservationCount: 1,
+                favoriteProduct: "Meeting room",
+                revenue: [],
+                discountSavings: [],
+              },
+              marketingConsent: null,
+            },
+          });
+        }
+        if (url.pathname.endsWith("/customers")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("3");
+          return Response.json({
+            items: [],
+            page: 3,
+            pageCount: 3,
+            total: 60,
+          });
+        }
+        if (url.pathname.endsWith("/discounts")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            discounts: [
+              {
+                id: "discount-1",
+                labels: {
+                  "en-US": "Summer sale",
+                  "cs-CZ": "Letní sleva",
+                },
+                adjustment: { kind: "percentage", basisPoints: 1000 },
+                products: [{ kind: "cowork", tier: "basic" }],
+                codeCount: 1,
+                createdAt: expiresAt,
+                updatedAt: expiresAt,
+              },
+            ],
+            codes: [],
+            calendar: {
+              events: [],
+              unavailable: false,
+              calendarUrl: "https://calendar.example.com",
+              from: "2026-08-01",
+              to: "2026-08-31",
+            },
+          });
+        }
+        if (url.pathname.endsWith("/codes/code-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            code: {
+              id: "code-1",
+              discountId: "discount-1",
+              code: "SUMMER10",
+              enabled: true,
+              validFrom: null,
+              validUntil: null,
+              maxUses: null,
+              audienceSize: 0,
+              reservedUses: 0,
+              redeemedUses: 0,
+              releasedUses: 0,
+              remainingUses: null,
+              createdAt: expiresAt,
+              updatedAt: expiresAt,
+            },
+            discountLabel: "Summer sale",
+            customers: [],
+            claims: [],
+          });
+        }
+        if (url.pathname.endsWith("/sessions")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json([{ ...session, revokedAt: null }]);
+        }
         return new Response(null, { status: 404 });
       },
     });
@@ -146,6 +435,50 @@ describe("WorkspaceAdminApiClient", () => {
         yield* client.getAuthenticationStatus(code);
         yield* client.exchangeGrant({ code, grantToken, verifier });
         yield* client.getCurrentSession(Redacted.make(accessToken));
+        yield* client.getOverview(Redacted.make(accessToken));
+        yield* client.listReservations(Redacted.make(accessToken), {
+          page: 2,
+          status: "complete",
+        });
+        yield* client.getReservation(
+          Redacted.make(accessToken),
+          reservation.id
+        );
+        yield* client.findReservation(Redacted.make(accessToken), "payment-1");
+        yield* client.listBookings(Redacted.make(accessToken), {
+          date: "2026-08-10",
+          page: 2,
+        });
+        yield* client.getBooking(Redacted.make(accessToken), booking.id);
+        yield* client.listOrders(Redacted.make(accessToken), {
+          from: "2026-08-01",
+          to: "2026-08-10",
+        });
+        yield* client.getOrder(Redacted.make(accessToken), order.orderId);
+        yield* client.listOperations(Redacted.make(accessToken), {
+          channel: "ECOMMERCE",
+          operationType: "CAPTURE",
+        });
+        yield* client.getOperation(
+          Redacted.make(accessToken),
+          operation.operationId
+        );
+        yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
+        yield* client.searchCustomers(Redacted.make(accessToken), {
+          query: "Ada",
+        });
+        yield* client.getCustomer(
+          Redacted.make(accessToken),
+          reservation.customerId
+        );
+        yield* client.listCustomerReservations(
+          Redacted.make(accessToken),
+          reservation.customerId,
+          { page: 2 }
+        );
+        yield* client.getDiscountDashboard(Redacted.make(accessToken));
+        yield* client.getDiscountCode(Redacted.make(accessToken), "code-1");
+        yield* client.listSessions(Redacted.make(accessToken));
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -153,6 +486,29 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/status" },
         { method: "POST", path: "/api/v1/cli/grant" },
         { method: "GET", path: "/api/v1/cli/session" },
+        { method: "GET", path: "/api/v1/cli/overview" },
+        { method: "GET", path: "/api/v1/cli/reservations" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/reservations/reservation-1",
+        },
+        { method: "GET", path: "/api/v1/cli/reservations/find" },
+        { method: "GET", path: "/api/v1/cli/bookings" },
+        { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
+        { method: "GET", path: "/api/v1/cli/orders" },
+        { method: "GET", path: "/api/v1/cli/orders/order-1" },
+        { method: "GET", path: "/api/v1/cli/operations" },
+        { method: "GET", path: "/api/v1/cli/operations/operation-1" },
+        { method: "GET", path: "/api/v1/cli/customers" },
+        { method: "GET", path: "/api/v1/cli/customers/search" },
+        { method: "GET", path: "/api/v1/cli/customers/customer-1" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/customers/customer-1/reservations",
+        },
+        { method: "GET", path: "/api/v1/cli/discounts" },
+        { method: "GET", path: "/api/v1/cli/codes/code-1" },
+        { method: "GET", path: "/api/v1/cli/sessions" },
       ]);
     } finally {
       server.stop(true);

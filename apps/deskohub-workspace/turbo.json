@@ -59,6 +59,14 @@
         "i18n:compile"
       ]
     },
+    "test:admin-cli": {
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ],
+      "outputs": []
+    },
     "typecheck": {
       "dependsOn": ["@deskohub/nexi#generate", "i18n:compile", "typegen"]
     },
