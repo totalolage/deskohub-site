@@ -77,6 +77,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Compile Workspace messages
+        run: bun --cwd apps/deskohub-workspace i18n:compile
+
       - name: Lint the CLI contract and implementation
         run: >-
           bun turbo lint
