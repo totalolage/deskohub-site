@@ -23,6 +23,20 @@ export default async function ReservationsAdministrationPage({
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = await loadAdministrationReservations(searchParams);
+  const clearCustomerSearch = new URLSearchParams();
+  for (const [key, value] of Object.entries({
+    date: input.date,
+    direction: input.direction,
+    sort: input.sort,
+    status: input.status,
+    type: input.type,
+  })) {
+    if (value) clearCustomerSearch.set(key, value);
+  }
+  const clearCustomerQuery = clearCustomerSearch.toString();
+  const clearCustomerHref = clearCustomerQuery
+    ? `/admin/reservations?${clearCustomerQuery}`
+    : "/admin/reservations";
   return (
     <AdministrationPage>
       <h1 className="sr-only">Reservations</h1>
@@ -94,7 +108,7 @@ export default async function ReservationsAdministrationPage({
           <p>Showing reservations for the selected customer.</p>
           <Link
             className="font-semibold hover:underline"
-            href={`/admin/reservations${input.date ? `?date=${input.date}` : ""}`}
+            href={clearCustomerHref}
           >
             Clear customer
           </Link>

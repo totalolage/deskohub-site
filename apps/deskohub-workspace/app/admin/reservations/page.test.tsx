@@ -122,4 +122,37 @@ describe("ReservationsAdministrationPage", () => {
       "/admin/reservations?direction=asc&sort=reservation&page=3"
     );
   });
+
+  test("preserves other filters when clearing the customer", async () => {
+    reservationPage = {
+      input: {
+        customerId: "customer-one",
+        date: "2026-08-10",
+        direction: "asc",
+        sort: "status",
+        status: "complete",
+        type: "cowork",
+      },
+      result: defaultReservationPage.result,
+    };
+    const { default: ReservationsAdministrationPage } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationPage({
+        searchParams: Promise.resolve({
+          customerId: "customer-one",
+          date: "2026-08-10",
+          direction: "asc",
+          sort: "status",
+          status: "complete",
+          type: "cowork",
+        }),
+      })
+    );
+
+    expect(
+      view.getByRole("link", { name: "Clear customer" }).getAttribute("href")
+    ).toBe(
+      "/admin/reservations?date=2026-08-10&direction=asc&sort=status&status=complete&type=cowork"
+    );
+  });
 });
