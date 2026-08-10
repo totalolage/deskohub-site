@@ -26,7 +26,11 @@ import {
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
-import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
+import {
+  getLegacyWorkspaceProductIdentities,
+  getUniqueWorkspaceProductTargets,
+  type WorkspaceProductTarget,
+} from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -404,12 +408,9 @@ export class DiscountAdministration extends Context.Service<
                   new Error("Discount insert returned no identifier.")
                 );
               }
-              yield* tx.insert(discountProductTargets).values(
-                input.products.map((productTarget) => ({
-                  discountId: row.id,
-                  productTarget,
-                }))
-              );
+              yield* tx
+                .insert(discountProductTargets)
+                .values(toDiscountProductTargetRows(row.id, input.products));
               return row.id;
             })
           )
@@ -431,12 +432,9 @@ export class DiscountAdministration extends Context.Service<
               yield* tx
                 .delete(discountProductTargets)
                 .where(eq(discountProductTargets.discountId, input.id));
-              yield* tx.insert(discountProductTargets).values(
-                input.products.map((productTarget) => ({
-                  discountId: input.id,
-                  productTarget,
-                }))
-              );
+              yield* tx
+                .insert(discountProductTargets)
+                .values(toDiscountProductTargetRows(input.id, input.products));
             })
           )
       );
@@ -505,12 +503,11 @@ export class DiscountAdministration extends Context.Service<
                         new Error("Discount insert returned no identifier.")
                       );
                     }
-                    yield* tx.insert(discountProductTargets).values(
-                      discount.products.map((productTarget) => ({
-                        discountId: row.id,
-                        productTarget,
-                      }))
-                    );
+                    yield* tx
+                      .insert(discountProductTargets)
+                      .values(
+                        toDiscountProductTargetRows(row.id, discount.products)
+                      );
                     return row.id;
                   }),
               })
@@ -1019,7 +1016,9 @@ const toAdminDiscount = (row: AdminDiscountRow): AdminDiscount => ({
           kind: "percentage",
           basisPoints: row.percentageBasisPoints,
         },
-  products: row.productTargets.map(({ productTarget }) => productTarget),
+  products: getUniqueWorkspaceProductTargets(
+    row.productTargets.map(({ productTarget }) => productTarget)
+  ),
   codeCount: row.codes.length,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -1040,6 +1039,20 @@ const toDiscountValues = (
   fixedAmountCurrency:
     input.adjustment.kind === "fixed" ? input.adjustment.amount.currency : null,
 });
+
+const toDiscountProductTargetRows = (
+  discountId: StoredDiscountId,
+  productTargets: readonly WorkspaceProductTarget[]
+) =>
+  productTargets.flatMap((productTarget) =>
+    getLegacyWorkspaceProductIdentities(productTarget).map(
+      (legacyProductIdentity) => ({
+        discountId,
+        legacyProductIdentity,
+        productTarget,
+      })
+    )
+  );
 
 const toDiscountCodeValues = (
   input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput

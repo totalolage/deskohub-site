@@ -5,6 +5,7 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
+  getUniqueWorkspaceProductTargets,
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
@@ -23,7 +24,10 @@ export type DiscountDefinition = {
 };
 
 export type DiscountDefinitionRow = StoredDiscount & {
-  readonly productTargets: readonly DiscountProductTarget[];
+  readonly productTargets: readonly Pick<
+    DiscountProductTarget,
+    "discountId" | "productTarget"
+  >[];
 };
 
 export class DiscountDefinitionMalformedError extends Data.TaggedError(
@@ -44,7 +48,9 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
       Effect.let("products", ({ targets }) =>
-        targets.map(({ productTarget }) => productTarget)
+        getUniqueWorkspaceProductTargets(
+          targets.map(({ productTarget }) => productTarget)
+        )
       ),
       Effect.mapError(
         (cause) =>
@@ -64,11 +70,12 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
   definitionLabelSchema
 );
 
-const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
-  Schema.Struct({
-    discountId: storedDiscountIdSchema,
-    productTarget: workspaceProductTargetSchema,
-  });
+const discountTargetSchema: Schema.Decoder<
+  DiscountDefinitionRow["productTargets"][number]
+> = Schema.Struct({
+  discountId: storedDiscountIdSchema,
+  productTarget: workspaceProductTargetSchema,
+});
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
   Schema.NonEmptyArray(discountTargetSchema).check(
@@ -77,14 +84,6 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
         targets.every((target) => target.discountId === discountId) || {
           path: [],
           issue: "product targets must belong to the discount definition",
-        }
-    ),
-    Schema.makeFilter(
-      (targets) =>
-        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
-          targets.length || {
-          path: [],
-          issue: "product targets must be unique",
         }
     )
   );

@@ -1,11 +1,17 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "9a986197-d729-4676-a018-863150333d36",
+  "id": "3842a94d-5e67-4d7a-a9ec-80e9ed1faa95",
   "prevIds": [
-    "5aeb5868-1d8d-44d2-af45-57c73f2c79f7"
+    "9550e8c8-bdd9-4498-a6cf-c85e76861150"
   ],
   "ddl": [
+    {
+      "isRlsEnabled": false,
+      "name": "customer_marketing_consents",
+      "entityType": "tables",
+      "schema": "public"
+    },
     {
       "isRlsEnabled": false,
       "name": "discount_applications",
@@ -65,6 +71,71 @@
       "name": "workspace_reservations",
       "entityType": "tables",
       "schema": "public"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "dotypos_customer_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "document_hash",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "locale",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "granted_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "withdrawn_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "customer_marketing_consents"
     },
     {
       "type": "text",
@@ -672,6 +743,19 @@
       "default": null,
       "generated": null,
       "identity": null,
+      "name": "product_identity",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "discount_product_targets"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
       "name": "product_target",
       "entityType": "columns",
       "schema": "public",
@@ -1102,6 +1186,19 @@
       "generated": null,
       "identity": null,
       "name": "failure_code",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "payment_attempts"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "provider_order_created_at",
       "entityType": "columns",
       "schema": "public",
       "table": "payment_attempts"
@@ -2340,13 +2437,23 @@
     {
       "columns": [
         "discount_id",
-        "product_target"
+        "product_identity"
       ],
       "nameExplicit": true,
       "name": "discount_product_targets_pk",
       "entityType": "pks",
       "schema": "public",
       "table": "discount_product_targets"
+    },
+    {
+      "columns": [
+        "dotypos_customer_id"
+      ],
+      "nameExplicit": false,
+      "name": "customer_marketing_consents_pkey",
+      "schema": "public",
+      "table": "customer_marketing_consents",
+      "entityType": "pks"
     },
     {
       "columns": [
@@ -2449,6 +2556,27 @@
       "schema": "public",
       "table": "workspace_reservations",
       "entityType": "uniques"
+    },
+    {
+      "value": "btrim(\"dotypos_customer_id\") <> ''",
+      "name": "customer_marketing_consents_customer_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "value": "\"locale\" in ('en-US', 'cs-CZ')",
+      "name": "customer_marketing_consents_locale_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "customer_marketing_consents"
+    },
+    {
+      "value": "\"withdrawn_at\" is null or \"withdrawn_at\" >= \"granted_at\"",
+      "name": "customer_marketing_consents_withdrawal_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "customer_marketing_consents"
     },
     {
       "value": "\"sequence\" >= 0",
@@ -2605,7 +2733,7 @@
       "table": "payment_attempts"
     },
     {
-      "value": "(\"provider\" = 'nexi' and \"provider_order_id\" is not null) or (\"provider\" = 'internal' and \"provider_order_id\" is null and \"security_token\" is null and \"provider_redirect_url\" is null and \"last_webhook_event_id\" is null and \"last_provider_operation_id\" is null and \"last_provider_status\" is null)",
+      "value": "(\"provider\" = 'nexi' and \"provider_order_id\" is not null) or (\"provider\" = 'internal' and \"provider_order_id\" is null and \"security_token\" is null and \"provider_redirect_url\" is null and \"last_webhook_event_id\" is null and \"last_provider_operation_id\" is null and \"last_provider_status\" is null and \"provider_order_created_at\" is null)",
       "name": "payment_attempts_provider_fields_check",
       "entityType": "checks",
       "schema": "public",
@@ -2710,7 +2838,5 @@
       "table": "workspace_reservations"
     }
   ],
-  "renames": [
-    "public.discount_product_targets.product_identity->public.discount_product_targets.product_target"
-  ]
+  "renames": []
 }

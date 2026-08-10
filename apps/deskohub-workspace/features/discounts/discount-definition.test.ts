@@ -95,6 +95,21 @@ describe("stored discount definitions", () => {
     expect(result.products).toEqual([{ kind: "meeting-room" }]);
   });
 
+  test("collapses duplicate family targets left by an overlapping deployment", async () => {
+    const result = await Effect.runPromise(
+      decode(
+        percentageRow({
+          productTargets: [
+            { discountId, productTarget: { kind: "cowork" } },
+            { discountId, productTarget: { kind: "cowork" } },
+          ],
+        })
+      )
+    );
+
+    expect(result.products).toEqual([{ kind: "cowork" }]);
+  });
+
   test.each([
     [
       "missing locale label",
@@ -153,21 +168,6 @@ describe("stored discount definitions", () => {
               kind: "cowork",
               provider: "private",
             },
-          },
-        ],
-      }),
-    ],
-    [
-      "duplicate product targets",
-      percentageRow({
-        productTargets: [
-          {
-            discountId,
-            productTarget: { kind: "cowork" },
-          },
-          {
-            discountId,
-            productTarget: { kind: "cowork" },
           },
         ],
       }),
