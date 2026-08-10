@@ -14,12 +14,8 @@ import {
   waitForProviderSessionRowAfterRedirect,
 } from "./database";
 
-test("accepts an explicit unchecked marketing choice in legal evidence", () => {
-  const row = (
-    document_key: string,
-    source: string,
-    accepted = true
-  ) => ({
+test("accepts reservation terms evidence from payment submission", () => {
+  const row = (document_key: string, source: string, accepted = true) => ({
     accepted,
     document_key,
     hash_algorithm: "sha256",
@@ -30,8 +26,6 @@ test("accepts an explicit unchecked marketing choice in legal evidence", () => {
   expect(() =>
     assertLegalEvidenceRows(
       [
-        row("privacyPolicy", "reservation_submit"),
-        row("marketingCommunications", "reservation_submit", false),
         row("termsAndConditions", "payment_submit"),
         row("operatingRules", "payment_submit"),
       ],

@@ -351,15 +351,14 @@ describe("MeetingRoomReservationForm", () => {
       ])
     );
 
-    const privacyConsent = view.container.querySelector(
-      "#reservation-privacy-consent"
-    );
     const marketingConsent = view.container.querySelector(
       "#reservation-marketing-consent"
     );
-    expect(privacyConsent?.getAttribute("aria-checked")).toBe("false");
+    expect(view.queryByText("Privacy Policy")).toBeDefined();
+    expect(
+      view.container.querySelector("#reservation-privacy-consent")
+    ).toBeNull();
     expect(marketingConsent?.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(privacyConsent as Element);
     fireEvent.click(continueButton);
 
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
@@ -368,7 +367,6 @@ describe("MeetingRoomReservationForm", () => {
       locale: "en-US",
       checkoutSessionId: "restored-checkout-session",
       advertisedPriceToken: "sealed-advertised-price",
-      legalConsent: true,
       marketingConsent: false,
       reservation: initialReservation,
     });
@@ -471,9 +469,6 @@ describe("MeetingRoomReservationForm", () => {
       ).toBe(false);
     });
 
-    fireEvent.click(
-      view.container.querySelector("#reservation-privacy-consent") as Element
-    );
     fireEvent.click(view.getByRole("button", { name: "Continue" }));
 
     await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
@@ -556,9 +551,6 @@ describe("MeetingRoomReservationForm", () => {
       await waitFor(() => {
         expect(continueButton.hasAttribute("disabled")).toBe(false);
       });
-      fireEvent.click(
-        view.container.querySelector("#reservation-privacy-consent") as Element
-      );
       fireEvent.click(continueButton);
 
       await waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
