@@ -49,6 +49,9 @@ describe("workspace environment schemas", () => {
     const decodePostHogHost = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_HOST
     );
+    const decodeE2EBaseUrl = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.WORKSPACE_E2E_BASE_URL
+    );
     const databaseUrl = "postgres://user:pass@localhost:5432/workspace";
 
     expect(decodeDatabaseUrl(databaseUrl)).toBe(databaseUrl);
@@ -58,6 +61,11 @@ describe("workspace environment schemas", () => {
     );
     expect(() => decodeDatabaseUrl("not a URL")).toThrow();
     expect(() => decodePostHogHost("not a URL")).toThrow();
+    expect(decodeE2EBaseUrl(undefined)).toBeUndefined();
+    expect(decodeE2EBaseUrl("https://workspace.example")).toBe(
+      "https://workspace.example"
+    );
+    expect(() => decodeE2EBaseUrl("not a URL")).toThrow();
   });
 
   test("accepts an absent or lowercase SHA-256 administration hash", () => {
@@ -69,6 +77,17 @@ describe("workspace environment schemas", () => {
     expect(decodeHash("7".repeat(64))).toBe("7".repeat(64));
     expect(() => decodeHash("7".repeat(63))).toThrow();
     expect(() => decodeHash("G".repeat(64))).toThrow();
+  });
+
+  test("accepts an optional hosted browser executable", () => {
+    const decodeExecutablePath = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.AGENT_BROWSER_EXECUTABLE_PATH
+    );
+
+    expect(decodeExecutablePath(undefined)).toBeUndefined();
+    expect(decodeExecutablePath("/usr/bin/google-chrome")).toBe(
+      "/usr/bin/google-chrome"
+    );
   });
 
   test("exposes fields through Standard Schema for T3 Env", async () => {

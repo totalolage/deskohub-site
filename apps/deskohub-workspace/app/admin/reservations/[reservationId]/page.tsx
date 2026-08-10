@@ -16,8 +16,6 @@ import { loadAdministrationReservation } from "@/features/administration/page-da
 import { ReservationOrderList } from "@/features/administration/payment-components";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 
-export const dynamic = "force-dynamic";
-
 export default async function ReservationAdministrationDetailPage({
   params,
 }: {

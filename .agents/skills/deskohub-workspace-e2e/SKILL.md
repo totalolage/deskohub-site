@@ -33,6 +33,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   `e2e/timeouts.ts` configuration; do not add environment-variable overrides.
   Do not project application-only variables or use app-client PostHog variables
   as E2E telemetry fallbacks.
+- In TypeScript configuration files outside that dedicated runner boundary, use
+  the application's typed `env` instead of reading `process.env` directly, and
+  declare any configuration-owned inputs in the root environment schema.
 - Remember that repository-dispatch workflow configuration is evaluated from the default branch even when the job checks out an exact PR SHA. Do not make exact-SHA validation depend on changing a workflow-level environment value in the same PR; keep canonical expectations in the checked-out runner code or supply them through an already-compatible dispatch contract.
 - When `test:e2e` runs through Turborepo, add every runner-owned workflow
   variable to that task's `passThroughEnv`. A workflow step can see an

@@ -81,9 +81,11 @@ describe("PostHogAnalytics feature flag overrides", () => {
   });
 
   test("keeps server and hydrated values aligned across consent and configuration changes", async () => {
-    const [{ PostHogAnalytics }, { useFeatureFlagEnabled }] = await Promise.all(
-      [import("./posthog-analytics"), import("@/features/feature-flags/react")]
-    );
+    const [{ PostHogAnalytics, PostHogProvider }, { useFeatureFlagEnabled }] =
+      await Promise.all([
+        import("./posthog-analytics"),
+        import("@/features/feature-flags/react"),
+      ]);
 
     const DiscountCodesProbe = ({
       initialEnabled,
@@ -95,14 +97,30 @@ describe("PostHogAnalytics feature flag overrides", () => {
       return <>{enabled && <form aria-label="Discount code" />}</>;
     };
 
+    const AnalyticsBoundary = ({
+      analyticsAccepted,
+      discountCodesOverride,
+    }: {
+      analyticsAccepted: boolean;
+      discountCodesOverride?: boolean;
+    }) => (
+      <PostHogProvider>
+        <PostHogAnalytics
+          analyticsAccepted={analyticsAccepted}
+          featureFlagOverrides={
+            discountCodesOverride === undefined
+              ? undefined
+              : { discount_codes: discountCodesOverride }
+          }
+          posthogEnvironment="preview"
+        >
+          <DiscountCodesProbe initialEnabled />
+        </PostHogAnalytics>
+      </PostHogProvider>
+    );
+
     const view = render(
-      <PostHogAnalytics
-        analyticsAccepted={false}
-        featureFlagOverrides={{ discount_codes: true }}
-        posthogEnvironment="preview"
-      >
-        <DiscountCodesProbe initialEnabled />
-      </PostHogAnalytics>
+      <AnalyticsBoundary analyticsAccepted={false} discountCodesOverride />
     );
 
     expect(view.getByRole("form", { name: "Discount code" })).toBeDefined();
@@ -111,13 +129,7 @@ describe("PostHogAnalytics feature flag overrides", () => {
 
     await act(async () => {
       view.rerender(
-        <PostHogAnalytics
-          analyticsAccepted
-          featureFlagOverrides={{ discount_codes: true }}
-          posthogEnvironment="preview"
-        >
-          <DiscountCodesProbe initialEnabled />
-        </PostHogAnalytics>
+        <AnalyticsBoundary analyticsAccepted discountCodesOverride />
       );
     });
 
@@ -129,13 +141,7 @@ describe("PostHogAnalytics feature flag overrides", () => {
 
     await act(async () => {
       view.rerender(
-        <PostHogAnalytics
-          analyticsAccepted
-          featureFlagOverrides={{ discount_codes: false }}
-          posthogEnvironment="preview"
-        >
-          <DiscountCodesProbe initialEnabled />
-        </PostHogAnalytics>
+        <AnalyticsBoundary analyticsAccepted discountCodesOverride={false} />
       );
     });
 
@@ -148,11 +154,7 @@ describe("PostHogAnalytics feature flag overrides", () => {
     });
 
     await act(async () => {
-      view.rerender(
-        <PostHogAnalytics analyticsAccepted posthogEnvironment="preview">
-          <DiscountCodesProbe initialEnabled />
-        </PostHogAnalytics>
-      );
+      view.rerender(<AnalyticsBoundary analyticsAccepted />);
     });
 
     await waitFor(() => {
@@ -162,14 +164,7 @@ describe("PostHogAnalytics feature flag overrides", () => {
 
     const overrideCallCount = overrideFeatureFlags.mock.calls.length;
     await act(async () => {
-      view.rerender(
-        <PostHogAnalytics
-          analyticsAccepted={false}
-          posthogEnvironment="preview"
-        >
-          <DiscountCodesProbe initialEnabled />
-        </PostHogAnalytics>
-      );
+      view.rerender(<AnalyticsBoundary analyticsAccepted={false} />);
     });
 
     expect(overrideFeatureFlags).toHaveBeenCalledTimes(overrideCallCount);

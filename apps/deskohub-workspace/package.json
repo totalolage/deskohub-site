@@ -25,6 +25,7 @@
     "lint:biome": "biome check app db emails features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\" --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
+    "test:instant-navigation": "playwright test --config playwright.instant.config.ts",
     "typecheck": "tsc --noEmit",
     "typegen": "next typegen",
     "start": "next start"
@@ -112,7 +113,9 @@
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@happy-dom/global-registrator": "^20.10.1",
+    "@next/playwright": "16.3.0",
     "@opentelemetry/context-async-hooks": "2.8.0",
+    "@playwright/test": "1.61.0",
     "@react-email/ui": "6.9.1",
     "@testing-library/react": "^16.3.2",
     "@total-typescript/ts-reset": "^0.6.1",

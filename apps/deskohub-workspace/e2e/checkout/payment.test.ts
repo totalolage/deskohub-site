@@ -247,6 +247,7 @@ test("preserves a detached reservation preparation failure without submitting", 
 test("types into a hosted payment field when fill does not stick", async () => {
   const values = new Map<string, string>();
   let cardFillAttempts = 0;
+  let cardSnapshotReads = 0;
   let cardTypeAttempts = 0;
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
@@ -255,6 +256,10 @@ test("types into a hosted payment field when fill does not stick", async () => {
 
     if (commandArgs[0] === "snapshot") {
       if (phase === "continue") {
+        cardSnapshotReads += 1;
+        if (cardSnapshotReads === 1) {
+          return success('- textbox "Card number" [disabled, ref=e0]');
+        }
         return success(
           [
             '- textbox "Card number" [ref=e1]',
@@ -333,6 +338,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
   );
 
   expect(cardFillAttempts).toBe(1);
+  expect(cardSnapshotReads).toBeGreaterThan(1);
   expect(cardTypeAttempts).toBe(1);
 });
 

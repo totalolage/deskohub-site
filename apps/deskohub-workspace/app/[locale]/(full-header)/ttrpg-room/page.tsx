@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { RoomImageCarousel } from "@/features/gallery/components/room-image-carousel";
@@ -127,6 +128,7 @@ export function TtrpgRoomPage({
 
 export default async function LocalizedTtrpgRoomPage() {
   return runWithRequestLocale(async (locale) => {
+    await connection();
     const [barImages, workspaceImages] = await Promise.all([
       getRoomImages(["ttrpg-room", "ttrpg-room-bar"]),
       getRoomImages(["ttrpg-room", "ttrpg-room-workspace"]),

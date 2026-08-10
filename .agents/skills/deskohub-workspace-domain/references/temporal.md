@@ -8,6 +8,10 @@ Name site-local date helpers for their Workspace role rather than the current ci
 
 Use the ambient `Temporal.*` types. Keep the polyfill namespace exposed generically through the global alias in `types/temporal.d.ts`; do not manually redeclare individual Temporal types or export/import utility aliases for types provided by that namespace.
 
+Application modules use the ambient `Temporal` runtime installed by the server
+and client instrumentation entry points. Do not import the polyfill directly in
+feature, route, or shared-component modules.
+
 Keep formatting APIs typed to the domain representation they format. Actual
 reservation facts use `Temporal.Instant`; raw plain-date strings belong only in
 explicitly named form/input boundary adapters. Do not combine `Date`, `string`,

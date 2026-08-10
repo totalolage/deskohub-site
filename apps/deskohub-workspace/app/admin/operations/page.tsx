@@ -13,8 +13,6 @@ import {
 import { OperationTable } from "@/features/administration/payment-components";
 import { Button } from "@/shared/components/ui/button";
 
-export const dynamic = "force-dynamic";
-
 export default async function OperationsAdministrationPage({
   searchParams,
 }: {

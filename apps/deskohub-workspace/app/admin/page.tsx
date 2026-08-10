@@ -4,8 +4,6 @@ import { loadAdministrationOverview } from "@/features/administration/page-data.
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
-export const dynamic = "force-dynamic";
-
 export default async function AdminPage() {
   const overview = await loadAdministrationOverview();
   return (

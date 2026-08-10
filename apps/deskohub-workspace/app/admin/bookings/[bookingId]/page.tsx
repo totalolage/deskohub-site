@@ -7,8 +7,6 @@ import {
 } from "@/features/administration/components";
 import { loadAdministrationBooking } from "@/features/administration/page-data.server";
 
-export const dynamic = "force-dynamic";
-
 export default async function BookingAdministrationDetailPage({
   params,
 }: {
