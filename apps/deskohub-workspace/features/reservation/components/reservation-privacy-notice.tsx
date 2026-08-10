@@ -1,20 +1,15 @@
-"use client";
-
 import Link from "next/link";
 import { type Locale, m } from "@/features/i18n";
-import { ReservationConsentField } from "./reservation-consent-field";
 
-type ReservationLegalConsentFieldProps = {
-  readonly id?: string;
+type ReservationPrivacyNoticeProps = {
   readonly locale: Locale;
 };
 
-export function ReservationLegalConsentField({
-  id = "reservation-privacy-consent",
+export function ReservationPrivacyNotice({
   locale,
-}: ReservationLegalConsentFieldProps) {
+}: ReservationPrivacyNoticeProps) {
   return (
-    <ReservationConsentField id={id} name="legalConsent">
+    <p className="rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4 text-sm leading-6 text-navy-blue/66">
       {m.reservationPrivacyNoteBefore({}, { locale })}{" "}
       <Link
         className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
@@ -24,8 +19,8 @@ export function ReservationLegalConsentField({
         target="_blank"
       >
         {m.reservationPrivacyNoteLinkLabel({}, { locale })}
-      </Link>{" "}
+      </Link>
       {m.reservationPrivacyNoteAfter({}, { locale })}
-    </ReservationConsentField>
+    </p>
   );
 }

@@ -33,7 +33,6 @@ describe("cowork reservation schema", () => {
       email: "ada@example.com",
       phone: "+420777777777",
       message: "  hello  ",
-      legalConsent: true,
       marketingConsent: false,
     });
 
@@ -48,9 +47,6 @@ describe("cowork reservation schema", () => {
       });
       expect(result.success).not.toHaveProperty("startsAt");
       expect(result.success).not.toHaveProperty("endsAt");
-      expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
-        "legalConsent"
-      );
       expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
         "marketingConsent"
       );
@@ -98,7 +94,6 @@ describe("cowork reservation schema", () => {
       email: "ada@example.com",
       phone: "+420777777777",
       message: "",
-      legalConsent: true,
       marketingConsent: false,
     });
 
@@ -120,7 +115,6 @@ describe("cowork reservation schema", () => {
       email: "ada@example.com",
       phone: "+420777777777",
       message: "",
-      legalConsent: true,
       marketingConsent: false,
     });
 

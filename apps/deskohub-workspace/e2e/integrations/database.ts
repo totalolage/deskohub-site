@@ -1113,19 +1113,12 @@ export const assertLegalEvidenceRows = (
   locale: CheckoutData["locale"]
 ) => {
   const expected = new Set([
-    "privacyPolicy:reservation_submit",
-    "marketingCommunications:reservation_submit",
     "termsAndConditions:payment_submit",
     "operatingRules:payment_submit",
   ]);
 
   for (const row of rows) {
-    if (row.document_key !== "marketingCommunications") {
-      assert(
-        row.accepted,
-        `legal evidence ${row.document_key} was not accepted`
-      );
-    }
+    assert(row.accepted, `legal evidence ${row.document_key} was not accepted`);
     assert(
       row.hash_algorithm === "sha256",
       "legal evidence hash algorithm mismatch"

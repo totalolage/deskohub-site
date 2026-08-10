@@ -26,6 +26,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const schemaIndex = await readAppFile("db/schema/index.ts");
 
     expect(schemaIndex).toContain("./workspace-reservations");
+    expect(schemaIndex).toContain("./customer-marketing-consents");
     expect(schemaIndex).toContain("./payment-attempts");
     expect(schemaIndex).toContain("./webhook-events");
     expect(schemaIndex).toContain("./legal-evidence-events");
