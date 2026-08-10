@@ -8,7 +8,7 @@ test.beforeEach(async ({ baseURL, context }) => {
   if (!previewBypassSecret) return;
 
   const response = await context.request.get(
-    new URL("/favicon.ico", requireBaseUrl(baseURL)).toString(),
+    new URL("/favicon.svg", requireBaseUrl(baseURL)).toString(),
     {
       headers: {
         "x-vercel-protection-bypass": previewBypassSecret,

@@ -4,27 +4,19 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/shared/components/ui/table";
-import {
-  CreateDiscountCodeForm,
+  CalendarSalesAdminTable,
   CreateDiscountForm,
   DiscountCodesAdminTable,
   DiscountsAdminTable,
   type DiscountTableItem,
 } from "./admin-tables";
-import type {
-  AdminCalendarSale,
-  DiscountAdminDashboard,
-} from "./discount-administration.service";
+import {
+  DiscountCodeCreationDialog,
+  SaleDiscountCreationDialog,
+} from "./creation-dialogs";
+import type { DiscountAdminDashboard } from "./discount-administration.service";
 
 type DiscountAdministrationProps = {
   readonly dashboard: DiscountAdminDashboard;
@@ -96,35 +88,28 @@ export function CodesAdministrationPage({
       activeSection="codes"
       count={codes.length}
       notice={notice}
-      title="Discount codes"
+      showHeader={false}
+      title="Codes"
     >
-      <section>
-        {discounts.length === 0 ? (
-          <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-6 text-sm text-navy-blue/65">
-            Create a discount before adding a code.
+      <h1 className="sr-only">Codes</h1>
+      <div>
+        <section aria-labelledby="discount-codes-heading">
+          <h2 className="sr-only" id="discount-codes-heading">
+            Codes
+          </h2>
+          <div className="flex justify-end">
+            <DiscountCodeCreationDialog discounts={discounts} />
           </div>
-        ) : (
-          <details className="group rounded-xl border border-navy-blue/10 bg-white">
-            <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-              <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-                <Plus aria-hidden className="size-4" />
-              </span>
-              Create a discount code
-            </summary>
-            <div className="px-5 pb-6">
-              <CreateDiscountCodeForm discounts={discounts} />
-            </div>
-          </details>
-        )}
 
-        <div className="mt-4">
-          {codes.length === 0 ? (
-            <EmptyState message="No discount codes yet." />
-          ) : (
-            <DiscountCodesAdminTable codes={codes} discounts={discounts} />
-          )}
-        </div>
-      </section>
+          <div className="mt-4">
+            {codes.length === 0 ? (
+              <EmptyState message="No discount codes yet." />
+            ) : (
+              <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+            )}
+          </div>
+        </section>
+      </div>
     </AdminPageShell>
   );
 }
@@ -133,14 +118,17 @@ export function SalesAdministrationPage({
   dashboard,
   notice,
 }: DiscountAdministrationProps) {
+  const discounts = toDiscountTableItems(dashboard);
   return (
     <AdminPageShell
       activeSection="sales"
       count={dashboard.calendar.events.length}
       notice={notice}
-      title="Calendar sales"
+      showHeader={false}
+      title="Sales"
     >
-      <CalendarSection calendar={dashboard.calendar} />
+      <h1 className="sr-only">Sales</h1>
+      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
     </AdminPageShell>
   );
 }
@@ -149,17 +137,19 @@ export function AdminPageShell({
   children,
   count,
   notice,
+  showHeader = true,
   title,
 }: {
   readonly activeSection: "codes" | "customers" | "discounts" | "sales";
   readonly children: React.ReactNode;
   readonly count: number;
   readonly notice: DiscountAdministrationProps["notice"];
+  readonly showHeader?: boolean;
   readonly title: string;
 }) {
   return (
     <AdministrationPage>
-      <AdministrationPageHeader count={count} title={title} />
+      {showHeader && <AdministrationPageHeader count={count} title={title} />}
       <AdministrationNoticeBanner notice={notice} />
       {children}
     </AdministrationPage>
@@ -168,124 +158,51 @@ export function AdminPageShell({
 
 function CalendarSection({
   calendar,
+  discounts,
 }: {
   readonly calendar: DiscountAdminDashboard["calendar"];
+  readonly discounts: readonly DiscountTableItem[];
 }) {
   let calendarContent = (
-    <Table aria-label="Calendar sales" className="min-w-[760px]">
-      <TableHeader>
-        <TableRow className="hover:bg-transparent">
-          <TableHead>Event</TableHead>
-          <TableHead>Dates</TableHead>
-          <TableHead>Calendar status</TableHead>
-          <TableHead>Association</TableHead>
-          <TableHead className="text-right">Action</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {calendar.events.map((event) => (
-          <CalendarSaleRow event={event} key={event.eventReference} />
-        ))}
-      </TableBody>
-    </Table>
+    <CalendarSalesAdminTable discounts={discounts} events={calendar.events} />
   );
   if (calendar.unavailable) {
     calendarContent = (
       <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
     );
   } else if (calendar.events.length === 0) {
-    calendarContent = (
-      <EmptyState message="No Calendar events found in this window." />
-    );
+    calendarContent = <EmptyState message="No Calendar sale events found." />;
   }
 
   return (
-    <section>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-navy-blue/65">
-          {calendar.from} — {calendar.to}
-        </p>
-        <Button asChild size="sm" variant="secondary">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+      <section aria-labelledby="calendar-sales-heading">
+        <h2 className="sr-only" id="calendar-sales-heading">
+          Calendar sales
+        </h2>
+        <div className="flex justify-end">
+          <SaleDiscountCreationDialog />
+        </div>
+        <div className="mt-4">{calendarContent}</div>
+      </section>
+
+      <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5 xl:sticky xl:top-24">
+        <h2 className="text-base font-semibold">Link a sale</h2>
+        <ol className="mt-3 space-y-2 text-sm leading-5 text-navy-blue/78">
+          <li>1. Open the Calendar event.</li>
+          <li>2. Set it as all-day.</li>
+          <li>3. Put only the discount UUID in the event description.</li>
+          <li>4. Save, then refresh this page.</li>
+        </ol>
+        <Button asChild className="mt-4 w-full" size="sm" variant="secondary">
           <a href={calendar.calendarUrl} rel="noreferrer" target="_blank">
             Open calendar
             <ArrowUpRight aria-hidden className="size-3.5" />
           </a>
         </Button>
-      </div>
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
-        <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-          {calendarContent}
-        </div>
-
-        <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-4 lg:sticky lg:top-4">
-          <h2 className="text-base font-semibold">Link a sale</h2>
-          <ol className="mt-3 space-y-2 text-sm leading-5 text-navy-blue/78">
-            <li>1. Open the Calendar event.</li>
-            <li>2. Set it as all-day.</li>
-            <li>3. Put only the discount UUID in the event description.</li>
-            <li>4. Save, then refresh this page.</li>
-          </ol>
-        </aside>
-      </div>
-    </section>
+      </aside>
+    </div>
   );
-}
-
-function CalendarSaleRow({ event }: { readonly event: AdminCalendarSale }) {
-  return (
-    <TableRow>
-      <TableCell>
-        <p className="font-semibold">{event.title}</p>
-        <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
-          {event.description || "Empty description"}
-        </code>
-      </TableCell>
-      <TableCell className="whitespace-nowrap text-sm text-navy-blue/70">
-        {event.start} → {event.end}
-      </TableCell>
-      <TableCell>
-        <Badge variant="subtle">{event.status}</Badge>
-      </TableCell>
-      <TableCell>
-        <AssociationBadge association={event.association} />
-        {event.association.kind === "associated" && (
-          <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
-            {event.association.discountLabel}
-          </p>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        <Button asChild size="sm" variant="secondary">
-          <a href={event.eventUrl} rel="noreferrer" target="_blank">
-            Open event
-            <ArrowUpRight aria-hidden className="size-3.5" />
-          </a>
-        </Button>
-      </TableCell>
-    </TableRow>
-  );
-}
-
-function AssociationBadge({
-  association,
-}: {
-  readonly association: AdminCalendarSale["association"];
-}) {
-  if (association.kind === "associated") {
-    return (
-      <Badge className="border-burned-orange-ink bg-burned-orange-ink text-white">
-        Associated
-      </Badge>
-    );
-  }
-  if (association.kind === "missing-discount") {
-    return <Badge variant="emphasis">Discount not found</Badge>;
-  }
-  if (association.kind === "invalid-description") {
-    return <Badge variant="emphasis">Invalid description</Badge>;
-  }
-  return <Badge variant="subtle">No discount ID</Badge>;
 }
 
 export function EmptyState({ message }: { readonly message: string }) {

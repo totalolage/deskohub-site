@@ -80,10 +80,26 @@ const validCodeWindow = Schema.makeFilter<{
     }
 );
 
+const discountSelectionSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("existing"),
+    discountId: storedDiscountIdSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("new"),
+    discount: createDiscountAdminInputSchema,
+  }),
+]);
+
 export const createDiscountCodeAdminInputSchema = Schema.Struct({
   discountId: storedDiscountIdSchema,
   ...discountCodeConfigurationSchema.fields,
 }).check(validCodeWindow);
+
+export const createManagedDiscountCodeAdminInputSchema = Schema.Struct({
+  code: discountCodeConfigurationSchema.check(validCodeWindow),
+  discount: discountSelectionSchema,
+});
 
 export const updateDiscountCodeAdminInputSchema = Schema.Struct({
   id: discountCodeIdSchema,
@@ -94,16 +110,7 @@ export const updateDiscountCodeAdminInputSchema = Schema.Struct({
 export const createCustomerDiscountCodeAdminInputSchema = Schema.Struct({
   customerId: dotyposCustomerIdSchema,
   code: discountCodeConfigurationSchema.check(validCodeWindow),
-  discount: Schema.Union([
-    Schema.Struct({
-      kind: Schema.Literal("existing"),
-      discountId: storedDiscountIdSchema,
-    }),
-    Schema.Struct({
-      kind: Schema.Literal("new"),
-      discount: createDiscountAdminInputSchema,
-    }),
-  ]),
+  discount: discountSelectionSchema,
 });
 
 export const discountAdminMutationSchema = Schema.Union([
@@ -121,7 +128,7 @@ export const discountAdminMutationSchema = Schema.Union([
   }),
   Schema.Struct({
     kind: Schema.Literal("create-code"),
-    code: createDiscountCodeAdminInputSchema,
+    ...createManagedDiscountCodeAdminInputSchema.fields,
   }),
   Schema.Struct({
     kind: Schema.Literal("create-customer-code"),
@@ -188,6 +195,8 @@ export type UpdateDiscountAdminInput =
   typeof updateDiscountAdminInputSchema.Type;
 export type CreateDiscountCodeAdminInput =
   typeof createDiscountCodeAdminInputSchema.Type;
+export type CreateManagedDiscountCodeAdminInput =
+  typeof createManagedDiscountCodeAdminInputSchema.Type;
 export type CreateCustomerDiscountCodeAdminInput =
   typeof createCustomerDiscountCodeAdminInputSchema.Type;
 export type UpdateDiscountCodeAdminInput =
