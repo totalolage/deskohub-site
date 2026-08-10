@@ -30,7 +30,11 @@ import type {
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
 
-export function CustomerSearch() {
+export function CustomerSearch({
+  variant = "card",
+}: {
+  readonly variant?: "card" | "toolbar";
+}) {
   const queryId = useId();
   const [result, setResult] = useState<AdminCustomerSearchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -60,7 +64,11 @@ export function CustomerSearch() {
   return (
     <div className="space-y-4">
       <form
-        className="grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+        className={
+          variant === "card"
+            ? "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+            : "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+        }
         onSubmit={(event) => {
           event.preventDefault();
           setError(null);

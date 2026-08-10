@@ -8,7 +8,109 @@ import { AdministrationService } from "./administration.service";
 import { PaymentAdministrationServiceMock } from "./payment-administration.service.mock";
 import { PostHogReservationHistory } from "./posthog-reservation-history";
 
+const makeQuery = <A>(rows: readonly A[]) => {
+  const query = Effect.succeed(rows) as Effect.Effect<readonly A[]> & {
+    from: () => typeof query;
+    innerJoin: () => typeof query;
+    limit: () => typeof query;
+    offset: () => typeof query;
+    orderBy: () => typeof query;
+    where: () => typeof query;
+  };
+  query.from = () => query;
+  query.innerJoin = () => query;
+  query.limit = () => query;
+  query.offset = () => query;
+  query.orderBy = () => query;
+  query.where = () => query;
+  return query;
+};
+
 describe("AdministrationService", () => {
+  test("keeps reservations available when provider date sorting fails", async () => {
+    const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
+    const row = {
+      id: "workspace-reservation",
+      dotyposCustomerId: "dotypos-customer",
+      dotyposReservationId: "dotypos-reservation",
+      reservationState: "confirmed",
+      paymentState: "paid",
+      fulfillmentState: "fulfilled",
+      reservationDetails: { kind: "meeting-room" },
+      reservationCreatedAt: instant,
+      reservationConfirmedAt: instant,
+      reservationCancelledAt: null,
+      reservationHoldExpiredAt: null,
+      paidAt: instant,
+      fulfilledAt: instant,
+      fulfillmentFailedAt: null,
+      createdAt: instant,
+      updatedAt: instant,
+    } as const;
+    const rows = [[{ value: 1 }], [row], []] as const;
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(rows[selectCall++] ?? []),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({
+        direction: "asc",
+        sort: "date",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed({
+                    customer: { id: "dotypos-customer" },
+                    reservation: {
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "dotypos-customer",
+                      id: "dotypos-reservation",
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED",
+                    },
+                  }),
+                listReservations: () =>
+                  Effect.fail(
+                    new ExternalAPIError({
+                      operation: "listReservations",
+                      service: "Dotypos",
+                      statusCode: 503,
+                    })
+                  ),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(selectCall).toBe(3);
+    expect(result.dateSortUnavailable).toBe(true);
+    expect(result.items).toHaveLength(1);
+  });
+
   test("returns no booking when Dotypos reports it missing", async () => {
     const result = await Effect.gen(function* () {
       const administration = yield* AdministrationService;
@@ -48,5 +150,62 @@ describe("AdministrationService", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  test("loads customer marketing consent without a reservation", async () => {
+    const grantedAt = Temporal.Instant.from("2026-08-09T10:00:00Z");
+    const withdrawnAt = Temporal.Instant.from("2026-08-10T11:00:00Z");
+    const rows = [
+      [],
+      [],
+      [
+        {
+          documentHash: "marketing-document-hash",
+          grantedAt,
+          locale: "en-US" as const,
+          withdrawnAt,
+        },
+      ],
+    ] as const;
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(rows[selectCall++] ?? []),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerActivity("dotypos-customer");
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({}),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(selectCall).toBe(3);
+    expect(result.reservations).toEqual([]);
+    expect(result.marketingConsent).toEqual({
+      documentHash: "marketing-document-hash",
+      grantedAt: grantedAt.toString(),
+      locale: "en-US",
+      withdrawnAt: withdrawnAt.toString(),
+    });
   });
 });

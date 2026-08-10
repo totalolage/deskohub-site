@@ -20,7 +20,9 @@ import {
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
   BookingTable,
+  getBookingTableLabel,
   PaymentAttemptList,
+  RelatedReservationLink,
   ReservationReferences,
   ReservationTable,
   ReservationTimeline,
@@ -34,7 +36,9 @@ import {
   OperationTable,
   OrderTable,
   ProviderStatusBadge,
+  ReservationOrderList,
 } from "./payment-components";
+import { ReservationLifecycleMap } from "./reservation-lifecycle-map";
 
 mock.module("./actions", () => ({
   getAdministrationReservation: mock(),
@@ -51,19 +55,134 @@ describe("administration reservation components", () => {
 
   test("renders a semantic reservation table with friendly status labels", () => {
     const { items } = loadFixtureReservations({});
-    const view = render(<ReservationTable reservations={items} />);
+    const view = render(
+      <ReservationTable
+        reservations={items.map((item, index) =>
+          index === 1
+            ? {
+                ...item,
+                status: { group: "in_progress", label: "Awaiting payment" },
+                statusNote: "Cancelled in Dotypos",
+              }
+            : item
+        )}
+      />
+    );
     const table = view.getByRole("table", { name: "Reservations" });
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
     );
-    expect(
-      within(table).getAllByRole("link", { name: "Meeting Room" })[0].className
-    ).toContain("before:absolute");
+    const reservationLink = within(table)
+      .getAllByRole("link")
+      .find(
+        (link) =>
+          link.getAttribute("href") ===
+          "/admin/reservations/0198-admin-fixture-attention"
+      );
+    expect(reservationLink?.className).toContain("before:absolute");
     expect(
       within(table)
-        .getAllByRole("link", { name: "Meeting Room" })[0]
+        .getByRole("link", {
+          name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
+        })
         .getAttribute("href")
-    ).toBe("/admin/reservations/0198-admin-fixture-attention");
+    ).toBe(
+      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/ORDER-0198-admin-fixture-attention"
+    );
+    expect(
+      view.getAllByRole("link", {
+        name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
+      })
+    ).toHaveLength(2);
+    expect(view.getAllByText("Cancelled in Dotypos")).toHaveLength(2);
+    expect(view.getAllByText("Deskohub: Awaiting payment")).toHaveLength(2);
+  });
+
+  test("formats reservation dates according to their family", () => {
+    const reservation = loadFixtureReservations({}).items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+    const view = render(
+      <ReservationTable
+        reservations={[
+          {
+            ...reservation,
+            id: "cowork-date-only",
+            type: "cowork",
+            typeLabel: "Cowork Basic",
+            date: "2026-08-10",
+            startsAt: "2026-08-09T22:00:00Z",
+          },
+          {
+            ...reservation,
+            id: "meeting-room-with-time",
+            type: "meeting-room",
+            typeLabel: "Meeting Room",
+            date: "2026-08-10",
+            startsAt: "2026-08-10T08:00:00Z",
+          },
+        ]}
+      />
+    );
+
+    const coworkDates = view.getAllByText("10 Aug 2026");
+    expect(coworkDates).toHaveLength(2);
+    expect(coworkDates[0]?.textContent).not.toContain("00:00");
+    expect(view.getAllByText("10 Aug 2026, 10:00")).toHaveLength(2);
+  });
+
+  test("links sortable reservation headers to server-side ordering", () => {
+    const reservations = loadFixtureReservations({}).items;
+    const view = render(
+      <ReservationTable
+        reservations={reservations}
+        sorting={{
+          basePath: "/admin/reservations",
+          direction: "asc",
+          field: "reservation",
+          params: { status: "complete" },
+        }}
+      />
+    );
+    const table = view.getByRole("table", { name: "Reservations" });
+    const reservationHeader = within(table).getByRole("link", {
+      name: "Reservation",
+    });
+
+    expect(reservationHeader.closest("th")?.getAttribute("aria-sort")).toBe(
+      "ascending"
+    );
+    expect(reservationHeader.getAttribute("href")).toBe(
+      "/admin/reservations?status=complete&sort=reservation&direction=desc"
+    );
+    expect(
+      within(table).getByRole("link", { name: "Status" }).getAttribute("href")
+    ).toBe("/admin/reservations?status=complete&sort=status&direction=asc");
+    const dateHeader = within(table).getByRole("link", { name: "Date" });
+    expect(dateHeader.closest("th")?.getAttribute("aria-sort")).toBe("none");
+    expect(dateHeader.getAttribute("href")).toBe(
+      "/admin/reservations?status=complete&sort=date&direction=asc"
+    );
+  });
+
+  test("shows live provider discrepancies on related reservations", () => {
+    const { items } = loadFixtureReservations({});
+    const reservation = items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+
+    const view = render(
+      <RelatedReservationLink
+        reservation={{
+          ...reservation,
+          status: { group: "in_progress", label: "Awaiting payment" },
+          statusNote: "Cancelled in Dotypos",
+        }}
+      />
+    );
+
+    expect(view.getByText("Cancelled in Dotypos")).toBeDefined();
+    expect(view.getByText("Deskohub: Awaiting payment")).toBeDefined();
   });
 
   test("renders ordered operational history without forbidden fields", () => {
@@ -86,15 +205,15 @@ describe("administration reservation components", () => {
       within(timeline)
         .getByRole("link", { name: "Nexi order created" })
         .getAttribute("href")
-    ).toBe("/admin/orders/DADMINFIXTUREPAYMENT");
+    ).toBe("#order-DADMINFIXTUREPAYMENT");
     expect(
       within(timeline)
         .getByRole("link", { name: "Payment executed by Nexi" })
         .getAttribute("href")
-    ).toBe("/admin/operations/DADMINFIXTUREOPERATION");
+    ).toBe("#operation-DADMINFIXTUREOPERATION");
   });
 
-  test("links Nexi payment IDs to internal orders and the XPay dashboard", () => {
+  test("links Nexi payment IDs directly to the XPay dashboard", () => {
     const detail = loadFixtureReservation("0198-admin-fixture-attention");
     expect(detail).not.toBeNull();
     if (!detail) return;
@@ -116,17 +235,55 @@ describe("administration reservation components", () => {
       />
     );
     const orderLink = view.getByRole("link", {
-      name: "Nexi order DADMINFIXTUREPAYMENT",
+      name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
     });
     expect(orderLink.getAttribute("href")).toBe(
-      "/admin/orders/DADMINFIXTUREPAYMENT"
-    );
-    const dashboardLink = view.getByRole("link", { name: "Open in XPay ↗" });
-    expect(dashboardLink.getAttribute("href")).toBe(
       "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
     );
-    expect(dashboardLink.getAttribute("target")).toBe("_blank");
+    expect(orderLink.getAttribute("target")).toBe("_blank");
     expect(view.getAllByText("Nexi order")).toHaveLength(1);
+  });
+
+  test("folds Nexi orders and operations into the reservation", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+
+    const view = render(<ReservationOrderList orders={detail.orders} />);
+    expect(
+      view
+        .getByRole("link", {
+          name: "Nexi order DADMINFIXTUREPAYMENT (opens in XPay)",
+        })
+        .getAttribute("href")
+    ).toBe(
+      "https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/DADMINFIXTUREPAYMENT"
+    );
+    expect(view.getByText("DADMINFIXTUREOPERATION")).toBeDefined();
+    expect(view.container.querySelector('a[href^="/admin/orders"]')).toBeNull();
+    expect(
+      view.container.querySelector('a[href^="/admin/operations"]')
+    ).toBeNull();
+  });
+
+  test("marks the actual lifecycle stage accessibly", () => {
+    const detail = loadFixtureReservation("0198-admin-fixture-attention");
+    expect(detail).not.toBeNull();
+    if (!detail) return;
+
+    const view = render(
+      <ReservationLifecycleMap lifecycle={detail.lifecycle} />
+    );
+    expect(
+      view.getByText("Paid").closest('[aria-current="step"]')
+    ).not.toBeNull();
+    expect(view.getByText("Confirmation issue")).toBeDefined();
+    expect(
+      view
+        .getByText("Cancelled")
+        .compareDocumentPosition(view.getByText("Paid")) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).not.toBe(0);
   });
 
   test("links order and operation entities back to their reservation", () => {
@@ -202,6 +359,22 @@ describe("administration reservation components", () => {
     expect(view.queryByText("Details unavailable")).toBeNull();
   });
 
+  test("distinguishes an unassigned table from unavailable table details", () => {
+    expect(getBookingTableLabel(null)).toBe("Unavailable");
+    expect(
+      getBookingTableLabel({ tableId: "dotypos-table", tableName: null })
+    ).toBe("Details unavailable");
+    expect(getBookingTableLabel({ tableId: null, tableName: null })).toBe(
+      "Not assigned"
+    );
+    expect(
+      getBookingTableLabel({
+        tableId: "dotypos-table",
+        tableName: "Meeting room",
+      })
+    ).toBe("Meeting room");
+  });
+
   test("links reservation references to their related entities", () => {
     const view = render(
       <ReservationReferences
@@ -216,9 +389,8 @@ describe("administration reservation components", () => {
     expect(
       view.getByRole("link", { name: "dotypos-customer" }).getAttribute("href")
     ).toBe("/admin/customers/dotypos-customer");
-    expect(
-      view.getByRole("link", { name: "dotypos-booking" }).getAttribute("href")
-    ).toBe("/admin/bookings/dotypos-booking");
+    expect(view.getByText("dotypos-booking")).toBeDefined();
+    expect(view.queryByRole("link", { name: "dotypos-booking" })).toBeNull();
   });
 
   test("renders Dotypos bookings with linked customers and reservations", () => {

@@ -53,3 +53,8 @@ Keep the local checkout lifecycle status required and structurally distinguish
 summary facts may remain unavailable after terminal hold cancellation or a
 Dotypos read failure; do not conflate that optional projection with the required
 local payment and fulfillment status.
+
+Administration may overlay a live Dotypos `CANCELLED` status as an
+operator-facing attention-state cancellation when the local row is stale. Keep
+that overlay read-only: it must not persist a lifecycle transition, authorize
+access, trigger recovery, or claim that Deskohub completed cancellation.
