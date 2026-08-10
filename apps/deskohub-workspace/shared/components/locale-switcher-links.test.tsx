@@ -96,6 +96,7 @@ test("uses document navigation for every alternate-locale full-header link", asy
         contactHref={contactHref}
         contactLabel="Contact"
         currentLocale={currentLocale}
+        disabledMenuItems={{}}
         languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
         links={[]}
       />
@@ -109,6 +110,34 @@ test("uses document navigation for every alternate-locale full-header link", asy
     );
     view.unmount();
   }
+});
+
+test("keeps disabled full-header items visible without making them links", async () => {
+  const { SiteHeader } = await import("./site-header");
+  const meetingRoomHref = "/en-US/meeting-room";
+  const view = render(
+    <SiteHeader
+      contactHref="/en-US/reservation/cowork"
+      contactLabel="Book"
+      currentLocale="en-US"
+      disabledMenuItems={{ meetingRoom: true }}
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+      links={[
+        {
+          id: "meetingRoom",
+          href: meetingRoomHref,
+          label: "Meeting room",
+        },
+      ]}
+    />
+  );
+
+  expect(
+    view.container.querySelectorAll('[aria-disabled="true"]')
+  ).toHaveLength(2);
+  expect(
+    view.container.querySelectorAll(`a[href="${meetingRoomHref}"]`)
+  ).toHaveLength(0);
 });
 
 test("uses document navigation for the alternate-locale minimal-header link", async () => {

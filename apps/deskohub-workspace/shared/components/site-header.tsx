@@ -6,13 +6,18 @@ import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
+import type {
+  DisabledSiteHeaderMenuItems,
+  SiteHeaderMenuItem,
+} from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
-  links: Array<{ label: string; href: string }>;
+  links: SiteHeaderMenuItem[];
+  disabledMenuItems: DisabledSiteHeaderMenuItems;
   contactLabel: string;
   contactHref: string;
 };
@@ -21,6 +26,7 @@ export function SiteHeader({
   currentLocale,
   languageLabels,
   links,
+  disabledMenuItems,
   contactLabel,
   contactHref,
 }: SiteHeaderProps) {
@@ -44,13 +50,12 @@ export function SiteHeader({
 
         <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
           {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
-            >
-              {link.label}
-            </Link>
+            <SiteHeaderMenuLink
+              key={link.id}
+              disabled={disabledMenuItems[link.id] === true}
+              link={link}
+              variant="desktop"
+            />
           ))}
         </nav>
 
@@ -106,14 +111,13 @@ export function SiteHeader({
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label="Mobile primary" className="grid gap-2">
             {links.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
+              <SiteHeaderMenuLink
+                key={link.id}
+                disabled={disabledMenuItems[link.id] === true}
+                link={link}
                 onClick={closeMenu}
-                className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
-              >
-                {link.label}
-              </Link>
+                variant="mobile"
+              />
             ))}
           </nav>
 
@@ -130,5 +134,43 @@ export function SiteHeader({
         </div>
       </div>
     </header>
+  );
+}
+
+type SiteHeaderMenuLinkProps = {
+  readonly disabled: boolean;
+  readonly link: SiteHeaderMenuItem;
+  readonly onClick?: () => void;
+  readonly variant: "desktop" | "mobile";
+};
+
+function SiteHeaderMenuLink({
+  disabled,
+  link,
+  onClick,
+  variant,
+}: SiteHeaderMenuLinkProps) {
+  const className = {
+    desktop:
+      "text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow",
+    mobile:
+      "rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow",
+  }[variant];
+
+  if (disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className={cn(className, "cursor-not-allowed opacity-50")}
+      >
+        {link.label}
+      </span>
+    );
+  }
+
+  return (
+    <Link href={link.href} className={className} onClick={onClick}>
+      {link.label}
+    </Link>
   );
 }

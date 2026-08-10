@@ -12,6 +12,28 @@ const siteHeaderSectionIds = {
   faqContact: "faq-contact",
 } as const;
 
+export type SiteHeaderMenuItemId =
+  | "locationMap"
+  | "meetingRoom"
+  | "gallery"
+  | "founders"
+  | "faqContact"
+  | "contact";
+
+export type SiteHeaderMenuItem = {
+  readonly id: SiteHeaderMenuItemId;
+  readonly label: string;
+  readonly href: string;
+};
+
+export type DisabledSiteHeaderMenuItems = Partial<
+  Record<SiteHeaderMenuItemId, true>
+>;
+
+const meetingRoomDisabled = {
+  meetingRoom: true,
+} satisfies DisabledSiteHeaderMenuItems;
+
 export const getSiteHeaderLanguageLabels = (
   locale: Locale
 ): Record<Locale, string> => ({
@@ -22,15 +44,18 @@ export const getSiteHeaderLanguageLabels = (
 export async function getSiteHeaderConfig(locale: Locale) {
   const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
 
-  return createSiteHeaderConfig(locale, meetingRoomPageEnabled);
+  return createSiteHeaderConfig(
+    locale,
+    meetingRoomPageEnabled ? {} : meetingRoomDisabled
+  );
 }
 
 export const getSiteHeaderShellConfig = (locale: Locale) =>
-  createSiteHeaderConfig(locale, false);
+  createSiteHeaderConfig(locale, meetingRoomDisabled);
 
 const createSiteHeaderConfig = (
   locale: Locale,
-  meetingRoomPageEnabled: boolean
+  disabledMenuItems: DisabledSiteHeaderMenuItems
 ) => {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
@@ -39,30 +64,37 @@ const createSiteHeaderConfig = (
     languageLabels: getSiteHeaderLanguageLabels(locale),
     links: [
       {
+        id: "locationMap",
         label: m.landingNavWhereToFindUs({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
-      meetingRoomPageEnabled && {
+      {
+        id: "meetingRoom",
         label: m.landingNavMeetingRoom({}, { locale }),
         href: `${localePath}/meeting-room`,
       },
       {
+        id: "gallery",
         label: m.landingNavGallery({}, { locale }),
         href: `${localePath}/gallery`,
       },
       {
+        id: "founders",
         label: m.landingNavOurTeam({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.founders}`),
       },
       {
+        id: "faqContact",
         label: m.landingNavFaqContact({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
       },
       {
+        id: "contact",
         label: m.landingNavContactLabel({}, { locale }),
         href: `${localePath}/contact`,
       },
-    ].filter(Boolean),
+    ] satisfies SiteHeaderMenuItem[],
+    disabledMenuItems,
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
   };

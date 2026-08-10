@@ -12,14 +12,18 @@ describe("getSiteHeaderConfig", () => {
     isMeetingRoomPageEnabled.mockReset();
   });
 
-  test("omits the Meeting Room link when its release flag is disabled", async () => {
+  test("keeps the Meeting Room item disabled when its release flag is disabled", async () => {
     const { getSiteHeaderConfig } = await import("./site-header-config");
     isMeetingRoomPageEnabled.mockResolvedValue(false);
     const config = await getSiteHeaderConfig("cs-CZ");
 
-    expect(config.links).not.toContainEqual(
-      expect.objectContaining({ href: "/cs-CZ/meeting-room" })
+    expect(config.links).toContainEqual(
+      expect.objectContaining({
+        id: "meetingRoom",
+        href: "/cs-CZ/meeting-room",
+      })
     );
+    expect(config.disabledMenuItems).toEqual({ meetingRoom: true });
   });
 
   test("includes the Meeting Room link when its release flag is enabled", async () => {
@@ -28,8 +32,12 @@ describe("getSiteHeaderConfig", () => {
     const config = await getSiteHeaderConfig("en-US");
 
     expect(config.links).toContainEqual(
-      expect.objectContaining({ href: "/en-US/meeting-room" })
+      expect.objectContaining({
+        id: "meetingRoom",
+        href: "/en-US/meeting-room",
+      })
     );
+    expect(config.disabledMenuItems).toEqual({});
   });
 
   test("provides a useful header shell without waiting for release flags", async () => {
@@ -43,8 +51,12 @@ describe("getSiteHeaderConfig", () => {
     expect(config.links).toContainEqual(
       expect.objectContaining({ href: "/en-US/contact" })
     );
-    expect(config.links).not.toContainEqual(
-      expect.objectContaining({ href: "/en-US/meeting-room" })
+    expect(config.links).toContainEqual(
+      expect.objectContaining({
+        id: "meetingRoom",
+        href: "/en-US/meeting-room",
+      })
     );
+    expect(config.disabledMenuItems).toEqual({ meetingRoom: true });
   });
 });
