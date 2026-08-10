@@ -19,14 +19,16 @@ const executeDiscountAdminMutation = Effect.fn(
 )(function* (input: DiscountAdminMutation) {
   const administration = yield* DiscountAdministration;
 
-  yield* Match.value(input).pipe(
+  const createdDiscountId = yield* Match.value(input).pipe(
     Match.discriminatorsExhaustive("kind")({
       "create-discount": ({ discount }) =>
         administration.createDiscount(discount),
       "update-discount": ({ discount }) =>
-        administration.updateDiscount(discount),
-      "delete-discount": ({ id }) => administration.deleteDiscount({ id }),
-      "create-code": ({ code }) => administration.createCode(code),
+        administration.updateDiscount(discount).pipe(Effect.as(null)),
+      "delete-discount": ({ id }) =>
+        administration.deleteDiscount({ id }).pipe(Effect.as(null)),
+      "create-code": ({ code, discount }) =>
+        administration.createCode({ code, discount }).pipe(Effect.as(null)),
       "create-customer-code": ({ code, customerId, discount }) =>
         administration
           .createCustomerCode({ code, customerId, discount })
@@ -36,24 +38,34 @@ const executeDiscountAdminMutation = Effect.fn(
                 revalidatePath(`/admin/customers/${customerId}`)
               )
             )
-          ),
-      "update-code": ({ code }) => administration.updateCode(code),
-      "delete-code": ({ id }) => administration.deleteCode({ id }),
+          )
+          .pipe(Effect.as(null)),
+      "update-code": ({ code }) =>
+        administration.updateCode(code).pipe(Effect.as(null)),
+      "delete-code": ({ id }) =>
+        administration.deleteCode({ id }).pipe(Effect.as(null)),
       "add-code-customer": ({ codeId, customerId }) =>
-        administration.addCodeCustomer({ codeId, customerId }),
+        administration
+          .addCodeCustomer({ codeId, customerId })
+          .pipe(Effect.as(null)),
       "remove-code-customer": ({ codeId, customerId }) =>
-        administration.removeCodeCustomer({ codeId, customerId }),
+        administration
+          .removeCodeCustomer({ codeId, customerId })
+          .pipe(Effect.as(null)),
       "make-code-unrestricted": ({ codeId }) =>
-        administration.makeCodeUnrestricted({ codeId }),
+        administration.makeCodeUnrestricted({ codeId }).pipe(Effect.as(null)),
       "set-customer-discount-group": ({ customerId, discountGroupId }) =>
-        administration.setCustomerDiscountGroup({
-          customerId,
-          discountGroupId,
-        }),
+        administration
+          .setCustomerDiscountGroup({
+            customerId,
+            discountGroupId,
+          })
+          .pipe(Effect.as(null)),
     })
   );
 
   return {
+    ...(createdDiscountId && { createdDiscountId }),
     notice: Match.value(input.kind).pipe(
       Match.when("create-discount", () => "Discount created."),
       Match.when("update-discount", () => "Discount updated."),

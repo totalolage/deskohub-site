@@ -2,14 +2,10 @@
 
 import {
   BadgePercent,
-  CalendarCheck2,
   CalendarRange,
   ChevronRight,
   CircleGauge,
-  CreditCard,
-  ListChecks,
   Menu,
-  Percent,
   Ticket,
   Users,
 } from "lucide-react";
@@ -44,21 +40,7 @@ const navigation = [
         icon: CalendarRange,
         label: "Reservations",
       },
-      { href: "/admin/bookings", icon: CalendarCheck2, label: "Bookings" },
       { href: "/admin/customers", icon: Users, label: "Customers" },
-    ],
-  },
-  {
-    label: "Payments",
-    items: [
-      { href: "/admin/orders", icon: CreditCard, label: "Orders" },
-      { href: "/admin/operations", icon: ListChecks, label: "Operations" },
-    ],
-  },
-  {
-    label: "Configuration",
-    items: [
-      { href: "/admin/discounts", icon: Percent, label: "Discounts" },
       { href: "/admin/codes", icon: Ticket, label: "Codes" },
       { href: "/admin/sales", icon: BadgePercent, label: "Sales" },
     ],

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
-import "@xyflow/react/dist/style.css";
 import { AdminShell } from "@/features/administration/admin-shell";
 import "../globals.css";
 

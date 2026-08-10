@@ -143,7 +143,7 @@ describe("discount administration inputs", () => {
     ).toThrow();
   });
 
-  test("creates a customer code with an existing or new discount", () => {
+  test("creates a code with an existing or new discount", () => {
     const code = {
       code: validCode.code,
       enabled: validCode.enabled,
@@ -152,6 +152,13 @@ describe("discount administration inputs", () => {
       maxUses: validCode.maxUses,
     };
 
+    expect(() =>
+      decodeMutation({
+        kind: "create-code",
+        code,
+        discount: { kind: "new", discount: validDiscount },
+      })
+    ).not.toThrow();
     expect(() =>
       decodeMutation({
         kind: "create-customer-code",

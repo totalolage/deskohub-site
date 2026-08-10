@@ -93,6 +93,125 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
   );
 }
 
+export function ReservationOrderList({
+  orders,
+}: {
+  readonly orders: readonly AdministrationOrder[];
+}) {
+  if (orders.length === 0) {
+    return (
+      <EmptyState message="No Nexi order is linked to this reservation." />
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {orders.map((order) => (
+        <section
+          className="scroll-mt-24 overflow-hidden rounded-xl border border-navy-blue/10 bg-white"
+          id={`order-${order.orderId}`}
+          key={order.orderId}
+        >
+          <div className="flex flex-col gap-4 border-b border-navy-blue/10 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
+                Nexi order
+              </p>
+              <a
+                aria-label={`Nexi order ${order.orderId} (opens in XPay)`}
+                className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
+                href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(order.orderId)}`}
+                rel="noreferrer"
+                target="_blank"
+              >
+                {order.orderId}
+                <span aria-hidden>↗</span>
+              </a>
+            </div>
+            <div className="sm:text-right">
+              <p className="font-semibold">{formatOrderMoney(order)}</p>
+              <p className="mt-1 text-xs text-navy-blue/60">
+                {order.link?.stateLabel ?? "No local payment attempt"}
+              </p>
+            </div>
+          </div>
+
+          {order.providerStatus === "not_found" && (
+            <p className="m-4 rounded-lg bg-burned-orange/10 px-3 py-2 text-sm text-burned-orange-ink sm:m-5">
+              Nexi did not return this locally linked order. The order ID and
+              local payment facts remain available above.
+            </p>
+          )}
+          {order.providerStatus === "unavailable" && (
+            <p className="m-4 rounded-lg bg-sunset-yellow/15 px-3 py-2 text-sm sm:m-5">
+              Live order operations are temporarily unavailable from Nexi.
+            </p>
+          )}
+
+          {order.provider?.operations &&
+          order.provider.operations.length > 0 ? (
+            <ol aria-label={`Operations for order ${order.orderId}`}>
+              {order.provider.operations.map((operation, index) => (
+                <li
+                  className="scroll-mt-24 border-b border-navy-blue/10 px-4 py-4 last:border-b-0 sm:px-5"
+                  id={
+                    operation.operationId
+                      ? `operation-${operation.operationId}`
+                      : undefined
+                  }
+                  key={
+                    operation.operationId ??
+                    `${operation.operationTime ?? "unknown"}-${index}`
+                  }
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">
+                          {operation.operationType
+                            ? getProviderValueLabel(operation.operationType)
+                            : "Payment operation"}
+                        </p>
+                        {operation.operationResult && (
+                          <ProviderStatusBadge
+                            value={operation.operationResult}
+                          />
+                        )}
+                      </div>
+                      <p className="mt-1 text-xs text-navy-blue/60">
+                        {formatProviderDateTime(operation.operationTime)}
+                        {operation.channel && (
+                          <> · {getProviderValueLabel(operation.channel)}</>
+                        )}
+                      </p>
+                      {operation.operationId && (
+                        <p className="mt-2 break-all font-mono text-xs text-navy-blue/65">
+                          {operation.operationId}
+                        </p>
+                      )}
+                    </div>
+                    <p className="font-medium sm:text-right">
+                      {formatProviderMoney(
+                        operation.amount,
+                        operation.currency
+                      )}
+                    </p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            order.providerStatus === "available" && (
+              <p className="px-4 py-5 text-sm text-navy-blue/60 sm:px-5">
+                Nexi did not report any operations for this order.
+              </p>
+            )
+          )}
+        </section>
+      ))}
+    </div>
+  );
+}
+
 export function OrderTable({
   orders,
 }: {

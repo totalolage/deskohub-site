@@ -12,6 +12,7 @@ import {
   ArrowDown,
   ArrowUp,
   ArrowUpDown,
+  ArrowUpRight,
   Pencil,
   Plus,
   Save,
@@ -51,12 +52,14 @@ import {
   workspaceCurrencyDefinitions,
 } from "@/shared/money/currencies";
 import {
+  cn,
   temporalInstantToLocalDateTimeString,
   workspaceSiteConstants,
 } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 import { mutateDiscountAdmin } from "./actions";
 import type { DiscountAdminMutation } from "./contracts";
+import type { AdminCalendarSale } from "./discount-administration.service";
 import { getDiscountAdminValidationMessage } from "./form-feedback";
 import { readDiscountCodeForm, readDiscountForm } from "./form-input";
 
@@ -84,6 +87,10 @@ export type DiscountCodeTableItem = {
   readonly redeemedUses: number;
   readonly remainingUses: number | null;
 };
+
+const isTableRowControl = (target: EventTarget | null) =>
+  target instanceof Element &&
+  Boolean(target.closest("a, button, input, select, textarea, label, summary"));
 
 export function DiscountsAdminTable({
   discounts,
@@ -232,19 +239,24 @@ export function DiscountCodesAdminTable({
       data={codes}
       expandedId={expandedId}
       getId={(code) => code.id}
+      onRowActivate={(code, expanded) =>
+        setExpandedId(expanded ? null : code.id)
+      }
       renderActions={(code, expanded) => (
         <RowActions
           confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
           deleteLabel={`Delete ${code.code}`}
           editLabel={`Edit ${code.code}`}
           expanded={expanded}
+          keepDeleteVisible
           onDelete={() => ({ kind: "delete-code", id: code.id })}
           onEdit={() => setExpandedId(expanded ? null : code.id)}
         />
       )}
       renderEditor={(code) => (
-        <DiscountCodeEditor
+        <CodeAndDiscountEditor
           code={code}
+          discount={discounts.find(({ id }) => id === code.discountId)}
           discounts={discounts}
           onDeleted={() => setExpandedId(null)}
         />
@@ -253,7 +265,201 @@ export function DiscountCodesAdminTable({
   );
 }
 
-export function CreateDiscountForm() {
+function CodeAndDiscountEditor({
+  code,
+  discount,
+  discounts,
+  onDeleted,
+}: {
+  readonly code: DiscountCodeTableItem;
+  readonly discount?: DiscountTableItem;
+  readonly discounts: readonly DiscountTableItem[];
+  readonly onDeleted: () => void;
+}) {
+  return (
+    <div className="grid gap-7">
+      <section>
+        <h3 className="mb-4 font-semibold">Code</h3>
+        <DiscountCodeEditor code={code} discounts={discounts} />
+      </section>
+      {discount && (
+        <section className="border-t border-navy-blue/10 pt-6">
+          <h3 className="mb-4 font-semibold">Discount</h3>
+          <DiscountEditor
+            deletable={false}
+            discount={discount}
+            onDeleted={onDeleted}
+          />
+        </section>
+      )}
+    </div>
+  );
+}
+
+export function CalendarSalesAdminTable({
+  discounts,
+  events,
+}: {
+  readonly discounts: readonly DiscountTableItem[];
+  readonly events: readonly AdminCalendarSale[];
+}) {
+  const [expandedReference, setExpandedReference] = useState<string | null>(
+    null
+  );
+  const discountsById = useMemo(
+    () => new Map(discounts.map((discount) => [discount.id, discount])),
+    [discounts]
+  );
+
+  return (
+    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+      <Table aria-label="Calendar sales" className="min-w-[760px]">
+        <TableHeader>
+          <TableRow className="hover:bg-transparent">
+            <TableHead>Event</TableHead>
+            <TableHead>Dates</TableHead>
+            <TableHead>Calendar status</TableHead>
+            <TableHead>Association</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {events.map((event) => {
+            const discount =
+              event.association.kind === "associated"
+                ? discountsById.get(event.association.discountId)
+                : undefined;
+            const expanded = expandedReference === event.eventReference;
+            const toggleEditor = () =>
+              setExpandedReference((current) =>
+                current === event.eventReference ? null : event.eventReference
+              );
+            return (
+              <Fragment key={event.eventReference}>
+                <TableRow
+                  aria-expanded={discount ? expanded : undefined}
+                  className={cn(
+                    discount &&
+                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
+                    expanded && "bg-navy-blue/[0.025]"
+                  )}
+                  onClick={(clickEvent) => {
+                    if (!discount || isTableRowControl(clickEvent.target)) {
+                      return;
+                    }
+                    toggleEditor();
+                  }}
+                  onKeyDown={(keyboardEvent) => {
+                    if (
+                      !discount ||
+                      keyboardEvent.target !== keyboardEvent.currentTarget ||
+                      (keyboardEvent.key !== "Enter" &&
+                        keyboardEvent.key !== " ")
+                    ) {
+                      return;
+                    }
+                    keyboardEvent.preventDefault();
+                    toggleEditor();
+                  }}
+                  tabIndex={discount ? 0 : undefined}
+                >
+                  <TableCell>
+                    <p className="font-semibold">{event.title}</p>
+                    <code className="mt-1 block max-w-64 truncate text-xs text-navy-blue/65">
+                      {event.description || "Empty description"}
+                    </code>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-sm text-navy-blue/70">
+                    {event.start} → {event.end}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="subtle">{event.status}</Badge>
+                  </TableCell>
+                  <TableCell>
+                    <CalendarAssociationBadge association={event.association} />
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-1">
+                      <Button asChild size="icon" variant="ghost">
+                        <a
+                          aria-label={`Open ${event.title} in Google Calendar`}
+                          href={event.eventUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ArrowUpRight aria-hidden className="size-4" />
+                        </a>
+                      </Button>
+                      {discount && (
+                        <Button
+                          aria-expanded={expanded}
+                          aria-label={`Edit discount for ${event.title}`}
+                          aria-pressed={expanded}
+                          onClick={toggleEditor}
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Pencil aria-hidden className="size-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                </TableRow>
+                {expanded && discount && (
+                  <TableRow className="bg-[#fafafd] hover:bg-[#fafafd]">
+                    <TableCell
+                      className="border-t border-navy-blue/10 p-5"
+                      colSpan={5}
+                    >
+                      <DiscountEditor
+                        deletable={false}
+                        discount={discount}
+                        onDeleted={() => setExpandedReference(null)}
+                      />
+                    </TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+function CalendarAssociationBadge({
+  association,
+}: {
+  readonly association: AdminCalendarSale["association"];
+}) {
+  if (association.kind === "associated") {
+    return (
+      <div>
+        <Badge className="border-burned-orange-ink bg-burned-orange-ink text-white">
+          Associated
+        </Badge>
+        <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
+          {association.discountLabel}
+        </p>
+      </div>
+    );
+  }
+  if (association.kind === "missing-discount") {
+    return <Badge variant="emphasis">Discount not found</Badge>;
+  }
+  if (association.kind === "invalid-description") {
+    return <Badge variant="emphasis">Invalid description</Badge>;
+  }
+  return <Badge variant="subtle">No discount ID</Badge>;
+}
+
+export function CreateDiscountForm({
+  onCreated,
+}: {
+  readonly onCreated?: (message: string) => void;
+} = {}) {
   return (
     <MutationForm
       actionName="createDiscount"
@@ -261,30 +467,11 @@ export function CreateDiscountForm() {
         kind: "create-discount",
         discount: readDiscountForm(formData),
       })}
+      onSuccess={onCreated}
       submitLabel="Create discount"
       submitIcon={<Plus aria-hidden className="size-4" />}
     >
       <DiscountDefinitionFields />
-    </MutationForm>
-  );
-}
-
-export function CreateDiscountCodeForm({
-  discounts,
-}: {
-  readonly discounts: readonly DiscountTableItem[];
-}) {
-  return (
-    <MutationForm
-      actionName="createDiscountCode"
-      buildMutation={(formData) => ({
-        kind: "create-code",
-        code: readDiscountCodeForm(formData),
-      })}
-      submitLabel="Create code"
-      submitIcon={<Plus aria-hidden className="size-4" />}
-    >
-      <DiscountCodeFields discounts={discounts} />
     </MutationForm>
   );
 }
@@ -297,6 +484,7 @@ function AdminDataTable<T>({
   getId,
   renderActions,
   renderEditor,
+  onRowActivate,
 }: {
   readonly ariaLabel: string;
   readonly columns: readonly ColumnDef<T>[];
@@ -305,6 +493,7 @@ function AdminDataTable<T>({
   readonly getId: (item: T) => string;
   readonly renderActions: (item: T, expanded: boolean) => ReactNode;
   readonly renderEditor: (item: T) => ReactNode;
+  readonly onRowActivate?: (item: T, expanded: boolean) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
   const tableColumns = useMemo(() => [...columns], [columns]);
@@ -358,7 +547,31 @@ function AdminDataTable<T>({
             const expanded = row.id === expandedId;
             return (
               <Fragment key={row.id}>
-                <TableRow className={expanded ? "bg-navy-blue/[0.025]" : ""}>
+                <TableRow
+                  aria-expanded={onRowActivate ? expanded : undefined}
+                  className={cn(
+                    onRowActivate &&
+                      "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-burned-orange",
+                    expanded && "bg-navy-blue/[0.025]"
+                  )}
+                  onClick={(event) => {
+                    if (!onRowActivate) return;
+                    if (isTableRowControl(event.target)) return;
+                    onRowActivate(row.original, expanded);
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      !onRowActivate ||
+                      event.target !== event.currentTarget ||
+                      (event.key !== "Enter" && event.key !== " ")
+                    ) {
+                      return;
+                    }
+                    event.preventDefault();
+                    onRowActivate(row.original, expanded);
+                  }}
+                  tabIndex={onRowActivate ? 0 : undefined}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id}>
                       {flexRender(
@@ -407,6 +620,7 @@ function RowActions({
   expanded,
   onDelete,
   onEdit,
+  keepDeleteVisible = false,
 }: {
   readonly confirmation: string;
   readonly deleteLabel: string;
@@ -414,10 +628,11 @@ function RowActions({
   readonly expanded: boolean;
   readonly onDelete: () => DiscountAdminMutation;
   readonly onEdit: () => void;
+  readonly keepDeleteVisible?: boolean;
 }) {
   return (
     <div className="flex justify-end gap-1">
-      {!expanded && (
+      {(!expanded || keepDeleteVisible) && (
         <DeleteButton
           confirmation={confirmation}
           iconOnly
@@ -427,6 +642,7 @@ function RowActions({
       )}
       <Button
         aria-label={editLabel}
+        aria-expanded={expanded}
         aria-pressed={expanded}
         onClick={onEdit}
         size="icon"
@@ -440,9 +656,11 @@ function RowActions({
 }
 
 function DiscountEditor({
+  deletable = true,
   discount,
   onDeleted,
 }: {
+  readonly deletable?: boolean;
   readonly discount: DiscountTableItem;
   readonly onDeleted: () => void;
 }) {
@@ -462,12 +680,14 @@ function DiscountEditor({
           },
         })}
         deleteControl={
-          <DeleteButton
-            confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
-            label={`Delete ${discount.labels["en-US"]}`}
-            mutation={() => ({ kind: "delete-discount", id: discount.id })}
-            onDeleted={onDeleted}
-          />
+          deletable ? (
+            <DeleteButton
+              confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
+              label={`Delete ${discount.labels["en-US"]}`}
+              mutation={() => ({ kind: "delete-discount", id: discount.id })}
+              onDeleted={onDeleted}
+            />
+          ) : undefined
         }
         requireDirty
         submitLabel="Save discount"
@@ -482,11 +702,9 @@ function DiscountEditor({
 function DiscountCodeEditor({
   code,
   discounts,
-  onDeleted,
 }: {
   readonly code: DiscountCodeTableItem;
   readonly discounts: readonly DiscountTableItem[];
-  readonly onDeleted: () => void;
 }) {
   return (
     <div>
@@ -502,14 +720,6 @@ function DiscountCodeEditor({
             ...readDiscountCodeForm(formData),
           },
         })}
-        deleteControl={
-          <DeleteButton
-            confirmation={`Delete the code “${code.code}”? Redeemed codes cannot be deleted. Disable it to preserve history. This cannot be undone.`}
-            label={`Delete ${code.code}`}
-            mutation={() => ({ kind: "delete-code", id: code.id })}
-            onDeleted={onDeleted}
-          />
-        }
         requireDirty
         submitLabel="Save code"
         submitIcon={<Save aria-hidden className="size-4" />}
@@ -528,6 +738,7 @@ function MutationForm({
   requireDirty = false,
   submitIcon,
   submitLabel,
+  onSuccess,
 }: {
   readonly actionName: string;
   readonly buildMutation: (formData: FormData) => DiscountAdminMutation;
@@ -536,6 +747,7 @@ function MutationForm({
   readonly requireDirty?: boolean;
   readonly submitIcon: ReactNode;
   readonly submitLabel: string;
+  readonly onSuccess?: (message: string) => void;
 }) {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
@@ -554,7 +766,11 @@ function MutationForm({
         initialFingerprint.current = fingerprintForm(form);
       }
       setDirty(false);
-      setFeedback({ kind: "success", message: data.notice });
+      const message = data.createdDiscountId
+        ? `${data.notice} Calendar ID: ${data.createdDiscountId}`
+        : data.notice;
+      if (onSuccess) onSuccess(message);
+      else setFeedback({ kind: "success", message });
       router.refresh();
     },
     onError: ({ error }) => {
