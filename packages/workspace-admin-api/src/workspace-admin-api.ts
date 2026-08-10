@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill";
 import { Context, Schema } from "effect";
 import {
   HttpApi,
@@ -232,33 +233,12 @@ export const AdministrationReservationStatusGroup = Schema.Literals([
 export type AdministrationReservationStatusGroup =
   typeof AdministrationReservationStatusGroup.Type;
 
-const isLeapYear = (year: number) =>
-  year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-
 const isCalendarDate = (value: string) => {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+  try {
+    return Temporal.PlainDate.from(value).toString() === value;
+  } catch {
     return false;
   }
-
-  const year = Number(value.slice(0, 4));
-  const month = Number(value.slice(5, 7));
-  const day = Number(value.slice(8, 10));
-  const daysInMonth = [
-    31,
-    isLeapYear(year) ? 29 : 28,
-    31,
-    30,
-    31,
-    30,
-    31,
-    31,
-    30,
-    31,
-    30,
-    31,
-  ][month - 1];
-
-  return daysInMonth !== undefined && day >= 1 && day <= daysInMonth;
 };
 
 const administrationCalendarDate = Schema.String.check(
