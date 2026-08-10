@@ -14,6 +14,8 @@ import {
 
 const pathname = "/meeting-room";
 
+export const instant = false;
+
 const getMeetingRoomHeroImages = () =>
   getCloudinaryImages({
     maxResults: 1,

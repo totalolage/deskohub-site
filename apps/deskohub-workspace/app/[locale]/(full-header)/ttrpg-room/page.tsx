@@ -16,6 +16,8 @@ import {
 
 const pathname = "/ttrpg-room";
 
+export const instant = false;
+
 const getContactHref = (href: string, message: string) => {
   const searchParams = new URLSearchParams({ message });
 

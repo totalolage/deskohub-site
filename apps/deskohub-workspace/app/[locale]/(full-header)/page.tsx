@@ -12,6 +12,8 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
+export const instant = false;
+
 export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
     const title = m.landingMetadataTitle({}, { locale });
