@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.5.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.4.0...dhw-v1.5.0) (2026-08-10)
+
+
+### Features
+
+* **dhw:** add administration mutations ([636df93](https://github.com/totalolage/deskohub-site/commit/636df93489d1a4811911ca3754745c8f73bcc823))
+* **dhw:** add administration mutations ([926140a](https://github.com/totalolage/deskohub-site/commit/926140a2bbe470ba37a191057f3846902186cdf0))
+
 ## [1.4.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.3.0...dhw-v1.4.0) (2026-08-10)
 
 
