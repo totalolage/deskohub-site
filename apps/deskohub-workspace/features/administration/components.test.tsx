@@ -22,6 +22,7 @@ import {
   BookingTable,
   getBookingTableLabel,
   PaymentAttemptList,
+  RelatedReservationLink,
   ReservationReferences,
   ReservationTable,
   ReservationTimeline,
@@ -90,6 +91,24 @@ describe("administration reservation components", () => {
       })
     ).toHaveLength(2);
     expect(view.getAllByText("Dotypos reports cancelled")).toHaveLength(2);
+  });
+
+  test("shows live provider discrepancies on related reservations", () => {
+    const { items } = loadFixtureReservations({});
+    const reservation = items[0];
+    expect(reservation).toBeDefined();
+    if (!reservation) return;
+
+    const view = render(
+      <RelatedReservationLink
+        reservation={{
+          ...reservation,
+          statusNote: "Dotypos reports cancelled",
+        }}
+      />
+    );
+
+    expect(view.getByText("Dotypos reports cancelled")).toBeDefined();
   });
 
   test("renders ordered operational history without forbidden fields", () => {

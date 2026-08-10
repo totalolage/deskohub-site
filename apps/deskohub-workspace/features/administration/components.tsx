@@ -614,6 +614,11 @@ export function RelatedReservationLink({
         <span className="mt-1 block text-xs text-navy-blue/65">
           {reservation.status.label}
         </span>
+        {reservation.statusNote && (
+          <span className="mt-1 block text-xs font-medium text-burned-orange-ink">
+            {reservation.statusNote}
+          </span>
+        )}
       </span>
       <ArrowRight
         aria-hidden
