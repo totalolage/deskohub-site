@@ -21,6 +21,17 @@ export const getSiteHeaderLanguageLabels = (
 
 export async function getSiteHeaderConfig(locale: Locale) {
   const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
+
+  return createSiteHeaderConfig(locale, meetingRoomPageEnabled);
+}
+
+export const getSiteHeaderShellConfig = (locale: Locale) =>
+  createSiteHeaderConfig(locale, false);
+
+const createSiteHeaderConfig = (
+  locale: Locale,
+  meetingRoomPageEnabled: boolean
+) => {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
 
@@ -55,6 +66,6 @@ export async function getSiteHeaderConfig(locale: Locale) {
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
   };
-}
+};
 
 export { siteHeaderSectionIds };

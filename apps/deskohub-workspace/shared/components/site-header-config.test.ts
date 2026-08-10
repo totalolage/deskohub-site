@@ -31,4 +31,20 @@ describe("getSiteHeaderConfig", () => {
       expect.objectContaining({ href: "/en-US/meeting-room" })
     );
   });
+
+  test("provides a useful header shell without waiting for release flags", async () => {
+    const { getSiteHeaderShellConfig } = await import("./site-header-config");
+    const config = getSiteHeaderShellConfig("en-US");
+
+    expect(isMeetingRoomPageEnabled).not.toHaveBeenCalled();
+    expect(config.links).toContainEqual(
+      expect.objectContaining({ href: "/en-US/gallery" })
+    );
+    expect(config.links).toContainEqual(
+      expect.objectContaining({ href: "/en-US/contact" })
+    );
+    expect(config.links).not.toContainEqual(
+      expect.objectContaining({ href: "/en-US/meeting-room" })
+    );
+  });
 });

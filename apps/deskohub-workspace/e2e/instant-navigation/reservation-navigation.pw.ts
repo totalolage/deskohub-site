@@ -1,23 +1,15 @@
 import { instant } from "@next/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import {
+  enablePreviewAccess,
+  hasLoadedResource,
+  requireBaseUrl,
+} from "./navigation-test-helpers";
 
 const reservationStepsName = "Reservation steps";
 
 test.beforeEach(async ({ baseURL, context }) => {
-  const previewBypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  if (!previewBypassSecret) return;
-
-  const response = await context.request.get(
-    new URL("/favicon.ico", requireBaseUrl(baseURL)).toString(),
-    {
-      headers: {
-        "x-vercel-protection-bypass": previewBypassSecret,
-        "x-vercel-set-bypass-cookie": "true",
-      },
-    }
-  );
-  expect(response.ok()).toBe(true);
-  await response.dispose();
+  await enablePreviewAccess(context, baseURL);
 });
 
 const directNavigationCases = [
@@ -149,20 +141,4 @@ async function expectReservationSteps(page: Page) {
   await expect(
     page.getByRole("list", { name: reservationStepsName })
   ).toBeVisible();
-}
-
-async function hasLoadedResource(page: Page, pathname: string) {
-  return page.evaluate((targetPathname) => {
-    return performance.getEntriesByType("resource").some((entry) => {
-      return new URL(entry.name).pathname === targetPathname;
-    });
-  }, pathname);
-}
-
-function requireBaseUrl(baseURL: string | undefined) {
-  if (!baseURL) {
-    throw new Error("Playwright baseURL is required for instant navigation");
-  }
-
-  return baseURL;
 }
