@@ -17,6 +17,9 @@ request behind the existing `/admin` Basic authentication, the CLI exchanges a
 single-use grant bound to its local verifier and stores the resulting opaque
 bearer in macOS Keychain or the Linux Secret Service.
 
+With `--json`, browser approval instructions are written to stderr while stdout
+is reserved for the single final JSON result.
+
 New sessions default to the recognizable label `dhw on <machine-name>`. Pass
 `--name` to choose the initial label explicitly, or rename an issued session
 later from `/admin/cli/sessions`. The label is descriptive only; the opaque

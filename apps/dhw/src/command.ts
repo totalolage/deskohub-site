@@ -6,6 +6,10 @@ import { Console, Data, Effect, Option } from "effect";
 import { Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
+import {
+  reportAuthenticationGranted,
+  reportAuthenticationStarted,
+} from "./authentication/authentication-output";
 import { ClientIdentity } from "./authentication/client-identity.service";
 import { DHW_BUILD_TARGET, DHW_VERSION, isReleaseBuild } from "./build-info";
 import { DhwConfig } from "./config/dhw-config.service";
@@ -93,15 +97,11 @@ const authCommand = Command.make(
         });
         const approvalUrl = new URL(started.approvalPath, config.baseUrl).href;
 
-        yield* Console.log(
-          json
-            ? JSON.stringify({
-                authStatus: "pending",
-                approvalUrl,
-                expiresAt: started.expiresAt,
-              })
-            : `Approve this CLI in your browser:\n${approvalUrl}\n\nWaiting for approval…`
-        );
+        yield* reportAuthenticationStarted({
+          approvalUrl,
+          expiresAt: started.expiresAt,
+          json,
+        });
 
         const session = yield* waitForCliAuthentication({
           api,
@@ -110,11 +110,7 @@ const authCommand = Command.make(
           verifier,
         });
 
-        yield* Console.log(
-          json
-            ? JSON.stringify({ authStatus: "granted", session })
-            : `Authenticated as ${session.clientName}.`
-        );
+        yield* reportAuthenticationGranted({ json, session });
       })
     )
 ).pipe(Command.withDescription("Authenticate this CLI through the admin UI"));
