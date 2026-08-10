@@ -6,6 +6,7 @@
       "component": "dhw",
       "package-name": "dhw",
       "include-component-in-tag": true,
+      "force-tag-creation": true,
       "draft": true,
       "changelog-path": "CHANGELOG.md"
     }

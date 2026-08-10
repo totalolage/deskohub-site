@@ -35,6 +35,44 @@ Firewall Rate Limiting SDK. The Workspace Vercel project must define an
 `@vercel/firewall` rate limit with the ID `cli-authentication-start`, allowing
 10 requests per IP per minute and returning 429 after the limit.
 
+## Read-only administration
+
+Authenticated read commands use the same application services as the Admin UI:
+
+```bash
+dhw overview
+dhw reservations list
+dhw reservations list --date 2026-08-10 --status complete --page 2
+dhw reservations get <reservation-id>
+dhw reservations find <reservation-or-payment-id>
+dhw bookings list --date 2026-08-10
+dhw bookings get <booking-id>
+dhw orders list --from 2026-08-01 --to 2026-08-10
+dhw orders get <order-id>
+dhw operations list --channel ECOMMERCE --operation-type CAPTURE
+dhw operations get <operation-id>
+dhw customers list
+dhw customers search "Ada"
+dhw customers get <customer-id>
+dhw customers reservations <customer-id> --page 2
+dhw discounts list
+dhw codes list
+dhw codes get <code-id>
+dhw sales list
+dhw sessions list
+```
+
+Pass the root `--json` flag for schema-decoded machine output, for example
+`dhw --json reservations list`. Human output is intentionally compact; JSON
+retains the complete typed response.
+
+RFC 10008 `QUERY` is the preferred eventual transport for searches with request
+content. The installed Effect V4 HTTP method model and Next.js App Route runtime
+do not yet accept `QUERY`, so bounded filters currently use schema-typed GET
+query parameters. The service operations and shared schemas remain transport
+independent so adopting `QUERY` does not require changing CLI commands or Admin
+UI application services.
+
 ## Development
 
 ```bash
@@ -106,7 +144,9 @@ transient Release Please pull request and enables auto-merge on it. Once its
 required checks pass, the workflow creates a draft release, builds and attests
 all four binaries on native runners, uploads them together with `SHA256SUMS`,
 and publishes the release. There is no per-release manual merge or publish
-step.
+step. Release Please force-creates the version tag for each draft release so a
+follow-up main run recognizes that release boundary instead of proposing the
+same commits again.
 
 Repository setup requires a GitHub App installed on this repository with
 Contents and Pull requests read/write, Issues read/write, and Administration

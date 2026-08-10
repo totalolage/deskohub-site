@@ -1,6 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import { CliClientName, StartCliAuthentication } from "./workspace-admin-api";
+import {
+  AdminCliReadApi,
+  AdministrationBookingQuery,
+  AdministrationCustomerQuery,
+  AdministrationCustomerReservationsQuery,
+  AdministrationCustomerSearchQuery,
+  AdministrationOperationQuery,
+  AdministrationOrderQuery,
+  AdministrationReservationLookupQuery,
+  AdministrationReservationQuery,
+  AdministrationReservationSummary,
+  AdministrationWorkspaceProductTarget,
+  CliClientName,
+  StartCliAuthentication,
+} from "./workspace-admin-api";
 
 describe("CliClientName", () => {
   test("trims a client label", () => {
@@ -24,6 +38,172 @@ describe("StartCliAuthentication", () => {
         clientName: "   ",
         cliVersion: "1.0.0",
         buildTarget: "development",
+      })
+    ).toThrow();
+  });
+});
+
+describe("administration read contract", () => {
+  test("keeps read operations safe and typed", () => {
+    expect(AdminCliReadApi.endpoints.getOverview?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listReservations?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getReservation?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.findReservation?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listBookings?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getBooking?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listOrders?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getOrder?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listOperations?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getOperation?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listCustomers?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.searchCustomers?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getCustomer?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listCustomerReservations?.method).toBe(
+      "GET"
+    );
+    expect(AdminCliReadApi.endpoints.getDiscountDashboard?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getDiscountCode?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listSessions?.method).toBe("GET");
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        page: 2,
+        status: "complete",
+      })
+    ).toEqual({ page: 2, status: "complete" });
+  });
+
+  test("accepts office reservations throughout the read contract", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        type: "office",
+      })
+    ).toEqual({ type: "office" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)({
+        id: "reservation-id",
+        customerId: "customer-id",
+        customer: null,
+        liveDetailsAvailable: false,
+        startsAt: "2026-08-10T00:00:00+02:00[Europe/Prague]",
+        endsAt: "2026-08-11T00:00:00+02:00[Europe/Prague]",
+        date: "2026-08-10",
+        type: "office",
+        typeLabel: "Office",
+        status: { group: "in_progress", label: "In progress" },
+        statusNote: null,
+        createdAt: "2026-08-01T12:00:00Z",
+        latestPayment: null,
+        updatedAt: "2026-08-01T12:00:00Z",
+      }).type
+    ).toBe("office");
+  });
+
+  test("uses product targets instead of purchase identities", () => {
+    for (const target of [
+      { kind: "cowork" },
+      { kind: "meeting-room" },
+      { kind: "office" },
+    ] as const) {
+      expect(
+        Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(target)
+      ).toEqual(target);
+    }
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(
+        { kind: "cowork", tier: "basic" },
+        { onExcessProperty: "error" }
+      )
+    ).toThrow();
+  });
+
+  test("rejects invalid reservation filters before service execution", () => {
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({ page: 0 })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        date: "10-08-2026",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        date: "2026-13-01",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationReservationLookupQuery)({
+        identifier: "   ",
+      })
+    ).toThrow();
+  });
+
+  test("validates customer list and search queries", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerQuery)({ page: 3 })
+    ).toEqual({ page: 3 });
+    expect(
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "  Ada  ",
+      })
+    ).toEqual({ query: "Ada" });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerQuery)({ page: 0 })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "A",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
+        query: "Ada;drop",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerReservationsQuery)({
+        page: 0,
+      })
+    ).toThrow();
+  });
+
+  test("validates booking filters", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "2026-08-10",
+        page: 2,
+      })
+    ).toEqual({ date: "2026-08-10", page: 2 });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "10-08-2026",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "2026-02-30",
+      })
+    ).toThrow();
+  });
+
+  test("validates payment date filters", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+        from: "2024-02-29",
+        to: "2026-08-10",
+      })
+    ).toEqual({ from: "2024-02-29", to: "2026-08-10" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationOperationQuery)({
+        channel: "ECOMMERCE",
+        operationType: "CAPTURE",
+      })
+    ).toEqual({ channel: "ECOMMERCE", operationType: "CAPTURE" });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({ from: "tomorrow" })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationOrderQuery)({
+        from: "2026-02-29",
       })
     ).toThrow();
   });

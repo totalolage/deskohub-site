@@ -1,14 +1,36 @@
 import {
   CliAuthenticationRateLimited,
+  CliBearerAuthentication,
   CliGrantRejected,
+  CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
+  CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Redacted } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
+import { AdministrationLive } from "@/features/administration/administration.runtime";
+import { AdministrationService } from "@/features/administration/administration.service";
+import {
+  getAdministrationOperationFilters,
+  getAdministrationOrderDateTimeBounds,
+  getAdministrationPaymentDateTimeBounds,
+} from "@/features/administration/payment-administration-filters";
+import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
+import {
+  type AdminCustomerProfile,
+  type AdminDiscountCode,
+  type AdminDiscountCodeClaim,
+  type AdminDiscountCodeDetail,
+  type DiscountAdminDashboard,
+  DiscountAdministration,
+} from "@/features/discounts/admin/discount-administration.service";
+import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 
@@ -53,18 +75,179 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
               )
             )
         )
-        .handle("getCurrentSession", ({ headers }) =>
-          authentication
-            .authenticateSession(headers.authorization)
+        .handle("getCurrentSession", () => CurrentCliSession);
+    })
+);
+
+export const AdminCliReadApiHandlers = HttpApiBuilder.group(
+  WorkspaceAdminApi,
+  "administration",
+  (handlers) =>
+    Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      const authentication = yield* CliAuthentication;
+      const discounts = yield* DiscountAdministration;
+      return handlers
+        .handle("getOverview", () =>
+          administration.loadOverview().pipe(mapServiceFailure)
+        )
+        .handle("listReservations", ({ query }) =>
+          administration.listReservations(query).pipe(mapServiceFailure)
+        )
+        .handle("getReservation", ({ params }) =>
+          administration.loadReservation(params.reservationId).pipe(
+            mapServiceFailure,
+            Effect.flatMap((detail) =>
+              detail
+                ? Effect.succeed(detail)
+                : new CliResourceNotFound({
+                    message: "The reservation was not found.",
+                  })
+            )
+          )
+        )
+        .handle("findReservation", ({ query }) =>
+          administration.findReservationId(query.identifier).pipe(
+            Effect.map((reservationId) => ({ reservationId })),
+            mapServiceFailure
+          )
+        )
+        .handle("listBookings", ({ query }) =>
+          administration
+            .listBookings({
+              date: query.date ?? getCurrentWorkspaceDate().toString(),
+              page: query.page,
+            })
+            .pipe(mapServiceFailure)
+        )
+        .handle("getBooking", ({ params }) =>
+          administration.loadBooking(params.bookingId).pipe(
+            mapServiceFailure,
+            Effect.flatMap((detail) =>
+              detail
+                ? Effect.succeed(detail)
+                : new CliResourceNotFound({
+                    message: "The booking was not found.",
+                  })
+            )
+          )
+        )
+        .handle("listOrders", ({ query }) => {
+          const range = getAdministrationOrderDateTimeBounds(
+            query.from,
+            query.to
+          );
+          return administration
+            .listOrders({
+              fromTime: range.fromTime,
+              toTime: range.toTime,
+              maxRecords: 50,
+            })
+            .pipe(mapServiceFailure);
+        })
+        .handle("getOrder", ({ params }) =>
+          administration.loadOrder(params.orderId).pipe(mapServiceFailure)
+        )
+        .handle("listOperations", ({ query }) => {
+          const range = getAdministrationPaymentDateTimeBounds(
+            query.from,
+            query.to
+          );
+          const filters = getAdministrationOperationFilters(query);
+          return administration
+            .listOperations({
+              fromTime: range.fromTime,
+              toTime: range.toTime,
+              maxRecords: 100,
+              ...filters,
+            })
+            .pipe(mapServiceFailure);
+        })
+        .handle("getOperation", ({ params }) =>
+          administration
+            .loadOperation(params.operationId)
+            .pipe(mapServiceFailure)
+        )
+        .handle("listCustomers", ({ query }) =>
+          administration.listCustomers(query).pipe(mapServiceFailure)
+        )
+        .handle("searchCustomers", ({ query }) =>
+          discounts.searchCustomers(query).pipe(mapServiceFailure)
+        )
+        .handle("getCustomer", ({ params }) =>
+          Effect.all(
+            {
+              activity: administration.loadCustomerActivity(params.customerId),
+              profile: discounts
+                .loadCustomerProfile({
+                  customerId: params.customerId as DotyposCustomerId,
+                })
+                .pipe(
+                  Effect.map(toCliCustomerProfile),
+                  Effect.catch(() => Effect.succeed(null))
+                ),
+            },
+            { concurrency: "unbounded" }
+          ).pipe(mapServiceFailure)
+        )
+        .handle("listCustomerReservations", ({ params, query }) =>
+          administration
+            .loadCustomerReservations({
+              customerId: params.customerId,
+              page: query.page,
+            })
+            .pipe(mapServiceFailure)
+        )
+        .handle("getDiscountDashboard", () =>
+          discounts
+            .loadDashboard()
+            .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
+        )
+        .handle("getDiscountCode", ({ params }) =>
+          discounts
+            .loadCodeDetail({ codeId: params.codeId as DiscountCodeId })
             .pipe(
+              Effect.map(toCliDiscountCodeDetail),
+              Effect.catchTag(
+                "DiscountAdminNotFoundError",
+                () =>
+                  new CliResourceNotFound({
+                    message: "The discount code was not found.",
+                  })
+              ),
               Effect.mapError((cause) =>
-                cause instanceof CliSessionUnauthorized
+                cause instanceof CliResourceNotFound
                   ? cause
                   : makeServiceUnavailable()
               )
             )
+        )
+        .handle("listSessions", () =>
+          authentication.listSessions().pipe(mapServiceFailure)
         );
     })
+);
+
+const CliBearerAuthenticationLive = Layer.effect(
+  CliBearerAuthentication,
+  Effect.gen(function* () {
+    const authentication = yield* CliAuthentication;
+    return {
+      bearer: (httpEffect, { credential }) =>
+        authentication
+          .authenticateSession(`Bearer ${Redacted.value(credential)}`)
+          .pipe(
+            Effect.mapError((cause) =>
+              cause instanceof CliSessionUnauthorized
+                ? cause
+                : makeServiceUnavailable()
+            ),
+            Effect.flatMap((session) =>
+              Effect.provideService(httpEffect, CurrentCliSession, session)
+            )
+          ),
+    } satisfies CliBearerAuthentication["Service"];
+  })
 );
 
 const makeServiceUnavailable = () =>
@@ -74,6 +257,44 @@ const makeServiceUnavailable = () =>
 
 const mapServiceFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(makeServiceUnavailable));
+
+const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
+  ...profile,
+  codes: profile.codes.map(toCliDiscountCode),
+  claims: profile.claims.map(toCliDiscountCodeClaim),
+});
+
+const toCliDiscountCode = <Code extends AdminDiscountCode>(code: Code) => ({
+  ...code,
+  validFrom: code.validFrom?.toString() ?? null,
+  validUntil: code.validUntil?.toString() ?? null,
+  createdAt: code.createdAt.toString(),
+  updatedAt: code.updatedAt.toString(),
+});
+
+const toCliDiscountCodeClaim = (claim: AdminDiscountCodeClaim) => ({
+  ...claim,
+  reservationExpiresAt: claim.reservationExpiresAt.toString(),
+  reservedAt: claim.reservedAt.toString(),
+  redeemedAt: claim.redeemedAt?.toString() ?? null,
+  releasedAt: claim.releasedAt?.toString() ?? null,
+});
+
+const toCliDiscountDashboard = (dashboard: DiscountAdminDashboard) => ({
+  ...dashboard,
+  discounts: dashboard.discounts.map((discount) => ({
+    ...discount,
+    createdAt: discount.createdAt.toString(),
+    updatedAt: discount.updatedAt.toString(),
+  })),
+  codes: dashboard.codes.map(toCliDiscountCode),
+});
+
+const toCliDiscountCodeDetail = (detail: AdminDiscountCodeDetail) => ({
+  ...detail,
+  code: toCliDiscountCode(detail.code),
+  claims: detail.claims.map(toCliDiscountCodeClaim),
+});
 
 const noStore = HttpRouter.middleware(
   (effect) =>
@@ -90,6 +311,10 @@ const noStore = HttpRouter.middleware(
 const WorkspaceAdminApiLive = Layer.merge(
   HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
     Layer.provide(AdminCliApiHandlers),
+    Layer.provide(AdminCliReadApiHandlers),
+    Layer.provide(CliBearerAuthenticationLive),
+    Layer.provide(AdministrationLive),
+    Layer.provide(DiscountAdministrationLive),
     Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)
   ),
