@@ -325,6 +325,19 @@
   "reservationMeetingRoomMessagePlaceholder": "Company name, room setup, invoice note, or anything we should know.",
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
   "reservationOfficeProductTitle": "Private office",
+  "reservationOfficeBasePriceLabel": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Private office - {dayCount} day",
+        "dayCountPlural=other": "Private office - {dayCount} days"
+      }
+    }
+  ],
   "reservationOfficeMetadataTitle": "Private office reservation | Deskohub Workspace",
   "reservationOfficeMetadataDescription": "Reserve a private office at Deskohub Workspace for one or more whole days and choose the seats you need.",
   "reservationOfficeFormTitle": "Reserve a private office.",

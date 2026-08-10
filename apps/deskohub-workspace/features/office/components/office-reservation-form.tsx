@@ -34,6 +34,7 @@ import { useAdvertisedPrices } from "@/features/reservation/components/use-adver
 import { useReservationAvailability } from "@/features/reservation/components/use-reservation-availability";
 import { getOfficeSeatAdvertisedPriceRequests } from "@/features/reservation/office-advertised-price";
 import {
+  getOfficeReservationDayCount,
   getOfficeReservationDefaultValues,
   getOfficeReservationIntervalInput,
   getOfficeReservationOrder,
@@ -177,6 +178,12 @@ export function OfficeReservationForm({
         availabilityResult.availability?.unavailableDates.length)
   );
   const minimumDate = getCurrentWorkspaceDate().toString();
+  const basePriceLabel = selection
+    ? m.reservationOfficeBasePriceLabel(
+        { dayCount: getOfficeReservationDayCount(selection) },
+        { locale }
+      )
+    : getWorkspaceOfficeProductTitle(locale);
 
   return (
     <ReservationCheckoutForm
@@ -272,9 +279,7 @@ export function OfficeReservationForm({
         data-office-base-price
       >
         <div className="flex flex-wrap items-baseline justify-between gap-3">
-          <span className="font-semibold text-navy-blue">
-            {getWorkspaceOfficeProductTitle(locale)}
-          </span>
+          <span className="font-semibold text-navy-blue">{basePriceLabel}</span>
           {advertisedOfficeQuoteItem ? (
             <ReservationAdvertisedPrice
               amount={advertisedOfficeQuoteItem.accessAmount}

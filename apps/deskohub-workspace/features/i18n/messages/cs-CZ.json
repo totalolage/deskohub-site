@@ -326,6 +326,20 @@
   "reservationMeetingRoomMessagePlaceholder": "Název firmy, nastavení místnosti, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationMeetingRoomUnavailable": "Zasedací místnost není v tomto termínu dostupná. Zkus jiný začátek nebo délku rezervace.",
   "reservationOfficeProductTitle": "Soukromá kancelář",
+  "reservationOfficeBasePriceLabel": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Soukromá kancelář - {dayCount} den",
+        "dayCountPlural=few": "Soukromá kancelář - {dayCount} dny",
+        "dayCountPlural=other": "Soukromá kancelář - {dayCount} dní"
+      }
+    }
+  ],
   "reservationOfficeMetadataTitle": "Rezervace soukromé kanceláře | Deskohub Workspace",
   "reservationOfficeMetadataDescription": "Rezervuj si soukromou kancelář v Deskohub Workspace na jeden nebo více celých dnů a vyber potřebný počet míst.",
   "reservationOfficeFormTitle": "Rezervuj si soukromou kancelář.",

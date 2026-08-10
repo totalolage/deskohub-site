@@ -126,6 +126,7 @@ describe("OfficeReservationForm", () => {
 
     expect(basePrice).not.toBeNull();
     if (!basePrice) throw new Error("Expected the office base price");
+    expect(basePrice.textContent).toContain("Private office - 3 days");
     expect(basePrice.textContent?.replaceAll("\u00a0", " ")).toContain(
       "CZK 1,590"
     );
@@ -140,12 +141,17 @@ describe("OfficeReservationForm", () => {
   });
 
   test("does not render office prices before an advertised quote is available", () => {
+    const date = decodePlainDate("2099-06-10");
     const queryClient = new QueryClient();
     const view = render(
       <QueryClientProvider client={queryClient}>
         <OfficeReservationForm
           seatCapacity={3}
-          initialValues={officeReservationDefaultValues}
+          initialValues={{
+            ...officeReservationDefaultValues,
+            startsOn: date,
+            endsOn: date,
+          }}
           locale="en-US"
         />
       </QueryClientProvider>
@@ -154,7 +160,7 @@ describe("OfficeReservationForm", () => {
     expect(view.queryByText(/CZK/)).toBeNull();
     expect(
       view.container.querySelector("[data-office-base-price]")?.textContent
-    ).toBe("Private office");
+    ).toBe("Private office - 1 day");
   });
 
   test("offers total-seat cards up to the office table capacity", () => {
