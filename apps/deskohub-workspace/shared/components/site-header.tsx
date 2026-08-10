@@ -6,13 +6,14 @@ import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
+import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
-  links: Array<{ label: string; href: string }>;
+  links: SiteHeaderMenuItem[];
   contactLabel: string;
   contactHref: string;
 };
@@ -45,7 +46,7 @@ export function SiteHeader({
         <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
           {links.map((link) => (
             <Link
-              key={link.href}
+              key={link.id}
               href={link.href}
               className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
             >
@@ -107,7 +108,7 @@ export function SiteHeader({
           <nav aria-label="Mobile primary" className="grid gap-2">
             {links.map((link) => (
               <Link
-                key={link.href}
+                key={link.id}
                 href={link.href}
                 onClick={closeMenu}
                 className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"

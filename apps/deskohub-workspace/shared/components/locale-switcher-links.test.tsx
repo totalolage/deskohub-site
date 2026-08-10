@@ -111,6 +111,38 @@ test("uses document navigation for every alternate-locale full-header link", asy
   }
 });
 
+test("renders only the configured full-header items without reserved slots", async () => {
+  const { SiteHeader } = await import("./site-header");
+  const galleryHref = "/en-US/gallery";
+  const view = render(
+    <SiteHeader
+      contactHref="/en-US/reservation/cowork"
+      contactLabel="Book"
+      currentLocale="en-US"
+      languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
+      links={[
+        {
+          id: "gallery",
+          href: galleryHref,
+          label: "Gallery",
+        },
+      ]}
+    />
+  );
+
+  const desktopNavigation = view.container.querySelector(
+    'nav[aria-label="Primary"]'
+  );
+  expect(desktopNavigation?.getAttribute("class")).toContain("gap-6");
+  expect(desktopNavigation?.getAttribute("class")).toContain("xl:flex");
+  expect(desktopNavigation?.getAttribute("class")).not.toContain("grid");
+  expect(
+    desktopNavigation
+      ?.querySelector(`a[href="${galleryHref}"]`)
+      ?.getAttribute("class")
+  ).not.toContain("col-start");
+});
+
 test("uses document navigation for the alternate-locale minimal-header link", async () => {
   const { MinimalSiteHeader } = await import("./minimal-site-header");
 

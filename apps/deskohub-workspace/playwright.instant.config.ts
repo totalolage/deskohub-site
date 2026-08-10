@@ -29,6 +29,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     trace: "off",
     video: "off",
+    viewport: { height: 900, width: 1440 },
   },
   webServer: remoteBaseUrl
     ? undefined
