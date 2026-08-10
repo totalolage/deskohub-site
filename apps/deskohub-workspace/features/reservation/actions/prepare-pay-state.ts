@@ -649,8 +649,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           Effect.logError("Customer marketing consent recording failed", {
             cause,
           })
-        ),
-        Effect.ignore
+        )
       );
     }
 

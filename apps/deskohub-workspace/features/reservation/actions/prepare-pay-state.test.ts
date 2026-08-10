@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
@@ -261,6 +262,7 @@ const runReusableReservationScenario = async (input: {
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
   readonly quoteForCustomer?: ReturnType<typeof mock>;
   readonly ensureAvailable?: ReturnType<typeof mock>;
+  readonly grantMarketingConsent?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -287,7 +289,8 @@ const runReusableReservationScenario = async (input: {
 
   const enqueueCleanup = mock(() => Effect.void);
   const updateReservationDetails = mock(() => Effect.void);
-  const grantMarketingConsent = mock(() => Effect.void);
+  const grantMarketingConsent =
+    input.grantMarketingConsent ?? mock(() => Effect.void);
   const ensureAvailable = input.ensureAvailable ?? mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
@@ -969,6 +972,25 @@ describe("prepareWorkspacePayState", () => {
       documentHash: "marketing-hash",
       locale: "en-US",
       grantedAt: expect.any(Temporal.Instant),
+    });
+  });
+
+  test("fails checkout when an explicit marketing opt-in cannot be stored", async () => {
+    const persistenceFailure = new EffectDrizzleQueryError({
+      query: "customer marketing consent grant",
+      params: [],
+      cause: new Error("database unavailable"),
+    });
+
+    await expect(
+      runReusableReservationScenario({
+        findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
+        marketingConsent: true,
+        grantMarketingConsent: mock(() => Effect.fail(persistenceFailure)),
+      })
+    ).rejects.toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: persistenceFailure,
     });
   });
 
