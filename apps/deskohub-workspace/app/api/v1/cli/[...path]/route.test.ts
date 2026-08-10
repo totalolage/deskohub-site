@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { GET } from "./route";
+import { DELETE, GET, PATCH, POST } from "./route";
 
 describe("Workspace Admin API route", () => {
   test("adapts the Effect API and disables caching", async () => {
@@ -13,5 +13,8 @@ describe("Workspace Admin API route", () => {
       apiVersion: "v1",
       service: "deskohub-workspace",
     });
+    expect(DELETE).toBe(POST);
+    expect(PATCH).toBe(POST);
+    expect(POST).not.toBe(GET);
   });
 });

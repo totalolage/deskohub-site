@@ -1,18 +1,43 @@
 import {
   type AdministrationBookingQueryType,
+  AdministrationCanonicalDiscountCode,
   type AdministrationCustomerQueryType,
   type AdministrationDiscountAdjustmentType,
+  AdministrationDiscountCodeId,
+  type AdministrationDiscountDefinitionInputType,
+  AdministrationDiscountMutation,
+  type AdministrationDiscountMutationResultType,
+  type AdministrationDiscountMutationType,
+  AdministrationDotyposCustomerId,
+  AdministrationInstant,
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationQueryType,
   type AdministrationReservationSummaryType,
+  AdministrationStoredDiscountId,
+  type AdministrationWorkspaceProductType,
   type CliAccessTokenType,
+  CliClientName,
+  type CliMutationRequestIdType,
+  CliSessionId,
+  type CliSessionType,
   CliSessionUnauthorized,
   makeCliAuthenticationChallenge,
   makeCliAuthenticationVerifier,
 } from "@deskohub/workspace-admin-api";
-import { Console, Data, Effect, Option, type Redacted } from "effect";
+import {
+  BigDecimal,
+  Console,
+  Crypto,
+  Data,
+  Effect,
+  Match,
+  Option,
+  type Redacted,
+  Schema,
+  SchemaGetter,
+} from "effect";
 import { Argument, Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
 import { AuthenticationService } from "./authentication/authentication.service";
@@ -33,6 +58,10 @@ const rootCommand = Command.make("dhw").pipe(
     ),
   }),
   Command.withDescription("Deskohub Workspace administration")
+);
+
+const confirmationFlag = Flag.boolean("yes").pipe(
+  Flag.withDescription("Apply the change without prompting for confirmation")
 );
 
 const versionCommand = Command.make("version", {}, () =>
@@ -572,6 +601,47 @@ const customersReservationsCommand = Command.make(
     )
 ).pipe(Command.withDescription("List a customer's reservations"));
 
+const customersSetDiscountGroupCommand = Command.make(
+  "set-discount-group",
+  {
+    customerId: Argument.string("customer-id").pipe(
+      Argument.withSchema(AdministrationDotyposCustomerId)
+    ),
+    discountGroupId: Argument.string("discount-group-id"),
+    yes: confirmationFlag,
+  },
+  ({ customerId, discountGroupId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Set Dotypos discount group ${discountGroupId} for ${customerId}?`,
+      mutation: {
+        kind: "set-customer-discount-group",
+        customerId,
+        discountGroupId,
+      },
+      yes,
+    })
+).pipe(Command.withDescription("Set a customer's Dotypos discount group"));
+
+const customersClearDiscountGroupCommand = Command.make(
+  "clear-discount-group",
+  {
+    customerId: Argument.string("customer-id").pipe(
+      Argument.withSchema(AdministrationDotyposCustomerId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ customerId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Clear the Dotypos discount group for ${customerId}?`,
+      mutation: {
+        kind: "set-customer-discount-group",
+        customerId,
+        discountGroupId: null,
+      },
+      yes,
+    })
+).pipe(Command.withDescription("Clear a customer's Dotypos discount group"));
+
 const customersCommand = Command.make("customers").pipe(
   Command.withDescription("Inspect Workspace customers"),
   Command.withSubcommands([
@@ -579,8 +649,208 @@ const customersCommand = Command.make("customers").pipe(
     customersSearchCommand,
     customersGetCommand,
     customersReservationsCommand,
+    customersSetDiscountGroupCommand,
+    customersClearDiscountGroupCommand,
   ])
 );
+
+const discountDefinitionFlags = {
+  labelCs: Flag.string("label-cs").pipe(
+    Flag.withSchema(Schema.Trim.check(Schema.isNonEmpty())),
+    Flag.withDescription("Czech customer-facing label")
+  ),
+  labelEn: Flag.string("label-en").pipe(
+    Flag.withSchema(Schema.Trim.check(Schema.isNonEmpty())),
+    Flag.withDescription("English customer-facing label")
+  ),
+  products: Flag.choiceWithValue("product", [
+    ["cowork:basic", { kind: "cowork", tier: "basic" }],
+    ["cowork:plus", { kind: "cowork", tier: "plus" }],
+    ["cowork:profi", { kind: "cowork", tier: "profi" }],
+    [
+      "meeting-room:hour:1",
+      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
+    ],
+    [
+      "meeting-room:hour:4",
+      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
+    ],
+    [
+      "meeting-room:day:1",
+      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
+    ],
+  ] as const).pipe(
+    Flag.atLeast(1),
+    Flag.withDescription("Eligible product; repeat for multiple products")
+  ),
+};
+
+const percentageBasisPointsFromString = Schema.String.check(
+  Schema.isPattern(/^\d+(?:\.\d+)?$/)
+).pipe(
+  Schema.decodeTo(
+    Schema.BigDecimalFromString.check(
+      Schema.isBetweenBigDecimal({
+        minimum: BigDecimal.fromBigInt(BigInt(0)),
+        maximum: BigDecimal.fromBigInt(BigInt(100)),
+        exclusiveMinimum: true,
+      }),
+      Schema.makeFilter(
+        (percentage) =>
+          BigDecimal.isInteger(
+            BigDecimal.multiply(percentage, BigDecimal.fromBigInt(BigInt(100)))
+          ),
+        { message: "must convert exactly to whole basis points" }
+      )
+    )
+  ),
+  Schema.decodeTo(
+    Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 10_000 })),
+    {
+      decode: SchemaGetter.transform((percentage) =>
+        Number(
+          BigDecimal.scale(
+            BigDecimal.multiply(percentage, BigDecimal.fromBigInt(BigInt(100))),
+            0
+          ).value
+        )
+      ),
+      encode: SchemaGetter.transform((basisPoints) =>
+        BigDecimal.make(BigInt(basisPoints), 2)
+      ),
+    }
+  )
+);
+
+const percentageFlag = Flag.string("percentage").pipe(
+  Flag.withSchema(percentageBasisPointsFromString),
+  Flag.withDescription("Percentage from 0.01 through 100")
+);
+
+const fixedValueFlag = Flag.integer("fixed-value").pipe(
+  Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+  Flag.withDescription("Fixed discount in minor currency units")
+);
+
+const fixedCurrencyFlag = Flag.choice("currency", ["CZK", "EUR"]).pipe(
+  Flag.withDescription("Currency for a fixed discount")
+);
+
+const discountIdArgument = Argument.string("discount-id").pipe(
+  Argument.withSchema(AdministrationStoredDiscountId)
+);
+
+const discountsCreatePercentageCommand = Command.make(
+  "percentage",
+  { ...discountDefinitionFlags, percentage: percentageFlag },
+  ({ labelCs, labelEn, percentage, products }) =>
+    runDiscountMutation({
+      kind: "create-discount",
+      discount: makeDiscountDefinition({
+        adjustment: { kind: "percentage", basisPoints: percentage },
+        labelCs,
+        labelEn,
+        products,
+      }),
+    })
+).pipe(Command.withDescription("Create a percentage discount definition"));
+
+const discountsCreateFixedCommand = Command.make(
+  "fixed",
+  {
+    ...discountDefinitionFlags,
+    currency: fixedCurrencyFlag,
+    fixedValue: fixedValueFlag,
+  },
+  ({ currency, fixedValue, labelCs, labelEn, products }) =>
+    runDiscountMutation({
+      kind: "create-discount",
+      discount: makeDiscountDefinition({
+        adjustment: {
+          kind: "fixed",
+          amount: { value: fixedValue, exponent: 2, currency },
+        },
+        labelCs,
+        labelEn,
+        products,
+      }),
+    })
+).pipe(Command.withDescription("Create a fixed-amount discount definition"));
+
+const discountsCreateCommand = Command.make("create").pipe(
+  Command.withDescription("Create a managed discount definition"),
+  Command.withSubcommands([
+    discountsCreatePercentageCommand,
+    discountsCreateFixedCommand,
+  ])
+);
+
+const discountsUpdatePercentageCommand = Command.make(
+  "percentage",
+  {
+    discountId: discountIdArgument,
+    ...discountDefinitionFlags,
+    percentage: percentageFlag,
+  },
+  ({ discountId, labelCs, labelEn, percentage, products }) =>
+    runDiscountMutation({
+      kind: "update-discount",
+      discount: {
+        id: discountId,
+        ...makeDiscountDefinition({
+          adjustment: { kind: "percentage", basisPoints: percentage },
+          labelCs,
+          labelEn,
+          products,
+        }),
+      },
+    })
+).pipe(Command.withDescription("Replace a discount with percentage values"));
+
+const discountsUpdateFixedCommand = Command.make(
+  "fixed",
+  {
+    discountId: discountIdArgument,
+    ...discountDefinitionFlags,
+    currency: fixedCurrencyFlag,
+    fixedValue: fixedValueFlag,
+  },
+  ({ currency, discountId, fixedValue, labelCs, labelEn, products }) =>
+    runDiscountMutation({
+      kind: "update-discount",
+      discount: {
+        id: discountId,
+        ...makeDiscountDefinition({
+          adjustment: {
+            kind: "fixed",
+            amount: { value: fixedValue, exponent: 2, currency },
+          },
+          labelCs,
+          labelEn,
+          products,
+        }),
+      },
+    })
+).pipe(Command.withDescription("Replace a discount with fixed-amount values"));
+
+const discountsUpdateCommand = Command.make("update").pipe(
+  Command.withDescription("Replace a managed discount definition"),
+  Command.withSubcommands([
+    discountsUpdatePercentageCommand,
+    discountsUpdateFixedCommand,
+  ])
+);
+
+const discountsDeleteCommand = Command.make(
+  "delete",
+  { discountId: discountIdArgument, yes: confirmationFlag },
+  ({ discountId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Delete discount ${discountId}? Referenced discounts cannot be deleted. This cannot be undone.`,
+      mutation: { kind: "delete-discount", id: discountId },
+      yes,
+    })
+).pipe(Command.withDescription("Delete an unreferenced discount definition"));
 
 const discountsListCommand = Command.make("list", {}, () =>
   runAuthenticatedCommand((api, accessToken, json) =>
@@ -607,9 +877,218 @@ const discountsListCommand = Command.make("list", {}, () =>
 ).pipe(Command.withDescription("List managed discounts"));
 
 const discountsCommand = Command.make("discounts").pipe(
-  Command.withDescription("Inspect managed discounts"),
-  Command.withSubcommands([discountsListCommand])
+  Command.withDescription("Inspect and manage discounts"),
+  Command.withSubcommands([
+    discountsListCommand,
+    discountsCreateCommand,
+    discountsUpdateCommand,
+    discountsDeleteCommand,
+  ])
 );
+
+const discountCodeArgument = Argument.string("code").pipe(
+  Argument.map((code) => code.trim().toUpperCase()),
+  Argument.withSchema(AdministrationCanonicalDiscountCode)
+);
+
+const discountCodeIdArgument = Argument.string("code-id").pipe(
+  Argument.withSchema(AdministrationDiscountCodeId)
+);
+
+const customerIdFlag = Flag.string("customer").pipe(
+  Flag.withSchema(AdministrationDotyposCustomerId),
+  Flag.optional,
+  Flag.withDescription("Restrict the new code to this Dotypos customer")
+);
+
+const discountCodeCreateFlags = {
+  customer: customerIdFlag,
+  disabled: Flag.boolean("disabled").pipe(
+    Flag.withDescription("Create the code disabled")
+  ),
+  maxUses: Flag.integer("max-uses").pipe(
+    Flag.withSchema(Schema.Int.check(Schema.isGreaterThan(0))),
+    Flag.optional,
+    Flag.withDescription("Maximum successful redemptions")
+  ),
+  validFrom: Flag.string("valid-from").pipe(
+    Flag.withSchema(AdministrationInstant),
+    Flag.optional,
+    Flag.withDescription("Inclusive ISO instant")
+  ),
+  validUntil: Flag.string("valid-until").pipe(
+    Flag.withSchema(AdministrationInstant),
+    Flag.optional,
+    Flag.withDescription("Exclusive ISO instant")
+  ),
+};
+
+const codesCreateExistingCommand = Command.make(
+  "existing",
+  {
+    code: discountCodeArgument,
+    discountId: discountIdArgument,
+    ...discountCodeCreateFlags,
+  },
+  (input) =>
+    runDiscountMutation(
+      makeCreateCodeMutation(input, {
+        kind: "existing",
+        discountId: input.discountId,
+      })
+    )
+).pipe(Command.withDescription("Create a code for an existing discount"));
+
+const codesCreatePercentageCommand = Command.make(
+  "percentage",
+  {
+    code: discountCodeArgument,
+    ...discountCodeCreateFlags,
+    ...discountDefinitionFlags,
+    percentage: percentageFlag,
+  },
+  (input) =>
+    runDiscountMutation(
+      makeCreateCodeMutation(input, {
+        kind: "new",
+        discount: makeDiscountDefinition({
+          adjustment: {
+            kind: "percentage",
+            basisPoints: input.percentage,
+          },
+          labelCs: input.labelCs,
+          labelEn: input.labelEn,
+          products: input.products,
+        }),
+      })
+    )
+).pipe(
+  Command.withDescription("Create a code and percentage discount atomically")
+);
+
+const codesCreateFixedCommand = Command.make(
+  "fixed",
+  {
+    code: discountCodeArgument,
+    ...discountCodeCreateFlags,
+    ...discountDefinitionFlags,
+    currency: fixedCurrencyFlag,
+    fixedValue: fixedValueFlag,
+  },
+  (input) =>
+    runDiscountMutation(
+      makeCreateCodeMutation(input, {
+        kind: "new",
+        discount: makeDiscountDefinition({
+          adjustment: {
+            kind: "fixed",
+            amount: {
+              value: input.fixedValue,
+              exponent: 2,
+              currency: input.currency,
+            },
+          },
+          labelCs: input.labelCs,
+          labelEn: input.labelEn,
+          products: input.products,
+        }),
+      })
+    )
+).pipe(Command.withDescription("Create a code and fixed discount atomically"));
+
+const codesCreateCommand = Command.make("create").pipe(
+  Command.withDescription("Create a managed discount code"),
+  Command.withSubcommands([
+    codesCreateExistingCommand,
+    codesCreatePercentageCommand,
+    codesCreateFixedCommand,
+  ])
+);
+
+const codesUpdateCommand = Command.make(
+  "update",
+  {
+    codeId: discountCodeIdArgument,
+    code: discountCodeArgument,
+    discountId: discountIdArgument,
+    enabled: Flag.choiceWithValue("enabled", [
+      ["true", true],
+      ["false", false],
+    ] as const),
+    maxUses: discountCodeCreateFlags.maxUses,
+    validFrom: discountCodeCreateFlags.validFrom,
+    validUntil: discountCodeCreateFlags.validUntil,
+  },
+  ({ code, codeId, discountId, enabled, maxUses, validFrom, validUntil }) =>
+    runDiscountMutation({
+      kind: "update-code",
+      code: {
+        id: codeId,
+        discountId,
+        code,
+        enabled,
+        maxUses: Option.getOrNull(maxUses),
+        validFrom: Option.getOrNull(validFrom),
+        validUntil: Option.getOrNull(validUntil),
+      },
+    })
+).pipe(Command.withDescription("Replace a managed discount code"));
+
+const codesDeleteCommand = Command.make(
+  "delete",
+  { codeId: discountCodeIdArgument, yes: confirmationFlag },
+  ({ codeId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Delete discount code ${codeId}? Redeemed codes cannot be deleted. This cannot be undone.`,
+      mutation: { kind: "delete-code", id: codeId },
+      yes,
+    })
+).pipe(Command.withDescription("Delete an unused discount code"));
+
+const codesAddCustomerCommand = Command.make(
+  "add-customer",
+  {
+    codeId: discountCodeIdArgument,
+    customerId: Argument.string("customer-id").pipe(
+      Argument.withSchema(AdministrationDotyposCustomerId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ codeId, customerId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Add customer ${customerId} to the audience for code ${codeId}?`,
+      mutation: { kind: "add-code-customer", codeId, customerId },
+      yes,
+    })
+).pipe(Command.withDescription("Add a customer to a code audience"));
+
+const codesRemoveCustomerCommand = Command.make(
+  "remove-customer",
+  {
+    codeId: discountCodeIdArgument,
+    customerId: Argument.string("customer-id").pipe(
+      Argument.withSchema(AdministrationDotyposCustomerId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ codeId, customerId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Remove customer ${customerId} from code ${codeId}?`,
+      mutation: { kind: "remove-code-customer", codeId, customerId },
+      yes,
+    })
+).pipe(Command.withDescription("Remove a customer from a code audience"));
+
+const codesMakeUnrestrictedCommand = Command.make(
+  "make-unrestricted",
+  { codeId: discountCodeIdArgument, yes: confirmationFlag },
+  ({ codeId, yes }) =>
+    runConfirmedDiscountMutation({
+      confirmation: `Make code ${codeId} available to every customer?`,
+      mutation: { kind: "make-code-unrestricted", codeId },
+      yes,
+    })
+).pipe(Command.withDescription("Remove all customer restrictions from a code"));
 
 const codesListCommand = Command.make("list", {}, () =>
   runAuthenticatedCommand((api, accessToken, json) =>
@@ -669,8 +1148,17 @@ const codesGetCommand = Command.make(
 ).pipe(Command.withDescription("Show a discount code and its claims"));
 
 const codesCommand = Command.make("codes").pipe(
-  Command.withDescription("Inspect managed discount codes"),
-  Command.withSubcommands([codesListCommand, codesGetCommand])
+  Command.withDescription("Inspect and manage discount codes"),
+  Command.withSubcommands([
+    codesListCommand,
+    codesGetCommand,
+    codesCreateCommand,
+    codesUpdateCommand,
+    codesDeleteCommand,
+    codesAddCustomerCommand,
+    codesRemoveCustomerCommand,
+    codesMakeUnrestrictedCommand,
+  ])
 );
 
 const salesListCommand = Command.make("list", {}, () =>
@@ -730,9 +1218,72 @@ const sessionsListCommand = Command.make("list", {}, () =>
   )
 ).pipe(Command.withDescription("List issued CLI sessions"));
 
+const sessionsRenameCommand = Command.make(
+  "rename",
+  {
+    sessionId: Argument.string("session-id").pipe(
+      Argument.withSchema(CliSessionId)
+    ),
+    clientName: Argument.string("label").pipe(
+      Argument.withSchema(CliClientName)
+    ),
+  },
+  ({ clientName, sessionId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const result = yield* api.renameSession(accessToken, sessionId, {
+          clientName,
+        });
+        yield* Console.log(
+          json
+            ? JSON.stringify(result)
+            : `Renamed CLI session ${sessionId} to “${clientName}”.`
+        );
+      })
+    )
+).pipe(Command.withDescription("Rename an issued CLI session"));
+
+const sessionsRevokeCommand = Command.make(
+  "revoke",
+  {
+    sessionId: Argument.string("session-id").pipe(
+      Argument.withSchema(CliSessionId)
+    ),
+    yes: confirmationFlag,
+  },
+  ({ sessionId, yes }) =>
+    runAuthenticatedCommand((api, accessToken, json, currentSession) =>
+      Effect.gen(function* () {
+        const confirmed = yield* confirmChange(
+          yes,
+          json,
+          `Revoke CLI session ${sessionId}? Its access will stop immediately. This cannot be undone.`
+        );
+        if (!confirmed) {
+          yield* reportCancellation(json);
+          return;
+        }
+
+        const result = yield* api.revokeSession(accessToken, sessionId);
+        if (result.changed && sessionId === currentSession.id) {
+          const authentication = yield* AuthenticationService;
+          yield* authentication.clear;
+        }
+        const message = result.changed
+          ? `Revoked CLI session ${sessionId}.`
+          : `CLI session ${sessionId} was already revoked or no longer exists.`;
+        yield* Console.log(json ? JSON.stringify(result) : message);
+      })
+    )
+).pipe(Command.withDescription("Revoke an issued CLI session"));
+
 const sessionsCommand = Command.make("sessions").pipe(
-  Command.withDescription("Inspect CLI sessions"),
-  Command.withSubcommands([sessionsListCommand])
+  Command.withDescription("Inspect and manage CLI sessions"),
+  Command.withSubcommands([
+    sessionsListCommand,
+    sessionsRenameCommand,
+    sessionsRevokeCommand,
+  ])
 );
 
 const authCommand = Command.make(
@@ -915,6 +1466,14 @@ class AuthenticationRequiredError extends Data.TaggedError(
   "AuthenticationRequiredError"
 )<{ readonly message: string }> {}
 
+class ConfirmationRequiredError extends Data.TaggedError(
+  "ConfirmationRequiredError"
+)<{ readonly message: string }> {}
+
+class InvalidMutationInputError extends Data.TaggedError(
+  "InvalidMutationInputError"
+)<{ readonly message: string }> {}
+
 const runCommand = <A, E, R>(
   operation: (json: boolean) => Effect.Effect<A, E, R>
 ) =>
@@ -929,7 +1488,8 @@ const runAuthenticatedCommand = <A, E, R>(
   operation: (
     api: WorkspaceAdminApiClient["Service"],
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    json: boolean
+    json: boolean,
+    session: CliSessionType
   ) => Effect.Effect<A, E, R>
 ) =>
   runCommand((json) =>
@@ -942,7 +1502,12 @@ const runAuthenticatedCommand = <A, E, R>(
         });
       }
       const api = yield* WorkspaceAdminApiClient;
-      return yield* operation(api, current.value.accessToken, json).pipe(
+      return yield* operation(
+        api,
+        current.value.accessToken,
+        json,
+        current.value.session
+      ).pipe(
         Effect.tapError((cause) =>
           cause instanceof CliSessionUnauthorized
             ? authentication.clear.pipe(Effect.asVoid)
@@ -951,6 +1516,159 @@ const runAuthenticatedCommand = <A, E, R>(
       );
     })
   );
+
+const makeDiscountDefinition = ({
+  adjustment,
+  labelCs,
+  labelEn,
+  products,
+}: {
+  readonly adjustment: AdministrationDiscountDefinitionInputType["adjustment"];
+  readonly labelCs: string;
+  readonly labelEn: string;
+  readonly products: ReadonlyArray<AdministrationWorkspaceProductType>;
+}): AdministrationDiscountDefinitionInputType => ({
+  adjustment,
+  labels: { "cs-CZ": labelCs, "en-US": labelEn },
+  products: [products[0]!, ...products.slice(1)],
+});
+
+type CreateCodeMutation = Extract<
+  AdministrationDiscountMutationType,
+  { readonly kind: "create-code" }
+>;
+type CreateCustomerCodeMutation = Extract<
+  AdministrationDiscountMutationType,
+  { readonly kind: "create-customer-code" }
+>;
+
+const makeCreateCodeMutation = (
+  input: {
+    readonly code: CreateCodeMutation["code"]["code"];
+    readonly customer: Option.Option<CreateCustomerCodeMutation["customerId"]>;
+    readonly disabled: boolean;
+    readonly maxUses: Option.Option<number>;
+    readonly validFrom: Option.Option<
+      NonNullable<CreateCodeMutation["code"]["validFrom"]>
+    >;
+    readonly validUntil: Option.Option<
+      NonNullable<CreateCodeMutation["code"]["validUntil"]>
+    >;
+  },
+  discount: CreateCodeMutation["discount"]
+): AdministrationDiscountMutationType => {
+  const code: CreateCodeMutation["code"] = {
+    code: input.code,
+    enabled: !input.disabled,
+    maxUses: Option.getOrNull(input.maxUses),
+    validFrom: Option.getOrNull(input.validFrom),
+    validUntil: Option.getOrNull(input.validUntil),
+  };
+  return Option.match(input.customer, {
+    onNone: (): CreateCodeMutation => ({ kind: "create-code", code, discount }),
+    onSome: (customerId): CreateCustomerCodeMutation => ({
+      kind: "create-customer-code",
+      customerId,
+      code,
+      discount,
+    }),
+  });
+};
+
+const runDiscountMutation = (mutation: AdministrationDiscountMutationType) =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    executeAndReportDiscountMutation(api, accessToken, json, mutation)
+  );
+
+const runConfirmedDiscountMutation = ({
+  confirmation,
+  mutation,
+  yes,
+}: {
+  readonly confirmation: string;
+  readonly mutation: AdministrationDiscountMutationType;
+  readonly yes: boolean;
+}) =>
+  runAuthenticatedCommand((api, accessToken, json) =>
+    Effect.gen(function* () {
+      const confirmed = yield* confirmChange(yes, json, confirmation);
+      if (!confirmed) {
+        yield* reportCancellation(json);
+        return;
+      }
+      yield* executeAndReportDiscountMutation(api, accessToken, json, mutation);
+    })
+  );
+
+const executeAndReportDiscountMutation = (
+  api: WorkspaceAdminApiClient["Service"],
+  accessToken: Redacted.Redacted<CliAccessTokenType>,
+  json: boolean,
+  mutation: AdministrationDiscountMutationType
+) =>
+  Effect.gen(function* () {
+    const validatedMutation = yield* Schema.decodeUnknownEffect(
+      AdministrationDiscountMutation
+    )(mutation).pipe(
+      Effect.mapError(
+        () =>
+          new InvalidMutationInputError({
+            message:
+              "The mutation input is invalid. Check date ranges and repeated product options.",
+          })
+      )
+    );
+    const crypto = yield* Crypto.Crypto;
+    const requestId = (yield* crypto.randomUUIDv7) as CliMutationRequestIdType;
+    const result = yield* api.mutateDiscounts(
+      accessToken,
+      requestId,
+      validatedMutation
+    );
+    yield* Console.log(
+      json ? JSON.stringify(result) : formatMutationResult(result)
+    );
+  });
+
+const formatMutationResult = (
+  result: AdministrationDiscountMutationResultType
+) => {
+  const notice = Match.value(result.kind).pipe(
+    Match.when("create-discount", () => "Discount created."),
+    Match.when("update-discount", () => "Discount updated."),
+    Match.when("delete-discount", () => "Discount deleted."),
+    Match.when("create-code", () => "Discount code created."),
+    Match.when("create-customer-code", () => "Customer code created."),
+    Match.when("update-code", () => "Discount code updated."),
+    Match.when("delete-code", () => "Discount code deleted."),
+    Match.when("add-code-customer", () => "Customer added to code audience."),
+    Match.when(
+      "remove-code-customer",
+      () => "Customer removed from code audience."
+    ),
+    Match.when("make-code-unrestricted", () => "Code made unrestricted."),
+    Match.when(
+      "set-customer-discount-group",
+      () => "Customer discount group updated."
+    ),
+    Match.exhaustive
+  );
+  const createdId = result.createdDiscountId ?? result.createdCodeId;
+  return createdId === null ? notice : `${notice} ${createdId}`;
+};
+
+const confirmChange = (yes: boolean, json: boolean, message: string) => {
+  if (yes) return Effect.succeed(true);
+  if (json || process.stdin.isTTY !== true || process.stdout.isTTY !== true) {
+    return new ConfirmationRequiredError({
+      message: "Confirmation is required. Pass --yes to apply this change.",
+    });
+  }
+  return Prompt.confirm({ message, initial: false }).pipe(Prompt.run);
+};
+
+const reportCancellation = (json: boolean) =>
+  Console.log(json ? JSON.stringify({ status: "cancelled" }) : "Cancelled.");
 
 const formatOverviewMetric = (
   label: string,

@@ -1,9 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationCanonicalDiscountCode,
+  AdministrationDiscountCodeId,
+  type AdministrationDiscountMutationType,
+  AdministrationDotyposCustomerId,
+  AdministrationStoredDiscountId,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliBearerAuthentication,
+  CliMutationInProgress,
+  CliMutationRejected,
+  CliMutationRequestId,
   CliResourceNotFound,
+  CliSessionId,
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
@@ -15,14 +24,16 @@ import {
   type AdminDiscount,
   type AdminDiscountCode,
   type AdminDiscountCodeDetail,
+  DiscountAdminConflictError,
   type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
+import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 import {
+  AdminCliAdministrationApiHandlers,
   AdminCliApiHandlers,
-  AdminCliReadApiHandlers,
 } from "./workspace-admin-api.server";
 
 const UnusedCliAuthentication = Layer.succeed(
@@ -31,6 +42,11 @@ const UnusedCliAuthentication = Layer.succeed(
 );
 const AllowCliAuthenticationStarts = Layer.succeed(CliAuthenticationAdmission, {
   isStartAllowed: Effect.succeed(true),
+});
+const ClaimEveryCliMutation = Layer.succeed(CliMutationIdempotency, {
+  claim: () => Effect.succeed({ kind: "claimed" as const }),
+  complete: () => Effect.void,
+  release: () => Effect.void,
 });
 const session = {
   id: "01980000-0000-7000-8000-000000000000",
@@ -457,8 +473,9 @@ describe("Workspace Admin API", () => {
         sessions,
       };
     }).pipe(
-      Effect.provide(AdminCliReadApiHandlers),
+      Effect.provide(AdminCliAdministrationApiHandlers),
       Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ClaimEveryCliMutation),
       Effect.provide(discounts),
       Effect.provide(authentication),
       Effect.provide(administration),
@@ -503,5 +520,250 @@ describe("Workspace Admin API", () => {
         operationType: "CAPTURE",
       }),
     ]);
+  });
+
+  test("invokes the same mutation services used by the Admin UI", async () => {
+    const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const codeId = Schema.decodeUnknownSync(AdministrationDiscountCodeId)(
+      "01980000-0000-7000-8000-000000000002"
+    );
+    const customerId = Schema.decodeUnknownSync(
+      AdministrationDotyposCustomerId
+    )("dotypos-customer");
+    const sessionId = Schema.decodeUnknownSync(CliSessionId)(session.id);
+    const requestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000003"
+    );
+    const code = Schema.decodeUnknownSync(AdministrationCanonicalDiscountCode)(
+      "SUMMER10"
+    );
+    const calls: Array<readonly [string, unknown]> = [];
+    const record = <A>(name: string, input: A) =>
+      Effect.sync(() => {
+        calls.push([name, input]);
+      });
+    const discountDefinition = {
+      labels: { "cs-CZ": "Léto", "en-US": "Summer" },
+      adjustment: { kind: "percentage" as const, basisPoints: 1000 },
+      products: [{ kind: "cowork" as const, tier: "basic" as const }] as const,
+    };
+    const codeConfiguration = {
+      code,
+      enabled: true,
+      validFrom: null,
+      validUntil: null,
+      maxUses: 10,
+    };
+    const mutations = [
+      { kind: "create-discount", discount: discountDefinition },
+      {
+        kind: "update-discount",
+        discount: { id: discountId, ...discountDefinition },
+      },
+      { kind: "delete-discount", id: discountId },
+      {
+        kind: "create-code",
+        code: codeConfiguration,
+        discount: { kind: "existing", discountId },
+      },
+      {
+        kind: "create-customer-code",
+        customerId,
+        code: codeConfiguration,
+        discount: { kind: "existing", discountId },
+      },
+      {
+        kind: "update-code",
+        code: { id: codeId, discountId, ...codeConfiguration },
+      },
+      { kind: "delete-code", id: codeId },
+      { kind: "add-code-customer", codeId, customerId },
+      { kind: "remove-code-customer", codeId, customerId },
+      { kind: "make-code-unrestricted", codeId },
+      {
+        kind: "set-customer-discount-group",
+        customerId,
+        discountGroupId: "group-1",
+      },
+    ] satisfies ReadonlyArray<AdministrationDiscountMutationType>;
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      createDiscount: (input) =>
+        record("createDiscount", input).pipe(Effect.as(discountId)),
+      updateDiscount: (input) => record("updateDiscount", input),
+      deleteDiscount: (input) => record("deleteDiscount", input),
+      createCode: (input) =>
+        record("createCode", input).pipe(Effect.as(codeId)),
+      createCustomerCode: (input) =>
+        record("createCustomerCode", input).pipe(Effect.as(codeId)),
+      updateCode: (input) => record("updateCode", input),
+      deleteCode: (input) => record("deleteCode", input),
+      addCodeCustomer: (input) => record("addCodeCustomer", input),
+      removeCodeCustomer: (input) => record("removeCodeCustomer", input),
+      makeCodeUnrestricted: (input) => record("makeCodeUnrestricted", input),
+      setCustomerDiscountGroup: (input) =>
+        record("setCustomerDiscountGroup", input),
+    });
+    const authentication = Layer.succeed(CliAuthentication, {
+      ...({} as CliAuthentication["Service"]),
+      renameSession: (input) =>
+        record("renameSession", input).pipe(Effect.as(true)),
+      revoke: (sessionId) =>
+        record("revokeSession", sessionId).pipe(Effect.as(true)),
+    });
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const mutationResults = yield* Effect.forEach(
+        mutations,
+        (mutation) =>
+          client.administration.mutateDiscounts({
+            payload: { requestId, mutation },
+          }),
+        { concurrency: 1 }
+      );
+      const renamed = yield* client.administration.renameSession({
+        params: { sessionId },
+        payload: { clientName: "Office Mac" },
+      });
+      const revoked = yield* client.administration.revokeSession({
+        params: { sessionId },
+      });
+      return { mutationResults, renamed, revoked };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(ClaimEveryCliMutation),
+      Effect.provide(discounts),
+      Effect.provide(authentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.mutationResults).toHaveLength(mutations.length);
+    expect(result.mutationResults[0]?.createdDiscountId).toBe(discountId);
+    expect(result.mutationResults[3]?.createdCodeId).toBe(codeId);
+    expect(result.renamed).toEqual({ changed: true });
+    expect(result.revoked).toEqual({ changed: true });
+    expect(calls.map(([name]) => name)).toEqual([
+      "createDiscount",
+      "updateDiscount",
+      "deleteDiscount",
+      "createCode",
+      "createCustomerCode",
+      "updateCode",
+      "deleteCode",
+      "addCodeCustomer",
+      "removeCodeCustomer",
+      "makeCodeUnrestricted",
+      "setCustomerDiscountGroup",
+      "renameSession",
+      "revokeSession",
+    ]);
+  });
+
+  test("replays completed mutations and preserves deterministic conflicts", async () => {
+    const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const replayRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000010"
+    );
+    const conflictRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000011"
+    );
+    const pendingRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000012"
+    );
+    let executions = 0;
+    let releases = 0;
+    const mutation = { kind: "delete-discount" as const, id: discountId };
+    const replayedResult = {
+      kind: mutation.kind,
+      createdDiscountId: null,
+      createdCodeId: null,
+    };
+    const idempotency = Layer.succeed(CliMutationIdempotency, {
+      claim: ({ requestId }) =>
+        Effect.sync(() => {
+          if (requestId === replayRequestId) {
+            return { kind: "completed" as const, result: replayedResult };
+          }
+          if (requestId === pendingRequestId) {
+            return { kind: "in-progress" as const };
+          }
+          return { kind: "claimed" as const };
+        }),
+      complete: () => Effect.void,
+      release: () =>
+        Effect.sync(() => {
+          releases += 1;
+        }),
+    });
+    const discounts = Layer.succeed(DiscountAdministration, {
+      ...({} as DiscountAdministration["Service"]),
+      deleteDiscount: () =>
+        Effect.sync(() => {
+          executions += 1;
+        }).pipe(
+          Effect.andThen(
+            new DiscountAdminConflictError({
+              message: "This discount is still referenced.",
+            })
+          )
+        ),
+    });
+
+    const result = await Effect.gen(function* () {
+      const client = yield* HttpApiTest.groups(WorkspaceAdminApi, [
+        "administration",
+      ]);
+      const replayed = yield* client.administration.mutateDiscounts({
+        payload: { requestId: replayRequestId, mutation },
+      });
+      const conflict = yield* client.administration
+        .mutateDiscounts({
+          payload: { requestId: conflictRequestId, mutation },
+        })
+        .pipe(Effect.flip);
+      const pending = yield* client.administration
+        .mutateDiscounts({
+          payload: { requestId: pendingRequestId, mutation },
+        })
+        .pipe(Effect.flip);
+      return { conflict, pending, replayed };
+    }).pipe(
+      Effect.provide(AdminCliAdministrationApiHandlers),
+      Effect.provide(AuthorizedCliRequest),
+      Effect.provide(idempotency),
+      Effect.provide(discounts),
+      Effect.provide(UnusedCliAuthentication),
+      Effect.provide(
+        Layer.succeed(
+          AdministrationService,
+          {} as AdministrationService["Service"]
+        )
+      ),
+      Effect.provide(NodeHttpServer.layerHttpServices),
+      Effect.scoped,
+      Effect.runPromise
+    );
+
+    expect(result.replayed).toEqual(replayedResult);
+    expect(result.conflict).toBeInstanceOf(CliMutationRejected);
+    expect(result.pending).toBeInstanceOf(CliMutationInProgress);
+    expect(executions).toBe(1);
+    expect(releases).toBe(1);
   });
 });

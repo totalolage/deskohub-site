@@ -2,6 +2,8 @@ import {
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   CliGrantRejected,
+  CliMutationInProgress,
+  CliMutationRejected,
   CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
@@ -9,7 +11,7 @@ import {
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
 import { NodeHttpServer } from "@effect/platform-node";
-import { Effect, Layer, Redacted } from "effect";
+import { Effect, Layer, Match, Redacted } from "effect";
 import { HttpRouter, HttpServerResponse } from "effect/unstable/http";
 import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
@@ -28,11 +30,13 @@ import {
   type DiscountAdminDashboard,
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
+import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
+import { CliMutationIdempotency } from "./cli-mutation-idempotency.service";
 
 export const AdminCliApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
@@ -79,7 +83,7 @@ export const AdminCliApiHandlers = HttpApiBuilder.group(
     })
 );
 
-export const AdminCliReadApiHandlers = HttpApiBuilder.group(
+export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
   WorkspaceAdminApi,
   "administration",
   (handlers) =>
@@ -87,6 +91,7 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
       const administration = yield* AdministrationService;
       const authentication = yield* CliAuthentication;
       const discounts = yield* DiscountAdministration;
+      const mutationIdempotency = yield* CliMutationIdempotency;
       return handlers
         .handle("getOverview", () =>
           administration.loadOverview().pipe(mapServiceFailure)
@@ -224,6 +229,77 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
         )
         .handle("listSessions", () =>
           authentication.listSessions().pipe(mapServiceFailure)
+        )
+        .handle("mutateDiscounts", ({ payload }) =>
+          Effect.gen(function* () {
+            const session = yield* CurrentCliSession;
+            const request = {
+              sessionId: session.id,
+              requestId: payload.requestId,
+              mutation: payload.mutation,
+            };
+            const claim = yield* mutationIdempotency
+              .claim(request)
+              .pipe(mapServiceFailure);
+
+            return yield* Match.value(claim).pipe(
+              Match.discriminatorsExhaustive("kind")({
+                claimed: () =>
+                  executeDiscountAdminMutation(payload.mutation).pipe(
+                    Effect.provideService(DiscountAdministration, discounts),
+                    Effect.mapError(mapDiscountMutationFailure),
+                    Effect.tapError((cause) =>
+                      cause instanceof CliResourceNotFound ||
+                      cause instanceof CliMutationRejected
+                        ? mutationIdempotency
+                            .release(request)
+                            .pipe(Effect.catch(() => Effect.void))
+                        : Effect.void
+                    ),
+                    Effect.tap((result) =>
+                      mutationIdempotency
+                        .complete({ ...request, result })
+                        .pipe(mapServiceFailure)
+                    )
+                  ),
+                completed: ({ result }) => Effect.succeed(result),
+                "in-progress": () =>
+                  new CliMutationInProgress({
+                    requestId: payload.requestId,
+                    message:
+                      "This mutation is still being applied. Retrying with the same request identifier is safe.",
+                  }),
+                mismatch: () =>
+                  new CliMutationRejected({
+                    message:
+                      "This mutation request identifier was already used for different input.",
+                  }),
+              })
+            );
+          })
+        )
+        .handle("renameSession", ({ params, payload }) =>
+          authentication
+            .renameSession({
+              sessionId: params.sessionId,
+              clientName: payload.clientName,
+            })
+            .pipe(
+              mapServiceFailure,
+              Effect.flatMap((changed) =>
+                changed
+                  ? Effect.succeed({ changed })
+                  : new CliResourceNotFound({
+                      message: "The CLI session was not found.",
+                    })
+              )
+            )
+        )
+        .handle("revokeSession", ({ params }) =>
+          authentication.revoke(params.sessionId).pipe(
+            Effect.map((changed) => ({ changed })),
+            mapServiceFailure
+          )
         );
     })
 );
@@ -257,6 +333,25 @@ const makeServiceUnavailable = () =>
 
 const mapServiceFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(makeServiceUnavailable));
+
+const mapDiscountMutationFailure = (
+  cause: Effect.Error<ReturnType<typeof executeDiscountAdminMutation>>
+) =>
+  Match.value(cause).pipe(
+    Match.tag(
+      "DiscountAdminNotFoundError",
+      ({ message }) => new CliResourceNotFound({ message })
+    ),
+    Match.tag(
+      "DiscountAdminAudienceError",
+      ({ message }) => new CliMutationRejected({ message })
+    ),
+    Match.tag(
+      "DiscountAdminConflictError",
+      ({ message }) => new CliMutationRejected({ message })
+    ),
+    Match.orElse(makeServiceUnavailable)
+  );
 
 const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
   ...profile,
@@ -311,10 +406,11 @@ const noStore = HttpRouter.middleware(
 const WorkspaceAdminApiLive = Layer.merge(
   HttpApiBuilder.layer(WorkspaceAdminApi).pipe(
     Layer.provide(AdminCliApiHandlers),
-    Layer.provide(AdminCliReadApiHandlers),
+    Layer.provide(AdminCliAdministrationApiHandlers),
     Layer.provide(CliBearerAuthenticationLive),
     Layer.provide(AdministrationLive),
     Layer.provide(DiscountAdministrationLive),
+    Layer.provide(CliMutationIdempotency.LiveWithDependencies),
     Layer.provide(CliAuthenticationAdmission.Live),
     Layer.provide(CliAuthentication.LiveWithDependencies)
   ),

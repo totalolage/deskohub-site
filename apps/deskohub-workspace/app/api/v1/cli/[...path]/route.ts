@@ -9,10 +9,14 @@ export const GET = defineWorkspaceHttpApiRoute(
   (request) => handleWorkspaceAdminApiRequest(request)
 );
 
-export const POST = defineWorkspaceHttpApiRoute(
+const workspaceAdminApiMutationRoute = defineWorkspaceHttpApiRoute(
   {
     operation: "workspaceAdminApi",
-    cancellation: "interrupt-on-disconnect",
+    cancellation: "continue-after-disconnect",
   },
   (request) => handleWorkspaceAdminApiRequest(request)
 );
+
+export const DELETE = workspaceAdminApiMutationRoute;
+export const PATCH = workspaceAdminApiMutationRoute;
+export const POST = workspaceAdminApiMutationRoute;
