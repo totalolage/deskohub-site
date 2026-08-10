@@ -45,6 +45,18 @@ const parseStatus = (
     ? value
     : undefined;
 
+const parseReservationSort = (
+  value: string | undefined
+): NonNullable<AdministrationReservationListInput["sort"]> =>
+  value === "date" || value === "reservation" || value === "status"
+    ? value
+    : "created";
+
+const parseSortDirection = (
+  value: string | undefined
+): NonNullable<AdministrationReservationListInput["direction"]> =>
+  value === "asc" ? "asc" : "desc";
+
 const runAdministration =
   (operation: string) =>
   <A, E>(effect: Effect.Effect<A, E, AdministrationService>) =>
@@ -81,7 +93,9 @@ export const loadAdministrationReservations = async (
   const input: AdministrationReservationListInput = {
     customerId: firstParam(params.customerId),
     date: firstParam(params.date),
+    direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
+    sort: parseReservationSort(firstParam(params.sort)),
     status: parseStatus(firstParam(params.status)),
     type:
       typeValue === "cowork" || typeValue === "meeting-room"
@@ -156,6 +170,16 @@ export const loadAdministrationCustomerReservations = async (
     return yield* administration.loadCustomerReservations({ customerId, page });
   }).pipe(runAdministration("administration.customer-reservations"));
 };
+
+export const loadAdministrationCustomerActivity = cache(
+  async (customerId: string) => {
+    await authorizeAdministrationPage();
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadCustomerActivity(customerId);
+    }).pipe(runAdministration("administration.customer-activity"));
+  }
+);
 
 export const loadAdministrationOrders = async (
   searchParams: AdministrationSearchParams

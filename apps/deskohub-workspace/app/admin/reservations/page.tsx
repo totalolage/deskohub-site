@@ -1,7 +1,7 @@
 import Link from "next/link";
 import {
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableToolbar,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
@@ -21,72 +21,88 @@ export default async function ReservationsAdministrationPage({
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = await loadAdministrationReservations(searchParams);
+  const clearCustomerSearch = new URLSearchParams();
+  for (const [key, value] of Object.entries({
+    date: input.date,
+    direction: input.direction,
+    sort: input.sort,
+    status: input.status,
+    type: input.type,
+  })) {
+    if (value) clearCustomerSearch.set(key, value);
+  }
+  const clearCustomerQuery = clearCustomerSearch.toString();
+  const clearCustomerHref = clearCustomerQuery
+    ? `/admin/reservations?${clearCustomerQuery}`
+    : "/admin/reservations";
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
+      <h1 className="sr-only">Reservations</h1>
+      <AdministrationTableToolbar
         count={result.total}
-        description="Current statuses with booking and customer details."
-        eyebrow="Operations"
-        title="Reservations"
+        itemLabel="reservation"
+        primaryControls={<ReservationLookup variant="toolbar" />}
+        secondaryControls={
+          <form className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[11rem_13rem_12rem_auto_auto] 2xl:items-end 2xl:justify-end">
+            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+              Deskohub status
+              <select
+                className={selectClassName}
+                defaultValue={input.status ?? ""}
+                name="status"
+              >
+                <option value="">All statuses</option>
+                <option value="in_progress">In progress</option>
+                <option value="complete">Complete</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+              Reservation type
+              <select
+                className={selectClassName}
+                defaultValue={input.type ?? ""}
+                name="type"
+              >
+                <option value="">All reservation types</option>
+                <option value="cowork">Coworking</option>
+                <option value="meeting-room">Meeting room</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
+              Start date
+              <input
+                className={selectClassName}
+                defaultValue={input.date ?? ""}
+                name="date"
+                type="date"
+              />
+            </label>
+            {input.customerId && (
+              <input name="customerId" type="hidden" value={input.customerId} />
+            )}
+            <input name="sort" type="hidden" value={input.sort} />
+            <input name="direction" type="hidden" value={input.direction} />
+            <Button className="min-h-10" size="sm" type="submit">
+              Apply filters
+            </Button>
+            {(input.customerId || input.date || input.status || input.type) && (
+              <Button asChild className="min-h-10" size="sm" variant="ghost">
+                <Link href="/admin/reservations">Clear</Link>
+              </Button>
+            )}
+          </form>
+        }
       />
-
-      <div className="mb-5">
-        <ReservationLookup />
-      </div>
 
       {input.customerId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
           <p>Showing reservations for the selected customer.</p>
           <Link
             className="font-semibold hover:underline"
-            href="/admin/reservations"
+            href={clearCustomerHref}
           >
             Clear customer
-          </Link>
-        </div>
-      )}
-
-      <form className="mb-5 grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-4 md:grid-cols-[11rem_13rem_auto] md:justify-start">
-        <select
-          aria-label="Status"
-          className={selectClassName}
-          defaultValue={input.status ?? ""}
-          name="status"
-        >
-          <option value="">All statuses</option>
-          <option value="in_progress">In progress</option>
-          <option value="complete">Complete</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select
-          aria-label="Reservation type"
-          className={selectClassName}
-          defaultValue={input.type ?? ""}
-          name="type"
-        >
-          <option value="">All reservation types</option>
-          <option value="cowork">Coworking</option>
-          <option value="meeting-room">Meeting room</option>
-        </select>
-        {input.customerId && (
-          <input name="customerId" type="hidden" value={input.customerId} />
-        )}
-        {input.date && <input name="date" type="hidden" value={input.date} />}
-        <Button size="sm" type="submit">
-          Apply filters
-        </Button>
-      </form>
-
-      {input.date && (
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
-          <p>
-            Showing reservations from <strong>{input.date}</strong>.
-          </p>
-          <Link
-            className="font-semibold hover:underline"
-            href="/admin/reservations"
-          >
-            Clear date
           </Link>
         </div>
       )}
@@ -96,8 +112,26 @@ export default async function ReservationsAdministrationPage({
           shortly.
         </output>
       )}
-
-      <ReservationTable reservations={result.items} />
+      {result.dateSortUnavailable && (
+        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+          Reservation dates are temporarily unavailable for sorting. Showing
+          newest records instead.
+        </output>
+      )}
+      <ReservationTable
+        reservations={result.items}
+        sorting={{
+          basePath: "/admin/reservations",
+          direction: input.direction ?? "desc",
+          field: input.sort ?? "created",
+          params: {
+            date: input.date,
+            customerId: input.customerId,
+            status: input.status,
+            type: input.type,
+          },
+        }}
+      />
       <Pagination
         basePath="/admin/reservations"
         page={result.page}
@@ -105,6 +139,8 @@ export default async function ReservationsAdministrationPage({
         params={{
           date: input.date,
           customerId: input.customerId,
+          direction: input.direction,
+          sort: input.sort,
           status: input.status,
           type: input.type,
         }}

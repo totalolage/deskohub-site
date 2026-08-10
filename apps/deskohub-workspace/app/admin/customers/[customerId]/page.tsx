@@ -1,11 +1,11 @@
+import Link from "next/link";
 import {
   AdministrationNoticeBanner,
   AdministrationPage,
   AdministrationPageHeader,
-  Pagination,
   ReservationTable,
 } from "@/features/administration/components";
-import { loadAdministrationCustomerReservations } from "@/features/administration/page-data.server";
+import { loadAdministrationCustomerActivity } from "@/features/administration/page-data.server";
 import { CustomerAdministrationDetailPage } from "@/features/discounts/admin/customer-admin-components";
 import {
   type DiscountAdminSearchParams,
@@ -21,16 +21,12 @@ export default async function DiscountCustomerAdminDetailPage({
   readonly searchParams: DiscountAdminSearchParams;
 }) {
   const { customerId } = await params;
-  const reservationsPromise = loadAdministrationCustomerReservations(
-    customerId,
-    searchParams
-  );
-  const [liveData, reservations] = await Promise.all([
+  const [liveData, activity] = await Promise.all([
     loadOptionalDiscountAdminCustomerPageData(
       customerId as DotyposCustomerId,
       searchParams
     ),
-    reservationsPromise,
+    loadAdministrationCustomerActivity(customerId),
   ]);
   const { notice, profile } = liveData;
 
@@ -43,15 +39,20 @@ export default async function DiscountCustomerAdminDetailPage({
           title="Customer details unavailable"
         />
         <AdministrationNoticeBanner notice={notice} />
+        {activity.reservationHistoryTruncated && (
+          <p className="mb-3 text-sm text-navy-blue/65">
+            Showing the 24 most recently updated reservations.{" "}
+            <Link
+              className="font-semibold underline underline-offset-4"
+              href={`/admin/reservations?customerId=${encodeURIComponent(customerId)}`}
+            >
+              View all reservations
+            </Link>
+          </p>
+        )}
         <ReservationTable
           emptyMessage="This customer has no reservations."
-          reservations={reservations.items}
-        />
-        <Pagination
-          basePath={`/admin/customers/${customerId}`}
-          page={reservations.page}
-          pageCount={reservations.pageCount}
-          pageParam="reservationsPage"
+          reservations={activity.reservations}
         />
       </AdministrationPage>
     );
@@ -61,7 +62,7 @@ export default async function DiscountCustomerAdminDetailPage({
     <CustomerAdministrationDetailPage
       notice={notice}
       profile={profile}
-      reservations={reservations}
+      activity={activity}
     />
   );
 }

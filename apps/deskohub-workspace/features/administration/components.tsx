@@ -18,11 +18,37 @@ import type {
   AdministrationReservationSummary,
   AdministrationTimelineItem,
 } from "./administration.service";
-import type { AdministrationReservationStatus } from "./reservation-status";
+import { EmptyState } from "./empty-state";
+import {
+  formatAdministrationDateTime,
+  formatAdministrationMoney,
+  formatAdministrationReservationDate,
+} from "./formatters";
+
+export { EmptyState } from "./empty-state";
+export {
+  formatAdministrationDateTime,
+  formatAdministrationMoney,
+  formatAdministrationPlainDate,
+  formatAdministrationReservationDate,
+} from "./formatters";
+export {
+  ReservationStatusBadge,
+  ReservationTable,
+} from "./reservation-table";
+export { AdministrationTableToolbar } from "./table-toolbar";
 
 export type AdministrationNotice = {
   readonly message: string;
   readonly status: "error" | "success";
+};
+
+export const getBookingTableLabel = (
+  booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
+) => {
+  if (!booking) return "Unavailable";
+  if (booking.tableName) return booking.tableName;
+  return booking.tableId ? "Details unavailable" : "Not assigned";
 };
 
 export function AdministrationPage({
@@ -108,63 +134,6 @@ export function AdministrationNoticeBanner({
   );
 }
 
-export function ReservationStatusBadge({
-  status,
-}: {
-  readonly status: AdministrationReservationStatus;
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        status.group === "attention" &&
-          "border-burned-orange/25 bg-burned-orange/10 text-burned-orange-ink",
-        status.group === "in_progress" &&
-          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
-        status.group === "complete" &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        status.group === "cancelled" &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
-      )}
-    >
-      {status.label}
-    </span>
-  );
-}
-
-const workspaceTimeZone = "Europe/Prague";
-
-const dateTimeFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeStyle: "short",
-  timeZone: workspaceTimeZone,
-});
-
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  dateStyle: "medium",
-  timeZone: workspaceTimeZone,
-});
-
-export const formatAdministrationDateTime = (value: string) =>
-  dateTimeFormatter.format(new Date(value));
-
-export const formatAdministrationDate = (value: string) =>
-  dateFormatter.format(new Date(value));
-
-export const formatAdministrationMoney = ({
-  currency,
-  exponent,
-  value,
-}: {
-  readonly currency: string;
-  readonly exponent: number;
-  readonly value: number;
-}) =>
-  new Intl.NumberFormat("en-GB", {
-    currency,
-    style: "currency",
-  }).format(value / 10 ** exponent);
-
 export function PaymentAttemptList({
   attempts,
 }: {
@@ -183,23 +152,19 @@ export function PaymentAttemptList({
               {formatAdministrationDateTime(attempt.createdAt)}
             </p>
             {attempt.providerOrderId && (
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm font-semibold text-burned-orange-ink">
-                <Link
-                  className="inline-flex items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
-                  href={`/admin/orders/${encodeURIComponent(attempt.providerOrderId)}`}
+              <div className="mt-2 text-sm font-semibold text-burned-orange-ink">
+                <a
+                  aria-label={`Nexi order ${attempt.providerOrderId} (opens in XPay)`}
+                  className="inline-flex flex-wrap items-baseline gap-1.5 underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
+                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
+                  rel="noreferrer"
+                  target="_blank"
                 >
                   <span>Nexi order</span>
                   <span className="break-all font-mono text-xs">
                     {attempt.providerOrderId}
                   </span>
-                </Link>
-                <a
-                  className="text-xs underline decoration-burned-orange/30 underline-offset-4 hover:decoration-burned-orange"
-                  href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  Open in XPay ↗
+                  <span aria-hidden>↗</span>
                 </a>
               </div>
             )}
@@ -354,120 +319,6 @@ export function BookingTable({
   );
 }
 
-export function ReservationTable({
-  emptyMessage = "No reservations match this view.",
-  reservations,
-}: {
-  readonly emptyMessage?: string;
-  readonly reservations: readonly AdministrationReservationSummary[];
-}) {
-  if (reservations.length === 0) return <EmptyState message={emptyMessage} />;
-  return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-      <div className="hidden overflow-x-auto md:block">
-        <Table aria-label="Reservations" className="min-w-[760px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead>Reservation</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Booking</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Updated</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {reservations.map((reservation) => (
-              <TableRow className="relative" key={reservation.id}>
-                <TableCell>
-                  <Link
-                    className="font-semibold underline decoration-navy-blue/20 underline-offset-4 before:absolute before:inset-0 before:content-[''] hover:decoration-navy-blue focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
-                    href={`/admin/reservations/${reservation.id}`}
-                  >
-                    {reservation.typeLabel}
-                  </Link>
-                  <p className="mt-1 font-mono text-xs text-navy-blue/65">
-                    {reservation.id.slice(0, 12)}…
-                  </p>
-                </TableCell>
-                <TableCell>
-                  {reservation.customer ? (
-                    <>
-                      <Link
-                        className="relative z-10 font-medium hover:underline"
-                        href={`/admin/customers/${reservation.customerId}`}
-                      >
-                        {reservation.customer.displayName}
-                      </Link>
-                      <p className="mt-1 text-xs text-navy-blue/65">
-                        {reservation.customer.email ??
-                          reservation.customer.phone ??
-                          "No contact details"}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Details unavailable
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {reservation.startsAt ? (
-                    <>
-                      <p className="font-medium">
-                        {formatAdministrationDateTime(reservation.startsAt)}
-                      </p>
-                      <p className="mt-1 text-xs text-navy-blue/65">
-                        {reservation.typeLabel}
-                      </p>
-                    </>
-                  ) : (
-                    <span className="text-sm text-navy-blue/65">
-                      Unavailable
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <ReservationStatusBadge status={reservation.status} />
-                </TableCell>
-                <TableCell className="text-right text-sm text-navy-blue/65">
-                  {formatAdministrationDateTime(reservation.updatedAt)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-      <ul className="divide-y divide-navy-blue/10 md:hidden">
-        {reservations.map((reservation) => (
-          <li key={reservation.id}>
-            <Link
-              className="block px-4 py-4 transition-colors hover:bg-navy-blue/[0.025]"
-              href={`/admin/reservations/${reservation.id}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    {reservation.customer?.displayName ?? reservation.typeLabel}
-                  </p>
-                  <p className="mt-1 text-sm text-navy-blue/65">
-                    {reservation.startsAt
-                      ? formatAdministrationDateTime(reservation.startsAt)
-                      : "Booking details unavailable"}
-                  </p>
-                </div>
-                <ReservationStatusBadge status={reservation.status} />
-              </div>
-              <p className="mt-3 text-xs text-navy-blue/65">
-                {reservation.typeLabel}
-              </p>
-            </Link>
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
 export function ReservationTimeline({
   items,
 }: {
@@ -534,13 +385,24 @@ export function RelatedReservationLink({
     >
       <span>
         <span className="block text-sm font-semibold">
-          {reservation.startsAt
-            ? formatAdministrationDateTime(reservation.startsAt)
-            : reservation.typeLabel}
+          {formatAdministrationReservationDate(reservation) ??
+            reservation.typeLabel}
         </span>
-        <span className="mt-1 block text-xs text-navy-blue/65">
-          {reservation.status.label}
+        <span
+          className={cn(
+            "mt-1 block text-xs",
+            reservation.statusNote
+              ? "font-medium text-burned-orange-ink"
+              : "text-navy-blue/65"
+          )}
+        >
+          {reservation.statusNote ?? reservation.status.label}
         </span>
+        {reservation.statusNote && (
+          <span className="mt-1 block text-xs text-navy-blue/65">
+            Deskohub: {reservation.status.label}
+          </span>
+        )}
       </span>
       <ArrowRight
         aria-hidden
@@ -567,8 +429,7 @@ export function ReservationReferences({
       />
       {references.dotyposReservationId && (
         <Reference
-          href={`/admin/bookings/${references.dotyposReservationId}`}
-          label="Booking record"
+          label="Dotypos booking"
           value={references.dotyposReservationId}
         />
       )}
@@ -663,13 +524,5 @@ export function Pagination({
         )}
       </Button>
     </nav>
-  );
-}
-
-export function EmptyState({ message }: { readonly message: string }) {
-  return (
-    <div className="rounded-xl border border-dashed border-navy-blue/15 bg-white px-5 py-12 text-center text-sm text-navy-blue/65">
-      {message}
-    </div>
   );
 }
