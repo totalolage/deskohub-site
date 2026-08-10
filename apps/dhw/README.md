@@ -144,7 +144,9 @@ transient Release Please pull request and enables auto-merge on it. Once its
 required checks pass, the workflow creates a draft release, builds and attests
 all four binaries on native runners, uploads them together with `SHA256SUMS`,
 and publishes the release. There is no per-release manual merge or publish
-step.
+step. Release Please force-creates the version tag for each draft release so a
+follow-up main run recognizes that release boundary instead of proposing the
+same commits again.
 
 Repository setup requires a GitHub App installed on this repository with
 Contents and Pull requests read/write, Issues read/write, and Administration
