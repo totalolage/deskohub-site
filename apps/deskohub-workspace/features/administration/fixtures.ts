@@ -79,6 +79,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "meeting-room",
       typeLabel: "Meeting Room",
       status: { group: "attention", label: "Confirmation issue" },
+      statusNote: null,
       createdAt: atTime(currentDate, 8),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-attention",
@@ -97,6 +98,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Profi",
       status: { group: "in_progress", label: "Payment pending" },
+      statusNote: null,
       createdAt: atTime(currentDate, 8),
       latestPayment: {
         ...makeFixturePayment(
@@ -119,6 +121,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Plus",
       status: { group: "in_progress", label: "Confirming" },
+      statusNote: null,
       createdAt: atTime(yesterday, 16),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-confirming",
@@ -137,6 +140,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "cowork",
       typeLabel: "Cowork Basic",
       status: { group: "complete", label: "Complete" },
+      statusNote: null,
       createdAt: atTime(lastWeek, 7),
       latestPayment: makeFixturePayment(
         "0198-admin-fixture-complete",
@@ -155,6 +159,7 @@ const makeReservations = (): readonly AdministrationReservationSummary[] => {
       type: "meeting-room",
       typeLabel: "Meeting Room",
       status: { group: "cancelled", label: "Cancelled" },
+      statusNote: null,
       createdAt: atTime(yesterday, 7),
       latestPayment: null,
       updatedAt: atTime(yesterday, 8),

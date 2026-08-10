@@ -470,6 +470,7 @@ describe("discount administration pages", () => {
     expect(
       view.getByText("Showing the 24 most recently updated reservations.")
     ).toBeDefined();
+    expect(view.getByText("Showing the 50 latest transactions.")).toBeDefined();
     expect(
       view.getByRole("table", { name: "Customer transaction history" })
     ).toBeDefined();

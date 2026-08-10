@@ -54,7 +54,15 @@ describe("administration reservation components", () => {
 
   test("renders a semantic reservation table with friendly status labels", () => {
     const { items } = loadFixtureReservations({});
-    const view = render(<ReservationTable reservations={items} />);
+    const view = render(
+      <ReservationTable
+        reservations={items.map((item, index) =>
+          index === 0
+            ? { ...item, statusNote: "Dotypos reports cancelled" }
+            : item
+        )}
+      />
+    );
     const table = view.getByRole("table", { name: "Reservations" });
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
@@ -81,6 +89,7 @@ describe("administration reservation components", () => {
         name: "Payment ORDER-0198-admin-fixture-attention (opens in XPay)",
       })
     ).toHaveLength(2);
+    expect(view.getAllByText("Dotypos reports cancelled")).toHaveLength(2);
   });
 
   test("renders ordered operational history without forbidden fields", () => {

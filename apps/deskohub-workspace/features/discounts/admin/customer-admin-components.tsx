@@ -273,7 +273,11 @@ export function CustomerAdministrationDetailPage({
                   Current and future reservations
                 </h3>
                 <ReservationTable
-                  emptyMessage="This customer has no current or future reservations."
+                  emptyMessage={
+                    activity.reservationHistoryTruncated
+                      ? "No current or future reservations are present in this recent activity view."
+                      : "This customer has no current or future reservations."
+                  }
                   reservations={reservationGroups.currentAndFuture}
                   showCustomer={false}
                 />
@@ -300,7 +304,7 @@ export function CustomerAdministrationDetailPage({
             <h2 className="mb-3 text-xl">Transactions</h2>
             {activity.transactionHistoryTruncated && (
               <p className="mb-3 text-sm text-navy-blue/65">
-                Showing the 50 latest transactions for these reservations.
+                Showing the 50 latest transactions.
               </p>
             )}
             <CustomerTransactionHistory transactions={activity.transactions} />

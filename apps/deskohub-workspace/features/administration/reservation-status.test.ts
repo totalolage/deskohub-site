@@ -71,7 +71,7 @@ describe("administration reservation lifecycle", () => {
 
     expect(getAdministrationReservationStatus(input)).toEqual({
       group: "in_progress",
-      label: "Cancelled in Dotypos",
+      label: "Awaiting payment",
     });
     expect(getAdministrationReservationLifecycle(input)).toEqual({
       currentStage: "cancelled",
@@ -79,6 +79,23 @@ describe("administration reservation lifecycle", () => {
       reachedStages: ["started", "held", "cancelled"],
       tone: "attention",
     });
+  });
+
+  test("keeps a fulfilled reservation complete when Dotypos was cancelled", () => {
+    const input = {
+      dotyposStatus: "CANCELLED" as const,
+      fulfillmentState: "fulfilled" as const,
+      paymentState: "paid" as const,
+      reservationState: "confirmed" as const,
+    };
+
+    expect(getAdministrationReservationStatus(input)).toEqual({
+      group: "complete",
+      label: "Complete",
+    });
+    expect(getAdministrationReservationLifecycle(input).currentStage).toBe(
+      "cancelled"
+    );
   });
 
   test.each([

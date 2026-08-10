@@ -402,7 +402,14 @@ export function ReservationTable({
                   </p>
                 </TableCell>
                 <TableCell>
-                  <ReservationStatusBadge status={reservation.status} />
+                  <div className="space-y-1.5">
+                    <ReservationStatusBadge status={reservation.status} />
+                    {reservation.statusNote && (
+                      <p className="text-xs font-medium text-burned-orange-ink">
+                        {reservation.statusNote}
+                      </p>
+                    )}
+                  </div>
                 </TableCell>
                 {showCustomer && (
                   <TableCell>
@@ -494,7 +501,14 @@ export function ReservationTable({
                       : "Booking details unavailable"}
                   </p>
                 </div>
-                <ReservationStatusBadge status={reservation.status} />
+                <div className="space-y-1.5 text-right">
+                  <ReservationStatusBadge status={reservation.status} />
+                  {reservation.statusNote && (
+                    <p className="max-w-32 text-xs font-medium text-burned-orange-ink">
+                      {reservation.statusNote}
+                    </p>
+                  )}
+                </div>
               </div>
               <p className="mt-3 text-xs text-navy-blue/65">
                 {reservation.typeLabel}

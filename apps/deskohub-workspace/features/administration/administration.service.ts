@@ -103,6 +103,7 @@ export type AdministrationReservationSummary = {
   readonly type: "cowork" | "meeting-room";
   readonly typeLabel: string;
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
+  readonly statusNote: string | null;
   readonly createdAt: string;
   readonly latestPayment: AdministrationPaymentAttempt | null;
   readonly updatedAt: string;
@@ -175,7 +176,10 @@ export type AdministrationMoney = {
 
 export type AdministrationCustomerTransaction = {
   readonly attempt: AdministrationPaymentAttempt;
-  readonly reservation: AdministrationReservationSummary;
+  readonly reservation: Pick<
+    AdministrationReservationSummary,
+    "id" | "typeLabel"
+  >;
 };
 
 export type AdministrationCustomerConsent = {
@@ -365,7 +369,9 @@ const toMoneyTotals = (
     .map((row) => ({ ...row, value: Number(row.value ?? 0) }))
     .toSorted((left, right) => left.currency.localeCompare(right.currency));
 
-const getReservationTypeLabel = (row: SafeReservationRow) => {
+const getReservationTypeLabel = (
+  row: Pick<SafeReservationRow, "reservationDetails">
+) => {
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
   const tier = row.reservationDetails.entryTier;
   return `Cowork ${tier[0]?.toUpperCase()}${tier.slice(1)}`;
@@ -411,6 +417,11 @@ const toReservationSummary = ({
       paymentState: row.paymentState,
       reservationState: row.reservationState,
     }),
+    statusNote:
+      live.reservation?.status === "CANCELLED" &&
+      row.reservationState !== "cancelled"
+        ? "Dotypos reports cancelled"
+        : null,
     createdAt: toIsoString(row.createdAt),
     latestPayment,
     updatedAt: toIsoString(row.updatedAt),
@@ -1439,12 +1450,36 @@ export class AdministrationService extends Context.Service<
       const loadCustomerActivity = Effect.fn(
         "AdministrationService.loadCustomerActivity"
       )(function* (customerId: string) {
-        const recentRows = yield* db
-          .select(safeReservationSelection)
-          .from(workspaceReservations)
-          .where(eq(workspaceReservations.dotyposCustomerId, customerId))
-          .orderBy(desc(workspaceReservations.updatedAt))
-          .limit(customerActivityReservationLimit + 1);
+        const { attemptRowsWithSentinel, recentRows } = yield* Effect.all(
+          {
+            recentRows: db
+              .select(safeReservationSelection)
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.dotyposCustomerId, customerId))
+              .orderBy(desc(workspaceReservations.updatedAt))
+              .limit(customerActivityReservationLimit + 1),
+            attemptRowsWithSentinel: db
+              .select({
+                attempt: safePaymentAttemptSelection,
+                reservation: {
+                  id: workspaceReservations.id,
+                  reservationDetails: workspaceReservations.reservationDetails,
+                },
+              })
+              .from(paymentAttempts)
+              .innerJoin(
+                workspaceReservations,
+                eq(
+                  paymentAttempts.workspaceReservationId,
+                  workspaceReservations.id
+                )
+              )
+              .where(eq(workspaceReservations.dotyposCustomerId, customerId))
+              .orderBy(desc(paymentAttempts.createdAt))
+              .limit(customerActivityTransactionLimit + 1),
+          },
+          { concurrency: 2 }
+        );
 
         if (recentRows.length === 0) {
           return {
@@ -1463,7 +1498,6 @@ export class AdministrationService extends Context.Service<
         }
 
         const rows = recentRows.slice(0, customerActivityReservationLimit);
-        const reservationIds = rows.map(({ id }) => id);
         const productKind = sql<string>`
           ${workspaceReservations.reservationDetails}->>'kind'
         `;
@@ -1481,7 +1515,6 @@ export class AdministrationService extends Context.Service<
         } as const;
         const {
           applicationRows,
-          attemptRowsWithSentinel,
           evidenceRows,
           productRows,
           reservationCountRows,
@@ -1494,14 +1527,6 @@ export class AdministrationService extends Context.Service<
               .select({ value: count() })
               .from(workspaceReservations)
               .where(eq(workspaceReservations.dotyposCustomerId, customerId)),
-            attemptRowsWithSentinel: db
-              .select(safePaymentAttemptSelection)
-              .from(paymentAttempts)
-              .where(
-                inArray(paymentAttempts.workspaceReservationId, reservationIds)
-              )
-              .orderBy(desc(paymentAttempts.createdAt))
-              .limit(customerActivityTransactionLimit + 1),
             revenueRows: db
               .select({
                 value: sum(paymentAttempts.amountValue),
@@ -1604,9 +1629,6 @@ export class AdministrationService extends Context.Service<
           0,
           customerActivityTransactionLimit
         );
-        const reservationsById = new Map(
-          reservations.map((reservation) => [reservation.id, reservation])
-        );
         const consents: AdministrationCustomerConsent[] = [];
         for (const [evidence] of evidenceRows) {
           if (!evidence) continue;
@@ -1634,19 +1656,13 @@ export class AdministrationService extends Context.Service<
           reservations,
           reservationHistoryTruncated:
             recentRows.length > customerActivityReservationLimit,
-          transactions: attemptRows.flatMap((row) => {
-            const reservation = reservationsById.get(
-              row.workspaceReservationId
-            );
-            return reservation
-              ? [
-                  {
-                    attempt: toAdministrationPaymentAttempt(row),
-                    reservation,
-                  },
-                ]
-              : [];
-          }),
+          transactions: attemptRows.map(({ attempt, reservation }) => ({
+            attempt: toAdministrationPaymentAttempt(attempt),
+            reservation: {
+              id: reservation.id,
+              typeLabel: getReservationTypeLabel(reservation),
+            },
+          })),
           transactionHistoryTruncated:
             attemptRowsWithSentinel.length > customerActivityTransactionLimit,
           stats: {
