@@ -34,6 +34,7 @@ export function CheckoutSummaryDiscountDetails({
             type="button"
             variant="ghost"
             size="icon"
+            data-checkout-discount-details
             aria-label={m.checkoutSummaryDiscountDetailsTrigger(
               { product: productLabel },
               { locale }

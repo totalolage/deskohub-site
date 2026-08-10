@@ -1183,8 +1183,7 @@ export const assertDisplayedDiscounts = ({
   readonly session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const triggerSelector =
-      '[data-reservation-sale-banner] button[aria-label^="Show discounts applied to"]';
+    const triggerSelector = "[data-checkout-discount-details]";
     yield* waitForBrowserReactHandler(
       run,
       session,
