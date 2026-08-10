@@ -60,8 +60,6 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
     fail('monitor option');
   }
 
-  const consent = document.querySelector('#reservation-privacy-consent');
-  if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
   if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
   return true;
@@ -113,8 +111,6 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
   if (value('input[name="name"]', 'name') !== expected.name) fail('name');
   if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
 
-  const consent = document.querySelector('#reservation-privacy-consent');
-  if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
   const marketingConsent = document.querySelector('#reservation-marketing-consent');
   if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
   return true;
@@ -503,9 +499,8 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 `;
 };
 
-const getSubmitPreparedReservationScript = (consentSelector: string) => `
+const getSubmitPreparedReservationScript = () => `
 (async () => {
-  const consentSelector = ${JSON.stringify(consentSelector)};
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
     const deadline = Date.now() + 60000;
@@ -515,31 +510,27 @@ const getSubmitPreparedReservationScript = (consentSelector: string) => `
     }
     throw new Error(label);
   };
-  let checkbox;
+  let button;
   await waitUntil(() => {
-    const candidate = document.querySelector(consentSelector);
+    const candidate = document.querySelector('#reservation-submit');
     if (candidate instanceof HTMLButtonElement) {
-      checkbox = candidate;
+      button = candidate;
       return true;
     }
     return false;
-  }, 'privacy consent checkbox not found');
-  if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
-  await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'privacy consent checkbox did not check');
-  const form = checkbox.closest('form') ?? document.querySelector('form');
+  }, 'reservation submit button not found');
+  const form = button.closest('form') ?? document.querySelector('form');
   if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
-  const button = form.querySelector('button[type="submit"]');
-  if (!(button instanceof HTMLButtonElement)) throw new Error('reservation submit button not found');
   await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
   return location.href;
 })()
 `;
 
 export const submitPreparedCoworkReservationScript =
-  getSubmitPreparedReservationScript("#reservation-privacy-consent");
+  getSubmitPreparedReservationScript();
 
 export const submitPreparedMeetingRoomReservationScript =
-  getSubmitPreparedReservationScript("#reservation-privacy-consent");
+  getSubmitPreparedReservationScript();
 
 export const getSubmitContactFormScript = (data: {
   readonly email: string;

@@ -11,8 +11,6 @@ export const legalDocumentKeys = [
 
 export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
 
-export const reservationSubmitLegalEvidenceSource =
-  "reservation_submit" as const;
 export const paymentSubmitLegalEvidenceSource = "payment_submit" as const;
 
 export const legalDocumentHashSchema = Schema.Struct({
