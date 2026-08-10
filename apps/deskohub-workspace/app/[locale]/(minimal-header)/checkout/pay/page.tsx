@@ -166,7 +166,7 @@ async function CheckoutPayContent({
       stepLinks={{
         order: {
           href: orderPath,
-          prefetch: false,
+          navigation: "document",
         },
       }}
     >
