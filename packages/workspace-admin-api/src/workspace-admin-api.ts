@@ -67,7 +67,7 @@ export type AdminCliInfo = typeof AdminCliInfo.Type;
 
 export const StartCliAuthentication = Schema.Struct({
   challenge: CliAuthenticationChallenge,
-  clientName: Schema.String.check(Schema.isMinLength(1)).check(
+  clientName: Schema.String.check(Schema.isPattern(/\S/)).check(
     Schema.isMaxLength(80)
   ),
   cliVersion: Schema.String.check(Schema.isMinLength(1)).check(
