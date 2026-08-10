@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.4.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.3.0...dhw-v1.4.0) (2026-08-10)
+
+
+### Features
+
+* **dhw:** add administration read commands ([365a58c](https://github.com/totalolage/deskohub-site/commit/365a58c6e6838dc54ca98efa05b50de9ee1c7421))
+* **dhw:** complete administration read commands ([77601b1](https://github.com/totalolage/deskohub-site/commit/77601b16d0007dd06e4188197cc5efbd1feaed7f))
+
+
+### Bug Fixes
+
+* **dhw:** preserve draft release boundaries ([3fb4d2e](https://github.com/totalolage/deskohub-site/commit/3fb4d2e0b3785087c874404f60c5db378f13e0c7))
+
 ## [1.3.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.2.0...dhw-v1.3.0) (2026-08-10)
 
 
