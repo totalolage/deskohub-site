@@ -1,3 +1,4 @@
+export * from "./cli-authentication";
 export * from "./discount-applications";
 export * from "./discounts";
 export * from "./legal-evidence-events";

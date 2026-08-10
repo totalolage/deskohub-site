@@ -4,10 +4,23 @@
 the same Effect HTTP API contract and application services as the `/admin`
 interface.
 
-Stage 1 provides the native CLI shell, a typed `/api/v1/cli/info` vertical
-slice, OS credential-store integration, release automation, and self-updates.
-Authentication and administrative resources are added in the following
-milestones.
+The CLI includes a typed `/api/v1/cli` Effect HTTP client, browser-approved
+authentication, OS credential-store integration, release automation, and
+self-updates. Administrative resource commands are added incrementally while
+sharing their application services with `/admin`.
+
+## Authentication
+
+Run `dhw auth`. The command creates a five-minute authentication request and
+prints an `/admin/cli/authenticate` URL. After an administrator approves that
+request behind the existing `/admin` Basic authentication, the CLI exchanges a
+single-use grant bound to its local verifier and stores the resulting opaque
+bearer in macOS Keychain or the Linux Secret Service.
+
+Permanent bearer values are never stored by the server; only their SHA-256
+digests are persisted. `/admin/cli/sessions` lists issued sessions and revokes
+them. Every authenticated CLI operation validates its session, and a revoked
+credential is removed from secure storage as soon as the API reports it.
 
 ## Development
 
@@ -40,6 +53,14 @@ target embedded at compilation.
   by Effect. It is never sent to GitHub during update checks.
 - `DHW_STATE_DIR` overrides the local updater state directory.
 - `DHW_NO_UPDATE_CHECK=true` disables automatic checks.
+
+For a protected Vercel preview, configuration can be scoped to one invocation:
+
+```bash
+DHW_BASE=https://example-git-branch-team.vercel.app \
+  DHW_REQUEST_HEADERS='{"x-vercel-protection-bypass":"…"}' \
+  dhw auth
+```
 
 Automatic update checks run only for interactive commands, never for JSON
 output, CI, or redirected input/output. The last attempt and GitHub ETag are

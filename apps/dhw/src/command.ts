@@ -1,6 +1,11 @@
-import { Console, Effect, Option } from "effect";
+import {
+  makeCliAuthenticationChallenge,
+  makeCliAuthenticationVerifier,
+} from "@deskohub/workspace-admin-api";
+import { Console, Data, Effect, Option } from "effect";
 import { Command, Flag, Prompt } from "effect/unstable/cli";
 import { WorkspaceAdminApiClient } from "./api/workspace-admin-api-client.service";
+import { AuthenticationService } from "./authentication/authentication.service";
 import { DHW_BUILD_TARGET, DHW_VERSION, isReleaseBuild } from "./build-info";
 import { DhwConfig } from "./config/dhw-config.service";
 import { UpdateService } from "./update/update.service";
@@ -44,6 +49,70 @@ const apiCommand = Command.make("api").pipe(
   Command.withDescription("Inspect the administration API"),
   Command.withSubcommands([apiInfoCommand])
 );
+
+const authCommand = Command.make(
+  "auth",
+  {
+    name: Flag.string("name").pipe(
+      Flag.withDefault(`dhw ${DHW_BUILD_TARGET}`),
+      Flag.withDescription("Name shown for this client in the admin interface")
+    ),
+  },
+  ({ name }) =>
+    runCommand((json) =>
+      Effect.gen(function* () {
+        const authentication = yield* AuthenticationService;
+        const existing = yield* authentication.current;
+
+        if (Option.isSome(existing)) {
+          yield* Console.log(
+            json
+              ? JSON.stringify({
+                  authStatus: "granted",
+                  session: existing.value.session,
+                })
+              : `Already authenticated as ${existing.value.session.clientName}.`
+          );
+          return;
+        }
+
+        const api = yield* WorkspaceAdminApiClient;
+        const config = yield* DhwConfig;
+        const verifier = yield* makeCliAuthenticationVerifier;
+        const challenge = yield* makeCliAuthenticationChallenge(verifier);
+        const started = yield* api.startAuthentication({
+          challenge,
+          clientName: name,
+          cliVersion: DHW_VERSION,
+          buildTarget: DHW_BUILD_TARGET,
+        });
+        const approvalUrl = new URL(started.approvalPath, config.baseUrl).href;
+
+        yield* Console.log(
+          json
+            ? JSON.stringify({
+                authStatus: "pending",
+                approvalUrl,
+                expiresAt: started.expiresAt,
+              })
+            : `Approve this CLI in your browser:\n${approvalUrl}\n\nWaiting for approval…`
+        );
+
+        const session = yield* waitForCliAuthentication({
+          api,
+          authentication,
+          code: started.code,
+          verifier,
+        });
+
+        yield* Console.log(
+          json
+            ? JSON.stringify({ authStatus: "granted", session })
+            : `Authenticated as ${session.clientName}.`
+        );
+      })
+    )
+).pipe(Command.withDescription("Authenticate this CLI through the admin UI"));
 
 const updateCommand = Command.make(
   "update",
@@ -92,8 +161,64 @@ const updateCommand = Command.make(
 ).pipe(Command.withDescription("Check for and install a CLI update"));
 
 export const dhwCommand = rootCommand.pipe(
-  Command.withSubcommands([versionCommand, apiCommand, updateCommand])
+  Command.withSubcommands([
+    versionCommand,
+    apiCommand,
+    authCommand,
+    updateCommand,
+  ])
 );
+
+const waitForCliAuthentication = Effect.fn(
+  "AuthenticationService.waitForApproval"
+)(function* ({
+  api,
+  authentication,
+  code,
+  verifier,
+}: {
+  readonly api: WorkspaceAdminApiClient["Service"];
+  readonly authentication: AuthenticationService["Service"];
+  readonly code: Parameters<
+    WorkspaceAdminApiClient["Service"]["getAuthenticationStatus"]
+  >[0];
+  readonly verifier: Parameters<typeof makeCliAuthenticationChallenge>[0];
+}) {
+  while (true) {
+    const status = yield* api.getAuthenticationStatus(code);
+    switch (status.authStatus) {
+      case "pending":
+        yield* Effect.sleep("2 seconds");
+        break;
+      case "approved": {
+        const granted = yield* api.exchangeGrant({
+          code,
+          grantToken: status.grantToken,
+          verifier,
+        });
+        yield* authentication.save(granted.accessToken);
+        return granted.session;
+      }
+      case "expired":
+        return yield* new AuthenticationFlowError({
+          message: "The authentication request expired. Run dhw auth again.",
+        });
+      case "granted":
+        return yield* new AuthenticationFlowError({
+          message:
+            "The authentication grant was already exchanged. Run dhw auth again on this machine.",
+        });
+      case "revoked":
+        return yield* new AuthenticationFlowError({
+          message: "The CLI session was revoked. Run dhw auth again.",
+        });
+    }
+  }
+});
+
+class AuthenticationFlowError extends Data.TaggedError(
+  "AuthenticationFlowError"
+)<{ readonly message: string }> {}
 
 const runCommand = <A, E, R>(
   operation: (json: boolean) => Effect.Effect<A, E, R>
