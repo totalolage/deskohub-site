@@ -69,16 +69,11 @@ export const prepareOfficeAdvertisement = Effect.fn(
   }
 
   const pricing = yield* CheckoutPricingService;
-  const affirmed = yield* pricing.affirmAdvertisement({
+  const affirmed = yield* pricing.affirmOfficeAdvertisement({
     reservation: expectedReservation,
     locale: input.locale,
     advertisedQuote: state.quote,
   });
-  if (affirmed.kind !== "office") {
-    return yield* Effect.die(
-      "Office advertisement affirmation returned another reservation family."
-    );
-  }
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {

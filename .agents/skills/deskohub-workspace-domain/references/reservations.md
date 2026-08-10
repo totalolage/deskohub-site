@@ -92,6 +92,12 @@ commitments, summaries, and immutable discount applications continue to carry
 the complete `product_identity`; reduce an identity to `{ kind }` only when
 checking discount eligibility.
 
+Define each family target schema beside that family's exact identity schema,
+then compose the cross-family target as their strict union. Family-sensitive
+availability errors and other shared projections compose those family-owned
+types instead of redeclaring an anonymous union. Cross-family conversion and
+dispatch must be exhaustive so a new reservation family produces a type error.
+
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.
 
 Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
@@ -100,3 +106,13 @@ Construct identity keys through the family constructor or the cross-family
 dispatcher. Do not independently interpolate them in checkout quote
 construction or rendering code, and do not use exact identity keys for
 family-only discount targets.
+
+An advertised-price batch contains the typed request as its only selection
+state. Derive cowork tier, meeting-room duration, and office seats from the
+request's family details; do not return a parallel `{ tier | duration | seats,
+request }` wrapper that can drift from the quoted reservation.
+
+Generic checkout pages own cross-family exhaustive dispatch and shared visual
+primitives. Family-specific status projections and summary item rendering live
+in family-named modules, including existing families when one new family would
+otherwise introduce a one-off branch in the generic component.

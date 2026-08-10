@@ -141,7 +141,7 @@ export function OfficeReservationForm({
     [seatCapacity, locale, selection]
   );
   const advertisedPriceResults = useAdvertisedPrices(
-    advertisedPriceRequests.map(({ request }) => request),
+    advertisedPriceRequests,
     initialAdvertisedPrices
   );
   const advertisedPricesBySeats = new Map<
@@ -152,12 +152,15 @@ export function OfficeReservationForm({
   for (const [index, result] of advertisedPriceResults.entries()) {
     const request = advertisedPriceRequests[index];
     if (request && result.data && isOfficeAdvertisedPrice(result.data)) {
-      advertisedPricesBySeats.set(request.seats, result.data);
+      advertisedPricesBySeats.set(
+        request.reservation.details.seats,
+        result.data
+      );
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    (request) => request.seats === seats
+    (request) => request.reservation.details.seats === seats
   );
   const advertisedPriceResult =
     advertisedPriceResults[selectedAdvertisedPriceIndex];

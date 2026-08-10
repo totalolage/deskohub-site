@@ -1,4 +1,4 @@
-import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import type { OfficeAdvertisedPriceRequest } from "@/features/checkout/advertised-price";
 import type { Locale } from "@/features/i18n";
 import {
   getOfficeAdvertisedPriceReservation,
@@ -11,7 +11,7 @@ export const getOfficeAdvertisedPriceRequest = (
     NormalizedOfficeReservationOrder,
     "startsOn" | "endsOn" | "seats"
   > & { readonly locale: Locale }
-): AdvertisedPriceRequest => ({
+): OfficeAdvertisedPriceRequest => ({
   locale: reservation.locale,
   reservation: getOfficeAdvertisedPriceReservation(reservation),
 });
@@ -22,10 +22,10 @@ export const getOfficeSeatAdvertisedPriceRequests = (
     readonly locale: Locale;
   }
 ) =>
-  getOfficeSeatOptions(reservation.seatCapacity).map((seats) => ({
-    seats,
-    request: getOfficeAdvertisedPriceRequest({
-      ...reservation,
-      seats,
-    }),
-  }));
+  getOfficeSeatOptions(reservation.seatCapacity).map(
+    (seats): OfficeAdvertisedPriceRequest =>
+      getOfficeAdvertisedPriceRequest({
+        ...reservation,
+        seats,
+      })
+  );

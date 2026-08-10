@@ -1,7 +1,11 @@
 import { ValidationError } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import { Effect, Schema } from "effect";
+import { Effect, Match, Schema } from "effect";
 import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
+import {
+  type WorkspaceReservationKind,
+  workspaceReservationKindSchema,
+} from "@/features/reservation/reservation-kind";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
@@ -240,12 +244,24 @@ export const isDisplayableWorkspaceTable = (table: Table) => {
   if (table.enabled !== true || table.display !== true) return false;
 
   const tableTags = new Set(table.tags ?? []);
-  return (
-    workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)) ||
-    tableTags.has(workspaceMeetingRoomReservationTableTag) ||
-    tableTags.has(workspaceOfficeReservationTableTag)
+  return workspaceReservationKindSchema.literals.some((kind) =>
+    hasWorkspaceReservationTableTag(tableTags, kind)
   );
 };
+
+const hasWorkspaceReservationTableTag = (
+  tableTags: ReadonlySet<string>,
+  kind: WorkspaceReservationKind
+) =>
+  Match.value({ kind }).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () =>
+        workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)),
+      "meeting-room": () =>
+        tableTags.has(workspaceMeetingRoomReservationTableTag),
+      office: () => tableTags.has(workspaceOfficeReservationTableTag),
+    })
+  );
 
 const getWorkspaceTableRoomKey = (table: Table) =>
   table.locationName ?? fallbackRoomKey;

@@ -157,7 +157,7 @@ export function MeetingRoomReservationForm({
     [locale, selectedStartDateTime]
   );
   const advertisedPriceQueryResults = useAdvertisedPrices(
-    advertisedPriceRequests.map(({ request }) => request),
+    advertisedPriceRequests,
     initialAdvertisedPrices
   );
   const advertisedPricesByDuration = new Map<
@@ -174,15 +174,18 @@ export function MeetingRoomReservationForm({
       isMeetingRoomAdvertisedPrice(queryResult.data)
     ) {
       advertisedPricesByDuration.set(
-        getMeetingRoomReservationDurationKey(request.duration),
+        getMeetingRoomReservationDurationKey(
+          request.reservation.details.duration
+        ),
         queryResult.data
       );
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ duration }) =>
-      getMeetingRoomReservationDurationKey(duration) === selectedDurationKey
+    ({ reservation }) =>
+      getMeetingRoomReservationDurationKey(reservation.details.duration) ===
+      selectedDurationKey
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];

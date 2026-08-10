@@ -217,7 +217,7 @@ export function CoworkReservationForm({
     });
   }, [locale, selectedCoffee, selectedDate]);
   const advertisedPriceQueryResults = useAdvertisedPrices(
-    advertisedPriceRequests.map(({ request }) => request),
+    advertisedPriceRequests,
     initialAdvertisedPrices
   );
   const coffeeAdvertisedPriceRequest = useMemo(
@@ -259,12 +259,15 @@ export function CoworkReservationForm({
       queryResult.data &&
       isCoworkAdvertisedPrice(queryResult.data)
     ) {
-      advertisedPricesByTier.set(request.tier, queryResult.data);
+      advertisedPricesByTier.set(
+        request.reservation.details.entryTier,
+        queryResult.data
+      );
     }
   }
 
   const selectedAdvertisedPriceIndex = advertisedPriceRequests.findIndex(
-    ({ tier }) => tier === selectedTier
+    ({ reservation }) => reservation.details.entryTier === selectedTier
   );
   const advertisedPriceQueryResult =
     advertisedPriceQueryResults[selectedAdvertisedPriceIndex];

@@ -270,9 +270,10 @@ describe("CoworkReservationForm advertised pricing", () => {
         coffee: true,
         date: "2099-07-30",
         locale: "en-US",
-      }).map(({ request, tier }) => ({
+      }).map((request) => ({
         request,
-        advertisedPrice: advertisedPrices[tier],
+        advertisedPrice:
+          advertisedPrices[request.reservation.details.entryTier],
       })),
     });
 

@@ -104,6 +104,24 @@ export interface ICheckoutPricingService {
   readonly affirmAdvertisement: (
     input: AdvertisementAffirmationInput
   ) => Effect.Effect<AdvertisementAffirmation, CheckoutPricingError>;
+  readonly affirmCoworkAdvertisement: (
+    input: CoworkAdvertisementAffirmationInput
+  ) => Effect.Effect<
+    CoworkAdvertisementAffirmation,
+    CoworkCheckoutPricingError
+  >;
+  readonly affirmMeetingRoomAdvertisement: (
+    input: MeetingRoomAdvertisementAffirmationInput
+  ) => Effect.Effect<
+    MeetingRoomAdvertisementAffirmation,
+    MeetingRoomCheckoutPricingError
+  >;
+  readonly affirmOfficeAdvertisement: (
+    input: OfficeAdvertisementAffirmationInput
+  ) => Effect.Effect<
+    OfficeAdvertisementAffirmation,
+    OfficeCheckoutPricingError
+  >;
   readonly quoteForCustomer: (
     input: CustomerQuoteInput
   ) => Effect.Effect<PreparedCustomerQuote, CheckoutPricingError>;
@@ -222,6 +240,9 @@ export class CheckoutPricingService extends Context.Service<
       return {
         quoteAdvertisement,
         affirmAdvertisement,
+        affirmCoworkAdvertisement: cowork.affirmAdvertisement,
+        affirmMeetingRoomAdvertisement: meetingRoom.affirmAdvertisement,
+        affirmOfficeAdvertisement: office.affirmAdvertisement,
         quoteForCustomer,
         affirmForPayment,
         applyDiscountCode,

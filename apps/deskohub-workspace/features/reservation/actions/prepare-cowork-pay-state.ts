@@ -66,16 +66,11 @@ export const prepareCoworkAdvertisement = Effect.fn(
   }
 
   const pricing = yield* CheckoutPricingService;
-  const affirmed = yield* pricing.affirmAdvertisement({
+  const affirmed = yield* pricing.affirmCoworkAdvertisement({
     reservation: state.reservation,
     locale: input.locale,
     advertisedQuote: state.quote,
   });
-  if (affirmed.kind !== "cowork") {
-    return yield* Effect.die(
-      "Cowork advertisement affirmation returned another reservation family."
-    );
-  }
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {

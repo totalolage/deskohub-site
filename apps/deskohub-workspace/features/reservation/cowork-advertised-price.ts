@@ -1,15 +1,13 @@
-import type { AdvertisedPriceRequest } from "@/features/checkout/advertised-price";
+import type {
+  AdvertisedPriceRequest,
+  CoworkAdvertisedPriceRequest,
+} from "@/features/checkout/advertised-price";
 import {
   type WorkspaceCoworkProductTier,
   workspaceCoworkProductTiers,
 } from "@/features/checkout/product-catalog";
 import type { Locale } from "@/features/i18n";
 import { getCoworkAdvertisedPriceReservation } from "@/features/reservation/cowork-reservation";
-
-export type CoworkTierAdvertisedPriceRequest = {
-  readonly tier: WorkspaceCoworkProductTier;
-  readonly request: AdvertisedPriceRequest;
-};
 
 export const getCoworkTierAdvertisedPriceRequests = ({
   coffee,
@@ -19,17 +17,14 @@ export const getCoworkTierAdvertisedPriceRequests = ({
   readonly coffee: boolean;
   readonly date: string;
   readonly locale: Locale;
-}): ReadonlyArray<CoworkTierAdvertisedPriceRequest> =>
+}): ReadonlyArray<CoworkAdvertisedPriceRequest> =>
   workspaceCoworkProductTiers.map((tier) => ({
-    tier,
-    request: {
-      locale,
-      reservation: getCoworkAdvertisedPriceReservation({
-        entryTier: tier,
-        coffee,
-        date,
-      }),
-    },
+    locale,
+    reservation: getCoworkAdvertisedPriceReservation({
+      entryTier: tier,
+      coffee,
+      date,
+    }),
   }));
 
 export const getCoworkCoffeeAdvertisedPriceRequest = ({

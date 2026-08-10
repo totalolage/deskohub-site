@@ -111,10 +111,13 @@ type CheckoutStatusNotFoundViewModel = CheckoutStatusViewModelBase & {
   readonly summary?: undefined;
 };
 
-export type CheckoutStatusViewModel =
+type CheckoutReservationStatusViewModel =
   | CheckoutCoworkStatusViewModel
   | CheckoutMeetingRoomStatusViewModel
-  | CheckoutOfficeStatusViewModel
+  | CheckoutOfficeStatusViewModel;
+
+export type CheckoutStatusViewModel =
+  | CheckoutReservationStatusViewModel
   | CheckoutStatusNotFoundViewModel;
 
 type CheckoutStatusReservationReconstruction =
@@ -472,10 +475,10 @@ const implementation = Effect.gen(function* () {
           ? { supportContactPrefill: reconstruction.supportContactPrefill }
           : {}),
       };
-      const result = {
+      const result: CheckoutReservationStatusViewModel = {
         ...resultBase,
         ...reconstruction.reservation,
-      } satisfies CheckoutStatusViewModel;
+      };
 
       yield* Effect.annotateLogsScoped({
         status: result.status,

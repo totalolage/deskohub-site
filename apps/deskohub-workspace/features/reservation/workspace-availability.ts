@@ -8,8 +8,15 @@ import {
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
-import { officeSeatsSchema } from "@/features/reservation/office-reservation";
+import {
+  type WorkspaceCoworkAvailabilityTarget,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/reservation/cowork-reservation-product";
+import type { WorkspaceMeetingRoomProductTarget } from "@/features/reservation/meeting-room-reservation";
+import {
+  officeSeatsSchema,
+  type WorkspaceOfficeProductTarget,
+} from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
@@ -68,6 +75,11 @@ export type MeetingRoomWorkspaceAvailabilityQuery =
   typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
 export type OfficeWorkspaceAvailabilityQuery =
   typeof officeWorkspaceAvailabilityQuerySchema.Type;
+
+export type WorkspaceAvailabilityUnavailableTarget =
+  | WorkspaceCoworkAvailabilityTarget
+  | WorkspaceMeetingRoomProductTarget
+  | WorkspaceOfficeProductTarget;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>

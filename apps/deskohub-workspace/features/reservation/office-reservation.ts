@@ -42,13 +42,20 @@ export const workspaceOfficeProductIdentitySchema = Schema.Struct({
 export type WorkspaceOfficeProductIdentity =
   typeof workspaceOfficeProductIdentitySchema.Type;
 
+export const workspaceOfficeProductTargetSchema = Schema.Struct({
+  kind: workspaceOfficeProductIdentitySchema.fields.kind,
+});
+
+export type WorkspaceOfficeProductTarget =
+  typeof workspaceOfficeProductTargetSchema.Type;
+
 export const workspaceOfficeProductKeySchema = Schema.TemplateLiteral([
-  officeReservationKind,
+  workspaceOfficeProductIdentitySchema.fields.kind,
   ":",
-  Schema.Number,
+  workspaceOfficeProductIdentitySchema.fields.seats,
   ":",
-  Schema.Number,
-]).check(Schema.isPattern(/^office:[1-9]\d*:[1-9]\d*$/));
+  workspaceOfficeProductIdentitySchema.fields.dayCount,
+]);
 
 export type WorkspaceOfficeProductKey =
   typeof workspaceOfficeProductKeySchema.Type;

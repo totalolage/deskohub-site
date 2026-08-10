@@ -332,7 +332,7 @@ const runReusableReservationScenario = async (input: {
   );
   const testLayer = Layer.mergeAll(
     CheckoutPricingServiceMock({
-      affirmAdvertisement,
+      affirmCoworkAdvertisement: affirmAdvertisement,
       quoteForCustomer: quoteForCustomerResult as never,
     }),
     BotProtectionServiceMock({ verifyHuman }),
@@ -873,7 +873,7 @@ describe("prepareWorkspacePayState", () => {
       );
     const testLayer = Layer.mergeAll(
       CheckoutPricingServiceMock({
-        affirmAdvertisement,
+        affirmCoworkAdvertisement: affirmAdvertisement,
         quoteForCustomer: quoteForCustomerResult as never,
       }),
       BotProtectionServiceMock({ verifyHuman }),

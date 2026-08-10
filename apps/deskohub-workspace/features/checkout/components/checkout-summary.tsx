@@ -3,24 +3,15 @@ import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
-  CheckoutSummaryItem,
-  CheckoutSummaryOrderItem,
 } from "@/features/checkout/checkout-summary";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
-import {
-  getWorkspaceMeetingRoomDurationTitle,
-  getWorkspaceOfficeProductTitle,
-  getWorkspaceProductMonitorTitle,
-  getWorkspaceProductTierTitle,
-} from "@/features/checkout/product-catalog.i18n";
-import {
-  formatWorkspaceMoney,
-  type WorkspaceMoney,
-  workspaceMoneyWithValue,
-} from "@/features/checkout/workspace-money";
+import { getWorkspaceProductMonitorTitle } from "@/features/checkout/product-catalog.i18n";
+import { CoworkCheckoutSummaryItem } from "@/features/cowork/components/cowork-checkout-summary-item";
 import { type Locale, m } from "@/features/i18n";
+import { MeetingRoomCheckoutSummaryItem } from "@/features/meeting-room/components/meeting-room-checkout-summary-item";
+import { OfficeCheckoutSummaryItem } from "@/features/office/components/office-checkout-summary-item";
 import { cn } from "@/shared/utils";
-import { CheckoutSummaryDiscountDetails } from "./checkout-summary-discount-details";
+import { CheckoutSummaryLine } from "./checkout-summary-line";
 
 type CheckoutSummaryProps = {
   readonly locale: Locale;
@@ -40,17 +31,6 @@ const getSummaryItemLabel = (
   locale: Locale
 ) => {
   const { key } = item;
-  if ("product" in item) {
-    return Match.value(item.product).pipe(
-      Match.discriminatorsExhaustive("kind")({
-        cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
-        "meeting-room": ({ duration }) =>
-          getWorkspaceMeetingRoomDurationTitle(duration, locale),
-        office: () => getWorkspaceOfficeProductTitle(locale),
-      })
-    );
-  }
-
   if (key === "addon:coffee")
     return m.checkoutSummaryItemCoffee({}, { locale });
 
@@ -85,198 +65,55 @@ export function CheckoutSummary({
           >
             {section.items.map((item) => {
               const itemChanged = changedKeys?.itemKeys.includes(item.key);
-              if (isOfficeCheckoutSummaryItem(item)) {
-                return (
-                  <OfficeCheckoutSummaryRows
-                    key={item.key}
-                    changed={itemChanged}
-                    item={item}
-                    locale={locale}
-                  />
+              if ("product" in item) {
+                return Match.value(item).pipe(
+                  Match.when({ product: { kind: "cowork" } }, (productItem) => (
+                    <CoworkCheckoutSummaryItem
+                      key={productItem.key}
+                      changed={itemChanged}
+                      item={productItem}
+                      locale={locale}
+                    />
+                  )),
+                  Match.when(
+                    { product: { kind: "meeting-room" } },
+                    (productItem) => (
+                      <MeetingRoomCheckoutSummaryItem
+                        key={productItem.key}
+                        changed={itemChanged}
+                        item={productItem}
+                        locale={locale}
+                      />
+                    )
+                  ),
+                  Match.when({ product: { kind: "office" } }, (productItem) => (
+                    <OfficeCheckoutSummaryItem
+                      key={productItem.key}
+                      changed={itemChanged}
+                      item={productItem}
+                      locale={locale}
+                    />
+                  )),
+                  Match.exhaustive
                 );
               }
 
               const itemLabel = getSummaryItemLabel(item, locale);
-              const discountedItem =
-                "originalAmount" in item && item.originalAmount
-                  ? item
-                  : undefined;
 
               return (
-                <div
+                <CheckoutSummaryLine
                   key={item.key}
-                  className={cn(
-                    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 text-sm leading-6",
-                    itemChanged && "font-semibold text-burned-orange"
-                  )}
-                >
-                  <span>{itemLabel}</span>
-                  <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-                    {discountedItem && (
-                      <>
-                        <span className="sr-only">
-                          {m.checkoutSummaryOriginalPrice(
-                            {
-                              price: formatWorkspaceMoney(
-                                discountedItem.originalAmount,
-                                locale
-                              ),
-                            },
-                            { locale }
-                          )}
-                        </span>
-                        <del
-                          aria-hidden="true"
-                          className="text-navy-blue/45 decoration-navy-blue/40"
-                        >
-                          {formatWorkspaceMoney(
-                            discountedItem.originalAmount,
-                            locale
-                          )}
-                        </del>
-                      </>
-                    )}
-                    <span className="shrink-0 font-semibold tabular-nums">
-                      {discountedItem ? (
-                        <>
-                          <span className="sr-only">
-                            {m.checkoutSummaryDiscountedPrice(
-                              {
-                                price: formatWorkspaceMoney(
-                                  item.amount,
-                                  locale
-                                ),
-                              },
-                              { locale }
-                            )}
-                          </span>
-                          <span aria-hidden="true">
-                            {formatWorkspaceMoney(item.amount, locale)}
-                          </span>
-                        </>
-                      ) : (
-                        formatWorkspaceMoney(item.amount, locale)
-                      )}
-                    </span>
-                    {discountedItem && (
-                      <CheckoutSummaryDiscountDetails
-                        discounts={discountedItem.discounts}
-                        locale={locale}
-                        productLabel={itemLabel}
-                      />
-                    )}
-                  </span>
-                </div>
+                  amount={item.amount}
+                  changed={itemChanged}
+                  label={itemLabel}
+                  locale={locale}
+                />
               );
             })}
           </CheckoutSummarySection>
         );
       })}
     </CheckoutSummarySections>
-  );
-}
-
-type OfficeCheckoutSummaryItem = Extract<
-  CheckoutSummaryOrderItem,
-  { readonly product: { readonly kind: "office" } }
->;
-
-const isOfficeCheckoutSummaryItem = (
-  item: CheckoutSummaryItem
-): item is OfficeCheckoutSummaryItem =>
-  "product" in item && item.product.kind === "office";
-
-function OfficeCheckoutSummaryRows({
-  changed,
-  item,
-  locale,
-}: {
-  readonly changed?: boolean;
-  readonly item: OfficeCheckoutSummaryItem;
-  readonly locale: Locale;
-}) {
-  const seatTotalAmount = workspaceMoneyWithValue(
-    item.seatAmount.value * item.seats,
-    item.seatAmount
-  );
-  const discountedItem =
-    "originalAmount" in item && item.originalAmount ? item : undefined;
-  const discountAmount = discountedItem
-    ? workspaceMoneyWithValue(
-        item.amount.value - discountedItem.originalAmount.value,
-        item.amount
-      )
-    : undefined;
-
-  return (
-    <>
-      <CheckoutSummaryLine
-        amount={item.accessAmount}
-        changed={changed}
-        label={m.checkoutSummaryItemOfficeAccess(
-          { dayCount: item.dayCount },
-          { locale }
-        )}
-        locale={locale}
-      />
-      <CheckoutSummaryLine
-        amount={seatTotalAmount}
-        changed={changed}
-        label={`${m.checkoutSummaryItemOfficeSeatCount(
-          { seatCount: item.seats },
-          { locale }
-        )} · ${m.checkoutSummaryItemOfficeDayCount(
-          { dayCount: item.dayCount },
-          { locale }
-        )}`}
-        locale={locale}
-      />
-      {discountedItem && discountAmount ? (
-        <CheckoutSummaryLine
-          amount={discountAmount}
-          changed={changed}
-          label={m.checkoutSummaryItemOfficeDiscount({}, { locale })}
-          locale={locale}
-        >
-          <CheckoutSummaryDiscountDetails
-            discounts={discountedItem.discounts}
-            locale={locale}
-            productLabel={getWorkspaceOfficeProductTitle(locale)}
-          />
-        </CheckoutSummaryLine>
-      ) : null}
-    </>
-  );
-}
-
-function CheckoutSummaryLine({
-  amount,
-  changed,
-  children,
-  label,
-  locale,
-}: {
-  readonly amount: WorkspaceMoney;
-  readonly changed?: boolean;
-  readonly children?: ReactNode;
-  readonly label: ReactNode;
-  readonly locale: Locale;
-}) {
-  return (
-    <div
-      className={cn(
-        "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 text-sm leading-6",
-        changed && "font-semibold text-burned-orange"
-      )}
-    >
-      <span>{label}</span>
-      <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-        <span className="shrink-0 font-semibold tabular-nums">
-          {formatWorkspaceMoney(amount, locale)}
-        </span>
-        {children}
-      </span>
-    </div>
   );
 }
 

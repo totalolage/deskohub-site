@@ -47,6 +47,7 @@ import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityNotice,
   WorkspaceAvailabilityQuery,
+  WorkspaceAvailabilityUnavailableTarget,
 } from "../workspace-availability";
 import {
   GoogleCalendarWorkspaceLimitationsService,
@@ -63,40 +64,33 @@ type WorkspaceAvailabilityError =
   | NetworkError
   | ValidationError;
 
-type WorkspaceTableUnavailableReservation =
-  | {
-      readonly kind: typeof coworkReservationKind;
-      readonly entryTier: WorkspaceCoworkProductTier;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    }
-  | {
-      readonly kind: typeof meetingRoomReservationKind;
-    }
-  | {
-      readonly kind: typeof officeReservationKind;
-    };
-
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<{
   readonly date: string;
-  readonly reservation: WorkspaceTableUnavailableReservation;
+  readonly reservation: WorkspaceAvailabilityUnavailableTarget;
 }> {}
 
+type CoworkWorkspaceAvailabilityEnsureQuery = Extract<
+  WorkspaceAvailabilityUnavailableTarget,
+  { readonly kind: typeof coworkReservationKind }
+> & { readonly date: string };
+
+type MeetingRoomWorkspaceAvailabilityEnsureQuery = Extract<
+  WorkspaceAvailabilityUnavailableTarget,
+  { readonly kind: typeof meetingRoomReservationKind }
+> &
+  ReservationInterval;
+
+type OfficeWorkspaceAvailabilityEnsureQuery = Extract<
+  WorkspaceAvailabilityUnavailableTarget,
+  { readonly kind: typeof officeReservationKind }
+> & { readonly seats: number } & ReservationInterval;
+
 type WorkspaceAvailabilityEnsureQuery =
-  | {
-      readonly kind: typeof coworkReservationKind;
-      readonly date: string;
-      readonly entryTier: WorkspaceCoworkProductTier;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    }
-  | ({
-      readonly kind: typeof meetingRoomReservationKind;
-    } & ReservationInterval)
-  | ({
-      readonly kind: typeof officeReservationKind;
-      readonly seats: number;
-    } & ReservationInterval);
+  | CoworkWorkspaceAvailabilityEnsureQuery
+  | MeetingRoomWorkspaceAvailabilityEnsureQuery
+  | OfficeWorkspaceAvailabilityEnsureQuery;
 
 export interface IWorkspaceAvailabilityService {
   readonly getAvailability: (

@@ -52,7 +52,7 @@ export const officeReservationPage = createReservationPage({
         locale,
         startsOn: decodePlainDate(initialValues.startsOn),
         endsOn: decodePlainDate(initialValues.endsOn),
-      }).map(({ request }) => request)
+      })
     ).pipe(
       Effect.provide(CheckoutPricingServiceLiveWithDependencies),
       Effect.scoped,

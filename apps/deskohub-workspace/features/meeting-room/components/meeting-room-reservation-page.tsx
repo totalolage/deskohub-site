@@ -56,7 +56,7 @@ export async function renderMeetingRoomReservationContent({
     getMeetingRoomDurationAdvertisedPriceRequests({
       locale,
       startDateTime: initialValues.startDateTime,
-    }).map(({ request }) => request)
+    })
   ).pipe(
     Effect.provide(CheckoutPricingServiceLiveWithDependencies),
     Effect.scoped,

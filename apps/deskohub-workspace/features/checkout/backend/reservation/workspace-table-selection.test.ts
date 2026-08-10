@@ -3,6 +3,7 @@ import type { Table } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
 import {
   getWorkspaceTableSeatCapacity,
+  isDisplayableWorkspaceTable,
   selectWorkspaceTableFromCandidates as selectWorkspaceTableFromCandidatesEffect,
 } from "./workspace-table-selection";
 
@@ -28,6 +29,24 @@ const makeTable = (input: {
 });
 
 describe("selectWorkspaceTableFromCandidates", () => {
+  test("recognizes table tags for every reservation family", () => {
+    for (const [id, tags] of [
+      ["cowork", ["tier:basic"]],
+      ["meeting-room", ["reservation:meeting-room"]],
+      ["office", ["reservation:office"]],
+    ] as const) {
+      expect(
+        isDisplayableWorkspaceTable(makeTable({ id, name: id, tags }))
+      ).toBe(true);
+    }
+
+    expect(
+      isDisplayableWorkspaceTable(
+        makeTable({ id: "event", name: "Event", tags: ["reservation:event"] })
+      )
+    ).toBe(false);
+  });
+
   test("reads positive whole-seat capacities", () => {
     expect(
       Effect.runSync(

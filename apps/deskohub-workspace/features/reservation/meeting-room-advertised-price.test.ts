@@ -9,7 +9,7 @@ describe("meeting-room advertised prices", () => {
       startDateTime: "2099-07-30T10:00",
     });
 
-    expect(requests.map(({ request }) => request.reservation.details)).toEqual([
+    expect(requests.map(({ reservation }) => reservation.details)).toEqual([
       {
         kind: "meeting-room",
         duration: { unit: "hour", amount: 1 },

@@ -31,6 +31,7 @@ describe("workspace product identities", () => {
     expect(() => decode("office")).toThrow();
     expect(() => decode("office:3")).toThrow();
     expect(() => decode("office:0:2")).toThrow();
+    expect(() => decode("office:1.5:2")).toThrow();
     expect(() => decode("office:3:0")).toThrow();
   });
 });

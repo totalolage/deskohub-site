@@ -14,8 +14,10 @@ describe("getOfficeSeatAdvertisedPriceRequests", () => {
       endsOn: decodePlainDate("2099-06-12"),
     });
 
-    expect(requests.map(({ seats }) => seats)).toEqual([1, 2, 3, 4]);
-    expect(requests[3]?.request.reservation.details).toEqual({
+    expect(
+      requests.map(({ reservation }) => reservation.details.seats)
+    ).toEqual([1, 2, 3, 4]);
+    expect(requests[3]?.reservation.details).toEqual({
       kind: "office",
       startsOn: "2099-06-10",
       endsOn: "2099-06-12",

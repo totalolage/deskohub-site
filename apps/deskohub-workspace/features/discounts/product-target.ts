@@ -1,17 +1,28 @@
-import { Schema } from "effect";
+import { Match, Schema } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import {
+  type WorkspaceCoworkProductTarget,
+  workspaceCoworkProductTargetSchema,
+} from "@/features/reservation/cowork-reservation-product";
+import {
+  type WorkspaceMeetingRoomProductTarget,
+  workspaceMeetingRoomProductTargetSchema,
+} from "@/features/reservation/meeting-room-reservation";
+import {
+  type WorkspaceOfficeProductTarget,
+  workspaceOfficeProductTargetSchema,
+} from "@/features/reservation/office-reservation";
 
-const workspaceProductTargetKindSchema = Schema.Literals([
-  "cowork",
-  "meeting-room",
-  "office",
+export const workspaceProductTargetSchema = Schema.Union([
+  workspaceCoworkProductTargetSchema,
+  workspaceMeetingRoomProductTargetSchema,
+  workspaceOfficeProductTargetSchema,
 ]);
 
-export const workspaceProductTargetSchema = Schema.Struct({
-  kind: workspaceProductTargetKindSchema,
-});
-
-export type WorkspaceProductTarget = typeof workspaceProductTargetSchema.Type;
+export type WorkspaceProductTarget =
+  | WorkspaceCoworkProductTarget
+  | WorkspaceMeetingRoomProductTarget
+  | WorkspaceOfficeProductTarget;
 
 export const workspaceProductTargets = [
   { kind: "cowork" as const },
@@ -21,7 +32,17 @@ export const workspaceProductTargets = [
 
 export const getWorkspaceProductTarget = (
   product: WorkspaceProductIdentity
-): WorkspaceProductTarget => ({ kind: product.kind });
+): WorkspaceProductTarget =>
+  Match.value(product).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () => workspaceCoworkProductTargetSchema.make({ kind: "cowork" }),
+      "meeting-room": () =>
+        workspaceMeetingRoomProductTargetSchema.make({
+          kind: "meeting-room",
+        }),
+      office: () => workspaceOfficeProductTargetSchema.make({ kind: "office" }),
+    })
+  );
 
 export const workspaceProductTargetMatches = (
   target: WorkspaceProductTarget,

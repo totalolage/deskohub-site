@@ -12,19 +12,25 @@ const advertisedPriceRequestBaseSchema = Schema.Struct({
   locale: Schema.Literals(locales),
 });
 
+const coworkAdvertisedPriceRequestSchema = Schema.Struct({
+  ...advertisedPriceRequestBaseSchema.fields,
+  reservation: coworkAdvertisedPriceReservationSchema,
+});
+
+const meetingRoomAdvertisedPriceRequestSchema = Schema.Struct({
+  ...advertisedPriceRequestBaseSchema.fields,
+  reservation: meetingRoomAdvertisedPriceReservationSchema,
+});
+
+const officeAdvertisedPriceRequestSchema = Schema.Struct({
+  ...advertisedPriceRequestBaseSchema.fields,
+  reservation: officeAdvertisedPriceReservationSchema,
+});
+
 export const advertisedPriceRequestSchema = Schema.Union([
-  Schema.Struct({
-    ...advertisedPriceRequestBaseSchema.fields,
-    reservation: coworkAdvertisedPriceReservationSchema,
-  }),
-  Schema.Struct({
-    ...advertisedPriceRequestBaseSchema.fields,
-    reservation: meetingRoomAdvertisedPriceReservationSchema,
-  }),
-  Schema.Struct({
-    ...advertisedPriceRequestBaseSchema.fields,
-    reservation: officeAdvertisedPriceReservationSchema,
-  }),
+  coworkAdvertisedPriceRequestSchema,
+  meetingRoomAdvertisedPriceRequestSchema,
+  officeAdvertisedPriceRequestSchema,
 ]).annotate({
   identifier: "AdvertisedPriceRequest",
   description: "Inputs for anonymous price advertisement.",
@@ -78,6 +84,12 @@ export const advertisedPriceSchema = Schema.Union([
 });
 
 export type AdvertisedPriceRequest = typeof advertisedPriceRequestSchema.Type;
+export type CoworkAdvertisedPriceRequest =
+  typeof coworkAdvertisedPriceRequestSchema.Type;
+export type MeetingRoomAdvertisedPriceRequest =
+  typeof meetingRoomAdvertisedPriceRequestSchema.Type;
+export type OfficeAdvertisedPriceRequest =
+  typeof officeAdvertisedPriceRequestSchema.Type;
 export const advertisedPriceRequestEquals = Schema.toEquivalence(
   advertisedPriceRequestSchema
 );
