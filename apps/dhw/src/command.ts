@@ -1,7 +1,9 @@
 import {
+  type AdministrationBookingQueryType,
   type AdministrationCustomerQueryType,
   type AdministrationOverviewMetricType,
   type AdministrationReservationQueryType,
+  type AdministrationReservationSummaryType,
   type CliAccessTokenType,
   CliSessionUnauthorized,
   makeCliAuthenticationChallenge,
@@ -135,26 +137,125 @@ const reservationsListCommand = Command.make(
           `Reservations: ${result.total} total · page ${result.page}/${result.pageCount}`
         );
         for (const reservation of result.items) {
-          const customerName =
-            reservation.customer?.displayName ?? reservation.customerId;
-          const when = reservation.date ?? reservation.startsAt ?? "Unknown";
-          yield* Console.log(
-            [
-              reservation.id,
-              when,
-              reservation.typeLabel,
-              customerName,
-              reservation.status.label,
-            ].join("\t")
-          );
+          yield* Console.log(formatReservationRow(reservation));
         }
       })
     )
 ).pipe(Command.withDescription("List and filter reservations"));
 
+const reservationsGetCommand = Command.make(
+  "get",
+  { reservationId: Argument.string("reservation-id") },
+  ({ reservationId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getReservation(accessToken, reservationId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        const reservation = detail.reservation;
+        yield* Console.log(
+          [
+            reservation.id,
+            reservation.date ?? reservation.startsAt ?? "Unknown date",
+            reservation.typeLabel,
+            reservation.customer?.displayName ?? reservation.customerId,
+            reservation.status.label,
+          ].join("\t")
+        );
+        yield* Console.log(
+          `${detail.paymentAttempts.length} payment attempts · ${detail.orders.length} provider orders · ${detail.discounts.length} discounts`
+        );
+      })
+    )
+).pipe(Command.withDescription("Show a reservation and its history"));
+
 const reservationsCommand = Command.make("reservations").pipe(
   Command.withDescription("Inspect Workspace reservations"),
-  Command.withSubcommands([reservationsListCommand])
+  Command.withSubcommands([reservationsListCommand, reservationsGetCommand])
+);
+
+const bookingsListCommand = Command.make(
+  "list",
+  {
+    date: Flag.string("date").pipe(
+      Flag.optional,
+      Flag.withDescription("Filter by booking date (YYYY-MM-DD)")
+    ),
+    page: Flag.integer("page").pipe(
+      Flag.optional,
+      Flag.withDescription("Results page")
+    ),
+  },
+  ({ date, page }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const query: AdministrationBookingQueryType = {
+          ...(Option.isSome(date) && { date: date.value }),
+          ...(Option.isSome(page) && { page: page.value }),
+        };
+        const result = yield* api.listBookings(accessToken, query);
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Bookings: ${result.total} total · page ${result.page}/${result.pageCount}`
+        );
+        for (const booking of result.items) {
+          yield* Console.log(
+            [
+              booking.id,
+              booking.startsAt,
+              booking.tableName ?? "Unassigned",
+              booking.customer?.displayName ??
+                booking.customerId ??
+                "Unknown customer",
+              booking.statusLabel,
+            ].join("\t")
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("List and filter Dotypos bookings"));
+
+const bookingsGetCommand = Command.make(
+  "get",
+  { bookingId: Argument.string("booking-id") },
+  ({ bookingId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getBooking(accessToken, bookingId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        const booking = detail.booking;
+        yield* Console.log(
+          [
+            booking.id,
+            booking.startsAt,
+            booking.endsAt,
+            booking.tableName ?? "Unassigned",
+            booking.customer?.displayName ??
+              booking.customerId ??
+              "Unknown customer",
+            booking.statusLabel,
+          ].join("\t")
+        );
+        if (detail.references.workspaceReservationId) {
+          yield* Console.log(
+            `Workspace reservation: ${detail.references.workspaceReservationId}`
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("Show a Dotypos booking"));
+
+const bookingsCommand = Command.make("bookings").pipe(
+  Command.withDescription("Inspect Dotypos bookings"),
+  Command.withSubcommands([bookingsListCommand, bookingsGetCommand])
 );
 
 const customersListCommand = Command.make(
@@ -226,9 +327,80 @@ const customersSearchCommand = Command.make(
     )
 ).pipe(Command.withDescription("Search customers by name or email"));
 
+const customersGetCommand = Command.make(
+  "get",
+  { customerId: Argument.string("customer-id") },
+  ({ customerId }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const detail = yield* api.getCustomer(accessToken, customerId);
+        if (json) {
+          yield* Console.log(JSON.stringify(detail));
+          return;
+        }
+        const profile = detail.profile;
+        yield* Console.log(
+          profile
+            ? [
+                profile.customer.id,
+                profile.customer.displayName,
+                profile.customer.email ??
+                  profile.customer.phone ??
+                  "No contact details",
+              ].join("\t")
+            : `${customerId}\tLive customer details unavailable`
+        );
+        yield* Console.log(
+          `${detail.activity.stats.reservationCount} reservations · ${profile?.codes.length ?? 0} discount codes · ${profile?.claims.length ?? 0} code claims`
+        );
+        if (detail.activity.stats.favoriteProduct) {
+          yield* Console.log(
+            `Favorite product: ${detail.activity.stats.favoriteProduct}`
+          );
+        }
+      })
+    )
+).pipe(Command.withDescription("Show customer activity and discount details"));
+
+const customersReservationsCommand = Command.make(
+  "reservations",
+  {
+    customerId: Argument.string("customer-id"),
+    page: Flag.integer("page").pipe(
+      Flag.optional,
+      Flag.withDescription("Results page")
+    ),
+  },
+  ({ customerId, page }) =>
+    runAuthenticatedCommand((api, accessToken, json) =>
+      Effect.gen(function* () {
+        const result = yield* api.listCustomerReservations(
+          accessToken,
+          customerId,
+          { ...(Option.isSome(page) && { page: page.value }) }
+        );
+        if (json) {
+          yield* Console.log(JSON.stringify(result));
+          return;
+        }
+        yield* Console.log(
+          `Reservations: ${result.total} total · page ${result.page}/${result.pageCount}`
+        );
+        for (const reservation of result.items) {
+          yield* Console.log(formatReservationRow(reservation));
+        }
+      })
+    )
+).pipe(Command.withDescription("List a customer's reservations"));
+
 const customersCommand = Command.make("customers").pipe(
   Command.withDescription("Inspect Workspace customers"),
-  Command.withSubcommands([customersListCommand, customersSearchCommand])
+  Command.withSubcommands([
+    customersListCommand,
+    customersSearchCommand,
+    customersGetCommand,
+    customersReservationsCommand,
+  ])
 );
 
 const authCommand = Command.make(
@@ -342,6 +514,7 @@ export const dhwCommand = rootCommand.pipe(
     versionCommand,
     apiCommand,
     authCommand,
+    bookingsCommand,
     customersCommand,
     overviewCommand,
     reservationsCommand,
@@ -434,7 +607,7 @@ const runAuthenticatedCommand = <A, E, R>(
       return yield* operation(api, current.value.accessToken, json).pipe(
         Effect.tapError((cause) =>
           cause instanceof CliSessionUnauthorized
-            ? authentication.clear
+            ? authentication.clear.pipe(Effect.asVoid)
             : Effect.void
         )
       );
@@ -445,6 +618,17 @@ const formatOverviewMetric = (
   label: string,
   metric: AdministrationOverviewMetricType
 ) => `${label}: ${metric.unavailable ? "unavailable" : metric.value}`;
+
+const formatReservationRow = (
+  reservation: AdministrationReservationSummaryType
+) =>
+  [
+    reservation.id,
+    reservation.date ?? reservation.startsAt ?? "Unknown",
+    reservation.typeLabel,
+    reservation.customer?.displayName ?? reservation.customerId,
+    reservation.status.label,
+  ].join("\t");
 
 const offerAutomaticUpdate = (json: boolean) =>
   Effect.gen(function* () {

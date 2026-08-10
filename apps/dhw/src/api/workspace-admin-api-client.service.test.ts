@@ -80,6 +80,43 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       lastUsedAt: expiresAt,
     } as const;
+    const booking = {
+      id: "booking-1",
+      customerId: "customer-1",
+      customer: {
+        id: "customer-1",
+        displayName: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: null,
+      },
+      startsAt: expiresAt,
+      endsAt: expiresAt,
+      seats: "1",
+      status: "CONFIRMED" as const,
+      statusLabel: "Confirmed",
+      tableId: "table-1",
+      tableName: "Focus room",
+      tableLocation: "First floor",
+      linkedReservation: { id: "reservation-1", label: "Meeting room" },
+      createdAt: expiresAt,
+      updatedAt: expiresAt,
+    };
+    const reservation = {
+      id: "reservation-1",
+      customerId: "customer-1",
+      customer: booking.customer,
+      liveDetailsAvailable: true,
+      startsAt: expiresAt,
+      endsAt: expiresAt,
+      date: null,
+      type: "meeting-room" as const,
+      typeLabel: "Meeting room",
+      status: { group: "complete" as const, label: "Complete" },
+      statusNote: null,
+      createdAt: expiresAt,
+      latestPayment: null,
+      updatedAt: expiresAt,
+    };
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
     const server = Bun.serve({
@@ -127,7 +164,7 @@ describe("WorkspaceAdminApiClient", () => {
             lastSevenDays: { unavailable: false, value: 5 },
           });
         }
-        if (url.pathname.endsWith("/reservations")) {
+        if (url.pathname === "/api/v1/cli/reservations") {
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
           );
@@ -142,12 +179,97 @@ describe("WorkspaceAdminApiClient", () => {
             dateSortUnavailable: false,
           });
         }
+        if (url.pathname.endsWith("/reservations/reservation-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            reservation,
+            booking,
+            lifecycle: {
+              currentStage: "complete",
+              label: "Access delivered",
+              reachedStages: ["started", "held", "paid", "complete"],
+              tone: "positive",
+            },
+            timeline: [],
+            paymentAttempts: [],
+            orders: [],
+            discounts: [],
+            otherCustomerReservations: [],
+            sameDateReservations: [],
+            references: {
+              workspaceReservationId: reservation.id,
+              dotyposReservationId: booking.id,
+              customerId: reservation.customerId,
+            },
+          });
+        }
+        if (url.pathname.endsWith("/bookings/booking-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            booking,
+            references: {
+              bookingId: booking.id,
+              customerId: booking.customerId,
+              workspaceReservationId: reservation.id,
+            },
+          });
+        }
+        if (url.pathname.endsWith("/bookings")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("date")).toBe("2026-08-10");
+          expect(url.searchParams.get("page")).toBe("2");
+          return Response.json({
+            items: [booking],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+          });
+        }
         if (url.pathname.endsWith("/customers/search")) {
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
           );
           expect(url.searchParams.get("query")).toBe("Ada");
           return Response.json({ kind: "not-found", customers: [] });
+        }
+        if (url.pathname.endsWith("/customers/customer-1/reservations")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(url.searchParams.get("page")).toBe("2");
+          return Response.json({
+            items: [reservation],
+            page: 2,
+            pageCount: 3,
+            total: 50,
+          });
+        }
+        if (url.pathname.endsWith("/customers/customer-1")) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          return Response.json({
+            profile: null,
+            activity: {
+              reservations: [reservation],
+              reservationHistoryTruncated: false,
+              transactions: [],
+              transactionHistoryTruncated: false,
+              stats: {
+                reservationCount: 1,
+                favoriteProduct: "Meeting room",
+                revenue: [],
+                discountSavings: [],
+              },
+              marketingConsent: null,
+            },
+          });
         }
         if (url.pathname.endsWith("/customers")) {
           expect(request.headers.get("authorization")).toBe(
@@ -195,10 +317,28 @@ describe("WorkspaceAdminApiClient", () => {
           page: 2,
           status: "complete",
         });
+        yield* client.getReservation(
+          Redacted.make(accessToken),
+          reservation.id
+        );
+        yield* client.listBookings(Redacted.make(accessToken), {
+          date: "2026-08-10",
+          page: 2,
+        });
+        yield* client.getBooking(Redacted.make(accessToken), booking.id);
         yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
         yield* client.searchCustomers(Redacted.make(accessToken), {
           query: "Ada",
         });
+        yield* client.getCustomer(
+          Redacted.make(accessToken),
+          reservation.customerId
+        );
+        yield* client.listCustomerReservations(
+          Redacted.make(accessToken),
+          reservation.customerId,
+          { page: 2 }
+        );
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -208,8 +348,19 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/session" },
         { method: "GET", path: "/api/v1/cli/overview" },
         { method: "GET", path: "/api/v1/cli/reservations" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/reservations/reservation-1",
+        },
+        { method: "GET", path: "/api/v1/cli/bookings" },
+        { method: "GET", path: "/api/v1/cli/bookings/booking-1" },
         { method: "GET", path: "/api/v1/cli/customers" },
         { method: "GET", path: "/api/v1/cli/customers/search" },
+        { method: "GET", path: "/api/v1/cli/customers/customer-1" },
+        {
+          method: "GET",
+          path: "/api/v1/cli/customers/customer-1/reservations",
+        },
       ]);
     } finally {
       server.stop(true);

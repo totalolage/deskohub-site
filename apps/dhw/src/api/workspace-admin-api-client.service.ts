@@ -1,10 +1,17 @@
 import {
   type AdminCliInfoType,
+  type AdministrationBookingDetailType,
+  type AdministrationBookingPageType,
+  type AdministrationBookingQueryType,
+  type AdministrationCustomerDetailType,
   type AdministrationCustomerPageType,
   type AdministrationCustomerQueryType,
+  type AdministrationCustomerReservationPageType,
+  type AdministrationCustomerReservationsQueryType,
   type AdministrationCustomerSearchQueryType,
   type AdministrationCustomerSearchResultType,
   type AdministrationOverviewType,
+  type AdministrationReservationDetailType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
   type CliAccessTokenType,
@@ -12,6 +19,7 @@ import {
   CliAuthenticationRateLimited,
   type CliAuthenticationStatusType,
   CliGrantRejected,
+  CliResourceNotFound,
   CliServiceUnavailable,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -72,6 +80,33 @@ interface IWorkspaceAdminApiClient {
     AdministrationReservationPageType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
+  readonly getReservation: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    reservationId: string
+  ) => Effect.Effect<
+    AdministrationReservationDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly listBookings: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    query: AdministrationBookingQueryType
+  ) => Effect.Effect<
+    AdministrationBookingPageType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getBooking: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    bookingId: string
+  ) => Effect.Effect<
+    AdministrationBookingDetailType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
   readonly listCustomers: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
     query: AdministrationCustomerQueryType
@@ -84,6 +119,21 @@ interface IWorkspaceAdminApiClient {
     query: AdministrationCustomerSearchQueryType
   ) => Effect.Effect<
     AdministrationCustomerSearchResultType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly getCustomer: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    customerId: string
+  ) => Effect.Effect<
+    AdministrationCustomerDetailType,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly listCustomerReservations: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    customerId: string,
+    query: AdministrationCustomerReservationsQueryType
+  ) => Effect.Effect<
+    AdministrationCustomerReservationPageType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
 }
@@ -173,6 +223,41 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeSessionError)
         )
     ),
+    getReservation: Effect.fn("WorkspaceAdminApiClient.getReservation")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        reservationId: string
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getReservation({
+              params: { reservationId },
+            })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    listBookings: Effect.fn("WorkspaceAdminApiClient.listBookings")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        query: AdministrationBookingQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listBookings({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getBooking: Effect.fn("WorkspaceAdminApiClient.getBooking")(
+      (accessToken: Redacted.Redacted<CliAccessTokenType>, bookingId: string) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getBooking({ params: { bookingId } })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
     listCustomers: Effect.fn("WorkspaceAdminApiClient.listCustomers")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
@@ -193,6 +278,36 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.searchCustomers({ query })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    getCustomer: Effect.fn("WorkspaceAdminApiClient.getCustomer")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        customerId: string
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.getCustomer({ params: { customerId } })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
+    listCustomerReservations: Effect.fn(
+      "WorkspaceAdminApiClient.listCustomerReservations"
+    )(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        customerId: string,
+        query: AdministrationCustomerReservationsQueryType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.listCustomerReservations({
+              params: { customerId },
+              query,
+            })
           ),
           Effect.mapError(sanitizeSessionError)
         )
@@ -263,3 +378,13 @@ const sanitizeSessionError = (
   }
   return sanitizedRequestError();
 };
+
+const sanitizeResourceError = (
+  cause:
+    | CliResourceNotFound
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) =>
+  cause instanceof CliResourceNotFound ? cause : sanitizeSessionError(cause);

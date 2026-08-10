@@ -3,6 +3,7 @@ import {
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliBearerAuthentication,
+  CliResourceNotFound,
   CurrentCliSession,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
@@ -119,8 +120,43 @@ describe("Workspace Admin API", () => {
   });
 
   test("invokes the same administration service used by the UI", async () => {
+    const bookingInputs: unknown[] = [];
+    const customerReservationInputs: unknown[] = [];
     const customerSearches: unknown[] = [];
     const reservationInputs: unknown[] = [];
+    const timestamp = "2026-08-10T10:00:00.000Z";
+    const booking = {
+      id: "booking-1",
+      customerId: "customer-1",
+      customer: null,
+      startsAt: timestamp,
+      endsAt: timestamp,
+      seats: "1",
+      status: "CONFIRMED" as const,
+      statusLabel: "Confirmed",
+      tableId: "table-1",
+      tableName: "Focus room",
+      tableLocation: null,
+      linkedReservation: { id: "reservation-1", label: "Meeting room" },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    const reservation = {
+      id: "reservation-1",
+      customerId: "customer-1",
+      customer: null,
+      liveDetailsAvailable: true,
+      startsAt: timestamp,
+      endsAt: timestamp,
+      date: null,
+      type: "meeting-room" as const,
+      typeLabel: "Meeting room",
+      status: { group: "complete" as const, label: "Complete" },
+      statusNote: null,
+      createdAt: timestamp,
+      latestPayment: null,
+      updatedAt: timestamp,
+    };
     const administration = Layer.succeed(AdministrationService, {
       loadOverview: () =>
         Effect.succeed({
@@ -140,10 +176,61 @@ describe("Workspace Admin API", () => {
             dateSortUnavailable: false,
           };
         }),
-      loadReservation: () => Effect.die("not used"),
+      loadReservation: (id) =>
+        Effect.succeed(
+          id === reservation.id
+            ? {
+                reservation,
+                booking,
+                lifecycle: {
+                  currentStage: "complete" as const,
+                  label: "Access delivered",
+                  reachedStages: [
+                    "started" as const,
+                    "held" as const,
+                    "paid" as const,
+                    "complete" as const,
+                  ],
+                  tone: "positive" as const,
+                },
+                timeline: [],
+                paymentAttempts: [],
+                orders: [],
+                discounts: [],
+                otherCustomerReservations: [],
+                sameDateReservations: [],
+                references: {
+                  workspaceReservationId: reservation.id,
+                  dotyposReservationId: booking.id,
+                  customerId: reservation.customerId,
+                },
+              }
+            : null
+        ),
       findReservationId: () => Effect.die("not used"),
-      listBookings: () => Effect.die("not used"),
-      loadBooking: () => Effect.die("not used"),
+      listBookings: (input) =>
+        Effect.sync(() => {
+          bookingInputs.push(input);
+          return {
+            items: [booking],
+            page: input.page ?? 1,
+            pageCount: 1,
+            total: 1,
+          };
+        }),
+      loadBooking: (id) =>
+        Effect.succeed(
+          id === booking.id
+            ? {
+                booking,
+                references: {
+                  bookingId: booking.id,
+                  customerId: booking.customerId,
+                  workspaceReservationId: reservation.id,
+                },
+              }
+            : null
+        ),
       listCustomers: (input) =>
         Effect.succeed({
           items: [],
@@ -151,8 +238,30 @@ describe("Workspace Admin API", () => {
           pageCount: 1,
           total: 0,
         }),
-      loadCustomerReservations: () => Effect.die("not used"),
-      loadCustomerActivity: () => Effect.die("not used"),
+      loadCustomerReservations: (input) =>
+        Effect.sync(() => {
+          customerReservationInputs.push(input);
+          return {
+            items: [reservation],
+            page: input.page ?? 1,
+            pageCount: 1,
+            total: 1,
+          };
+        }),
+      loadCustomerActivity: () =>
+        Effect.succeed({
+          reservations: [reservation],
+          reservationHistoryTruncated: false,
+          transactions: [],
+          transactionHistoryTruncated: false,
+          stats: {
+            reservationCount: 1,
+            favoriteProduct: reservation.typeLabel,
+            revenue: [],
+            discountSavings: [],
+          },
+          marketingConsent: null,
+        }),
       listOrders: () => Effect.die("not used"),
       loadOrder: () => Effect.die("not used"),
       listOperations: () => Effect.die("not used"),
@@ -165,6 +274,7 @@ describe("Workspace Admin API", () => {
           customerSearches.push(input);
           return { kind: "not-found" as const, customers: [] };
         }),
+      loadCustomerProfile: () => Effect.fail(new Error("unavailable")),
     });
 
     const result = await Effect.gen(function* () {
@@ -175,13 +285,44 @@ describe("Workspace Admin API", () => {
       const reservations = yield* client.administration.listReservations({
         query: { page: 2, status: "complete" },
       });
+      const reservationDetail = yield* client.administration.getReservation({
+        params: { reservationId: reservation.id },
+      });
+      const bookings = yield* client.administration.listBookings({
+        query: { date: "2026-08-10", page: 4 },
+      });
+      const bookingDetail = yield* client.administration.getBooking({
+        params: { bookingId: booking.id },
+      });
+      const missingBooking = yield* client.administration
+        .getBooking({ params: { bookingId: "missing" } })
+        .pipe(Effect.flip);
       const customers = yield* client.administration.listCustomers({
         query: { page: 3 },
       });
       const customerSearch = yield* client.administration.searchCustomers({
         query: { query: "Ada" },
       });
-      return { customerSearch, customers, overview, reservations };
+      const customer = yield* client.administration.getCustomer({
+        params: { customerId: reservation.customerId },
+      });
+      const customerReservations =
+        yield* client.administration.listCustomerReservations({
+          params: { customerId: reservation.customerId },
+          query: { page: 5 },
+        });
+      return {
+        bookingDetail,
+        bookings,
+        customerSearch,
+        customer,
+        customerReservations,
+        customers,
+        missingBooking,
+        overview,
+        reservationDetail,
+        reservations,
+      };
     }).pipe(
       Effect.provide(AdminCliReadApiHandlers),
       Effect.provide(AuthorizedCliRequest),
@@ -194,9 +335,20 @@ describe("Workspace Admin API", () => {
 
     expect(result.overview.today.value).toBe(3);
     expect(result.reservations.page).toBe(2);
+    expect(result.reservationDetail.reservation.id).toBe(reservation.id);
+    expect(result.bookings.page).toBe(4);
+    expect(result.bookingDetail.booking.id).toBe(booking.id);
+    expect(result.missingBooking).toBeInstanceOf(CliResourceNotFound);
     expect(result.customers.page).toBe(3);
     expect(result.customerSearch.kind).toBe("not-found");
+    expect(result.customer.profile).toBeNull();
+    expect(result.customer.activity.stats.reservationCount).toBe(1);
+    expect(result.customerReservations.page).toBe(5);
     expect(reservationInputs).toEqual([{ page: 2, status: "complete" }]);
     expect(customerSearches).toEqual([{ query: "Ada" }]);
+    expect(bookingInputs).toEqual([{ date: "2026-08-10", page: 4 }]);
+    expect(customerReservationInputs).toEqual([
+      { customerId: reservation.customerId, page: 5 },
+    ]);
   });
 });

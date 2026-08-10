@@ -2,6 +2,7 @@ import {
   CliAuthenticationRateLimited,
   CliBearerAuthentication,
   CliGrantRejected,
+  CliResourceNotFound,
   CliServiceUnavailable,
   CliSessionUnauthorized,
   CurrentCliSession,
@@ -14,7 +15,12 @@ import { HttpApiBuilder } from "effect/unstable/httpapi";
 import { AdministrationLive } from "@/features/administration/administration.runtime";
 import { AdministrationService } from "@/features/administration/administration.service";
 import { DiscountAdministrationLive } from "@/features/discounts/admin/discount-administration.runtime";
-import { DiscountAdministration } from "@/features/discounts/admin/discount-administration.service";
+import {
+  type AdminCustomerProfile,
+  DiscountAdministration,
+} from "@/features/discounts/admin/discount-administration.service";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
 
@@ -77,11 +83,67 @@ export const AdminCliReadApiHandlers = HttpApiBuilder.group(
         .handle("listReservations", ({ query }) =>
           administration.listReservations(query).pipe(mapServiceFailure)
         )
+        .handle("getReservation", ({ params }) =>
+          administration.loadReservation(params.reservationId).pipe(
+            mapServiceFailure,
+            Effect.flatMap((detail) =>
+              detail
+                ? Effect.succeed(detail)
+                : new CliResourceNotFound({
+                    message: "The reservation was not found.",
+                  })
+            )
+          )
+        )
+        .handle("listBookings", ({ query }) =>
+          administration
+            .listBookings({
+              date: query.date ?? getCurrentWorkspaceDate().toString(),
+              page: query.page,
+            })
+            .pipe(mapServiceFailure)
+        )
+        .handle("getBooking", ({ params }) =>
+          administration.loadBooking(params.bookingId).pipe(
+            mapServiceFailure,
+            Effect.flatMap((detail) =>
+              detail
+                ? Effect.succeed(detail)
+                : new CliResourceNotFound({
+                    message: "The booking was not found.",
+                  })
+            )
+          )
+        )
         .handle("listCustomers", ({ query }) =>
           administration.listCustomers(query).pipe(mapServiceFailure)
         )
         .handle("searchCustomers", ({ query }) =>
           discounts.searchCustomers(query).pipe(mapServiceFailure)
+        )
+        .handle("getCustomer", ({ params }) =>
+          Effect.all(
+            {
+              activity: administration.loadCustomerActivity(params.customerId),
+              profile: discounts
+                .loadCustomerProfile({
+                  customerId: params.customerId as DotyposCustomerId,
+                })
+                .pipe(
+                  Effect.map(toCliCustomerProfile),
+                  Effect.catch(() => Effect.succeed(null))
+                ),
+            },
+            { concurrency: "unbounded" }
+          ).pipe(mapServiceFailure)
+        )
+        .handle("listCustomerReservations", ({ params, query }) =>
+          administration
+            .loadCustomerReservations({
+              customerId: params.customerId,
+              page: query.page,
+            })
+            .pipe(mapServiceFailure)
         );
     })
 );
@@ -115,6 +177,24 @@ const makeServiceUnavailable = () =>
 
 const mapServiceFailure = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(makeServiceUnavailable));
+
+const toCliCustomerProfile = (profile: AdminCustomerProfile) => ({
+  ...profile,
+  codes: profile.codes.map((code) => ({
+    ...code,
+    validFrom: code.validFrom?.toString() ?? null,
+    validUntil: code.validUntil?.toString() ?? null,
+    createdAt: code.createdAt.toString(),
+    updatedAt: code.updatedAt.toString(),
+  })),
+  claims: profile.claims.map((claim) => ({
+    ...claim,
+    reservationExpiresAt: claim.reservationExpiresAt.toString(),
+    reservedAt: claim.reservedAt.toString(),
+    redeemedAt: claim.redeemedAt?.toString() ?? null,
+    releasedAt: claim.releasedAt?.toString() ?? null,
+  })),
+});
 
 const noStore = HttpRouter.middleware(
   (effect) =>

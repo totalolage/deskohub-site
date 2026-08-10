@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import {
   AdminCliReadApi,
+  AdministrationBookingQuery,
   AdministrationCustomerQuery,
+  AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationReservationQuery,
   CliClientName,
@@ -40,8 +42,15 @@ describe("administration read contract", () => {
   test("keeps read operations safe and typed", () => {
     expect(AdminCliReadApi.endpoints.getOverview?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listReservations?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getReservation?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listBookings?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getBooking?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.listCustomers?.method).toBe("GET");
     expect(AdminCliReadApi.endpoints.searchCustomers?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.getCustomer?.method).toBe("GET");
+    expect(AdminCliReadApi.endpoints.listCustomerReservations?.method).toBe(
+      "GET"
+    );
     expect(
       Schema.decodeUnknownSync(AdministrationReservationQuery)({
         page: 2,
@@ -81,6 +90,25 @@ describe("administration read contract", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationCustomerSearchQuery)({
         query: "Ada;drop",
+      })
+    ).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationCustomerReservationsQuery)({
+        page: 0,
+      })
+    ).toThrow();
+  });
+
+  test("validates booking filters", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "2026-08-10",
+        page: 2,
+      })
+    ).toEqual({ date: "2026-08-10", page: 2 });
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationBookingQuery)({
+        date: "10-08-2026",
       })
     ).toThrow();
   });
