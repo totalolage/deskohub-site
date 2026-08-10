@@ -1,12 +1,9 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
-import {
-  EffectLogger,
-  type EffectPgDatabase,
-  make,
-} from "drizzle-orm/effect-postgres";
+import { type EffectPgDatabase, make } from "drizzle-orm/effect-postgres";
 import { Effect, Layer } from "effect";
 import { Pool, type PoolConfig } from "pg";
+import { DatabaseQueryLoggerLive } from "@/shared/backend/logging/database-query-logger";
 import { normalizePostgresConnectionUrl } from "./postgres-connection-url";
 import { drizzleRawTypeParsers } from "./postgres-type-parsers";
 import { relations } from "./relations";
@@ -31,7 +28,7 @@ export const makeDatabaseClient = (pool: Pool) =>
         PgClient.layerFrom(
           PgClient.fromPool({ acquire: Effect.succeed(pool) })
         ).pipe(Layer.orDie),
-        Layer.merge(EffectCache.Default, EffectLogger.layer)
+        Layer.merge(EffectCache.Default, DatabaseQueryLoggerLive)
       )
     )
   );

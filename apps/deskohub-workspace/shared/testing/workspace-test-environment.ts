@@ -2,9 +2,12 @@ import "@/shared/polyfills/temporal";
 
 import { createHash } from "node:crypto";
 
-const key = Buffer.alloc(32, 7).toString("base64url");
+const checkoutKey = Buffer.alloc(32, 7).toString("base64url");
+const accountingSnapshotKey = "synthetic accounting snapshot secret!";
 
-process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${key}`;
+process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
+process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= accountingSnapshotKey;
+process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${checkoutKey}`;
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";

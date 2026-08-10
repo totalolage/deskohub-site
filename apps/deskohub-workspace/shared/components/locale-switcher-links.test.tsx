@@ -173,6 +173,10 @@ test("uses document navigation for the alternate-locale minimal-header link", as
     expect(capturedLinks.filter(({ href }) => href === alternateHref)).toEqual(
       []
     );
+    expect(capturedLinks).toContainEqual({
+      href: `/${currentLocale}`,
+      prefetch: false,
+    });
     view.unmount();
   }
 });

@@ -32,8 +32,28 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./legal-evidence-events");
     expect(schemaIndex).toContain("./discounts");
     expect(schemaIndex).toContain("./discount-applications");
+    expect(schemaIndex).toContain("./accounting-document-snapshots");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
+  });
+
+  test("accounting PII exception stores only PostgreSQL ciphertext", async () => {
+    const schema = await readAppFile(
+      "db/schema/accounting-document-snapshots.ts"
+    );
+    const migration = await readAppFile(
+      "db/migrations/20260810143334_slim_morlun/migration.sql"
+    );
+
+    expect(schema).toContain('bytea("encrypted_snapshot")');
+    expect(schema).not.toContain("jsonb(");
+    for (const fragment of piiColumnFragments) {
+      expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
+    }
+    expect(migration).toContain('CREATE EXTENSION IF NOT EXISTS "pgcrypto"');
+    expect(migration).toContain("accounting_document_snapshots_immutable");
+    expect(migration).toContain("BEFORE UPDATE OR DELETE");
+    expect(migration).toContain("state IN ('failed', 'cancelled', 'expired')");
   });
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
@@ -61,6 +81,57 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(source).toContain(".update(JSON.stringify(payload))");
     expect(source).not.toContain('.join("\\u001f")');
     expect(source).not.toContain("Effect.annotateLogs(input)");
+  });
+
+  test("reservation action does not log future billing inputs", async () => {
+    const source = await readAppFile(
+      "features/reservation/actions/prepare-pay-state.ts"
+    );
+    const actionBoundary = source.slice(
+      source.indexOf("const preparePayStateAction = defineWorkspaceAction")
+    );
+
+    expect(actionBoundary).toContain("logInput: false");
+  });
+
+  test("confidential database scalars are explicitly marked for query censorship", async () => {
+    const reservationRepository = await readAppFile(
+      "features/reservation/backend/workspace-reservation.repository.ts"
+    );
+    const paymentLifecycleRepository = await readAppFile(
+      "features/checkout/backend/repositories/payment-lifecycle.repository.ts"
+    );
+    const discountAdministration = await readAppFile(
+      "features/discounts/admin/discount-administration.service.ts"
+    );
+    const discountCodeRepository = await readAppFile(
+      "features/discounts/discount-code.repository.ts"
+    );
+    const accountingSql = await readAppFile(
+      "features/accounting/backend/accounting-snapshot-sql.ts"
+    );
+
+    expect(reservationRepository).toContain(
+      "customerAccessCode: sensitiveDatabaseParameter("
+    );
+    expect(paymentLifecycleRepository).toContain(
+      "securityToken: sensitiveDatabaseParameter("
+    );
+    expect(paymentLifecycleRepository).toContain(
+      "providerRedirectUrl: sensitiveDatabaseParameter("
+    );
+    expect(discountAdministration).toContain(
+      "code: sensitiveDatabaseParameter(input.code)"
+    );
+    expect(discountCodeRepository).toContain(
+      "sensitiveDatabaseParameter(input.code)"
+    );
+    expect(accountingSql).toContain(
+      `pgp_sym_encrypt(\${sensitiveDatabaseParameter(snapshotJson)}, \${sensitiveDatabaseParameter(secret)}`
+    );
+    expect(accountingSql).toContain(
+      `pgp_sym_decrypt(\${encryptedSnapshot}, \${sensitiveDatabaseParameter(secret)})`
+    );
   });
 
   test("repository transitions are state and active-attempt guarded", async () => {

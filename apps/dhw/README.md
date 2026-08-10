@@ -73,6 +73,55 @@ query parameters. The service operations and shared schemas remain transport
 independent so adopting `QUERY` does not require changing CLI commands or Admin
 UI application services.
 
+## Administration mutations
+
+Mutation commands use the same validated mutation schema and application
+services as the Admin UI. Representative commands are:
+
+```bash
+dhw discounts create percentage \
+  --label-en "Summer sale" --label-cs "Letní sleva" \
+  --percentage 10 --product cowork --product office
+dhw discounts create fixed \
+  --label-en "100 CZK off" --label-cs "Sleva 100 Kč" \
+  --fixed-value 10000 --currency CZK --product meeting-room
+dhw discounts update percentage <discount-id> \
+  --label-en "Summer sale" --label-cs "Letní sleva" \
+  --percentage 15 --product cowork
+dhw discounts delete <discount-id>
+
+dhw codes create existing SUMMER10 <discount-id>
+dhw codes create percentage VIP15 --customer <customer-id> \
+  --label-en "VIP discount" --label-cs "VIP sleva" \
+  --percentage 15 --product cowork
+dhw codes update <code-id> SUMMER15 <discount-id> --enabled true
+dhw codes add-customer <code-id> <customer-id>
+dhw codes remove-customer <code-id> <customer-id>
+dhw codes make-unrestricted <code-id>
+dhw codes delete <code-id>
+
+dhw customers set-discount-group <customer-id> <group-id>
+dhw customers clear-discount-group <customer-id>
+dhw sessions rename <session-id> "Office Mac"
+dhw sessions revoke <session-id>
+```
+
+The `codes create percentage` and `codes create fixed` variants create the
+discount definition and code atomically, matching the Admin UI. Add
+`--customer` to restrict the new code to one customer. Fixed values use minor
+currency units. Code validity bounds use ISO instants; omitted bounds and
+maximum uses are stored as unrestricted values. Update commands replace the
+editable resource fields, matching the corresponding Admin UI forms.
+
+Commands that delete resources, remove restrictions, revoke sessions, change a
+customer's discount group, or add a code-audience member ask for confirmation.
+Pass `--yes` to approve explicitly; non-interactive and `--json` invocations
+require it.
+
+Each discount mutation carries a client-generated request identifier. The
+server persists the request and result per CLI session, so an ambiguous
+transport failure can be retried without applying the same mutation twice.
+
 ## Development
 
 ```bash

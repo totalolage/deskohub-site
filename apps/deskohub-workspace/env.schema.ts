@@ -17,6 +17,9 @@ const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
 const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
 
 export const workspaceServerEnvSchema = Schema.Struct({
+  ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
+    Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
+  ),
   AGENT_BROWSER_EXECUTABLE_PATH: optionalStringSchema,
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,

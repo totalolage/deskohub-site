@@ -993,6 +993,7 @@ const PreparePayStateLive = Layer.mergeAll(
 
 const preparePayStateAction = defineWorkspaceAction(
   {
+    logInput: false,
     operation: "checkout.prepare-pay-state",
     schema: preparePayStateSchema,
   },

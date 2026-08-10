@@ -14,6 +14,18 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.cliSessions.id,
     }),
   },
+  accountingDocumentSnapshots: {
+    paymentAttempt: r.one.paymentAttempts({
+      from: r.accountingDocumentSnapshots.paymentAttemptId,
+      to: r.paymentAttempts.id,
+      optional: false,
+    }),
+    workspaceReservation: r.one.workspaceReservations({
+      from: r.accountingDocumentSnapshots.workspaceReservationId,
+      to: r.workspaceReservations.id,
+      optional: false,
+    }),
+  },
   discounts: {
     productTargets: r.many.discountProductTargets(),
     codes: r.many.discountCodes(),
@@ -75,6 +87,10 @@ export const relations = defineRelations(schema, (r) => ({
     }),
   },
   paymentAttempts: {
+    accountingDocumentSnapshot: r.one.accountingDocumentSnapshots({
+      from: r.paymentAttempts.id,
+      to: r.accountingDocumentSnapshots.paymentAttemptId,
+    }),
     workspaceReservation: r.one.workspaceReservations({
       from: r.paymentAttempts.workspaceReservationId,
       to: r.workspaceReservations.id,

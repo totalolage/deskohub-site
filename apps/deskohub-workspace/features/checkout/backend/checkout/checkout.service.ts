@@ -9,6 +9,10 @@ import {
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
+  type AccountingDocumentSnapshot,
+  makeAccountingDocumentSnapshot,
+} from "@/features/accounting/accounting-document-snapshot";
+import {
   type CheckoutSummary,
   getCheckoutSummaryChangedKeys,
 } from "@/features/checkout/checkout-summary";
@@ -500,6 +504,7 @@ export const CheckoutServiceLive = Layer.effect(
         readonly total: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly customer: HostedPaymentCustomer;
+        readonly accountingSnapshot: AccountingDocumentSnapshot;
       }) {
         yield* Effect.annotateLogsScoped({
           providerSessionInput: {
@@ -547,6 +552,7 @@ export const CheckoutServiceLive = Layer.effect(
           amount: input.total,
           commitment: input.commitment,
           locale: input.locale,
+          accountingSnapshot: input.accountingSnapshot,
         });
         if (!isNexiPaymentAttempt(attempt)) {
           return yield* new CheckoutError({
@@ -620,6 +626,7 @@ export const CheckoutServiceLive = Layer.effect(
       readonly locale: Locale;
       readonly total: WorkspaceMoney;
       readonly commitment: DiscountCommitment;
+      readonly accountingSnapshot: AccountingDocumentSnapshot;
     }) {
       yield* revalidatePayableReservation(input);
 
@@ -628,6 +635,7 @@ export const CheckoutServiceLive = Layer.effect(
         amount: input.total,
         commitment: input.commitment,
         locale: input.locale,
+        accountingSnapshot: input.accountingSnapshot,
       });
 
       if (transition.changed) {
@@ -971,6 +979,13 @@ export const CheckoutServiceLive = Layer.effect(
           );
 
           yield* ensureReservationHasNotEnded(state.reservation);
+          const accountingSnapshot = makeAccountingDocumentSnapshot({
+            workspaceReservationId: reservation.id,
+            dotyposReservationId,
+            dotyposCustomerId,
+            locale,
+            prepared,
+          });
           const expectedPrice = prepared.quote.payment.expectedPrice;
           const startPayment =
             expectedPrice.value === 0
@@ -980,6 +995,7 @@ export const CheckoutServiceLive = Layer.effect(
                   locale,
                   total: expectedPrice,
                   commitment: prepared.commitment,
+                  accountingSnapshot,
                 })
               : startProviderSession({
                   workspaceReservationId: reservation.id,
@@ -994,6 +1010,7 @@ export const CheckoutServiceLive = Layer.effect(
                     email: data.email,
                     phone: data.phone,
                   }),
+                  accountingSnapshot,
                 });
 
           return yield* startPayment.pipe(

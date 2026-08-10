@@ -76,7 +76,7 @@ Advertised, signed, and freshly affirmed quotes and local payment attempts alway
 
 ## No-PII Policy
 
-No customer PII may be persisted in database columns, JSON, text messages, or event metadata. This includes customer name, email, phone number, payment instrument data, Nexi `customerInfo`, raw provider payloads, and free-form user notes.
+No customer PII may be persisted in plaintext database columns, JSON, text messages, or event metadata. This includes customer name, email, phone number, payment instrument data, Nexi `customerInfo`, raw provider payloads, and free-form user notes. The sole accounting exception is a versioned invoice-source snapshot encrypted by PostgreSQL `pgcrypto` into `accounting_document_snapshots.encrypted_snapshot`.
 
 Allowed local values:
 
@@ -87,14 +87,15 @@ Allowed local values:
 - Customer marketing grant and withdrawal timestamps.
 - Local state enums, timestamps, and normalized failure codes.
 - Payment amounts, currencies, quote fingerprints, and product price metadata needed to verify a Nexi result, provided they do not include customer or reservation facts that Dotypos owns.
+- An immutable accounting snapshot encrypted into `bytea`, with only its non-PII payment-attempt/reservation references, schema version, key ID, and creation time stored in plaintext.
 
 Enforcement boundary:
 
 - Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient checkout-key payloads.
 - Nexi HPP creation may transmit the signed reservation's customer name, email, and normalized phone fields as `order.customerInfo`; provider adapters must not persist or log those values.
-- Repository inputs must be shaped so PII has no destination field.
+- Repository inputs must be shaped so PII has no plaintext destination field. Accounting snapshot plaintext may reach only the parameterized `pgp_sym_encrypt` call.
 - `jsonb` columns must use schemas that exclude customer contact fields, free-form customer notes, raw provider envelopes, and raw Dotypos responses.
-- Logs may contain PII only under the application's global filtering policy.
+- Database query logs may retain non-sensitive parameters for diagnostics, but every confidential scalar must use `sensitiveDatabaseParameter` and structured parameters must pass through the shared recursive censor. Accounting encryption and decryption queries must mark the plaintext and key parameters, disable application tracing, and immediately replace raw database failures with stable errors.
 - Any future column or JSON field that can carry customer-authored free text is forbidden unless a separate privacy review explicitly reclassifies it.
 
 ## Table Contracts

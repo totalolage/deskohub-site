@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
+import { workspaceCurrencyDefinitions } from "@/shared/money/currencies";
 import {
   createDiscountAdminInputSchema,
   createDiscountCodeAdminInputSchema,
@@ -74,15 +75,17 @@ describe("discount administration inputs", () => {
   });
 
   test("accepts only catalog currencies with their defined exponent", () => {
-    expect(() =>
-      decodeDiscount({
-        ...validDiscount,
-        adjustment: {
-          kind: "fixed",
-          amount: { value: 10_000, currency: "CZK", exponent: 2 },
-        },
-      })
-    ).not.toThrow();
+    for (const { code, exponent } of workspaceCurrencyDefinitions) {
+      expect(() =>
+        decodeDiscount({
+          ...validDiscount,
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 10_000, currency: code, exponent },
+          },
+        })
+      ).not.toThrow();
+    }
     expect(() =>
       decodeDiscount({
         ...validDiscount,

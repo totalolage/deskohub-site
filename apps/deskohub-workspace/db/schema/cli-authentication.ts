@@ -1,10 +1,21 @@
 import type {
+  AdministrationDiscountMutationResultType,
+  AdministrationDiscountMutationType,
   CliBuildTargetType,
+  CliMutationRequestIdType,
   CliSessionIdType,
 } from "@deskohub/workspace-admin-api";
 import { CLI_BUILD_TARGETS } from "@deskohub/workspace-admin-api";
 import { sql } from "drizzle-orm";
-import { check, index, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  check,
+  index,
+  jsonb,
+  pgTable,
+  primaryKey,
+  text,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -125,9 +136,49 @@ export const cliAuthenticationRequests = pgTable(
   ]
 );
 
+export const cliMutationRequests = pgTable(
+  "cli_mutation_requests",
+  {
+    sessionId: text("session_id")
+      .notNull()
+      .$type<CliSessionIdType>()
+      .references(() => cliSessions.id, { onDelete: "cascade" }),
+    requestId: text("request_id").notNull().$type<CliMutationRequestIdType>(),
+    mutation: jsonb("mutation")
+      .notNull()
+      .$type<AdministrationDiscountMutationType>(),
+    result: jsonb("result").$type<AdministrationDiscountMutationResultType>(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    completedAt: instant("completed_at"),
+  },
+  (t) => [
+    primaryKey({
+      name: "cli_mutation_requests_pk",
+      columns: [t.sessionId, t.requestId],
+    }),
+    index("cli_mutation_requests_created_at_idx").on(t.createdAt),
+    check(
+      "cli_mutation_requests_request_id_check",
+      sql`${t.requestId} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`
+    ),
+    check(
+      "cli_mutation_requests_completion_check",
+      sql`(
+        ${t.result} is null
+        and ${t.completedAt} is null
+      ) or (
+        ${t.result} is not null
+        and ${t.completedAt} is not null
+        and ${t.completedAt} >= ${t.createdAt}
+      )`
+    ),
+  ]
+);
+
 export type CliSessionRow = typeof cliSessions.$inferSelect;
 export type NewCliSessionRow = typeof cliSessions.$inferInsert;
 export type CliAuthenticationRequestRow =
   typeof cliAuthenticationRequests.$inferSelect;
 export type NewCliAuthenticationRequestRow =
   typeof cliAuthenticationRequests.$inferInsert;
+export type CliMutationRequestRow = typeof cliMutationRequests.$inferSelect;

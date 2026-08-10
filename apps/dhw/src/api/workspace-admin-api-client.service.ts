@@ -12,6 +12,8 @@ import {
   type AdministrationCustomerSearchResultType,
   type AdministrationDiscountCodeDetailType,
   type AdministrationDiscountDashboardType,
+  type AdministrationDiscountMutationResultType,
+  type AdministrationDiscountMutationType,
   type AdministrationOperationDetailType,
   type AdministrationOperationListType,
   type AdministrationOperationQueryType,
@@ -28,21 +30,35 @@ import {
   CliAuthenticationRateLimited,
   type CliAuthenticationStatusType,
   CliGrantRejected,
+  CliMutationInProgress,
+  CliMutationRejected,
+  type CliMutationRequestIdType,
   CliResourceNotFound,
   CliServiceUnavailable,
   type CliSessionAdministrationType,
+  type CliSessionIdType,
+  type CliSessionMutationResultType,
   type CliSessionType,
   CliSessionUnauthorized,
   type ExchangeCliGrantType,
   type GrantedCliSessionType,
+  type RenameCliSessionType,
   type StartCliAuthenticationType,
   type StartedCliAuthenticationType,
   WorkspaceAdminApi,
 } from "@deskohub/workspace-admin-api";
-import { Context, Data, Effect, Layer, Redacted, type Schema } from "effect";
+import {
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Redacted,
+  Schedule,
+  type Schema,
+} from "effect";
 import {
   HttpClient,
-  type HttpClientError,
+  HttpClientError,
   HttpClientRequest,
 } from "effect/unstable/http";
 import { HttpApiClient } from "effect/unstable/httpapi";
@@ -201,6 +217,37 @@ interface IWorkspaceAdminApiClient {
     accessToken: Redacted.Redacted<CliAccessTokenType>
   ) => Effect.Effect<
     ReadonlyArray<CliSessionAdministrationType>,
+    CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
+  >;
+  readonly mutateDiscounts: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    requestId: CliMutationRequestIdType,
+    input: AdministrationDiscountMutationType
+  ) => Effect.Effect<
+    AdministrationDiscountMutationResultType,
+    | CliApiRequestError
+    | CliMutationInProgress
+    | CliMutationRejected
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly renameSession: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    sessionId: CliSessionIdType,
+    input: RenameCliSessionType
+  ) => Effect.Effect<
+    CliSessionMutationResultType,
+    | CliApiRequestError
+    | CliResourceNotFound
+    | CliSessionUnauthorized
+    | CliServiceUnavailable
+  >;
+  readonly revokeSession: (
+    accessToken: Redacted.Redacted<CliAccessTokenType>,
+    sessionId: CliSessionIdType
+  ) => Effect.Effect<
+    CliSessionMutationResultType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
 }
@@ -468,6 +515,59 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
           Effect.mapError(sanitizeSessionError)
         )
     ),
+    mutateDiscounts: Effect.fn("WorkspaceAdminApiClient.mutateDiscounts")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        requestId: CliMutationRequestIdType,
+        input: AdministrationDiscountMutationType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.mutateDiscounts({
+              payload: { requestId, mutation: input },
+            })
+          ),
+          Effect.retry({
+            schedule: Schedule.spaced("250 millis"),
+            times: 20,
+            while: (cause) =>
+              cause instanceof CliMutationInProgress ||
+              cause instanceof CliServiceUnavailable ||
+              HttpClientError.isHttpClientError(cause),
+          }),
+          Effect.mapError(sanitizeMutationError)
+        )
+    ),
+    renameSession: Effect.fn("WorkspaceAdminApiClient.renameSession")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        sessionId: CliSessionIdType,
+        input: RenameCliSessionType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.renameSession({
+              params: { sessionId },
+              payload: input,
+            })
+          ),
+          Effect.mapError(sanitizeResourceError)
+        )
+    ),
+    revokeSession: Effect.fn("WorkspaceAdminApiClient.revokeSession")(
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        sessionId: CliSessionIdType
+      ) =>
+        makeClient(accessToken).pipe(
+          Effect.flatMap((authorized) =>
+            authorized.administration.revokeSession({
+              params: { sessionId },
+            })
+          ),
+          Effect.mapError(sanitizeSessionError)
+        )
+    ),
   };
 });
 
@@ -477,7 +577,7 @@ export class CliApiRequestError extends Data.TaggedError("CliApiRequestError")<{
 
 const sanitizedRequestError = () =>
   new CliApiRequestError({
-    message: "The CLI authentication request could not be completed.",
+    message: "The CLI API request could not be completed.",
   });
 
 const sanitizeRequestError = (
@@ -544,3 +644,22 @@ const sanitizeResourceError = (
     | Schema.SchemaError
 ) =>
   cause instanceof CliResourceNotFound ? cause : sanitizeSessionError(cause);
+
+const sanitizeMutationError = (
+  cause:
+    | CliMutationRejected
+    | CliMutationInProgress
+    | CliResourceNotFound
+    | CliServiceUnavailable
+    | CliSessionUnauthorized
+    | HttpClientError.HttpClientError
+    | Schema.SchemaError
+) => {
+  if (
+    cause instanceof CliMutationInProgress ||
+    cause instanceof CliMutationRejected
+  ) {
+    return cause;
+  }
+  return sanitizeResourceError(cause);
+};

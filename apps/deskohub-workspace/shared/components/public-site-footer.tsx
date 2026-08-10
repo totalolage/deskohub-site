@@ -96,12 +96,6 @@ export async function PublicSiteFooter() {
               >
                 {m.footerCookieSettingsLink({}, { locale })}
               </Link>
-              <Link
-                href={reservationPath}
-                className="transition-colors hover:text-sunset-yellow"
-              >
-                {m.footerPricingLink({}, { locale })}
-              </Link>
               <a
                 href={companyExtractPath}
                 download="deskohub-company-extract.pdf"
@@ -124,14 +118,12 @@ export async function PublicSiteFooter() {
             >
               <Link
                 href={`${localePath}`}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerHomeLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/contact`}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerContactLink({}, { locale })}

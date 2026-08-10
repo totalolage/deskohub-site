@@ -1,6 +1,6 @@
 "use server";
 
-import { Effect, Match } from "effect";
+import { Effect, Match, Option } from "effect";
 import { revalidatePath } from "next/cache";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -13,59 +13,27 @@ import {
 } from "./contracts";
 import { DiscountAdministrationLive } from "./discount-administration.runtime";
 import { DiscountAdministration } from "./discount-administration.service";
+import { executeDiscountAdminMutation } from "./execute-discount-admin-mutation";
 
-const executeDiscountAdminMutation = Effect.fn(
-  "DiscountAdministration.executeMutation"
+const executeDiscountAdminActionMutation = Effect.fn(
+  "DiscountAdministration.executeActionMutation"
 )(function* (input: DiscountAdminMutation) {
-  const administration = yield* DiscountAdministration;
-
-  const createdDiscountId = yield* Match.value(input).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      "create-discount": ({ discount }) =>
-        administration.createDiscount(discount),
-      "update-discount": ({ discount }) =>
-        administration.updateDiscount(discount).pipe(Effect.as(null)),
-      "delete-discount": ({ id }) =>
-        administration.deleteDiscount({ id }).pipe(Effect.as(null)),
-      "create-code": ({ code, discount }) =>
-        administration.createCode({ code, discount }).pipe(Effect.as(null)),
-      "create-customer-code": ({ code, customerId, discount }) =>
-        administration
-          .createCustomerCode({ code, customerId, discount })
-          .pipe(
-            Effect.tap(() =>
-              Effect.sync(() =>
-                revalidatePath(`/admin/customers/${customerId}`)
-              )
-            )
-          )
-          .pipe(Effect.as(null)),
-      "update-code": ({ code }) =>
-        administration.updateCode(code).pipe(Effect.as(null)),
-      "delete-code": ({ id }) =>
-        administration.deleteCode({ id }).pipe(Effect.as(null)),
-      "add-code-customer": ({ codeId, customerId }) =>
-        administration
-          .addCodeCustomer({ codeId, customerId })
-          .pipe(Effect.as(null)),
-      "remove-code-customer": ({ codeId, customerId }) =>
-        administration
-          .removeCodeCustomer({ codeId, customerId })
-          .pipe(Effect.as(null)),
-      "make-code-unrestricted": ({ codeId }) =>
-        administration.makeCodeUnrestricted({ codeId }).pipe(Effect.as(null)),
-      "set-customer-discount-group": ({ customerId, discountGroupId }) =>
-        administration
-          .setCustomerDiscountGroup({
-            customerId,
-            discountGroupId,
-          })
-          .pipe(Effect.as(null)),
+  const result = yield* executeDiscountAdminMutation(input);
+  const customerPath =
+    input.kind === "create-customer-code"
+      ? `/admin/customers/${input.customerId}`
+      : null;
+  yield* Option.fromNullOr(customerPath).pipe(
+    Option.match({
+      onNone: () => Effect.void,
+      onSome: (path) => Effect.sync(() => revalidatePath(path)),
     })
   );
 
   return {
-    ...(createdDiscountId && { createdDiscountId }),
+    ...(result.createdDiscountId && {
+      createdDiscountId: result.createdDiscountId,
+    }),
     notice: Match.value(input.kind).pipe(
       Match.when("create-discount", () => "Discount created."),
       Match.when("update-discount", () => "Discount updated."),
@@ -102,7 +70,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
   },
   (input) =>
     requireDiscountAdminAuthorization().pipe(
-      Effect.andThen(executeDiscountAdminMutation(input)),
+      Effect.andThen(executeDiscountAdminActionMutation(input)),
       Effect.provide(DiscountAdministrationLive),
       Effect.mapError(
         (cause) =>
@@ -110,6 +78,7 @@ const discountAdminMutationAction = defineWorkspaceAction(
             message: Match.value(cause).pipe(
               Match.tag("DiscountAdminNotFoundError", ({ message }) => message),
               Match.tag("DiscountAdminAudienceError", ({ message }) => message),
+              Match.tag("DiscountAdminConflictError", ({ message }) => message),
               Match.orElse(
                 () =>
                   "The change could not be saved. Check the values and any existing references, then try again."

@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationCanonicalDiscountCode,
+  AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
   CliAuthenticationCode,
   CliAuthenticationVerifier,
   CliGrantToken,
+  CliMutationRequestId,
+  CliSessionId,
 } from "@deskohub/workspace-admin-api";
 import { Effect, Layer, Redacted, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
@@ -71,9 +75,21 @@ describe("WorkspaceAdminApiClient", () => {
     const accessToken = Schema.decodeUnknownSync(CliAccessToken)(
       "a".repeat(43)
     );
+    const discountId = Schema.decodeUnknownSync(AdministrationStoredDiscountId)(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const canonicalCode = Schema.decodeUnknownSync(
+      AdministrationCanonicalDiscountCode
+    )("SUMMER10");
+    const sessionId = Schema.decodeUnknownSync(CliSessionId)(
+      "01980000-0000-7000-8000-000000000000"
+    );
+    const mutationRequestId = Schema.decodeUnknownSync(CliMutationRequestId)(
+      "01980000-0000-7000-8000-000000000003"
+    );
     const expiresAt = "2026-08-10T10:00:00.000Z";
     const session = {
-      id: "01980000-0000-7000-8000-000000000000",
+      id: sessionId,
       clientName: "test client",
       cliVersion: "1.0.0",
       buildTarget: "development",
@@ -132,6 +148,7 @@ describe("WorkspaceAdminApiClient", () => {
     };
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
+    let mutationAttempts = 0;
     const server = Bun.serve({
       port: 0,
       fetch: async (request) => {
@@ -345,6 +362,42 @@ describe("WorkspaceAdminApiClient", () => {
             total: 60,
           });
         }
+        if (url.pathname.endsWith("/discounts/mutations")) {
+          mutationAttempts += 1;
+          expect(request.method).toBe("POST");
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          expect(await request.json()).toEqual({
+            requestId: mutationRequestId,
+            mutation: {
+              kind: "create-code",
+              code: {
+                code: canonicalCode,
+                enabled: true,
+                validFrom: null,
+                validUntil: null,
+                maxUses: null,
+              },
+              discount: { kind: "existing", discountId },
+            },
+          });
+          if (mutationAttempts === 1) {
+            return Response.json(
+              {
+                _tag: "CliMutationInProgress",
+                message: "The mutation is still being applied.",
+                requestId: mutationRequestId,
+              },
+              { status: 409 }
+            );
+          }
+          return Response.json({
+            kind: "create-code",
+            createdDiscountId: null,
+            createdCodeId: "01980000-0000-7000-8000-000000000002",
+          });
+        }
         if (url.pathname.endsWith("/discounts")) {
           expect(request.headers.get("authorization")).toBe(
             `Bearer ${accessToken}`
@@ -399,6 +452,17 @@ describe("WorkspaceAdminApiClient", () => {
             customers: [],
             claims: [],
           });
+        }
+        if (url.pathname.endsWith(`/sessions/${sessionId}`)) {
+          expect(request.headers.get("authorization")).toBe(
+            `Bearer ${accessToken}`
+          );
+          if (request.method === "PATCH") {
+            expect(await request.json()).toEqual({ clientName: "Office Mac" });
+          } else {
+            expect(request.method).toBe("DELETE");
+          }
+          return Response.json({ changed: true });
         }
         if (url.pathname.endsWith("/sessions")) {
           expect(request.headers.get("authorization")).toBe(
@@ -479,6 +543,25 @@ describe("WorkspaceAdminApiClient", () => {
         yield* client.getDiscountDashboard(Redacted.make(accessToken));
         yield* client.getDiscountCode(Redacted.make(accessToken), "code-1");
         yield* client.listSessions(Redacted.make(accessToken));
+        yield* client.mutateDiscounts(
+          Redacted.make(accessToken),
+          mutationRequestId,
+          {
+            kind: "create-code",
+            code: {
+              code: canonicalCode,
+              enabled: true,
+              validFrom: null,
+              validUntil: null,
+              maxUses: null,
+            },
+            discount: { kind: "existing", discountId },
+          }
+        );
+        yield* client.renameSession(Redacted.make(accessToken), sessionId, {
+          clientName: "Office Mac",
+        });
+        yield* client.revokeSession(Redacted.make(accessToken), sessionId);
       }).pipe(Effect.provide(clientLayer), Effect.runPromise);
 
       expect(requests).toEqual([
@@ -509,6 +592,16 @@ describe("WorkspaceAdminApiClient", () => {
         { method: "GET", path: "/api/v1/cli/discounts" },
         { method: "GET", path: "/api/v1/cli/codes/code-1" },
         { method: "GET", path: "/api/v1/cli/sessions" },
+        { method: "POST", path: "/api/v1/cli/discounts/mutations" },
+        { method: "POST", path: "/api/v1/cli/discounts/mutations" },
+        {
+          method: "PATCH",
+          path: `/api/v1/cli/sessions/${sessionId}`,
+        },
+        {
+          method: "DELETE",
+          path: `/api/v1/cli/sessions/${sessionId}`,
+        },
       ]);
     } finally {
       server.stop(true);
