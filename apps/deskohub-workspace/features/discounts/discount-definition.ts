@@ -124,4 +124,9 @@ const decodeDefinitionTargets = (input: {
   Schema.decodeUnknownEffect(discountTargetsSchema(input.row.id), {
     errors: "all",
     onExcessProperty: "error",
-  })(input.row.productTargets);
+  })(
+    input.row.productTargets.map(({ discountId, productTarget }) => ({
+      discountId,
+      productTarget,
+    }))
+  );

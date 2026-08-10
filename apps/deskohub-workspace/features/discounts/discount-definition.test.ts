@@ -110,6 +110,21 @@ describe("stored discount definitions", () => {
     expect(result.products).toEqual([{ kind: "cowork" }]);
   });
 
+  test("ignores compatibility-only fields on stored target rows", async () => {
+    const row = percentageRow();
+    const result = await Effect.runPromise(
+      decode({
+        ...row,
+        productTargets: row.productTargets.map((target) => ({
+          ...target,
+          legacyProductIdentity: { kind: "cowork", tier: "basic" },
+        })),
+      })
+    );
+
+    expect(result.products).toEqual([{ kind: "cowork" }]);
+  });
+
   test.each([
     [
       "missing locale label",
