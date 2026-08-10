@@ -1,15 +1,21 @@
 {
+  "id": "fd52b375-703a-437d-9f76-a579bb7c9f88",
+  "prevIds": [
+    "73cae526-26a0-40ec-8b4d-0a47440533b0",
+    "ae6e0505-d552-4c6f-a7f2-2f82ecdd484c"
+  ],
   "version": "8",
   "dialect": "postgres",
-  "id": "c7dd7b29-55c3-43bb-8c71-a68ca3d4927c",
-  "prevIds": [
-    "9550e8c8-bdd9-4498-a6cf-c85e76861150",
-    "cc693e45-2aa8-42fc-bc76-767d0df3c71a"
-  ],
   "ddl": [
     {
       "isRlsEnabled": false,
       "name": "cli_authentication_requests",
+      "entityType": "tables",
+      "schema": "public"
+    },
+    {
+      "isRlsEnabled": false,
+      "name": "cli_mutation_requests",
       "entityType": "tables",
       "schema": "public"
     },
@@ -51,7 +57,7 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_targets",
+      "name": "discount_product_targets",
       "entityType": "tables",
       "schema": "public"
     },
@@ -253,6 +259,84 @@
       "entityType": "columns",
       "schema": "public",
       "table": "cli_authentication_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "session_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "text",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "request_id",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "mutation",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "jsonb",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "result",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": true,
+      "dimensions": 0,
+      "default": "now()",
+      "generated": null,
+      "identity": null,
+      "name": "created_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "type": "timestamp with time zone",
+      "typeSchema": null,
+      "notNull": false,
+      "dimensions": 0,
+      "default": null,
+      "generated": null,
+      "identity": null,
+      "name": "completed_at",
+      "entityType": "columns",
+      "schema": "public",
+      "table": "cli_mutation_requests"
     },
     {
       "type": "text",
@@ -1019,7 +1103,7 @@
       "name": "discount_id",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_targets"
+      "table": "discount_product_targets"
     },
     {
       "type": "jsonb",
@@ -1029,10 +1113,10 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "product_target",
+      "name": "product_identity",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_targets"
+      "table": "discount_product_targets"
     },
     {
       "type": "text",
@@ -2037,6 +2121,27 @@
       "nameExplicit": true,
       "columns": [
         {
+          "value": "created_at",
+          "isExpression": false,
+          "asc": true,
+          "nullsFirst": false,
+          "opclass": null
+        }
+      ],
+      "isUnique": false,
+      "where": null,
+      "with": "",
+      "method": "btree",
+      "concurrently": false,
+      "name": "cli_mutation_requests_created_at_idx",
+      "entityType": "indexes",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "nameExplicit": true,
+      "columns": [
+        {
           "value": "token_hash",
           "isExpression": false,
           "asc": true,
@@ -2634,6 +2739,23 @@
     {
       "nameExplicit": false,
       "columns": [
+        "session_id"
+      ],
+      "schemaTo": "public",
+      "tableTo": "cli_sessions",
+      "columnsTo": [
+        "id"
+      ],
+      "onUpdate": "NO ACTION",
+      "onDelete": "CASCADE",
+      "name": "cli_mutation_requests_session_id_cli_sessions_id_fkey",
+      "entityType": "fks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "nameExplicit": false,
+      "columns": [
         "payment_attempt_id"
       ],
       "schemaTo": "public",
@@ -2762,10 +2884,10 @@
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "discount_targets_discount_id_discounts_id_fkey",
+      "name": "discount_product_targets_discount_id_discounts_id_fk",
       "entityType": "fks",
       "schema": "public",
-      "table": "discount_targets"
+      "table": "discount_product_targets"
     },
     {
       "nameExplicit": false,
@@ -2820,6 +2942,17 @@
     },
     {
       "columns": [
+        "session_id",
+        "request_id"
+      ],
+      "nameExplicit": true,
+      "name": "cli_mutation_requests_pk",
+      "entityType": "pks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "columns": [
         "code_id",
         "dotypos_customer_id"
       ],
@@ -2832,13 +2965,13 @@
     {
       "columns": [
         "discount_id",
-        "product_target"
+        "product_identity"
       ],
       "nameExplicit": true,
-      "name": "discount_targets_pk",
+      "name": "discount_product_targets_pk",
       "entityType": "pks",
       "schema": "public",
-      "table": "discount_targets"
+      "table": "discount_product_targets"
     },
     {
       "columns": [
@@ -3020,6 +3153,20 @@
       "entityType": "checks",
       "schema": "public",
       "table": "cli_authentication_requests"
+    },
+    {
+      "value": "\"request_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'",
+      "name": "cli_mutation_requests_request_id_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
+    },
+    {
+      "value": "(\n        \"result\" is null\n        and \"completed_at\" is null\n      ) or (\n        \"result\" is not null\n        and \"completed_at\" is not null\n        and \"completed_at\" >= \"created_at\"\n      )",
+      "name": "cli_mutation_requests_completion_check",
+      "entityType": "checks",
+      "schema": "public",
+      "table": "cli_mutation_requests"
     },
     {
       "value": "char_length(btrim(\"client_name\")) between 1 and 80",
