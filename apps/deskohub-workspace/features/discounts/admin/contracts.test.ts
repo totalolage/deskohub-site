@@ -39,7 +39,7 @@ const validDiscount = {
     kind: "percentage",
     basisPoints: 1000,
   },
-  products: [{ kind: "cowork", tier: "basic" }],
+  products: [{ kind: "cowork" }],
 };
 
 const validCode = {
@@ -68,10 +68,7 @@ describe("discount administration inputs", () => {
     expect(() =>
       decodeDiscount({
         ...validDiscount,
-        products: [
-          { kind: "cowork", tier: "basic" },
-          { kind: "cowork", tier: "basic" },
-        ],
+        products: [{ kind: "cowork" }, { kind: "cowork" }],
       })
     ).toThrow();
   });

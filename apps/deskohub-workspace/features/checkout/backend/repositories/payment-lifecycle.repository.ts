@@ -35,6 +35,7 @@ import { getDiscountCodeTiming } from "@/features/discounts/discount-code";
 import { decodeDiscountDefinition } from "@/features/discounts/discount-definition";
 import { DiscountClaimError } from "@/features/discounts/errors";
 import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
+import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
 import {
@@ -1017,7 +1018,10 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
       .where(
         and(
           eq(discountProductTargets.discountId, input.claim.storedDiscountId),
-          eq(discountProductTargets.productIdentity, input.claim.product)
+          eq(
+            discountProductTargets.productTarget,
+            getWorkspaceProductTarget(input.claim.product)
+          )
         )
       )
       .limit(1)
@@ -1069,7 +1073,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
         productTargets: [
           {
             discountId: target.discountId,
-            productIdentity: input.claim.product,
+            productTarget: getWorkspaceProductTarget(input.claim.product),
           },
         ],
       },

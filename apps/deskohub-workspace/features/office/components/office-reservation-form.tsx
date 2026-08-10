@@ -9,7 +9,6 @@ import {
   isOfficeAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
 import {
   formatWorkspaceMoney,
@@ -183,6 +182,12 @@ export function OfficeReservationForm({
         isFetching: advertisedPriceResult?.isFetching ?? false,
         isError: advertisedPriceResult?.isError ?? false,
         retry: () => void advertisedPriceResult?.refetch(),
+        sale: advertisedPrice
+          ? {
+              discounts: advertisedPrice.quote.payment.discounts,
+              productLabel: getWorkspaceOfficeProductTitle(locale),
+            }
+          : undefined,
       }}
       availability={{
         isFetching: availabilityResult.isFetching,
@@ -304,16 +309,6 @@ export function OfficeReservationForm({
                   );
                   const optionAdvertisedPrice =
                     advertisedPricesBySeats.get(seatCount);
-                  const productItem = optionAdvertisedPrice?.summary.sections
-                    .find(({ key }) => key === "order")
-                    ?.items.find(
-                      (item) =>
-                        "product" in item && item.product.kind === "office"
-                    );
-                  const discounts =
-                    productItem && "discounts" in productItem
-                      ? productItem.discounts
-                      : undefined;
                   const quotedSeatAmount =
                     optionAdvertisedPrice?.quote.items[0].seatAmount;
                   const seatPrice = quotedSeatAmount
@@ -322,31 +317,11 @@ export function OfficeReservationForm({
                         quotedSeatAmount
                       )
                     : undefined;
-                  const hasDiscounts = Boolean(discounts?.length);
 
                   return (
                     <ReservationTypeOption
                       key={seatCount}
                       className="pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
-                      discount={
-                        hasDiscounts && discounts
-                          ? {
-                              labels: discounts.map(({ discount }) => ({
-                                id: discount.id,
-                                label: discount.label,
-                              })),
-                              details: (
-                                <CheckoutSummaryDiscountDetails
-                                  discounts={discounts}
-                                  locale={locale}
-                                  productLabel={getWorkspaceOfficeProductTitle(
-                                    locale
-                                  )}
-                                />
-                              ),
-                            }
-                          : undefined
-                      }
                       price={
                         seatPrice ? (
                           <span className="before:content-['+']">

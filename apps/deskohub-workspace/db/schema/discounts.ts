@@ -74,14 +74,14 @@ export const discountProductTargets = pgTable(
       .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id, { onDelete: "cascade" }),
-    productIdentity: jsonb("product_identity")
+    productTarget: jsonb("product_target")
       .notNull()
       .$type<WorkspaceProductTarget>(),
   },
   (t) => [
     primaryKey({
       name: "discount_product_targets_pk",
-      columns: [t.discountId, t.productIdentity],
+      columns: [t.discountId, t.productTarget],
     }),
   ]
 );

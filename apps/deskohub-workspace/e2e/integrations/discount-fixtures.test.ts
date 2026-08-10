@@ -18,16 +18,14 @@ test("toggles only the transient Calendar target idempotently", async () => {
   ).text();
 
   expect(source).toContain(".onConflictDoNothing()");
-  expect(source).toContain(
-    "eq(discountProductTargets.productIdentity, product)"
-  );
+  expect(source).toContain("eq(discountProductTargets.productTarget, product)");
   expect(source).not.toContain("with removed as (");
 });
 
-test("targets the zero-total fixture at the four-hour meeting room", async () => {
+test("targets the zero-total fixture at the meeting-room family", async () => {
   const source = await Bun.file(
     fileURLToPath(new URL("./discount-fixtures.ts", import.meta.url))
   ).text();
 
-  expect(source).toContain('duration: { unit: "hour", amount: 4 }');
+  expect(source).toContain('{ kind: "meeting-room" }');
 });

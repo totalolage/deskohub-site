@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import {
-  getWorkspaceProductTargetKey,
-  workspaceProductTargets,
-} from "@/features/discounts/product-target";
+import { workspaceProductTargets } from "@/features/discounts/product-target";
 import { readDiscountCodeForm, readDiscountForm } from "./form-input";
 
 describe("discount administration form input", () => {
@@ -13,7 +10,7 @@ describe("discount administration form input", () => {
     formData.set("percentage", "10.25");
     formData.set("labelCs", "Letní sleva");
     formData.set("labelEn", "Summer discount");
-    formData.append("products", "cowork:basic");
+    formData.append("products", "cowork");
 
     expect(readDiscountForm(formData).adjustment).toEqual({
       kind: "percentage",
@@ -26,7 +23,7 @@ describe("discount administration form input", () => {
       const formData = new FormData();
       formData.set("adjustmentKind", "percentage");
       formData.set("percentage", "10");
-      formData.append("products", getWorkspaceProductTargetKey(identity));
+      formData.append("products", identity.kind);
 
       expect(readDiscountForm(formData).products).toEqual([identity]);
     }

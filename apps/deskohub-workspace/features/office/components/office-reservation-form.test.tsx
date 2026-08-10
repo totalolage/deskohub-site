@@ -13,6 +13,8 @@ import { cleanup, render } from "@testing-library/react";
 import { Effect, Schema } from "effect";
 import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import { workspaceMoneyWithValue } from "@/features/checkout/workspace-money";
+import { discountIdSchema } from "@/features/discounts";
 import { getOfficeAdvertisedPriceRequest } from "@/features/reservation/office-advertised-price";
 import { officeReservationDefaultValues } from "@/features/reservation/office-reservation";
 import {
@@ -262,5 +264,91 @@ describe("OfficeReservationForm", () => {
         .querySelector('[data-reservation-type-price="1"] span')
         ?.classList.contains("before:content-['+']")
     ).toBeTrue();
+  });
+
+  test("presents a quoted office sale around the form, not the seat cards", () => {
+    const startsOn = decodePlainDate("2099-06-10");
+    const endsOn = decodePlainDate("2099-06-10");
+    const initialAdvertisedPrices = [1, 2, 3].map((seats) => {
+      const request = getOfficeAdvertisedPriceRequest({
+        endsOn,
+        locale: "en-US",
+        seats,
+        startsOn,
+      });
+      const undiscountedQuote = Effect.runSync(
+        buildOfficeReservationQuote(request.reservation.details)
+      );
+      const amount = undiscountedQuote.payment.expectedPrice;
+      const discountedAmount = workspaceMoneyWithValue(
+        amount.value / 2,
+        amount
+      );
+      const quote = Effect.runSync(
+        buildOfficeReservationQuote(request.reservation.details, {
+          discountQuote: {
+            product: { kind: "office", seats, dayCount: 1 },
+            discountableSubtotal: amount,
+            discounts: [
+              {
+                discount: {
+                  id: Schema.decodeUnknownSync(discountIdSchema)("office-sale"),
+                  label: "Office sale",
+                  adjustment: { kind: "percentage", basisPoints: 5000 },
+                },
+                subtotalBefore: amount,
+                amount: discountedAmount,
+                subtotalAfter: discountedAmount,
+              },
+            ],
+            totalDiscount: discountedAmount,
+            discountedSubtotal: discountedAmount,
+          },
+        })
+      );
+
+      return {
+        request,
+        advertisedPrice: {
+          advertisedPriceToken: `office-sale-${seats}`,
+          kind: "office" as const,
+          quote,
+          summary: getOfficeCheckoutSummary(quote),
+        },
+      };
+    });
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={3}
+          initialAdvertisedPrices={initialAdvertisedPrices}
+          initialValues={{
+            ...officeReservationDefaultValues,
+            startsOn,
+            endsOn,
+          }}
+          locale="en-US"
+        />
+      </QueryClientProvider>
+    );
+
+    expect(
+      view.container.querySelector('[data-reservation-sale="active"]')
+        ?.className
+    ).toContain("glow-border-purple-300");
+    expect(
+      view.container.querySelectorAll(
+        '[data-reservation-sale-discount="office-sale"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      view.getByRole("button", { name: /discount.*private office/i })
+    ).toBeDefined();
+    for (const option of view.container.querySelectorAll(
+      "[data-reservation-type-option]"
+    )) {
+      expect(option.className).not.toContain("glow-border");
+    }
   });
 });

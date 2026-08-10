@@ -28,26 +28,11 @@ describe("discount contracts", () => {
     expect(() => decodeDiscountId("")).toThrow();
   });
 
-  test("decodes every current cowork product target", () => {
-    expect(
-      ["basic", "plus", "profi"].map((tier) =>
-        decodeStandardSchema(discountProductTargetSchema, {
-          kind: "cowork",
-          tier,
-        })
-      )
-    ).toEqual([
-      { kind: "cowork", tier: "basic" },
-      { kind: "cowork", tier: "plus" },
-      { kind: "cowork", tier: "profi" },
-    ]);
-  });
-
-  test("decodes every meeting-room product target", () => {
+  test("decodes exactly one target for each reservation family", () => {
     const products = [
-      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
+      { kind: "cowork" },
+      { kind: "meeting-room" },
+      { kind: "office" },
     ] as const;
 
     expect(
@@ -57,20 +42,22 @@ describe("discount contracts", () => {
     ).toEqual(products);
   });
 
-  test("keeps the office family target separate from exact office products", () => {
-    expect(
-      decodeStandardSchema(discountProductTargetSchema, { kind: "office" })
-    ).toEqual({ kind: "office" });
-    expect(
-      decodeStandardSchema(discountProductTargetSchema, {
-        kind: "office",
-        seats: 3,
-        dayCount: 2,
-      })
-    ).toBeUndefined();
+  test("keeps family targets separate from exact product identities", () => {
+    for (const product of [
+      { kind: "cowork", tier: "basic" },
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      },
+      { kind: "office", seats: 3, dayCount: 2 },
+    ]) {
+      expect(
+        decodeStandardSchema(discountProductTargetSchema, product)
+      ).toBeUndefined();
+    }
   });
 
-  test("strictly rejects unknown product kinds, tiers, durations, and fields", () => {
+  test("strictly rejects unknown product kinds and fields", () => {
     expect(
       decodeStandardSchema(discountProductTargetSchema, {
         kind: "event",

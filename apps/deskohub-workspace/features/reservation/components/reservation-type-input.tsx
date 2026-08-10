@@ -1,10 +1,8 @@
 "use client";
 
-import { Percent } from "lucide-react";
 import {
   createContext,
   type HTMLAttributes,
-  type Key,
   type ReactNode,
   type Ref,
   useContext,
@@ -35,19 +33,10 @@ type ReservationTypeInputProps<Value extends ReservationTypeValue> = Omit<
   readonly value: Value;
 };
 
-export type ReservationTypeOptionDiscount = {
-  readonly details?: ReactNode;
-  readonly labels: ReadonlyArray<{
-    readonly id: Key;
-    readonly label: ReactNode;
-  }>;
-};
-
 type ReservationTypeOptionProps<Value extends ReservationTypeValue> = {
   readonly children?: ReactNode;
   readonly className?: string;
   readonly disabled?: boolean;
-  readonly discount?: ReservationTypeOptionDiscount;
   readonly price: ReactNode;
   readonly priceReady?: boolean;
   readonly title: ReactNode;
@@ -89,7 +78,7 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
         <div
           ref={ref}
           className={cn(
-            "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(5,auto)] lg:space-y-0 lg:gap-x-3",
+            "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(4,auto)] lg:space-y-0 lg:gap-x-3",
             className
           )}
           {...props}
@@ -105,7 +94,6 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   children,
   className,
   disabled = false,
-  discount,
   price,
   priceReady = true,
   title,
@@ -122,47 +110,21 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
 
   const inputId = `${input.idPrefix}-${value}`;
   const isSelected = input.value === value;
-  const hasDiscount = Boolean(discount?.labels.length);
-
   return (
     <div
       data-reservation-type-option={value}
       className={cn(
         "group relative grid cursor-pointer rounded-[1.4rem] px-4 outline -outline-offset-1 outline-1 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:grid-rows-subgrid",
-        hasDiscount
-          ? "lg:row-start-1 lg:row-span-5"
-          : "lg:row-start-2 lg:row-span-4",
+        "lg:row-span-4",
         disabled &&
           "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
-        hasDiscount &&
-          "glow-border glow-border-purple-300 glow-border-count-1 glow-border-duration-5000",
         isSelected &&
-          hasDiscount &&
-          "bg-purple-500/5 outline-purple-500 ring-4 ring-purple-500/10",
-        isSelected &&
-          !hasDiscount &&
           "bg-burned-orange/8 outline-burned-orange ring-4 ring-burned-orange/10",
         !isSelected && "bg-white outline-navy-blue/10",
-        !isSelected && hasDiscount && "hover:outline-purple-500/60",
-        !isSelected && !hasDiscount && "hover:outline-burned-orange/45",
+        !isSelected && "hover:outline-burned-orange/45",
         className
       )}
     >
-      {hasDiscount && discount && (
-        <div
-          className="pointer-events-none relative z-20 -mx-4 flex items-center gap-2 rounded-t-[1.3rem] border-b border-purple-300/60 bg-purple-100 px-4 py-2.5 text-sm font-semibold leading-5 text-purple-900"
-          data-reservation-type-discount-banner={value}
-        >
-          <Percent aria-hidden="true" className="size-4 shrink-0" />
-          <span className="flex flex-wrap gap-x-2 gap-y-0.5">
-            {discount.labels.map(({ id, label }) => (
-              <span key={id} data-reservation-type-discount={id}>
-                {label}
-              </span>
-            ))}
-          </span>
-        </div>
-      )}
       <label
         htmlFor={inputId}
         className={cn(
@@ -197,7 +159,6 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         >
           {price}
         </label>
-        {hasDiscount && discount?.details}
       </div>
       {children}
       <label

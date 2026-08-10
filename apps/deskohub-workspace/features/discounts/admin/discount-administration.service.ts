@@ -405,9 +405,9 @@ export class DiscountAdministration extends Context.Service<
                 );
               }
               yield* tx.insert(discountProductTargets).values(
-                input.products.map((productIdentity) => ({
+                input.products.map((productTarget) => ({
                   discountId: row.id,
-                  productIdentity,
+                  productTarget,
                 }))
               );
               return row.id;
@@ -432,9 +432,9 @@ export class DiscountAdministration extends Context.Service<
                 .delete(discountProductTargets)
                 .where(eq(discountProductTargets.discountId, input.id));
               yield* tx.insert(discountProductTargets).values(
-                input.products.map((productIdentity) => ({
+                input.products.map((productTarget) => ({
                   discountId: input.id,
-                  productIdentity,
+                  productTarget,
                 }))
               );
             })
@@ -506,9 +506,9 @@ export class DiscountAdministration extends Context.Service<
                       );
                     }
                     yield* tx.insert(discountProductTargets).values(
-                      discount.products.map((productIdentity) => ({
+                      discount.products.map((productTarget) => ({
                         discountId: row.id,
-                        productIdentity,
+                        productTarget,
                       }))
                     );
                     return row.id;
@@ -1019,7 +1019,7 @@ const toAdminDiscount = (row: AdminDiscountRow): AdminDiscount => ({
           kind: "percentage",
           basisPoints: row.percentageBasisPoints,
         },
-  products: row.productTargets.map(({ productIdentity }) => productIdentity),
+  products: row.productTargets.map(({ productTarget }) => productTarget),
   codeCount: row.codes.length,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,

@@ -97,7 +97,7 @@ const activeSale: ActiveSale = {
     label: "Summer focus",
     adjustment: { kind: "percentage", basisPoints: 2000 },
   },
-  products: [product],
+  products: [{ kind: "cowork" }],
 };
 
 const emptyAffirmedAdvertisement = affirmedDiscountAdvertisementQuoteCodec.make(

@@ -11,7 +11,6 @@ import {
   isCoworkAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import {
   isWorkspaceProductMonitorOption,
   type WorkspaceCoworkProductTier,
@@ -325,6 +324,12 @@ export function CoworkReservationForm({
         isFetching: Boolean(advertisedPriceQueryResult?.isFetching),
         isError: Boolean(advertisedPriceQueryResult?.isError),
         retry: () => void advertisedPriceQueryResult?.refetch(),
+        sale: advertisedPrice
+          ? {
+              discounts: advertisedPrice.quote.payment.discounts,
+              productLabel: getWorkspaceProductTierTitle(selectedTier, locale),
+            }
+          : undefined,
       }}
       afterCustomerFields={
         shouldShowMonitors && (
@@ -382,14 +387,6 @@ export function CoworkReservationForm({
                         item.product.kind === "cowork" &&
                         item.product.tier === option.value
                     );
-                  const advertisedDiscounts =
-                    advertisedProductItem &&
-                    "discounts" in advertisedProductItem
-                      ? advertisedProductItem.discounts
-                      : undefined;
-                  const hasAdvertisedDiscounts = Boolean(
-                    advertisedDiscounts?.length
-                  );
                   return (
                     <ReservationTypeOption
                       key={option.value}
@@ -401,38 +398,12 @@ export function CoworkReservationForm({
                         }[option.value]
                       }
                       disabled={isUnavailable}
-                      discount={
-                        hasAdvertisedDiscounts && advertisedDiscounts
-                          ? {
-                              labels: advertisedDiscounts.map(
-                                ({ discount }) => ({
-                                  id: discount.id,
-                                  label: discount.label,
-                                })
-                              ),
-                              details:
-                                advertisedProductItem &&
-                                "originalAmount" in advertisedProductItem &&
-                                advertisedProductItem.originalAmount ? (
-                                  <CheckoutSummaryDiscountDetails
-                                    discounts={advertisedDiscounts}
-                                    locale={locale}
-                                    productLabel={getWorkspaceProductTierTitle(
-                                      option.value,
-                                      locale
-                                    )}
-                                  />
-                                ) : undefined,
-                            }
-                          : undefined
-                      }
                       price={
                         advertisedProductItem ? (
                           <ReservationAdvertisedPrice
                             amount={advertisedProductItem.amount}
                             locale={locale}
                             originalAmount={
-                              advertisedDiscounts &&
                               "originalAmount" in advertisedProductItem
                                 ? advertisedProductItem.originalAmount
                                 : undefined

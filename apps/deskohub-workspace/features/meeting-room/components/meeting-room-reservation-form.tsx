@@ -9,7 +9,6 @@ import {
   isMeetingRoomAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
-import { CheckoutSummaryDiscountDetails } from "@/features/checkout/components/checkout-summary-discount-details";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationLabel,
@@ -197,6 +196,15 @@ export function MeetingRoomReservationForm({
         isFetching: advertisedPriceQueryResult?.isFetching ?? false,
         isError: advertisedPriceQueryResult?.isError ?? false,
         retry: () => void advertisedPriceQueryResult?.refetch(),
+        sale: advertisedPrice
+          ? {
+              discounts: advertisedPrice.quote.payment.discounts,
+              productLabel: getWorkspaceMeetingRoomDurationTitle(
+                selectedDuration,
+                locale
+              ),
+            }
+          : undefined,
       }}
       availability={{
         isFetching: availabilityQueryResult.isFetching,
@@ -271,10 +279,6 @@ export function MeetingRoomReservationForm({
                   const durationKey = getMeetingRoomReservationDurationKey(
                     product.duration
                   );
-                  const durationTitle = getWorkspaceMeetingRoomDurationTitle(
-                    product.duration,
-                    locale
-                  );
                   const advertisedProductItem = advertisedPricesByDuration
                     .get(durationKey)
                     ?.summary.sections.find(({ key }) => key === "order")
@@ -286,20 +290,12 @@ export function MeetingRoomReservationForm({
                           item.product.duration
                         ) === durationKey
                     );
-                  const advertisedDiscounts =
-                    advertisedProductItem &&
-                    "discounts" in advertisedProductItem
-                      ? advertisedProductItem.discounts
-                      : undefined;
                   const originalAmount =
                     advertisedProductItem &&
                     "originalAmount" in advertisedProductItem &&
                     advertisedProductItem.originalAmount
                       ? advertisedProductItem.originalAmount
                       : undefined;
-                  const hasAdvertisedDiscounts = Boolean(
-                    originalAmount && advertisedDiscounts?.length
-                  );
 
                   return (
                     <ReservationTypeOption
@@ -311,35 +307,12 @@ export function MeetingRoomReservationForm({
                           "day:1": "sm:col-start-3 lg:col-start-3",
                         }[durationKey]
                       }`}
-                      discount={
-                        hasAdvertisedDiscounts && advertisedDiscounts
-                          ? {
-                              labels: advertisedDiscounts.map(
-                                ({ discount }) => ({
-                                  id: discount.id,
-                                  label: discount.label,
-                                })
-                              ),
-                              details: (
-                                <CheckoutSummaryDiscountDetails
-                                  discounts={advertisedDiscounts}
-                                  locale={locale}
-                                  productLabel={durationTitle}
-                                />
-                              ),
-                            }
-                          : undefined
-                      }
                       price={
                         advertisedProductItem ? (
                           <ReservationAdvertisedPrice
                             amount={advertisedProductItem.amount}
                             locale={locale}
-                            originalAmount={
-                              hasAdvertisedDiscounts
-                                ? originalAmount
-                                : undefined
-                            }
+                            originalAmount={originalAmount}
                           />
                         ) : (
                           <ReservationSkeletonBlock className="h-4 w-24 bg-aquamarine-green/15" />

@@ -27,10 +27,8 @@ client-side constants.
 Office product identity is `{ kind: "office", seats, dayCount }` with product
 key `office:${seats}:${dayCount}`. Build `dayCount` from the inclusive Prague
 date range. Persist only `{ kind: "office" }` locally because Dotypos owns the
-reservation facts; project confirmed timing and seats from Dotypos. Discount
-configuration uses a separate `{ kind: "office" }` family target that matches
-every exact office product. Do not weaken the sold-product identity to model a
-discount wildcard.
+reservation facts; project confirmed timing and seats from Dotypos. Do not
+weaken the sold-product identity to model discount eligibility.
 
 An office-tagged Dotypos table is exclusive for the entire reservation
 interval. Its configured seat capacity determines whether the requested party
@@ -65,8 +63,8 @@ only when it spans consecutive Prague midnights. `Temporal.PlainDate` and
 encode the required midnight anchor.
 
 Use semantic meeting-room durations as the only catalog, quote, summary,
-discount, checkout, and integration identity. Do not retain or derive a
-minute-count product identity. Meeting-room product keys use
+discount-application, checkout, and integration identity. Do not retain or
+derive a minute-count product identity. Meeting-room product keys use
 `meeting-room:hour:1`, `meeting-room:hour:4`, and `meeting-room:day:1`.
 
 Local stored meeting-room details contain only the reservation-family
@@ -86,8 +84,19 @@ A product key must encode the complete product identity, including its reservati
   `office:${seats}:${dayCount}`.
 - Checkout summary item keys add the presentation prefix, for example `product:cowork:basic`.
 
+Discount configuration targets reservation families, not exact products. Its
+strict target union is `{ kind: "cowork" } | { kind: "meeting-room" } |
+{ kind: "office" }`, and a target matches every exact product identity with
+the same `kind`. Persist these values as `product_target`. Quotes, purchases,
+commitments, summaries, and immutable discount applications continue to carry
+the complete `product_identity`; reduce an identity to `{ kind }` only when
+checking discount eligibility.
+
 Define each identity schema, key schema, and key constructor in its reservation-family domain module. The cross-family product-identity module only composes those schemas and dispatches exhaustively to the family constructors.
 
 Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
 
-Construct keys through the family constructor or the cross-family dispatcher. Do not independently interpolate them in discount targeting, checkout quote construction, or rendering code, and do not create persistence-specific aliases for a family product key.
+Construct identity keys through the family constructor or the cross-family
+dispatcher. Do not independently interpolate them in checkout quote
+construction or rendering code, and do not use exact identity keys for
+family-only discount targets.

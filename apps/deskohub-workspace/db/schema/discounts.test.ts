@@ -93,7 +93,7 @@ describe("discount persistence contracts", () => {
     );
   });
 
-  test("uses composite identities for targets and allowlists", () => {
+  test("uses family targets for discounts and composite customer allowlists", () => {
     const targetConfig = configOf(discountProductTargets);
 
     expect(namesOf(targetConfig.primaryKeys)).toEqual([
@@ -101,7 +101,7 @@ describe("discount persistence contracts", () => {
     ]);
     expect(targetConfig.columns.map(({ name }) => name)).toEqual([
       "discount_id",
-      "product_identity",
+      "product_target",
     ]);
     expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
       "discount_code_customers_pk",
@@ -150,6 +150,29 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain('UPDATE "discount_applications"');
     expect(migration).toContain(
       "Cannot migrate an unknown legacy meeting-room duration"
+    );
+  });
+
+  test("collapses detailed discount identities into family targets", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260810094413_family_discount_targets/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain(
+      "jsonb_build_object('kind', \"product_identity\" ->> 'kind')"
+    );
+    expect(migration).toContain(
+      'ON CONFLICT ("discount_id", "product_identity") DO NOTHING'
+    );
+    expect(migration).toContain('DELETE FROM "discount_product_targets"');
+    expect(migration).toContain(
+      'RENAME COLUMN "product_identity" TO "product_target"'
+    );
+    expect(migration).toContain(
+      "Cannot migrate an unknown discount product target"
     );
   });
 

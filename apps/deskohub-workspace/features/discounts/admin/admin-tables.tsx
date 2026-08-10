@@ -27,18 +27,12 @@ import {
   useRef,
   useState,
 } from "react";
-import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
-import { getWorkspaceMeetingRoomDurationLabel } from "@/features/checkout/product-catalog.i18n";
-import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import type {
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
-import {
-  getWorkspaceProductTargetKey,
-  type WorkspaceProductTarget,
-} from "@/features/discounts/product-target";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -704,9 +698,7 @@ export function DiscountDefinitionFields({
 }: {
   readonly discount?: DiscountTableItem;
 }) {
-  const selectedProducts = new Set(
-    discount?.products.map(getWorkspaceProductTargetKey)
-  );
+  const selectedProducts = new Set(discount?.products.map(({ kind }) => kind));
   const adjustment = discount?.adjustment;
   const [kind, setKind] = useState<"fixed" | "percentage">(
     adjustment?.kind ?? "percentage"
@@ -985,18 +977,7 @@ const selectClassName =
   "min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10";
 
 const productOptions = [
-  { key: "cowork:basic", label: "Cowork Basic" },
-  { key: "cowork:plus", label: "Cowork Plus" },
-  { key: "cowork:profi", label: "Cowork Profi" },
-  {
-    key: getWorkspaceProductTargetKey({ kind: "office" }),
-    label: "Private office",
-  },
-  ...workspaceMeetingRoomCatalog.map(({ duration }) => ({
-    key: getWorkspaceProductKey({ kind: "meeting-room", duration }),
-    label: `Meeting room · ${getWorkspaceMeetingRoomDurationLabel(
-      duration,
-      "en-US"
-    )}`,
-  })),
+  { key: "cowork", label: "Cowork" },
+  { key: "meeting-room", label: "Meeting room" },
+  { key: "office", label: "Private office" },
 ];

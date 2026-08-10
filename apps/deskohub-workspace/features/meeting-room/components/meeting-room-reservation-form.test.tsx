@@ -270,14 +270,15 @@ describe("MeetingRoomReservationForm", () => {
       },
     });
 
-    for (const { duration } of workspaceMeetingRoomCatalog) {
-      const durationKey = getMeetingRoomReservationDurationKey(duration);
-      expect(
-        view.container.querySelector(
-          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
-        )
-      ).not.toBeNull();
-    }
+    expect(
+      view.container.querySelectorAll(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
+      )
+    ).toHaveLength(1);
+    expect(
+      view.container.querySelector('[data-reservation-sale="active"]')
+        ?.className
+    ).toContain("glow-border-purple-300");
     expect(getAdvertisedPrices).not.toHaveBeenCalled();
   });
 
@@ -842,16 +843,20 @@ describe("MeetingRoomReservationForm", () => {
     const discountedOption = view.container.querySelector(
       '[data-reservation-type-option="hour:1"]'
     );
-    expect(discountedOption?.className).toContain("glow-border");
+    expect(discountedOption?.className).not.toContain("glow-border");
     expect(
-      discountedOption?.querySelector(
-        '[data-reservation-type-discount="meeting-room-sale"]'
+      view.container.querySelector(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
       )?.textContent
     ).toBe("Meeting room sale");
+    expect(
+      view.container.querySelector('[data-reservation-sale="active"]')
+        ?.className
+    ).toContain("glow-border");
     expect(view.queryByText(/selected price/i)).toBeNull();
   });
 
-  test("advertises a sale on every duration before it is selected", async () => {
+  test("presents one family sale while keeping duration cards neutral", async () => {
     getAdvertisedPrices.mockImplementation((requests) =>
       Promise.resolve(
         advertisedPricesResult(requests, (request) =>
@@ -871,13 +876,20 @@ describe("MeetingRoomReservationForm", () => {
       expect(getAdvertisedPrices).toHaveBeenCalledTimes(1);
     });
     expect(getAdvertisedPrices.mock.calls[0]?.[0]).toHaveLength(3);
+    expect(
+      view.container.querySelectorAll(
+        '[data-reservation-sale-discount="meeting-room-sale"]'
+      )
+    ).toHaveLength(1);
     for (const { duration } of workspaceMeetingRoomCatalog) {
       const durationKey = getMeetingRoomReservationDurationKey(duration);
+      const option = view.container.querySelector(
+        `[data-reservation-type-option="${durationKey}"]`
+      );
+      expect(option?.className).not.toContain("glow-border");
       expect(
-        view.container.querySelector(
-          `[data-reservation-type-option="${durationKey}"] [data-reservation-type-discount="meeting-room-sale"]`
-        )
-      ).not.toBeNull();
+        option?.querySelector("[data-reservation-type-discount-banner]")
+      ).toBeNull();
     }
   });
 

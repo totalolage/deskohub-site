@@ -5,7 +5,6 @@ import type {
   StoredDiscount,
 } from "@/db/schema";
 import {
-  getWorkspaceProductTargetKey,
   type WorkspaceProductTarget,
   workspaceProductTargetSchema,
 } from "@/features/discounts/product-target";
@@ -45,7 +44,7 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
       Effect.let("products", ({ targets }) =>
-        targets.map(({ productIdentity }) => productIdentity)
+        targets.map(({ productTarget }) => productTarget)
       ),
       Effect.mapError(
         (cause) =>
@@ -68,7 +67,7 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
 const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   Schema.Struct({
     discountId: storedDiscountIdSchema,
-    productIdentity: workspaceProductTargetSchema,
+    productTarget: workspaceProductTargetSchema,
   });
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
@@ -82,11 +81,8 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
     ),
     Schema.makeFilter(
       (targets) =>
-        new Set(
-          targets.map(({ productIdentity }) =>
-            getWorkspaceProductTargetKey(productIdentity)
-          )
-        ).size === targets.length || {
+        new Set(targets.map(({ productTarget }) => productTarget.kind)).size ===
+          targets.length || {
           path: [],
           issue: "product targets must be unique",
         }

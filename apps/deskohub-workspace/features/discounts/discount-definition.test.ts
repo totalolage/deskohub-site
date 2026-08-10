@@ -36,7 +36,7 @@ const percentageRow = (
   productTargets: [
     {
       discountId,
-      productIdentity: { kind: "cowork", tier: "basic" },
+      productTarget: { kind: "cowork" },
     },
   ],
   ...overrides,
@@ -56,7 +56,7 @@ describe("stored discount definitions", () => {
         "cs-CZ": "Letní sleva",
       },
       adjustment: { kind: "percentage", basisPoints: 5000 },
-      products: [{ kind: "cowork", tier: "basic" }],
+      products: [{ kind: "cowork" }],
     });
   });
 
@@ -85,19 +85,14 @@ describe("stored discount definitions", () => {
           productTargets: [
             {
               discountId,
-              productIdentity: {
-                kind: "meeting-room",
-                duration: { unit: "hour", amount: 4 },
-              },
+              productTarget: { kind: "meeting-room" },
             },
           ],
         })
       )
     );
 
-    expect(result.products).toEqual([
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-    ]);
+    expect(result.products).toEqual([{ kind: "meeting-room" }]);
   });
 
   test.each([
@@ -143,7 +138,7 @@ describe("stored discount definitions", () => {
         productTargets: [
           {
             discountId: otherDiscountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
+            productTarget: { kind: "cowork" },
           },
         ],
       }),
@@ -154,9 +149,8 @@ describe("stored discount definitions", () => {
         productTargets: [
           {
             discountId,
-            productIdentity: {
+            productTarget: {
               kind: "cowork",
-              tier: "basic",
               provider: "private",
             },
           },
@@ -164,16 +158,16 @@ describe("stored discount definitions", () => {
       }),
     ],
     [
-      "duplicate product identities",
+      "duplicate product targets",
       percentageRow({
         productTargets: [
           {
             discountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
+            productTarget: { kind: "cowork" },
           },
           {
             discountId,
-            productIdentity: { kind: "cowork", tier: "basic" },
+            productTarget: { kind: "cowork" },
           },
         ],
       }),

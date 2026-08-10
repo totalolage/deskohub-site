@@ -41,8 +41,6 @@
   "landingSaleBannerAllProducts": "{title}: {adjustment} off!",
   "landingSaleBannerAllCoworkProducts": "{title}: {adjustment} off cowork access!",
   "landingSaleBannerAllMeetingRoomProducts": "{title}: {adjustment} off meeting room reservations!",
-  "landingSaleBannerAllCoworkAndSelectedMeetingRoomProducts": "{title}: {adjustment} off cowork access and chosen meeting room reservations!",
-  "landingSaleBannerSelectedCoworkAndAllMeetingRoomProducts": "{title}: {adjustment} off chosen cowork access and meeting room reservations!",
   "landingSaleBannerSelectedProducts": "{title}: {adjustment} off chosen products!",
   "landingSaleBannerCta": "Book with discount",
   "landingHeroHighlightOne": "24/7 unique code access",

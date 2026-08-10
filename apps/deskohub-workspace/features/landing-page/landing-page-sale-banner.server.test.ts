@@ -3,7 +3,6 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Logger, References, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import { type ActiveSale, discountIdSchema } from "@/features/discounts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
@@ -20,11 +19,9 @@ const { getActiveLandingPageSaleBanner } = await import(
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 const coworkProduct = {
   kind: "cowork",
-  tier: "basic",
 } satisfies WorkspaceProductTarget;
 const meetingRoomProduct = {
   kind: "meeting-room",
-  duration: workspaceMeetingRoomCatalog[0]!.duration,
 } satisfies WorkspaceProductTarget;
 const officeProduct = {
   kind: "office",

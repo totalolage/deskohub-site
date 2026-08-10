@@ -1,23 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import {
-  workspaceCoworkProductTiers,
-  workspaceMeetingRoomCatalog,
-} from "@/features/checkout/product-catalog";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import {
   formatLandingPageSaleBannerLabel,
   getLandingPageSaleBannerContent,
 } from "./landing-page-sale-banner-content";
 
-const coworkProducts = workspaceCoworkProductTiers.map(
-  (tier): WorkspaceProductTarget => ({ kind: "cowork", tier })
-);
-const meetingRoomProducts = workspaceMeetingRoomCatalog.map(
-  ({ duration }): WorkspaceProductTarget => ({
-    kind: "meeting-room",
-    duration,
-  })
-);
+const coworkProduct = {
+  kind: "cowork",
+} as const satisfies WorkspaceProductTarget;
+const meetingRoomProduct = {
+  kind: "meeting-room",
+} as const satisfies WorkspaceProductTarget;
 const officeProduct = {
   kind: "office",
 } as const satisfies WorkspaceProductTarget;
@@ -47,49 +40,37 @@ const formatLabel = (
 describe("formatLandingPageSaleBannerLabel", () => {
   test("describes a sale on every product without clarification", () => {
     expect(
-      formatLabel([...coworkProducts, ...meetingRoomProducts, officeProduct])
+      formatLabel([coworkProduct, meetingRoomProduct, officeProduct])
     ).toBe("Summer focus: 20% off!");
   });
 
   test("describes a sale on every cowork product", () => {
-    expect(formatLabel(coworkProducts)).toBe(
+    expect(formatLabel([coworkProduct])).toBe(
       "Summer focus: 20% off cowork access!"
     );
   });
 
   test("describes a sale on every meeting-room product", () => {
-    expect(formatLabel(meetingRoomProducts)).toBe(
+    expect(formatLabel([meetingRoomProduct])).toBe(
       "Summer focus: 20% off meeting room reservations!"
     );
   });
 
-  test("describes all cowork and selected meeting-room products", () => {
-    expect(formatLabel([...coworkProducts, meetingRoomProducts[0]!])).toBe(
-      "Summer focus: 20% off cowork access and chosen meeting room reservations!"
-    );
-  });
-
-  test("describes selected cowork and all meeting-room products", () => {
-    expect(formatLabel([coworkProducts[0]!, ...meetingRoomProducts])).toBe(
-      "Summer focus: 20% off chosen cowork access and meeting room reservations!"
-    );
-  });
-
-  test("uses the selected-products fallback for a partial mix", () => {
-    expect(formatLabel([coworkProducts[0]!, meetingRoomProducts[0]!])).toBe(
+  test("uses the selected-products fallback for a family mix", () => {
+    expect(formatLabel([coworkProduct, meetingRoomProduct])).toBe(
       "Summer focus: 20% off chosen products!"
     );
   });
 
   test("does not omit office from a mixed sale label", () => {
-    expect(formatLabel([...coworkProducts, officeProduct])).toBe(
+    expect(formatLabel([coworkProduct, officeProduct])).toBe(
       "Summer focus: 20% off chosen products!"
     );
   });
 
   test("formats fixed adjustments with their currency", () => {
     expect(
-      formatLabel(coworkProducts, {
+      formatLabel([coworkProduct], {
         kind: "fixed",
         amount: { value: 20_000, exponent: 2, currency: "CZK" },
       })
@@ -102,7 +83,7 @@ describe("formatLandingPageSaleBannerLabel", () => {
         {
           title: "Letní soustředění",
           adjustment: { kind: "percentage", basisPoints: 2000 },
-          products: coworkProducts,
+          products: [coworkProduct],
         },
         "cs-CZ"
       )
@@ -128,7 +109,7 @@ describe("getLandingPageSaleBannerContent", () => {
         sale: {
           title: "Summer focus",
           adjustment,
-          products: coworkProducts,
+          products: [coworkProduct],
         },
       }).adjustmentKind
     ).toBe(kind);
@@ -142,7 +123,7 @@ describe("getLandingPageSaleBannerContent", () => {
         sale: {
           title: "Summer focus",
           adjustment: { kind: "percentage", basisPoints: 2000 },
-          products: meetingRoomProducts,
+          products: [meetingRoomProduct],
         },
       }).href
     ).toBe(

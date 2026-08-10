@@ -59,7 +59,7 @@ const dashboard: DiscountAdminDashboard = {
         "en-US": "Summer discount",
       },
       adjustment: { kind: "percentage", basisPoints: 1000 },
-      products: [{ kind: "cowork", tier: "basic" }],
+      products: [{ kind: "cowork" }],
       codeCount: 1,
       createdAt: Temporal.Instant.from("2026-07-01T08:00:00Z"),
       updatedAt: Temporal.Instant.from("2026-07-02T08:00:00Z"),
@@ -165,6 +165,12 @@ describe("discount administration pages", () => {
         "#fixedAmountValue-019c91dd-c560-7e55-b9d8-c95065efd51d"
       )
     ).toBeNull();
+    expect(
+      within(percentage.closest("form")!)
+        .getAllByRole("checkbox")
+        .map((checkbox) => checkbox.closest("label")?.textContent?.trim())
+    ).toEqual(["Cowork", "Meeting room", "Private office"]);
+    expect(view.queryByText("Cowork Basic")).toBeNull();
 
     const save = view.getByRole("button", { name: "Save discount" });
     expect(save).toHaveProperty("disabled", true);

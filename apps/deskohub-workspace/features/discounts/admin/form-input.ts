@@ -1,5 +1,4 @@
 import {
-  getWorkspaceProductTargetKey,
   type WorkspaceProductTarget,
   workspaceProductTargets,
 } from "@/features/discounts/product-target";
@@ -46,7 +45,7 @@ export const readDiscountForm = (
     products: formData
       .getAll("products")
       .flatMap((value) =>
-        typeof value === "string" ? (productIdentities[value] ?? []) : []
+        typeof value === "string" ? (productTargets[value] ?? []) : []
       ) as [WorkspaceProductTarget, ...WorkspaceProductTarget[]],
   };
 };
@@ -104,11 +103,8 @@ const readOptionalNumber = (formData: FormData, field: string) => {
   return value === null ? null : Number(value);
 };
 
-const productIdentities: Readonly<
+const productTargets: Readonly<
   Record<string, readonly WorkspaceProductTarget[]>
 > = Object.fromEntries(
-  workspaceProductTargets.map((product) => [
-    getWorkspaceProductTargetKey(product),
-    [product],
-  ])
+  workspaceProductTargets.map((product) => [product.kind, [product]])
 );

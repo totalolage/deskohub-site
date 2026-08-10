@@ -368,15 +368,14 @@ covers customer-only, customer-plus-code, Calendar-plus-customer, and all three
 sources together. A separate customer's group is cleared after summary
 creation; payment must return `pricing_changed`.
 
-The stable Calendar definition targets Plus, Profi, and the one-hour meeting
-room. Calendar pricing-change edge cases use Profi while all Calendar happy
-paths use Plus. In one serialized top-level case, the runner removes only the
-Profi target after reservation-page advertisement and again after
-signed-summary creation. Each scenario restores the Profi target in an
+The stable Calendar definition targets the cowork and meeting-room families.
+Calendar pricing-change edge cases use Profi while Calendar happy paths use
+Plus. After all parallel cases finish, one serialized top-level case removes
+the cowork target after reservation-page advertisement and again after
+signed-summary creation. Each scenario restores the cowork target in an
 interruption-safe finalizer. Both must show the normal pricing-change state with
-no payment attempt. The Calendar event itself remains immutable, and Plus and
-meeting-room eligibility are never mutated, so every other top-level case
-continues to run in parallel.
+no payment attempt. The Calendar event itself remains immutable, and
+meeting-room eligibility is never mutated.
 
 Calendar all-day expiry is tied to the selected reservation date, so a browser
 case cannot safely wait across its real Prague-midnight boundary. Deterministic
