@@ -29,10 +29,16 @@ const postHogSourceMapConfig =
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  cacheComponents: false,
+  cacheComponents: true,
   experimental: {
+    exposeTestingApiInProductionBuild:
+      workspaceBotIdVercelEnvironment === "preview",
+    instantInsights: {
+      validationLevel: "manual-warning",
+    },
     useTypeScriptCli: false,
   },
+  partialPrefetching: true,
   reactCompiler: true,
   transpilePackages: [
     "@deskohub/cloudinary",

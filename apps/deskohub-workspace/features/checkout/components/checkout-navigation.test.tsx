@@ -58,31 +58,31 @@ afterAll(() => {
   unregisterWorkspaceComponentTestEnv();
 });
 
-test("uses a Next Link without prefetch to reopen signed reservation state", async () => {
+test("uses a document navigation to reopen signed reservation state", async () => {
   const { CheckoutSteps } = await import("./checkout-flow-layout");
   const reservationHref =
     "/en-US/reservation/cowork?payState=encrypted-pay-state";
 
-  render(
+  const view = render(
     <CheckoutSteps
       activeStepKey="pay"
       locale="en-US"
       stepLinks={{
         order: {
           href: reservationHref,
-          prefetch: false,
+          navigation: "document",
         },
       }}
     />
   );
 
-  expect(capturedLinks).toContainEqual({
-    href: reservationHref,
-    prefetch: false,
-  });
+  expect(
+    view.getByRole("link", { name: /reservation/i }).getAttribute("href")
+  ).toBe(reservationHref);
+  expect(capturedLinks).toBeEmpty();
 });
 
-test("keeps status-page actions as Next Links without background prefetch", async () => {
+test("prefetches reserve-again while protecting status-page context links", async () => {
   const { CheckoutStatusPage } = await import("./checkout-status-page");
 
   const view = render(
@@ -115,7 +115,7 @@ test("keeps status-page actions as Next Links without background prefetch", asyn
   });
   expect(capturedLinks).toContainEqual({
     href: "/en-US/reservation/cowork",
-    prefetch: false,
+    prefetch: undefined,
   });
   expect(capturedLinks).toContainEqual({
     href: "/en-US",

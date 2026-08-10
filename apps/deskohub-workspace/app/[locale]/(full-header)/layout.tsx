@@ -8,6 +8,8 @@ type FullHeaderLayoutProps = {
   children: ReactNode;
 };
 
+export const instant = false;
+
 export default async function FullHeaderLayout({
   children,
 }: FullHeaderLayoutProps) {

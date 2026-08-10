@@ -2,19 +2,16 @@
 
 import type { PostHogFeatureFlagOverrides } from "@deskohub/posthog/feature-flags";
 import { Analytics } from "@vercel/analytics/react";
-import type { ReactNode } from "react";
 import type { PostHogFeatureFlagDefinitions } from "@/features/feature-flags/generated/contract";
 import { useCookieConsent } from "../hooks/use-cookie-consent";
 import { PostHogAnalytics } from "./posthog-analytics";
 
 type ConsentAwareAnalyticsProps = {
-  children: ReactNode;
   featureFlagOverrides?: PostHogFeatureFlagOverrides<PostHogFeatureFlagDefinitions>;
   posthogEnvironment: string;
 };
 
 export function ConsentAwareAnalytics({
-  children,
   featureFlagOverrides,
   posthogEnvironment,
 }: ConsentAwareAnalyticsProps) {
@@ -28,7 +25,6 @@ export function ConsentAwareAnalytics({
       posthogEnvironment={posthogEnvironment}
     >
       {analyticsAccepted && <Analytics />}
-      {children}
     </PostHogAnalytics>
   );
 }

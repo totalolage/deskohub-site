@@ -5,8 +5,6 @@ import {
 } from "@/features/discounts/admin/page-data.server";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 
-export const dynamic = "force-dynamic";
-
 export default async function DiscountCodeAdminDetailPage({
   params,
   searchParams,

@@ -11,8 +11,6 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 
-export const dynamic = "force-dynamic";
-
 export default async function OperationAdministrationDetailPage({
   params,
 }: {

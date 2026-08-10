@@ -1,6 +1,8 @@
 import { Cause, Effect, Exit } from "effect";
 import {
   activateHydratedBrowserElement,
+  findEnabledSnapshotRef,
+  findFirstEnabledTextFieldRef,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
@@ -821,11 +823,16 @@ const requireHostedPaymentRef = (
   frameLabels: readonly string[],
   timeoutMs: number
 ): Effect.Effect<HostedPaymentRef, WorkspaceE2EError> =>
-  pollUntil(findHostedPaymentRef(run, session, labels, frameLabels), {
-    intervalMs: workspaceE2EPollIntervalMs.browser,
-    label: `Nexi target ${labels.join(" / ")}`,
-    timeoutMs,
-  }).pipe(
+  pollUntil(
+    findHostedPaymentRef(run, session, labels, frameLabels, {
+      enabledOnly: true,
+    }),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: `Nexi target ${labels.join(" / ")}`,
+      timeoutMs,
+    }
+  ).pipe(
     Effect.catch((error) =>
       readInteractiveSnapshot(run, session).pipe(
         Effect.flatMap((snapshot) =>
@@ -850,12 +857,9 @@ const tryFillHostedPaymentField = (
   value: string
 ) =>
   Effect.gen(function* () {
-    const target = yield* findHostedPaymentRef(
-      run,
-      session,
-      labels,
-      frameLabels
-    );
+    const target = yield* findHostedPaymentRef(run, session, labels, frameLabels, {
+      enabledOnly: true,
+    });
     if (!target) return;
 
     yield* runBrowserCommand(
@@ -886,11 +890,14 @@ const findHostedPaymentRef = (
   run: Runner,
   session: string,
   labels: readonly string[],
-  frameLabels: readonly string[]
+  frameLabels: readonly string[],
+  options: { readonly enabledOnly?: boolean } = {}
 ): Effect.Effect<HostedPaymentRef | undefined, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const snapshot = yield* readInteractiveSnapshot(run, session);
-    const directRef = findSnapshotRef(snapshot, labels);
+    const directRef = options.enabledOnly
+      ? findEnabledSnapshotRef(snapshot, labels)
+      : findSnapshotRef(snapshot, labels);
     if (directRef) return { framed: false, ref: directRef };
 
     for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
@@ -906,9 +913,13 @@ const findHostedPaymentRef = (
       let shouldRestoreMainFrame = true;
       const frameResult = yield* Effect.gen(function* () {
         const frameSnapshot = yield* readInteractiveSnapshot(run, session);
-        const frameFieldRef =
-          findSnapshotRef(frameSnapshot, labels) ??
-          (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
+        const frameFieldRef = options.enabledOnly
+          ? findEnabledSnapshotRef(frameSnapshot, labels) ??
+            (frame.exact
+              ? findFirstEnabledTextFieldRef(frameSnapshot)
+              : undefined)
+          : findSnapshotRef(frameSnapshot, labels) ??
+            (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
         if (!frameFieldRef) return undefined;
 
         shouldRestoreMainFrame = false;

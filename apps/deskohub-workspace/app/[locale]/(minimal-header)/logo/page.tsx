@@ -1,5 +1,7 @@
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
+export const instant = false;
+
 const SIZE = 64;
 
 export default function LogoPage() {
