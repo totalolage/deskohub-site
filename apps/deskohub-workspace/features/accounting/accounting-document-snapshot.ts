@@ -109,7 +109,7 @@ const accountingSnapshotIdentitySchema = Schema.Struct({
   buyer: accountingBuyerSchema,
 });
 
-const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
+export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingSnapshotIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
@@ -118,7 +118,7 @@ const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: coworkReservationQuoteSchema,
 });
 
-const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
+export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingSnapshotIdentitySchema.fields,
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),

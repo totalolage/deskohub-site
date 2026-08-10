@@ -1,0 +1,125 @@
+import "@/shared/testing/workspace-test-env";
+
+import { describe, expect, test } from "bun:test";
+import { Effect, Schema } from "effect";
+import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
+import {
+  buildCoworkReservationQuote,
+  type CoworkReservationQuoteOrder,
+} from "@/features/checkout/checkout-quote.test-utils";
+import { makeAccountingDocumentSnapshot } from "./accounting-document-snapshot";
+import {
+  formatInvoiceNumber,
+  getInvoiceNumberingYear,
+  invoiceDocumentSchema,
+  makeInvoiceDocument,
+} from "./invoice";
+
+const coworkOrder = {
+  entryTier: "basic",
+  coffee: true,
+} satisfies CoworkReservationQuoteOrder;
+
+const prepared = {
+  kind: "cowork",
+  reservation: {
+    kind: "cowork",
+    ...coworkOrder,
+    date: "2099-01-01",
+    name: "Original Buyer",
+    email: "synthetic@example.test",
+    phone: "+420 700 000 000",
+  },
+  quote: buildCoworkReservationQuote(coworkOrder),
+} as PreparedCustomerQuote;
+
+const source = makeAccountingDocumentSnapshot({
+  workspaceReservationId: "reservation-id",
+  dotyposReservationId: "dotypos-reservation-id",
+  dotyposCustomerId: "dotypos-customer-id",
+  locale: "en-US",
+  prepared,
+});
+
+describe("invoice", () => {
+  test("formats the common annual sequential number", () => {
+    expect(formatInvoiceNumber({ year: 2026, sequence: 1 })).toBe(
+      "WS-FV-2026-000001"
+    );
+    expect(formatInvoiceNumber({ year: 2026, sequence: 999_999 })).toBe(
+      "WS-FV-2026-999999"
+    );
+    expect(() =>
+      formatInvoiceNumber({ year: 2026, sequence: 1_000_000 })
+    ).toThrow(RangeError);
+  });
+
+  test("uses the Prague calendar year at the UTC New Year boundary", () => {
+    expect(
+      getInvoiceNumberingYear(Temporal.Instant.from("2026-12-31T22:59:59.999Z"))
+    ).toBe(2026);
+    expect(
+      getInvoiceNumberingYear(Temporal.Instant.from("2026-12-31T23:00:00Z"))
+    ).toBe(2027);
+  });
+
+  test("freezes an explicit invoice buyer without changing the source", () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: {
+        kind: "business",
+        legalName: "Invoice Buyer s.r.o.",
+        companyId: "12345678",
+        vatId: "CZ12345678",
+        address: {
+          line1: "Synthetic 1",
+          city: "Praha",
+          postalCode: "100 00",
+          country: "CZ",
+        },
+      },
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+    });
+
+    expect(document).toMatchObject({
+      schemaVersion: 1,
+      workspaceReservationId: "reservation-id",
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: "WS-FV-2026-000042",
+      issuedAt: "2026-08-10T12:34:56.789Z",
+      supplier: source.supplier,
+      reservation: source.reservation,
+      quote: source.quote,
+      buyer: {
+        kind: "business",
+        legalName: "Invoice Buyer s.r.o.",
+      },
+    });
+    expect(source.buyer).toEqual({
+      kind: "person",
+      legalName: "Original Buyer",
+    });
+  });
+
+  test("round-trips strictly through the versioned document schema", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: source.buyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+    });
+    const decode = Schema.decodeUnknownEffect(invoiceDocumentSchema, {
+      onExcessProperty: "error",
+    });
+
+    await expect(Effect.runPromise(decode(document))).resolves.toEqual(
+      document
+    );
+    await expect(
+      Effect.runPromise(decode({ ...document, unexpected: true }))
+    ).rejects.toBeDefined();
+  });
+});

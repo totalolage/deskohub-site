@@ -33,6 +33,8 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./discounts");
     expect(schemaIndex).toContain("./discount-applications");
     expect(schemaIndex).toContain("./accounting-document-snapshots");
+    expect(schemaIndex).toContain("./invoice-number-counters");
+    expect(schemaIndex).toContain("./invoices");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
   });
@@ -54,6 +56,25 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).toContain("accounting_document_snapshots_immutable");
     expect(migration).toContain("BEFORE UPDATE OR DELETE");
     expect(migration).toContain("state IN ('failed', 'cancelled', 'expired')");
+  });
+
+  test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
+    const schema = await readAppFile("db/schema/invoices.ts");
+    const migration = await readAppFile(
+      "db/migrations/20260810182916_issued_invoices/migration.sql"
+    );
+
+    expect(schema).toContain('bytea("encrypted_document")');
+    expect(schema).not.toContain("jsonb(");
+    for (const fragment of piiColumnFragments) {
+      expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
+    }
+    expect(migration).toContain("invoices_validate_source");
+    expect(migration).toContain("active_payment_attempt_id = attempt.id");
+    expect(migration).toContain("invoices_immutable");
+    expect(migration).toContain('BEFORE UPDATE OR DELETE ON "invoices"');
+    expect(migration).toContain('CREATE TABLE "invoice_number_counters"');
+    expect(migration).not.toContain("nextval(");
   });
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
