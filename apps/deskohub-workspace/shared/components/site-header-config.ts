@@ -26,13 +26,9 @@ export type SiteHeaderMenuItem = {
   readonly href: string;
 };
 
-export type DisabledSiteHeaderMenuItems = Partial<
+type DisabledSiteHeaderMenuItems = Partial<
   Record<SiteHeaderMenuItemId, boolean>
 >;
-
-const meetingRoomDisabled: DisabledSiteHeaderMenuItems = {
-  meetingRoom: true,
-};
 
 export const getSiteHeaderLanguageLabels = (
   locale: Locale
@@ -49,51 +45,48 @@ export async function getSiteHeaderConfig(locale: Locale) {
   });
 }
 
-export const getSiteHeaderShellConfig = (locale: Locale) =>
-  createSiteHeaderConfig(locale, meetingRoomDisabled);
-
 const createSiteHeaderConfig = (
   locale: Locale,
   disabledMenuItems: DisabledSiteHeaderMenuItems
 ) => {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
+  const links = [
+    {
+      id: "locationMap",
+      label: m.landingNavWhereToFindUs({}, { locale }),
+      href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
+    },
+    {
+      id: "meetingRoom",
+      label: m.landingNavMeetingRoom({}, { locale }),
+      href: `${localePath}/meeting-room`,
+    },
+    {
+      id: "gallery",
+      label: m.landingNavGallery({}, { locale }),
+      href: `${localePath}/gallery`,
+    },
+    {
+      id: "founders",
+      label: m.landingNavOurTeam({}, { locale }),
+      href: localizedHash(`#${siteHeaderSectionIds.founders}`),
+    },
+    {
+      id: "faqContact",
+      label: m.landingNavFaqContact({}, { locale }),
+      href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
+    },
+    {
+      id: "contact",
+      label: m.landingNavContactLabel({}, { locale }),
+      href: `${localePath}/contact`,
+    },
+  ] satisfies SiteHeaderMenuItem[];
 
   return {
     languageLabels: getSiteHeaderLanguageLabels(locale),
-    links: [
-      {
-        id: "locationMap",
-        label: m.landingNavWhereToFindUs({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
-      },
-      {
-        id: "meetingRoom",
-        label: m.landingNavMeetingRoom({}, { locale }),
-        href: `${localePath}/meeting-room`,
-      },
-      {
-        id: "gallery",
-        label: m.landingNavGallery({}, { locale }),
-        href: `${localePath}/gallery`,
-      },
-      {
-        id: "founders",
-        label: m.landingNavOurTeam({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.founders}`),
-      },
-      {
-        id: "faqContact",
-        label: m.landingNavFaqContact({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
-      },
-      {
-        id: "contact",
-        label: m.landingNavContactLabel({}, { locale }),
-        href: `${localePath}/contact`,
-      },
-    ] satisfies SiteHeaderMenuItem[],
-    disabledMenuItems,
+    links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
   };

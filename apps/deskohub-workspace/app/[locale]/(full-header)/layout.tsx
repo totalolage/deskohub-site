@@ -1,46 +1,26 @@
-import { type ReactNode, Suspense } from "react";
-import type { Locale } from "@/features/i18n";
+import type { ReactNode } from "react";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { SiteHeader } from "@/shared/components/site-header";
-import {
-  getSiteHeaderConfig,
-  getSiteHeaderShellConfig,
-} from "@/shared/components/site-header-config";
+import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
 
 type FullHeaderLayoutProps = {
   children: ReactNode;
 };
 
+export const instant = false;
+
 export default async function FullHeaderLayout({
   children,
 }: FullHeaderLayoutProps) {
   const locale = await getRequestLocale();
+  const siteHeaderConfig = await getSiteHeaderConfig(locale);
 
   return (
     <>
-      <Suspense
-        fallback={
-          <SiteHeader
-            currentLocale={locale}
-            {...getSiteHeaderShellConfig(locale)}
-          />
-        }
-      >
-        <SiteHeaderWithFeatureFlags locale={locale} />
-      </Suspense>
+      <SiteHeader currentLocale={locale} {...siteHeaderConfig} />
       {children}
       <PublicSiteFooter />
     </>
   );
-}
-
-async function SiteHeaderWithFeatureFlags({
-  locale,
-}: {
-  readonly locale: Locale;
-}) {
-  const siteHeaderConfig = await getSiteHeaderConfig(locale);
-
-  return <SiteHeader currentLocale={locale} {...siteHeaderConfig} />;
 }

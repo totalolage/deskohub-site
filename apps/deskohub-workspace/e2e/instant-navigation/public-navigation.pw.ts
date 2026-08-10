@@ -4,7 +4,6 @@ import {
   enablePreviewAccess,
   expectPublicSiteShell,
   hasLoadedResource,
-  requireBaseUrl,
 } from "./navigation-test-helpers";
 
 const galleryPath = "/en-US/gallery";
@@ -14,38 +13,25 @@ test.beforeEach(async ({ baseURL, context }) => {
   await enablePreviewAccess(context, baseURL);
 });
 
-test("serves the gallery shell on direct navigation", async ({
-  baseURL,
+test("serves the resolved header and gallery on direct navigation", async ({
   page,
 }) => {
-  await instant(
-    page,
-    async () => {
-      await page.goto(galleryPath);
+  await page.goto(galleryPath);
 
-      await expectPublicSiteShell(page);
-      await expectGalleryShell(page);
-    },
-    { baseURL: requireBaseUrl(baseURL) }
-  );
-
+  await expectPublicSiteShell(page);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Workspace gallery" })
+  ).toBeVisible();
   await expectGalleryContentToResolve(page);
 });
 
-test("serves the complete contact page on direct navigation", async ({
-  baseURL,
+test("serves the resolved header and contact page on direct navigation", async ({
   page,
 }) => {
-  await instant(
-    page,
-    async () => {
-      await page.goto(contactPath);
+  await page.goto(contactPath);
 
-      await expectPublicSiteShell(page);
-      await expectContactPage(page);
-    },
-    { baseURL: requireBaseUrl(baseURL) }
-  );
+  await expectPublicSiteShell(page);
+  await expectContactPage(page);
 });
 
 const clientNavigationCases = [

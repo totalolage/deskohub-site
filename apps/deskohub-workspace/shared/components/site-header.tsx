@@ -6,10 +6,7 @@ import { Suspense, useState } from "react";
 import type { Locale } from "@/features/i18n";
 import { LocaleSwitcherLinks } from "@/shared/components/locale-switcher-links";
 import { HorizontalLogo } from "@/shared/components/logo";
-import type {
-  DisabledSiteHeaderMenuItems,
-  SiteHeaderMenuItem,
-} from "@/shared/components/site-header-config";
+import type { SiteHeaderMenuItem } from "@/shared/components/site-header-config";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
@@ -17,7 +14,6 @@ type SiteHeaderProps = {
   currentLocale: Locale;
   languageLabels: Record<Locale, string>;
   links: SiteHeaderMenuItem[];
-  disabledMenuItems: DisabledSiteHeaderMenuItems;
   contactLabel: string;
   contactHref: string;
 };
@@ -26,7 +22,6 @@ export function SiteHeader({
   currentLocale,
   languageLabels,
   links,
-  disabledMenuItems,
   contactLabel,
   contactHref,
 }: SiteHeaderProps) {
@@ -48,17 +43,15 @@ export function SiteHeader({
           />
         </Link>
 
-        <nav
-          aria-label="Primary"
-          className="hidden w-[42rem] grid-cols-6 items-center xl:grid"
-        >
+        <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
           {links.map((link) => (
-            <SiteHeaderMenuLink
+            <Link
               key={link.id}
-              disabled={disabledMenuItems[link.id] === true}
-              link={link}
-              variant="desktop"
-            />
+              href={link.href}
+              className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
+            >
+              {link.label}
+            </Link>
           ))}
         </nav>
 
@@ -114,13 +107,14 @@ export function SiteHeader({
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
           <nav aria-label="Mobile primary" className="grid gap-2">
             {links.map((link) => (
-              <SiteHeaderMenuLink
+              <Link
                 key={link.id}
-                disabled={disabledMenuItems[link.id] === true}
-                link={link}
+                href={link.href}
                 onClick={closeMenu}
-                variant="mobile"
-              />
+                className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+              >
+                {link.label}
+              </Link>
             ))}
           </nav>
 
@@ -137,43 +131,5 @@ export function SiteHeader({
         </div>
       </div>
     </header>
-  );
-}
-
-type SiteHeaderMenuLinkProps = {
-  readonly disabled: boolean;
-  readonly link: SiteHeaderMenuItem;
-  readonly onClick?: () => void;
-  readonly variant: "desktop" | "mobile";
-};
-
-function SiteHeaderMenuLink({
-  disabled,
-  link,
-  onClick,
-  variant,
-}: SiteHeaderMenuLinkProps) {
-  if (disabled) return null;
-
-  const className = {
-    desktop: cn(
-      "col-span-1 text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow",
-      {
-        contact: "col-start-6",
-        faqContact: "col-start-5",
-        founders: "col-start-4",
-        gallery: "col-start-3",
-        locationMap: "col-start-1",
-        meetingRoom: "col-start-2",
-      }[link.id]
-    ),
-    mobile:
-      "rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow",
-  }[variant];
-
-  return (
-    <Link href={link.href} className={className} onClick={onClick}>
-      {link.label}
-    </Link>
   );
 }

@@ -96,7 +96,6 @@ test("uses document navigation for every alternate-locale full-header link", asy
         contactHref={contactHref}
         contactLabel="Contact"
         currentLocale={currentLocale}
-        disabledMenuItems={{}}
         languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
         links={[]}
       />
@@ -112,23 +111,16 @@ test("uses document navigation for every alternate-locale full-header link", asy
   }
 });
 
-test("omits disabled full-header items while preserving desktop layout slots", async () => {
+test("renders only the configured full-header items without reserved slots", async () => {
   const { SiteHeader } = await import("./site-header");
-  const meetingRoomHref = "/en-US/meeting-room";
   const galleryHref = "/en-US/gallery";
   const view = render(
     <SiteHeader
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"
       currentLocale="en-US"
-      disabledMenuItems={{ meetingRoom: true }}
       languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
       links={[
-        {
-          id: "meetingRoom",
-          href: meetingRoomHref,
-          label: "Meeting room",
-        },
         {
           id: "gallery",
           href: galleryHref,
@@ -141,20 +133,14 @@ test("omits disabled full-header items while preserving desktop layout slots", a
   const desktopNavigation = view.container.querySelector(
     'nav[aria-label="Primary"]'
   );
-  const mobileNavigation = view.container.querySelector(
-    'nav[aria-label="Mobile primary"]'
-  );
-
-  expect(desktopNavigation?.textContent).not.toContain("Meeting room");
-  expect(mobileNavigation?.textContent).not.toContain("Meeting room");
-  expect(
-    view.container.querySelectorAll(`a[href="${meetingRoomHref}"]`)
-  ).toHaveLength(0);
+  expect(desktopNavigation?.getAttribute("class")).toContain("gap-6");
+  expect(desktopNavigation?.getAttribute("class")).toContain("xl:flex");
+  expect(desktopNavigation?.getAttribute("class")).not.toContain("grid");
   expect(
     desktopNavigation
       ?.querySelector(`a[href="${galleryHref}"]`)
       ?.getAttribute("class")
-  ).toContain("col-start-3");
+  ).not.toContain("col-start");
 });
 
 test("uses document navigation for the alternate-locale minimal-header link", async () => {
