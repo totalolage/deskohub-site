@@ -4,6 +4,8 @@ import { createHash } from "node:crypto";
 
 const key = Buffer.alloc(32, 7).toString("base64url");
 
+process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
+process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= key;
 process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${key}`;
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";

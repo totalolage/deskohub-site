@@ -9,6 +9,8 @@ export const env = createEnv({
   server: workspaceServerEnvSchema.fields,
   client: workspaceClientEnvSchema.fields,
   runtimeEnv: {
+    ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID:
+      process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID,
     AGENT_BROWSER_EXECUTABLE_PATH: process.env.AGENT_BROWSER_EXECUTABLE_PATH,
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
@@ -96,3 +98,6 @@ export const env = createEnv({
     );
   },
 });
+
+export const getAccountingDocumentSnapshotSecret = (keyId: string) =>
+  process.env[`ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_${keyId}`];

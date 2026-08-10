@@ -1,12 +1,13 @@
 import { and, count, eq, inArray } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import {
   WorkspaceDatabase,
   type WorkspaceDatabaseClient,
 } from "@/db/database.service";
 import {
+  accountingDocumentSnapshots,
   discountApplications,
   discountCodeCustomers,
   discountCodeRedemptions,
@@ -17,6 +18,16 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import {
+  type AccountingDocumentSnapshot,
+  accountingDocumentSnapshotSchema,
+} from "@/features/accounting/accounting-document-snapshot";
+import { AccountingDocumentSnapshotStorageError } from "@/features/accounting/backend/accounting-document-snapshot.repository";
+import {
+  type AccountingSnapshotKey,
+  AccountingSnapshotKeyService,
+} from "@/features/accounting/backend/accounting-snapshot-key.service";
+import { encryptAccountingSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import {
   type WorkspaceMoney,
@@ -37,6 +48,7 @@ import { DiscountClaimError } from "@/features/discounts/errors";
 import type { DiscountApplicationId } from "@/features/discounts/persistence-contracts";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
@@ -57,6 +69,7 @@ export interface PaymentLifecycleTransition {
 }
 
 export type PaymentLifecycleRepositoryError =
+  | AccountingDocumentSnapshotStorageError
   | DiscountClaimError
   | EffectDrizzleQueryError
   | PaymentLifecycleStateError
@@ -69,12 +82,14 @@ export interface IPaymentLifecycleRepository {
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
+    readonly accountingSnapshot: AccountingDocumentSnapshot;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
   readonly completeInternalPayment: (input: {
     readonly workspaceReservationId: string;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
+    readonly accountingSnapshot: AccountingDocumentSnapshot;
   }) => Effect.Effect<
     PaymentLifecycleTransition,
     PaymentLifecycleRepositoryError
@@ -120,6 +135,7 @@ export class PaymentLifecycleRepository extends Context.Service<
     this,
     Effect.gen(function* () {
       const { db } = yield* WorkspaceDatabase;
+      const accountingSnapshotKeys = yield* AccountingSnapshotKeyService;
 
       const createPendingNexiAttempt = Effect.fn(
         "PaymentLifecycleRepository.createPendingNexiAttempt"
@@ -129,7 +145,27 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
+        readonly accountingSnapshot: AccountingDocumentSnapshot;
       }) {
+        const accountingSnapshot =
+          yield* validateAccountingDocumentSnapshotForAttempt({
+            snapshot: input.accountingSnapshot,
+            workspaceReservationId: input.workspaceReservationId,
+            amount: input.amount,
+            locale: input.locale,
+            paymentAttemptId: input.providerOrderId,
+          });
+        const accountingSnapshotKey =
+          yield* accountingSnapshotKeys.getActive.pipe(
+            Effect.mapError(
+              () =>
+                new AccountingDocumentSnapshotStorageError({
+                  operation: "encrypt",
+                  paymentAttemptId: input.providerOrderId,
+                  message: "Accounting snapshot encryption key is unavailable.",
+                })
+            )
+          );
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication =
           yield* validateDiscountCommitment(commitment);
@@ -141,6 +177,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                 .select({
                   id: workspaceReservations.id,
                   dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                  dotyposReservationId:
+                    workspaceReservations.dotyposReservationId,
                   reservationHoldExpiresAt:
                     workspaceReservations.reservationHoldExpiresAt,
                 })
@@ -177,6 +215,13 @@ export class PaymentLifecycleRepository extends Context.Service<
                 });
               }
 
+              yield* validateAccountingDocumentSnapshotProviderIdentity({
+                snapshot: accountingSnapshot,
+                paymentAttemptId: input.providerOrderId,
+                dotyposCustomerId: reservation.dotyposCustomerId,
+                dotyposReservationId: reservation.dotyposReservationId,
+              });
+
               const [attemptRow] = yield* tx
                 .insert(paymentAttempts)
                 .values({
@@ -196,6 +241,14 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "Payment attempt insert returned no row."
                 );
               }
+
+              yield* persistAccountingDocumentSnapshot({
+                tx,
+                paymentAttemptId: attemptRow.id,
+                workspaceReservationId: input.workspaceReservationId,
+                snapshot: accountingSnapshot,
+                key: accountingSnapshotKey,
+              });
 
               const [linked] = yield* tx
                 .update(workspaceReservations)
@@ -269,7 +322,16 @@ export class PaymentLifecycleRepository extends Context.Service<
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
+        readonly accountingSnapshot: AccountingDocumentSnapshot;
       }) {
+        const accountingSnapshot =
+          yield* validateAccountingDocumentSnapshotForAttempt({
+            snapshot: input.accountingSnapshot,
+            workspaceReservationId: input.workspaceReservationId,
+            amount: input.amount,
+            locale: input.locale,
+            paymentAttemptId: input.workspaceReservationId,
+          });
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication = yield* validateInternalPaymentCommitment(
           commitment,
@@ -293,6 +355,8 @@ export class PaymentLifecycleRepository extends Context.Service<
                   activePaymentAttemptId:
                     workspaceReservations.activePaymentAttemptId,
                   dotyposCustomerId: workspaceReservations.dotyposCustomerId,
+                  dotyposReservationId:
+                    workspaceReservations.dotyposReservationId,
                   paidAt: workspaceReservations.paidAt,
                   paymentState: workspaceReservations.paymentState,
                   reservationHoldExpiresAt:
@@ -364,6 +428,26 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              yield* validateAccountingDocumentSnapshotProviderIdentity({
+                snapshot: accountingSnapshot,
+                paymentAttemptId: input.workspaceReservationId,
+                dotyposCustomerId: reservation.dotyposCustomerId,
+                dotyposReservationId: reservation.dotyposReservationId,
+              });
+
+              const accountingSnapshotKey =
+                yield* accountingSnapshotKeys.getActive.pipe(
+                  Effect.mapError(
+                    () =>
+                      new AccountingDocumentSnapshotStorageError({
+                        operation: "encrypt",
+                        paymentAttemptId: input.workspaceReservationId,
+                        message:
+                          "Accounting snapshot encryption key is unavailable.",
+                      })
+                  )
+                );
+
               const [attemptRow] = yield* tx
                 .insert(paymentAttempts)
                 .values({
@@ -385,6 +469,14 @@ export class PaymentLifecycleRepository extends Context.Service<
                   "Internal payment attempt insert returned no row."
                 );
               }
+
+              yield* persistAccountingDocumentSnapshot({
+                tx,
+                paymentAttemptId: attemptRow.id,
+                workspaceReservationId: input.workspaceReservationId,
+                snapshot: accountingSnapshot,
+                key: accountingSnapshotKey,
+              });
 
               const [completedReservation] = yield* tx
                 .update(workspaceReservations)
@@ -470,8 +562,10 @@ export class PaymentLifecycleRepository extends Context.Service<
           .update(paymentAttempts)
           .set({
             state: "pending",
-            securityToken: input.securityToken,
-            providerRedirectUrl: input.providerRedirectUrl,
+            securityToken: sensitiveDatabaseParameter(input.securityToken),
+            providerRedirectUrl: sensitiveDatabaseParameter(
+              input.providerRedirectUrl
+            ),
             providerOrderCreatedAt,
             updatedAt: providerOrderCreatedAt,
           })
@@ -646,6 +740,12 @@ export class PaymentLifecycleRepository extends Context.Service<
                 );
               }
 
+              yield* tx
+                .delete(accountingDocumentSnapshots)
+                .where(
+                  eq(accountingDocumentSnapshots.paymentAttemptId, input.id)
+                );
+
               const [reservation] = yield* tx
                 .update(workspaceReservations)
                 .set({
@@ -720,7 +820,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
-    })
+    }).pipe(Effect.provide(AccountingSnapshotKeyService.Live))
   );
 }
 
@@ -855,6 +955,134 @@ const discountAdjustmentsEqual = (
 type TransactionClient = Parameters<
   Parameters<WorkspaceDatabaseClient["transaction"]>[0]
 >[0];
+
+const decodeAccountingDocumentSnapshot = Schema.decodeUnknownEffect(
+  accountingDocumentSnapshotSchema,
+  { onExcessProperty: "error" }
+);
+
+const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
+  "PaymentLifecycle.validateAccountingDocumentSnapshotForAttempt"
+)(function* (input: {
+  readonly snapshot: AccountingDocumentSnapshot;
+  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: string;
+  readonly amount: WorkspaceMoney;
+  readonly locale: Locale;
+}) {
+  const snapshot = yield* decodeAccountingDocumentSnapshot(input.snapshot).pipe(
+    Effect.mapError(
+      () =>
+        new AccountingDocumentSnapshotStorageError({
+          operation: "validate",
+          paymentAttemptId: input.paymentAttemptId,
+          message: "Accounting snapshot schema is invalid.",
+        })
+    )
+  );
+
+  if (
+    snapshot.workspaceReservationId !== input.workspaceReservationId ||
+    snapshot.locale !== input.locale ||
+    !workspaceMoneyEquals(snapshot.quote.payment.expectedPrice, input.amount) ||
+    !accountingSnapshotMoneyReconciles(snapshot)
+  ) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentAttemptId: input.paymentAttemptId,
+      message: "Accounting snapshot does not match the payment attempt.",
+    });
+  }
+
+  return snapshot;
+});
+
+const accountingSnapshotMoneyReconciles = (
+  snapshot: AccountingDocumentSnapshot
+): boolean => {
+  const { items, payment } = snapshot.quote;
+  const sameUnit = (amount: WorkspaceMoney) =>
+    amount.currency === payment.expectedPrice.currency &&
+    amount.exponent === payment.expectedPrice.exponent;
+
+  if (
+    !sameUnit(payment.undiscountedPrice) ||
+    !items.every(({ amount }) => sameUnit(amount)) ||
+    !payment.discounts.every(
+      ({ amount, subtotalAfter, subtotalBefore }) =>
+        sameUnit(amount) && sameUnit(subtotalAfter) && sameUnit(subtotalBefore)
+    )
+  ) {
+    return false;
+  }
+
+  const itemTotal = items.reduce((total, item) => total + item.amount.value, 0);
+  const discountTotal = payment.discounts.reduce(
+    (total, discount) => total + discount.amount.value,
+    0
+  );
+
+  return (
+    itemTotal === payment.undiscountedPrice.value &&
+    itemTotal - discountTotal === payment.expectedPrice.value
+  );
+};
+
+const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
+  "PaymentLifecycle.validateAccountingDocumentSnapshotProviderIdentity"
+)(function* (input: {
+  readonly snapshot: AccountingDocumentSnapshot;
+  readonly paymentAttemptId: string;
+  readonly dotyposCustomerId: string;
+  readonly dotyposReservationId: string | null;
+}) {
+  if (
+    input.snapshot.dotyposCustomerId !== input.dotyposCustomerId ||
+    input.snapshot.dotyposReservationId !== input.dotyposReservationId
+  ) {
+    return yield* new AccountingDocumentSnapshotStorageError({
+      operation: "validate",
+      paymentAttemptId: input.paymentAttemptId,
+      message: "Accounting snapshot provider identity is inconsistent.",
+    });
+  }
+});
+
+const persistAccountingDocumentSnapshot = Effect.fn(
+  "PaymentLifecycle.persistAccountingDocumentSnapshot"
+)(function* (input: {
+  readonly tx: TransactionClient;
+  readonly paymentAttemptId: string;
+  readonly workspaceReservationId: string;
+  readonly snapshot: AccountingDocumentSnapshot;
+  readonly key: AccountingSnapshotKey;
+}) {
+  const snapshotJson = JSON.stringify(input.snapshot);
+
+  yield* input.tx
+    .insert(accountingDocumentSnapshots)
+    .values({
+      paymentAttemptId: input.paymentAttemptId,
+      workspaceReservationId: input.workspaceReservationId,
+      schemaVersion: input.snapshot.schemaVersion,
+      keyId: input.key.id,
+      encryptedSnapshot: encryptAccountingSnapshot(
+        snapshotJson,
+        input.key.secret
+      ),
+    })
+    .pipe(
+      Effect.withTracerEnabled(false),
+      Effect.mapError(
+        () =>
+          new AccountingDocumentSnapshotStorageError({
+            operation: "encrypt",
+            paymentAttemptId: input.paymentAttemptId,
+            message: "Accounting snapshot could not be encrypted.",
+          })
+      )
+    );
+});
 
 type ClaimedApplication = {
   readonly index: number;

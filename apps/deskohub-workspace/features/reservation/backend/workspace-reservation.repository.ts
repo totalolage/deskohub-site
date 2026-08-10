@@ -13,6 +13,7 @@ import {
   type StoredWorkspaceReservationDetails,
   storedWorkspaceReservationDetailsSchema,
 } from "@/features/reservation/persistence-contracts";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
@@ -255,7 +256,9 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             checkoutAttemptKey: input.checkoutAttemptKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
-            customerAccessCode: input.customerAccessCode,
+            customerAccessCode: sensitiveDatabaseParameter(
+              input.customerAccessCode
+            ),
             reservationState: "draft" as const,
             paymentState: "not_started" as const,
             fulfillmentState: "not_started" as const,
@@ -593,7 +596,9 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 checkoutAttemptKey: input.replacement.checkoutAttemptKey,
                 correlationId: postgresUuidV7,
                 dotyposCustomerId: input.replacement.dotyposCustomerId,
-                customerAccessCode: input.replacement.customerAccessCode,
+                customerAccessCode: sensitiveDatabaseParameter(
+                  input.replacement.customerAccessCode
+                ),
                 reservationState: "draft",
                 paymentState: "not_started",
                 fulfillmentState: "not_started",

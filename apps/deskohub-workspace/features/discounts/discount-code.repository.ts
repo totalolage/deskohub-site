@@ -1,6 +1,9 @@
+import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
+import { discountCodes } from "@/db/schema";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
@@ -49,9 +52,13 @@ export class DiscountCodeRepository extends Context.Service<
 
       const findByCode = Effect.fn("DiscountCodeRepository.findByCode")(
         function* (input: FindDiscountCodeInput) {
-          const row = yield* db.query.discountCodes.findFirst({
-            where: { code: { eq: input.code } },
-          });
+          const [row] = yield* db
+            .select()
+            .from(discountCodes)
+            .where(
+              eq(discountCodes.code, sensitiveDatabaseParameter(input.code))
+            )
+            .limit(1);
 
           return yield* Option.fromNullishOr(row).pipe(
             Option.map((found) =>

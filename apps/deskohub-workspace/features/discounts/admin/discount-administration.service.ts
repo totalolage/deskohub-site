@@ -29,6 +29,7 @@ import {
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { DiscountAdjustment } from "../contracts";
 import { toDotyposDiscountBasisPoints } from "../dotypos-discount-percentage";
@@ -1084,7 +1085,7 @@ const toDiscountValues = (
 const toDiscountCodeValues = (
   input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput
 ) => ({
-  code: input.code,
+  code: sensitiveDatabaseParameter(input.code),
   discountId: input.discountId,
   enabled: input.enabled,
   validFrom:

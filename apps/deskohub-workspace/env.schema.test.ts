@@ -90,6 +90,16 @@ describe("workspace environment schemas", () => {
     );
   });
 
+  test("validates accounting snapshot key IDs without accepting secrets", () => {
+    const decodeKeyId = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID
+    );
+
+    expect(decodeKeyId("K202608")).toBe("K202608");
+    expect(() => decodeKeyId("key-202608")).toThrow();
+    expect(() => decodeKeyId("K")).toThrow();
+  });
+
   test("exposes fields through Standard Schema for T3 Env", async () => {
     const result =
       await workspaceServerEnvSchema.fields.DOTYPOS_API_TIMEOUT[

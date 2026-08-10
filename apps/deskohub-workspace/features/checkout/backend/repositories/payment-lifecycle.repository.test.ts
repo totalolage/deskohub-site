@@ -38,6 +38,9 @@ describe("PaymentLifecycleRepository", () => {
     expect(createPendingNexiAttempt).toContain('.for("update")');
     expect(createPendingNexiAttempt).toContain(".insert(paymentAttempts)");
     expect(createPendingNexiAttempt).toContain(
+      "persistAccountingDocumentSnapshot"
+    );
+    expect(createPendingNexiAttempt).toContain(
       ".update(workspaceReservations)"
     );
     expect(createPendingNexiAttempt).toContain(
@@ -74,6 +77,9 @@ describe("PaymentLifecycleRepository", () => {
     expect(completeInternalPayment).toContain('provider: "internal"');
     expect(completeInternalPayment).toContain('state: "paid"');
     expect(completeInternalPayment).toContain(".insert(paymentAttempts)");
+    expect(completeInternalPayment).toContain(
+      "persistAccountingDocumentSnapshot"
+    );
     expect(completeInternalPayment).toContain(".update(workspaceReservations)");
     expect(completeInternalPayment).toContain(
       "yield* persistDiscountApplications"
@@ -178,6 +184,7 @@ describe("PaymentLifecycleRepository", () => {
     expect(paid).toContain("yield* redeemCodeClaim");
     expect(terminal).toContain("db.transaction");
     expect(terminal).toContain("yield* releaseCodeClaim");
+    expect(terminal).toContain(".delete(accountingDocumentSnapshots)");
   });
 
   test("rejects inconsistent committed money before opening a transaction", async () => {
