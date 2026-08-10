@@ -423,12 +423,14 @@ describe("discount administration pages", () => {
       <CustomerAdministrationDetailPage
         activity={{
           reservations,
+          reservationHistoryTruncated: true,
           transactions: [
             {
               attempt: paidReservation.latestPayment,
               reservation: paidReservation,
             },
           ],
+          transactionHistoryTruncated: true,
           stats: {
             reservationCount: reservations.length,
             favoriteProduct: "Cowork Basic",
@@ -465,6 +467,9 @@ describe("discount administration pages", () => {
     expect(view.getByText("1 (+ 1)")).toBeDefined();
     expect(view.getByRole("heading", { name: "Stats" })).toBeDefined();
     expect(view.getByRole("heading", { name: "Consents" })).toBeDefined();
+    expect(
+      view.getByText("Showing the 24 most recently updated reservations.")
+    ).toBeDefined();
     expect(
       view.getByRole("table", { name: "Customer transaction history" })
     ).toBeDefined();

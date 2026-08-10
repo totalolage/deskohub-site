@@ -13,9 +13,11 @@ import {
   inArray,
   isNotNull,
   max,
+  notInArray,
   or,
   type SQL,
   sql,
+  sum,
 } from "drizzle-orm";
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -30,10 +32,7 @@ import {
 } from "@/db/schema";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
-import {
-  filterAdministrationReservationsByStatus,
-  getAdministrationPagination,
-} from "./listing";
+import { getAdministrationPagination } from "./listing";
 import {
   type AdministrationOrder,
   type IPaymentAdministrationService,
@@ -58,6 +57,8 @@ const reservationPageSize = 24;
 const bookingPageSize = 24;
 const customerPageSize = 24;
 const customerReservationPageSize = 10;
+const customerActivityReservationLimit = 24;
+const customerActivityTransactionLimit = 50;
 
 const paymentAttemptStateLabels = {
   created: "Started",
@@ -188,7 +189,9 @@ export type AdministrationCustomerConsent = {
 
 export type AdministrationCustomerActivity = {
   readonly reservations: readonly AdministrationReservationSummary[];
+  readonly reservationHistoryTruncated: boolean;
   readonly transactions: readonly AdministrationCustomerTransaction[];
+  readonly transactionHistoryTruncated: boolean;
   readonly stats: {
     readonly reservationCount: number;
     readonly favoriteProduct: string | null;
@@ -351,46 +354,16 @@ const toAdministrationPaymentAttempt = (
   updatedAt: toIsoString(attempt.updatedAt),
 });
 
-const sumMoney = (
-  items: readonly {
-    readonly value: number;
+const toMoneyTotals = (
+  rows: readonly {
+    readonly value: string | null;
     readonly exponent: number;
     readonly currency: string;
   }[]
-): readonly AdministrationMoney[] => {
-  const totals = new Map<string, AdministrationMoney>();
-  for (const item of items) {
-    const key = `${item.currency}:${item.exponent}`;
-    const current = totals.get(key);
-    totals.set(key, {
-      ...item,
-      value: (current?.value ?? 0) + item.value,
-    });
-  }
-  return [...totals.values()].toSorted((left, right) =>
-    left.currency.localeCompare(right.currency)
-  );
-};
-
-const getFavoriteProduct = (rows: readonly SafeReservationRow[]) => {
-  const counts = new Map<string, number>();
-  for (const row of rows) {
-    if (
-      row.reservationState === "cancelled" ||
-      row.reservationState === "hold_expired"
-    ) {
-      continue;
-    }
-    const label = getReservationTypeLabel(row);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
-  }
-  return (
-    [...counts.entries()].toSorted(
-      ([leftLabel, leftCount], [rightLabel, rightCount]) =>
-        rightCount - leftCount || leftLabel.localeCompare(rightLabel)
-    )[0]?.[0] ?? null
-  );
-};
+): readonly AdministrationMoney[] =>
+  rows
+    .map((row) => ({ ...row, value: Number(row.value ?? 0) }))
+    .toSorted((left, right) => left.currency.localeCompare(right.currency));
 
 const getReservationTypeLabel = (row: SafeReservationRow) => {
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
@@ -500,6 +473,34 @@ const getDateRangeBounds = (startDate: string, endDate: string) => {
 const getDateBounds = (date: string) => {
   const plainDate = Temporal.PlainDate.from(date);
   return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
+};
+
+const statusCondition = (
+  status: Exclude<AdministrationStatusGroup, "attention">
+): SQL => {
+  if (status === "complete") {
+    return and(
+      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
+      eq(workspaceReservations.fulfillmentState, "fulfilled")
+    )!;
+  }
+  if (status === "cancelled") {
+    return and(
+      sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+      sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
+      sql`${workspaceReservations.reservationState} <> 'cancellation_failed'`,
+      or(
+        eq(workspaceReservations.reservationState, "cancelled"),
+        eq(workspaceReservations.reservationState, "hold_expired")
+      )
+    )!;
+  }
+  return and(
+    sql`${workspaceReservations.fulfillmentState} <> 'failed'`,
+    sql`${workspaceReservations.fulfillmentState} <> 'fulfilled'`,
+    sql`${workspaceReservations.reservationState} not in ('cancelled', 'hold_expired', 'cancellation_failed')`
+  )!;
 };
 
 const buildTimeline = (row: SafeReservationRow) => {
@@ -714,7 +715,6 @@ export class AdministrationService extends Context.Service<
     ) => Effect.Effect<
       AdministrationReservationPage & {
         readonly dateFilterUnavailable: boolean;
-        readonly statusFilterUnavailable: boolean;
       },
       unknown
     >;
@@ -800,10 +800,7 @@ export class AdministrationService extends Context.Service<
       });
 
       const enrichRows = Effect.fn("AdministrationService.enrichRows")(
-        function* (
-          rows: readonly SafeReservationRow[],
-          projectedReservations?: ReadonlyMap<string, DotyposReservation>
-        ) {
+        function* (rows: readonly SafeReservationRow[]) {
           if (rows.length === 0) return [];
           const attemptRows = yield* db
             .select(safePaymentAttemptSelection)
@@ -830,30 +827,18 @@ export class AdministrationService extends Context.Service<
             }
           }
           return yield* Effect.all(
-            rows.map((row) => {
-              const live = loadLiveReservation(row).pipe(
-                Effect.map((details) =>
-                  projectedReservations && row.dotyposReservationId
-                    ? {
-                        ...details,
-                        reservation:
-                          projectedReservations.get(row.dotyposReservationId) ??
-                          null,
-                      }
-                    : details
-                )
-              );
-              return live.pipe(
-                Effect.map((details) =>
+            rows.map((row) =>
+              loadLiveReservation(row).pipe(
+                Effect.map((live) =>
                   toReservationSummary({
                     latestPayment:
                       latestPaymentByReservation.get(row.id) ?? null,
-                    live: details,
+                    live,
                     row,
                   })
                 )
-              );
-            }),
+              )
+            ),
             { concurrency: 5 }
           );
         }
@@ -950,6 +935,7 @@ export class AdministrationService extends Context.Service<
             eq(workspaceReservations.dotyposCustomerId, input.customerId)
           );
         }
+        if (input.status) conditions.push(statusCondition(input.status));
         if (input.type) {
           conditions.push(
             sql`${workspaceReservations.reservationDetails}->>'kind' = ${input.type}`
@@ -964,75 +950,6 @@ export class AdministrationService extends Context.Service<
           );
         }
         const where = conditions.length > 0 ? and(...conditions) : undefined;
-
-        if (input.status) {
-          const projectedReservations =
-            dateReservations !== undefined
-              ? dateReservations
-              : yield* dotypos
-                  .listReservations({ order: "startDateDescending" })
-                  .pipe(
-                    Effect.map(
-                      (reservations) =>
-                        new Map(
-                          reservations.flatMap((reservation) =>
-                            reservation.id
-                              ? [[reservation.id, reservation] as const]
-                              : []
-                          )
-                        )
-                    ),
-                    Effect.catch((cause) =>
-                      Effect.logWarning(
-                        "Live reservation status filter unavailable",
-                        { cause }
-                      ).pipe(Effect.as(null))
-                    )
-                  );
-          if (projectedReservations === null) {
-            return {
-              items: [],
-              page: 1,
-              pageCount: 1,
-              total: 0,
-              dateFilterUnavailable: Boolean(input.date),
-              statusFilterUnavailable: true,
-            };
-          }
-          const candidateRows = yield* db
-            .select(safeReservationSelection)
-            .from(workspaceReservations)
-            .where(where)
-            .orderBy(desc(workspaceReservations.updatedAt));
-          const matchingRows = filterAdministrationReservationsByStatus(
-            candidateRows,
-            input.status,
-            new Map(
-              [...projectedReservations].map(([id, reservation]) => [
-                id,
-                reservation.status,
-              ])
-            )
-          );
-          const total = matchingRows.length;
-          const pagination = getAdministrationPagination({
-            pageSize,
-            requestedPage: input.page,
-            total,
-          });
-          const rows = matchingRows.slice(
-            pagination.offset,
-            pagination.offset + pageSize
-          );
-          return {
-            items: yield* enrichRows(rows, projectedReservations),
-            page: pagination.page,
-            pageCount: pagination.pageCount,
-            total,
-            dateFilterUnavailable: false,
-            statusFilterUnavailable: false,
-          };
-        }
 
         const countRows = yield* db
           .select({ value: count() })
@@ -1059,7 +976,6 @@ export class AdministrationService extends Context.Service<
           dateFilterUnavailable: Boolean(
             input.date && dateReservations === null
           ),
-          statusFilterUnavailable: false,
         };
       });
 
@@ -1523,16 +1439,19 @@ export class AdministrationService extends Context.Service<
       const loadCustomerActivity = Effect.fn(
         "AdministrationService.loadCustomerActivity"
       )(function* (customerId: string) {
-        const rows = yield* db
+        const recentRows = yield* db
           .select(safeReservationSelection)
           .from(workspaceReservations)
           .where(eq(workspaceReservations.dotyposCustomerId, customerId))
-          .orderBy(desc(workspaceReservations.updatedAt));
+          .orderBy(desc(workspaceReservations.updatedAt))
+          .limit(customerActivityReservationLimit + 1);
 
-        if (rows.length === 0) {
+        if (recentRows.length === 0) {
           return {
             reservations: [],
+            reservationHistoryTruncated: false,
             transactions: [],
+            transactionHistoryTruncated: false,
             stats: {
               reservationCount: 0,
               favoriteProduct: null,
@@ -1543,134 +1462,178 @@ export class AdministrationService extends Context.Service<
           } satisfies AdministrationCustomerActivity;
         }
 
+        const rows = recentRows.slice(0, customerActivityReservationLimit);
         const reservationIds = rows.map(({ id }) => id);
-        const { applicationRows, attemptRows, evidenceRows, liveReservations } =
-          yield* Effect.all(
-            {
-              attemptRows: db
-                .select(safePaymentAttemptSelection)
-                .from(paymentAttempts)
-                .where(
-                  inArray(
-                    paymentAttempts.workspaceReservationId,
-                    reservationIds
-                  )
+        const productKind = sql<string>`
+          ${workspaceReservations.reservationDetails}->>'kind'
+        `;
+        const productTier = sql<string | null>`
+          ${workspaceReservations.reservationDetails}->>'entryTier'
+        `;
+        const productCount = count();
+        const evidenceSelection = {
+          accepted: legalEvidenceEvents.accepted,
+          acceptedAt: legalEvidenceEvents.acceptedAt,
+          documentHash: legalEvidenceEvents.documentHash,
+          documentKey: legalEvidenceEvents.documentKey,
+          documentPath: legalEvidenceEvents.documentPath,
+          locale: legalEvidenceEvents.locale,
+        } as const;
+        const {
+          applicationRows,
+          attemptRowsWithSentinel,
+          evidenceRows,
+          productRows,
+          reservationCountRows,
+          reservations,
+          revenueRows,
+        } = yield* Effect.all(
+          {
+            reservations: enrichRows(rows),
+            reservationCountRows: db
+              .select({ value: count() })
+              .from(workspaceReservations)
+              .where(eq(workspaceReservations.dotyposCustomerId, customerId)),
+            attemptRowsWithSentinel: db
+              .select(safePaymentAttemptSelection)
+              .from(paymentAttempts)
+              .where(
+                inArray(paymentAttempts.workspaceReservationId, reservationIds)
+              )
+              .orderBy(desc(paymentAttempts.createdAt))
+              .limit(customerActivityTransactionLimit + 1),
+            revenueRows: db
+              .select({
+                value: sum(paymentAttempts.amountValue),
+                exponent: paymentAttempts.amountExponent,
+                currency: paymentAttempts.currency,
+              })
+              .from(paymentAttempts)
+              .innerJoin(
+                workspaceReservations,
+                eq(
+                  paymentAttempts.workspaceReservationId,
+                  workspaceReservations.id
                 )
-                .orderBy(desc(paymentAttempts.createdAt)),
-              applicationRows: db
-                .select({
-                  value: discountApplications.appliedAmountValue,
-                  exponent: discountApplications.appliedAmountExponent,
-                  currency: discountApplications.appliedAmountCurrency,
-                })
-                .from(discountApplications)
-                .innerJoin(
-                  paymentAttempts,
-                  eq(discountApplications.paymentAttemptId, paymentAttempts.id)
+              )
+              .where(
+                and(
+                  eq(workspaceReservations.dotyposCustomerId, customerId),
+                  eq(paymentAttempts.state, "paid")
                 )
-                .where(
-                  and(
-                    inArray(
-                      discountApplications.workspaceReservationId,
-                      reservationIds
-                    ),
-                    eq(paymentAttempts.state, "paid")
-                  )
-                ),
-              evidenceRows: db
-                .select({
-                  accepted: legalEvidenceEvents.accepted,
-                  acceptedAt: legalEvidenceEvents.acceptedAt,
-                  documentHash: legalEvidenceEvents.documentHash,
-                  documentKey: legalEvidenceEvents.documentKey,
-                  documentPath: legalEvidenceEvents.documentPath,
-                  locale: legalEvidenceEvents.locale,
-                })
-                .from(legalEvidenceEvents)
-                .where(
-                  and(
-                    inArray(
-                      legalEvidenceEvents.workspaceReservationId,
-                      reservationIds
-                    ),
-                    inArray(legalEvidenceEvents.documentKey, [
-                      "privacyPolicy",
-                      "marketingCommunications",
-                    ])
-                  )
+              )
+              .groupBy(
+                paymentAttempts.amountExponent,
+                paymentAttempts.currency
+              ),
+            applicationRows: db
+              .select({
+                value: sum(discountApplications.appliedAmountValue),
+                exponent: discountApplications.appliedAmountExponent,
+                currency: discountApplications.appliedAmountCurrency,
+              })
+              .from(discountApplications)
+              .innerJoin(
+                paymentAttempts,
+                eq(discountApplications.paymentAttemptId, paymentAttempts.id)
+              )
+              .innerJoin(
+                workspaceReservations,
+                eq(
+                  discountApplications.workspaceReservationId,
+                  workspaceReservations.id
                 )
-                .orderBy(desc(legalEvidenceEvents.acceptedAt)),
-              liveReservations: dotypos
-                .listReservations({
-                  customerId,
-                  order: "startDateDescending",
-                })
-                .pipe(
-                  Effect.catch((cause) =>
-                    Effect.logWarning(
-                      "Customer reservation dates unavailable",
-                      { cause, customerId }
-                    ).pipe(Effect.as([] as const))
-                  )
-                ),
-            },
-            { concurrency: 4 }
-          );
-
-        const liveById = new Map(
-          liveReservations.flatMap((reservation) =>
-            reservation.id ? [[reservation.id, reservation] as const] : []
-          )
+              )
+              .where(
+                and(
+                  eq(workspaceReservations.dotyposCustomerId, customerId),
+                  eq(paymentAttempts.state, "paid")
+                )
+              )
+              .groupBy(
+                discountApplications.appliedAmountExponent,
+                discountApplications.appliedAmountCurrency
+              ),
+            evidenceRows: Effect.all(
+              (["privacyPolicy", "marketingCommunications"] as const).map(
+                (documentKey) =>
+                  db
+                    .select(evidenceSelection)
+                    .from(legalEvidenceEvents)
+                    .innerJoin(
+                      workspaceReservations,
+                      eq(
+                        legalEvidenceEvents.workspaceReservationId,
+                        workspaceReservations.id
+                      )
+                    )
+                    .where(
+                      and(
+                        eq(workspaceReservations.dotyposCustomerId, customerId),
+                        eq(legalEvidenceEvents.documentKey, documentKey)
+                      )
+                    )
+                    .orderBy(desc(legalEvidenceEvents.acceptedAt))
+                    .limit(1)
+              ),
+              { concurrency: 2 }
+            ),
+            productRows: db
+              .select({
+                count: productCount,
+                kind: productKind,
+                tier: productTier,
+              })
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.dotyposCustomerId, customerId),
+                  notInArray(workspaceReservations.reservationState, [
+                    "cancelled",
+                    "hold_expired",
+                  ])
+                )
+              )
+              .groupBy(productKind, productTier)
+              .orderBy(desc(productCount), productKind, productTier)
+              .limit(1),
+          },
+          { concurrency: 7 }
         );
-        const latestPaymentByReservation = new Map<
-          string,
-          AdministrationPaymentAttempt
-        >();
-        for (const attempt of attemptRows) {
-          if (!latestPaymentByReservation.has(attempt.workspaceReservationId)) {
-            latestPaymentByReservation.set(
-              attempt.workspaceReservationId,
-              toAdministrationPaymentAttempt(attempt)
-            );
-          }
-        }
-        const reservations = rows.map((row) =>
-          toReservationSummary({
-            latestPayment: latestPaymentByReservation.get(row.id) ?? null,
-            live: {
-              customer: null,
-              reservation: row.dotyposReservationId
-                ? (liveById.get(row.dotyposReservationId) ?? null)
-                : null,
-            },
-            row,
-          })
+        const attemptRows = attemptRowsWithSentinel.slice(
+          0,
+          customerActivityTransactionLimit
         );
         const reservationsById = new Map(
           reservations.map((reservation) => [reservation.id, reservation])
         );
-        const latestConsentByKey = new Map<
-          AdministrationCustomerConsent["documentKey"],
-          AdministrationCustomerConsent
-        >();
-        for (const evidence of evidenceRows) {
+        const consents: AdministrationCustomerConsent[] = [];
+        for (const [evidence] of evidenceRows) {
+          if (!evidence) continue;
           if (
             evidence.documentKey !== "privacyPolicy" &&
             evidence.documentKey !== "marketingCommunications"
           ) {
             continue;
           }
-          if (!latestConsentByKey.has(evidence.documentKey)) {
-            latestConsentByKey.set(evidence.documentKey, {
-              ...evidence,
-              documentKey: evidence.documentKey,
-              acceptedAt: toIsoString(evidence.acceptedAt),
-            });
-          }
+          consents.push({
+            ...evidence,
+            documentKey: evidence.documentKey,
+            acceptedAt: toIsoString(evidence.acceptedAt),
+          });
+        }
+        const favoriteProduct = productRows[0];
+        let favoriteProductLabel: string | null = null;
+        if (favoriteProduct?.kind === "meeting-room") {
+          favoriteProductLabel = "Meeting Room";
+        } else if (favoriteProduct?.tier) {
+          favoriteProductLabel = `Cowork ${favoriteProduct.tier[0]?.toUpperCase()}${favoriteProduct.tier.slice(1)}`;
         }
 
         return {
           reservations,
+          reservationHistoryTruncated:
+            recentRows.length > customerActivityReservationLimit,
           transactions: attemptRows.flatMap((row) => {
             const reservation = reservationsById.get(
               row.workspaceReservationId
@@ -1684,25 +1647,15 @@ export class AdministrationService extends Context.Service<
                 ]
               : [];
           }),
+          transactionHistoryTruncated:
+            attemptRowsWithSentinel.length > customerActivityTransactionLimit,
           stats: {
-            reservationCount: rows.length,
-            favoriteProduct: getFavoriteProduct(rows),
-            revenue: sumMoney(
-              attemptRows.flatMap((attempt) =>
-                attempt.state === "paid"
-                  ? [
-                      {
-                        value: attempt.amountValue,
-                        exponent: attempt.amountExponent,
-                        currency: attempt.currency,
-                      },
-                    ]
-                  : []
-              )
-            ),
-            discountSavings: sumMoney(applicationRows),
+            reservationCount: Number(reservationCountRows[0]?.value ?? 0),
+            favoriteProduct: favoriteProductLabel,
+            revenue: toMoneyTotals(revenueRows),
+            discountSavings: toMoneyTotals(applicationRows),
           },
-          consents: [...latestConsentByKey.values()],
+          consents,
         } satisfies AdministrationCustomerActivity;
       });
 

@@ -99,13 +99,6 @@ export default async function ReservationsAdministrationPage({
           shortly.
         </output>
       )}
-      {result.statusFilterUnavailable && (
-        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
-          Live reservation statuses are temporarily unavailable. Clear the
-          status filter or try again shortly.
-        </output>
-      )}
-
       <ReservationTable reservations={result.items} />
       <Pagination
         basePath="/admin/reservations"

@@ -240,6 +240,17 @@ export function CustomerAdministrationDetailPage({
         <div className="min-w-0 space-y-7">
           <section>
             <h2 className="mb-3 text-xl">Reservations</h2>
+            {activity.reservationHistoryTruncated && (
+              <p className="mb-3 text-sm text-navy-blue/65">
+                Showing the 24 most recently updated reservations.{" "}
+                <Link
+                  className="font-semibold underline underline-offset-4"
+                  href={`/admin/reservations?customerId=${encodeURIComponent(profile.customer.id)}`}
+                >
+                  View all reservations
+                </Link>
+              </p>
+            )}
             <div className="space-y-4">
               <details className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
                 <summary className="cursor-pointer px-5 py-4 font-semibold">
@@ -287,6 +298,11 @@ export function CustomerAdministrationDetailPage({
 
           <section>
             <h2 className="mb-3 text-xl">Transactions</h2>
+            {activity.transactionHistoryTruncated && (
+              <p className="mb-3 text-sm text-navy-blue/65">
+                Showing the 50 latest transactions for these reservations.
+              </p>
+            )}
             <CustomerTransactionHistory transactions={activity.transactions} />
           </section>
 

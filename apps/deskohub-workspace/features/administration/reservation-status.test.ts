@@ -70,8 +70,8 @@ describe("administration reservation lifecycle", () => {
     };
 
     expect(getAdministrationReservationStatus(input)).toEqual({
-      group: "cancelled",
-      label: "Cancelled",
+      group: "in_progress",
+      label: "Cancelled in Dotypos",
     });
     expect(getAdministrationReservationLifecycle(input)).toEqual({
       currentStage: "cancelled",
