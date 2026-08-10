@@ -17,14 +17,14 @@ const makeTable = (input: Partial<Table> & Pick<Table, "id">): Table => ({
 });
 
 describe("getOfficeReservationSeatCapacity", () => {
-  test("uses the largest assignable office table without summing tables", () => {
-    expect(
+  test("rejects multiple assignable office tables", () => {
+    expect(() =>
       getSeatCapacity([
         makeTable({ id: "office-small", seats: "4" }),
         makeTable({ id: "office-large", seats: "8" }),
         makeTable({ id: "cowork", seats: "20", tags: ["tier:basic"] }),
       ])
-    ).toBe(8);
+    ).toThrow("exactly one assignable office table");
   });
 
   test("ignores unavailable office tables", () => {
@@ -41,10 +41,7 @@ describe("getOfficeReservationSeatCapacity", () => {
 
   test("rejects an assignable office table with invalid seats", () => {
     expect(() =>
-      getSeatCapacity([
-        makeTable({ id: "invalid", seats: "4.5" }),
-        makeTable({ id: "valid", seats: "3" }),
-      ])
+      getSeatCapacity([makeTable({ id: "invalid", seats: "4.5" })])
     ).toThrow("invalid seat capacity");
   });
 });

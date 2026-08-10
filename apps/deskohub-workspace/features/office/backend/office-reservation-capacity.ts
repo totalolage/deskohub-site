@@ -1,3 +1,4 @@
+import { ValidationError } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Effect } from "effect";
 import {
@@ -7,14 +8,17 @@ import {
 } from "@/features/checkout/backend/reservation";
 
 export const getOfficeReservationSeatCapacity = (tables: readonly Table[]) =>
-  Effect.forEach(
-    getWorkspaceTableCandidates(tables, [workspaceOfficeReservationTableTag]),
-    getWorkspaceTableSeatCapacity
-  ).pipe(
-    Effect.map((seatCapacities) =>
-      seatCapacities.reduce(
-        (capacity, seatCapacity) => Math.max(capacity, seatCapacity),
-        0
-      )
-    )
-  );
+  Effect.gen(function* () {
+    const candidates = getWorkspaceTableCandidates(tables, [
+      workspaceOfficeReservationTableTag,
+    ]);
+    if (candidates.length > 1) {
+      return yield* new ValidationError({
+        message:
+          "Office reservations require exactly one assignable office table.",
+      });
+    }
+
+    const officeTable = candidates[0];
+    return officeTable ? yield* getWorkspaceTableSeatCapacity(officeTable) : 0;
+  });

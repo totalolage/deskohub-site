@@ -39,10 +39,13 @@ date range. Persist only `{ kind: "office" }` locally because Dotypos owns the
 reservation facts; project confirmed timing and seats from Dotypos. Do not
 weaken the sold-product identity to model discount eligibility.
 
-An office-tagged Dotypos table is exclusive for the entire reservation
-interval. Its configured seat capacity determines whether the requested party
-fits, but any existing occupancy greater than zero makes it unavailable
-regardless of the remaining capacity.
+Exactly one assignable Dotypos table may carry the office reservation tag. It
+is exclusive for the entire reservation interval. Its configured seat capacity
+determines the seat choices shown by the form, so calendar availability is
+independent of the selected choice. Any existing occupancy greater than zero
+makes it unavailable regardless of the remaining capacity. Treat multiple
+assignable office-tagged tables as invalid configuration instead of silently
+selecting among them.
 
 Meeting-room eligibility is bounded by the reservation's exclusive end, not its
 start. A reservation may be submitted or paid after it starts while its end has
