@@ -1,17 +1,8 @@
 import { Match, Schema } from "effect";
 import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
-import {
-  type WorkspaceCoworkProductTarget,
-  workspaceCoworkProductTargetSchema,
-} from "@/features/reservation/cowork-reservation-product";
-import {
-  type WorkspaceMeetingRoomProductTarget,
-  workspaceMeetingRoomProductTargetSchema,
-} from "@/features/reservation/meeting-room-reservation";
-import {
-  type WorkspaceOfficeProductTarget,
-  workspaceOfficeProductTargetSchema,
-} from "@/features/reservation/office-reservation";
+import { workspaceCoworkProductTargetSchema } from "@/features/reservation/cowork-reservation-product";
+import { workspaceMeetingRoomProductTargetSchema } from "@/features/reservation/meeting-room-reservation";
+import { workspaceOfficeProductTargetSchema } from "@/features/reservation/office-reservation";
 
 export const workspaceProductTargetSchema = Schema.Union([
   workspaceCoworkProductTargetSchema,
@@ -19,10 +10,7 @@ export const workspaceProductTargetSchema = Schema.Union([
   workspaceOfficeProductTargetSchema,
 ]);
 
-export type WorkspaceProductTarget =
-  | WorkspaceCoworkProductTarget
-  | WorkspaceMeetingRoomProductTarget
-  | WorkspaceOfficeProductTarget;
+export type WorkspaceProductTarget = typeof workspaceProductTargetSchema.Type;
 
 export const workspaceProductTargets = [
   { kind: "cowork" as const },
