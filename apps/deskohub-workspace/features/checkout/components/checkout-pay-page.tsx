@@ -201,6 +201,7 @@ export function CheckoutPayPageSkeleton({
       aria-busy="true"
       aria-label={m.checkoutPaymentRetryPending({}, { locale })}
       aria-live="polite"
+      role="status"
       title={m.checkoutPayTitle({}, { locale })}
     >
       <CheckoutPaySummarySkeleton locale={locale} />

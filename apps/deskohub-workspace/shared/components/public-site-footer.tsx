@@ -1,3 +1,4 @@
+import { cacheLife } from "next/cache";
 import Link from "next/link";
 import { m } from "@/features/i18n";
 import { getRequestLocale } from "@/features/i18n/server/request-locale";
@@ -97,7 +98,6 @@ export async function PublicSiteFooter() {
               </Link>
               <Link
                 href={reservationPath}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPricingLink({}, { locale })}
@@ -138,7 +138,6 @@ export async function PublicSiteFooter() {
               </Link>
               <Link
                 href={reservationPath}
-                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerReservationLink({}, { locale })}
@@ -162,5 +161,8 @@ export async function PublicSiteFooter() {
 }
 
 async function getFooterCopyrightYear() {
+  "use cache";
+  cacheLife("days");
+
   return new Date().getFullYear();
 }

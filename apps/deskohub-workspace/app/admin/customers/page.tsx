@@ -12,8 +12,6 @@ import {
 } from "@/features/administration/page-data.server";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
-export const dynamic = "force-dynamic";
-
 export default async function DiscountCustomersAdminPage({
   searchParams,
 }: {

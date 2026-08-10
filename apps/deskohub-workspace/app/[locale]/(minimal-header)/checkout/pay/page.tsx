@@ -14,7 +14,10 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutDiscountCodeForm } from "@/features/checkout/components/checkout-discount-code-form";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
-import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
+import {
+  CheckoutPayPage,
+  CheckoutPayPageSkeleton,
+} from "@/features/checkout/components/checkout-pay-page";
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
@@ -41,6 +44,8 @@ import {
 type LocalizedCheckoutPayPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
+
+export const instant = true;
 
 export async function generateMetadata(): Promise<Metadata> {
   return runWithRequestLocale((locale) => {
@@ -77,7 +82,13 @@ export default async function LocalizedCheckoutPayPage({
   searchParams,
 }: LocalizedCheckoutPayPageProps) {
   return runWithRequestLocale((locale) => (
-    <Suspense fallback={null}>
+    <Suspense
+      fallback={
+        <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+          <CheckoutPayPageSkeleton locale={locale} />
+        </CheckoutFlowLayout>
+      }
+    >
       <CheckoutPayContent locale={locale} searchParams={searchParams} />
     </Suspense>
   ));

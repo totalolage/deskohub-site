@@ -15,6 +15,7 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import { CheckoutStatusPage } from "./checkout-status-page";
+import { CheckoutStatusPageSkeleton } from "./checkout-status-page-skeleton";
 
 const baseStatus: CheckoutStatusViewModel = {
   kind: "cowork",
@@ -36,6 +37,18 @@ describe("CheckoutStatusPage", () => {
 
   afterAll(() => {
     unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("exposes an accessible busy status shell", () => {
+    const view = render(<CheckoutStatusPageSkeleton locale="en-US" />);
+
+    expect(
+      view
+        .getByRole("status", {
+          name: "Payment status | Deskohub Workspace",
+        })
+        .getAttribute("aria-busy")
+    ).toBe("true");
   });
 
   test("renders reconstructed reservation summary rows", () => {

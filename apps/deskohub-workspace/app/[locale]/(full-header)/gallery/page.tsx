@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
+import { connection } from "next/server";
+import { type ReactNode, Suspense } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { GalleryErrorBoundary } from "@/features/gallery/components/gallery-error-boundary";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
@@ -20,7 +21,9 @@ export default async function GalleryPage() {
   return runWithRequestLocale(() => (
     <Gallery>
       <GalleryErrorBoundary>
-        <GalleryContent />
+        <Suspense fallback={<GalleryFallback />}>
+          <GalleryContent />
+        </Suspense>
       </GalleryErrorBoundary>
     </Gallery>
   ));
@@ -42,6 +45,7 @@ function Gallery({ children }: { children: ReactNode }) {
 }
 
 async function GalleryContent() {
+  await connection();
   const assets = await getCloudinaryImages({
     tags: ["gallery"],
     maxResults: 80,
@@ -52,6 +56,16 @@ async function GalleryContent() {
     <WorkspaceGalleryAlbum photos={photos} />
   ) : (
     <EmptyGallery assetsCount={assets.length} />
+  );
+}
+
+function GalleryFallback() {
+  return (
+    <div aria-busy="true" className="grid gap-4 sm:grid-cols-3">
+      <div className="min-h-64 animate-pulse rounded-[1.35rem] bg-linear-to-br from-white via-[#f8efe3] to-burned-orange/24 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+      <div className="min-h-80 animate-pulse rounded-[1.35rem] bg-linear-to-br from-[#fff9ef] via-white to-navy-blue/18 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+      <div className="min-h-56 animate-pulse rounded-[1.35rem] bg-linear-to-br from-white via-sunset-yellow/20 to-chilean-fire/28 shadow-[0_24px_70px_-50px_rgba(0,2,79,0.72)] ring-1 ring-navy-blue/8" />
+    </div>
   );
 }
 
