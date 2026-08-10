@@ -482,12 +482,11 @@ export class DiscountAdministration extends Context.Service<
                           new Error("Discount insert returned no identifier.")
                         );
                       }
-                      yield* tx.insert(discountProductTargets).values(
-                        discount.products.map((productIdentity) => ({
-                          discountId: row.id,
-                          productIdentity,
-                        }))
-                      );
+                      yield* tx
+                        .insert(discountProductTargets)
+                        .values(
+                          toDiscountProductTargetRows(row.id, discount.products)
+                        );
                       return row.id;
                     }),
                 })
