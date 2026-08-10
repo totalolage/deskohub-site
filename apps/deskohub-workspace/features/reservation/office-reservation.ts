@@ -82,7 +82,7 @@ type OfficeReservationSelectionInput = {
   readonly endsOn: string;
 };
 
-const officeReservationSelectionChecks = [
+const officeReservationRangeChecks = [
   Schema.makeFilter<OfficeReservationSelectionInput>(
     ({ endsOn, startsOn }) =>
       startsOn === "" ||
@@ -92,6 +92,10 @@ const officeReservationSelectionChecks = [
         issue: m.reservationValidationOfficeEndBeforeStart(),
       }
   ),
+] as const;
+
+const officeReservationInputChecks = [
+  ...officeReservationRangeChecks,
   Schema.makeFilter<OfficeReservationSelectionInput>(
     ({ endsOn }) =>
       endsOn === "" ||
@@ -115,17 +119,17 @@ const officeReservationSelectionFields = {
 const officeReservationOrderBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
   ...officeReservationSelectionFields,
-}).check(...officeReservationSelectionChecks);
+});
 
 export const officeReservationOrderInputSchema = Schema.Struct({
   kind: Schema.Literal(officeReservationKind),
   ...officeReservationOrderBaseSchema.fields,
-}).check(...officeReservationSelectionChecks);
+}).check(...officeReservationInputChecks);
 
 export const officeReservationFormInputSchema = Schema.Struct({
   ...officeReservationOrderBaseSchema.fields,
   marketingConsent: Schema.Boolean,
-}).check(...officeReservationSelectionChecks);
+}).check(...officeReservationInputChecks);
 
 export type OfficeReservationOrderInput =
   typeof officeReservationOrderInputSchema.Type;
@@ -156,7 +160,7 @@ export const officeReservationDetailsSchema = Schema.Struct({
   endsOn: plainDateStringSchema,
   seats: officeSeatsSchema,
 })
-  .check(...officeReservationSelectionChecks)
+  .check(...officeReservationRangeChecks)
   .annotate({
     identifier: "OfficeReservationDetails",
     description:

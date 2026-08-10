@@ -10,6 +10,7 @@ import {
   getOfficeReservationOrder,
   getStoredOfficeReservationDetails,
   getWorkspaceOfficeProductKey,
+  officeReservationDetailsSchema,
   officeReservationSchema,
   storedOfficeReservationDetailsSchema,
   workspaceOfficeProductIdentitySchema,
@@ -17,6 +18,7 @@ import {
 } from "./office-reservation";
 
 const formParser = makeSchemaParser(officeReservationSchema);
+const detailsParser = makeSchemaParser(officeReservationDetailsSchema);
 const storedDetailsParser = makeSchemaParser(
   storedOfficeReservationDetailsSchema,
   { onExcessProperty: "error" }
@@ -102,6 +104,27 @@ describe("office reservation", () => {
         Result.isFailure(formParser.safeParse({ ...validCustomer, ...input }))
       ).toBe(true);
     }
+  });
+
+  test("keeps historical persisted details decodable while validating order", () => {
+    const result = detailsParser.safeParse({
+      kind: "office",
+      startsOn: "2020-06-10",
+      endsOn: "2020-06-12",
+      seats: 3,
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    expect(
+      Result.isFailure(
+        detailsParser.safeParse({
+          kind: "office",
+          startsOn: "2020-06-12",
+          endsOn: "2020-06-10",
+          seats: 3,
+        })
+      )
+    ).toBe(true);
   });
 
   test("projects a whole Prague calendar day across DST", () => {
