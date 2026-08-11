@@ -280,7 +280,12 @@ export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
   }
 );
 
-export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
+/**
+ * Authenticates, decrypts, and decodes checkout state without accepting it as
+ * current. Callers may project recovery metadata from expired state, but all
+ * checkout operations must continue through `openCheckoutState`.
+ */
+export const decodeCheckoutState = Effect.fn("checkoutStateToken.decode")(
   function* <A extends CheckoutStateClaims>(
     token: string,
     schema: Schema.Decoder<A>,
@@ -333,6 +338,18 @@ export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
     if (state.kid !== header.kid) {
       return yield* invalidToken("Invalid checkout state token payload.");
     }
+
+    return state;
+  }
+);
+
+export const openCheckoutState = Effect.fn("checkoutStateToken.open")(
+  function* <A extends CheckoutStateClaims>(
+    token: string,
+    schema: Schema.Decoder<A>,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
+    const state = yield* decodeCheckoutState(token, schema, options);
 
     const nowMilliseconds = yield* getCheckoutStateNowMilliseconds(options);
     if (state.exp <= Math.floor(nowMilliseconds / 1000)) {

@@ -9,6 +9,7 @@ import {
 } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { getReservationStartPath } from "@/features/reservation/routes";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -16,6 +17,7 @@ mock.module("server-only", () => ({}));
 const {
   buildPayStateQueryParams,
   buildSignedPayState,
+  getPayStateRestartKind,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
   parsePayStateKey,
@@ -24,7 +26,9 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
+const { buildCheckoutPayContinuationPath, buildCheckoutPayPath } = await import(
+  "./checkout-pay-url"
+);
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -80,6 +84,34 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
   ),
   ...overrides,
 });
+
+const buildMeetingRoomState = () => {
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+    kind: "meeting-room",
+    duration: { unit: "hour", amount: 4 },
+    reservationDate: "2099-06-10",
+    startsAt: "2099-06-10T08:00:00Z",
+    endsAt: "2099-06-10T12:00:00Z",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+  if (reservation.kind !== "meeting-room") {
+    throw new Error("Expected meeting-room reservation");
+  }
+
+  return runSync(
+    buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation,
+        quote: Effect.runSync(buildReservationQuote(reservation)),
+        orderId: "meeting-room-pay-state-test-order-id",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    )
+  );
+};
 
 const seal = (state = buildState()) =>
   runSync(
@@ -142,42 +174,43 @@ describe("Pay URL state", () => {
   });
 
   test("preserves discount and price-change metadata for meeting-room state", () => {
-    const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
-      kind: "meeting-room",
-      duration: { unit: "hour", amount: 4 },
-      reservationDate: "2099-06-10",
-      startsAt: "2099-06-10T08:00:00Z",
-      endsAt: "2099-06-10T12:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 777 777",
-    });
-    if (reservation.kind !== "meeting-room") {
-      throw new Error("Expected meeting-room reservation");
-    }
-    const quote = Effect.runSync(buildReservationQuote(reservation));
     const changedKeys = {
       sectionKeys: ["total"],
       itemKeys: ["meeting-room"],
     };
 
-    const state = runSync(
-      buildSignedPayState(
-        {
-          locale: "en-US",
-          reservation,
-          quote,
-          orderId: "meeting-room-pay-state-test-order-id",
-          submittedCode: canonicalCode,
-          submittedCodeDiscountId,
-          changedKeys,
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
-    );
+    const state = {
+      ...buildMeetingRoomState(),
+      submittedCode: canonicalCode,
+      submittedCodeDiscountId,
+      changedKeys,
+    };
 
     expect(state.submittedCode).toBe(canonicalCode);
     expect(state.changedKeys).toEqual(changedKeys);
+  });
+
+  test("derives the meeting-room restart path from sealed Pay state", () => {
+    const sealedState = runSync(
+      sealPayStateForUrl(buildMeetingRoomState(), {
+        keys: [fixedKey],
+        randomBytes: fixedRandomBytes,
+      })
+    );
+    const url = new URL(
+      buildCheckoutPayPath("en-US", sealedState),
+      "https://deskohub.test"
+    );
+    const token = url.searchParams.get(payStateTokenQueryParam);
+    if (!token) throw new Error("Expected sealed Pay state in the URL");
+    const openedState = runSync(
+      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+    );
+
+    expect(url.searchParams.has("reservationKind")).toBeFalse();
+    expect(getReservationStartPath("en-US", openedState.reservation.kind)).toBe(
+      "/en-US/reservation/meeting-room"
+    );
   });
 
   test("omits redundant payload markers from signed Pay state", () => {
@@ -203,27 +236,29 @@ describe("Pay URL state", () => {
     ).toThrow("At least one");
   });
 
-  test("rejects expired tokens", () => {
-    const token = seal(buildState());
+  test("rejects expired Pay state while retaining its restart family", () => {
+    const token = seal(buildMeetingRoomState());
+    const expiredOptions = {
+      keys: [fixedKey],
+      now: () => new Date("2026-06-01T10:11:00.000Z"),
+    };
 
-    expect(() =>
-      runSync(
-        openPayState(token, {
-          keys: [fixedKey],
-          now: () => new Date("2026-06-01T10:11:00.000Z"),
-        })
-      )
-    ).toThrow("expired");
+    expect(() => runSync(openPayState(token, expiredOptions))).toThrow(
+      "expired"
+    );
+    expect(runSync(getPayStateRestartKind(token, expiredOptions))).toBe(
+      "meeting-room"
+    );
   });
 
   test("rejects tampered ciphertext", () => {
+    const token = tamperCiphertext(seal());
+
     expect(() =>
-      runSync(
-        openPayState(tamperCiphertext(seal()), {
-          keys: [fixedKey],
-          now: () => fixedNow,
-        })
-      )
+      runSync(openPayState(token, { keys: [fixedKey], now: () => fixedNow }))
+    ).toThrow("Invalid Pay state token");
+    expect(() =>
+      runSync(getPayStateRestartKind(token, { keys: [fixedKey] }))
     ).toThrow("Invalid Pay state token");
   });
 

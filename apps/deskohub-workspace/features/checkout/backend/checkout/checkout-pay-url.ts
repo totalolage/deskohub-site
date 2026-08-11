@@ -4,6 +4,7 @@ import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
 import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
+  payStateTokenQueryParam,
   type SealPayStateForUrlResult,
   type SignedPayState,
   sealPayStateForUrl,
@@ -11,19 +12,34 @@ import {
 
 export const discountCodeErrorQueryParam = "discountCodeError" as const;
 
-export const buildCheckoutPayPath = (
+type CheckoutPayPathOptions = {
+  readonly discountCodeError?: "unavailable";
+  readonly orderId?: string;
+};
+
+export const buildCheckoutPayPathFromToken = (
   locale: Locale,
-  sealedState: SealPayStateForUrlResult,
-  options: { readonly orderId?: string } = {}
+  payStateToken: string,
+  options: CheckoutPayPathOptions = {}
 ) => {
-  const searchParams = new URLSearchParams();
-  searchParams.set(sealedState.queryParam, sealedState.token);
+  const searchParams = new URLSearchParams({
+    [payStateTokenQueryParam]: payStateToken,
+  });
   if (options.orderId) {
     searchParams.set("orderId", options.orderId);
+  }
+  if (options.discountCodeError) {
+    searchParams.set(discountCodeErrorQueryParam, options.discountCodeError);
   }
 
   return `/${locale}/checkout/pay?${searchParams}`;
 };
+
+export const buildCheckoutPayPath = (
+  locale: Locale,
+  sealedState: SealPayStateForUrlResult,
+  options: CheckoutPayPathOptions = {}
+) => buildCheckoutPayPathFromToken(locale, sealedState.token, options);
 
 export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
   function* (

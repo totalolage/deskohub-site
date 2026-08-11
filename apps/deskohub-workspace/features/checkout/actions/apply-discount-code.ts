@@ -3,11 +3,10 @@
 import { Effect, Layer } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
-  discountCodeErrorQueryParam,
+  buildCheckoutPayPathFromToken,
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
-import { payStateTokenQueryParam } from "@/features/checkout/backend/checkout/pay-state";
 import type { Locale } from "@/features/i18n";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
@@ -55,9 +54,10 @@ export async function applyDiscountCodeForm(
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 
-  const searchParams = new URLSearchParams({
-    [payStateTokenQueryParam]: payStateToken,
-    [discountCodeErrorQueryParam]: "unavailable",
-  });
-  redirect(`/${locale}/checkout/pay?${searchParams}`, RedirectType.replace);
+  redirect(
+    buildCheckoutPayPathFromToken(locale, payStateToken, {
+      discountCodeError: "unavailable",
+    }),
+    RedirectType.replace
+  );
 }

@@ -6,6 +6,7 @@ import { Suspense } from "react";
 import {
   buildCheckoutPayContinuationPath,
   discountCodeErrorQueryParam,
+  getPayStateRestartKind,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
@@ -115,25 +116,73 @@ async function CheckoutPayContent({
     "unavailable";
 
   if (!payStateToken) {
-    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
+    return runWithRequestLocale(() => (
+      <InvalidPayState
+        locale={locale}
+        restartPath={getCoworkReservationPath(locale)}
+      />
+    ));
   }
 
-  const opened = await Effect.gen(function* () {
-    const payableReservations = yield* PayableReservationService;
-    const state = yield* openPayState(payStateToken);
-    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled;
-    const freshPayUrl = yield* buildCheckoutPayContinuationPath(state).pipe(
-      Effect.when(Effect.succeed(state.changedKeys !== undefined)),
-      Effect.map(Option.getOrUndefined)
-    );
+  const openedPayState = await openPayState(payStateToken).pipe(
+    Effect.map((state) => ({
+      state,
+      restartKind: state.reservation.kind,
+    })),
+    Effect.catch((cause) =>
+      Effect.logWarning("Checkout pay state could not be loaded", {
+        cause,
+        reason: "payStateUnavailable",
+      }).pipe(
+        Effect.andThen(
+          getPayStateRestartKind(payStateToken).pipe(
+            Effect.map((restartKind) => ({
+              state: undefined,
+              restartKind,
+            })),
+            Effect.orElseSucceed(() => ({
+              state: undefined,
+              restartKind: undefined,
+            }))
+          )
+        )
+      )
+    ),
+    runWorkspaceEffect("checkout.pay.open")
+  );
+  const restartPath = Option.fromNullishOr(openedPayState.restartKind).pipe(
+    Option.map((reservationKind) =>
+      getReservationStartPath(locale, reservationKind)
+    ),
+    Option.getOrElse(() => getCoworkReservationPath(locale))
+  );
 
-    yield* payableReservations.requireCurrent({
-      orderId: state.orderId,
-      checkoutSessionId: state.checkoutSessionId,
-    });
+  if (!openedPayState.state || openedPayState.state.locale !== locale) {
+    return runWithRequestLocale(() => (
+      <InvalidPayState locale={locale} restartPath={restartPath} />
+    ));
+  }
 
-    return { state, freshPayUrl, discountCodeEntryEnabled };
-  }).pipe(
+  const state = openedPayState.state;
+  const loadedPayState = await Effect.Do.pipe(
+    Effect.bind("payableReservations", () => PayableReservationService),
+    Effect.tap(({ payableReservations }) =>
+      payableReservations.requireCurrent({
+        orderId: state.orderId,
+        checkoutSessionId: state.checkoutSessionId,
+      })
+    ),
+    Effect.bind("discountCodeEntryEnabled", () => getDiscountCodeEntryEnabled),
+    Effect.bind("freshPayUrl", () =>
+      buildCheckoutPayContinuationPath(state).pipe(
+        Effect.when(Effect.succeed(state.changedKeys !== undefined)),
+        Effect.map(Option.getOrUndefined)
+      )
+    ),
+    Effect.map(({ discountCodeEntryEnabled, freshPayUrl }) => ({
+      discountCodeEntryEnabled,
+      freshPayUrl,
+    })),
     Effect.provide(PayableReservationService.LiveWithDependencies),
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state could not be loaded", {
@@ -144,11 +193,13 @@ async function CheckoutPayContent({
     runWorkspaceEffect("checkout.pay.load")
   );
 
-  if (!opened || opened.state.locale !== locale) {
-    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
+  if (!loadedPayState) {
+    return runWithRequestLocale(() => (
+      <InvalidPayState locale={locale} restartPath={restartPath} />
+    ));
   }
 
-  const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
+  const { discountCodeEntryEnabled, freshPayUrl } = loadedPayState;
   const submittedCodeApplication =
     getSignedPayStateSubmittedCodeApplication(state);
   const orderPath = getReservationStartPath(
@@ -193,7 +244,13 @@ async function CheckoutPayContent({
   ));
 }
 
-function InvalidPayState({ locale }: { readonly locale: Locale }) {
+function InvalidPayState({
+  locale,
+  restartPath,
+}: {
+  readonly locale: Locale;
+  readonly restartPath: string;
+}) {
   return (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
@@ -210,7 +267,7 @@ function InvalidPayState({ locale }: { readonly locale: Locale }) {
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={getCoworkReservationPath(locale)}>
+            <Link href={restartPath}>
               {m.checkoutPayRestartButton({}, { locale })}
             </Link>
           </Button>

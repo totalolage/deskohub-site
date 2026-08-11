@@ -9,6 +9,7 @@ import {
   type CheckoutStateKey,
   CheckoutStateTokenError,
   createCheckoutStateClaims,
+  decodeCheckoutState,
   openCheckoutState,
   parseCheckoutStateKey,
   sealCheckoutState,
@@ -192,6 +193,14 @@ export const openPayState = Effect.fn("payState.open")(
   (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, signedPayStateSchema, options).pipe(
       Effect.map(preserveSignedPayStateMetadataInvariant),
+      Effect.mapError(toPayStateTokenError)
+    )
+);
+
+export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
+    decodeCheckoutState(token, signedPayStateSchema, options).pipe(
+      Effect.map((state) => state.reservation.kind),
       Effect.mapError(toPayStateTokenError)
     )
 );
