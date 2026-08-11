@@ -46,4 +46,15 @@ describe("invoice repository persistence contract", () => {
     );
     expect(issue).toContain("Effect.withTracerEnabled(false)");
   });
+
+  test("does not return a reservation invoice for a different attempt", async () => {
+    const source = await readRepository();
+    const issue = source.slice(
+      source.indexOf('const issue = Effect.fn("InvoiceRepository.issue")')
+    );
+
+    expect(issue).toContain(
+      "existing.paymentAttemptId !== input.paymentAttemptId"
+    );
+  });
 });

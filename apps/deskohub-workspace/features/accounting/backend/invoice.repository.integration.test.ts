@@ -216,6 +216,26 @@ describeIntegration("invoice repository PostgreSQL integration", () => {
     expect(await readCounters(db)).toEqual(before);
   });
 
+  test("rejects a different attempt after the reservation is invoiced", async () => {
+    const fixture = await createPaidFixture(db);
+    await Effect.runPromise(
+      repository.issue({ paymentAttemptId: fixture.paymentAttemptId })
+    );
+    const otherPaymentAttemptId = await createAdditionalFailedAttempt(
+      db,
+      fixture
+    );
+
+    await expect(
+      Effect.runPromise(
+        repository.issue({ paymentAttemptId: otherPaymentAttemptId })
+      )
+    ).rejects.toMatchObject({
+      _tag: "InvoiceEligibilityError",
+      paymentAttemptId: otherPaymentAttemptId,
+    });
+  });
+
   test("rolls back an allocated number when encrypted insertion fails", async () => {
     const fixture = await createPaidFixture(db);
     const badRepository = await makeInvoiceRepository({
@@ -357,7 +377,59 @@ const createPaidFixture = async (
     )
   );
 
-  return { paymentAttemptId, reservationId };
+  return {
+    paymentAttemptId,
+    reservationId,
+    dotyposCustomerId,
+    dotyposReservationId,
+  };
+};
+
+const createAdditionalFailedAttempt = async (
+  db: DatabaseClient,
+  fixture: {
+    readonly reservationId: string;
+    readonly dotyposCustomerId: string;
+    readonly dotyposReservationId: string;
+  }
+) => {
+  const paymentAttemptId = randomUUID();
+  const source = makeAccountingDocumentSnapshot({
+    workspaceReservationId: fixture.reservationId,
+    dotyposReservationId: fixture.dotyposReservationId,
+    dotyposCustomerId: fixture.dotyposCustomerId,
+    locale: "en-US",
+    prepared,
+  });
+
+  await runQuery(
+    db.transaction((tx) =>
+      Effect.gen(function* () {
+        yield* tx.insert(paymentAttempts).values({
+          id: paymentAttemptId,
+          workspaceReservationId: fixture.reservationId,
+          provider: "nexi",
+          providerOrderId: `synthetic-order-${randomUUID()}`,
+          state: "failed",
+          amountValue: source.quote.payment.expectedPrice.value,
+          amountExponent: source.quote.payment.expectedPrice.exponent,
+          currency: source.quote.payment.expectedPrice.currency,
+        });
+        yield* tx.insert(accountingDocumentSnapshots).values({
+          paymentAttemptId,
+          workspaceReservationId: fixture.reservationId,
+          schemaVersion: source.schemaVersion,
+          keyId: testKey.id,
+          encryptedSnapshot: encryptAccountingSnapshot(
+            JSON.stringify(source),
+            testKey.secret
+          ),
+        });
+      })
+    )
+  );
+
+  return paymentAttemptId;
 };
 
 const readCounters = async (db: DatabaseClient) => {

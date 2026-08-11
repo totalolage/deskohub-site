@@ -270,6 +270,13 @@ export class InvoiceRepository extends Context.Service<
               .limit(1);
 
             if (existing) {
+              if (existing.paymentAttemptId !== input.paymentAttemptId) {
+                return yield* invoiceEligibilityError(
+                  input.paymentAttemptId,
+                  "The reservation was invoiced from a different payment attempt."
+                );
+              }
+
               return {
                 paymentAttemptId: existing.paymentAttemptId,
                 changed: false,
