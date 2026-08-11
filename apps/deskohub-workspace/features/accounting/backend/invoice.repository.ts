@@ -34,8 +34,6 @@ import {
   encryptAccountingSnapshot,
 } from "./accounting-snapshot-sql";
 
-const maximumAnnualInvoiceSequence = 999_999;
-
 export class InvoiceEligibilityError extends Data.TaggedError(
   "InvoiceEligibilityError"
 )<{
@@ -50,13 +48,6 @@ export class InvoiceStorageError extends Data.TaggedError(
   readonly paymentAttemptId: string;
   readonly message: string;
   readonly cause?: unknown;
-}> {}
-
-export class InvoiceNumberExhaustedError extends Data.TaggedError(
-  "InvoiceNumberExhaustedError"
-)<{
-  readonly numberingYear: number;
-  readonly message: string;
 }> {}
 
 export interface Invoice {
@@ -78,7 +69,6 @@ export type InvoiceRepositoryError =
   | AccountingDocumentSnapshotStorageError
   | EffectDrizzleQueryError
   | InvoiceEligibilityError
-  | InvoiceNumberExhaustedError
   | InvoiceStorageError
   | SqlError;
 
@@ -330,14 +320,14 @@ export class InvoiceRepository extends Context.Service<
                 set: {
                   lastSequence: sql`${invoiceNumberCounters.lastSequence} + 1`,
                 },
-                setWhere: sql`${invoiceNumberCounters.lastSequence} < ${maximumAnnualInvoiceSequence}`,
               })
               .returning({ sequence: invoiceNumberCounters.lastSequence });
 
             if (!counter) {
-              return yield* new InvoiceNumberExhaustedError({
-                numberingYear,
-                message: `Invoice numbers for ${numberingYear} are exhausted.`,
+              return yield* new InvoiceStorageError({
+                operation: "load",
+                paymentAttemptId: input.paymentAttemptId,
+                message: "Invoice number allocation returned no row.",
               });
             }
 

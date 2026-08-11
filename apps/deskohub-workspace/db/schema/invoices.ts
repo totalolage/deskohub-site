@@ -36,14 +36,7 @@ export const invoices = pgTable(
       "invoices_dotypos_customer_id_check",
       sql`btrim(${t.dotyposCustomerId}) <> ''`
     ),
-    check(
-      "invoices_numbering_year_check",
-      sql`${t.numberingYear} between 2000 and 9999`
-    ),
-    check(
-      "invoices_numbering_sequence_check",
-      sql`${t.numberingSequence} between 1 and 999999`
-    ),
+    check("invoices_numbering_sequence_check", sql`${t.numberingSequence} > 0`),
     check("invoices_key_id_check", sql`${t.keyId} ~ '^[A-Z][A-Z0-9_]{2,31}$'`),
     check(
       "invoices_issued_at_year_check",

@@ -13,8 +13,6 @@ import {
   officeAccountingDocumentSnapshotSchema,
 } from "./accounting-document-snapshot";
 
-const maximumAnnualInvoiceSequence = 999_999;
-
 export const invoiceNumberSchema = Schema.String.pipe(
   Schema.brand("InvoiceNumber")
 ).annotate({
@@ -79,11 +77,8 @@ export const formatInvoiceNumber = (input: {
 }): InvoiceNumber => {
   if (
     !Number.isInteger(input.year) ||
-    input.year < 2000 ||
-    input.year > 9999 ||
     !Number.isInteger(input.sequence) ||
-    input.sequence < 1 ||
-    input.sequence > maximumAnnualInvoiceSequence
+    input.sequence < 1
   ) {
     throw new RangeError("Invoice number components are outside their range.");
   }

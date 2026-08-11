@@ -28,7 +28,8 @@ describe("invoice repository persistence contract", () => {
     expect(source).toContain(".onConflictDoUpdate({");
     expect(source).toContain("lastSequence: sql`");
     expect(source).toContain("invoiceNumberCounters.lastSequence} + 1");
-    expect(source).toContain("maximumAnnualInvoiceSequence");
+    expect(source).not.toContain("maximumAnnualInvoiceSequence");
+    expect(source).not.toContain("setWhere:");
     expect(source).not.toContain("nextval");
   });
 

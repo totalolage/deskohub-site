@@ -1,8 +1,7 @@
 CREATE TABLE IF NOT EXISTS "invoice_number_counters" (
 	"numbering_year" integer PRIMARY KEY,
 	"last_sequence" integer NOT NULL,
-	CONSTRAINT "invoice_number_counters_year_check" CHECK ("numbering_year" between 2000 and 9999),
-	CONSTRAINT "invoice_number_counters_sequence_check" CHECK ("last_sequence" between 1 and 999999)
+	CONSTRAINT "invoice_number_counters_sequence_check" CHECK ("last_sequence" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "invoices" (
@@ -17,12 +16,17 @@ CREATE TABLE IF NOT EXISTS "invoices" (
 	"encrypted_document" bytea NOT NULL,
 	"issued_at" timestamp with time zone NOT NULL,
 	CONSTRAINT "invoices_dotypos_customer_id_check" CHECK (btrim("dotypos_customer_id") <> ''),
-	CONSTRAINT "invoices_numbering_year_check" CHECK ("numbering_year" between 2000 and 9999),
-	CONSTRAINT "invoices_numbering_sequence_check" CHECK ("numbering_sequence" between 1 and 999999),
+	CONSTRAINT "invoices_numbering_sequence_check" CHECK ("numbering_sequence" > 0),
 	CONSTRAINT "invoices_key_id_check" CHECK ("key_id" ~ '^[A-Z][A-Z0-9_]{2,31}$'),
 	CONSTRAINT "invoices_issued_at_year_check" CHECK ("numbering_year" = extract(year from "issued_at" at time zone 'Europe/Prague')::integer)
 );
 --> statement-breakpoint
+ALTER TABLE "invoice_number_counters" DROP CONSTRAINT IF EXISTS "invoice_number_counters_year_check";--> statement-breakpoint
+ALTER TABLE "invoice_number_counters" DROP CONSTRAINT IF EXISTS "invoice_number_counters_sequence_check";--> statement-breakpoint
+ALTER TABLE "invoice_number_counters" ADD CONSTRAINT "invoice_number_counters_sequence_check" CHECK ("last_sequence" > 0);--> statement-breakpoint
+ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_numbering_year_check";--> statement-breakpoint
+ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_numbering_sequence_check";--> statement-breakpoint
+ALTER TABLE "invoices" ADD CONSTRAINT "invoices_numbering_sequence_check" CHECK ("numbering_sequence" > 0);--> statement-breakpoint
 ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_number_format_check";--> statement-breakpoint
 ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_schema_version_check";--> statement-breakpoint
 ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version";--> statement-breakpoint

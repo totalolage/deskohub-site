@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "d950382f-da19-4048-950b-eba6f1bbcd6c",
+  "id": "e1f0465c-4fc2-4213-9467-a0cdf8009443",
   "prevIds": [
     "fd52b375-703a-437d-9f76-a579bb7c9f88"
   ],
@@ -3854,14 +3854,7 @@
       "table": "discounts"
     },
     {
-      "value": "\"numbering_year\" between 2000 and 9999",
-      "name": "invoice_number_counters_year_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "invoice_number_counters"
-    },
-    {
-      "value": "\"last_sequence\" between 1 and 999999",
+      "value": "\"last_sequence\" > 0",
       "name": "invoice_number_counters_sequence_check",
       "entityType": "checks",
       "schema": "public",
@@ -3875,14 +3868,7 @@
       "table": "invoices"
     },
     {
-      "value": "\"numbering_year\" between 2000 and 9999",
-      "name": "invoices_numbering_year_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "invoices"
-    },
-    {
-      "value": "\"numbering_sequence\" between 1 and 999999",
+      "value": "\"numbering_sequence\" > 0",
       "name": "invoices_numbering_sequence_check",
       "entityType": "checks",
       "schema": "public",

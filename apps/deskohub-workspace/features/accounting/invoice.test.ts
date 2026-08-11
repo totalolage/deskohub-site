@@ -46,16 +46,16 @@ const source = makeAccountingDocumentSnapshot({
 });
 
 describe("invoice", () => {
-  test("formats the common annual sequential number", () => {
+  test("formats positive annual sequences without arbitrary upper bounds", () => {
     expect(formatInvoiceNumber({ year: 2026, sequence: 1 })).toBe(
       "WS-FV-2026-000001"
     );
-    expect(formatInvoiceNumber({ year: 2026, sequence: 999_999 })).toBe(
-      "WS-FV-2026-999999"
+    expect(formatInvoiceNumber({ year: 10_000, sequence: 1_000_000 })).toBe(
+      "WS-FV-10000-1000000"
     );
-    expect(() =>
-      formatInvoiceNumber({ year: 2026, sequence: 1_000_000 })
-    ).toThrow(RangeError);
+    expect(() => formatInvoiceNumber({ year: 2026, sequence: 0 })).toThrow(
+      RangeError
+    );
   });
 
   test("accepts invoice numbers independently of the current generated format", () => {

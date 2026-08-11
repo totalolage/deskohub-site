@@ -67,7 +67,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
     const schema = await readAppFile("db/schema/invoices.ts");
     const migration = await readAppFile(
-      "db/migrations/20260811103138_issued_invoices/migration.sql"
+      "db/migrations/20260811152155_issued_invoices/migration.sql"
     );
 
     expect(schema).toContain('bytea("encrypted_document")');
@@ -94,11 +94,14 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       'DROP CONSTRAINT IF EXISTS "invoices_number_format_check"'
     );
     expect(migration).not.toContain("nextval(");
+    expect(schema).not.toContain("between 2000 and 9999");
+    expect(migration).not.toContain("between 2000 and 9999");
+    expect(migration).not.toContain("999999");
   });
 
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
-      "db/migrations/20260811103138_issued_invoices/migration.sql"
+      "db/migrations/20260811152155_issued_invoices/migration.sql"
     );
 
     expect(migration).toContain(
@@ -107,12 +110,30 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).toContain(
       'ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version"'
     );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "invoice_number_counters_year_check"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "invoice_number_counters_sequence_check"'
+    );
+    expect(migration).toContain(
+      'ADD CONSTRAINT "invoice_number_counters_sequence_check" CHECK ("last_sequence" > 0)'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "invoices_numbering_year_check"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "invoices_numbering_sequence_check"'
+    );
+    expect(migration).toContain(
+      'ADD CONSTRAINT "invoices_numbering_sequence_check" CHECK ("numbering_sequence" > 0)'
+    );
   });
 
   test("follows the corrected migration head before issuing invoices", async () => {
     const [discountJson, invoiceJson] = await Promise.all([
       readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-      readAppFile("db/migrations/20260811103138_issued_invoices/snapshot.json"),
+      readAppFile("db/migrations/20260811152155_issued_invoices/snapshot.json"),
     ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
