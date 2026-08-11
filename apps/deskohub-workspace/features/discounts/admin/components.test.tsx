@@ -390,6 +390,34 @@ describe("discount administration pages", () => {
     ).toBeDefined();
   });
 
+  test("generates a valid code only while creating a discount code", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    const creationForm = view.getByRole("form", {
+      name: "Create discount code",
+    });
+    const codeInput = within(creationForm).getByRole("textbox", {
+      name: "Code",
+    }) as HTMLInputElement;
+
+    expect(codeInput.value).toBe("");
+    fireEvent.click(
+      within(creationForm).getByRole("button", { name: "Generate code" })
+    );
+    expect(codeInput.value).toMatch(/^[A-HJ-NP-Z2-9]{6}-[A-HJ-NP-Z2-9]{6}$/);
+
+    cleanup();
+    const editorView = render(
+      <CodesAdministrationPage dashboard={dashboard} />
+    );
+    fireEvent.click(editorView.getByText("2 customers"));
+    expect(
+      editorView.queryByRole("button", { name: "Generate code" })
+    ).toBeNull();
+  });
+
   test("confirms a general code creation before allowing another submission", async () => {
     let onSuccess:
       | ((result: { data?: { notice: string } }) => void)

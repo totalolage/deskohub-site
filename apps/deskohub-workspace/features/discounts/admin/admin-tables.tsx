@@ -8,7 +8,14 @@ import {
   type SortingState,
   useReactTable,
 } from "@tanstack/react-table";
-import { ArrowUpRight, Pencil, Plus, Save, Trash2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -24,6 +31,7 @@ import { AdministrationSortHead } from "@/features/administration/sort-head";
 import { AdministrationStatusBadge } from "@/features/administration/status-badge";
 import { AdministrationTableFrame } from "@/features/administration/table-frame";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import { generateDiscountCode } from "@/features/discounts/discount-code";
 import type {
   DiscountCodeId,
   StoredDiscountId,
@@ -1012,20 +1020,44 @@ export function DiscountCodeConfigurationFields({
 }: {
   readonly code?: DiscountCodeTableItem;
 }) {
+  const [codeValue, setCodeValue] = useState(code?.code ?? "");
+  const codeInputId = fieldId("code", code?.id);
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 md:grid-cols-2">
-        <FormField label="Code">
-          <Input
-            autoCapitalize="characters"
-            defaultValue={code?.code}
-            id={fieldId("code", code?.id)}
-            maxLength={64}
-            minLength={3}
-            name="code"
-            required
-          />
-        </FormField>
+        <div className="grid gap-2">
+          <Label htmlFor={codeInputId}>Code</Label>
+          <div
+            className={
+              code ? undefined : "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+            }
+          >
+            <Input
+              autoCapitalize="characters"
+              className="font-mono uppercase"
+              id={codeInputId}
+              maxLength={64}
+              minLength={3}
+              name="code"
+              onChange={(event) => setCodeValue(event.currentTarget.value)}
+              required
+              spellCheck={false}
+              value={codeValue}
+            />
+            {!code && (
+              <Button
+                className="h-12 rounded-[1.1rem] px-5"
+                onClick={() => setCodeValue(generateDiscountCode())}
+                type="button"
+                variant="secondary"
+              >
+                <RefreshCw aria-hidden className="size-4" />
+                Generate code
+              </Button>
+            )}
+          </div>
+        </div>
         <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold">
           <input
             className="size-4 accent-[var(--brand-burned-orange)]"

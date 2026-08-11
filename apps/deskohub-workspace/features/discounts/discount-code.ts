@@ -73,6 +73,19 @@ export const normalizeSubmittedDiscountCode = Effect.fn(
   )
 );
 
+export const generateDiscountCode = () => {
+  const randomValues = globalThis.crypto.getRandomValues(new Uint8Array(12));
+  const characters = Array.from(
+    randomValues,
+    (value) =>
+      generatedDiscountCodeAlphabet[
+        value % generatedDiscountCodeAlphabet.length
+      ]
+  ).join("");
+
+  return `${characters.slice(0, 6)}-${characters.slice(6)}`;
+};
+
 export const decodeDiscountCodeConfiguration = Effect.fn(
   "DiscountCode.decodeConfiguration"
 )((input: { readonly row: DiscountCode }) =>
@@ -149,6 +162,8 @@ const discountCodeAvailabilitySchema = Schema.Struct({
   customerHasRedeemed: Schema.Boolean,
   customerHasReserved: Schema.Boolean,
 });
+
+const generatedDiscountCodeAlphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 const uppercaseAscii = (value: string) =>
   value.replace(/[a-z]/g, (character) =>
