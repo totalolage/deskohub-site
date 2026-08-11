@@ -67,7 +67,6 @@ describe("CheckoutDiscountCodeForm", () => {
         fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
-        reservationKind="cowork"
       />
     );
 
@@ -84,7 +83,6 @@ describe("CheckoutDiscountCodeForm", () => {
         fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
-        reservationKind="cowork"
       />
     );
 
@@ -105,7 +103,6 @@ describe("CheckoutDiscountCodeForm", () => {
         fieldError
         locale="en-US"
         payStateToken="signed-state"
-        reservationKind="cowork"
       />
     );
 
@@ -129,7 +126,6 @@ describe("CheckoutDiscountCodeForm", () => {
         fieldError={false}
         locale="en-US"
         payStateToken="signed-state"
-        reservationKind="cowork"
       />
     );
 

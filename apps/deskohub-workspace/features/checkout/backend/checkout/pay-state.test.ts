@@ -9,6 +9,7 @@ import {
 } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
+import { getReservationStartPath } from "@/features/reservation/routes";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -16,6 +17,7 @@ mock.module("server-only", () => ({}));
 const {
   buildPayStateQueryParams,
   buildSignedPayState,
+  getPayStateRestartKind,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
   parsePayStateKey,
@@ -24,12 +26,9 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const {
-  buildCheckoutPayContinuationPath,
-  buildCheckoutPayPath,
-  checkoutReservationKindQueryParam,
-  getCheckoutPayRestartPath,
-} = await import("./checkout-pay-url");
+const { buildCheckoutPayContinuationPath, buildCheckoutPayPath } = await import(
+  "./checkout-pay-url"
+);
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -191,7 +190,7 @@ describe("Pay URL state", () => {
     expect(state.changedKeys).toEqual(changedKeys);
   });
 
-  test("preserves a meeting-room restart hint outside unreadable Pay state", () => {
+  test("derives the meeting-room restart path from sealed Pay state", () => {
     const sealedState = runSync(
       sealPayStateForUrl(buildMeetingRoomState(), {
         keys: [fixedKey],
@@ -202,12 +201,14 @@ describe("Pay URL state", () => {
       buildCheckoutPayPath("en-US", sealedState),
       "https://deskohub.test"
     );
+    const token = url.searchParams.get(payStateTokenQueryParam);
+    if (!token) throw new Error("Expected sealed Pay state in the URL");
+    const openedState = runSync(
+      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+    );
 
-    const reservationKind =
-      url.searchParams.get(checkoutReservationKindQueryParam) ?? undefined;
-
-    expect(reservationKind).toBe("meeting-room");
-    expect(getCheckoutPayRestartPath("en-US", reservationKind)).toBe(
+    expect(url.searchParams.has("reservationKind")).toBeFalse();
+    expect(getReservationStartPath("en-US", openedState.reservation.kind)).toBe(
       "/en-US/reservation/meeting-room"
     );
   });
@@ -235,27 +236,29 @@ describe("Pay URL state", () => {
     ).toThrow("At least one");
   });
 
-  test("rejects expired tokens", () => {
-    const token = seal(buildState());
+  test("rejects expired Pay state while retaining its restart family", () => {
+    const token = seal(buildMeetingRoomState());
+    const expiredOptions = {
+      keys: [fixedKey],
+      now: () => new Date("2026-06-01T10:11:00.000Z"),
+    };
 
-    expect(() =>
-      runSync(
-        openPayState(token, {
-          keys: [fixedKey],
-          now: () => new Date("2026-06-01T10:11:00.000Z"),
-        })
-      )
-    ).toThrow("expired");
+    expect(() => runSync(openPayState(token, expiredOptions))).toThrow(
+      "expired"
+    );
+    expect(runSync(getPayStateRestartKind(token, expiredOptions))).toBe(
+      "meeting-room"
+    );
   });
 
   test("rejects tampered ciphertext", () => {
+    const token = tamperCiphertext(seal());
+
     expect(() =>
-      runSync(
-        openPayState(tamperCiphertext(seal()), {
-          keys: [fixedKey],
-          now: () => fixedNow,
-        })
-      )
+      runSync(openPayState(token, { keys: [fixedKey], now: () => fixedNow }))
+    ).toThrow("Invalid Pay state token");
+    expect(() =>
+      runSync(getPayStateRestartKind(token, { keys: [fixedKey] }))
     ).toThrow("Invalid Pay state token");
   });
 

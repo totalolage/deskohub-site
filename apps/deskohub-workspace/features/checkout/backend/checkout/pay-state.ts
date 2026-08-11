@@ -9,6 +9,7 @@ import {
   type CheckoutStateKey,
   CheckoutStateTokenError,
   createCheckoutStateClaims,
+  decodeCheckoutState,
   openCheckoutState,
   parseCheckoutStateKey,
   sealCheckoutState,
@@ -67,7 +68,6 @@ export type SealPayStateForUrlResult = {
   readonly type: "sealedPayState";
   readonly token: string;
   readonly queryParam: typeof payStateTokenQueryParam;
-  readonly reservationKind: SignedPayState["reservation"]["kind"];
 };
 
 export type BuildSignedPayStateInput =
@@ -197,6 +197,14 @@ export const openPayState = Effect.fn("payState.open")(
     )
 );
 
+export const getPayStateRestartKind = Effect.fn("payState.getRestartKind")(
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
+    decodeCheckoutState(token, signedPayStateSchema, options).pipe(
+      Effect.map((state) => state.reservation.kind),
+      Effect.mapError(toPayStateTokenError)
+    )
+);
+
 export const sealPayStateForUrl = Effect.fn("payState.sealForUrl")(function* (
   state: SignedPayState,
   options: CheckoutStateCryptoOptions = {}
@@ -207,7 +215,6 @@ export const sealPayStateForUrl = Effect.fn("payState.sealForUrl")(function* (
     type: "sealedPayState" as const,
     token,
     queryParam: payStateTokenQueryParam,
-    reservationKind: state.reservation.kind,
   };
 });
 

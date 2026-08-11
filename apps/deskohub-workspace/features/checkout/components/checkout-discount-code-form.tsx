@@ -3,7 +3,6 @@ import { applyDiscountCodeForm } from "@/features/checkout/actions/apply-discoun
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
 import { type Locale, m } from "@/features/i18n";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { CheckoutDiscountCodeSubmitButton } from "./checkout-discount-code-submit-button";
@@ -14,7 +13,6 @@ type CheckoutDiscountCodeFormProps = {
   readonly fieldError: boolean;
   readonly locale: Locale;
   readonly payStateToken: string;
-  readonly reservationKind: ReservationOrderData["kind"];
 };
 
 export function CheckoutDiscountCodeForm({
@@ -23,7 +21,6 @@ export function CheckoutDiscountCodeForm({
   fieldError,
   locale,
   payStateToken,
-  reservationKind,
 }: CheckoutDiscountCodeFormProps) {
   if (appliedAdjustment) {
     return (
@@ -41,12 +38,7 @@ export function CheckoutDiscountCodeForm({
   if (!enabled) return null;
 
   const errorId = fieldError ? "checkout-discount-code-error" : undefined;
-  const action = applyDiscountCodeForm.bind(
-    null,
-    locale,
-    payStateToken,
-    reservationKind
-  );
+  const action = applyDiscountCodeForm.bind(null, locale, payStateToken);
 
   return (
     <form

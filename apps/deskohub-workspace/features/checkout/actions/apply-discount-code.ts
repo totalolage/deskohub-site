@@ -8,7 +8,6 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import type { Locale } from "@/features/i18n";
-import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import { applyDiscountCodeToPayState } from "./apply-discount-code-to-pay-state";
@@ -39,7 +38,6 @@ export const applyDiscountCode: typeof applyDiscountCodeAction = async (
 export async function applyDiscountCodeForm(
   locale: Locale,
   payStateToken: string,
-  reservationKind: ReservationOrderData["kind"],
   formData: FormData
 ) {
   const submittedCode = formData.get("submittedCode");
@@ -57,7 +55,7 @@ export async function applyDiscountCodeForm(
   }
 
   redirect(
-    buildCheckoutPayPathFromToken(locale, payStateToken, reservationKind, {
+    buildCheckoutPayPathFromToken(locale, payStateToken, {
       discountCodeError: "unavailable",
     }),
     RedirectType.replace
