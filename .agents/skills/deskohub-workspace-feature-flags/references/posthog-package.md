@@ -1,5 +1,12 @@
 # PostHog API service
 
+## Contents
+
+- [Generated API client](#generated-api-client)
+- [Typed feature flags](#typed-feature-flags)
+
+## Generated API client
+
 `@deskohub/posthog` provides the Effect client generated from PostHog's current
 public OpenAPI schema.
 

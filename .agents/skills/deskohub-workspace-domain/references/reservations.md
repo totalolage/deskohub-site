@@ -1,5 +1,13 @@
 # Reservation families
 
+## Contents
+
+- [Family boundaries](#family-boundaries)
+- [Meeting-room duration intent](#meeting-room-duration-intent)
+- [Product identities and keys](#product-identities-and-keys)
+
+## Family boundaries
+
 - Workspace reservation families use `kind: "cowork" | "meeting-room" | "office"`.
 - Complete family branches use `Match.discriminatorsExhaustive("kind")`.
 - `entryTier` refines cowork reservations only and never contains

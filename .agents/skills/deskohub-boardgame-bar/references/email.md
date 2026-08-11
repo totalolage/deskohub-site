@@ -35,7 +35,7 @@ These are not locale-specific sender addresses in the current implementation.
 
 ## Verification
 
-1. Trigger reservation webhooks in development using the webhook test panel.
+1. Exercise the current contact or training-room request flow with synthetic data.
 2. Confirm provider logs indicate Console or Resend initialization.
 3. If using Resend, verify deliveries in the Resend dashboard.
 

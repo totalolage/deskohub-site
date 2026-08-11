@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Boardgame Bar"
+  short_description: "Maintain Boardgame Bar integrations"
+  default_prompt: "Use $deskohub-boardgame-bar to change this Boardgame Bar reservation or integration behavior."

@@ -1,5 +1,16 @@
 # Workspace protected-preview E2E
 
+## Contents
+
+- [What can be tested](#what-can-be-tested)
+- [Preview environment contract](#preview-environment-contract)
+- [Parallel execution contract and rollout state](#parallel-execution-contract-and-rollout-state)
+- [Preview database identity and migration](#preview-database-identity-and-migration)
+- [Discount fixtures](#discount-fixtures)
+- [Runner target and safety](#runner-target-and-safety)
+- [Verification](#verification)
+- [Suite telemetry](#suite-telemetry)
+
 Workspace E2E tests run only against the ordinary immutable Vercel Git preview
 for the exact commit under test. Every Workspace preview remains protected by
 Vercel Deployment Protection. Automation, Nexi returns, and webhook replays use
@@ -697,5 +708,4 @@ Failures in earlier workflow setup such as target resolution, dependency
 installation, or preview database migration remain represented by GitHub
 Actions rather than the in-process suite telemetry.
 
-For Nexi sandbox facts and cards, see
-[`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
+For Nexi sandbox behavior and safe test-data handling, read [nexi-sandbox.md](nexi-sandbox.md).

@@ -1,6 +1,6 @@
 ---
 name: deskohub-pr-review
-description: Address Deskohub pull-request review feedback, review-raised bugs, regression tests, review-thread replies and resolution, or moving a completed stopping-point PR out of draft.
+description: Pull request review feedback, regression fixes, thread resolution, and completion.
 ---
 
 # Deskohub PR review

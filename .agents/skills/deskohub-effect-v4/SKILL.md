@@ -1,6 +1,6 @@
 ---
 name: deskohub-effect-v4
-description: Apply Deskohub conventions when creating or refactoring Effect V4 services, Context capabilities, Layers, providers, repositories, declarative Effect workflows, schemas, branded domain values, errors, or their tests.
+description: Effect V4 service, Layer, workflow, schema, error, and tagged-union handling.
 ---
 
 # Deskohub Effect V4

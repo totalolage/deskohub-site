@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-checkout
-description: Change or review Deskohub Workspace checkout, payment, reservation holds, scheduled cleanup queue tasks, or daily cron recovery behavior while preserving lifecycle invariants.
+description: Workspace checkout, payment, pricing, accounting-document, reservation-hold, and cleanup lifecycle handling.
 ---
 
 # Deskohub Workspace checkout
@@ -13,7 +13,7 @@ For a reservation page restored from signed Pay state, project availability afte
 
 Use `checkoutSessionId` for the stable grouping and back-navigation lifetime across reservation edits. Use `checkoutAttemptId` for one mounted form submission and its immediate transport retries; bind its stored HMAC to the normalized submitted values so replaying the opaque ID with different inputs cannot reuse a hold. Neither identifies a Dotypos reservation. Serialize supersession for a checkout session, and reject stale pay state unless its exact local reservation is still current for that session and its live Dotypos reservation remains pending rather than cancelled. Before supersession deletion, likewise require live Dotypos status `NEW`; an already `CANCELLED` reservation may be finalized locally, while any other status must not be deleted. Repeat the live Dotypos-state guard immediately before creating a provider payment session so a cancellation between page rendering and payment submission cannot start payment for a stale reservation.
 
-Inspect the [checkout lifecycle](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md), [scheduled cleanup queue route](../../../apps/deskohub-workspace/app/api/queues/workspace/reservation-hold-cleanup/route.ts), and [daily recovery cron route](../../../apps/deskohub-workspace/app/api/cron/workspace/reservation-holds/route.ts) before changing this boundary. Update this skill when developer feedback adds or changes a durable checkout invariant.
+Inspect the technical [lifecycle reference](references/lifecycle.md), [accounting-document reference](references/accounting-documents.md), [scheduled cleanup queue route](../../../apps/deskohub-workspace/app/api/queues/workspace/reservation-hold-cleanup/route.ts), and [daily recovery cron route](../../../apps/deskohub-workspace/app/api/cron/workspace/reservation-holds/route.ts) as relevant before changing this boundary. Consult the business-facing [checkout specification](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md) for customer and operator policy. Update this skill when developer feedback adds or changes a durable checkout invariant.
 
 Preserve the three price boundaries documented in the checkout lifecycle:
 
