@@ -298,15 +298,38 @@ describe("OfficeReservationForm", () => {
     expect(optionsContainer?.classList.contains("flex")).toBeTrue();
     expect(optionsContainer?.classList.contains("flex-wrap")).toBeTrue();
     expect(
-      options.every((option) => option.classList.contains("grow"))
-    ).toBeTrue();
-    expect(
       options.every((option) => option.classList.contains("lg:grid-rows-none"))
     ).toBeTrue();
     expect(
       options.some((option) =>
         option.classList.contains("lg:grid-rows-subgrid")
       )
+    ).toBeFalse();
+  });
+
+  test("lets flexbox balance any number of seat options", () => {
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={5}
+          initialValues={officeReservationDefaultValues}
+          locale="en-US"
+          today={decodePlainDate("2026-08-10")}
+        />
+      </QueryClientProvider>
+    );
+
+    const options = Array.from(
+      view.container.querySelectorAll("[data-reservation-type-option]")
+    );
+
+    expect(options).toHaveLength(5);
+    expect(
+      options.every((option) => option.classList.contains("flex-[1_1_13rem]"))
+    ).toBeTrue();
+    expect(
+      options.some((option) => option.className.includes("basis-[calc("))
     ).toBeFalse();
   });
 

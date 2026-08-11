@@ -73,14 +73,6 @@ const officeReservationFormSchema = Schema.toStandardSchemaV1(
 const decodeSelection = Schema.decodeUnknownOption(
   officeReservationDetailsSchema
 );
-const fallbackSeatCards = [
-  "seat-1",
-  "seat-2",
-  "seat-3",
-  "seat-4",
-  "seat-5",
-  "seat-6",
-];
 
 const getSelection = (
   startsOn: string | undefined,
@@ -345,7 +337,7 @@ export function OfficeReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
-                className="flex flex-wrap gap-3 space-y-0 lg:grid-rows-none"
+                className="flex flex-wrap gap-3 space-y-0"
                 idPrefix="office-seats"
                 inputRef={field.ref}
                 name={field.name}
@@ -372,7 +364,7 @@ export function OfficeReservationForm({
                   return (
                     <ReservationTypeOption
                       key={seatCount}
-                      className="grow basis-full pb-4 sm:basis-[calc(50%-0.375rem)] lg:row-start-auto lg:row-span-1 lg:basis-[calc(33.333333%-0.5rem)] lg:grid-rows-none"
+                      className="flex-[1_1_13rem] pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
                       price={
                         seatPrice ? (
                           <span className="before:content-['+']">
@@ -410,14 +402,7 @@ export function OfficeReservationFormFallback({ locale }: { locale: Locale }) {
       <ReservationSkeletonBlock className="h-18 w-full rounded-[1.4rem]" />
       <div className="space-y-2">
         <ReservationSkeletonBlock className="h-4 w-64" />
-        <div className="flex flex-wrap gap-3">
-          {fallbackSeatCards.map((card) => (
-            <ReservationSkeletonBlock
-              key={card}
-              className="h-26 grow basis-full rounded-[1.4rem] sm:basis-[calc(50%-0.375rem)] lg:basis-[calc(33.333333%-0.5rem)]"
-            />
-          ))}
-        </div>
+        <ReservationSkeletonBlock className="h-26 w-full rounded-[1.4rem]" />
       </div>
       <ReservationCustomerFieldsFallback />
       <ReservationSubmitFallback />
