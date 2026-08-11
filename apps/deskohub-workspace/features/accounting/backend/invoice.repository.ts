@@ -14,6 +14,7 @@ import {
   accountingBuyerSchema,
 } from "@/features/accounting/accounting-document-snapshot";
 import {
+  decodeInvoiceDocument,
   formatInvoiceNumber,
   getInvoiceNumberingYear,
   type InvoiceDocument,
@@ -170,10 +171,7 @@ export class InvoiceRepository extends Context.Service<
               message: "Invoice JSON is invalid.",
             }),
         });
-        const document = yield* Schema.decodeUnknownEffect(
-          invoiceDocumentSchema,
-          { onExcessProperty: "error" }
-        )(encoded).pipe(
+        const document = yield* decodeInvoiceDocument(encoded).pipe(
           Effect.mapError(
             () =>
               new InvoiceStorageError({

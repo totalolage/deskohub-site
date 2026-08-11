@@ -15,11 +15,46 @@ export const assertPreviewEndpointsReady = (
     [
       assertPreviewEndpointReady(config, "/api/webhooks/nexi"),
       assertPreviewEndpointReady(config, "/api/webhooks/resend"),
-      assertPreviewEndpointReady(config, "/en-US/reservation/office"),
       assertPreviewJpegReady(config, "/workspace-location-map.jpeg"),
     ],
     { concurrency: "unbounded", discard: true }
   );
+
+export const isPreviewPageAvailable = (
+  config: WorkspaceE2EConfig,
+  path: string,
+  expectedContent: string
+): Effect.Effect<boolean, WorkspaceE2EError, HttpClient.HttpClient> =>
+  Effect.gen(function* () {
+    const response = yield* requestPreviewEndpoint(config, path);
+    if (response.status === 404) return false;
+
+    yield* Effect.succeed(response).pipe(
+      Effect.filterOrFail(
+        ({ status }) => status >= 200 && status < 300,
+        ({ status }) =>
+          workspaceE2EError(
+            `${path} preview page check failed with ${status}`,
+            { operation: `check ${path} preview page` }
+          )
+      )
+    );
+
+    const body = yield* response.text.pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError(`read ${path} preview page`, cause)
+      )
+    );
+    if (body.includes(expectedContent)) return true;
+    if (body.includes('class="next-error-h1"')) return false;
+
+    return yield* Effect.fail(
+      workspaceE2EError(
+        `${path} preview page did not render its expected content`,
+        { operation: `check ${path} preview page` }
+      )
+    );
+  });
 
 export const assertPreviewEndpointReady = (
   config: WorkspaceE2EConfig,

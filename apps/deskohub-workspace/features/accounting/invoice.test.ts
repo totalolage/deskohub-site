@@ -11,6 +11,7 @@ import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quo
 import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { makeAccountingDocumentSnapshot } from "./accounting-document-snapshot";
 import {
+  decodeInvoiceDocument,
   formatInvoiceNumber,
   getInvoiceNumberingYear,
   invoiceDocumentSchema,
@@ -129,6 +130,27 @@ describe("invoice", () => {
     );
     await expect(
       Effect.runPromise(decode({ ...document, unexpected: true }))
+    ).rejects.toBeDefined();
+  });
+
+  test("reads legacy preview documents without retaining schema versioning", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: source.buyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+    });
+
+    await expect(
+      Effect.runPromise(
+        decodeInvoiceDocument({ ...document, schemaVersion: 1 })
+      )
+    ).resolves.toEqual(document);
+    await expect(
+      Effect.runPromise(
+        decodeInvoiceDocument({ ...document, schemaVersion: 2 })
+      )
     ).rejects.toBeDefined();
   });
 

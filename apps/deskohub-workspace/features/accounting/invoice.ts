@@ -62,6 +62,13 @@ export const invoiceDocumentSchema = Schema.Union([
 export type InvoiceDocument = typeof invoiceDocumentSchema.Type;
 
 const decodeInvoiceNumber = Schema.decodeUnknownSync(invoiceNumberSchema);
+const decodeCurrentInvoiceDocument = Schema.decodeUnknownEffect(
+  invoiceDocumentSchema,
+  { onExcessProperty: "error" }
+);
+
+export const decodeInvoiceDocument = (encoded: unknown) =>
+  decodeCurrentInvoiceDocument(removeLegacySchemaVersion(encoded));
 
 export const getInvoiceNumberingYear = (issuedAt: Temporal.Instant) =>
   issuedAt.toZonedDateTimeISO(workspaceSiteConstants.location.timeZone).year;
@@ -104,4 +111,19 @@ export const makeInvoiceDocument = (input: {
       temporalInstantToIsoString(input.issuedAt)
     ),
   });
+};
+
+const removeLegacySchemaVersion = (encoded: unknown): unknown => {
+  if (
+    typeof encoded !== "object" ||
+    encoded === null ||
+    Array.isArray(encoded) ||
+    !("schemaVersion" in encoded) ||
+    encoded.schemaVersion !== 1
+  ) {
+    return encoded;
+  }
+
+  const { schemaVersion: _legacySchemaVersion, ...document } = encoded;
+  return document;
 };
