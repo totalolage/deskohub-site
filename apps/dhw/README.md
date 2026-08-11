@@ -34,7 +34,7 @@ Creating a code may create its discount benefit atomically. Fixed-money values u
 
 Destructive or access-broadening operations require explicit confirmation. This includes deleting resources, removing the final audience restriction, revoking a session, changing a customer's discount group, or removing a customer from a restricted code. Non-interactive execution must provide that confirmation deliberately.
 
-Every mutation is safe to retry after an ambiguous connection failure. The same administration session and request identity must return the original result rather than apply the mutation twice.
+Discount-management mutations are safe to retry after an ambiguous connection failure. The same administration session and request identity must return the original result rather than apply the mutation twice.
 
 ## Product support
 
