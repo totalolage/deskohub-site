@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { Data, Effect, Exit } from "effect";
+import { GoogleCalendarChannelIdSchema } from "@deskohub/google-calendar";
+import { Data, Effect, Exit, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { env } from "@/env";
 import { OpeningHoursCalendarService } from "@/features/opening-hours/backend/opening-hours-calendar.service";
@@ -43,10 +44,13 @@ export async function GET(request: Request): Promise<Response> {
 
   const maintainOpeningHours = Effect.gen(function* () {
     const openingHoursCalendar = yield* OpeningHoursCalendarService;
+    const channelId = yield* Schema.decodeUnknownEffect(
+      GoogleCalendarChannelIdSchema
+    )(randomUUID());
 
     const watchExit = yield* Effect.exit(
       openingHoursCalendar.watchChanges({
-        channelId: randomUUID(),
+        channelId,
         webhookToken: deriveOpeningHoursCalendarWebhookToken(cronSecret),
         webhookUrl,
         ttlSeconds: watchTtlSeconds,

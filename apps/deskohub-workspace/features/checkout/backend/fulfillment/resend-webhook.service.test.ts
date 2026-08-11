@@ -1,10 +1,11 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
@@ -68,7 +69,7 @@ mock.module("resend", () => ({
 }));
 
 const sentResult = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "test",
   timestamp: new Date(),
@@ -115,9 +116,28 @@ const internalFailurePayload = {
   },
 };
 
+interface RawWebhookRequest {
+  readonly payload: string;
+  readonly headers: {
+    readonly id?: string | null;
+    readonly timestamp?: string | null;
+    readonly signature?: string | null;
+  };
+}
+
+const validRawWebhookRequest: RawWebhookRequest = {
+  payload: "raw-payload",
+  headers: {
+    id: "webhook-event-id",
+    timestamp: "1710000000",
+    signature: "v1,signature",
+  },
+};
+
 const processWebhook = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
   return Effect.runPromise(effect);
@@ -126,6 +146,7 @@ const processWebhook = async (input: {
 const processWebhookError = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
   const effect = await processWebhookEffect(input);
   return Effect.runPromise(Effect.flip(effect));
@@ -134,6 +155,7 @@ const processWebhookError = async (input: {
 const processWebhookEffect = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
+  readonly request?: RawWebhookRequest;
 }) => {
   const { ResendWebhookService, ResendWebhookServiceLive } = await import(
     "./resend-webhook.service"
@@ -156,14 +178,9 @@ const processWebhookEffect = async (input: {
 
   return Effect.gen(function* () {
     const service = yield* ResendWebhookService;
-    return yield* service.processWebhook({
-      payload: "raw-payload",
-      headers: {
-        id: "webhook-event-id",
-        timestamp: "1710000000",
-        signature: "v1,signature",
-      },
-    });
+    return yield* service.processWebhook(
+      input.request ?? validRawWebhookRequest
+    );
   }).pipe(
     Effect.provide(
       ResendWebhookServiceLive.pipe(
@@ -256,6 +273,66 @@ describe("ResendWebhookService", () => {
     const error = await processWebhookError({
       reservations,
     });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(verifyWebhook).toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty raw webhook event ID at the header boundary", async () => {
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    } as unknown as WorkspaceReservationRepositoryType;
+
+    const error = await processWebhookError({
+      reservations,
+      request: {
+        ...validRawWebhookRequest,
+        headers: { ...validRawWebhookRequest.headers, id: "" },
+      },
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_headers_missing",
+    });
+    expect(constructResend).not.toHaveBeenCalled();
+    expect(verifyWebhook).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty raw webhook body at the payload boundary", async () => {
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    } as unknown as WorkspaceReservationRepositoryType;
+
+    const error = await processWebhookError({
+      reservations,
+      request: { ...validRawWebhookRequest, payload: "" },
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(constructResend).not.toHaveBeenCalled();
+    expect(verifyWebhook).not.toHaveBeenCalled();
+  });
+
+  test("rejects an empty Resend email ID in a verified delivery payload", async () => {
+    verifiedPayload = {
+      ...customerDeliveredPayload,
+      data: { ...customerDeliveredPayload.data, email_id: "" },
+    };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    } as unknown as WorkspaceReservationRepositoryType;
+
+    const error = await processWebhookError({ reservations });
 
     expect(error).toMatchObject({
       _tag: "ResendWebhookProcessingError",

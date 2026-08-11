@@ -16,6 +16,14 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
+import {
+  getDotyposCustomerRouteId,
+  requireDotyposCustomerRouteId,
+  requireDotyposReservationRouteId,
+  requireNexiOperationRouteId,
+  requireNexiOrderRouteId,
+  requireWorkspaceReservationRouteId,
+} from "./route-identifiers.server";
 
 export type AdministrationSearchParams = Promise<
   Record<string, string | readonly string[] | undefined>
@@ -91,7 +99,7 @@ export const loadAdministrationReservations = async (
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const input: AdministrationReservationListInput = {
-    customerId: firstParam(params.customerId),
+    customerId: getDotyposCustomerRouteId(firstParam(params.customerId)),
     date: firstParam(params.date),
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
@@ -113,9 +121,10 @@ export const loadAdministrationReservations = async (
 
 export const loadAdministrationReservation = cache(async (id: string) => {
   await authorizeAdministrationPage();
+  const reservationId = requireWorkspaceReservationRouteId(id);
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadReservation(id);
+    return yield* administration.loadReservation(reservationId);
   }).pipe(runAdministration("administration.reservation"));
   if (!detail) notFound();
   return detail;
@@ -139,9 +148,10 @@ export const loadAdministrationBookings = async (
 
 export const loadAdministrationBooking = cache(async (id: string) => {
   await authorizeAdministrationPage();
+  const bookingId = requireDotyposReservationRouteId(id);
   const detail = await Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadBooking(id);
+    return yield* administration.loadBooking(bookingId);
   }).pipe(runAdministration("administration.booking"));
   if (!detail) notFound();
   return detail;
@@ -165,20 +175,25 @@ export const loadAdministrationCustomerReservations = async (
   searchParams: AdministrationSearchParams
 ) => {
   await authorizeAdministrationPage();
+  const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
   const params = await searchParams;
   const page = parsePage(firstParam(params.reservationsPage));
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadCustomerReservations({ customerId, page });
+    return yield* administration.loadCustomerReservations({
+      customerId: decodedCustomerId,
+      page,
+    });
   }).pipe(runAdministration("administration.customer-reservations"));
 };
 
 export const loadAdministrationCustomerActivity = cache(
   async (customerId: string) => {
     await authorizeAdministrationPage();
+    const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadCustomerActivity(customerId);
+      return yield* administration.loadCustomerActivity(decodedCustomerId);
     }).pipe(runAdministration("administration.customer-activity"));
   }
 );
@@ -205,9 +220,10 @@ export const loadAdministrationOrders = async (
 
 export const loadAdministrationOrder = cache(async (orderId: string) => {
   await authorizeAdministrationPage();
+  const decodedOrderId = requireNexiOrderRouteId(orderId);
   return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.loadOrder(orderId);
+    return yield* administration.loadOrder(decodedOrderId);
   }).pipe(runAdministration("administration.order"));
 });
 
@@ -240,9 +256,10 @@ export const loadAdministrationOperations = async (
 export const loadAdministrationOperation = cache(
   async (operationId: string) => {
     await authorizeAdministrationPage();
+    const decodedOperationId = requireNexiOperationRouteId(operationId);
     return Effect.gen(function* () {
       const administration = yield* AdministrationService;
-      return yield* administration.loadOperation(operationId);
+      return yield* administration.loadOperation(decodedOperationId);
     }).pipe(runAdministration("administration.operation"));
   }
 );

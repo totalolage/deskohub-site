@@ -6,12 +6,23 @@ import type {
   GoogleCalendarListEventsInput,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
-import { Effect, Layer } from "effect";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { Effect, Layer, Schema } from "effect";
+import {
+  CalendarResourceConfig,
+  salesCalendarIdSchema,
+  workspaceLimitationsCalendarIdSchema,
+} from "@/shared/backend/config/calendar-resource.config";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   WorkspaceCalendarLimitation,
 } from "./google-calendar-workspace-limitations.service";
+
+const workspaceLimitationsCalendarId = Schema.decodeUnknownSync(
+  workspaceLimitationsCalendarIdSchema
+)("workspace-limitations-calendar");
+const salesCalendarId = Schema.decodeUnknownSync(salesCalendarIdSchema)(
+  "sales-calendar"
+);
 
 const runWithEvents = async (
   events: readonly GoogleCalendarEvent[],
@@ -33,8 +44,8 @@ const runWithEvents = async (
               }),
             }),
             Layer.succeed(CalendarResourceConfig, {
-              workspaceLimitationsCalendarId: "workspace-limitations-calendar",
-              salesCalendarId: "sales-calendar",
+              workspaceLimitationsCalendarId,
+              salesCalendarId,
             })
           )
         )
@@ -53,7 +64,7 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
 
     expect(inputs).toEqual([
       {
-        calendarId: "workspace-limitations-calendar",
+        calendarId: workspaceLimitationsCalendarId,
         from: "2026-06-10",
         to: "2026-06-11",
       },

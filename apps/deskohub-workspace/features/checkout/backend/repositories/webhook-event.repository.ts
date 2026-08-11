@@ -1,15 +1,20 @@
+import type { NexiOrderId, NexiWebhookEventId } from "@deskohub/nexi";
 import { and, eq, ne } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { type WebhookEvent, webhookEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type {
+  PaymentAttemptId,
+  StoredWebhookEventId,
+} from "@/features/checkout/checkout-identifiers";
 
 export class WebhookEventStateError extends Data.TaggedError(
   "WebhookEventStateError"
 )<{
   readonly operation: string;
-  readonly eventId: string;
+  readonly eventId: NexiWebhookEventId | StoredWebhookEventId;
   readonly message: string;
 }> {}
 
@@ -18,14 +23,14 @@ export type InsertWebhookEventResult =
   | { readonly status: "duplicate"; readonly event: WebhookEvent };
 
 export type WebhookEventIdentity =
-  | { readonly type: "id"; readonly id: string }
-  | { readonly type: "eventId"; readonly eventId: string };
+  | { readonly type: "id"; readonly id: StoredWebhookEventId }
+  | { readonly type: "eventId"; readonly eventId: NexiWebhookEventId };
 
 export interface WebhookEventRepository {
   readonly insertReceived: (input: {
-    readonly eventId: string;
-    readonly paymentAttemptId?: string;
-    readonly providerOrderId?: string;
+    readonly eventId: NexiWebhookEventId;
+    readonly paymentAttemptId?: PaymentAttemptId;
+    readonly providerOrderId?: NexiOrderId;
     readonly receivedAt: Temporal.Instant;
   }) => Effect.Effect<InsertWebhookEventResult, EffectDrizzleQueryError>;
   readonly markProcessed: (
@@ -40,7 +45,7 @@ export interface WebhookEventRepository {
   ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly linkPaymentAttempt: (
     input: WebhookEventIdentity & {
-      readonly paymentAttemptId: string;
+      readonly paymentAttemptId: PaymentAttemptId;
     }
   ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly claimRetry: (
@@ -63,7 +68,7 @@ const eventIdentityLabel = (input: WebhookEventIdentity) =>
 const ensureUpdated = (
   updated: readonly Pick<WebhookEvent, "id">[],
   operation: string,
-  eventId: string
+  eventId: NexiWebhookEventId | StoredWebhookEventId
 ) =>
   updated.length > 0
     ? Effect.void

@@ -1,3 +1,4 @@
+import type { NexiOrderId } from "@deskohub/nexi";
 import Link from "next/link";
 import {
   Table,
@@ -322,7 +323,7 @@ function PaymentLink({
   providerOrderId,
 }: {
   readonly className: string;
-  readonly providerOrderId: string;
+  readonly providerOrderId: NexiOrderId;
 }) {
   return (
     <NexiOrderLink

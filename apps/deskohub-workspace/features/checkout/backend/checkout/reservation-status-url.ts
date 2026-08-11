@@ -1,11 +1,12 @@
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import type { CheckoutStatusReturnOutcome } from "./checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
 export const getReservationStatusPath = (input: {
   readonly locale: Locale | string;
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly outcome?: CheckoutStatusReturnOutcome;
   readonly setBypassCookie?: boolean;
 }) => {

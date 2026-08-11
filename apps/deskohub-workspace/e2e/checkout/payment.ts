@@ -1,4 +1,8 @@
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
   findEnabledSnapshotRef,
@@ -53,6 +57,9 @@ const reservationSubmitAttemptCount = 2;
 const reservationSubmitSelector = "#reservation-submit";
 const reservationPreparationStateKey = "__deskohubWorkspaceE2EPreparation";
 const hostedPaymentFieldFillAttemptCount = 3;
+const decodeWorkspaceReservationId = Schema.decodeUnknownSync(
+  workspaceReservationIdSchema
+);
 
 const runBrowserCommand = (
   operation: string,
@@ -78,11 +85,11 @@ export const completeCheckout = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  onOrderId?: (orderId: string) => void;
+  onOrderId?: (orderId: WorkspaceReservationId) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
-}): Effect.Effect<string, WorkspaceE2EError> =>
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
       timeoutMs: config.timeouts.browserNavigation,
@@ -138,11 +145,11 @@ export const startCheckoutPaymentAttempt = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  onOrderId?: (orderId: string) => void;
+  onOrderId?: (orderId: WorkspaceReservationId) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
-}): Effect.Effect<string, WorkspaceE2EError> =>
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const orderId = yield* prepareCheckoutPaymentAttempt({
       config,
@@ -171,11 +178,11 @@ export const prepareCheckoutPaymentAttempt = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  onOrderId?: (orderId: string) => void;
+  onOrderId?: (orderId: WorkspaceReservationId) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
-}): Effect.Effect<string, WorkspaceE2EError> =>
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
       timeoutMs: config.timeouts.browserNavigation,
@@ -196,12 +203,12 @@ export const submitReservationForPayPage = ({
   submitReservationScript,
   timeouts,
 }: {
-  onOrderId?: (orderId: string) => void;
+  onOrderId?: (orderId: WorkspaceReservationId) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
   timeouts: WorkspaceE2ETimeouts;
-}): Effect.Effect<string, WorkspaceE2EError> =>
+}): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
@@ -210,8 +217,14 @@ export const submitReservationForPayPage = ({
       submitReservationScript,
       timeouts,
     });
-    const orderId =
-      getSearchOrderId(payPageUrl) ?? (yield* readPayPageOrderId(run, session));
+    const searchOrderId = yield* tryWorkspaceE2ESync(
+      "decode checkout pay page order id",
+      () => {
+        const value = getSearchOrderId(payPageUrl);
+        return value ? decodeWorkspaceReservationId(value) : undefined;
+      }
+    );
+    const orderId = searchOrderId ?? (yield* readPayPageOrderId(run, session));
     yield* Effect.sync(() => onOrderId?.(orderId));
     return orderId;
   });
@@ -219,7 +232,7 @@ export const submitReservationForPayPage = ({
 const readPayPageOrderId = (
   run: Runner,
   session: string
-): Effect.Effect<string, WorkspaceE2EError> =>
+): Effect.Effect<WorkspaceReservationId, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const result = yield* runBrowserCommand(
       "read pay page order id",
@@ -235,7 +248,7 @@ const readPayPageOrderId = (
     return yield* tryWorkspaceE2ESync("assert pay page order id", () => {
       const orderId = result.stdout.trim();
       assert(orderId, "checkout pay page order id missing");
-      return orderId;
+      return decodeWorkspaceReservationId(orderId);
     });
   });
 
@@ -246,7 +259,7 @@ const submitReservationAndWaitForPayPage = ({
   submitReservationScript,
   timeouts,
 }: {
-  onOrderId?: (orderId: string) => void;
+  onOrderId?: (orderId: WorkspaceReservationId) => void;
   run: Runner;
   session: string;
   submitReservationScript: string;
@@ -289,7 +302,13 @@ const submitReservationAndWaitForPayPage = ({
     const result = yield* submitAttempt(1);
     if (result.status === "ready") return result.url;
 
-    const orderId = getSearchOrderId(result.url);
+    const orderId = yield* tryWorkspaceE2ESync(
+      "decode failed checkout reservation order id",
+      () => {
+        const value = getSearchOrderId(result.url);
+        return value ? decodeWorkspaceReservationId(value) : undefined;
+      }
+    );
     if (orderId) yield* Effect.sync(() => onOrderId?.(orderId));
 
     return yield* tryWorkspaceE2ESync(
@@ -925,9 +944,15 @@ const tryFillHostedPaymentField = (
   value: string
 ) =>
   Effect.gen(function* () {
-    const target = yield* findHostedPaymentRef(run, session, labels, frameLabels, {
-      enabledOnly: true,
-    });
+    const target = yield* findHostedPaymentRef(
+      run,
+      session,
+      labels,
+      frameLabels,
+      {
+        enabledOnly: true,
+      }
+    );
     if (!target) return;
 
     yield* runBrowserCommand(
@@ -982,12 +1007,12 @@ const findHostedPaymentRef = (
       const frameResult = yield* Effect.gen(function* () {
         const frameSnapshot = yield* readInteractiveSnapshot(run, session);
         const frameFieldRef = options.enabledOnly
-          ? findEnabledSnapshotRef(frameSnapshot, labels) ??
+          ? (findEnabledSnapshotRef(frameSnapshot, labels) ??
             (frame.exact
               ? findFirstEnabledTextFieldRef(frameSnapshot)
-              : undefined)
-          : findSnapshotRef(frameSnapshot, labels) ??
-            (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
+              : undefined))
+          : (findSnapshotRef(frameSnapshot, labels) ??
+            (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined));
         if (!frameFieldRef) return undefined;
 
         shouldRestoreMainFrame = false;
@@ -1134,7 +1159,7 @@ const waitForHostedPaymentTargetToChange = (
 const extractOrderId = (stdout: string) => {
   const match = stdout.match(/\/checkout\/status\/([^\s/?#]+)/);
   assert(match?.[1], "could not extract checkout status order id");
-  return match[1];
+  return decodeWorkspaceReservationId(match[1]);
 };
 
 const getSearchOrderId = (value: string | undefined) => {

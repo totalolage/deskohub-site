@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 import type { RequireAllOrNone } from "type-fest";
+import { checkoutSessionIdSchema } from "@/features/checkout/checkout-identifiers";
 import {
   type CheckoutSummaryChangedKeys,
   checkoutSummaryChangedKeysSchema,
@@ -13,15 +14,17 @@ import {
 } from "@/features/discounts/contracts";
 import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { unixTimestampSecondsSchema } from "@/shared/utils/temporal";
+import { checkoutStateKeyIdSchema } from "./checkout-state-token";
 
 export const signedPayStateEnvelopeSchema = Schema.Struct({
-  kid: Schema.NonEmptyString,
+  kid: checkoutStateKeyIdSchema,
   iat: unixTimestampSecondsSchema,
   exp: unixTimestampSecondsSchema,
   locale: Schema.Literals(locales),
-  orderId: Schema.NonEmptyString,
-  checkoutSessionId: Schema.optional(Schema.NonEmptyString),
+  orderId: workspaceReservationIdSchema,
+  checkoutSessionId: Schema.optional(checkoutSessionIdSchema),
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalDiscountCodeSchema),
   submittedCodeDiscountId: Schema.optional(discountIdSchema),
@@ -32,8 +35,8 @@ export type SignedPayStateEnvelope = typeof signedPayStateEnvelopeSchema.Type;
 
 type BuildSignedPayStateBaseInput = {
   readonly locale: Locale;
-  readonly orderId: string;
-  readonly checkoutSessionId?: string;
+  readonly orderId: typeof workspaceReservationIdSchema.Type;
+  readonly checkoutSessionId?: typeof checkoutSessionIdSchema.Type;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly ttlMilliseconds?: number;
 };

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { PostHogFeatureFlagSubject } from "@deskohub/posthog/feature-flags/node";
+import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import {
   getPostHogRequestContextFromRequestHeadersWithDiagnostics,
@@ -10,7 +11,7 @@ import {
 import { getRequestHeaders } from "@/shared/backend/utils/request-headers";
 
 const globalReleaseSubject = {
-  distinctId: "deskohub-workspace:global-release",
+  distinctId: PostHogDistinctId.make("deskohub-workspace:global-release"),
   sendFeatureFlagEvents: false,
 } as const satisfies PostHogFeatureFlagSubject;
 

@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
+import { PostHogDistinctId } from "../identifiers";
 import { definePostHogFeatureFlags } from "./contract";
 
 const evaluateFlags = mock((_distinctId: string, _options?: unknown) =>
@@ -39,16 +40,17 @@ mock.module("posthog-node", () => ({
     let overrides: Readonly<Record<string, boolean | string>> = {};
 
     return {
-      evaluateFlags: async (distinctId: string, evaluationOptions?: unknown) => {
+      evaluateFlags: async (
+        distinctId: string,
+        evaluationOptions?: unknown
+      ) => {
         const snapshot = await evaluateFlags(distinctId, evaluationOptions);
         return {
           ...snapshot,
           getFlag: (key: string) =>
             key in overrides ? overrides[key] : snapshot.getFlag(),
           isEnabled: (key: string) =>
-            key in overrides
-              ? overrides[key] !== false
-              : snapshot.isEnabled(),
+            key in overrides ? overrides[key] !== false : snapshot.isEnabled(),
         };
       },
       getAllFlagsAndPayloads: async (
@@ -108,6 +110,11 @@ const contract = definePostHogFeatureFlags<{
   };
 }>(["meeting_room_page", "room_experience"]);
 
+const publicSiteId = PostHogDistinctId.make("public-site");
+const globalReleaseId = PostHogDistinctId.make("global-release");
+const visitorId = PostHogDistinctId.make("visitor-id");
+const anotherVisitorId = PostHogDistinctId.make("another-visitor-id");
+
 describe("createPostHogNodeFeatureFlags", () => {
   test("returns a typed view over one evaluation snapshot", async () => {
     const { createPostHogNodeFeatureFlags } = await import("./node");
@@ -127,7 +134,7 @@ describe("createPostHogNodeFeatureFlags", () => {
     });
 
     const flags = await Effect.runPromise(
-      featureFlags.evaluateFlags("public-site", {
+      featureFlags.evaluateFlags(publicSiteId, {
         disableGeoip: true,
         flagKeys: ["meeting_room_page", "room_experience"],
       })
@@ -155,7 +162,7 @@ describe("createPostHogNodeFeatureFlags", () => {
     });
 
     const error = await Effect.runPromise(
-      featureFlags.evaluateFlags("public-site").pipe(Effect.flip)
+      featureFlags.evaluateFlags(publicSiteId).pipe(Effect.flip)
     );
 
     expect(error).toBeInstanceOf(PostHogFeatureFlagEvaluationError);
@@ -180,7 +187,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
           flagKeys: ["meeting_room_page", "room_experience"],
         },
         subject: {
-          distinctId: "global-release",
+          distinctId: globalReleaseId,
           sendFeatureFlagEvents: false,
         },
       })
@@ -215,7 +222,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       featureFlags.evaluateFlags({
         options: { flagKeys: ["meeting_room_page"] },
         subject: {
-          distinctId: "visitor-id",
+          distinctId: visitorId,
           sendFeatureFlagEvents: true,
         },
       })
@@ -256,7 +263,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       featureFlags.isEnabled({
         key: "meeting_room_page",
         subject: {
-          distinctId: "visitor-id",
+          distinctId: visitorId,
           sendFeatureFlagEvents: true,
         },
       })
@@ -265,7 +272,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       featureFlags.isEnabled({
         key: "meeting_room_page",
         subject: {
-          distinctId: "another-visitor-id",
+          distinctId: anotherVisitorId,
           sendFeatureFlagEvents: false,
         },
       })
@@ -324,7 +331,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     const snapshot = await Effect.runPromise(
       featureFlags.evaluateFlags({
         subject: {
-          distinctId: "visitor-id",
+          distinctId: visitorId,
           sendFeatureFlagEvents: true,
         },
       })
@@ -332,7 +339,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     const nonRecordingSnapshot = await Effect.runPromise(
       featureFlags.evaluateFlags({
         subject: {
-          distinctId: "global-release",
+          distinctId: globalReleaseId,
           sendFeatureFlagEvents: false,
         },
       })
@@ -341,7 +348,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       featureFlags.isEnabled({
         key: "meeting_room_page",
         subject: {
-          distinctId: "another-visitor-id",
+          distinctId: anotherVisitorId,
           sendFeatureFlagEvents: false,
         },
       })
@@ -351,9 +358,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(snapshot.getFlag("room_experience")).toBe("treatment");
     expect(snapshot.isEnabled("meeting_room_page")).toBeFalse();
     expect(nonRecordingSnapshot.getFlag("meeting_room_page")).toBeFalse();
-    expect(nonRecordingSnapshot.getFlag("room_experience")).toBe(
-      "treatment"
-    );
+    expect(nonRecordingSnapshot.getFlag("room_experience")).toBe("treatment");
     expect(enabled).toBeFalse();
     expect(createClient).toHaveBeenCalledTimes(1);
     expect(overrideFeatureFlags).toHaveBeenCalledTimes(1);
@@ -377,7 +382,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
       featureFlags.isEnabled({
         key: "meeting_room_page",
         subject: {
-          distinctId: "visitor-id",
+          distinctId: visitorId,
           sendFeatureFlagEvents: false,
         },
       })
@@ -406,7 +411,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
         .isEnabled({
           key: "meeting_room_page",
           subject: {
-            distinctId: "visitor-id",
+            distinctId: visitorId,
             sendFeatureFlagEvents: true,
           },
         })

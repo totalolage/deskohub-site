@@ -1,8 +1,9 @@
+import type { GoogleCalendarId } from "@deskohub/google-calendar";
 import { Context, Layer } from "effect";
 import { env } from "@/env";
 
 export interface IOpeningHoursCalendarConfig {
-  readonly calendarId: string;
+  readonly calendarId: GoogleCalendarId;
 }
 
 export class OpeningHoursCalendarConfig extends Context.Service<

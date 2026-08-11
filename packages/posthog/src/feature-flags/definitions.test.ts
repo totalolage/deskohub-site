@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
+import { PostHogProjectId } from "../identifiers";
 import {
   listPostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagPageSource,
 } from "./definitions";
 
 describe("listPostHogFeatureFlagDefinitions", () => {
+  const projectId = PostHogProjectId.make("project");
+
   test("paginates, excludes deleted flags, and normalizes definitions", async () => {
     const calls: number[] = [];
     const firstPage = Array.from({ length: 100 }, (_, index) => ({
@@ -39,7 +42,7 @@ describe("listPostHogFeatureFlagDefinitions", () => {
     };
 
     const definitions = await Effect.runPromise(
-      listPostHogFeatureFlagDefinitions("project", listPage)
+      listPostHogFeatureFlagDefinitions(projectId, listPage)
     );
 
     expect(calls).toEqual([0, 100]);
@@ -53,7 +56,7 @@ describe("listPostHogFeatureFlagDefinitions", () => {
 
   test("fails through the Effect error channel for duplicate keys", async () => {
     const result = await Effect.runPromiseExit(
-      listPostHogFeatureFlagDefinitions("project", () =>
+      listPostHogFeatureFlagDefinitions(projectId, () =>
         Effect.succeed({
           count: 2,
           results: [{ key: "duplicate" }, { key: "duplicate" }],

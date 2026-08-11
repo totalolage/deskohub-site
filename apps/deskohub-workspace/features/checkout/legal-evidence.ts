@@ -11,6 +11,15 @@ export const legalDocumentKeys = [
 
 export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
 
+export const legalEvidenceEventIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("LegalEvidenceEventId")
+).annotate({
+  identifier: "LegalEvidenceEventId",
+  description: "Opaque identifier for a persisted legal evidence event.",
+});
+
+export type LegalEvidenceEventId = typeof legalEvidenceEventIdSchema.Type;
+
 export const paymentSubmitLegalEvidenceSource = "payment_submit" as const;
 
 export const legalDocumentHashSchema = Schema.Struct({

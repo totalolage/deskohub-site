@@ -1,5 +1,6 @@
 "use client";
 
+import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
 import Image, { type StaticImageData } from "next/image";
@@ -37,7 +38,7 @@ type RoomImageCarouselImage =
       alt: string;
       caption?: string;
       height: number;
-      id: string;
+      id: CloudinaryPublicId;
       kind: "cloudinary";
       source: CloudinaryAsset;
       src: string;

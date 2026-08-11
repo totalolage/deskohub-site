@@ -5,19 +5,26 @@ import {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   NexiAmountSchema,
+  NexiOperationIdSchema,
+  NexiOrderIdSchema,
+  NexiWebhookEventIdSchema,
   normalizeNexiWebhookNotification,
 } from "./types";
+
+const nexiOrderId = Schema.decodeUnknownSync(NexiOrderIdSchema);
+const nexiOperationId = Schema.decodeUnknownSync(NexiOperationIdSchema);
+const nexiWebhookEventId = Schema.decodeUnknownSync(NexiWebhookEventIdSchema);
 
 describe("Nexi webhook types", () => {
   test("normalizes webhook payloads and derives identity", async () => {
     const notification = await Effect.runPromise(
       decodeNexiWebhookNotification({
-        eventId: " event-id ",
+        eventId: nexiWebhookEventId(" event-id "),
         eventTime: " 2026-06-20T10:00:00Z ",
         securityToken: " security-token ",
         operation: {
-          orderId: "order-id",
-          operationId: " operation-id ",
+          orderId: nexiOrderId("order-id"),
+          operationId: nexiOperationId(" operation-id "),
           operationType: " CAPTURE ",
           operationResult: " EXECUTED ",
           operationTime: " 2026-06-20T10:01:00Z ",
@@ -28,12 +35,12 @@ describe("Nexi webhook types", () => {
     );
 
     expect(notification).toEqual({
-      eventId: "event-id",
+      eventId: nexiWebhookEventId("event-id"),
       eventTime: "2026-06-20T10:00:00Z",
       securityToken: "security-token",
       operation: {
-        orderId: "order-id",
-        operationId: "operation-id",
+        orderId: nexiOrderId("order-id"),
+        operationId: nexiOperationId("operation-id"),
         operationType: "CAPTURE",
         operationResult: "EXECUTED",
         operationTime: "2026-06-20T10:01:00Z",
@@ -42,7 +49,7 @@ describe("Nexi webhook types", () => {
       },
     });
     expect(deriveNexiWebhookEventIdentity(notification)).toEqual({
-      eventId: "event-id",
+      eventId: nexiWebhookEventId("event-id"),
       source: "provider",
     });
 
@@ -51,7 +58,9 @@ describe("Nexi webhook types", () => {
         operation: notification.operation,
       }).eventId
     ).toBe(
-      "nexi:order-id:operation-id:CAPTURE:EXECUTED:2026-06-20T10:01:00Z:5000:CZK"
+      nexiWebhookEventId(
+        "nexi:order-id:operation-id:CAPTURE:EXECUTED:2026-06-20T10:01:00Z:5000:CZK"
+      )
     );
   });
 
@@ -91,16 +100,19 @@ describe("Nexi webhook types", () => {
   test("normalizes empty optional strings away", () => {
     expect(
       normalizeNexiWebhookNotification({
-        eventId: " ",
+        eventId: nexiWebhookEventId(" "),
         securityToken: " ",
-        operation: { orderId: "order-id", operationId: " " },
+        operation: {
+          orderId: nexiOrderId("order-id"),
+          operationId: nexiOperationId(" "),
+        },
       })
     ).toEqual({
       eventId: undefined,
       eventTime: undefined,
       securityToken: undefined,
       operation: {
-        orderId: "order-id",
+        orderId: nexiOrderId("order-id"),
         operationId: undefined,
         operationType: undefined,
         operationResult: undefined,

@@ -7,9 +7,9 @@ export {
   EmailServiceTag,
 } from "./backend/service";
 export { StandaloneEmailServiceLayer } from "./backend/standalone-email-service";
-
 export type {
   EmailAttachment,
+  EmailDeliveryId,
   EmailMessage,
   EmailProviderConfig,
   EmailRecipient,
@@ -18,3 +18,4 @@ export type {
   EmailTemplateType,
   ReservationConfirmationData,
 } from "./types/email.types";
+export { EmailDeliveryIdSchema } from "./types/email.types";

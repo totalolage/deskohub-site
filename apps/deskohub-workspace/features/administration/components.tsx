@@ -1,6 +1,11 @@
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
 import {
   Table,
@@ -412,9 +417,9 @@ export function ReservationReferences({
   references,
 }: {
   readonly references: {
-    readonly workspaceReservationId: string;
-    readonly dotyposReservationId: string | null;
-    readonly customerId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId | null;
+    readonly customerId: DotyposCustomerId;
   };
 }) {
   return (

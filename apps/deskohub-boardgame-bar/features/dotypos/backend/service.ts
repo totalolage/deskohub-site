@@ -1,5 +1,9 @@
-import { DotyposService as SharedDotyposService } from "@deskohub/dotypos";
-import type { Category, Product } from "@deskohub/dotypos/generated";
+import {
+  type DotyposCategory,
+  type DotyposProduct,
+  type DotyposProductId,
+  DotyposService as SharedDotyposService,
+} from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
 import { isCategoryDisplayable } from "../utils/category-utils";
 import { DotyposConfigFromEnv } from "./dotypos-config.layer";
@@ -11,8 +15,8 @@ export const SharedDotyposServiceFromEnv = SharedDotyposService.Default.pipe(
 export interface DotyposServiceShape {
   readonly getMenuItems: Effect.Effect<
     {
-      readonly products: Product[];
-      readonly categories: Category[];
+      readonly products: DotyposProduct[];
+      readonly categories: DotyposCategory[];
     },
     unknown
   >;
@@ -64,7 +68,7 @@ export class DotyposService extends Context.Service<
           );
           yield* Effect.logInfo("Dotypos menu products loaded");
 
-          const productMap = new Map<string, Product>();
+          const productMap = new Map<DotyposProductId, DotyposProduct>();
           for (const categoryProducts of productsByCategory) {
             for (const product of categoryProducts) {
               if (product.id && product.display && !product.deleted) {

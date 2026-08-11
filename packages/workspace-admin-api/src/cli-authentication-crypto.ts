@@ -1,5 +1,5 @@
 import { Crypto, Effect, Encoding } from "effect";
-import type {
+import {
   CliAuthenticationChallenge,
   CliAuthenticationVerifier,
 } from "./workspace-admin-api";
@@ -23,13 +23,13 @@ export const digestCliAuthenticationSecret = Effect.fn(
 });
 
 export const makeCliAuthenticationVerifier = makeCliAuthenticationSecret().pipe(
-  Effect.map((secret) => secret as CliAuthenticationVerifier)
+  Effect.map(CliAuthenticationVerifier.make)
 );
 
 export const makeCliAuthenticationChallenge = Effect.fn(
   "CliAuthenticationCrypto.makeChallenge"
 )((verifier: CliAuthenticationVerifier) =>
   digestCliAuthenticationSecret(verifier).pipe(
-    Effect.map((digest) => digest as CliAuthenticationChallenge)
+    Effect.map(CliAuthenticationChallenge.make)
   )
 );

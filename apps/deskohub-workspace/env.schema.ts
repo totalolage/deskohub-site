@@ -1,3 +1,4 @@
+import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 import {
   postHogFeatureFlagOverridesEnvironmentCheck,
@@ -70,7 +71,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
     postHogFeatureFlagOverridesSchema
   ),
   POSTHOG_HOST: optionalUrlEnvSchema,
-  POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
   POSTHOG_HISTORY_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,

@@ -9,17 +9,22 @@ import {
   type AdministrationDiscountMutationResultType,
   type AdministrationDiscountMutationType,
   AdministrationDotyposCustomerId,
+  AdministrationDotyposDiscountGroupId,
+  AdministrationDotyposReservationId,
   AdministrationInstant,
+  AdministrationNexiOperationId,
+  AdministrationNexiOrderId,
   type AdministrationOperationQueryType,
   type AdministrationOrderQueryType,
   type AdministrationOverviewMetricType,
-  type AdministrationReservationQueryType,
+  AdministrationReservationQuery,
   type AdministrationReservationSummaryType,
   AdministrationStoredDiscountId,
   type AdministrationWorkspaceProductTargetType,
+  AdministrationWorkspaceReservationId,
   type CliAccessTokenType,
   CliClientName,
-  type CliMutationRequestIdType,
+  CliMutationRequestId,
   CliSessionId,
   type CliSessionType,
   CliSessionUnauthorized,
@@ -151,7 +156,9 @@ const reservationsListCommand = Command.make(
   ({ customer, date, direction, page, sort, status, type }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const query: AdministrationReservationQueryType = {
+        const query = yield* Schema.decodeUnknownEffect(
+          AdministrationReservationQuery
+        )({
           ...(Option.isSome(customer) && { customerId: customer.value }),
           ...(Option.isSome(date) && { date: date.value }),
           ...(Option.isSome(direction) && { direction: direction.value }),
@@ -159,7 +166,7 @@ const reservationsListCommand = Command.make(
           ...(Option.isSome(sort) && { sort: sort.value }),
           ...(Option.isSome(status) && { status: status.value }),
           ...(Option.isSome(type) && { type: type.value }),
-        };
+        });
         const result = yield* api.listReservations(accessToken, query);
         if (json) {
           yield* Console.log(JSON.stringify(result));
@@ -181,7 +188,13 @@ const reservationsGetCommand = Command.make(
   ({ reservationId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getReservation(accessToken, reservationId);
+        const decodedReservationId = yield* Schema.decodeUnknownEffect(
+          AdministrationWorkspaceReservationId
+        )(reservationId);
+        const detail = yield* api.getReservation(
+          accessToken,
+          decodedReservationId
+        );
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -280,7 +293,10 @@ const bookingsGetCommand = Command.make(
   ({ bookingId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getBooking(accessToken, bookingId);
+        const decodedBookingId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposReservationId
+        )(bookingId);
+        const detail = yield* api.getBooking(accessToken, decodedBookingId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -361,7 +377,10 @@ const ordersGetCommand = Command.make(
   ({ orderId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const order = yield* api.getOrder(accessToken, orderId);
+        const decodedOrderId = yield* Schema.decodeUnknownEffect(
+          AdministrationNexiOrderId
+        )(orderId);
+        const order = yield* api.getOrder(accessToken, decodedOrderId);
         if (json) {
           yield* Console.log(JSON.stringify(order));
           return;
@@ -442,7 +461,10 @@ const operationsGetCommand = Command.make(
   ({ operationId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getOperation(accessToken, operationId);
+        const decodedOperationId = yield* Schema.decodeUnknownEffect(
+          AdministrationNexiOperationId
+        )(operationId);
+        const detail = yield* api.getOperation(accessToken, decodedOperationId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -541,7 +563,10 @@ const customersGetCommand = Command.make(
   ({ customerId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
-        const detail = yield* api.getCustomer(accessToken, customerId);
+        const decodedCustomerId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposCustomerId
+        )(customerId);
+        const detail = yield* api.getCustomer(accessToken, decodedCustomerId);
         if (json) {
           yield* Console.log(JSON.stringify(detail));
           return;
@@ -582,9 +607,12 @@ const customersReservationsCommand = Command.make(
   ({ customerId, page }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
+        const decodedCustomerId = yield* Schema.decodeUnknownEffect(
+          AdministrationDotyposCustomerId
+        )(customerId);
         const result = yield* api.listCustomerReservations(
           accessToken,
-          customerId,
+          decodedCustomerId,
           { ...(Option.isSome(page) && { page: page.value }) }
         );
         if (json) {
@@ -607,7 +635,9 @@ const customersSetDiscountGroupCommand = Command.make(
     customerId: Argument.string("customer-id").pipe(
       Argument.withSchema(AdministrationDotyposCustomerId)
     ),
-    discountGroupId: Argument.string("discount-group-id"),
+    discountGroupId: Argument.string("discount-group-id").pipe(
+      Argument.withSchema(AdministrationDotyposDiscountGroupId)
+    ),
     yes: confirmationFlag,
   },
   ({ customerId, discountGroupId, yes }) =>
@@ -1112,7 +1142,7 @@ const codesListCommand = Command.make("list", {}, () =>
 
 const codesGetCommand = Command.make(
   "get",
-  { codeId: Argument.string("code-id") },
+  { codeId: discountCodeIdArgument },
   ({ codeId }) =>
     runAuthenticatedCommand((api, accessToken, json) =>
       Effect.gen(function* () {
@@ -1609,7 +1639,7 @@ const executeAndReportDiscountMutation = (
       )
     );
     const crypto = yield* Crypto.Crypto;
-    const requestId = (yield* crypto.randomUUIDv7) as CliMutationRequestIdType;
+    const requestId = CliMutationRequestId.make(yield* crypto.randomUUIDv7);
     const result = yield* api.mutateDiscounts(
       accessToken,
       requestId,

@@ -9,6 +9,7 @@ import {
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { type Locale, locales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
@@ -29,7 +30,7 @@ type ReservationForKind<Kind extends ReservationKind> = Extract<
 >;
 
 type ReservationPageContext<Kind extends ReservationKind> = {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: ReservationForKind<Kind>;
   readonly locale: Locale;
   readonly replacementToken?: string;

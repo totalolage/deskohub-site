@@ -7,19 +7,21 @@ import {
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { deriveCheckoutSessionKey } from "./checkout-session-key.server";
 
 export class PayableReservationUnavailableError extends Data.TaggedError(
   "PayableReservationUnavailableError"
 )<{
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly reason:
     | "missing_checkout_session"
     | "missing_reservation"
@@ -32,8 +34,8 @@ export class PayableReservationUnavailableError extends Data.TaggedError(
 
 interface IPayableReservationService {
   readonly requireCurrent: (input: {
-    readonly orderId: string;
-    readonly checkoutSessionId?: string;
+    readonly orderId: WorkspaceReservationId;
+    readonly checkoutSessionId?: CheckoutSessionId;
   }) => Effect.Effect<
     WorkspaceReservation,
     | PayableReservationUnavailableError
@@ -124,7 +126,7 @@ export class PayableReservationService extends Context.Service<
 }
 
 const unavailable = (
-  input: { readonly orderId: string },
+  input: { readonly orderId: WorkspaceReservationId },
   reason: PayableReservationUnavailableError["reason"]
 ) =>
   new PayableReservationUnavailableError({

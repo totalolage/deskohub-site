@@ -16,6 +16,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { CliAuthenticationRequestId } from "@/features/admin-cli/cli-identifiers";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -68,7 +69,10 @@ export const cliSessions = pgTable(
 export const cliAuthenticationRequests = pgTable(
   "cli_authentication_requests",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<CliAuthenticationRequestId>(),
     codeHash: text("code_hash").notNull(),
     challenge: text("challenge").notNull(),
     clientName: text("client_name").notNull(),

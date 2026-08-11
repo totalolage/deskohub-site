@@ -7,12 +7,20 @@ import {
   AdministrationCustomerReservationsQuery,
   AdministrationCustomerSearchQuery,
   AdministrationDiscountMutation,
+  AdministrationDotyposCustomerId,
+  AdministrationDotyposDiscountGroupId,
+  AdministrationDotyposReservationId,
+  AdministrationDotyposTableId,
+  AdministrationNexiOperationId,
+  AdministrationNexiOrderId,
   AdministrationOperationQuery,
   AdministrationOrderQuery,
+  AdministrationPaymentAttemptId,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
   AdministrationReservationSummary,
   AdministrationWorkspaceProductTarget,
+  AdministrationWorkspaceReservationId,
   CliClientName,
   StartCliAuthentication,
 } from "./workspace-admin-api";
@@ -45,6 +53,36 @@ describe("StartCliAuthentication", () => {
 });
 
 describe("administration contract", () => {
+  test("keeps branded identifiers distinct while encoding them as strings", () => {
+    const reservationId = Schema.decodeUnknownSync(
+      AdministrationWorkspaceReservationId
+    )("reservation-id");
+    const paymentAttemptId = Schema.decodeUnknownSync(
+      AdministrationPaymentAttemptId
+    )("payment-attempt-id");
+
+    // @ts-expect-error Payment-attempt IDs must not be accepted as reservation IDs.
+    const wrongReservationId: typeof reservationId = paymentAttemptId;
+    void wrongReservationId;
+
+    expect(
+      Schema.encodeSync(AdministrationWorkspaceReservationId)(reservationId)
+    ).toBe("reservation-id");
+
+    for (const identifierSchema of [
+      AdministrationWorkspaceReservationId,
+      AdministrationPaymentAttemptId,
+      AdministrationNexiOrderId,
+      AdministrationNexiOperationId,
+      AdministrationDotyposCustomerId,
+      AdministrationDotyposReservationId,
+      AdministrationDotyposTableId,
+      AdministrationDotyposDiscountGroupId,
+    ]) {
+      expect(() => Schema.decodeUnknownSync(identifierSchema)("")).toThrow();
+    }
+  });
+
   test("keeps read operations safe and typed", () => {
     expect(AdminCliAdministrationApi.endpoints.getOverview?.method).toBe("GET");
     expect(AdminCliAdministrationApi.endpoints.listReservations?.method).toBe(
@@ -184,6 +222,27 @@ describe("administration contract", () => {
         },
       })
     ).toThrow();
+
+    const discountGroupMutation = decode({
+      kind: "set-customer-discount-group",
+      customerId: "customer-id",
+      discountGroupId: "discount-group-id",
+    });
+    expect(discountGroupMutation.kind).toBe("set-customer-discount-group");
+    if (discountGroupMutation.kind === "set-customer-discount-group") {
+      expect(
+        Schema.encodeSync(AdministrationDotyposCustomerId)(
+          discountGroupMutation.customerId
+        )
+      ).toBe("customer-id");
+      if (discountGroupMutation.discountGroupId) {
+        expect(
+          Schema.encodeSync(AdministrationDotyposDiscountGroupId)(
+            discountGroupMutation.discountGroupId
+          )
+        ).toBe("discount-group-id");
+      }
+    }
 
     expect(() =>
       decode({

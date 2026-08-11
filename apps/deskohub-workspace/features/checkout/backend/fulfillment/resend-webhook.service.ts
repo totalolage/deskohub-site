@@ -1,10 +1,15 @@
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { EmailDeliveryIdSchema } from "@deskohub/email";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -17,6 +22,33 @@ const workspaceFulfillmentSource = "workspace-paid-fulfillment";
 const customerAccessCategory = "workspace-paid-reservation-access";
 const fulfillmentEmailFailureCode = "fulfillment_email_failed";
 
+export const ResendWebhookEventIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("ResendWebhookEventId")
+).annotate({
+  identifier: "ResendWebhookEventId",
+  description: "Opaque identifier assigned to a Resend webhook event.",
+});
+export type ResendWebhookEventId = typeof ResendWebhookEventIdSchema.Type;
+
+export const ResendEmailIdSchema = EmailDeliveryIdSchema.pipe(
+  Schema.brand("ResendEmailId")
+).annotate({
+  identifier: "ResendEmailId",
+  description: "Opaque identifier assigned to an email delivery by Resend.",
+});
+export type ResendEmailId = typeof ResendEmailIdSchema.Type;
+
+const ResendWebhookHeadersSchema = Schema.Struct({
+  id: ResendWebhookEventIdSchema,
+  timestamp: Schema.NonEmptyString,
+  signature: Schema.NonEmptyString,
+});
+
+const ResendWebhookPayloadSchema = Schema.NonEmptyString.annotate({
+  identifier: "ResendWebhookPayload",
+  description: "Raw signed Resend webhook request payload.",
+});
+
 const ResendTagSchema = Schema.Struct({
   name: Schema.String,
   value: Schema.String,
@@ -25,13 +57,13 @@ type ResendTag = Schema.Schema.Type<typeof ResendTagSchema>;
 
 const ResendTagsSchema = Schema.Union([
   Schema.Array(ResendTagSchema),
-  Schema.Record(Schema.String, Schema.Unknown),
+  Schema.Record(Schema.String, Schema.String),
 ]);
 
 const ResendWebhookEventInputSchema = Schema.Struct({
-  type: Schema.String,
+  type: Schema.NonEmptyString,
   data: Schema.Struct({
-    email_id: Schema.optional(Schema.String),
+    email_id: Schema.optional(ResendEmailIdSchema),
     tags: Schema.optional(ResendTagsSchema),
   }),
 });
@@ -43,7 +75,7 @@ type ResendWebhookEventInput = Schema.Schema.Type<
 interface ResendWebhookEvent {
   readonly type: string;
   readonly data: {
-    readonly email_id?: string;
+    readonly email_id?: ResendEmailId;
     readonly tags: readonly { readonly name: string; readonly value: string }[];
   };
 }
@@ -54,7 +86,7 @@ const normalizeResendTags = (tags: ResendWebhookEventInput["data"]["tags"]) => {
 
   return Object.entries(tags).map(([name, value]) => ({
     name,
-    value: String(value),
+    value,
   }));
 };
 
@@ -83,8 +115,8 @@ export class ResendWebhookProcessingError extends Data.TaggedError(
     | "resend_webhook_reservation_load_failed"
     | "resend_webhook_reservation_update_failed";
   readonly message: string;
-  readonly eventId?: string;
-  readonly workspaceReservationId?: string;
+  readonly eventId?: ResendWebhookEventId;
+  readonly workspaceReservationId?: WorkspaceReservationId;
   readonly cause?: unknown;
 }> {}
 
@@ -138,7 +170,10 @@ export const ResendWebhookServiceLive = Layer.effect(
     const processVerifiedEvent = Effect.fn(
       "resendWebhook.processVerifiedEvent"
     )(
-      function* (input: { readonly eventId: string; readonly event: unknown }) {
+      function* (input: {
+        readonly eventId: ResendWebhookEventId;
+        readonly event: unknown;
+      }) {
         const event = yield* decodeResendWebhookEvent(input.event).pipe(
           Effect.mapError(
             (cause) =>
@@ -153,15 +188,28 @@ export const ResendWebhookServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({
           eventId: input.eventId,
           eventType: event.type,
-          resendEmailId: event.data.email_id,
         });
 
         if (!isReservationDeliveryEvent(event)) {
           return ignored("non_delivery_event");
         }
 
+        const resendEmailId = event.data.email_id;
+        if (!resendEmailId) {
+          return yield* new ResendWebhookProcessingError({
+            errorCode: "resend_webhook_payload_invalid",
+            message: "Resend delivery webhook payload omitted its email ID.",
+            eventId: input.eventId,
+          });
+        }
+        yield* Effect.annotateLogsScoped({ resendEmailId });
+
         const tags = toTags(event.data.tags);
-        const workspaceReservationId = tags.get("workspaceReservationId");
+        const workspaceReservationId = Option.getOrUndefined(
+          Schema.decodeUnknownOption(workspaceReservationIdSchema)(
+            tags.get("workspaceReservationId")
+          )
+        );
 
         if (
           tags.get("source") !== workspaceFulfillmentSource ||
@@ -309,13 +357,32 @@ export const ResendWebhookServiceLive = Layer.effect(
     return ResendWebhookService.of({
       processWebhook: Effect.fn("resendWebhook.processWebhook")(
         function* (input) {
-          const { id, timestamp, signature } = input.headers;
-          if (!id || !timestamp || !signature) {
-            return yield* new ResendWebhookProcessingError({
-              errorCode: "resend_webhook_headers_missing",
-              message: "Resend webhook signature headers are missing.",
-            });
-          }
+          const headers = yield* Schema.decodeUnknownEffect(
+            ResendWebhookHeadersSchema
+          )(input.headers).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ResendWebhookProcessingError({
+                  errorCode: "resend_webhook_headers_missing",
+                  message:
+                    "Resend webhook signature headers are missing or invalid.",
+                  cause,
+                })
+            )
+          );
+          const payload = yield* Schema.decodeUnknownEffect(
+            ResendWebhookPayloadSchema
+          )(input.payload).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ResendWebhookProcessingError({
+                  errorCode: "resend_webhook_payload_invalid",
+                  message: "Resend webhook request body was invalid.",
+                  eventId: headers.id,
+                  cause,
+                })
+            )
+          );
 
           const webhookSecret = config.webhookSecret;
           const apiKey = config.apiKey;
@@ -324,7 +391,7 @@ export const ResendWebhookServiceLive = Layer.effect(
             return yield* new ResendWebhookProcessingError({
               errorCode: "resend_webhook_secret_missing",
               message: "RESEND_WEBHOOK_SECRET is not configured.",
-              eventId: id,
+              eventId: headers.id,
             });
           }
 
@@ -332,7 +399,7 @@ export const ResendWebhookServiceLive = Layer.effect(
             return yield* new ResendWebhookProcessingError({
               errorCode: "resend_webhook_api_key_missing",
               message: "EMAIL_API_KEY is not configured.",
-              eventId: id,
+              eventId: headers.id,
             });
           }
 
@@ -341,21 +408,21 @@ export const ResendWebhookServiceLive = Layer.effect(
           const verifiedPayload = yield* Effect.try({
             try: () =>
               resend.webhooks.verify({
-                payload: input.payload,
-                headers: { id, timestamp, signature },
+                payload,
+                headers,
                 webhookSecret,
               }),
             catch: (cause) =>
               new ResendWebhookProcessingError({
                 errorCode: "resend_webhook_verification_failed",
                 message: "Resend webhook signature verification failed.",
-                eventId: id,
+                eventId: headers.id,
                 cause,
               }),
           });
 
           return yield* processVerifiedEvent({
-            eventId: id,
+            eventId: headers.id,
             event: verifiedPayload,
           });
         },

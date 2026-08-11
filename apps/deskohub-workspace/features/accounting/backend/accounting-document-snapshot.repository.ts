@@ -1,3 +1,4 @@
+import type { NexiOrderId } from "@deskohub/nexi";
 import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -7,20 +8,30 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
 } from "@/features/accounting/accounting-document-snapshot";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { AccountingSnapshotKeyService } from "./accounting-snapshot-key.service";
 import { decryptAccountingSnapshot } from "./accounting-snapshot-sql";
+
+export type AccountingPaymentReference =
+  | { readonly type: "paymentAttemptId"; readonly id: PaymentAttemptId }
+  | { readonly type: "providerOrderId"; readonly id: NexiOrderId }
+  | {
+      readonly type: "workspaceReservationId";
+      readonly id: WorkspaceReservationId;
+    };
 
 export class AccountingDocumentSnapshotStorageError extends Data.TaggedError(
   "AccountingDocumentSnapshotStorageError"
 )<{
   readonly operation: "decrypt" | "encrypt" | "load" | "parse" | "validate";
-  readonly paymentAttemptId: string;
+  readonly paymentReference: AccountingPaymentReference;
   readonly message: string;
 }> {}
 
 export interface IAccountingDocumentSnapshotRepository {
   readonly findByPaymentAttemptId: (
-    paymentAttemptId: string
+    paymentAttemptId: PaymentAttemptId
   ) => Effect.Effect<
     AccountingDocumentSnapshot | null,
     AccountingDocumentSnapshotStorageError | EffectDrizzleQueryError
@@ -40,7 +51,7 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
       return {
         findByPaymentAttemptId: Effect.fn(
           "AccountingDocumentSnapshotRepository.findByPaymentAttemptId"
-        )(function* (paymentAttemptId: string) {
+        )(function* (paymentAttemptId: PaymentAttemptId) {
           const [metadata] = yield* db
             .select({ keyId: accountingDocumentSnapshots.keyId })
             .from(accountingDocumentSnapshots)
@@ -56,7 +67,10 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
               () =>
                 new AccountingDocumentSnapshotStorageError({
                   operation: "decrypt",
-                  paymentAttemptId,
+                  paymentReference: {
+                    type: "paymentAttemptId",
+                    id: paymentAttemptId,
+                  },
                   message: "Accounting snapshot decryption key is unavailable.",
                 })
             )
@@ -80,7 +94,10 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
                 () =>
                   new AccountingDocumentSnapshotStorageError({
                     operation: "decrypt",
-                    paymentAttemptId,
+                    paymentReference: {
+                      type: "paymentAttemptId",
+                      id: paymentAttemptId,
+                    },
                     message: "Accounting snapshot could not be decrypted.",
                   })
               )
@@ -89,7 +106,10 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
           if (!row) {
             return yield* new AccountingDocumentSnapshotStorageError({
               operation: "load",
-              paymentAttemptId,
+              paymentReference: {
+                type: "paymentAttemptId",
+                id: paymentAttemptId,
+              },
               message: "Accounting snapshot disappeared while loading.",
             });
           }
@@ -99,7 +119,10 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
             catch: () =>
               new AccountingDocumentSnapshotStorageError({
                 operation: "parse",
-                paymentAttemptId,
+                paymentReference: {
+                  type: "paymentAttemptId",
+                  id: paymentAttemptId,
+                },
                 message: "Accounting snapshot JSON is invalid.",
               }),
           });
@@ -112,7 +135,10 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
               () =>
                 new AccountingDocumentSnapshotStorageError({
                   operation: "parse",
-                  paymentAttemptId,
+                  paymentReference: {
+                    type: "paymentAttemptId",
+                    id: paymentAttemptId,
+                  },
                   message: "Accounting snapshot schema is invalid.",
                 })
             )

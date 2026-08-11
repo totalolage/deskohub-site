@@ -1,5 +1,10 @@
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+} from "@deskohub/dotypos";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { Effect } from "effect";
+import type { DatabaseClient } from "@/db/database-client";
 import {
   discountCodeCustomers,
   discountCodeRedemptions,
@@ -7,73 +12,81 @@ import {
   discountProductTargets,
   discounts,
 } from "@/db/schema";
-import type { DatabaseClient } from "@/db/database-client";
-import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
+import {
+  canonicalDiscountCodeSchema,
+  discountCodeIdSchema,
+  storedDiscountIdSchema,
+} from "@/features/discounts/persistence-contracts";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { type WorkspaceE2EError, workspaceE2EError } from "../errors";
 import { log } from "../runtime";
+import { E2EDatabase } from "./database.service";
 import {
   runDatabaseOperation,
   runRetrySafeDatabaseOperation,
 } from "./database-operation";
-import { E2EDatabase } from "./database.service";
 
-export const E2E_CALENDAR_SALE_DISCOUNT_ID =
-  "454784dd-380b-43a1-bae7-cc070bf1aec2" as StoredDiscountId;
+export const E2E_CALENDAR_SALE_DISCOUNT_ID = storedDiscountIdSchema.make(
+  "454784dd-380b-43a1-bae7-cc070bf1aec2"
+);
 
 export const discountCodeFixtures = {
   partial: {
-    code: "E2E_PARTIAL" as CanonicalDiscountCode,
-    id: "6bb95a13-3801-4ba5-947e-c24cd3a416a2" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_PARTIAL"),
+    id: discountCodeIdSchema.make("6bb95a13-3801-4ba5-947e-c24cd3a416a2"),
   },
   inactive: {
-    code: "E2E_INACTIVE" as CanonicalDiscountCode,
-    id: "2f7e1000-732a-4ab7-9513-a3aaef764aae" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_INACTIVE"),
+    id: discountCodeIdSchema.make("2f7e1000-732a-4ab7-9513-a3aaef764aae"),
   },
   notStarted: {
-    code: "E2E_NOT_STARTED" as CanonicalDiscountCode,
-    id: "6288a6cd-bc01-46d4-a87a-067b01e64226" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_NOT_STARTED"),
+    id: discountCodeIdSchema.make("6288a6cd-bc01-46d4-a87a-067b01e64226"),
   },
   expired: {
-    code: "E2E_EXPIRED" as CanonicalDiscountCode,
-    id: "e33f90e0-311d-445f-b73b-29725e7f00ab" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_EXPIRED"),
+    id: discountCodeIdSchema.make("e33f90e0-311d-445f-b73b-29725e7f00ab"),
   },
   customerIneligible: {
-    code: "E2E_NOT_YOURS" as CanonicalDiscountCode,
-    id: "f80104f4-0db4-4c83-a1a5-e42976e041bd" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_NOT_YOURS"),
+    id: discountCodeIdSchema.make("f80104f4-0db4-4c83-a1a5-e42976e041bd"),
   },
   productIneligible: {
-    code: "E2E_WRONG_PRODUCT" as CanonicalDiscountCode,
-    id: "f8774fff-009a-474c-a338-3b52c612a16c" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_WRONG_PRODUCT"),
+    id: discountCodeIdSchema.make("f8774fff-009a-474c-a338-3b52c612a16c"),
   },
   expiresBeforePayment: {
-    code: "E2E_EXPIRES_BEFORE_PAY" as CanonicalDiscountCode,
-    id: "2169ca5a-b422-46b2-a58d-8881e15db3ef" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_EXPIRES_BEFORE_PAY"),
+    id: discountCodeIdSchema.make("2169ca5a-b422-46b2-a58d-8881e15db3ef"),
   },
   zeroTotal: {
-    code: "E2E_ZERO_TOTAL" as CanonicalDiscountCode,
-    id: "019c91de-61d7-7ccb-adb8-f4de2a5a32b8" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_ZERO_TOTAL"),
+    id: discountCodeIdSchema.make("019c91de-61d7-7ccb-adb8-f4de2a5a32b8"),
   },
   capacityOne: {
-    code: "E2E_CAPACITY_ONE" as CanonicalDiscountCode,
-    id: "307e7850-c893-46e2-ad8e-bf5f67a21e42" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_CAPACITY_ONE"),
+    id: discountCodeIdSchema.make("307e7850-c893-46e2-ad8e-bf5f67a21e42"),
   },
   onePerCustomer: {
-    code: "E2E_ONE_PER_CUSTOMER" as CanonicalDiscountCode,
-    id: "2b89472c-a804-461a-b07d-a2a69e2cc7ec" as DiscountCodeId,
+    code: canonicalDiscountCodeSchema.make("E2E_ONE_PER_CUSTOMER"),
+    id: discountCodeIdSchema.make("2b89472c-a804-461a-b07d-a2a69e2cc7ec"),
   },
 } as const;
 
-const partialCodeDiscountId =
-  "816a6ec2-514e-45d2-afdd-5c04f13f9a84" as StoredDiscountId;
-const wrongProductCodeDiscountId =
-  "521293fa-37da-4067-b1bb-7b400112df34" as StoredDiscountId;
-const zeroTotalDiscountId =
-  "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId;
+const partialCodeDiscountId = storedDiscountIdSchema.make(
+  "816a6ec2-514e-45d2-afdd-5c04f13f9a84"
+);
+const wrongProductCodeDiscountId = storedDiscountIdSchema.make(
+  "521293fa-37da-4067-b1bb-7b400112df34"
+);
+const zeroTotalDiscountId = storedDiscountIdSchema.make(
+  "019c91dd-c560-7e55-b9d8-c95065efd51d"
+);
 
 const definitions: readonly DiscountDefinitionFixture[] = [
   {
@@ -118,139 +131,137 @@ export const seedDiscountE2EFixtures: Effect.Effect<
   void,
   WorkspaceE2EError,
   E2EDatabase
-> =
-  Effect.gen(function* () {
-    const { db } = yield* E2EDatabase;
+> = Effect.gen(function* () {
+  const { db } = yield* E2EDatabase;
 
-    yield* runDatabaseOperation(
-      "seed E2E discount fixtures",
-      db.transaction((tx) =>
-        Effect.gen(function* () {
-          for (const definition of definitions) {
-            yield* tx
-              .insert(discounts)
-              .values({
-                id: definition.id,
+  yield* runDatabaseOperation(
+    "seed E2E discount fixtures",
+    db.transaction((tx) =>
+      Effect.gen(function* () {
+        for (const definition of definitions) {
+          yield* tx
+            .insert(discounts)
+            .values({
+              id: definition.id,
+              labels: definition.labels,
+              percentageBasisPoints: definition.basisPoints,
+            })
+            .onConflictDoUpdate({
+              target: discounts.id,
+              set: {
+                fixedAmountCurrency: null,
+                fixedAmountExponent: null,
+                fixedAmountValue: null,
                 labels: definition.labels,
                 percentageBasisPoints: definition.basisPoints,
-              })
-              .onConflictDoUpdate({
-                target: discounts.id,
-                set: {
-                  fixedAmountCurrency: null,
-                  fixedAmountExponent: null,
-                  fixedAmountValue: null,
-                  labels: definition.labels,
-                  percentageBasisPoints: definition.basisPoints,
-                  updatedAt: Temporal.Now.instant(),
-                },
-              });
-            yield* tx
-              .delete(discountProductTargets)
-              .where(eq(discountProductTargets.discountId, definition.id));
-            yield* tx
-              .insert(discountProductTargets)
-              .values(
-                definition.products.map((productTarget) => ({
-                  discountId: definition.id,
-                  productTarget,
-                }))
-              )
-              .onConflictDoNothing();
-          }
+                updatedAt: Temporal.Now.instant(),
+              },
+            });
+          yield* tx
+            .delete(discountProductTargets)
+            .where(eq(discountProductTargets.discountId, definition.id));
+          yield* tx
+            .insert(discountProductTargets)
+            .values(
+              definition.products.map((productTarget) => ({
+                discountId: definition.id,
+                productTarget,
+              }))
+            )
+            .onConflictDoNothing();
+        }
 
-          const capacity = yield* tx
-            .select({ activeUses: count() })
-            .from(discountCodeRedemptions)
-            .where(
-              and(
-                eq(
-                  discountCodeRedemptions.codeId,
-                  discountCodeFixtures.capacityOne.id as DiscountCodeId
-                ),
-                inArray(discountCodeRedemptions.state, [
-                  "reserved",
-                  "redeemed",
-                ])
-              )
-            );
-          const capacityLimit = (capacity[0]?.activeUses ?? 0) + 1;
-          const now = Temporal.Now.instant().epochMilliseconds;
-          const codeFixtures: readonly DiscountCodeFixture[] = [
-            {
-              ...discountCodeFixtures.partial,
-              discountId: partialCodeDiscountId,
-              enabled: true,
-            },
-            {
-              ...discountCodeFixtures.inactive,
-              discountId: partialCodeDiscountId,
-              enabled: false,
-            },
-            {
-              ...discountCodeFixtures.notStarted,
-              discountId: partialCodeDiscountId,
-              enabled: true,
-              validFrom: Temporal.Instant.fromEpochMilliseconds(
-                now + 24 * 60 * 60 * 1000
+        const capacity = yield* tx
+          .select({ activeUses: count() })
+          .from(discountCodeRedemptions)
+          .where(
+            and(
+              eq(
+                discountCodeRedemptions.codeId,
+                discountCodeFixtures.capacityOne.id
               ),
-            },
-            {
-              ...discountCodeFixtures.expired,
-              discountId: partialCodeDiscountId,
-              enabled: true,
-              validUntil: Temporal.Instant.fromEpochMilliseconds(
-                now - 60 * 60 * 1000
-              ),
-            },
-            {
-              ...discountCodeFixtures.customerIneligible,
-              allowedCustomerIds: ["workspace-e2e-other-customer"],
-              discountId: partialCodeDiscountId,
-              enabled: true,
-            },
-            {
-              ...discountCodeFixtures.productIneligible,
-              discountId: wrongProductCodeDiscountId,
-              enabled: true,
-            },
-            {
-              ...discountCodeFixtures.expiresBeforePayment,
-              discountId: partialCodeDiscountId,
-              enabled: true,
-              validUntil: Temporal.Instant.fromEpochMilliseconds(
-                now + 24 * 60 * 60 * 1000
-              ),
-            },
-            {
-              ...discountCodeFixtures.zeroTotal,
-              discountId: zeroTotalDiscountId,
-              enabled: true,
-            },
-            {
-              ...discountCodeFixtures.capacityOne,
-              discountId: zeroTotalDiscountId,
-              enabled: true,
-              maxUses: capacityLimit,
-            },
-            {
-              ...discountCodeFixtures.onePerCustomer,
-              discountId: zeroTotalDiscountId,
-              enabled: true,
-            },
-          ];
+              inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])
+            )
+          );
+        const capacityLimit = (capacity[0]?.activeUses ?? 0) + 1;
+        const now = Temporal.Now.instant().epochMilliseconds;
+        const codeFixtures: readonly DiscountCodeFixture[] = [
+          {
+            ...discountCodeFixtures.partial,
+            discountId: partialCodeDiscountId,
+            enabled: true,
+          },
+          {
+            ...discountCodeFixtures.inactive,
+            discountId: partialCodeDiscountId,
+            enabled: false,
+          },
+          {
+            ...discountCodeFixtures.notStarted,
+            discountId: partialCodeDiscountId,
+            enabled: true,
+            validFrom: Temporal.Instant.fromEpochMilliseconds(
+              now + 24 * 60 * 60 * 1000
+            ),
+          },
+          {
+            ...discountCodeFixtures.expired,
+            discountId: partialCodeDiscountId,
+            enabled: true,
+            validUntil: Temporal.Instant.fromEpochMilliseconds(
+              now - 60 * 60 * 1000
+            ),
+          },
+          {
+            ...discountCodeFixtures.customerIneligible,
+            allowedCustomerIds: [
+              DotyposCustomerIdSchema.make("workspace-e2e-other-customer"),
+            ],
+            discountId: partialCodeDiscountId,
+            enabled: true,
+          },
+          {
+            ...discountCodeFixtures.productIneligible,
+            discountId: wrongProductCodeDiscountId,
+            enabled: true,
+          },
+          {
+            ...discountCodeFixtures.expiresBeforePayment,
+            discountId: partialCodeDiscountId,
+            enabled: true,
+            validUntil: Temporal.Instant.fromEpochMilliseconds(
+              now + 24 * 60 * 60 * 1000
+            ),
+          },
+          {
+            ...discountCodeFixtures.zeroTotal,
+            discountId: zeroTotalDiscountId,
+            enabled: true,
+          },
+          {
+            ...discountCodeFixtures.capacityOne,
+            discountId: zeroTotalDiscountId,
+            enabled: true,
+            maxUses: capacityLimit,
+          },
+          {
+            ...discountCodeFixtures.onePerCustomer,
+            discountId: zeroTotalDiscountId,
+            enabled: true,
+          },
+        ];
 
-          for (const code of codeFixtures) {
-            yield* seedDiscountCode(tx, code);
-          }
-        })
-      )
-    );
+        for (const code of codeFixtures) {
+          yield* seedDiscountCode(tx, code);
+        }
+      })
+    )
+  );
 
-    log("Discount E2E fixtures seeded");
-  });
+  log("Discount E2E fixtures seeded");
+});
 export const expireDiscountCodeForE2E = (
-  codeId: string
+  codeId: DiscountCodeId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -262,7 +273,7 @@ export const expireDiscountCodeForE2E = (
           updatedAt: Temporal.Now.instant(),
           validUntil: Temporal.Instant.from("2000-01-01T00:00:00Z"),
         })
-        .where(eq(discountCodes.id, codeId as DiscountCodeId))
+        .where(eq(discountCodes.id, codeId))
         .returning({ id: discountCodes.id })
     );
 
@@ -295,15 +306,17 @@ export const setE2ECalendarSaleCoworkEligibility = (
               productTarget: product,
             })
             .onConflictDoNothing()
-        : db.delete(discountProductTargets).where(
-            and(
-              eq(
-                discountProductTargets.discountId,
-                E2E_CALENDAR_SALE_DISCOUNT_ID
-              ),
-              eq(discountProductTargets.productTarget, product)
+        : db
+            .delete(discountProductTargets)
+            .where(
+              and(
+                eq(
+                  discountProductTargets.discountId,
+                  E2E_CALENDAR_SALE_DISCOUNT_ID
+                ),
+                eq(discountProductTargets.productTarget, product)
+              )
             )
-          )
     );
   });
 
@@ -315,7 +328,7 @@ interface DiscountDefinitionFixture {
 }
 
 interface DiscountCodeFixture {
-  readonly allowedCustomerIds?: readonly string[];
+  readonly allowedCustomerIds?: readonly DotyposCustomerId[];
   readonly code: CanonicalDiscountCode;
   readonly discountId: StoredDiscountId;
   readonly enabled: boolean;

@@ -3,7 +3,7 @@ import {
   isMeetingRoomWholeDayReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
 import { workspaceE2ETimeouts } from "./timeouts";
-import type { CheckoutData } from "./types";
+import type { CheckoutData, CheckoutRow } from "./types";
 
 const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
   Temporal.PlainDate.from(office.startsOn).until(
@@ -870,7 +870,7 @@ export const getSubmitContactFormScript = (data: {
 
 export const getAssertFulfillmentFailedSupportScript = (
   data: CheckoutData,
-  orderId: string
+  orderId: CheckoutRow["reservation_id"]
 ) => `
 (() => {
   const expected = ${JSON.stringify({ locale: data.locale, orderId })};

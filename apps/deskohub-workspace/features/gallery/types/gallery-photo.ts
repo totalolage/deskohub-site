@@ -1,3 +1,4 @@
+import type { CloudinaryPublicId } from "@deskohub/cloudinary/schema";
 import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
@@ -5,8 +6,8 @@ const galleryImageSize = 960;
 const lightboxImageSize = 1920;
 
 export type GalleryPhoto = {
-  id: string;
-  publicId: string;
+  id: CloudinaryPublicId;
+  publicId: CloudinaryPublicId;
   src: string;
   fullSrc: string;
   width: number;

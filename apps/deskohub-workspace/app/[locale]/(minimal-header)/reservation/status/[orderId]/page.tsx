@@ -15,6 +15,7 @@ import { CheckoutStatusPage } from "@/features/checkout/components/checkout-stat
 import { CheckoutStatusPageSkeleton } from "@/features/checkout/components/checkout-status-page-skeleton";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import { reservationStatusPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
@@ -33,7 +34,7 @@ type LocalizedCheckoutStatusPageProps = {
 };
 
 const decodeCheckoutStatusParams = Schema.decodeUnknownOption(
-  Schema.Struct({ orderId: Schema.NonEmptyString })
+  Schema.Struct({ orderId: workspaceReservationIdSchema })
 );
 
 const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(

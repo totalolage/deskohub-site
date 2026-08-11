@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
@@ -146,7 +147,7 @@ const preparePaymentTerminalState = ({
   state,
   timeoutMs,
 }: {
-  orderId: string;
+  orderId: WorkspaceReservationId;
   scenario: PaymentTerminalScenario;
   state: CheckoutFlowState;
   timeoutMs: number;
@@ -197,7 +198,7 @@ const assertTerminalStatusPage = ({
   session,
 }: {
   config: WorkspaceE2EConfig;
-  orderId: string;
+  orderId: WorkspaceReservationId;
   run: Runner;
   scenario: PaymentTerminalScenario;
   session: string;

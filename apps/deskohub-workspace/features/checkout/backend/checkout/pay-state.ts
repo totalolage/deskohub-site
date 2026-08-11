@@ -184,7 +184,7 @@ export const sealPayState = Effect.fn("payState.seal")(function* (
     onExcessProperty: "error",
   })(state).pipe(Effect.mapError(toPayStateTokenError));
 
-  return yield* sealCheckoutState(encodedState, options).pipe(
+  return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
     Effect.mapError(toPayStateTokenError)
   );
 });

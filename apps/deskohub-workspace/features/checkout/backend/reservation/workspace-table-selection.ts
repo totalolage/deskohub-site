@@ -1,5 +1,8 @@
-import { ValidationError } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import {
+  type DotyposTable,
+  type DotyposTableId,
+  ValidationError,
+} from "@deskohub/dotypos";
 import { Effect, Match, Schema } from "effect";
 import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
 import {
@@ -28,11 +31,11 @@ const workspaceTableSeatCapacitySchema = Schema.NumberFromString.pipe(
 });
 
 interface WorkspaceTableCandidate {
-  readonly table: Table;
+  readonly table: DotyposTable;
   readonly seatCapacity: number;
 }
 
-const compareWorkspaceTables = (left: Table, right: Table) => {
+const compareWorkspaceTables = (left: DotyposTable, right: DotyposTable) => {
   const nameComparison = tableNameCollator.compare(left.name, right.name);
 
   if (nameComparison !== 0) return nameComparison;
@@ -41,13 +44,13 @@ const compareWorkspaceTables = (left: Table, right: Table) => {
 };
 
 export const getWorkspaceTableCandidates = (
-  tables: readonly Table[],
+  tables: readonly DotyposTable[],
   requiredTags: readonly string[]
 ) => tables.filter((table) => isAssignableWorkspaceTable(table, requiredTags));
 
 export const getWorkspaceTableSeatCapacity = Effect.fn(
   "WorkspaceTable.getSeatCapacity"
-)((table: Table) =>
+)((table: DotyposTable) =>
   Schema.decodeUnknownEffect(workspaceTableSeatCapacitySchema)(
     table.seats
   ).pipe(
@@ -62,9 +65,9 @@ export const getWorkspaceTableSeatCapacity = Effect.fn(
 );
 
 export const hasAvailableWorkspaceTableCandidate = (
-  tables: readonly Table[],
+  tables: readonly DotyposTable[],
   requiredTags: readonly string[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats = workspaceBookingSeatCount,
   requireEmpty = false
 ) =>
@@ -84,9 +87,9 @@ export const hasAvailableWorkspaceTableCandidate = (
   );
 
 export const selectWorkspaceTableFromCandidates = (
-  candidates: readonly Table[],
-  allTables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  candidates: readonly DotyposTable[],
+  allTables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats = workspaceBookingSeatCount,
   requireEmpty = false
 ) =>
@@ -104,15 +107,15 @@ export const selectWorkspaceTableFromCandidates = (
 
 const selectDecodedWorkspaceTableFromCandidates = (
   candidates: readonly WorkspaceTableCandidate[],
-  allTables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  allTables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats: number,
   requireEmpty: boolean
 ) => {
   const scoringTablesByRoom = getWorkspaceScoringTablesByRoom(allTables);
   const maxDistanceByRoom =
     getWorkspaceTableMaxDistanceByRoom(scoringTablesByRoom);
-  let selectedTable: Table | undefined;
+  let selectedTable: DotyposTable | undefined;
   let selectedScore = Number.NEGATIVE_INFINITY;
 
   for (const candidate of candidates) {
@@ -150,7 +153,7 @@ const selectDecodedWorkspaceTableFromCandidates = (
   return selectedTable;
 };
 
-const decodeWorkspaceTableCandidates = (tables: readonly Table[]) =>
+const decodeWorkspaceTableCandidates = (tables: readonly DotyposTable[]) =>
   Effect.forEach(tables, (table) =>
     getWorkspaceTableSeatCapacity(table).pipe(
       Effect.map((seatCapacity) => ({ table, seatCapacity }))
@@ -158,7 +161,7 @@ const decodeWorkspaceTableCandidates = (tables: readonly Table[]) =>
   );
 
 const isAssignableWorkspaceTable = (
-  table: Table,
+  table: DotyposTable,
   requiredTags: readonly string[]
 ) => {
   const tableId = getAssignableDotyposTableId(table);
@@ -171,7 +174,7 @@ const isAssignableWorkspaceTable = (
 
 const hasWorkspaceTableCapacity = (
   candidate: WorkspaceTableCandidate,
-  occupancyByTableId: ReadonlyMap<string, number>,
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats: number,
   requireEmpty: boolean
 ) => {
@@ -188,10 +191,10 @@ const hasWorkspaceTableCapacity = (
 };
 
 const scoreWorkspaceTableCandidate = (
-  candidate: Table,
-  scoringTables: readonly Table[],
+  candidate: DotyposTable,
+  scoringTables: readonly DotyposTable[],
   maxDistance: number,
-  occupancyByTableId: ReadonlyMap<string, number>
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
 ) => {
   const candidateTableId = getAssignableDotyposTableId(candidate);
   const candidateOccupancy = candidateTableId
@@ -220,8 +223,8 @@ const scoreWorkspaceTableCandidate = (
   return distanceScore - 2 * candidateOccupancy ** 2;
 };
 
-const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
-  const scoringTablesByRoom = new Map<string, Table[]>();
+const getWorkspaceScoringTablesByRoom = (tables: readonly DotyposTable[]) => {
+  const scoringTablesByRoom = new Map<string, DotyposTable[]>();
 
   for (const table of tables) {
     if (!isDisplayableWorkspaceTable(table)) continue;
@@ -238,7 +241,7 @@ const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
   return scoringTablesByRoom;
 };
 
-export const isDisplayableWorkspaceTable = (table: Table) => {
+export const isDisplayableWorkspaceTable = (table: DotyposTable) => {
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
   if (table.enabled !== true || table.display !== true) return false;
@@ -263,11 +266,11 @@ const hasWorkspaceReservationTableTag = (
     })
   );
 
-const getWorkspaceTableRoomKey = (table: Table) =>
+const getWorkspaceTableRoomKey = (table: DotyposTable) =>
   table.locationName ?? fallbackRoomKey;
 
 const getWorkspaceTableMaxDistanceByRoom = (
-  scoringTablesByRoom: ReadonlyMap<string, readonly Table[]>
+  scoringTablesByRoom: ReadonlyMap<string, readonly DotyposTable[]>
 ) => {
   const maxDistanceByRoom = new Map<string, number>();
 
@@ -278,13 +281,13 @@ const getWorkspaceTableMaxDistanceByRoom = (
   return maxDistanceByRoom;
 };
 
-const getWorkspaceTableDistance = (left: Table, right: Table) =>
+const getWorkspaceTableDistance = (left: DotyposTable, right: DotyposTable) =>
   Math.hypot(
     parseCoordinate(left.positionX) - parseCoordinate(right.positionX),
     parseCoordinate(left.positionY) - parseCoordinate(right.positionY)
   );
 
-const getWorkspaceTableMaxDistance = (tables: readonly Table[]) => {
+const getWorkspaceTableMaxDistance = (tables: readonly DotyposTable[]) => {
   let maxDistance = 0;
 
   for (const left of tables) {

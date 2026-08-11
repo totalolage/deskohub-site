@@ -1,3 +1,7 @@
+import type {
+  PostHogDistinctId,
+  PostHogSessionId,
+} from "@deskohub/posthog/identifiers";
 import {
   getPostHogRequestContextFromCookieHeader,
   getPostHogRequestContextFromRequestHeadersWithDiagnostics,
@@ -8,8 +12,8 @@ import {
 export { logUnexpectedConsentCookieReasons };
 
 export type PostHogLogAnnotations = {
-  readonly posthogDistinctId?: string;
-  readonly sessionId?: string;
+  readonly posthogDistinctId?: PostHogDistinctId;
+  readonly sessionId?: PostHogSessionId;
 };
 
 interface PostHogLogAnnotationResult {

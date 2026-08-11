@@ -1,3 +1,4 @@
+import type { DotyposReservationId } from "@deskohub/dotypos";
 import { Cause, Effect, Exit } from "effect";
 import { getWorkspaceE2EDateInterval } from "./capacity";
 import type { DatasourceConfig } from "./config";
@@ -185,7 +186,10 @@ export const cleanupOwnedCheckoutFlowStates = (
 ): Effect.Effect<WorkspaceE2EError | undefined, never, E2EDatabase> =>
   Effect.gen(function* () {
     const cleanupErrors: WorkspaceE2EError[] = [];
-    const reservationOwners = new Map<string, CheckoutFlowState[]>();
+    const reservationOwners = new Map<
+      DotyposReservationId,
+      CheckoutFlowState[]
+    >();
     const lookupResults = yield* Effect.all(
       flowStates.map((state) => {
         if (state.checkoutRow?.dotypos_reservation_id || !state.orderId) {

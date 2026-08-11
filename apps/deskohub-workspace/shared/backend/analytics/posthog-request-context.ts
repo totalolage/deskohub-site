@@ -1,4 +1,8 @@
-import { Effect } from "effect";
+import {
+  PostHogDistinctId,
+  PostHogSessionId,
+} from "@deskohub/posthog/identifiers";
+import { Effect, Option, Schema } from "effect";
 import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
 import {
   getAcceptedConsentCategoriesFromCookieValue,
@@ -14,13 +18,13 @@ const POSTHOG_DISTINCT_ID_HEADER = "X-POSTHOG-DISTINCT-ID";
 const POSTHOG_SESSION_ID_HEADER = "X-POSTHOG-SESSION-ID";
 
 export interface PostHogRequestContext {
-  readonly distinctId?: string;
-  readonly sessionId?: string;
+  readonly distinctId?: PostHogDistinctId;
+  readonly sessionId?: PostHogSessionId;
 }
 
 interface PostHogCookieValues {
-  readonly distinctId?: string;
-  readonly sessionId?: string;
+  readonly distinctId?: unknown;
+  readonly sessionId?: unknown;
 }
 
 export interface PostHogRequestContextResult {
@@ -32,9 +36,16 @@ export function getPostHogRequestContextFromCookieValues({
   distinctId,
   sessionId,
 }: PostHogCookieValues): PostHogRequestContext {
+  const decodedDistinctId = Option.getOrUndefined(
+    Schema.decodeUnknownOption(PostHogDistinctId)(distinctId)
+  );
+  const decodedSessionId = Option.getOrUndefined(
+    Schema.decodeUnknownOption(PostHogSessionId)(sessionId)
+  );
+
   return {
-    ...(distinctId ? { distinctId } : {}),
-    ...(sessionId ? { sessionId } : {}),
+    ...(decodedDistinctId ? { distinctId: decodedDistinctId } : {}),
+    ...(decodedSessionId ? { sessionId: decodedSessionId } : {}),
   };
 }
 

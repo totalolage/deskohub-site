@@ -1,5 +1,7 @@
+import type { DotyposDiscountGroupId } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
+import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
@@ -784,7 +786,7 @@ const executeCustomerDiscountChangesBeforePayment = ({
   readonly customerDiscount: ExpectedDiscountApplication;
   readonly data: CheckoutData;
   readonly datasourceConfig: DatasourceConfig;
-  readonly discountGroupId: string;
+  readonly discountGroupId: DotyposDiscountGroupId;
   readonly run: Runner;
   readonly runStep: WorkspaceE2EStepRunner;
   readonly session: string;
@@ -1099,7 +1101,7 @@ export const executeDiscountCodeExpiresBeforePayment = ({
   state,
 }: {
   readonly code: string;
-  readonly codeId: string;
+  readonly codeId: DiscountCodeId;
   readonly config: WorkspaceE2EConfig;
   readonly data: CheckoutData;
   readonly run: Runner;

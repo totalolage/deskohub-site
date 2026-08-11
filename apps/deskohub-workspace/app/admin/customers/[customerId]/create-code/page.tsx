@@ -2,9 +2,9 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerDiscountCodeCreationForm } from "@/features/discounts/admin/customer-code-creation";
 import { loadDiscountAdminCustomerCodeCreationPageData } from "@/features/discounts/admin/page-data.server";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
 export default async function CustomerDiscountCodeCreationPage({
   params,
@@ -14,7 +14,7 @@ export default async function CustomerDiscountCodeCreationPage({
   const { customerId } = await params;
   const { customer, discounts } =
     await loadDiscountAdminCustomerCodeCreationPageData(
-      customerId as DotyposCustomerId
+      requireDotyposCustomerRouteId(customerId)
     );
 
   return (

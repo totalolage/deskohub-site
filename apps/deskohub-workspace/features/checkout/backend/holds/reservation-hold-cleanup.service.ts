@@ -5,6 +5,7 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -33,7 +34,7 @@ export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
 
 export interface ReservationHoldCleanupService {
   readonly cancelOrderHold: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly holdExpiredAt?: Temporal.Instant;
   }) => Effect.Effect<
     ReservationHoldCleanupOutcome,
@@ -68,7 +69,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
       function* (input: {
-        readonly orderId: string;
+        readonly orderId: WorkspaceReservationId;
         readonly holdExpiredAt?: Temporal.Instant;
       }) {
         yield* Effect.annotateLogsScoped({ input });

@@ -1,6 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { type FeatureFlag, make } from "../generated/effect.gen";
+import type { PostHogProjectId } from "../identifiers";
 import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagError } from "./errors";
 
@@ -34,7 +35,7 @@ export interface PostHogFeatureFlagDefinition {
 export type PostHogFeatureFlagPageSource = (input: {
   readonly limit: number;
   readonly offset: number;
-  readonly projectId: string;
+  readonly projectId: PostHogProjectId;
 }) => Effect.Effect<
   {
     readonly count: number;
@@ -90,7 +91,7 @@ export class PostHogFeatureFlagService extends Context.Service<
 }
 
 export const listPostHogFeatureFlagDefinitions = (
-  projectId: string,
+  projectId: PostHogProjectId,
   listPage: PostHogFeatureFlagPageSource
 ) =>
   Effect.gen(function* () {

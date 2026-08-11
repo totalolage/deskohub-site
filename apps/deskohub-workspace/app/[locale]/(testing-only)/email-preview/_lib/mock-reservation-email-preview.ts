@@ -1,6 +1,13 @@
+import {
+  DotyposCloudIdSchema,
+  DotyposCustomerIdSchema,
+  DotyposReservationIdSchema,
+  DotyposTableIdSchema,
+} from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Temporal } from "@js-temporal/polyfill";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const mockDate = Temporal.Instant.from("2026-06-12T09:00:00.000+02:00");
 const mockEndDate = Temporal.Instant.from("2026-06-13T09:00:00.000+02:00");
@@ -23,9 +30,9 @@ export const workspaceReservationEmailPreviewCustomer: Customer = {
 export const createWorkspaceReservationEmailPreviewReservation = (
   locale: string
 ): WorkspaceReservationDetails => ({
-  id: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
-  dotyposCustomerId: "987654321",
-  dotyposReservationId: "123456789",
+  id: workspaceReservationIdSchema.make("workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C"),
+  dotyposCustomerId: DotyposCustomerIdSchema.make("987654321"),
+  dotyposReservationId: DotyposReservationIdSchema.make("123456789"),
   customerAccessCode: "4829",
   reservationDetails: {
     kind: "cowork",
@@ -40,12 +47,12 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   seats: 1,
   tableName: workspaceReservationEmailPreviewTableName,
   tableMap: {
-    assignedTableId: "desk-12",
+    assignedTableId: DotyposTableIdSchema.make("desk-12"),
     roomName: "Main room",
     tables: [
       {
-        _cloudId: "preview-cloud-id",
-        id: "desk-12",
+        _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
+        id: DotyposTableIdSchema.make("desk-12"),
         name: "12",
         locationName: "Main room",
         positionX: "40",
@@ -53,8 +60,8 @@ export const createWorkspaceReservationEmailPreviewReservation = (
         type: "SQUARE",
       },
       {
-        _cloudId: "preview-cloud-id",
-        id: "desk-11",
+        _cloudId: DotyposCloudIdSchema.make("preview-cloud-id"),
+        id: DotyposTableIdSchema.make("desk-11"),
         name: "11",
         locationName: "Main room",
         positionX: "130",

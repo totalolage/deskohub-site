@@ -1,9 +1,11 @@
 import "server-only";
 
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { env, getAccountingDocumentSnapshotSecret } from "@/env";
-
-const snapshotKeyIdPattern = /^[A-Z][A-Z0-9_]{2,31}$/;
+import {
+  type AccountingSnapshotKeyId,
+  accountingSnapshotKeyIdSchema,
+} from "@/features/accounting/accounting-document-snapshot";
 
 export class AccountingSnapshotKeyError extends Data.TaggedError(
   "AccountingSnapshotKeyError"
@@ -13,29 +15,36 @@ export class AccountingSnapshotKeyError extends Data.TaggedError(
 }> {}
 
 export interface AccountingSnapshotKey {
-  readonly id: string;
+  readonly id: AccountingSnapshotKeyId;
   readonly secret: string;
 }
+
+const decodeAccountingSnapshotKeyId = Schema.decodeUnknownEffect(
+  accountingSnapshotKeyIdSchema
+);
 
 const getAccountingSnapshotKey = Effect.fn(
   "AccountingSnapshotKeyService.getAccountingSnapshotKey"
 )(function* (keyId: string) {
-  if (!snapshotKeyIdPattern.test(keyId)) {
-    return yield* new AccountingSnapshotKeyError({
-      keyId,
-      message: "Accounting snapshot key ID is invalid.",
-    });
-  }
+  const decodedKeyId = yield* decodeAccountingSnapshotKeyId(keyId).pipe(
+    Effect.mapError(
+      () =>
+        new AccountingSnapshotKeyError({
+          keyId,
+          message: "Accounting snapshot key ID is invalid.",
+        })
+    )
+  );
 
-  const secret = getAccountingDocumentSnapshotSecret(keyId);
+  const secret = getAccountingDocumentSnapshotSecret(decodedKeyId);
   if (!secret) {
     return yield* new AccountingSnapshotKeyError({
-      keyId,
+      keyId: decodedKeyId,
       message: "Accounting snapshot key is unavailable or invalid.",
     });
   }
 
-  return { id: keyId, secret };
+  return { id: decodedKeyId, secret } satisfies AccountingSnapshotKey;
 });
 
 export interface IAccountingSnapshotKeyService {
@@ -44,7 +53,7 @@ export interface IAccountingSnapshotKeyService {
     AccountingSnapshotKeyError
   >;
   readonly getById: (
-    keyId: string
+    keyId: AccountingSnapshotKeyId
   ) => Effect.Effect<AccountingSnapshotKey, AccountingSnapshotKeyError>;
 }
 

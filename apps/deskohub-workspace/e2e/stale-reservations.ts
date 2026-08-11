@@ -1,5 +1,9 @@
+import {
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import type { Customer, Reservation } from "@deskohub/dotypos/generated";
-import { Effect, Exit } from "effect";
+import { Effect, Exit, Option, Schema } from "effect";
 
 export type WorkspaceE2EStaleReservationReport = {
   readonly activeCandidateCount: number;
@@ -14,20 +18,20 @@ export type WorkspaceE2EStaleReservationReport = {
 
 interface StaleReservationDependencies<E, R> {
   readonly cancelReservation: (
-    reservationId: string
+    reservationId: DotyposReservationId
   ) => Effect.Effect<void, E, R>;
   readonly listActiveReservations: (
     interval: StaleReservationInterval
   ) => Effect.Effect<readonly Reservation[], E, R>;
   readonly loadReservation: (
-    reservationId: string
+    reservationId: DotyposReservationId
   ) => Effect.Effect<
     { readonly customer: Customer; readonly reservation: Reservation },
     E,
     R
   >;
   readonly waitForCancellationConvergence: (
-    reservationIds: readonly string[]
+    reservationIds: readonly DotyposReservationId[]
   ) => Effect.Effect<void, E, R>;
 }
 
@@ -39,6 +43,9 @@ interface StaleReservationInterval {
 const providerConcurrency = 5;
 const staleReservationMinimumAgeMs = 2 * 60 * 60 * 1000;
 const workspaceE2ECustomerName = /^Workspace E2E .+ (\d{14}) \d{2}$/;
+const decodeDotyposReservationId = Schema.decodeUnknownOption(
+  DotyposReservationIdSchema
+);
 
 export const reconcileStaleWorkspaceE2EReservations = <E, R>(
   interval: StaleReservationInterval,
@@ -49,7 +56,9 @@ export const reconcileStaleWorkspaceE2EReservations = <E, R>(
     const reservations = yield* dependencies.listActiveReservations(interval);
     const detailResults = yield* Effect.all(
       reservations.map((reservation) => {
-        const reservationId = reservation.id?.trim();
+        const reservationId = Option.getOrUndefined(
+          decodeDotyposReservationId(reservation.id?.trim())
+        );
         if (!reservationId) {
           return Effect.succeed({ _tag: "MissingId" as const });
         }

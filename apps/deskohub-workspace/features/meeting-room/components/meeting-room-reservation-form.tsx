@@ -9,6 +9,7 @@ import {
   isMeetingRoomAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { workspaceMeetingRoomCatalog } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationLabel,
@@ -62,7 +63,7 @@ import {
 } from "@/shared/components/ui/form";
 
 type MeetingRoomReservationFormProps = {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly initialValues?: MeetingRoomReservationInput;

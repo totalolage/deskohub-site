@@ -1,11 +1,21 @@
-import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+  type DotyposDiscountGroupId,
+  DotyposDiscountGroupIdSchema,
+  type DotyposReservation,
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+  DotyposRuntimeConfig,
+  DotyposService,
+  type DotyposTable,
+} from "@deskohub/dotypos";
 import type {
   Customer,
   DiscountGroup,
   Reservation,
-  Table,
 } from "@deskohub/dotypos/generated";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { splitCustomerName } from "@/features/checkout/backend/reservation/dotypos-customer-policy";
 import {
   workspaceMeetingRoomReservationTableTag,
@@ -28,7 +38,7 @@ import type { CheckoutData, CheckoutRow } from "../types";
 
 export interface E2EDotyposDiscountGroup {
   readonly basisPoints: number;
-  readonly id: string;
+  readonly id: DotyposDiscountGroupId;
 }
 
 export interface ValidatedDotyposReservation {
@@ -38,6 +48,15 @@ export interface ValidatedDotyposReservation {
 }
 
 const maximumE2ECustomerDiscountBasisPoints = 9000;
+const decodeDotyposCustomerId = Schema.decodeUnknownSync(
+  DotyposCustomerIdSchema
+);
+const decodeDotyposDiscountGroupId = Schema.decodeUnknownOption(
+  DotyposDiscountGroupIdSchema
+);
+const decodeDotyposReservationId = Schema.decodeUnknownOption(
+  DotyposReservationIdSchema
+);
 
 export const resolveE2EDotyposDiscountGroup = (
   config: DatasourceConfig
@@ -63,7 +82,9 @@ export const selectE2EDotyposDiscountGroup = (
 ): E2EDotyposDiscountGroup => {
   const selected = groups
     .flatMap((group) => {
-      const id = group.id?.trim();
+      const id = Option.getOrUndefined(
+        decodeDotyposDiscountGroupId(group.id?.trim())
+      );
       const basisPoints = toPartialDiscountBasisPoints(group.discountPercent);
 
       return id &&
@@ -281,7 +302,7 @@ export const waitForConfirmedDotyposReservation = <
 
 export const cancelDotyposReservation = (
   config: DatasourceConfig,
-  dotyposReservationId: string
+  dotyposReservationId: DotyposReservationId
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
@@ -296,7 +317,7 @@ export const cancelDotyposReservation = (
 
 export const waitForCancelledDotyposReservations = (
   config: DatasourceConfig,
-  dotyposReservationIds: readonly string[],
+  dotyposReservationIds: readonly DotyposReservationId[],
   interval: { readonly endDate: Date; readonly startDate: Date }
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -319,7 +340,7 @@ export const waitForCancelledDotyposReservations = (
 
 export const waitForDotyposCancellationConvergence = <E, R>(
   readReservations: Effect.Effect<readonly Reservation[], E, R>,
-  dotyposReservationIds: readonly string[],
+  dotyposReservationIds: readonly DotyposReservationId[],
   options: {
     readonly intervalMs: number;
     readonly timeoutMs: number;
@@ -330,12 +351,16 @@ export const waitForDotyposCancellationConvergence = <E, R>(
   return pollUntil(
     readReservations.pipe(
       Effect.map((reservations) =>
-        reservations.some(
-          (reservation) =>
-            reservation.id &&
-            reservationIds.has(reservation.id) &&
+        reservations.some((reservation) => {
+          const reservationId = Option.getOrUndefined(
+            decodeDotyposReservationId(reservation.id)
+          );
+          return (
+            reservationId !== undefined &&
+            reservationIds.has(reservationId) &&
             reservation.status !== "CANCELLED"
-        )
+          );
+        })
           ? undefined
           : true
       )
@@ -378,7 +403,7 @@ export const reconcileStaleDotyposReservations = (
 
 export const readDotyposReservationStatus = (
   config: DatasourceConfig,
-  dotyposReservationId: string
+  dotyposReservationId: DotyposReservationId
 ) =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
@@ -393,7 +418,7 @@ export const readDotyposReservationStatus = (
 export const prepareDotyposCustomerDiscount = (
   config: DatasourceConfig,
   data: CheckoutData,
-  discountGroupId: string
+  discountGroupId: DotyposDiscountGroupId
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
@@ -410,7 +435,7 @@ export const prepareDotyposCustomerDiscount = (
       "assert prepared Dotypos customer",
       () => {
         assert(customer.id, "prepared Dotypos customer ID missing");
-        return customer.id;
+        return decodeDotyposCustomerId(customer.id);
       }
     );
     yield* dotypos.setCustomerDiscountGroup(customerId, discountGroupId);
@@ -432,8 +457,8 @@ export const prepareDotyposCustomerDiscount = (
 
 export const changeDotyposCustomerDiscount = (
   config: DatasourceConfig,
-  customerId: string,
-  discountGroupId: string | null
+  customerId: DotyposCustomerId,
+  discountGroupId: DotyposDiscountGroupId | null
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
@@ -460,7 +485,7 @@ export const waitForDotyposCustomerDiscountGroup = <
   R,
 >(
   readCustomer: Effect.Effect<A, E, R>,
-  discountGroupId: string | null,
+  discountGroupId: DotyposDiscountGroupId | null,
   options: {
     readonly intervalMs: number;
     readonly timeoutMs: number;
@@ -469,7 +494,9 @@ export const waitForDotyposCustomerDiscountGroup = <
   pollUntil(
     readCustomer.pipe(
       Effect.map((customer) =>
-        (customer._discountGroupId?.trim() || null) === discountGroupId
+        (Option.getOrUndefined(
+          decodeDotyposDiscountGroupId(customer._discountGroupId?.trim())
+        ) ?? null) === discountGroupId
           ? customer
           : undefined
       )
@@ -486,8 +513,8 @@ export const loadDotyposCapacityInventory = (
   interval: { readonly endDate: Date; readonly startDate: Date }
 ): Effect.Effect<
   {
-    readonly reservations: readonly Reservation[];
-    readonly tables: readonly Table[];
+    readonly reservations: readonly DotyposReservation[];
+    readonly tables: readonly DotyposTable[];
   },
   WorkspaceE2EError
 > =>

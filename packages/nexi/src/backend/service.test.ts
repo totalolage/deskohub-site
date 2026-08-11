@@ -1,10 +1,14 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Layer, Predicate, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { NexiRuntimeConfig } from "../config";
 import type { OrderResponse } from "../generated/effect.gen";
 import {
   getNexiPaymentMetadata,
+  NexiCorrelationIdSchema,
+  NexiCustomerReferenceSchema,
+  NexiOperationIdSchema,
+  NexiOrderIdSchema,
   type PaymentOutcomeStatus,
   type PaymentVerificationResult,
 } from "../types";
@@ -16,6 +20,13 @@ const config = {
   apiKey: "api-key",
   apiTimeout: 1000,
 };
+
+const nexiOrderId = Schema.decodeUnknownSync(NexiOrderIdSchema);
+const nexiOperationId = Schema.decodeUnknownSync(NexiOperationIdSchema);
+const nexiCorrelationId = Schema.decodeUnknownSync(NexiCorrelationIdSchema);
+const nexiCustomerReference = Schema.decodeUnknownSync(
+  NexiCustomerReferenceSchema
+);
 
 const runWithService = <A, E>(
   effect: Effect.Effect<A, E, NexiService>,
@@ -91,8 +102,8 @@ describe("NexiService hosted payment pages", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.createHostedPaymentPage({
-          orderId: "order-id",
-          correlationId: "correlation-id",
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
           amount: "5000",
           currency: "CZK",
           locale: "en-US",
@@ -100,7 +111,7 @@ describe("NexiService hosted payment pages", () => {
           cancelUrl: "https://example.test/cancel",
           notificationUrl: "https://example.test/webhook",
           customer: {
-            id: "customer-id",
+            id: nexiCustomerReference("customer-id"),
             name: "Ada Lovelace",
             email: "ada@example.test",
             mobilePhone: {
@@ -114,7 +125,7 @@ describe("NexiService hosted payment pages", () => {
     );
 
     expect(result).toEqual({
-      orderId: "order-id",
+      orderId: nexiOrderId("order-id"),
       hostedPage: "https://pay.example.test",
       securityToken: "security-token",
     });
@@ -129,7 +140,7 @@ describe("NexiService hosted payment pages", () => {
     expect(getHeader(call, "Content-Type")).toContain("application/json");
     expect(await readJsonBody(call)).toEqual({
       order: {
-        orderId: "order-id",
+        orderId: nexiOrderId("order-id"),
         amount: "5000",
         currency: "CZK",
         customerId: "customer-id",
@@ -166,8 +177,8 @@ describe("NexiService hosted payment pages", () => {
         Effect.gen(function* () {
           const nexi = yield* NexiService;
           return yield* nexi.createHostedPaymentPage({
-            orderId: "order-id",
-            correlationId: "correlation-id",
+            orderId: nexiOrderId("order-id"),
+            correlationId: nexiCorrelationId("correlation-id"),
             amount: "5000",
             currency: "CZK",
             locale: "en-US",
@@ -187,9 +198,13 @@ describe("NexiService verifyPaymentOutcome", () => {
   test("gets orders with API key and correlation header", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({
-        orderId: "order-id",
+        orderId: nexiOrderId("order-id"),
         orderStatus: {
-          order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+          order: {
+            orderId: nexiOrderId("order-id"),
+            amount: "5000",
+            currency: "CZK",
+          },
         },
       } satisfies OrderResponse)
     );
@@ -198,8 +213,8 @@ describe("NexiService verifyPaymentOutcome", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.verifyPaymentOutcome({
-          orderId: "order-id",
-          correlationId: "correlation-id",
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
           amount: "5000",
           currency: "CZK",
           securityToken: "security-token",
@@ -222,14 +237,14 @@ describe("NexiService verifyPaymentOutcome", () => {
       Response.json({
         orderStatus: {
           order: {
-            orderId: "order-id",
+            orderId: nexiOrderId("order-id"),
             amount: "5000",
             currency: "CZK",
           },
         },
         operations: [
           {
-            operationId: "operation-id",
+            operationId: nexiOperationId("operation-id"),
             operationType: "CAPTURE",
             operationResult: "EXECUTED",
             operationAmount: "5000",
@@ -244,8 +259,8 @@ describe("NexiService verifyPaymentOutcome", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.verifyPaymentOutcome({
-          orderId: "order-id",
-          correlationId: "correlation-id",
+          orderId: nexiOrderId("order-id"),
+          correlationId: nexiCorrelationId("correlation-id"),
           amount: "5000",
           currency: "CZK",
           securityToken: "security-token",
@@ -254,9 +269,11 @@ describe("NexiService verifyPaymentOutcome", () => {
       fetchMock
     );
 
-    expect(verification.provider.operationId).toBe("operation-id");
+    expect(verification.provider.operationId).toBe(
+      nexiOperationId("operation-id")
+    );
     expect(getNexiPaymentMetadata(verification).providerOperationId).toBe(
-      "operation-id"
+      nexiOperationId("operation-id")
     );
   });
 
@@ -271,11 +288,15 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "success",
         order: {
           orderStatus: {
-            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
           },
           operations: [
             {
-              operationId: "capture-id",
+              operationId: nexiOperationId("capture-id"),
               operationType: "CAPTURE",
               operationResult: "EXECUTED",
               operationAmount: "5000",
@@ -291,11 +312,15 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "failure",
         order: {
           orderStatus: {
-            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
           },
           operations: [
             {
-              operationId: "declined-id",
+              operationId: nexiOperationId("declined-id"),
               operationType: "AUTHORIZATION",
               operationResult: "DECLINED",
             },
@@ -309,7 +334,11 @@ describe("NexiService verifyPaymentOutcome", () => {
         order: {
           orderStatus: {
             lastOperationType: "PENDING",
-            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
           },
           operations: [],
         },
@@ -320,11 +349,15 @@ describe("NexiService verifyPaymentOutcome", () => {
         name: "mismatch",
         order: {
           orderStatus: {
-            order: { orderId: "order-id", amount: "5000", currency: "CZK" },
+            order: {
+              orderId: nexiOrderId("order-id"),
+              amount: "5000",
+              currency: "CZK",
+            },
           },
           operations: [
             {
-              operationId: "capture-id",
+              operationId: nexiOperationId("capture-id"),
               operationType: "CAPTURE",
               operationResult: "EXECUTED",
               operationAmount: "9999",
@@ -344,8 +377,8 @@ describe("NexiService verifyPaymentOutcome", () => {
         Effect.gen(function* () {
           const nexi = yield* NexiService;
           return yield* nexi.verifyPaymentOutcome({
-            orderId: "order-id",
-            correlationId: item.name,
+            orderId: nexiOrderId("order-id"),
+            correlationId: nexiCorrelationId(item.name),
             amount: "5000",
             currency: "CZK",
             securityToken: "security-token",
@@ -375,8 +408,8 @@ describe("NexiService verifyPaymentOutcome", () => {
         const nexi = yield* NexiService;
         return yield* nexi
           .verifyPaymentOutcome({
-            orderId: "order-id",
-            correlationId: "correlation-id",
+            orderId: nexiOrderId("order-id"),
+            correlationId: nexiCorrelationId("correlation-id"),
             amount: "5000",
             currency: "CZK",
             securityToken: "security-token",
@@ -411,7 +444,7 @@ describe("NexiService administration reads", () => {
           lastOperationTime: "2026-08-06 10:01:00.000",
           lastOperationType: "REFUND",
           order: {
-            orderId: "order#id",
+            orderId: nexiOrderId("order#id"),
             amount: "5000",
             currency: "CZK",
             customerInfo: { cardHolderEmail: "must-not-leak@example.test" },
@@ -419,8 +452,8 @@ describe("NexiService administration reads", () => {
         },
         operations: [
           {
-            orderId: "order#id",
-            operationId: "capture-id",
+            orderId: nexiOrderId("order#id"),
+            operationId: nexiOperationId("capture-id"),
             channel: "ECOMMERCE",
             operationType: "CAPTURE",
             operationResult: "EXECUTED",
@@ -431,8 +464,8 @@ describe("NexiService administration reads", () => {
             paymentInstrumentInfo: "must-not-leak",
           },
           {
-            orderId: "order#id",
-            operationId: "refund-id",
+            orderId: nexiOrderId("order#id"),
+            operationId: nexiOperationId("refund-id"),
             channel: "BACKOFFICE",
             operationType: "REFUND",
             operationResult: "REFUNDED",
@@ -450,15 +483,15 @@ describe("NexiService administration reads", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.getOrder({
-          correlationId: "correlation-id",
-          orderId: "order#id",
+          correlationId: nexiCorrelationId("correlation-id"),
+          orderId: nexiOrderId("order#id"),
         });
       }),
       fetchMock
     );
 
     expect(result).toEqual({
-      orderId: "order#id",
+      orderId: nexiOrderId("order#id"),
       amount: "5000",
       currency: "CZK",
       authorizedAmount: "5000",
@@ -467,8 +500,8 @@ describe("NexiService administration reads", () => {
       lastOperationType: "REFUND",
       operations: [
         {
-          orderId: "order#id",
-          operationId: "capture-id",
+          orderId: nexiOrderId("order#id"),
+          operationId: nexiOperationId("capture-id"),
           channel: "ECOMMERCE",
           operationType: "CAPTURE",
           operationResult: "EXECUTED",
@@ -477,15 +510,15 @@ describe("NexiService administration reads", () => {
           currency: "CZK",
         },
         {
-          orderId: "order#id",
-          operationId: "refund-id",
+          orderId: nexiOrderId("order#id"),
+          operationId: nexiOperationId("refund-id"),
           channel: "BACKOFFICE",
           operationType: "REFUND",
           operationResult: "REFUNDED",
           operationTime: "2026-08-06T08:01:00.000Z",
           amount: "1000",
           currency: "CZK",
-          cancelledOperationId: "capture-id",
+          cancelledOperationId: nexiOperationId("capture-id"),
         },
       ],
     });
@@ -502,8 +535,8 @@ describe("NexiService administration reads", () => {
       Response.json({
         operations: [
           {
-            orderId: "order-id",
-            operationId: "operation-id",
+            orderId: nexiOrderId("order-id"),
+            operationId: nexiOperationId("operation-id"),
             channel: "BACKOFFICE",
             operationType: "REFUND",
             operationResult: "REFUNDED",
@@ -519,7 +552,7 @@ describe("NexiService administration reads", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.listOperations({
-          correlationId: "correlation-id",
+          correlationId: nexiCorrelationId("correlation-id"),
           fromTime: "2026-08-01T00:00:00Z",
           toTime: "2026-08-07T00:00:00Z",
           maxRecords: 100,
@@ -531,8 +564,8 @@ describe("NexiService administration reads", () => {
     );
     expect(result).toEqual([
       {
-        orderId: "order-id",
-        operationId: "operation-id",
+        orderId: nexiOrderId("order-id"),
+        operationId: nexiOperationId("operation-id"),
         channel: "BACKOFFICE",
         operationType: "REFUND",
         operationResult: "REFUNDED",
@@ -558,8 +591,8 @@ describe("NexiService administration reads", () => {
   test("gets one sanitized operation by encoded ID", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({
-        orderId: "order-id",
-        operationId: "operation#id",
+        orderId: nexiOrderId("order-id"),
+        operationId: nexiOperationId("operation#id"),
         channel: "ECOMMERCE",
         operationType: "CAPTURE",
         operationResult: "EXECUTED",
@@ -573,15 +606,15 @@ describe("NexiService administration reads", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.getOperation({
-          correlationId: "correlation-id",
-          operationId: "operation#id",
+          correlationId: nexiCorrelationId("correlation-id"),
+          operationId: nexiOperationId("operation#id"),
         });
       }),
       fetchMock
     );
     expect(result).toEqual({
-      orderId: "order-id",
-      operationId: "operation#id",
+      orderId: nexiOrderId("order-id"),
+      operationId: nexiOperationId("operation#id"),
       channel: "ECOMMERCE",
       operationType: "CAPTURE",
       operationResult: "EXECUTED",
@@ -600,7 +633,7 @@ describe("NexiService administration reads", () => {
         orders: [
           {
             order: {
-              orderId: "order-id",
+              orderId: nexiOrderId("order-id"),
               amount: "5000",
               currency: "CZK",
               customerInfo: { cardHolderName: "Must Not Leak" },
@@ -616,7 +649,7 @@ describe("NexiService administration reads", () => {
       Effect.gen(function* () {
         const nexi = yield* NexiService;
         return yield* nexi.listOrders({
-          correlationId: "correlation-id",
+          correlationId: nexiCorrelationId("correlation-id"),
           maxRecords: 50,
         });
       }),
@@ -624,7 +657,7 @@ describe("NexiService administration reads", () => {
     );
     expect(result).toEqual([
       {
-        orderId: "order-id",
+        orderId: nexiOrderId("order-id"),
         amount: "5000",
         currency: "CZK",
         capturedAmount: "5000",

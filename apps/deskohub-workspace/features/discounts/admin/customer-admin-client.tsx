@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  DotyposCustomerIdSchema,
+  type DotyposDiscountGroupId,
+  DotyposDiscountGroupIdSchema,
+} from "@deskohub/dotypos";
+import { Schema } from "effect";
 import { Minus, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -30,6 +36,18 @@ import type {
 
 const selectClassName =
   "flex min-h-10 w-full rounded-lg border border-navy-blue/20 bg-white px-3 py-2 text-sm outline-none transition focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/20";
+
+const decodeDotyposDiscountGroupId = Schema.decodeUnknownSync(
+  DotyposDiscountGroupIdSchema
+);
+const decodeDotyposCustomerId = Schema.decodeUnknownSync(
+  DotyposCustomerIdSchema
+);
+
+const getOptionalDiscountGroupId = (
+  value: FormDataEntryValue | null
+): DotyposDiscountGroupId | null =>
+  value?.toString() ? decodeDotyposDiscountGroupId(value.toString()) : null;
 
 export function CustomerSearch({
   variant = "card",
@@ -168,10 +186,9 @@ export function AddCodeCustomerForm({
       buildMutation={(formData) => ({
         kind: "add-code-customer",
         codeId,
-        customerId: formData
-          .get("customerId")
-          ?.toString()
-          .trim() as DotyposCustomerId,
+        customerId: decodeDotyposCustomerId(
+          formData.get("customerId")?.toString().trim()
+        ),
       })}
       formRef={formRef}
       submitLabel="Add customer"
@@ -197,7 +214,7 @@ export function CustomerDiscountGroupForm({
   discountGroups,
 }: {
   readonly customerId: DotyposCustomerId;
-  readonly currentGroupId: string | null;
+  readonly currentGroupId: DotyposDiscountGroupId | null;
   readonly discountGroups: readonly AdminDiscountGroup[];
 }) {
   const currentIsAvailable =
@@ -209,7 +226,9 @@ export function CustomerDiscountGroupForm({
       buildMutation={(formData) => ({
         kind: "set-customer-discount-group",
         customerId,
-        discountGroupId: formData.get("discountGroupId")?.toString() || null,
+        discountGroupId: getOptionalDiscountGroupId(
+          formData.get("discountGroupId")
+        ),
       })}
       submitLabel="Save group"
     >

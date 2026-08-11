@@ -1,4 +1,9 @@
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import type {
+  DotyposCustomerId,
+  DotyposReservation,
+  DotyposReservationId,
+  DotyposTable,
+} from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
@@ -15,6 +20,7 @@ import {
   isMeetingRoomWholeDayReservationDuration,
   type MeetingRoomReservationDuration,
 } from "@/features/reservation/meeting-room-reservation-duration";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { normalizeBrowserText, waitForBrowserText } from "../browser";
 import { getSubmitMeetingRoomReservationScript } from "../browser-scripts";
@@ -438,13 +444,13 @@ export const assertHeldMeetingRoomReservation = ({
   tables,
 }: {
   readonly expected: {
-    readonly customerId: string;
-    readonly reservationId: string;
-    readonly workspaceReservationId: string;
+    readonly customerId: DotyposCustomerId;
+    readonly reservationId: DotyposReservationId;
+    readonly workspaceReservationId: WorkspaceReservationId;
   };
-  readonly reservations: readonly Reservation[];
+  readonly reservations: readonly DotyposReservation[];
   readonly slot: MeetingRoomCheckoutSlot;
-  readonly tables: readonly Table[];
+  readonly tables: readonly DotyposTable[];
 }) => {
   const reservation = reservations.find(
     ({ id }) => id === expected.reservationId
@@ -487,9 +493,9 @@ export const isMeetingRoomUnavailableFromInventory = ({
   slot,
   tables,
 }: {
-  readonly reservations: readonly Reservation[];
+  readonly reservations: readonly DotyposReservation[];
   readonly slot: MeetingRoomCheckoutSlot;
-  readonly tables: readonly Table[];
+  readonly tables: readonly DotyposTable[];
 }) =>
   hasAvailableWorkspaceTableCandidate(
     tables,

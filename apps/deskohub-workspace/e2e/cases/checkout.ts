@@ -86,7 +86,9 @@ export const executeCheckoutFlow = ({
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  payPageSteps?: (orderId: string) => readonly WorkspaceE2EStep<void>[];
+  payPageSteps?: (
+    orderId: CheckoutRow["reservation_id"]
+  ) => readonly WorkspaceE2EStep<void>[];
   expectedDiscounts?: readonly ExpectedDiscountApplication[];
 }): Effect.Effect<
   void,
@@ -328,7 +330,7 @@ export const assertFulfilledStatusPage = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   dotyposReservation: ValidatedDotyposReservation;
-  orderId: string;
+  orderId: CheckoutRow["reservation_id"];
   run: Runner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
@@ -582,7 +584,7 @@ const assertFulfillmentFailedSupportPath = ({
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
-  orderId: string;
+  orderId: CheckoutRow["reservation_id"];
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;

@@ -2,6 +2,10 @@ import { DuplicateMessageError, send } from "@vercel/queue";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import { clamp } from "@/shared/utils";
 import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import { instantStringSchema } from "@/shared/utils/temporal";
@@ -16,9 +20,23 @@ export const reservationHoldCleanupQueueTopic =
 export const reservationHoldCleanupScheduleMaxDelaySeconds = 7 * 24 * 60 * 60;
 const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
 
+export const reservationHoldCleanupIdempotencyKeySchema =
+  Schema.NonEmptyString.pipe(
+    Schema.brand("ReservationHoldCleanupIdempotencyKey")
+  ).annotate({
+    identifier: "ReservationHoldCleanupIdempotencyKey",
+    description: "Idempotency key for scheduling one reservation-hold cleanup.",
+  });
+export type ReservationHoldCleanupIdempotencyKey =
+  typeof reservationHoldCleanupIdempotencyKeySchema.Type;
+
+const makeReservationHoldCleanupIdempotencyKey = Schema.decodeUnknownSync(
+  reservationHoldCleanupIdempotencyKeySchema
+);
+
 const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  orderId: Schema.String,
+  orderId: workspaceReservationIdSchema,
   reservationHoldExpiresAtIso: instantStringSchema,
 });
 
@@ -31,7 +49,7 @@ type ReservationHoldCleanupScheduleMessage = {
   readonly options: {
     readonly delaySeconds: number;
     readonly retentionSeconds: number;
-    readonly idempotencyKey: string;
+    readonly idempotencyKey: ReservationHoldCleanupIdempotencyKey;
   };
 };
 
@@ -64,14 +82,14 @@ class ReservationHoldCleanupQueueRequestError extends Data.TaggedError(
 
 interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly reservationHoldExpiresAt: Temporal.Instant;
   }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
 export const getReservationHoldCleanupScheduleMessage = (
   input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly reservationHoldExpiresAt: Temporal.Instant;
   },
   now = Temporal.Now.instant()
@@ -102,7 +120,9 @@ export const getReservationHoldCleanupScheduleMessage = (
     options: {
       delaySeconds,
       retentionSeconds,
-      idempotencyKey: `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}`,
+      idempotencyKey: makeReservationHoldCleanupIdempotencyKey(
+        `reservation-hold-cleanup:${input.orderId}:${reservationHoldExpiresAtIso}`
+      ),
     },
   };
 };

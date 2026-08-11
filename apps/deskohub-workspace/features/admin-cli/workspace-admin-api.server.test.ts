@@ -195,8 +195,10 @@ describe("Workspace Admin API", () => {
       operationResult: "AUTHORIZED",
       linkedReservationId: reservation.id,
     };
-    const discountId = "discount-1" as AdminDiscount["id"];
-    const codeId = "code-1" as AdminDiscountCode["id"];
+    const discountId = AdministrationStoredDiscountId.make(
+      "01980000-0000-7000-8000-000000000001"
+    );
+    const codeId = AdministrationDiscountCodeId.make("code-1");
     const discount = {
       id: discountId,
       labels: { "en-US": "Summer sale", "cs-CZ": "Letní sleva" },

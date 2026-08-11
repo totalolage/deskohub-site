@@ -1,10 +1,12 @@
 "use client";
 
+import { Schema } from "effect";
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { AdministrationAlert } from "@/features/administration/notice";
-import type { StoredDiscountId } from "@/features/discounts/persistence-contracts";
+import { storedDiscountIdSchema } from "@/features/discounts/persistence-contracts";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
@@ -28,7 +30,7 @@ export function DiscountCodeCreationForm({
   discounts,
 }: {
   readonly completion?: "back" | "customer";
-  readonly customerId?: string;
+  readonly customerId?: DotyposCustomerId;
   readonly customerName?: string;
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {
@@ -91,9 +93,9 @@ export function DiscountCodeCreationForm({
       discountKind === "existing"
         ? {
             kind: "existing",
-            discountId: formData
-              .get("discountId")
-              ?.toString() as StoredDiscountId,
+            discountId: Schema.decodeUnknownSync(storedDiscountIdSchema)(
+              formData.get("discountId")?.toString()
+            ),
           }
         : { kind: "new", discount: readDiscountForm(formData) };
     const code = readDiscountCodeConfigurationForm(formData);
@@ -225,7 +227,7 @@ export function CustomerDiscountCodeCreationForm({
   discounts,
 }: {
   readonly completion: "back" | "customer";
-  readonly customerId: string;
+  readonly customerId: DotyposCustomerId;
   readonly customerName: string;
   readonly discounts: readonly Pick<AdminDiscount, "id" | "labels">[];
 }) {

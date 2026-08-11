@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
@@ -222,7 +223,7 @@ export const returnToPrefilledReservation = ({
 
 const readHeldReservation = (
   datasourceConfig: DatasourceConfig,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const row = yield* waitForCheckoutRow(datasourceConfig, orderId);
@@ -248,10 +249,10 @@ const assertReplacedReservation = ({
   secondRow,
   secondDotyposStatus,
 }: {
-  firstOrderId: string;
+  firstOrderId: WorkspaceReservationId;
   firstRow: CheckoutRow;
   firstDotyposStatus: string;
-  secondOrderId: string;
+  secondOrderId: WorkspaceReservationId;
   secondRow: CheckoutRow;
   secondDotyposStatus: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>

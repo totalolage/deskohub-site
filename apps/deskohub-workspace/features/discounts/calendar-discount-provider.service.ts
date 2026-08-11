@@ -15,7 +15,10 @@ import {
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
 import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import {
+  CalendarResourceConfig,
+  type SalesCalendarId,
+} from "@/shared/backend/config/calendar-resource.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type {
   ActiveSale,
@@ -248,7 +251,7 @@ export class CalendarDiscountProvider extends Context.Service<
 }
 
 class CalendarSalesCacheKey extends Data.Class<{
-  readonly calendarId: string;
+  readonly calendarId: SalesCalendarId;
   readonly reservationDate: string;
 }> {}
 

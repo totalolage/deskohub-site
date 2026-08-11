@@ -1,3 +1,5 @@
+import type { CloudinaryPublicId } from "./schema";
+
 export function createStableHash(value: unknown): string {
   const seen = new WeakSet();
   const maxDepth = 10;
@@ -68,7 +70,7 @@ export function createCloudinaryCacheTags({
 }) {
   return {
     all: () => `${namespace}:all`,
-    image: (publicId: string) => `${namespace}:img:${publicId}`,
+    image: (publicId: CloudinaryPublicId) => `${namespace}:img:${publicId}`,
     search: (tags?: unknown, maxResults?: number) => {
       const parts = [`${namespace}:search`];
 
@@ -82,7 +84,7 @@ export function createCloudinaryCacheTags({
 
       return parts.join(":");
     },
-    getTags: (publicId?: string) => {
+    getTags: (publicId?: CloudinaryPublicId) => {
       const tags = [`${namespace}:all`];
 
       if (publicId) {

@@ -1,33 +1,41 @@
 import { describe, expect, test } from "bun:test";
+import {
+  type DotyposCategory,
+  DotyposCategorySchema,
+  type DotyposProduct,
+  DotyposProductSchema,
+} from "@deskohub/dotypos";
 import type { Category, Product } from "@deskohub/dotypos/generated";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 import { siteConstants } from "@/shared/utils/constants";
 
 setBoardgameTestEnv();
 
-const category = (overrides: Partial<Category>): Category => ({
-  id: "category-id",
-  name: "Category",
-  display: true,
-  deleted: false,
-  ...overrides,
-});
+const category = (overrides: Partial<Category>): DotyposCategory =>
+  Schema.decodeUnknownSync(DotyposCategorySchema)({
+    id: "category-id",
+    name: "Category",
+    display: true,
+    deleted: false,
+    ...overrides,
+  });
 
-const product = (overrides: Partial<Product>): Product => ({
-  id: "product-id",
-  _categoryId: "category-id",
-  name: "Product",
-  display: true,
-  deleted: false,
-  priceWithoutVat: "100",
-  vat: "21",
-  ...overrides,
-});
+const product = (overrides: Partial<Product>): DotyposProduct =>
+  Schema.decodeUnknownSync(DotyposProductSchema)({
+    id: "product-id",
+    _categoryId: "category-id",
+    name: "Product",
+    display: true,
+    deleted: false,
+    priceWithoutVat: "100",
+    vat: "21",
+    ...overrides,
+  });
 
 const runMenuData = async (input: {
-  categories: Category[];
-  products: Product[];
+  categories: DotyposCategory[];
+  products: DotyposProduct[];
 }) => {
   const [{ DotyposService }, { MenuService }] = await Promise.all([
     import("@/features/dotypos"),

@@ -1,9 +1,11 @@
+import { Option, Schema } from "effect";
+import { notFound } from "next/navigation";
 import { CodeAdministrationDetailPage } from "@/features/discounts/admin/customer-admin-components";
 import {
   type DiscountAdminSearchParams,
   loadDiscountAdminCodePageData,
 } from "@/features/discounts/admin/page-data.server";
-import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
+import { discountCodeIdSchema } from "@/features/discounts/persistence-contracts";
 
 export default async function DiscountCodeAdminDetailPage({
   params,
@@ -13,8 +15,12 @@ export default async function DiscountCodeAdminDetailPage({
   readonly searchParams: DiscountAdminSearchParams;
 }) {
   const { codeId } = await params;
+  const decodedCodeId = Option.getOrElse(
+    Schema.decodeUnknownOption(discountCodeIdSchema)(codeId),
+    () => notFound()
+  );
   const { detail, notice } = await loadDiscountAdminCodePageData(
-    codeId as DiscountCodeId,
+    decodedCodeId,
     searchParams
   );
 

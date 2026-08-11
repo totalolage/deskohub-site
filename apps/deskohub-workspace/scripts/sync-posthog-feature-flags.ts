@@ -2,13 +2,14 @@ import {
   generatePostHogFeatureFlagContract,
   PostHogFeatureFlagError,
 } from "@deskohub/posthog/feature-flags/codegen";
+import { PostHogProjectId } from "@deskohub/posthog/identifiers";
 import { Effect, Schema } from "effect";
 import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_FEATURE_FLAGS_API_KEY: Schema.NonEmptyString,
   POSTHOG_HOST: Schema.URLFromString,
-  POSTHOG_PROJECT_ID: Schema.NonEmptyString,
+  POSTHOG_PROJECT_ID: PostHogProjectId,
 });
 
 const loadPostHogFeatureFlagGenerationEnv = Schema.decodeUnknownEffect(

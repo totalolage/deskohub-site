@@ -3,13 +3,16 @@ import {
   getNexiPaymentMetadata,
   NexiCurrencySchema,
   NexiService,
+  type NexiWebhookEventId,
 } from "@deskohub/nexi";
 import { Context, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -47,9 +50,9 @@ export type ProviderPaymentFinalizationResult =
 
 export interface ProviderPaymentFinalizationService {
   readonly finalizePendingProviderPayment: (input: {
-    readonly orderId: string;
-    readonly paymentAttemptId?: string;
-    readonly webhookEventId?: string;
+    readonly orderId: WorkspaceReservationId;
+    readonly paymentAttemptId?: PaymentAttemptId;
+    readonly webhookEventId?: NexiWebhookEventId;
   }) => Effect.Effect<
     ProviderPaymentFinalizationResult,
     PaymentLifecycleRepositoryError

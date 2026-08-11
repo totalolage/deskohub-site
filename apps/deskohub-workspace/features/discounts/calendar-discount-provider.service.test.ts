@@ -10,7 +10,11 @@ import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/ser
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema, Scope } from "effect";
 import { TestClock } from "effect/testing";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import {
+  CalendarResourceConfig,
+  salesCalendarIdSchema,
+  workspaceLimitationsCalendarIdSchema,
+} from "@/shared/backend/config/calendar-resource.config";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
 import {
@@ -24,7 +28,12 @@ import {
   storedDiscountIdSchema,
 } from "./persistence-contracts";
 
-const salesCalendarId = "sales-calendar";
+const salesCalendarId = Schema.decodeUnknownSync(salesCalendarIdSchema)(
+  "sales-calendar"
+);
+const workspaceLimitationsCalendarId = Schema.decodeUnknownSync(
+  workspaceLimitationsCalendarIdSchema
+)("workspace-limitations-calendar");
 const providerNamespace = "google-calendar-sales";
 const basicProduct = { kind: "cowork", tier: "basic" } as const;
 const coworkTarget = { kind: "cowork" } as const;
@@ -37,7 +46,7 @@ const discountIdB = Schema.decodeUnknownSync(storedDiscountIdSchema)(
 );
 
 const resourceConfigLayer = Layer.succeed(CalendarResourceConfig, {
-  workspaceLimitationsCalendarId: "workspace-limitations-calendar",
+  workspaceLimitationsCalendarId,
   salesCalendarId,
 });
 

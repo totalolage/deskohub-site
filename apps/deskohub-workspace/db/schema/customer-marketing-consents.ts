@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import { check, pgTable, text } from "drizzle-orm/pg-core";
 import type { Locale } from "@/features/i18n";
@@ -10,7 +11,9 @@ import { quotedSqlList } from "./sql-list";
 export const customerMarketingConsents = pgTable(
   "customer_marketing_consents",
   {
-    dotyposCustomerId: text("dotypos_customer_id").primaryKey(),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .primaryKey()
+      .$type<DotyposCustomerId>(),
     documentHash: text("document_hash").notNull(),
     locale: text("locale").notNull().$type<Locale>(),
     grantedAt: instant("granted_at").notNull(),

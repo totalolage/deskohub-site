@@ -1,3 +1,7 @@
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
 import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -8,10 +12,15 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type {
+  CheckoutAttemptKey,
+  CheckoutSessionKey,
+} from "@/features/checkout/checkout-identifiers";
 import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
   storedWorkspaceReservationDetailsSchema,
+  type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
@@ -29,22 +38,22 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
 )<{
   readonly operation: string;
-  readonly reservationId: string;
+  readonly reservationId: WorkspaceReservationId;
   readonly message: string;
 }> {}
 
 export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
   "WorkspaceReservationDetailsMalformedError"
 )<{
-  readonly reservationId: string;
+  readonly reservationId: WorkspaceReservationId;
   readonly message: string;
   readonly cause: unknown;
 }> {}
 
 export interface CreateWorkspaceReservationInput {
-  readonly checkoutSessionKey: string;
-  readonly checkoutAttemptKey: string;
-  readonly dotyposCustomerId: string;
+  readonly checkoutSessionKey: CheckoutSessionKey;
+  readonly checkoutAttemptKey: CheckoutAttemptKey;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly customerAccessCode: string;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
@@ -59,25 +68,25 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly findById: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly findByAttemptKey: (
-    checkoutAttemptKey: string
+    checkoutAttemptKey: CheckoutAttemptKey
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly findCurrentByCheckoutSessionKey: (
-    checkoutSessionKey: string
+    checkoutSessionKey: CheckoutSessionKey
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly updateReservationDetails: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly reservationDetails: StoredWorkspaceReservationDetails;
     readonly locale: string;
   }) => Effect.Effect<
@@ -87,17 +96,17 @@ export interface WorkspaceReservationRepository {
     | WorkspaceReservationStateError
   >;
   readonly claimHoldCreation: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   readonly releaseHoldCreation: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly attachHold: (input: {
-    readonly id: string;
-    readonly dotyposReservationId: string;
+    readonly id: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId;
     readonly reservationCreatedAt: Temporal.Instant;
     readonly reservationHoldExpiresAt: Temporal.Instant;
   }) => Effect.Effect<
@@ -105,8 +114,8 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly markAttachFailedCancellationRequired: (input: {
-    readonly id: string;
-    readonly dotyposReservationId: string;
+    readonly id: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId;
     readonly reservationCreatedAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
@@ -114,19 +123,19 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly claimCancellation: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly claimSupersessionCancellation: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly markCancelled: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
     readonly holdExpiredAt?: Temporal.Instant;
   }) => Effect.Effect<
@@ -134,7 +143,7 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly completeSupersessionAndCreateDraft: (input: {
-    readonly cancelledReservationId: string;
+    readonly cancelledReservationId: WorkspaceReservationId;
     readonly cancelledAt: Temporal.Instant;
     readonly replacement: CreateWorkspaceReservationInput;
   }) => Effect.Effect<
@@ -145,14 +154,14 @@ export interface WorkspaceReservationRepository {
     | WorkspaceReservationStateError
   >;
   readonly markCancellationFailed: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly failureCode: string;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly recordHoldCleanupSkipped: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly holdExpiredAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
@@ -160,21 +169,21 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly claimPaidFulfillment: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly staleProcessingBefore: Temporal.Instant;
   }) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
   readonly markFulfilled: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly fulfilledAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly markFulfillmentFailed: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly failureCode: string;
     readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
@@ -182,7 +191,7 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly markFulfillmentDeliveryFailed: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly failureCode: string;
     readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
@@ -190,7 +199,7 @@ export interface WorkspaceReservationRepository {
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly markReservationConfirmed: (input: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly confirmedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
@@ -205,7 +214,7 @@ export interface WorkspaceReservationRepository {
   >;
   readonly selectExpiredHoldDotyposReservationIds: (input: {
     readonly now: Temporal.Instant;
-  }) => Effect.Effect<readonly string[], EffectDrizzleQueryError>;
+  }) => Effect.Effect<readonly DotyposReservationId[], EffectDrizzleQueryError>;
 }
 
 export const WorkspaceReservationRepository =
@@ -216,7 +225,7 @@ export const WorkspaceReservationRepository =
 const ensureUpdated = (
   updated: readonly Pick<WorkspaceReservation, "id">[],
   operation: string,
-  reservationId: string,
+  reservationId: WorkspaceReservationId,
   message: string
 ) =>
   updated.length > 0
@@ -235,7 +244,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
     const { db } = yield* WorkspaceDatabase;
 
     const findById = Effect.fn("workspaceReservations.findById")(
-      function* (id: string) {
+      function* (id: WorkspaceReservationId) {
         const [reservation] = yield* db
           .select()
           .from(workspaceReservations)

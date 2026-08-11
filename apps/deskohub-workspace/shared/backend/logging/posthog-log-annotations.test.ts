@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
+  PostHogDistinctId,
+  PostHogSessionId,
+} from "@deskohub/posthog/identifiers";
+import {
   POSTHOG_DISTINCT_ID_COOKIE,
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
@@ -20,8 +24,8 @@ describe("PostHog log annotations", () => {
   test("maps cookie values to PostHog log-linking attributes", () => {
     expect(
       getPostHogLogAnnotationsFromCookieValues({
-        distinctId: "distinct-id",
-        sessionId: "session-id",
+        distinctId: PostHogDistinctId.make("distinct-id"),
+        sessionId: PostHogSessionId.make("session-id"),
       })
     ).toEqual({
       posthogDistinctId: "distinct-id",
@@ -42,6 +46,14 @@ describe("PostHog log annotations", () => {
 
   test("returns no annotations without PostHog cookies", () => {
     expect(getPostHogLogAnnotationsFromCookieHeader("other=value")).toEqual({});
+  });
+
+  test("ignores invalid empty PostHog cookie identifiers", () => {
+    expect(
+      getPostHogLogAnnotationsFromCookieHeader(
+        `${POSTHOG_DISTINCT_ID_COOKIE}=; ${POSTHOG_SESSION_ID_COOKIE}=`
+      )
+    ).toEqual({});
   });
 
   test("parses PostHog tracing headers when first-party cookies are present", () => {
@@ -76,6 +88,21 @@ describe("PostHog log annotations", () => {
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
           cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+        })
+      )
+    ).toEqual({
+      posthogDistinctId: "cookie-distinct-id",
+      sessionId: "cookie-session-id",
+    });
+  });
+
+  test("uses cookies as fallback when tracing header identifiers are empty", () => {
+    expect(
+      getPostHogLogAnnotationsFromRequestHeaders(
+        new Headers({
+          cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          "X-POSTHOG-DISTINCT-ID": "",
+          "X-POSTHOG-SESSION-ID": "",
         })
       )
     ).toEqual({

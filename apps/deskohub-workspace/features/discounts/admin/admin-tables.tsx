@@ -259,18 +259,20 @@ export function CalendarSalesAdminTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {events.map((event) => {
+          {events.map((event, index) => {
             const discount =
               event.association.kind === "associated"
                 ? discountsById.get(event.association.discountId)
                 : undefined;
-            const expanded = expandedReference === event.eventReference;
+            const rowReference =
+              event.eventReference ?? `${event.start}:${event.title}:${index}`;
+            const expanded = expandedReference === rowReference;
             const toggleEditor = () =>
               setExpandedReference((current) =>
-                current === event.eventReference ? null : event.eventReference
+                current === rowReference ? null : rowReference
               );
             return (
-              <Fragment key={event.eventReference}>
+              <Fragment key={rowReference}>
                 <TableRow
                   aria-expanded={discount ? expanded : undefined}
                   className={cn(

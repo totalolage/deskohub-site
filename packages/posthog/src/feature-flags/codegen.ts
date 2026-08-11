@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import type { PostHogProjectId } from "../identifiers";
 import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagService } from "./definitions";
 import type { PostHogFeatureFlagError } from "./errors";
@@ -14,7 +15,7 @@ export interface GeneratePostHogFeatureFlagContractOptions {
   readonly apiKey: string;
   readonly host: URL;
   readonly outputFile: string | URL;
-  readonly projectId: string;
+  readonly projectId: PostHogProjectId;
 }
 
 export const generatePostHogFeatureFlagContract = Effect.fn(

@@ -1,4 +1,8 @@
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+  DotyposService,
+} from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
@@ -10,13 +14,14 @@ import {
   type WorkspaceReservation,
   WorkspaceReservationRepository,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { reservationIntervalSchema } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
 )<{
-  readonly reservationId: string;
+  readonly reservationId: WorkspaceReservationId;
   readonly errorCode:
     | "reservation_load_failed"
     | "dotypos_reservation_missing"
@@ -35,7 +40,7 @@ export type WorkspaceReservationDetails = Pick<
   | "reservationDetails"
   | "locale"
 > & {
-  readonly dotyposReservationId: string;
+  readonly dotyposReservationId: DotyposReservationId;
   readonly customer: Customer;
   readonly reservedFrom: Temporal.Instant;
   readonly reservedUntil: Temporal.Instant;
@@ -46,7 +51,7 @@ export type WorkspaceReservationDetails = Pick<
 
 export interface IWorkspaceReservationService {
   readonly getReservation: (
-    id: string
+    id: WorkspaceReservationId
   ) => Effect.Effect<
     WorkspaceReservationDetails,
     WorkspaceReservationDetailsError
@@ -65,7 +70,7 @@ export class WorkspaceReservationService extends Context.Service<
       const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
 
       const loadReservation = Effect.fn("workspaceReservation.load")(function* (
-        id: string
+        id: WorkspaceReservationId
       ) {
         return yield* reservations.findById(id).pipe(
           Effect.mapError(
@@ -83,14 +88,18 @@ export class WorkspaceReservationService extends Context.Service<
       const loadDotyposReservation = Effect.fn(
         "workspaceReservation.loadDotyposReservation"
       )(function* (reservation: WorkspaceReservation) {
-        const dotyposReservationId = reservation.dotyposReservationId?.trim();
-        if (!dotyposReservationId) {
+        const rawDotyposReservationId =
+          reservation.dotyposReservationId?.trim();
+        if (!rawDotyposReservationId) {
           return yield* new WorkspaceReservationDetailsError({
             reservationId: reservation.id,
             errorCode: "dotypos_reservation_missing",
             message: "Workspace reservation has no Dotypos reservation ID.",
           });
         }
+        const dotyposReservationId = Schema.decodeUnknownSync(
+          DotyposReservationIdSchema
+        )(rawDotyposReservationId);
 
         return yield* Effect.all(
           [dotypos.getReservation(dotyposReservationId), dotypos.getTables()],
@@ -187,7 +196,7 @@ export class WorkspaceReservationService extends Context.Service<
 export const getDotyposReservationTiming = Effect.fn(
   "dotyposReservation.getTiming"
 )(function* (input: {
-  readonly reservationId: string;
+  readonly reservationId: WorkspaceReservationId;
   readonly reservation: Pick<Reservation, "startDate" | "endDate">;
 }) {
   const { startsAt, endsAt } = yield* Schema.decodeUnknownEffect(

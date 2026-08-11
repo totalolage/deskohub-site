@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { PostHogDistinctId } from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 
 const overrideFeatureFlags = mock((_overrides: unknown) => undefined);
@@ -82,7 +83,7 @@ describe("Workspace PostHog Node feature flags", () => {
     const snapshot = await Effect.runPromise(
       nodeFeatureFlags.evaluateFlags({
         subject: {
-          distinctId: "global-release",
+          distinctId: PostHogDistinctId.make("global-release"),
           sendFeatureFlagEvents: false,
         },
       })
@@ -91,7 +92,7 @@ describe("Workspace PostHog Node feature flags", () => {
       nodeFeatureFlags.isEnabled({
         key: "discount_codes",
         subject: {
-          distinctId: "visitor-id",
+          distinctId: PostHogDistinctId.make("visitor-id"),
           sendFeatureFlagEvents: true,
         },
       })

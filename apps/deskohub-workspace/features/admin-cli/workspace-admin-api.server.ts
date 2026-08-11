@@ -31,8 +31,6 @@ import {
   DiscountAdministration,
 } from "@/features/discounts/admin/discount-administration.service";
 import { executeDiscountAdminMutation } from "@/features/discounts/admin/execute-discount-admin-mutation";
-import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { CliAuthentication } from "./cli-authentication.service";
 import { CliAuthenticationAdmission } from "./cli-authentication-admission.service";
@@ -185,7 +183,7 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
               activity: administration.loadCustomerActivity(params.customerId),
               profile: discounts
                 .loadCustomerProfile({
-                  customerId: params.customerId as DotyposCustomerId,
+                  customerId: params.customerId,
                 })
                 .pipe(
                   Effect.map(toCliCustomerProfile),
@@ -209,23 +207,21 @@ export const AdminCliAdministrationApiHandlers = HttpApiBuilder.group(
             .pipe(Effect.map(toCliDiscountDashboard), mapServiceFailure)
         )
         .handle("getDiscountCode", ({ params }) =>
-          discounts
-            .loadCodeDetail({ codeId: params.codeId as DiscountCodeId })
-            .pipe(
-              Effect.map(toCliDiscountCodeDetail),
-              Effect.catchTag(
-                "DiscountAdminNotFoundError",
-                () =>
-                  new CliResourceNotFound({
-                    message: "The discount code was not found.",
-                  })
-              ),
-              Effect.mapError((cause) =>
-                cause instanceof CliResourceNotFound
-                  ? cause
-                  : makeServiceUnavailable()
-              )
+          discounts.loadCodeDetail({ codeId: params.codeId }).pipe(
+            Effect.map(toCliDiscountCodeDetail),
+            Effect.catchTag(
+              "DiscountAdminNotFoundError",
+              () =>
+                new CliResourceNotFound({
+                  message: "The discount code was not found.",
+                })
+            ),
+            Effect.mapError((cause) =>
+              cause instanceof CliResourceNotFound
+                ? cause
+                : makeServiceUnavailable()
             )
+          )
         )
         .handle("listSessions", () =>
           authentication.listSessions().pipe(mapServiceFailure)

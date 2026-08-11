@@ -1,3 +1,12 @@
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
+import type {
+  NexiOperationId,
+  NexiOrderId,
+  NexiWebhookEventId,
+} from "@deskohub/nexi";
 import { and, count, eq, inArray } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
@@ -22,12 +31,16 @@ import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
 } from "@/features/accounting/accounting-document-snapshot";
-import { AccountingDocumentSnapshotStorageError } from "@/features/accounting/backend/accounting-document-snapshot.repository";
+import {
+  AccountingDocumentSnapshotStorageError,
+  type AccountingPaymentReference,
+} from "@/features/accounting/backend/accounting-document-snapshot.repository";
 import {
   type AccountingSnapshotKey,
   AccountingSnapshotKeyService,
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
 import { encryptAccountingSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import {
   type WorkspaceMoney,
@@ -49,17 +62,26 @@ import type { DiscountApplicationId } from "@/features/discounts/persistence-con
 import { getWorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DiscountClaimInstruction } from "@/features/discounts/provider";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import {
   type PaymentAttempt,
   toPaymentAttempt,
 } from "./payment-attempt.repository";
 
+export type PaymentLifecycleReference =
+  | { readonly type: "paymentAttemptId"; readonly id: PaymentAttemptId }
+  | { readonly type: "providerOrderId"; readonly id: NexiOrderId }
+  | {
+      readonly type: "workspaceReservationId";
+      readonly id: WorkspaceReservationId;
+    };
+
 export class PaymentLifecycleStateError extends Data.TaggedError(
   "PaymentLifecycleStateError"
 )<{
   readonly operation: string;
-  readonly paymentAttemptId: string;
+  readonly paymentReference: PaymentLifecycleReference;
   readonly message: string;
 }> {}
 
@@ -78,15 +100,15 @@ export type PaymentLifecycleRepositoryError =
 
 export interface IPaymentLifecycleRepository {
   readonly createPendingNexiAttempt: (input: {
-    readonly workspaceReservationId: string;
-    readonly providerOrderId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly providerOrderId: NexiOrderId;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
     readonly accountingSnapshot: AccountingDocumentSnapshot;
   }) => Effect.Effect<PaymentAttempt, PaymentLifecycleRepositoryError>;
   readonly completeInternalPayment: (input: {
-    readonly workspaceReservationId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
     readonly amount: WorkspaceMoney;
     readonly commitment: DiscountCommitment;
     readonly locale: Locale;
@@ -96,7 +118,7 @@ export interface IPaymentLifecycleRepository {
     PaymentLifecycleRepositoryError
   >;
   readonly attachProviderSession: (input: {
-    readonly id: string;
+    readonly id: PaymentAttemptId;
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
   }) => Effect.Effect<
@@ -104,10 +126,10 @@ export interface IPaymentLifecycleRepository {
     EffectDrizzleQueryError | PaymentLifecycleStateError
   >;
   readonly markPaid: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
+    readonly id: PaymentAttemptId;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly webhookEventId?: NexiWebhookEventId;
+    readonly providerOperationId?: NexiOperationId;
     readonly providerStatus?: string;
     readonly paidAt: Temporal.Instant;
   }) => Effect.Effect<
@@ -115,12 +137,12 @@ export interface IPaymentLifecycleRepository {
     PaymentLifecycleRepositoryError
   >;
   readonly markTerminal: (input: {
-    readonly id: string;
-    readonly workspaceReservationId: string;
+    readonly id: PaymentAttemptId;
+    readonly workspaceReservationId: WorkspaceReservationId;
     readonly state: "failed" | "cancelled" | "expired";
     readonly failureCode: string;
-    readonly webhookEventId?: string;
-    readonly providerOperationId?: string;
+    readonly webhookEventId?: NexiWebhookEventId;
+    readonly providerOperationId?: NexiOperationId;
     readonly providerStatus?: string;
   }) => Effect.Effect<
     PaymentLifecycleTransition,
@@ -141,8 +163,8 @@ export class PaymentLifecycleRepository extends Context.Service<
       const createPendingNexiAttempt = Effect.fn(
         "PaymentLifecycleRepository.createPendingNexiAttempt"
       )(function* (input: {
-        readonly workspaceReservationId: string;
-        readonly providerOrderId: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly providerOrderId: NexiOrderId;
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
@@ -154,7 +176,10 @@ export class PaymentLifecycleRepository extends Context.Service<
             workspaceReservationId: input.workspaceReservationId,
             amount: input.amount,
             locale: input.locale,
-            paymentAttemptId: input.providerOrderId,
+            paymentReference: {
+              type: "providerOrderId",
+              id: input.providerOrderId,
+            },
           });
         const accountingSnapshotKey =
           yield* accountingSnapshotKeys.getActive.pipe(
@@ -162,7 +187,10 @@ export class PaymentLifecycleRepository extends Context.Service<
               () =>
                 new AccountingDocumentSnapshotStorageError({
                   operation: "encrypt",
-                  paymentAttemptId: input.providerOrderId,
+                  paymentReference: {
+                    type: "providerOrderId",
+                    id: input.providerOrderId,
+                  },
                   message: "Accounting snapshot encryption key is unavailable.",
                 })
             )
@@ -210,7 +238,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* new PaymentLifecycleStateError({
                   operation:
                     "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentAttemptId: input.providerOrderId,
+                  paymentReference: {
+                    type: "providerOrderId",
+                    id: input.providerOrderId,
+                  },
                   message:
                     "Payment attempts can only be created for a current held reservation.",
                 });
@@ -218,7 +249,10 @@ export class PaymentLifecycleRepository extends Context.Service<
 
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
-                paymentAttemptId: input.providerOrderId,
+                paymentReference: {
+                  type: "providerOrderId",
+                  id: input.providerOrderId,
+                },
                 dotyposCustomerId: reservation.dotyposCustomerId,
                 dotyposReservationId: reservation.dotyposReservationId,
               });
@@ -276,7 +310,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                 return yield* new PaymentLifecycleStateError({
                   operation:
                     "PaymentLifecycleRepository.createPendingNexiAttempt",
-                  paymentAttemptId: attemptRow.id,
+                  paymentReference: {
+                    type: "paymentAttemptId",
+                    id: attemptRow.id,
+                  },
                   message:
                     "Payment attempts can only be linked to held unpaid reservations.",
                 });
@@ -319,7 +356,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       const completeInternalPayment = Effect.fn(
         "PaymentLifecycleRepository.completeInternalPayment"
       )(function* (input: {
-        readonly workspaceReservationId: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
         readonly amount: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
         readonly locale: Locale;
@@ -331,7 +368,10 @@ export class PaymentLifecycleRepository extends Context.Service<
             workspaceReservationId: input.workspaceReservationId,
             amount: input.amount,
             locale: input.locale,
-            paymentAttemptId: input.workspaceReservationId,
+            paymentReference: {
+              type: "workspaceReservationId",
+              id: input.workspaceReservationId,
+            },
           });
         const commitment = getDiscountCommitmentPayload(input.commitment);
         const claimedApplication = yield* validateInternalPaymentCommitment(
@@ -342,7 +382,10 @@ export class PaymentLifecycleRepository extends Context.Service<
         if (input.amount.value !== 0) {
           return yield* lifecycleStateError(
             "completeInternalPayment",
-            input.workspaceReservationId,
+            {
+              type: "workspaceReservationId",
+              id: input.workspaceReservationId,
+            },
             "Internal payments require an exactly zero payable amount."
           );
         }
@@ -424,14 +467,20 @@ export class PaymentLifecycleRepository extends Context.Service<
               ) {
                 return yield* lifecycleStateError(
                   "completeInternalPayment",
-                  input.workspaceReservationId,
+                  {
+                    type: "workspaceReservationId",
+                    id: input.workspaceReservationId,
+                  },
                   "Internal payments can only complete a current held unpaid reservation."
                 );
               }
 
               yield* validateAccountingDocumentSnapshotProviderIdentity({
                 snapshot: accountingSnapshot,
-                paymentAttemptId: input.workspaceReservationId,
+                paymentReference: {
+                  type: "workspaceReservationId",
+                  id: input.workspaceReservationId,
+                },
                 dotyposCustomerId: reservation.dotyposCustomerId,
                 dotyposReservationId: reservation.dotyposReservationId,
               });
@@ -442,7 +491,10 @@ export class PaymentLifecycleRepository extends Context.Service<
                     () =>
                       new AccountingDocumentSnapshotStorageError({
                         operation: "encrypt",
-                        paymentAttemptId: input.workspaceReservationId,
+                        paymentReference: {
+                          type: "workspaceReservationId",
+                          id: input.workspaceReservationId,
+                        },
                         message:
                           "Accounting snapshot encryption key is unavailable.",
                       })
@@ -505,7 +557,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!completedReservation) {
                 return yield* lifecycleStateError(
                   "completeInternalPayment",
-                  attemptRow.id,
+                  { type: "paymentAttemptId", id: attemptRow.id },
                   "Internal payment could not atomically complete the held reservation."
                 );
               }
@@ -554,7 +606,7 @@ export class PaymentLifecycleRepository extends Context.Service<
       const attachProviderSession = Effect.fn(
         "PaymentLifecycleRepository.attachProviderSession"
       )(function* (input: {
-        readonly id: string;
+        readonly id: PaymentAttemptId;
         readonly securityToken: string;
         readonly providerRedirectUrl: string;
       }) {
@@ -581,7 +633,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         if (!attempt) {
           return yield* new PaymentLifecycleStateError({
             operation: "PaymentLifecycleRepository.attachProviderSession",
-            paymentAttemptId: input.id,
+            paymentReference: { type: "paymentAttemptId", id: input.id },
             message:
               "Only created payment attempts can attach a provider session.",
           });
@@ -592,10 +644,10 @@ export class PaymentLifecycleRepository extends Context.Service<
 
       const markPaid = Effect.fn("PaymentLifecycleRepository.markPaid")(
         function* (input: {
-          readonly id: string;
-          readonly workspaceReservationId: string;
-          readonly webhookEventId?: string;
-          readonly providerOperationId?: string;
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
+          readonly webhookEventId?: NexiWebhookEventId;
+          readonly providerOperationId?: NexiOperationId;
           readonly providerStatus?: string;
           readonly paidAt: Temporal.Instant;
         }) {
@@ -630,7 +682,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!attempt) {
                 return yield* lifecycleStateError(
                   "markPaid",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only a created, pending, or already-paid attempt can mark a reservation paid."
                 );
               }
@@ -677,7 +729,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!consistent) {
                 return yield* lifecycleStateError(
                   "markPaid",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only the active pending attempt on a held reservation can mark payment paid."
                 );
               }
@@ -695,12 +747,12 @@ export class PaymentLifecycleRepository extends Context.Service<
 
       const markTerminal = Effect.fn("PaymentLifecycleRepository.markTerminal")(
         function* (input: {
-          readonly id: string;
-          readonly workspaceReservationId: string;
+          readonly id: PaymentAttemptId;
+          readonly workspaceReservationId: WorkspaceReservationId;
           readonly state: "failed" | "cancelled" | "expired";
           readonly failureCode: string;
-          readonly webhookEventId?: string;
-          readonly providerOperationId?: string;
+          readonly webhookEventId?: NexiWebhookEventId;
+          readonly providerOperationId?: NexiOperationId;
           readonly providerStatus?: string;
         }) {
           const terminalAt = Temporal.Now.instant();
@@ -736,7 +788,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!attempt) {
                 return yield* lifecycleStateError(
                   "markTerminal",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only a non-terminal or matching terminal attempt can mark a reservation terminal."
                 );
               }
@@ -793,7 +845,7 @@ export class PaymentLifecycleRepository extends Context.Service<
               if (!consistent) {
                 return yield* lifecycleStateError(
                   "markTerminal",
-                  input.id,
+                  { type: "paymentAttemptId", id: input.id },
                   "Only the active pending attempt on a held reservation can mark payment terminal."
                 );
               }
@@ -917,12 +969,12 @@ export const validateInternalPaymentCommitment = Effect.fn(
 
 const lifecycleStateError = (
   operation: string,
-  paymentAttemptId: string,
+  paymentReference: PaymentLifecycleReference,
   message: string
 ) =>
   new PaymentLifecycleStateError({
     operation: `PaymentLifecycleRepository.${operation}`,
-    paymentAttemptId,
+    paymentReference,
     message,
   });
 
@@ -966,8 +1018,8 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   "PaymentLifecycle.validateAccountingDocumentSnapshotForAttempt"
 )(function* (input: {
   readonly snapshot: AccountingDocumentSnapshot;
-  readonly workspaceReservationId: string;
-  readonly paymentAttemptId: string;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly paymentReference: AccountingPaymentReference;
   readonly amount: WorkspaceMoney;
   readonly locale: Locale;
 }) {
@@ -976,7 +1028,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
       () =>
         new AccountingDocumentSnapshotStorageError({
           operation: "validate",
-          paymentAttemptId: input.paymentAttemptId,
+          paymentReference: input.paymentReference,
           message: "Accounting snapshot schema is invalid.",
         })
     )
@@ -990,7 +1042,7 @@ const validateAccountingDocumentSnapshotForAttempt = Effect.fn(
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
       operation: "validate",
-      paymentAttemptId: input.paymentAttemptId,
+      paymentReference: input.paymentReference,
       message: "Accounting snapshot does not match the payment attempt.",
     });
   }
@@ -1033,9 +1085,9 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
   "PaymentLifecycle.validateAccountingDocumentSnapshotProviderIdentity"
 )(function* (input: {
   readonly snapshot: AccountingDocumentSnapshot;
-  readonly paymentAttemptId: string;
-  readonly dotyposCustomerId: string;
-  readonly dotyposReservationId: string | null;
+  readonly paymentReference: AccountingPaymentReference;
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly dotyposReservationId: DotyposReservationId | null;
 }) {
   if (
     input.snapshot.dotyposCustomerId !== input.dotyposCustomerId ||
@@ -1043,7 +1095,7 @@ const validateAccountingDocumentSnapshotProviderIdentity = Effect.fn(
   ) {
     return yield* new AccountingDocumentSnapshotStorageError({
       operation: "validate",
-      paymentAttemptId: input.paymentAttemptId,
+      paymentReference: input.paymentReference,
       message: "Accounting snapshot provider identity is inconsistent.",
     });
   }
@@ -1053,8 +1105,8 @@ const persistAccountingDocumentSnapshot = Effect.fn(
   "PaymentLifecycle.persistAccountingDocumentSnapshot"
 )(function* (input: {
   readonly tx: TransactionClient;
-  readonly paymentAttemptId: string;
-  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
   readonly snapshot: AccountingDocumentSnapshot;
   readonly key: AccountingSnapshotKey;
 }) {
@@ -1078,7 +1130,10 @@ const persistAccountingDocumentSnapshot = Effect.fn(
         () =>
           new AccountingDocumentSnapshotStorageError({
             operation: "encrypt",
-            paymentAttemptId: input.paymentAttemptId,
+            paymentReference: {
+              type: "paymentAttemptId",
+              id: input.paymentAttemptId,
+            },
             message: "Accounting snapshot could not be encrypted.",
           })
       )
@@ -1101,8 +1156,8 @@ const persistDiscountApplications = Effect.fn(
 )(function* (input: {
   readonly tx: TransactionClient;
   readonly commitment: CommitmentPayload;
-  readonly paymentAttemptId: string;
-  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
 }) {
   if (input.commitment.applications.length === 0) {
     return [] satisfies PersistedApplication[];
@@ -1151,9 +1206,9 @@ const reserveCommittedCodeClaim = Effect.fn(
   readonly tx: TransactionClient;
   readonly claimedApplication: ClaimedApplication | undefined;
   readonly applicationRows: readonly PersistedApplication[];
-  readonly paymentAttemptId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
   readonly locale: Locale;
-  readonly reservationCustomerId: string;
+  readonly reservationCustomerId: DotyposCustomerId;
   readonly reservationExpiresAt: Temporal.Instant;
 }) {
   if (!input.claimedApplication) return;
@@ -1189,9 +1244,9 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     readonly claim: DiscountClaimInstruction;
     readonly application: AppliedDiscount;
     readonly applicationId: DiscountApplicationId;
-    readonly paymentAttemptId: string;
+    readonly paymentAttemptId: PaymentAttemptId;
     readonly locale: Locale;
-    readonly reservationCustomerId: string;
+    readonly reservationCustomerId: DotyposCustomerId;
     readonly reservationExpiresAt: Temporal.Instant;
   }) {
     if (input.reservationCustomerId !== input.claim.dotyposCustomerId) {
@@ -1270,7 +1325,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
     if (Temporal.Instant.compare(input.reservationExpiresAt, claimedAt) <= 0) {
       return yield* lifecycleStateError(
         "reserveCodeClaim",
-        input.paymentAttemptId,
+        { type: "paymentAttemptId", id: input.paymentAttemptId },
         "Discount claims can only be reserved for a current held reservation."
       );
     }
@@ -1437,7 +1492,7 @@ const reserveCodeClaim = Effect.fn("PaymentLifecycle.reserveCodeClaim")(
 const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
   function* (
     tx: TransactionClient,
-    paymentAttemptId: string,
+    paymentAttemptId: PaymentAttemptId,
     redeemedAt: Temporal.Instant
   ) {
     const [claim] = yield* tx
@@ -1480,7 +1535,7 @@ const redeemCodeClaim = Effect.fn("PaymentLifecycle.redeemCodeClaim")(
 const releaseCodeClaim = Effect.fn("PaymentLifecycle.releaseCodeClaim")(
   function* (
     tx: TransactionClient,
-    paymentAttemptId: string,
+    paymentAttemptId: PaymentAttemptId,
     releasedAt: Temporal.Instant,
     releaseReason: string
   ) {

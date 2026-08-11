@@ -11,6 +11,7 @@ import {
   type WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -32,7 +33,7 @@ export type WorkspacePaidFulfillmentFailureCode =
 export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   "WorkspacePaidFulfillmentError"
 )<{
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly failureCode: WorkspacePaidFulfillmentFailureCode;
   readonly message: string;
   readonly cause?: unknown;
@@ -42,7 +43,7 @@ export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 60 * 1000;
 
 export interface WorkspacePaidFulfillmentService {
   readonly fulfillPaidOrder: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
   }) => Effect.Effect<
     void,
     WorkspacePaidFulfillmentError | WorkspaceReservationStateError
@@ -65,7 +66,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
 
     const failFulfillment = Effect.fn("workspacePaidFulfillment.fail")(
       function* (input: {
-        readonly orderId: string;
+        readonly orderId: WorkspaceReservationId;
         readonly failureCode: WorkspacePaidFulfillmentFailureCode;
         readonly cause?: unknown;
       }) {

@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
@@ -38,7 +39,7 @@ interface FindDiscountCodeInput {
 
 interface LoadDiscountCodeAvailabilityInput {
   readonly codeId: DiscountCodeId;
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
 }
 
 export class DiscountCodeRepository extends Context.Service<

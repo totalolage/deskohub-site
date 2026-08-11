@@ -1,9 +1,10 @@
 import { Context, Layer } from "effect";
+import type { PostHogProjectId } from "../identifiers";
 
 interface IPostHogFeatureFlagConfig {
   readonly apiKey: string;
   readonly host: URL;
-  readonly projectId: string;
+  readonly projectId: PostHogProjectId;
 }
 
 export class PostHogFeatureFlagConfig extends Context.Service<
