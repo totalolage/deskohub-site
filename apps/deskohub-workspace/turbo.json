@@ -59,6 +59,16 @@
         "i18n:compile"
       ]
     },
+    "test:accounting-persistence": {
+      "cache": false,
+      "dependsOn": ["i18n:compile"],
+      "outputs": [],
+      "passThroughEnv": [
+        "WORKSPACE_E2E_BASE_URL",
+        "WORKSPACE_E2E_DATABASE_ALLOWLIST",
+        "WORKSPACE_E2E_DATABASE_URL_UNPOOLED"
+      ]
+    },
     "test:admin-cli": {
       "dependsOn": [
         "@deskohub/dotypos#generate",
@@ -66,6 +76,9 @@
         "i18n:compile"
       ],
       "outputs": []
+    },
+    "test:e2e": {
+      "dependsOn": ["$TURBO_EXTENDS$", "test:accounting-persistence"]
     },
     "typecheck": {
       "dependsOn": ["@deskohub/nexi#generate", "i18n:compile", "typegen"]

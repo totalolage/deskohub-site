@@ -1117,7 +1117,6 @@ const persistAccountingDocumentSnapshot = Effect.fn(
     .values({
       paymentAttemptId: input.paymentAttemptId,
       workspaceReservationId: input.workspaceReservationId,
-      schemaVersion: input.snapshot.schemaVersion,
       keyId: input.key.id,
       encryptedSnapshot: encryptAccountingSnapshot(
         snapshotJson,

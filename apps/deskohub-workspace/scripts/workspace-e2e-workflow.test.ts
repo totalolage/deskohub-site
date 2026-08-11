@@ -138,18 +138,30 @@ test("runs invoice persistence from the exact-SHA E2E command", async () => {
   const testAccountingPersistence = packageJson.scripts[
     "test:accounting-persistence"
   ] as string;
+  const turbo = await Bun.file(
+    resolve(import.meta.dir, "../turbo.json")
+  ).json();
 
-  expect(testE2E).toBe(
-    "bun run test:accounting-persistence && bun scripts/workspace-e2e.ts"
-  );
-  expect(testAccountingPersistence).toContain("bun run i18n:compile");
+  expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
+  expect(testAccountingPersistence).not.toContain("bun run");
   expect(testAccountingPersistence).toContain(
     "invoice.repository.persistence.e2e.test.ts"
   );
   expect(testUnit).toContain("--path-ignore-patterns='**/*.e2e.test.ts'");
-  expect(
-    testAccountingPersistence.indexOf("bun run i18n:compile")
-  ).toBeLessThan(testAccountingPersistence.indexOf("bun test"));
+  expect(turbo.tasks["test:e2e"].dependsOn).toContain(
+    "test:accounting-persistence"
+  );
+  expect(turbo.tasks["test:accounting-persistence"].dependsOn).toContain(
+    "i18n:compile"
+  );
+  expect(turbo.tasks["test:accounting-persistence"].cache).toBe(false);
+  expect(turbo.tasks["test:accounting-persistence"].passThroughEnv).toEqual(
+    expect.arrayContaining([
+      "WORKSPACE_E2E_BASE_URL",
+      "WORKSPACE_E2E_DATABASE_ALLOWLIST",
+      "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
+    ])
+  );
 });
 
 test("uses the hosted runner browser without downloading another browser", async () => {

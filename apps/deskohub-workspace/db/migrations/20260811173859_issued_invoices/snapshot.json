@@ -1,7 +1,7 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "e1f0465c-4fc2-4213-9467-a0cdf8009443",
+  "id": "a6d8cce9-6827-41b4-a4fb-faf1682f2f5f",
   "prevIds": [
     "fd52b375-703a-437d-9f76-a579bb7c9f88"
   ],
@@ -130,19 +130,6 @@
       "generated": null,
       "identity": null,
       "name": "workspace_reservation_id",
-      "entityType": "columns",
-      "schema": "public",
-      "table": "accounting_document_snapshots"
-    },
-    {
-      "type": "integer",
-      "typeSchema": null,
-      "notNull": true,
-      "dimensions": 0,
-      "default": null,
-      "generated": null,
-      "identity": null,
-      "name": "schema_version",
       "entityType": "columns",
       "schema": "public",
       "table": "accounting_document_snapshots"
@@ -3593,13 +3580,6 @@
       "schema": "public",
       "table": "workspace_reservations",
       "entityType": "uniques"
-    },
-    {
-      "value": "\"schema_version\" > 0",
-      "name": "accounting_document_snapshots_schema_version_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "accounting_document_snapshots"
     },
     {
       "value": "\"key_id\" ~ '^[A-Z][A-Z0-9_]{2,31}$'",

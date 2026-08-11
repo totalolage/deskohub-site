@@ -71,7 +71,6 @@ const officePrepared: PreparedCustomerQuote = {
 describe("accounting document snapshot", () => {
   test("freezes supplier, buyer, reservation, and accepted quote facts", () => {
     expect(makeSnapshot()).toMatchObject({
-      schemaVersion: 1,
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
@@ -167,7 +166,7 @@ describe("accounting document snapshot", () => {
     });
   });
 
-  test("round-trips strictly through the versioned schema", async () => {
+  test("round-trips strictly through the schema", async () => {
     const snapshot = makeSnapshot();
     const decode = Schema.decodeUnknownEffect(
       accountingDocumentSnapshotSchema,
@@ -181,6 +180,9 @@ describe("accounting document snapshot", () => {
     );
     await expect(
       Effect.runPromise(decode({ ...snapshot, unexpected: true }))
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
     ).rejects.toBeDefined();
   });
 

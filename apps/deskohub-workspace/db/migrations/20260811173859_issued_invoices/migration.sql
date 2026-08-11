@@ -1,3 +1,5 @@
+ALTER TABLE "accounting_document_snapshots" DROP CONSTRAINT IF EXISTS "accounting_document_snapshots_schema_version_check";--> statement-breakpoint
+ALTER TABLE "accounting_document_snapshots" DROP COLUMN IF EXISTS "schema_version";--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "invoice_number_counters" (
 	"numbering_year" integer PRIMARY KEY,
 	"last_sequence" integer NOT NULL,
@@ -28,8 +30,6 @@ ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_numbering_year_check"
 ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_numbering_sequence_check";--> statement-breakpoint
 ALTER TABLE "invoices" ADD CONSTRAINT "invoices_numbering_sequence_check" CHECK ("numbering_sequence" > 0);--> statement-breakpoint
 ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_number_format_check";--> statement-breakpoint
-ALTER TABLE "invoices" DROP CONSTRAINT IF EXISTS "invoices_schema_version_check";--> statement-breakpoint
-ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version";--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "invoices_reservation_unique_idx" ON "invoices" ("workspace_reservation_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "invoices_payment_attempt_unique_idx" ON "invoices" ("payment_attempt_id");--> statement-breakpoint
 CREATE UNIQUE INDEX IF NOT EXISTS "invoices_number_unique_idx" ON "invoices" ("invoice_number");--> statement-breakpoint

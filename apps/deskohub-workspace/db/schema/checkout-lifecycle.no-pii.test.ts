@@ -49,12 +49,16 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     const schema = await readAppFile(
       "db/schema/accounting-document-snapshots.ts"
     );
-    const migration = await readAppFile(
-      "db/migrations/20260810143334_slim_morlun/migration.sql"
-    );
+    const [migration, invoiceMigration] = await Promise.all([
+      readAppFile("db/migrations/20260810143334_slim_morlun/migration.sql"),
+      readAppFile(
+        "db/migrations/20260811173859_issued_invoices/migration.sql"
+      ),
+    ]);
 
     expect(schema).toContain('bytea("encrypted_snapshot")');
     expect(schema).not.toContain("jsonb(");
+    expect(schema).not.toContain("schemaVersion");
     for (const fragment of piiColumnFragments) {
       expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
     }
@@ -62,20 +66,24 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).toContain("accounting_document_snapshots_immutable");
     expect(migration).toContain("BEFORE UPDATE OR DELETE");
     expect(migration).toContain("state IN ('failed', 'cancelled', 'expired')");
+    expect(invoiceMigration).toContain(
+      'ALTER TABLE "accounting_document_snapshots" DROP CONSTRAINT IF EXISTS "accounting_document_snapshots_schema_version_check"'
+    );
+    expect(invoiceMigration).toContain(
+      'ALTER TABLE "accounting_document_snapshots" DROP COLUMN IF EXISTS "schema_version"'
+    );
   });
 
   test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
     const schema = await readAppFile("db/schema/invoices.ts");
     const migration = await readAppFile(
-      "db/migrations/20260811152155_issued_invoices/migration.sql"
+      "db/migrations/20260811173859_issued_invoices/migration.sql"
     );
 
     expect(schema).toContain('bytea("encrypted_document")');
     expect(schema).not.toContain("jsonb(");
     expect(schema).not.toContain("schemaVersion");
-    expect(migration).toContain(
-      'ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version"'
-    );
+    expect(migration).not.toContain("invoices_schema_version");
     for (const fragment of piiColumnFragments) {
       expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
     }
@@ -101,14 +109,11 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
-      "db/migrations/20260811152155_issued_invoices/migration.sql"
+      "db/migrations/20260811173859_issued_invoices/migration.sql"
     );
 
     expect(migration).toContain(
       'CREATE TABLE IF NOT EXISTS "invoice_number_counters"'
-    );
-    expect(migration).toContain(
-      'ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version"'
     );
     expect(migration).toContain(
       'DROP CONSTRAINT IF EXISTS "invoice_number_counters_year_check"'
@@ -133,12 +138,15 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("follows the corrected migration head before issuing invoices", async () => {
     const [discountJson, invoiceJson] = await Promise.all([
       readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-      readAppFile("db/migrations/20260811152155_issued_invoices/snapshot.json"),
+      readAppFile(
+        "db/migrations/20260811173859_issued_invoices/snapshot.json"
+      ),
     ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
+    expect(invoiceJson).not.toContain('"schema_version"');
   });
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {

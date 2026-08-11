@@ -386,7 +386,6 @@ const createPaidFixture = async (
         yield* tx.insert(accountingDocumentSnapshots).values({
           paymentAttemptId,
           workspaceReservationId: reservationId,
-          schemaVersion: source.schemaVersion,
           keyId: testKey.id,
           encryptedSnapshot: encryptAccountingSnapshot(
             JSON.stringify(source),
@@ -439,7 +438,6 @@ const createAdditionalFailedAttempt = async (
         yield* tx.insert(accountingDocumentSnapshots).values({
           paymentAttemptId,
           workspaceReservationId: fixture.reservationId,
-          schemaVersion: source.schemaVersion,
           keyId: testKey.id,
           encryptedSnapshot: encryptAccountingSnapshot(
             JSON.stringify(source),

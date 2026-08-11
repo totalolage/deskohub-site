@@ -133,7 +133,7 @@ describe("invoice", () => {
     ).rejects.toBeDefined();
   });
 
-  test("reads legacy preview documents without retaining schema versioning", async () => {
+  test("rejects schema-version fields", async () => {
     const document = makeInvoiceDocument({
       source,
       buyer: source.buyer,
@@ -142,16 +142,11 @@ describe("invoice", () => {
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
     });
 
-    await expect(
-      Effect.runPromise(
-        decodeInvoiceDocument({ ...document, schemaVersion: 1 })
-      )
-    ).resolves.toEqual(document);
-    await expect(
-      Effect.runPromise(
-        decodeInvoiceDocument({ ...document, schemaVersion: 2 })
-      )
-    ).rejects.toBeDefined();
+    for (const schemaVersion of [1, 2]) {
+      await expect(
+        Effect.runPromise(decodeInvoiceDocument({ ...document, schemaVersion }))
+      ).rejects.toBeDefined();
+    }
   });
 
   test("issues from an office reservation snapshot", async () => {

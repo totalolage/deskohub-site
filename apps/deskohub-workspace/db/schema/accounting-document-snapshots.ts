@@ -1,12 +1,5 @@
 import { sql } from "drizzle-orm";
-import {
-  bytea,
-  check,
-  integer,
-  pgTable,
-  text,
-  uniqueIndex,
-} from "drizzle-orm/pg-core";
+import { bytea, check, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 import type { AccountingSnapshotKeyId } from "@/features/accounting/accounting-document-snapshot";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
@@ -25,16 +18,11 @@ export const accountingDocumentSnapshots = pgTable(
       .notNull()
       .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
-    schemaVersion: integer("schema_version").notNull(),
     keyId: text("key_id").notNull().$type<AccountingSnapshotKeyId>(),
     encryptedSnapshot: bytea("encrypted_snapshot").notNull(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
   },
   (t) => [
-    check(
-      "accounting_document_snapshots_schema_version_check",
-      sql`${t.schemaVersion} > 0`
-    ),
     check(
       "accounting_document_snapshots_key_id_check",
       sql`${t.keyId} ~ '^[A-Z][A-Z0-9_]{2,31}$'`
