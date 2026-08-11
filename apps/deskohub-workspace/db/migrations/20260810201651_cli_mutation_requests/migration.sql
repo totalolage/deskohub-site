@@ -1,4 +1,4 @@
-CREATE TABLE "cli_mutation_requests" (
+CREATE TABLE IF NOT EXISTS "cli_mutation_requests" (
 	"session_id" text,
 	"request_id" text,
 	"mutation" jsonb NOT NULL,
@@ -17,5 +17,6 @@ CREATE TABLE "cli_mutation_requests" (
       ))
 );
 --> statement-breakpoint
-CREATE INDEX "cli_mutation_requests_created_at_idx" ON "cli_mutation_requests" ("created_at");--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "cli_mutation_requests_created_at_idx" ON "cli_mutation_requests" ("created_at");--> statement-breakpoint
+ALTER TABLE "cli_mutation_requests" DROP CONSTRAINT IF EXISTS "cli_mutation_requests_session_id_cli_sessions_id_fkey";--> statement-breakpoint
 ALTER TABLE "cli_mutation_requests" ADD CONSTRAINT "cli_mutation_requests_session_id_cli_sessions_id_fkey" FOREIGN KEY ("session_id") REFERENCES "cli_sessions"("id") ON DELETE CASCADE;

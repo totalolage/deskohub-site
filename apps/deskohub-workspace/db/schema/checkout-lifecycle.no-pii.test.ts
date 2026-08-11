@@ -103,6 +103,22 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
+  test("reconciles the branch-local CLI mutation migration name", async () => {
+    const migration = await readAppFile(
+      "db/migrations/20260810201651_cli_mutation_requests/migration.sql"
+    );
+
+    expect(migration).toContain(
+      'CREATE TABLE IF NOT EXISTS "cli_mutation_requests"'
+    );
+    expect(migration).toContain(
+      'CREATE INDEX IF NOT EXISTS "cli_mutation_requests_created_at_idx"'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "cli_mutation_requests_session_id_cli_sessions_id_fkey"'
+    );
+  });
+
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
     const migration = await readAppFile(
       "db/migrations/20260602090946_free_morgan_stark/migration.sql"
