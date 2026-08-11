@@ -22,6 +22,11 @@ PDF generation, email attachments, invoice issuance/numbering, and administratio
 - `encrypted_snapshot bytea`
 - `created_at`
 
+The first versionless-snapshot deployment deliberately leaves the former
+`schema_version` database column nullable and unmapped so old and new
+application instances can overlap safely during rollout. Remove that dormant
+column only in a later release after no old writer can remain active.
+
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
 The snapshot deliberately excludes email, phone, free-form messages, access codes, provider payloads, and payment tokens. A business buyer contract is supported, but the current reservation UI does not yet collect a reservation-specific business name, company ID, VAT ID, and address. Until that input is added and signed into the checkout state, checkout creates a personal buyer snapshot from the submitted customer name. Do not enable automatic business-invoice issuance on the assumption that the currently blank Dotypos company fields are complete.
