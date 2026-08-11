@@ -444,13 +444,26 @@ sequenceDiagram
     App->>Nexi: POST /orders/hpp with the exact signed-summary amount
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
-    App-->>Customer: Redirect to hostedPage
+    App-->>Customer: Open hostedPage in a new tab; navigate the original tab to pending reservation status
   else exactly zero signed price affirmed
     App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
     App->>App: Invoke idempotent paid fulfillment
     App-->>Customer: Redirect to local successful checkout status
   end
 ```
+
+After opening the payment tab, the Pay page marks the original tab as owner in
+tab-local session storage before navigating it to status. The owner holds an
+exclusive browser lock scoped to the status path and preempts a returned payment
+tab that wins the hydration race. An unmarked returned tab closes when the lock
+is unavailable or preempted; if the original tab is closed, it keeps the lock
+and remains open. A browser without Web Locks keeps the returned page open.
+
+Starting a new reservation from terminal status or invalid Pay state uses a
+document navigation. Cache Components may retain the previous reservation form
+and its completed action result in an inactive route tree; restoring that tree
+through client navigation could replay the old Pay redirect instead of starting
+a fresh checkout session.
 
 A definitive Nexi HPP rejection atomically marks the attempt failed and releases
 its reserved code claim. A network, retryable provider, conflict, rate-limit, or

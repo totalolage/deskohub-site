@@ -7,9 +7,10 @@ import {
   expect,
   jest,
   mock,
+  spyOn,
   test,
 } from "bun:test";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Schema } from "effect";
 import {
   buildCoworkCheckoutSummary,
@@ -17,7 +18,10 @@ import {
 } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import { m } from "@/features/i18n";
-import { workspaceUseAction } from "@/shared/testing/workspace-component-module-mocks";
+import {
+  workspaceRouterPush,
+  workspaceUseAction,
+} from "@/shared/testing/workspace-component-module-mocks";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -54,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   jest.useRealTimers();
+  jest.restoreAllMocks();
 });
 
 describe("CheckoutPayPageSkeleton", () => {
@@ -132,6 +137,154 @@ describe("CheckoutPayPage pricing change", () => {
       })
     ).toBeNull();
     expect(view.queryByRole("checkbox")).toBeNull();
+  });
+});
+
+describe("CheckoutPayPage payment navigation", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  beforeEach(() => {
+    workspaceRouterPush.mockClear();
+  });
+
+  afterEach(() => {
+    cleanup();
+    sessionStorage.removeItem(
+      "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
+    );
+  });
+
+  afterAll(() => {
+    unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("opens the payment gateway in a new tab and sends the original tab to status", async () => {
+    const events: string[] = [];
+    const execute = mock(() => {
+      events.push("execute");
+    });
+    const replace = mock((_href: string) => undefined);
+    const paymentWindow = {
+      close: mock(() => undefined),
+      closed: false,
+      location: { replace },
+      opener: window,
+    };
+    spyOn(window, "open").mockImplementation(() => {
+      events.push("open");
+      return paymentWindow as unknown as Window;
+    });
+    workspaceUseAction.mockReturnValue({
+      execute,
+      isExecuting: false,
+      result: {},
+    });
+
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    fireEvent.click(view.getByRole("checkbox"));
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+      })
+    );
+
+    expect(events).toEqual(["open", "execute"]);
+    expect(window.open).toHaveBeenCalledWith("about:blank", "_blank");
+    expect(paymentWindow.opener).toBeNull();
+    expect(execute).toHaveBeenCalledWith({
+      locale: "en-US",
+      payStateToken: "signed-summary",
+      legalConsent: true,
+    });
+
+    const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
+      | {
+          readonly onSuccess: (result: {
+            readonly data: {
+              readonly status: "redirect";
+              readonly redirectUrl: string;
+              readonly statusUrl: string;
+            };
+          }) => void;
+        }
+      | undefined;
+    if (!actionOptions) throw new Error("Checkout action options missing");
+
+    act(() => {
+      actionOptions.onSuccess({
+        data: {
+          status: "redirect",
+          redirectUrl: "https://payments.example.test/checkout",
+          statusUrl: "/en-US/reservation/status/reservation-id",
+        },
+      });
+    });
+
+    expect(replace).toHaveBeenCalledWith(
+      "https://payments.example.test/checkout"
+    );
+    expect(workspaceRouterPush).toHaveBeenCalledWith(
+      "/en-US/reservation/status/reservation-id"
+    );
+    expect(
+      sessionStorage.getItem(
+        "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
+      )
+    ).toBe("true");
+    expect(paymentWindow.close).not.toHaveBeenCalled();
+  });
+
+  test("closes the pre-opened payment tab when checkout unmounts", async () => {
+    const paymentWindow = {
+      close: mock(() => undefined),
+      closed: false,
+      opener: window,
+    };
+    spyOn(window, "open").mockReturnValue(paymentWindow as unknown as Window);
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+      result: {},
+    });
+
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    fireEvent.click(view.getByRole("checkbox"));
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+      })
+    );
+    view.unmount();
+
+    expect(paymentWindow.close).toHaveBeenCalledTimes(1);
   });
 });
 

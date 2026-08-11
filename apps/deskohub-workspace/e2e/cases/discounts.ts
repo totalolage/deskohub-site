@@ -6,6 +6,7 @@ import {
   focusBrowserElement,
   openBrowserPage,
   scrollBrowserElementIntoView,
+  switchToBrowserTab,
   waitForBrowserCondition,
   waitForBrowserReactHandler,
   waitForBrowserTextContent,
@@ -752,8 +753,10 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: submitCheckoutPayment(run, session).pipe(
-        Effect.andThen(waitForPricingChanged(config, run, session))
+      execute: submitCheckoutPaymentAndWaitForPricingChanged(
+        config,
+        run,
+        session
       ),
       id: "assert-calendar-payment-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
@@ -846,8 +849,10 @@ const executeCustomerDiscountChangesBeforePayment = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: submitCheckoutPayment(run, session).pipe(
-        Effect.andThen(waitForPricingChanged(config, run, session))
+      execute: submitCheckoutPaymentAndWaitForPricingChanged(
+        config,
+        run,
+        session
       ),
       id: "assert-customer-discount-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
@@ -1141,8 +1146,10 @@ export const executeDiscountCodeExpiresBeforePayment = ({
       timeoutMs: config.timeouts.datasource,
     });
     yield* runStep({
-      execute: submitCheckoutPayment(run, session).pipe(
-        Effect.andThen(waitForPricingChanged(config, run, session))
+      execute: submitCheckoutPaymentAndWaitForPricingChanged(
+        config,
+        run,
+        session
       ),
       id: "assert-expired-code-pricing-change",
       timeoutMs: config.timeouts.providerTransition,
@@ -1257,4 +1264,16 @@ const waitForPricingChanged = (
         { timeoutMs: config.timeouts.uiTransition }
       )
     )
+  );
+
+const submitCheckoutPaymentAndWaitForPricingChanged = (
+  config: WorkspaceE2EConfig,
+  run: Runner,
+  session: string
+) =>
+  submitCheckoutPayment(run, session).pipe(
+    Effect.flatMap((checkoutTabId) =>
+      switchToBrowserTab(run, session, checkoutTabId)
+    ),
+    Effect.andThen(waitForPricingChanged(config, run, session))
   );

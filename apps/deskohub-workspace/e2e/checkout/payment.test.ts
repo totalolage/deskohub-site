@@ -18,8 +18,10 @@ const checkoutUrl =
 test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
+  let activeTabId = "t1";
   const activatedRefs: string[] = [];
   const clickedRefs: string[] = [];
+  const switchedTabs: string[] = [];
   let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
   const run = mock(async (_command, args, options = {}) => {
@@ -33,6 +35,7 @@ test("retries a transient reservation preparation failure with the same checkout
         "open",
         "press",
         "snapshot",
+        "tab",
         "wait",
       ].includes(arg)
     );
@@ -40,6 +43,28 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "open") return success();
     if (commandArgs[0] === "wait") return success();
+
+    if (commandArgs[0] === "tab" && commandArgs[1] === "list") {
+      return success(
+        JSON.stringify({
+          data: {
+            tabs: [
+              { active: activeTabId === "t1", tabId: "t1" },
+              ...(hostedPaymentStarted
+                ? [{ active: activeTabId === "t2", tabId: "t2" }]
+                : []),
+            ],
+          },
+          success: true,
+        })
+      );
+    }
+
+    if (commandArgs[0] === "tab") {
+      activeTabId = commandArgs[1] ?? activeTabId;
+      switchedTabs.push(activeTabId);
+      return success();
+    }
 
     if (
       commandArgs[0] === "eval" &&
@@ -57,8 +82,12 @@ test("retries a transient reservation preparation failure with the same checkout
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
-      if (hostedPaymentStarted)
+      if (hostedPaymentStarted && activeTabId === "t2")
         return success("https://xpay.nexigroup.com/hpp/nexi/test");
+      if (hostedPaymentStarted)
+        return success(
+          `https://workspace.example/en-US/reservation/status/${orderId}`
+        );
       if (reservationSubmitAttempts > 1)
         return success(
           `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
@@ -94,7 +123,10 @@ test("retries a transient reservation preparation failure with the same checkout
     if (commandArgs[0] === "click") {
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
-      if (commandArgs[1] === "@e3") hostedPaymentStarted = true;
+      if (commandArgs[1] === "@e3") {
+        hostedPaymentStarted = true;
+        activeTabId = "t2";
+      }
       return success();
     }
 
@@ -105,7 +137,10 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
-      if (focusedRef === "@e3") hostedPaymentStarted = true;
+      if (focusedRef === "@e3") {
+        hostedPaymentStarted = true;
+        activeTabId = "t2";
+      }
       return success();
     }
 
@@ -131,6 +166,7 @@ test("retries a transient reservation preparation failure with the same checkout
     "@e2",
     "@e3",
   ]);
+  expect(switchedTabs).toEqual(["t1", "t2"]);
 });
 
 test("detaches long reservation preparation from the CDP evaluation", async () => {
@@ -342,19 +378,43 @@ test("types into a hosted payment field when fill does not stick", async () => {
   expect(cardTypeAttempts).toBe(1);
 });
 
-test("activates hosted-payment targets and recognizes the reservation status return", async () => {
+test("returns through back to shop and restores the single original status tab", async () => {
   const calls: string[][] = [];
-  const returnedUrls: string[] = [];
   const values = new Map<string, string>();
   const buttons = [
     'button "CONTINUE" [ref=e6]',
     'button "PAY" [ref=e7]',
     'button "Authentication successful" [ref=e8]',
+    'button "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
+  let tabListReads = 0;
   const run: Runner = async (_command, args) => {
     const commandArgs = args.slice(2);
     calls.push(commandArgs);
+
+    if (
+      commandArgs[0] === "--json" &&
+      commandArgs[1] === "tab" &&
+      commandArgs[2] === "list"
+    ) {
+      tabListReads += 1;
+      return success(
+        JSON.stringify({
+          data: {
+            tabs: [
+              { active: tabListReads > 1, tabId: "t1" },
+              ...(tabListReads === 1
+                ? [{ active: true, tabId: "t2" }]
+                : []),
+            ],
+          },
+          success: true,
+        })
+      );
+    }
+
+    if (commandArgs[0] === "tab") return success();
 
     if (commandArgs[0] === "snapshot") {
       return success(
@@ -372,12 +432,11 @@ test("activates hosted-payment targets and recognizes the reservation status ret
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
-      const url =
-        buttonIndex > 2
+      return success(
+        buttonIndex > 3
           ? `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`
-          : "https://xpay.nexigroup.com/hpp/nexi/test";
-      returnedUrls.push(url);
-      return success(url);
+          : "https://xpay.nexigroup.com/hpp/nexi/test"
+      );
     }
 
     if (commandArgs[0] === "fill") {
@@ -399,6 +458,11 @@ test("activates hosted-payment targets and recognizes the reservation status ret
   await Effect.runPromise(
     completeNexiHostedPayment({
       data: makeCheckoutData(),
+      hostedPaymentPage: {
+        checkoutTabId: "t1",
+        hostedPaymentTabId: "t2",
+        url: "https://xpay.nexigroup.com/hpp/nexi/test",
+      },
       run,
       session: "test-session",
       timeouts: workspaceE2ETimeouts,
@@ -410,15 +474,16 @@ test("activates hosted-payment targets and recognizes the reservation status ret
     ["focus", "@e6"],
     ["focus", "@e7"],
     ["focus", "@e8"],
+    ["focus", "@e9"],
   ]);
   expect(calls.filter(([command]) => command === "press")).toEqual([
     ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
+    ["press", "Enter"],
   ]);
-  expect(returnedUrls).toContain(
-    `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`
-  );
+  expect(tabListReads).toBe(2);
+  expect(calls).toContainEqual(["tab", "t1"]);
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });

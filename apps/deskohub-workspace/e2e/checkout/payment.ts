@@ -9,11 +9,14 @@ import {
   getSnapshotRef,
   openBrowserPage,
   pressBrowserKey,
+  readActiveBrowserTabId,
+  readBrowserTabs,
   readBrowserUrl,
   readInteractiveSnapshot,
   requireEnabledSnapshotRef,
   requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
+  switchToBrowserTab,
   switchToMainFrame,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
@@ -91,13 +94,14 @@ export const completeCheckout = ({
       submitReservationScript,
       timeouts: config.timeouts,
     });
-    yield* submitPaymentAndWaitForHostedPage({
+    const hostedPaymentPage = yield* submitPaymentAndWaitForHostedPage({
       run,
       session,
       timeouts: config.timeouts,
     });
     yield* completeNexiHostedPayment({
       data,
+      hostedPaymentPage,
       run,
       session,
       timeouts: config.timeouts,
@@ -548,6 +552,12 @@ const formatReservationStartDiagnostics = (
 const isCheckoutStatusUrl = (url: string | undefined) =>
   parseUrl(url ?? "")?.pathname.includes("/reservation/status/") ?? false;
 
+export type HostedPaymentPage = {
+  readonly checkoutTabId: string;
+  readonly hostedPaymentTabId: string;
+  readonly url: string;
+};
+
 export const submitPaymentAndWaitForHostedPage = ({
   run,
   session,
@@ -558,9 +568,9 @@ export const submitPaymentAndWaitForHostedPage = ({
   timeouts: WorkspaceE2ETimeouts;
 }) =>
   Effect.gen(function* () {
-    yield* submitCheckoutPayment(run, session);
+    const checkoutTabId = yield* submitCheckoutPayment(run, session);
 
-    return yield* waitForBrowserUrl({
+    const hostedPaymentUrl = yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
       matches: (url) =>
         url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
@@ -568,12 +578,29 @@ export const submitPaymentAndWaitForHostedPage = ({
       session,
       timeoutMs: timeouts.providerTransition,
     });
+    const hostedPaymentTabId = yield* readActiveBrowserTabId(run, session);
+    yield* switchToBrowserTab(run, session, checkoutTabId);
+    yield* waitForBrowserUrl({
+      description: "checkout status page in original tab",
+      matches: isCheckoutStatusUrl,
+      run,
+      session,
+      timeoutMs: timeouts.providerTransition,
+    });
+    yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    return {
+      checkoutTabId,
+      hostedPaymentTabId,
+      url: hostedPaymentUrl,
+    } satisfies HostedPaymentPage;
   });
 
 export const submitCheckoutPayment = (run: Runner, session: string) =>
   Effect.gen(function* () {
+    const checkoutTabId = yield* readActiveBrowserTabId(run, session);
     yield* clickCheckoutPayConsent(run, session);
     yield* activateCheckoutPayButton(run, session);
+    return checkoutTabId;
   });
 
 const clickCheckoutPayConsent = (run: Runner, session: string) =>
@@ -608,11 +635,13 @@ const activateCheckoutPayButton = (run: Runner, session: string) =>
 
 export const completeNexiHostedPayment = ({
   data,
+  hostedPaymentPage,
   run,
   session,
   timeouts,
 }: {
   data: CheckoutData;
+  hostedPaymentPage?: HostedPaymentPage;
   run: Runner;
   session: string;
   timeouts: WorkspaceE2ETimeouts;
@@ -690,34 +719,73 @@ export const completeNexiHostedPayment = ({
       log(
         "Nexi back-to-shop action skipped; checkout status page already loaded"
       );
-      return;
+    } else {
+      const backToShopExit = yield* Effect.exit(
+        clickHostedPaymentTarget(
+          run,
+          session,
+          "back to shop",
+          [
+            { value: "BACK TO THE SHOP" },
+            { value: "Back to the shop" },
+            { value: "TORNA AL NEGOZIO" },
+          ],
+          timeouts
+        )
+      );
+
+      if (
+        Exit.isFailure(backToShopExit) &&
+        !isCheckoutStatusUrl(yield* readBrowserUrl(run, session))
+      ) {
+        return yield* toWorkspaceE2EError(
+          "click Nexi back to shop",
+          Cause.squash(backToShopExit.cause)
+        );
+      }
     }
 
-    const backToShopExit = yield* Effect.exit(
-      clickHostedPaymentTarget(
+    if (hostedPaymentPage) {
+      yield* waitForReturnedPaymentTabToClose({
+        hostedPaymentPage,
         run,
         session,
-        "back to shop",
-        [
-          { value: "BACK TO THE SHOP" },
-          { value: "Back to the shop" },
-          { value: "TORNA AL NEGOZIO" },
-        ],
-        timeouts
-      )
-    );
-
-    if (Exit.isSuccess(backToShopExit)) return;
-    if (isCheckoutStatusUrl(yield* readBrowserUrl(run, session))) {
-      log(
-        "Nexi back-to-shop action skipped; checkout status page already loaded"
-      );
-      return;
+        timeoutMs: timeouts.providerTransition,
+      });
     }
+  });
 
-    return yield* toWorkspaceE2EError(
-      "click Nexi back to shop",
-      Cause.squash(backToShopExit.cause)
+const waitForReturnedPaymentTabToClose = ({
+  hostedPaymentPage,
+  run,
+  session,
+  timeoutMs,
+}: {
+  readonly hostedPaymentPage: HostedPaymentPage;
+  readonly run: Runner;
+  readonly session: string;
+  readonly timeoutMs: number;
+}) =>
+  Effect.gen(function* () {
+    yield* pollUntil(
+      readBrowserTabs(run, session).pipe(
+        Effect.map((tabs) =>
+          tabs.length === 1 &&
+          tabs[0]?.tabId === hostedPaymentPage.checkoutTabId
+            ? tabs[0]
+            : undefined
+        )
+      ),
+      {
+        intervalMs: workspaceE2EPollIntervalMs.browser,
+        label: "returned payment tab to close",
+        timeoutMs,
+      }
+    );
+    yield* switchToBrowserTab(
+      run,
+      session,
+      hostedPaymentPage.checkoutTabId
     );
   });
 

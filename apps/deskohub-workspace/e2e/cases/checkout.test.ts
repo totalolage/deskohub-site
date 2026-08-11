@@ -333,6 +333,10 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
       capacity: "provider-verification",
       id: "replay-payment-webhook",
     },
+    {
+      capacity: "reservation-start",
+      id: "restart-reservation-after-fulfillment",
+    },
   ]);
   expect(observedSteps.slice(0, 9).map(({ id }) => id)).toEqual([
     "prepare-checkout-pay-page",

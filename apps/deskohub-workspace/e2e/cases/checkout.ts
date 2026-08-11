@@ -11,10 +11,13 @@ import {
 } from "@/features/reservation/reservation-date";
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
+  activateBrowserElement,
   activateHydratedBrowserElement,
   evalBrowserScript,
   normalizeBrowserText,
   openBrowserPage,
+  waitForBrowserCondition,
+  waitForBrowserReactHandler,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
@@ -117,12 +120,12 @@ export const executeCheckoutFlow = ({
     }
     const providerSessionRow = yield* resources.withHostedPaymentSession(
       Effect.gen(function* () {
-        yield* runStep({
+        const hostedPaymentPage = yield* runStep({
           execute: submitPaymentAndWaitForHostedPage({
             run,
             session,
             timeouts: config.timeouts,
-          }).pipe(Effect.asVoid),
+          }),
           id: "start-checkout-payment",
           timeoutMs: config.timeouts.providerTransition,
         });
@@ -139,6 +142,7 @@ export const executeCheckoutFlow = ({
         yield* runStep({
           execute: completeNexiHostedPayment({
             data,
+            hostedPaymentPage,
             run,
             session,
             timeouts: config.timeouts,
@@ -208,6 +212,17 @@ export const executeCheckoutFlow = ({
       id: "assert-fulfilled-status-page",
       timeoutMs: config.timeouts.uiTransition,
     });
+    yield* runStep({
+      capacity: "reservation-start",
+      execute: restartReservationAfterFulfillment({
+        config,
+        data,
+        run,
+        session,
+      }),
+      id: "restart-reservation-after-fulfillment",
+      timeoutMs: config.timeouts.uiTransition,
+    });
     if (
       data.meetingRoom &&
       isMeetingRoomWholeDayReservationDuration(data.meetingRoom.duration)
@@ -246,6 +261,59 @@ const waitForCheckoutStatusPage = (
     session,
     timeoutMs: config.timeouts.providerTransition,
   }).pipe(Effect.asVoid);
+
+const restartReservationAfterFulfillment = ({
+  config,
+  data,
+  run,
+  session,
+}: {
+  config: WorkspaceE2EConfig;
+  data: CheckoutData;
+  run: Runner;
+  session: string;
+}) =>
+  Effect.gen(function* () {
+    const reservationPath = yield* tryWorkspaceE2ESync(
+      "read fresh reservation path",
+      () => {
+        const url = parseUrl(data.checkoutUrl);
+        if (!url) throw new Error("checkout URL is invalid");
+        return url.pathname;
+      }
+    );
+
+    yield* activateBrowserElement(
+      run,
+      session,
+      "#checkout-status-reserve-again",
+      { timeoutMs: config.timeouts.browserAction }
+    );
+    yield* waitForBrowserReactHandler(run, session, "form", "onSubmit", {
+      timeoutMs: config.timeouts.uiTransition,
+    });
+
+    const reservationPathLiteral = JSON.stringify(reservationPath);
+    yield* waitForBrowserCondition(
+      run,
+      session,
+      "fresh reservation form remains active",
+      `(() => {
+        const root = document.documentElement;
+        if (location.pathname !== ${reservationPathLiteral}) {
+          delete root.dataset.checkoutRestartReadyAt;
+          return false;
+        }
+        const readyAt = Number(root.dataset.checkoutRestartReadyAt);
+        if (!Number.isFinite(readyAt) || readyAt <= 0) {
+          root.dataset.checkoutRestartReadyAt = String(Date.now());
+          return false;
+        }
+        return Date.now() - readyAt >= 1000;
+      })()`,
+      { timeoutMs: config.timeouts.uiTransition }
+    );
+  });
 
 export const assertFulfilledStatusPage = ({
   checkoutRow,

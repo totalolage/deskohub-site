@@ -3,12 +3,13 @@
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
+import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -55,8 +56,20 @@ export function CheckoutPayPage({
   variant,
 }: CheckoutPayPageProps) {
   const router = useRouter();
+  const paymentWindowRef = useRef<Window | null>(null);
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const closePaymentWindow = () => {
+    paymentWindowRef.current?.close();
+    paymentWindowRef.current = null;
+  };
+  useEffect(
+    () => () => {
+      paymentWindowRef.current?.close();
+      paymentWindowRef.current = null;
+    },
+    []
+  );
   const {
     execute,
     isExecuting,
@@ -65,28 +78,47 @@ export function CheckoutPayPage({
     actionName: "submitReservation",
     onSuccess: ({ data }) => {
       if (data?.status === "pricing_changed") {
+        closePaymentWindow();
         router.push(data.freshPayUrl);
         return;
       }
 
       if (data?.status === "in_progress") {
+        closePaymentWindow();
         setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
         return;
       }
 
       if (!data?.redirectUrl) {
+        closePaymentWindow();
         setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
         return;
       }
 
+      const paymentWindow = paymentWindowRef.current;
+      if (data.statusUrl && paymentWindow && !paymentWindow.closed) {
+        try {
+          paymentWindow.location.replace(data.redirectUrl);
+          markCheckoutStatusWindowOwner(data.statusUrl);
+          paymentWindowRef.current = null;
+          router.push(data.statusUrl);
+          return;
+        } catch {
+          closePaymentWindow();
+        }
+      }
+
+      closePaymentWindow();
       router.push(data.redirectUrl);
     },
     onError: ({ error }) => {
+      closePaymentWindow();
       setErrorMessage(
         error.serverError || m.checkoutPaySubmitError({}, { locale })
       );
     },
     onTransportError: () => {
+      closePaymentWindow();
       setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
     },
   });
@@ -173,6 +205,12 @@ export function CheckoutPayPage({
                 setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
                 return;
               }
+
+              const paymentWindow = window.open("about:blank", "_blank");
+              if (paymentWindow) {
+                paymentWindow.opener = null;
+              }
+              paymentWindowRef.current = paymentWindow;
 
               execute({
                 locale,

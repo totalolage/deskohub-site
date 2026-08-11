@@ -695,6 +695,8 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/existing",
+      statusUrl:
+        "/en-US/reservation/status/reservation-reuses-provider-attempt",
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
@@ -1181,6 +1183,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/hosted",
+      statusUrl: `/en-US/reservation/status/${orderId}`,
     });
     expect(harness.requireCurrent).toHaveBeenCalled();
     expect(harness.affirm).toHaveBeenCalled();
@@ -1288,6 +1291,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/existing",
+      statusUrl: `/en-US/reservation/status/${orderId}`,
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
@@ -1526,6 +1530,7 @@ describe("CheckoutService", () => {
     expect(result).toEqual({
       status: "redirect",
       redirectUrl: "https://payments.example/hosted",
+      statusUrl: "/en-US/reservation/status/reservation-refreshes-note",
     });
     expect(events).toEqual(["note-updated", "provider-created"]);
     expect(harness.updateReservation).toHaveBeenCalledTimes(1);

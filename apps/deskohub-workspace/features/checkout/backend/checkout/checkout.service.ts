@@ -120,6 +120,12 @@ export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly cause?: unknown;
 }> {}
 
+type CheckoutRedirectResult = {
+  readonly status: "redirect";
+  readonly redirectUrl: string;
+  readonly statusUrl?: string;
+};
+
 const ensureReservationHasNotEnded = Effect.fn(
   "checkout.ensureReservationHasNotEnded"
 )(function* (reservation: SignedPayState["reservation"]) {
@@ -158,7 +164,7 @@ export interface CheckoutService {
     },
     locale: Locale
   ) => Effect.Effect<
-    | { readonly status: "redirect"; readonly redirectUrl: string }
+    | CheckoutRedirectResult
     | {
         readonly status: "pricing_changed";
         readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
@@ -412,6 +418,25 @@ const mapCheckoutFailure = (cause: unknown) => {
 const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
+const getCheckoutRedirectResult = (input: {
+  readonly redirectUrl: string;
+  readonly statusUrl?: string;
+}): CheckoutRedirectResult => ({ status: "redirect", ...input });
+
+const getHostedPaymentCheckoutResult = (input: {
+  readonly locale: Locale;
+  readonly providerRedirectUrl: string;
+  readonly workspaceReservationId: string;
+}): CheckoutRedirectResult =>
+  getCheckoutRedirectResult({
+    redirectUrl: input.providerRedirectUrl,
+    statusUrl: getReservationStatusPath({
+      locale: input.locale,
+      orderId: input.workspaceReservationId,
+      setBypassCookie: true,
+    }),
+  });
+
 const isDefinitiveHostedPaymentPageFailure = (
   cause: NexiExternalAPIError | NexiNetworkError
 ) =>
@@ -611,10 +636,11 @@ export const CheckoutServiceLive = Layer.effect(
         yield* Effect.logDebug("Checkout hosted payment page attach completed");
         yield* Effect.logInfo("Checkout provider session started");
 
-        return {
-          status: "redirect" as const,
-          redirectUrl: hostedPaymentPage.hostedPage,
-        };
+        return getHostedPaymentCheckoutResult({
+          locale: input.locale,
+          providerRedirectUrl: hostedPaymentPage.hostedPage,
+          workspaceReservationId: input.workspaceReservationId,
+        });
       }
     );
 
@@ -660,15 +686,14 @@ export const CheckoutServiceLive = Layer.effect(
           )
         );
 
-      return {
-        status: "redirect" as const,
+      return getCheckoutRedirectResult({
         redirectUrl: getReservationStatusPath({
           locale: input.locale,
           orderId: input.workspaceReservationId,
           outcome: "success",
           setBypassCookie: true,
         }),
-      };
+      });
     });
 
     const getCompletedCheckoutResult = Effect.fn(
@@ -683,15 +708,14 @@ export const CheckoutServiceLive = Layer.effect(
         )
       );
 
-      return {
-        status: "redirect" as const,
+      return getCheckoutRedirectResult({
         redirectUrl: getReservationStatusPath({
           locale: input.locale,
           orderId: input.orderId,
           outcome: "success",
           setBypassCookie: true,
         }),
-      };
+      });
     });
 
     return CheckoutService.of({
@@ -817,10 +841,11 @@ export const CheckoutServiceLive = Layer.effect(
               yield* Effect.logInfo(
                 "Hosted payment checkout reused active provider session"
               );
-              return {
-                status: "redirect" as const,
-                redirectUrl: attempt.providerRedirectUrl,
-              };
+              return getHostedPaymentCheckoutResult({
+                locale,
+                providerRedirectUrl: attempt.providerRedirectUrl,
+                workspaceReservationId: reservation.id,
+              });
             }
 
             if (attempt && isReusableAttemptState(attempt.state)) {
