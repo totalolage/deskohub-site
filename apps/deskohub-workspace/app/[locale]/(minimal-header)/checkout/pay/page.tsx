@@ -1,6 +1,5 @@
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
@@ -267,9 +266,9 @@ function InvalidPayState({
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={restartPath}>
+            <a href={restartPath}>
               {m.checkoutPayRestartButton({}, { locale })}
-            </Link>
+            </a>
           </Button>
         </CardContent>
       </Card>

@@ -459,6 +459,12 @@ the tab validates the sender origin and closes itself. If the original tab is
 closed or the popup was blocked, no message arrives and the returned status page
 remains open.
 
+Starting a new reservation from terminal status or invalid Pay state uses a
+document navigation. Cache Components may retain the previous reservation form
+and its completed action result in an inactive route tree; restoring that tree
+through client navigation could replay the old Pay redirect instead of starting
+a fresh checkout session.
+
 A definitive Nexi HPP rejection atomically marks the attempt failed and releases
 its reserved code claim. A network, retryable provider, conflict, rate-limit, or
 otherwise ambiguous creation/attachment failure retains the created attempt and
