@@ -18,6 +18,8 @@ import {
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { getDatasourceConfig } from "@/e2e/config";
+import { makeE2EEnvironment } from "@/e2e/e2e-env";
 import { assertSafeDatabaseUrl } from "@/e2e/runtime";
 import { makeAccountingDocumentSnapshot } from "@/features/accounting/accounting-document-snapshot";
 import { getInvoiceNumberingYear } from "@/features/accounting/invoice";
@@ -39,9 +41,6 @@ import {
   InvoiceRepository,
 } from "./invoice.repository";
 
-const integrationEnabled =
-  process.env.WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION === "true";
-const describeIntegration = integrationEnabled ? describe : describe.skip;
 const testKey: AccountingSnapshotKey = {
   id: "K202608",
   secret: "synthetic accounting snapshot secret!",
@@ -63,20 +62,19 @@ const prepared = {
   quote: buildCoworkReservationQuote(coworkOrder),
 } as PreparedCustomerQuote;
 
-describeIntegration("invoice repository PostgreSQL integration", () => {
+describe("invoice repository PostgreSQL integration", () => {
   let pool: Pool;
   let db: DatabaseClient;
   let repository: IInvoiceRepository;
 
   beforeAll(async () => {
-    const databaseUrl = process.env.DATABASE_URL;
-    const databaseAllowlist = process.env.WORKSPACE_E2E_DATABASE_ALLOWLIST;
-    if (!databaseUrl || !databaseAllowlist) {
-      throw new Error(
-        "The accounting persistence integration requires an allowlisted preview database."
-      );
-    }
-    assertSafeDatabaseUrl(databaseUrl, "DATABASE_URL", databaseAllowlist);
+    const environment = makeE2EEnvironment();
+    const { databaseUrl } = getDatasourceConfig(environment);
+    assertSafeDatabaseUrl(
+      databaseUrl,
+      "DATABASE_URL",
+      environment.WORKSPACE_E2E_DATABASE_ALLOWLIST
+    );
 
     pool = makeDatabasePool({
       connectionString: databaseUrl,

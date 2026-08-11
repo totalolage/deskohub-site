@@ -133,16 +133,20 @@ test("runs invoice persistence from the exact-SHA E2E command", async () => {
   const packageJson = await Bun.file(
     resolve(import.meta.dir, "../package.json")
   ).json();
+  const testUnit = packageJson.scripts.test as string;
   const testE2E = packageJson.scripts["test:e2e"] as string;
   const testAccountingPersistence = packageJson.scripts[
     "test:accounting-persistence"
   ] as string;
 
-  expect(testE2E).toContain(
-    "WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION=true"
+  expect(testE2E).toBe(
+    "bun run test:accounting-persistence && bun scripts/workspace-e2e.ts"
   );
-  expect(testE2E).toContain("bun run test:accounting-persistence");
   expect(testAccountingPersistence).toContain("bun run i18n:compile");
+  expect(testAccountingPersistence).toContain(
+    "invoice.repository.persistence.e2e.test.ts"
+  );
+  expect(testUnit).toContain("--path-ignore-patterns='**/*.e2e.test.ts'");
   expect(
     testAccountingPersistence.indexOf("bun run i18n:compile")
   ).toBeLessThan(testAccountingPersistence.indexOf("bun test"));
