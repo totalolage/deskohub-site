@@ -408,22 +408,6 @@ jobs:
           echo "| Preview database migration | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
-      - name: Validate invoice persistence against preview Postgres
-        working-directory: apps/deskohub-workspace
-        env:
-          DATABASE_URL: ${{ steps.preview-database.outputs.direct_url }}
-          DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
-          WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION: "true"
-          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
-        run: |
-          started_at=$SECONDS
-          set +e
-          bun run test:accounting-persistence
-          status=$?
-          set -e
-          echo "| Invoice persistence validation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
-          exit "$status"
-
       - name: Install agent-browser CLI
         run: |
           started_at=$SECONDS

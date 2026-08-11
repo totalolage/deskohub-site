@@ -20,7 +20,7 @@
     "e2e:coordination:build-action": "bun build scripts/workspace-e2e-allocation.ts --target=node --format=esm --outfile=../../.github/actions/workspace-e2e-allocation/index.mjs",
     "e2e:coordination:generate": "drizzle-kit generate --config e2e/coordination/drizzle.config.ts",
     "e2e:coordination:provision": "drizzle-kit migrate --config e2e/coordination/drizzle.config.ts && bun scripts/workspace-e2e-coordination-provision.ts",
-    "test:e2e": "bun scripts/workspace-e2e.ts",
+    "test:e2e": "WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION=true bun run test:accounting-persistence && bun scripts/workspace-e2e.ts",
     "lint": "bun run --parallel lint:biome lint:eslint",
     "lint:biome": "biome check app db emails features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\" --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",

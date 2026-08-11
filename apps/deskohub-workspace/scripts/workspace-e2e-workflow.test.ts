@@ -129,6 +129,18 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
 });
 
+test("runs invoice persistence from the exact-SHA E2E command", async () => {
+  const packageJson = await Bun.file(
+    resolve(import.meta.dir, "../package.json")
+  ).json();
+  const testE2E = packageJson.scripts["test:e2e"] as string;
+
+  expect(testE2E).toContain(
+    "WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION=true"
+  );
+  expect(testE2E).toContain("bun run test:accounting-persistence");
+});
+
 test("uses the hosted runner browser without downloading another browser", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
