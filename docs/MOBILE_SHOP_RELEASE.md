@@ -69,7 +69,7 @@ Small JavaScript/asset updates may download on any connection. Native replacemen
 - Provision the Expo project and the signed production update channel; retain the private key only in the protected production environment.
 - Register the direct-distribution identity and signing certificate with Android Developer Console, and publish the generated production `/.well-known/assetlinks.json`.
 - Configure non-alcoholic Dotypos products with the exact `self-service` tag and verify that exactly one target warehouse is enabled.
-- Apply both account and mobile-shop database migrations through the ordinary preview-to-production migration path.
+- Apply the combined account and mobile-shop database migration through the ordinary preview-to-production migration path.
 - Confirm Nexi accepts the dedicated mobile-shop notification and return endpoints for both a protected preview and production.
 - Approve seller, privacy, non-VAT receipt, refund/support, retention, and Android sideload wording for Desktechub s.r.o.
 - Run one physical-device pilot covering magic-link handoff, hosted payment return, receipt delivery, Dotypos deduction, Wi-Fi APK update, unknown-source permission, and signed in-place upgrade.

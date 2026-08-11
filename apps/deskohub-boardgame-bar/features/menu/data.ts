@@ -88,7 +88,7 @@ export class MenuService extends Context.Service<
 
           return {
             categories: displayCategories,
-            products,
+            products: [...products],
           };
         }).pipe(
           Effect.annotateLogs("service", "MenuService"),

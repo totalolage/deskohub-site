@@ -15,8 +15,8 @@ export const SharedDotyposServiceFromEnv = SharedDotyposService.Default.pipe(
 export interface DotyposServiceShape {
   readonly getMenuItems: Effect.Effect<
     {
-      readonly products: DotyposProduct[];
-      readonly categories: DotyposCategory[];
+      readonly products: ReadonlyArray<DotyposProduct>;
+      readonly categories: ReadonlyArray<DotyposCategory>;
     },
     unknown
   >;
