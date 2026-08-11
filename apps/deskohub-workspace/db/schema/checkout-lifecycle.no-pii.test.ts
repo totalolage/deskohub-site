@@ -109,37 +109,15 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
   });
 
-  test("joins both migration heads before issuing invoices", async () => {
-    const [cliMutationJson, discountJson, invoiceJson] = await Promise.all([
-      readAppFile(
-        "db/migrations/20260810201651_cli_mutation_requests/snapshot.json"
-      ),
+  test("follows the corrected migration head before issuing invoices", async () => {
+    const [discountJson, invoiceJson] = await Promise.all([
       readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
       readAppFile("db/migrations/20260811103138_issued_invoices/snapshot.json"),
     ]);
-    const cliMutationSnapshot = parseMigrationSnapshot(cliMutationJson);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
 
-    expect(new Set(invoiceSnapshot.prevIds)).toEqual(
-      new Set([cliMutationSnapshot.id, discountSnapshot.id])
-    );
-  });
-
-  test("reconciles the branch-local CLI mutation migration name", async () => {
-    const migration = await readAppFile(
-      "db/migrations/20260810201651_cli_mutation_requests/migration.sql"
-    );
-
-    expect(migration).toContain(
-      'CREATE TABLE IF NOT EXISTS "cli_mutation_requests"'
-    );
-    expect(migration).toContain(
-      'CREATE INDEX IF NOT EXISTS "cli_mutation_requests_created_at_idx"'
-    );
-    expect(migration).toContain(
-      'DROP CONSTRAINT IF EXISTS "cli_mutation_requests_session_id_cli_sessions_id_fkey"'
-    );
+    expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
   });
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
