@@ -2,6 +2,7 @@ import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 let actionHeaderReads = 0;
+let scheduledTelemetryFlushes = 0;
 
 mock.module("server-only", () => ({}));
 mock.module("./bot-protection/bot-protection.runtime", () => ({
@@ -9,6 +10,11 @@ mock.module("./bot-protection/bot-protection.runtime", () => ({
 }));
 mock.module("botid/server", () => ({
   checkBotId: () => Promise.resolve({ isBot: false }),
+}));
+mock.module("next/server", () => ({
+  after: () => {
+    scheduledTelemetryFlushes += 1;
+  },
 }));
 
 mock.module("next/headers", () => ({
@@ -109,6 +115,36 @@ describe("Workspace actions", () => {
       expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveKey);
     } finally {
       warn.mockRestore();
+    }
+  });
+
+  test("schedules a telemetry flush for validation failures", async () => {
+    const { registerPostHogLoggerProvider } = await import(
+      "./logging/posthog-otel"
+    );
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const provider = {
+      forceFlush: () => Promise.resolve(),
+    } as unknown as NonNullable<
+      Parameters<typeof registerPostHogLoggerProvider>[0]
+    >;
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.validation-flush",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    scheduledTelemetryFlushes = 0;
+    registerPostHogLoggerProvider(provider);
+
+    try {
+      await expect(action(42)).resolves.toMatchObject({
+        validationErrors: expect.any(Object),
+      });
+      expect(scheduledTelemetryFlushes).toBe(1);
+    } finally {
+      registerPostHogLoggerProvider(undefined);
     }
   });
 

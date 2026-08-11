@@ -178,19 +178,23 @@ const handleWorkspaceActionValidationFailure = async <
 ): Promise<WorkspaceActionValidationErrors<S>> => {
   const issues = collectWorkspaceActionValidationIssues(validationErrors);
 
-  await Effect.logWarning("Action input validation failed").pipe(
-    Effect.annotateLogs({
-      validationIssueCount: issues.length,
-      ...(logValidationPaths && {
-        validationPaths: [
-          ...new Set(
-            issues.map(({ path }) => formatWorkspaceActionValidationPath(path))
-          ),
-        ],
-      }),
-    }),
-    runWorkspaceEffect(operation, { boundary: "action" })
-  );
+  await Effect.gen(function* () {
+    yield* Effect.logWarning("Action input validation failed").pipe(
+      Effect.annotateLogs({
+        validationIssueCount: issues.length,
+        ...(logValidationPaths && {
+          validationPaths: [
+            ...new Set(
+              issues.map(({ path }) =>
+                formatWorkspaceActionValidationPath(path)
+              )
+            ),
+          ],
+        }),
+      })
+    );
+    yield* scheduleWorkspaceTelemetryFlush();
+  }).pipe(runWorkspaceEffect(operation, { boundary: "action" }));
 
   const fieldErrors = Object.groupBy(
     issues.filter(({ path }) => path.length > 0),
