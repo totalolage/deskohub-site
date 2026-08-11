@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.6.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.5.0...dhw-v1.6.0) (2026-08-11)
+
+
+### Features
+
+* **dhw:** enforce branded identifier contracts ([ff8a8f7](https://github.com/totalolage/deskohub-site/commit/ff8a8f762f1cf2787e851564c598204b36f626e0))
+
+
+### Bug Fixes
+
+* **dhw:** clarify CLI business documentation ([04eb193](https://github.com/totalolage/deskohub-site/commit/04eb19316d96e127a87a979644fa72b8b3069b0b))
+* **dhw:** narrow mutation retry guarantee ([8c013ec](https://github.com/totalolage/deskohub-site/commit/8c013eca92b2ffcd4595d796f53eb5e3e14c7ea0))
+
 ## [1.5.0](https://github.com/totalolage/deskohub-site/compare/dhw-v1.4.0...dhw-v1.5.0) (2026-08-10)
 
 
