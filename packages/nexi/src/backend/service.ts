@@ -1,4 +1,13 @@
-import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
+import {
+  Context,
+  DateTime,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Option,
+  Schedule,
+} from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { ExternalAPIError, NetworkError } from "../errors";
 import type {
@@ -297,7 +306,9 @@ const makeNexiService = Effect.gen(function* () {
           capturedAmount: response.orderStatus.capturedAmount,
         }),
         ...(response.orderStatus?.lastOperationTime && {
-          lastOperationTime: response.orderStatus.lastOperationTime,
+          lastOperationTime: normalizeNexiTimestamp(
+            response.orderStatus.lastOperationTime
+          ),
         }),
         ...(response.orderStatus?.lastOperationType && {
           lastOperationType: response.orderStatus.lastOperationType,
@@ -426,7 +437,7 @@ const toNexiOperation = (
       operationResult: operation.operationResult,
     }),
     ...(operation.operationTime && {
-      operationTime: operation.operationTime,
+      operationTime: normalizeNexiTimestamp(operation.operationTime),
     }),
     ...(amount?.amount && { amount: amount.amount }),
     ...(amount?.currency && { currency: amount.currency }),
@@ -443,10 +454,29 @@ const toNexiOrderStatus = (status: OrderStatus): NexiOrder => ({
   ...(status.authorizedAmount && { authorizedAmount: status.authorizedAmount }),
   ...(status.capturedAmount && { capturedAmount: status.capturedAmount }),
   ...(status.lastOperationTime && {
-    lastOperationTime: status.lastOperationTime,
+    lastOperationTime: normalizeNexiTimestamp(status.lastOperationTime),
   }),
   ...(status.lastOperationType && {
     lastOperationType: status.lastOperationType,
   }),
   operations: [],
 });
+
+// XPay read APIs can omit their documented offset and return Rome wall time.
+const nexiLocalTimestampPattern =
+  /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/;
+
+const normalizeNexiTimestamp = (value: string) => {
+  if (!nexiLocalTimestampPattern.test(value)) return value;
+
+  return Option.match(
+    DateTime.makeZoned(value.replace(" ", "T"), {
+      timeZone: "Europe/Rome",
+      adjustForTimeZone: true,
+    }),
+    {
+      onNone: () => value,
+      onSome: DateTime.formatIso,
+    }
+  );
+};

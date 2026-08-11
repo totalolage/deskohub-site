@@ -371,14 +371,22 @@ export function RelatedReservationLink({
       className="group flex items-center justify-between gap-3 rounded-lg px-3 py-3 hover:bg-navy-blue/[0.035]"
       href={`/admin/reservations/${reservation.id}`}
     >
-      <span>
+      <span className="min-w-0">
         <span className="block text-sm font-semibold">
           {formatAdministrationReservationDate(reservation) ??
             reservation.typeLabel}
         </span>
+        <span className="mt-2 block text-sm font-medium">
+          {reservation.customer?.displayName ?? "Customer unavailable"}
+        </span>
+        {reservation.customer && (
+          <span className="mt-0.5 block break-all text-xs text-navy-blue/65">
+            {reservation.customer.email ?? "No email address"}
+          </span>
+        )}
         <span
           className={cn(
-            "mt-1 block text-xs",
+            "mt-2 block text-xs",
             reservation.statusNote
               ? "font-medium text-burned-orange-ink"
               : "text-navy-blue/65"

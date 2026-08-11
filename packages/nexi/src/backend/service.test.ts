@@ -401,14 +401,14 @@ describe("NexiService verifyPaymentOutcome", () => {
 });
 
 describe("NexiService administration reads", () => {
-  test("returns an allowlisted order and all of its operations", async () => {
+  test("returns an allowlisted order with normalized timestamps and all operations", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({
         securityToken: "must-not-leak",
         orderStatus: {
           authorizedAmount: "5000",
           capturedAmount: "5000",
-          lastOperationTime: "2026-08-06T10:01:00Z",
+          lastOperationTime: "2026-08-06 10:01:00.000",
           lastOperationType: "REFUND",
           order: {
             orderId: "order#id",
@@ -424,7 +424,7 @@ describe("NexiService administration reads", () => {
             channel: "ECOMMERCE",
             operationType: "CAPTURE",
             operationResult: "EXECUTED",
-            operationTime: "2026-08-06T10:00:00Z",
+            operationTime: "2026-08-06 10:00:00.000",
             operationAmount: "5000",
             operationCurrency: "CZK",
             securityToken: "must-not-leak",
@@ -436,7 +436,7 @@ describe("NexiService administration reads", () => {
             channel: "BACKOFFICE",
             operationType: "REFUND",
             operationResult: "REFUNDED",
-            operationTime: "2026-08-06T10:01:00Z",
+            operationTime: "2026-08-06 10:01:00.000",
             operationAmount: "1000",
             operationCurrency: "CZK",
             cancelledOperationId: "capture-id",
@@ -463,7 +463,7 @@ describe("NexiService administration reads", () => {
       currency: "CZK",
       authorizedAmount: "5000",
       capturedAmount: "5000",
-      lastOperationTime: "2026-08-06T10:01:00Z",
+      lastOperationTime: "2026-08-06T08:01:00.000Z",
       lastOperationType: "REFUND",
       operations: [
         {
@@ -472,7 +472,7 @@ describe("NexiService administration reads", () => {
           channel: "ECOMMERCE",
           operationType: "CAPTURE",
           operationResult: "EXECUTED",
-          operationTime: "2026-08-06T10:00:00Z",
+          operationTime: "2026-08-06T08:00:00.000Z",
           amount: "5000",
           currency: "CZK",
         },
@@ -482,7 +482,7 @@ describe("NexiService administration reads", () => {
           channel: "BACKOFFICE",
           operationType: "REFUND",
           operationResult: "REFUNDED",
-          operationTime: "2026-08-06T10:01:00Z",
+          operationTime: "2026-08-06T08:01:00.000Z",
           amount: "1000",
           currency: "CZK",
           cancelledOperationId: "capture-id",
@@ -594,7 +594,7 @@ describe("NexiService administration reads", () => {
     );
   });
 
-  test("lists orders without exposing provider customer fields", async () => {
+  test("lists orders with normalized winter timestamps without exposing customer fields", async () => {
     const fetchMock = mockNexiFetch(
       Response.json({
         orders: [
@@ -607,7 +607,7 @@ describe("NexiService administration reads", () => {
             },
             capturedAmount: "5000",
             lastOperationType: "CAPTURE",
-            lastOperationTime: "2026-08-06T10:00:00Z",
+            lastOperationTime: "2026-01-06 10:00:00.000",
           },
         ],
       })
@@ -628,7 +628,7 @@ describe("NexiService administration reads", () => {
         amount: "5000",
         currency: "CZK",
         capturedAmount: "5000",
-        lastOperationTime: "2026-08-06T10:00:00Z",
+        lastOperationTime: "2026-01-06T09:00:00.000Z",
         lastOperationType: "CAPTURE",
         operations: [],
       },
