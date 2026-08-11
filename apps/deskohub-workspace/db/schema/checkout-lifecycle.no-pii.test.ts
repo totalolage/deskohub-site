@@ -7,6 +7,12 @@ mock.module("server-only", () => ({}));
 const readAppFile = (path: string) =>
   Bun.file(new URL(`../../${path}`, import.meta.url)).text();
 
+const parseMigrationSnapshot = (snapshot: string) =>
+  JSON.parse(snapshot) as {
+    readonly id: string;
+    readonly prevIds: readonly string[];
+  };
+
 const piiColumnFragments = [
   "customer_name",
   "customer_email",
@@ -100,6 +106,23 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
     expect(migration).toContain(
       'ALTER TABLE "invoices" DROP COLUMN IF EXISTS "schema_version"'
+    );
+  });
+
+  test("joins both migration heads before issuing invoices", async () => {
+    const [cliMutationJson, discountJson, invoiceJson] = await Promise.all([
+      readAppFile(
+        "db/migrations/20260810201651_cli_mutation_requests/snapshot.json"
+      ),
+      readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
+      readAppFile("db/migrations/20260811103138_issued_invoices/snapshot.json"),
+    ]);
+    const cliMutationSnapshot = parseMigrationSnapshot(cliMutationJson);
+    const discountSnapshot = parseMigrationSnapshot(discountJson);
+    const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
+
+    expect(new Set(invoiceSnapshot.prevIds)).toEqual(
+      new Set([cliMutationSnapshot.id, discountSnapshot.id])
     );
   });
 

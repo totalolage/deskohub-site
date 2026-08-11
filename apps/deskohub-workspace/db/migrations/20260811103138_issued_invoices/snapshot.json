@@ -1,9 +1,10 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "3cbd597c-0dc2-419a-8d1e-a5d099e11100",
+  "id": "604564fa-fce8-4866-ac87-c1622c4fdc7f",
   "prevIds": [
-    "047c9902-947f-44fe-a3bc-4ce8803ebee3"
+    "047c9902-947f-44fe-a3bc-4ce8803ebee3",
+    "fd52b375-703a-437d-9f76-a579bb7c9f88"
   ],
   "ddl": [
     {
@@ -62,7 +63,7 @@
     },
     {
       "isRlsEnabled": false,
-      "name": "discount_product_targets",
+      "name": "discount_targets",
       "entityType": "tables",
       "schema": "public"
     },
@@ -1198,7 +1199,7 @@
       "name": "discount_id",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "type": "jsonb",
@@ -1208,10 +1209,10 @@
       "default": null,
       "generated": null,
       "identity": null,
-      "name": "product_identity",
+      "name": "product_target",
       "entityType": "columns",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "type": "text",
@@ -3309,10 +3310,10 @@
       ],
       "onUpdate": "NO ACTION",
       "onDelete": "CASCADE",
-      "name": "discount_product_targets_discount_id_discounts_id_fk",
+      "name": "discount_targets_discount_id_discounts_id_fkey",
       "entityType": "fks",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "nameExplicit": false,
@@ -3424,13 +3425,13 @@
     {
       "columns": [
         "discount_id",
-        "product_identity"
+        "product_target"
       ],
       "nameExplicit": true,
-      "name": "discount_product_targets_pk",
+      "name": "discount_targets_pk",
       "entityType": "pks",
       "schema": "public",
-      "table": "discount_product_targets"
+      "table": "discount_targets"
     },
     {
       "columns": [
