@@ -59,7 +59,7 @@ export function LandingPageHeroSection({
         {m.landingHeroSubtitle({}, { locale })}
       </p>
 
-      <div className="mt-20 flex w-full flex-col items-center gap-12 sm:mt-9">
+      <div className="mt-20 flex w-full flex-col items-center gap-16 sm:mt-9">
         <div className="flex flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
           {meetingRoomPageEnabled && (
             <Button
@@ -144,11 +144,11 @@ export function LandingPageHeroSection({
       bottomSection={orangeMaskSection}
       className={
         saleBanner
-          ? "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+10rem)] text-white sm:pt-[calc(var(--site-header-height)+6rem)]"
+          ? "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-(--site-header-height) text-white"
           : "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
       }
       id={overviewSectionId}
-      overlay={saleBanner && <LandingPageSaleBanner content={saleBanner} />}
+      saleBanner={saleBanner && <LandingPageSaleBanner content={saleBanner} />}
     >
       {heroContent}
     </LandingPageHeroScrollScene>
