@@ -236,9 +236,10 @@ describe("invoice repository PostgreSQL integration", () => {
 
   test("rolls back an allocated number when encrypted insertion fails", async () => {
     const fixture = await createPaidFixture(db);
+    const invalidActiveKey = { ...testKey, id: "INVALID-ID" };
     const badRepository = await makeInvoiceRepository({
       db,
-      keys: makeKeyService({ ...testKey, id: "INVALID-ID" }),
+      keys: makeKeyService(invalidActiveKey, [testKey, invalidActiveKey]),
     });
     const before = await readCounters(db);
 
@@ -285,18 +286,21 @@ describe("invoice repository PostgreSQL integration", () => {
 });
 
 const makeKeyService = (
-  activeKey: AccountingSnapshotKey = testKey
+  activeKey: AccountingSnapshotKey = testKey,
+  readableKeys: readonly AccountingSnapshotKey[] = [activeKey]
 ): IAccountingSnapshotKeyService => ({
   getActive: Effect.succeed(activeKey),
-  getById: (keyId) =>
-    keyId === activeKey.id
-      ? Effect.succeed(activeKey)
+  getById: (keyId) => {
+    const key = readableKeys.find((candidate) => candidate.id === keyId);
+    return key
+      ? Effect.succeed(key)
       : Effect.fail(
           new AccountingSnapshotKeyError({
             keyId,
             message: "Synthetic integration key is unavailable.",
           })
-        ),
+        );
+  },
 });
 
 const makeInvoiceRepository = async (input: {
