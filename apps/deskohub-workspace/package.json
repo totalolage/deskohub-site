@@ -25,7 +25,7 @@
     "lint:biome": "biome check app db emails features scripts shared *.ts --config-path \"$(git rev-parse --show-toplevel)/biome.json\" --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
-    "test:accounting-persistence": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/accounting/backend/invoice.repository.integration.test.ts",
+    "test:accounting-persistence": "bun run i18n:compile && bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/accounting/backend/invoice.repository.integration.test.ts",
     "test:admin-cli": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/admin-cli/workspace-admin-api.server.test.ts 'app/api/v1/cli/[...path]/route.test.ts'",
     "test:instant-navigation": "playwright test --config playwright.instant.config.ts",
     "typecheck": "tsc --noEmit",

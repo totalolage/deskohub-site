@@ -134,11 +134,18 @@ test("runs invoice persistence from the exact-SHA E2E command", async () => {
     resolve(import.meta.dir, "../package.json")
   ).json();
   const testE2E = packageJson.scripts["test:e2e"] as string;
+  const testAccountingPersistence = packageJson.scripts[
+    "test:accounting-persistence"
+  ] as string;
 
   expect(testE2E).toContain(
     "WORKSPACE_ACCOUNTING_PERSISTENCE_INTEGRATION=true"
   );
   expect(testE2E).toContain("bun run test:accounting-persistence");
+  expect(testAccountingPersistence).toContain("bun run i18n:compile");
+  expect(
+    testAccountingPersistence.indexOf("bun run i18n:compile")
+  ).toBeLessThan(testAccountingPersistence.indexOf("bun test"));
 });
 
 test("uses the hosted runner browser without downloading another browser", async () => {
