@@ -411,6 +411,7 @@ const createAdditionalFailedAttempt = async (
           provider: "nexi",
           providerOrderId: `synthetic-order-${randomUUID()}`,
           state: "failed",
+          failureCode: "synthetic_invoice_attempt",
           amountValue: source.quote.payment.expectedPrice.value,
           amountExponent: source.quote.payment.expectedPrice.exponent,
           currency: source.quote.payment.expectedPrice.currency,
