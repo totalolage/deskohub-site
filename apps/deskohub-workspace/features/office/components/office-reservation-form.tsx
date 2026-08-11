@@ -50,7 +50,6 @@ import {
 import type { OfficeWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import {
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormMessage,
@@ -74,7 +73,14 @@ const officeReservationFormSchema = Schema.toStandardSchemaV1(
 const decodeSelection = Schema.decodeUnknownOption(
   officeReservationDetailsSchema
 );
-const fallbackSeatCards = ["seat-1", "seat-2", "seat-3", "seat-4"];
+const fallbackSeatCards = [
+  "seat-1",
+  "seat-2",
+  "seat-3",
+  "seat-4",
+  "seat-5",
+  "seat-6",
+];
 
 const getSelection = (
   startsOn: string | undefined,
@@ -281,7 +287,6 @@ export function OfficeReservationForm({
                 </ReservationFormLabel>
                 <FormControl>
                   <Input
-                    className="w-28"
                     disabled={maximumDayCount === 0}
                     inputMode="numeric"
                     max={Math.max(1, maximumDayCount)}
@@ -305,14 +310,6 @@ export function OfficeReservationForm({
                     variant={fieldState.error ? "error" : "default"}
                   />
                 </FormControl>
-                {maximumDayCount > 0 && (
-                  <FormDescription>
-                    {m.reservationOfficeMaximumDayCount(
-                      { dayCount: maximumDayCount },
-                      { locale }
-                    )}
-                  </FormDescription>
-                )}
                 <FormMessage />
               </FormItem>
             )}
@@ -348,7 +345,7 @@ export function OfficeReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
-                className="space-y-0 gap-3 sm:grid-cols-2 lg:grid-cols-4 lg:grid-rows-none"
+                className="flex flex-wrap gap-3 space-y-0 lg:grid-rows-none"
                 idPrefix="office-seats"
                 inputRef={field.ref}
                 name={field.name}
@@ -375,7 +372,7 @@ export function OfficeReservationForm({
                   return (
                     <ReservationTypeOption
                       key={seatCount}
-                      className="pb-4 lg:row-start-auto lg:row-span-1 lg:grid-rows-none"
+                      className="grow basis-full pb-4 sm:basis-[calc(50%-0.375rem)] lg:row-start-auto lg:row-span-1 lg:basis-[calc(33.333333%-0.5rem)] lg:grid-rows-none"
                       price={
                         seatPrice ? (
                           <span className="before:content-['+']">
@@ -413,11 +410,11 @@ export function OfficeReservationFormFallback({ locale }: { locale: Locale }) {
       <ReservationSkeletonBlock className="h-18 w-full rounded-[1.4rem]" />
       <div className="space-y-2">
         <ReservationSkeletonBlock className="h-4 w-64" />
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="flex flex-wrap gap-3">
           {fallbackSeatCards.map((card) => (
             <ReservationSkeletonBlock
               key={card}
-              className="h-26 w-full rounded-[1.4rem]"
+              className="h-26 grow basis-full rounded-[1.4rem] sm:basis-[calc(50%-0.375rem)] lg:basis-[calc(33.333333%-0.5rem)]"
             />
           ))}
         </div>

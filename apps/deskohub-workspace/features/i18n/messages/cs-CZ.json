@@ -293,7 +293,6 @@
   "reservationOfficeDateRangeLabel": "Termín rezervace",
   "reservationOfficeStartDateLabel": "Datum začátku rezervace kanceláře",
   "reservationOfficeDayCountLabel": "Počet dní",
-  "reservationOfficeMaximumDayCount": "Od tohoto data nejvýše {dayCount} dní.",
   "reservationOfficeSeatCountLabel": "Kolik míst v kanceláři potřebuješ?",
   "reservationOfficeSeatCountOption": [
     {

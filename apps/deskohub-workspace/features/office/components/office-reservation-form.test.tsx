@@ -151,6 +151,7 @@ describe("OfficeReservationForm", () => {
         }).max
       ).toBe("2");
     });
+    expect(view.queryByText(/days from this start date/i)).toBeNull();
   });
 
   test("describes office unavailability without suggesting a seat change", () => {
@@ -291,8 +292,14 @@ describe("OfficeReservationForm", () => {
     const options = Array.from(
       view.container.querySelectorAll("[data-reservation-type-option]")
     );
+    const optionsContainer = options[0]?.parentElement;
 
     expect(options).toHaveLength(6);
+    expect(optionsContainer?.classList.contains("flex")).toBeTrue();
+    expect(optionsContainer?.classList.contains("flex-wrap")).toBeTrue();
+    expect(
+      options.every((option) => option.classList.contains("grow"))
+    ).toBeTrue();
     expect(
       options.every((option) => option.classList.contains("lg:grid-rows-none"))
     ).toBeTrue();
@@ -301,6 +308,27 @@ describe("OfficeReservationForm", () => {
         option.classList.contains("lg:grid-rows-subgrid")
       )
     ).toBeFalse();
+  });
+
+  test("lets the day-count input fill its date-range column", () => {
+    const queryClient = new QueryClient();
+    const view = render(
+      <QueryClientProvider client={queryClient}>
+        <OfficeReservationForm
+          seatCapacity={3}
+          initialValues={officeReservationDefaultValues}
+          locale="en-US"
+          today={decodePlainDate("2026-08-10")}
+        />
+      </QueryClientProvider>
+    );
+
+    const dayCount = view.getByRole("spinbutton", {
+      name: "Number of days",
+    });
+
+    expect(dayCount.classList.contains("w-full")).toBeTrue();
+    expect(dayCount.classList.contains("w-28")).toBeFalse();
   });
 
   test("marks every card with its seat surcharge", () => {

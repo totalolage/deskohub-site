@@ -291,7 +291,6 @@
   "reservationOfficeDateRangeLabel": "Reservation dates",
   "reservationOfficeStartDateLabel": "Office reservation start date",
   "reservationOfficeDayCountLabel": "Number of days",
-  "reservationOfficeMaximumDayCount": "Up to {dayCount} days from this start date.",
   "reservationOfficeSeatCountLabel": "How many office seats do you need?",
   "reservationOfficeSeatCountOption": [
     {
