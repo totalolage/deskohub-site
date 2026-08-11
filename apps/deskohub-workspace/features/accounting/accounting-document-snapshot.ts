@@ -1,3 +1,9 @@
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+} from "@deskohub/dotypos";
 import { Match, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
@@ -5,11 +11,44 @@ import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservati
 import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
 import { officeReservationDetailsSchema } from "@/features/reservation/office-reservation";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
+
+export const accountingSnapshotKeyIdSchema = Schema.NonEmptyString.check(
+  Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/)
+)
+  .pipe(Schema.brand("AccountingSnapshotKeyId"))
+  .annotate({
+    identifier: "AccountingSnapshotKeyId",
+    description: "Identifier selecting an accounting snapshot encryption key.",
+  });
+
+export type AccountingSnapshotKeyId = typeof accountingSnapshotKeyIdSchema.Type;
+
+export const companyRegistrationIdSchema = Schema.Trim.check(
+  Schema.isNonEmpty()
+)
+  .pipe(Schema.brand("CompanyRegistrationId"))
+  .annotate({
+    identifier: "CompanyRegistrationId",
+    description: "Company registration identifier used on accounting records.",
+  });
+export type CompanyRegistrationId = typeof companyRegistrationIdSchema.Type;
+
+export const vatRegistrationIdSchema = Schema.Trim.check(Schema.isNonEmpty())
+  .pipe(Schema.brand("VatRegistrationId"))
+  .annotate({
+    identifier: "VatRegistrationId",
+    description: "VAT registration identifier used on accounting records.",
+  });
+export type VatRegistrationId = typeof vatRegistrationIdSchema.Type;
 
 const accountingBuyerAddressSchema = Schema.Struct({
   line1: Schema.optionalKey(Schema.NonEmptyString),
@@ -28,8 +67,8 @@ const personalAccountingBuyerSchema = Schema.Struct({
 const businessAccountingBuyerSchema = Schema.Struct({
   kind: Schema.Literal("business"),
   legalName: Schema.NonEmptyString,
-  companyId: Schema.NonEmptyString,
-  vatId: Schema.optionalKey(Schema.NonEmptyString),
+  companyId: companyRegistrationIdSchema,
+  vatId: Schema.optionalKey(vatRegistrationIdSchema),
   address: Schema.Struct({
     line1: Schema.NonEmptyString,
     line2: Schema.optionalKey(Schema.NonEmptyString),
@@ -48,7 +87,7 @@ export type AccountingBuyer = typeof accountingBuyerSchema.Type;
 
 const accountingSupplierSchema = Schema.Struct({
   legalName: Schema.NonEmptyString,
-  companyId: Schema.NonEmptyString,
+  companyId: companyRegistrationIdSchema,
   vatStatus: Schema.Literal("not-vat-payer"),
   address: Schema.Struct({
     street: Schema.NonEmptyString,
@@ -62,9 +101,9 @@ const accountingSupplierSchema = Schema.Struct({
 
 const accountingSnapshotIdentitySchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
-  workspaceReservationId: Schema.NonEmptyString,
-  dotyposReservationId: Schema.NonEmptyString,
-  dotyposCustomerId: Schema.NonEmptyString,
+  workspaceReservationId: workspaceReservationIdSchema,
+  dotyposReservationId: DotyposReservationIdSchema,
+  dotyposCustomerId: DotyposCustomerIdSchema,
   locale: Schema.Literals(["cs-CZ", "en-US"]),
   supplier: accountingSupplierSchema,
   buyer: accountingBuyerSchema,
@@ -110,7 +149,9 @@ export type AccountingDocumentSnapshot =
 
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,
-  companyId: workspaceSiteConstants.company.identificationNumber,
+  companyId: companyRegistrationIdSchema.make(
+    workspaceSiteConstants.company.identificationNumber
+  ),
   vatStatus: workspaceSiteConstants.company.vatStatus,
   address: {
     ...workspaceSiteConstants.location.address,
@@ -120,9 +161,9 @@ const supplier: typeof accountingSupplierSchema.Type = {
 };
 
 export const makeAccountingDocumentSnapshot = (input: {
-  readonly workspaceReservationId: string;
-  readonly dotyposReservationId: string;
-  readonly dotyposCustomerId: string;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly dotyposReservationId: DotyposReservationId;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly prepared: PreparedCustomerQuote;
   readonly buyer?: AccountingBuyer;

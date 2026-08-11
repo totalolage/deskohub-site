@@ -1,5 +1,7 @@
 import {
+  type DotyposReservationId,
   DotyposService,
+  type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
   ValidationError,
@@ -46,7 +48,10 @@ export type WorkspaceTableAssignmentReservation =
 export interface IWorkspaceTableAssignmentService {
   readonly assignTableId: (
     reservation: WorkspaceTableAssignmentReservation
-  ) => Effect.Effect<string, ExternalAPIError | NetworkError | ValidationError>;
+  ) => Effect.Effect<
+    DotyposTableId,
+    ExternalAPIError | NetworkError | ValidationError
+  >;
 }
 
 export class WorkspaceTableAssignmentService extends Context.Service<
@@ -78,7 +83,7 @@ export class WorkspaceTableAssignmentService extends Context.Service<
                     { cause }
                   )
                 ),
-                Effect.orElseSucceed(() => [] as readonly string[])
+                Effect.orElseSucceed((): readonly DotyposReservationId[] => [])
               ),
           },
           { concurrency: "inherit" }
@@ -264,7 +269,7 @@ const validateTableAssignment = (input: {
       (
         assignment
       ): assignment is typeof assignment & {
-        readonly matchingTableId: string;
+        readonly matchingTableId: DotyposTableId;
       } => assignment.matchingTableId !== undefined,
       ({ assignment }) =>
         new ValidationError({

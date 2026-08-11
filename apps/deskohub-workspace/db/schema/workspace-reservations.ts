@@ -1,3 +1,8 @@
+import type {
+  DotyposCustomerId,
+  DotyposReservationId,
+} from "@deskohub/dotypos";
+import type { NexiCorrelationId } from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -7,7 +12,15 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { StoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import type {
+  CheckoutAttemptKey,
+  CheckoutSessionKey,
+  PaymentAttemptId,
+} from "@/features/checkout/checkout-identifiers";
+import type {
+  StoredWorkspaceReservationDetails,
+  WorkspaceReservationId,
+} from "@/features/reservation/persistence-contracts";
 import inlangSettings from "../../project.inlang/settings.json" with {
   type: "json",
 };
@@ -59,17 +72,28 @@ const reservationStatesRequiringDotyposReservationId = [
 export const workspaceReservations = pgTable(
   "workspace_reservations",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<WorkspaceReservationId>(),
     checkoutSessionKey: text("checkout_session_key")
       .notNull()
-      .default(postgresUuidV7),
-    checkoutAttemptKey: text("checkout_attempt_key").notNull(),
+      .default(postgresUuidV7)
+      .$type<CheckoutSessionKey>(),
+    checkoutAttemptKey: text("checkout_attempt_key")
+      .notNull()
+      .$type<CheckoutAttemptKey>(),
     correlationId: text("correlation_id")
       .notNull()
       .unique()
-      .default(postgresUuidV7),
-    dotyposCustomerId: text("dotypos_customer_id").notNull(),
-    dotyposReservationId: text("dotypos_reservation_id"),
+      .default(postgresUuidV7)
+      .$type<NexiCorrelationId>(),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
+    dotyposReservationId: text(
+      "dotypos_reservation_id"
+    ).$type<DotyposReservationId>(),
     customerAccessCode: text("customer_access_code").notNull(),
     reservationState: text("reservation_state")
       .notNull()
@@ -78,7 +102,9 @@ export const workspaceReservations = pgTable(
     fulfillmentState: text("fulfillment_state")
       .notNull()
       .$type<FulfillmentState>(),
-    activePaymentAttemptId: text("active_payment_attempt_id"),
+    activePaymentAttemptId: text(
+      "active_payment_attempt_id"
+    ).$type<PaymentAttemptId>(),
     reservationDetails: jsonb("reservation_details")
       .$type<StoredWorkspaceReservationDetails>()
       .notNull(),

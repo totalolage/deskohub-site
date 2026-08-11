@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { type Locale, m } from "@/features/i18n";
 import { loadAdvertisedPrices } from "@/features/reservation/backend/advertised-prices.server";
 import { createReservationPage } from "@/features/reservation/components/create-reservation-page.server";
@@ -35,7 +36,7 @@ export async function renderMeetingRoomReservationContent({
   locale,
   replacementToken,
 }: {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly initialReservation?: NormalizedMeetingRoomReservationOrder;
   readonly locale: Locale;
   readonly replacementToken?: string;

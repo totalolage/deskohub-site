@@ -1,6 +1,6 @@
+import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerDiscountCodeCreationDialog } from "@/features/discounts/admin/customer-code-creation-dialog";
 import { loadDiscountAdminCustomerCodeCreationPageData } from "@/features/discounts/admin/page-data.server";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
 export default async function CustomerDiscountCodeCreationModal({
   params,
@@ -10,7 +10,7 @@ export default async function CustomerDiscountCodeCreationModal({
   const { customerId } = await params;
   const { customer, discounts } =
     await loadDiscountAdminCustomerCodeCreationPageData(
-      customerId as DotyposCustomerId
+      requireDotyposCustomerRouteId(customerId)
     );
 
   return (

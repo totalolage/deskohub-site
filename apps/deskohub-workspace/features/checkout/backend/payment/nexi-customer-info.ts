@@ -1,15 +1,19 @@
-import type { HostedPaymentCustomer } from "@deskohub/nexi";
+import type { DotyposCustomerId } from "@deskohub/dotypos";
+import {
+  type HostedPaymentCustomer,
+  NexiCustomerReferenceSchema,
+} from "@deskohub/nexi";
 import { parsePhoneNumber } from "libphonenumber-js";
 
 export const getNexiHostedPaymentCustomer = (input: {
-  readonly id: string;
+  readonly id: DotyposCustomerId;
   readonly name: string;
   readonly email: string;
   readonly phone: string;
 }): HostedPaymentCustomer => {
   const phone = parsePhoneNumber(input.phone, "CZ");
   return {
-    id: input.id,
+    id: NexiCustomerReferenceSchema.make(input.id),
     name: input.name,
     email: input.email,
     mobilePhone: {

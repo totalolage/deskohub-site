@@ -1,9 +1,10 @@
 import "server-only";
 
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import {
@@ -41,7 +42,7 @@ export const createContactEmailPreviews = (locale: Locale) => {
         sentMessages.push(message);
 
         return {
-          id: `preview-${sentMessages.length}`,
+          id: EmailDeliveryIdSchema.make(`preview-${sentMessages.length}`),
           status: "sent",
           provider: "preview",
           timestamp: new Date(),

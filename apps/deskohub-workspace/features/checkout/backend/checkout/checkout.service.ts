@@ -2,8 +2,11 @@ import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import {
   type HostedPaymentCustomer,
+  type NexiCorrelationId,
   type ExternalAPIError as NexiExternalAPIError,
   type NetworkError as NexiNetworkError,
+  type NexiOrderId,
+  NexiOrderIdSchema,
   NexiService,
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
@@ -12,6 +15,7 @@ import {
   type AccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   type CheckoutSummary,
   getCheckoutSummaryChangedKeys,
@@ -45,7 +49,10 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
 import { hasOfficeReservationEnded } from "@/features/reservation/office-reservation";
-import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import {
+  getStoredWorkspaceReservationDetails,
+  type WorkspaceReservationId,
+} from "@/features/reservation/persistence-contracts";
 import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import {
   PostHogEventService,
@@ -179,10 +186,12 @@ export interface CheckoutService {
 export const CheckoutService =
   Context.Service<CheckoutService>("CheckoutService");
 
-const generateNexiOrderId = () =>
-  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
-    .toString(36)
-    .toUpperCase()}`;
+const generateNexiOrderId = (): NexiOrderId =>
+  NexiOrderIdSchema.make(
+    `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
+      .toString(36)
+      .toUpperCase()}`
+  );
 
 const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
   Effect.fail(
@@ -195,7 +204,7 @@ const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
 
 const getCheckoutPayReturnUrl: (
   locale: Locale,
-  workspaceReservationId: string,
+  workspaceReservationId: WorkspaceReservationId,
   outcome?: "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
   "getCheckoutPayReturnUrl"
@@ -426,7 +435,7 @@ const getCheckoutRedirectResult = (input: {
 const getHostedPaymentCheckoutResult = (input: {
   readonly locale: Locale;
   readonly providerRedirectUrl: string;
-  readonly workspaceReservationId: string;
+  readonly workspaceReservationId: WorkspaceReservationId;
 }): CheckoutRedirectResult =>
   getCheckoutRedirectResult({
     redirectUrl: input.providerRedirectUrl,
@@ -466,7 +475,7 @@ export const CheckoutServiceLive = Layer.effect(
       (input: {
         readonly cause: NexiExternalAPIError | NexiNetworkError;
         readonly attempt: PaymentAttempt;
-        readonly workspaceReservationId: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
       }) =>
         Match.value(input.cause).pipe(
           Match.when(isDefinitiveHostedPaymentPageFailure, () =>
@@ -510,8 +519,8 @@ export const CheckoutServiceLive = Layer.effect(
     const revalidatePayableReservation = Effect.fn(
       "checkout.revalidatePayableReservation"
     )(function* (input: {
-      readonly workspaceReservationId: string;
-      readonly checkoutSessionId?: string;
+      readonly workspaceReservationId: WorkspaceReservationId;
+      readonly checkoutSessionId?: CheckoutSessionId;
     }) {
       yield* payableReservations.requireCurrent({
         orderId: input.workspaceReservationId,
@@ -522,9 +531,9 @@ export const CheckoutServiceLive = Layer.effect(
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
-        readonly workspaceReservationId: string;
-        readonly correlationId: string;
-        readonly checkoutSessionId?: string;
+        readonly workspaceReservationId: WorkspaceReservationId;
+        readonly correlationId: NexiCorrelationId;
+        readonly checkoutSessionId?: CheckoutSessionId;
         readonly locale: Locale;
         readonly total: WorkspaceMoney;
         readonly commitment: DiscountCommitment;
@@ -647,8 +656,8 @@ export const CheckoutServiceLive = Layer.effect(
     const completeInternalPayment = Effect.fn(
       "checkout.completeInternalPayment"
     )(function* (input: {
-      readonly workspaceReservationId: string;
-      readonly checkoutSessionId?: string;
+      readonly workspaceReservationId: WorkspaceReservationId;
+      readonly checkoutSessionId?: CheckoutSessionId;
       readonly locale: Locale;
       readonly total: WorkspaceMoney;
       readonly commitment: DiscountCommitment;
@@ -698,7 +707,10 @@ export const CheckoutServiceLive = Layer.effect(
 
     const getCompletedCheckoutResult = Effect.fn(
       "checkout.getCompletedCheckoutResult"
-    )(function* (input: { readonly orderId: string; readonly locale: Locale }) {
+    )(function* (input: {
+      readonly orderId: WorkspaceReservationId;
+      readonly locale: Locale;
+    }) {
       yield* paidFulfillment.fulfillPaidOrder({ orderId: input.orderId }).pipe(
         Effect.catch((cause) =>
           Effect.logError("Paid checkout fulfillment retry failed", {

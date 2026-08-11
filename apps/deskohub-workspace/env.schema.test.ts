@@ -34,10 +34,16 @@ describe("workspace environment schemas", () => {
     const decodeServiceName = Schema.decodeUnknownSync(
       workspaceServerEnvSchema.fields.POSTHOG_SERVICE_NAME
     );
+    const decodePostHogProjectId = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.POSTHOG_PROJECT_ID
+    );
 
     expect(decodeTimeout(undefined)).toBe(5_000);
     expect(decodeTimeout("2500")).toBe(2_500);
     expect(decodeServiceName(undefined)).toBe("deskohub-workspace");
+    expect(`${decodePostHogProjectId("42")}`).toBe("42");
+    expect(decodePostHogProjectId(undefined)).toBeUndefined();
+    expect(() => decodePostHogProjectId("")).toThrow();
     expect(() => decodeTimeout("1.5")).toThrow();
     expect(() => decodeTimeout("0")).toThrow();
   });

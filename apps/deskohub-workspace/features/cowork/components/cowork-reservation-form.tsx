@@ -11,6 +11,7 @@ import {
   isCoworkAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import {
   isWorkspaceProductMonitorOption,
   type WorkspaceCoworkProductTier,
@@ -81,7 +82,7 @@ type CoworkReservationFormProps = {
   initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   initialValues?: CoworkReservationInput;
   locale: Locale;
-  checkoutSessionId?: string;
+  checkoutSessionId?: CheckoutSessionId;
   replacementToken?: string;
 };
 

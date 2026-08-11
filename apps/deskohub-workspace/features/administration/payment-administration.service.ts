@@ -1,6 +1,9 @@
 import {
+  NexiCorrelationIdSchema,
   type NexiOperation,
+  type NexiOperationId,
   type NexiOrder,
+  type NexiOrderId,
   NexiService,
 } from "@deskohub/nexi";
 import {
@@ -17,6 +20,8 @@ import {
 import { Context, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { type PaymentAttemptState, paymentAttempts } from "@/db/schema";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 
 const defaultMaxRecords = 50;
 const maximumRecords = 100;
@@ -31,8 +36,8 @@ const paymentAttemptStateLabels: Record<PaymentAttemptState, string> = {
 };
 
 export type AdministrationOrderLink = {
-  readonly paymentAttemptId: string;
-  readonly reservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly reservationId: WorkspaceReservationId;
   readonly state: PaymentAttemptState;
   readonly stateLabel: string;
   readonly amount: {
@@ -46,7 +51,7 @@ export type AdministrationOrderLink = {
 };
 
 export type AdministrationOrder = {
-  readonly orderId: string;
+  readonly orderId: NexiOrderId;
   readonly provider: NexiOrder | null;
   readonly providerAvailable: boolean;
   readonly providerStatus:
@@ -58,7 +63,7 @@ export type AdministrationOrder = {
 };
 
 export type AdministrationOperation = NexiOperation & {
-  readonly linkedReservationId: string | null;
+  readonly linkedReservationId: WorkspaceReservationId | null;
 };
 
 export type AdministrationOrderListInput = {
@@ -85,9 +90,9 @@ export type AdministrationOperationList = {
 };
 
 type LocalOrderRow = {
-  readonly paymentAttemptId: string;
-  readonly providerOrderId: string;
-  readonly reservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly providerOrderId: NexiOrderId;
+  readonly reservationId: WorkspaceReservationId;
   readonly state: PaymentAttemptState;
   readonly amountValue: number;
   readonly amountExponent: number;
@@ -146,7 +151,7 @@ const normalizeMaximumRecords = (value?: number) =>
 
 const toLocalOrderRows = (
   rows: readonly (Omit<LocalOrderRow, "providerOrderId"> & {
-    readonly providerOrderId: string | null;
+    readonly providerOrderId: NexiOrderId | null;
   })[]
 ): readonly LocalOrderRow[] =>
   rows.flatMap((row) =>
@@ -160,23 +165,23 @@ export interface IPaymentAdministrationService {
     input: AdministrationOrderListInput
   ) => Effect.Effect<AdministrationOrderList, unknown>;
   readonly loadOrder: (
-    orderId: string
+    orderId: NexiOrderId
   ) => Effect.Effect<AdministrationOrder, unknown>;
   readonly listOperations: (
     input: AdministrationOperationListInput
   ) => Effect.Effect<AdministrationOperationList, unknown>;
-  readonly loadOperation: (operationId: string) => Effect.Effect<
+  readonly loadOperation: (operationId: NexiOperationId) => Effect.Effect<
     {
-      readonly operationId: string;
+      readonly operationId: NexiOperationId;
       readonly operation: NexiOperation | null;
       readonly providerAvailable: boolean;
       readonly providerStatus: "available" | "not_found" | "unavailable";
-      readonly linkedReservationId: string | null;
+      readonly linkedReservationId: WorkspaceReservationId | null;
     },
     unknown
   >;
   readonly loadReservationOrders: (
-    reservationId: string
+    reservationId: WorkspaceReservationId
   ) => Effect.Effect<readonly AdministrationOrder[], unknown>;
 }
 
@@ -216,9 +221,9 @@ export class PaymentAdministrationService extends Context.Service<
 
       const loadLinksByOrderIds = Effect.fn(
         "PaymentAdministrationService.loadLinksByOrderIds"
-      )(function* (orderIds: readonly string[]) {
+      )(function* (orderIds: readonly NexiOrderId[]) {
         if (orderIds.length === 0) {
-          return new Map<string, AdministrationOrderLink>();
+          return new Map<NexiOrderId, AdministrationOrderLink>();
         }
         const rows = toLocalOrderRows(
           yield* db
@@ -237,33 +242,38 @@ export class PaymentAdministrationService extends Context.Service<
       });
 
       const getProviderOrder = (
-        orderId: string
+        orderId: NexiOrderId
       ): Effect.Effect<ProviderOrderLookup> =>
-        nexi.getOrder({ correlationId: crypto.randomUUID(), orderId }).pipe(
-          Effect.map(
-            (provider): ProviderOrderLookup => ({
-              kind: "available" as const,
-              provider,
-            })
-          ),
-          Effect.catchTag("ExternalAPIError", (cause) => {
-            if (cause.statusCode === 404) {
-              return Effect.succeed<ProviderOrderLookup>({
-                kind: "not_found",
-              });
-            }
-            return Effect.logWarning("Nexi order details unavailable", {
-              cause,
-              orderId,
-            }).pipe(Effect.as<ProviderOrderLookup>({ kind: "unavailable" }));
-          }),
-          Effect.catch((cause) =>
-            Effect.logWarning("Nexi order details unavailable", {
-              cause,
-              orderId,
-            }).pipe(Effect.as<ProviderOrderLookup>({ kind: "unavailable" }))
-          )
-        );
+        nexi
+          .getOrder({
+            correlationId: NexiCorrelationIdSchema.make(crypto.randomUUID()),
+            orderId,
+          })
+          .pipe(
+            Effect.map(
+              (provider): ProviderOrderLookup => ({
+                kind: "available" as const,
+                provider,
+              })
+            ),
+            Effect.catchTag("ExternalAPIError", (cause) => {
+              if (cause.statusCode === 404) {
+                return Effect.succeed<ProviderOrderLookup>({
+                  kind: "not_found",
+                });
+              }
+              return Effect.logWarning("Nexi order details unavailable", {
+                cause,
+                orderId,
+              }).pipe(Effect.as<ProviderOrderLookup>({ kind: "unavailable" }));
+            }),
+            Effect.catch((cause) =>
+              Effect.logWarning("Nexi order details unavailable", {
+                cause,
+                orderId,
+              }).pipe(Effect.as<ProviderOrderLookup>({ kind: "unavailable" }))
+            )
+          );
 
       const listOrders = Effect.fn("PaymentAdministrationService.listOrders")(
         function* (input: AdministrationOrderListInput) {
@@ -273,7 +283,9 @@ export class PaymentAdministrationService extends Context.Service<
               loadLocalOrderRows({ ...input, maxRecords }),
               nexi
                 .listOrders({
-                  correlationId: crypto.randomUUID(),
+                  correlationId: NexiCorrelationIdSchema.make(
+                    crypto.randomUUID()
+                  ),
                   fromTime: input.fromTime,
                   toTime: input.toTime,
                   maxRecords,
@@ -301,7 +313,7 @@ export class PaymentAdministrationService extends Context.Service<
           for (const row of localOrders) {
             links.set(row.providerOrderId, toOrderLink(row));
           }
-          const orders = new Map<string, AdministrationOrder>();
+          const orders = new Map<NexiOrderId, AdministrationOrder>();
           for (const provider of providerItems) {
             orders.set(provider.orderId, {
               orderId: provider.orderId,
@@ -349,7 +361,7 @@ export class PaymentAdministrationService extends Context.Service<
       );
 
       const loadOrder = Effect.fn("PaymentAdministrationService.loadOrder")(
-        function* (orderId: string) {
+        function* (orderId: NexiOrderId) {
           const [localRows, providerResult] = yield* Effect.all(
             [
               db
@@ -386,7 +398,7 @@ export class PaymentAdministrationService extends Context.Service<
         const maxRecords = normalizeMaximumRecords(input.maxRecords);
         const providerResult = yield* nexi
           .listOperations({
-            correlationId: crypto.randomUUID(),
+            correlationId: NexiCorrelationIdSchema.make(crypto.randomUUID()),
             fromTime: input.fromTime,
             toTime: input.toTime,
             maxRecords,
@@ -427,9 +439,12 @@ export class PaymentAdministrationService extends Context.Service<
 
       const loadOperation = Effect.fn(
         "PaymentAdministrationService.loadOperation"
-      )(function* (operationId: string) {
+      )(function* (operationId: NexiOperationId) {
         const result: ProviderOperationLookup = yield* nexi
-          .getOperation({ correlationId: crypto.randomUUID(), operationId })
+          .getOperation({
+            correlationId: NexiCorrelationIdSchema.make(crypto.randomUUID()),
+            operationId,
+          })
           .pipe(
             Effect.map(
               (operation): ProviderOperationLookup => ({
@@ -478,7 +493,7 @@ export class PaymentAdministrationService extends Context.Service<
 
       const loadReservationOrders = Effect.fn(
         "PaymentAdministrationService.loadReservationOrders"
-      )(function* (reservationId: string) {
+      )(function* (reservationId: WorkspaceReservationId) {
         const localRows = toLocalOrderRows(
           yield* db
             .select(localOrderSelection)

@@ -1,7 +1,9 @@
 import {
   type CreateDotyposReservationInput,
+  type DotyposCustomerId,
   type DotyposReservationStatus,
   DotyposService,
+  type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
   type Reservation,
@@ -21,6 +23,7 @@ import {
 } from "@/features/checkout/workspace-money";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { getOfficeReservationIntervalInput } from "@/features/reservation/office-reservation";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   getReservationDate,
   getReservationIntervalNormalization,
@@ -34,8 +37,8 @@ import {
 import { workspaceBookingSeatCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
-  readonly paymentOrderId: string;
-  readonly dotyposCustomerId: string;
+  readonly paymentOrderId: WorkspaceReservationId;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly checkoutDetails: CheckoutDetails;
   readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
@@ -70,7 +73,9 @@ export const createWorkspaceDotyposReservation: (
         (cause) => new ValidationError({ message: cause.message, cause })
       )
     );
-    const tableId = yield* tableAssignments.assignTableId(input.reservation);
+    const tableId: DotyposTableId = yield* tableAssignments.assignTableId(
+      input.reservation
+    );
     const seats = Match.value(input.reservation).pipe(
       Match.discriminatorsExhaustive("kind")({
         cowork: () => workspaceBookingSeatCount,

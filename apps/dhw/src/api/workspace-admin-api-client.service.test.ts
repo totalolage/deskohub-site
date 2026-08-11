@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AdministrationBookingSummary,
   AdministrationCanonicalDiscountCode,
+  AdministrationDiscountCodeId,
+  AdministrationNexiOperationId,
+  AdministrationOperation,
+  AdministrationOrder,
+  AdministrationReservationSummary,
   AdministrationStoredDiscountId,
   CliAccessToken,
   CliAuthenticationChallenge,
@@ -96,7 +102,7 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       lastUsedAt: expiresAt,
     } as const;
-    const booking = {
+    const booking = Schema.decodeUnknownSync(AdministrationBookingSummary)({
       id: "booking-1",
       customerId: "customer-1",
       customer: {
@@ -116,8 +122,10 @@ describe("WorkspaceAdminApiClient", () => {
       linkedReservation: { id: "reservation-1", label: "Meeting room" },
       createdAt: expiresAt,
       updatedAt: expiresAt,
-    };
-    const reservation = {
+    });
+    const reservation = Schema.decodeUnknownSync(
+      AdministrationReservationSummary
+    )({
       id: "reservation-1",
       customerId: "customer-1",
       customer: booking.customer,
@@ -132,20 +140,23 @@ describe("WorkspaceAdminApiClient", () => {
       createdAt: expiresAt,
       latestPayment: null,
       updatedAt: expiresAt,
-    };
-    const order = {
+    });
+    const order = Schema.decodeUnknownSync(AdministrationOrder)({
       orderId: "order-1",
       provider: null,
       providerAvailable: false,
       providerStatus: "unavailable" as const,
       link: null,
-    };
-    const operation = {
-      operationId: "operation-1",
+    });
+    const operationId = Schema.decodeUnknownSync(AdministrationNexiOperationId)(
+      "operation-1"
+    );
+    const operation = Schema.decodeUnknownSync(AdministrationOperation)({
+      operationId,
       operationType: "CAPTURE",
       operationResult: "AUTHORIZED",
       linkedReservationId: reservation.id,
-    };
+    });
     const requests: Array<{ readonly method: string; readonly path: string }> =
       [];
     let mutationAttempts = 0;
@@ -405,7 +416,7 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({
             discounts: [
               {
-                id: "discount-1",
+                id: discountId,
                 labels: {
                   "en-US": "Summer sale",
                   "cs-CZ": "Letní sleva",
@@ -434,7 +445,7 @@ describe("WorkspaceAdminApiClient", () => {
           return Response.json({
             code: {
               id: "code-1",
-              discountId: "discount-1",
+              discountId,
               code: "SUMMER10",
               enabled: true,
               validFrom: null,
@@ -523,10 +534,7 @@ describe("WorkspaceAdminApiClient", () => {
           channel: "ECOMMERCE",
           operationType: "CAPTURE",
         });
-        yield* client.getOperation(
-          Redacted.make(accessToken),
-          operation.operationId
-        );
+        yield* client.getOperation(Redacted.make(accessToken), operationId);
         yield* client.listCustomers(Redacted.make(accessToken), { page: 3 });
         yield* client.searchCustomers(Redacted.make(accessToken), {
           query: "Ada",
@@ -541,7 +549,10 @@ describe("WorkspaceAdminApiClient", () => {
           { page: 2 }
         );
         yield* client.getDiscountDashboard(Redacted.make(accessToken));
-        yield* client.getDiscountCode(Redacted.make(accessToken), "code-1");
+        yield* client.getDiscountCode(
+          Redacted.make(accessToken),
+          AdministrationDiscountCodeId.make("code-1")
+        );
         yield* client.listSessions(Redacted.make(accessToken));
         yield* client.mutateDiscounts(
           Redacted.make(accessToken),

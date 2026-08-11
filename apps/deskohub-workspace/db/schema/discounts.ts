@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -127,7 +128,9 @@ export const discountCodeCustomers = pgTable(
       .notNull()
       .$type<DiscountCodeId>()
       .references(() => discountCodes.id, { onDelete: "cascade" }),
-    dotyposCustomerId: text("dotypos_customer_id").notNull(),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
   },
   (t) => [
     primaryKey({

@@ -1,11 +1,13 @@
 import {
+  type DotyposReservationId,
   type DotyposReservationInterval,
   DotyposService,
+  type DotyposTable,
+  type DotyposTableId,
   type ExternalAPIError,
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -105,7 +107,7 @@ export interface IWorkspaceAvailabilityService {
 }
 
 export type WorkspaceAvailabilityOccupancyExclusion = {
-  readonly dotyposReservationId: string;
+  readonly dotyposReservationId: DotyposReservationId;
 };
 
 type WorkspaceAvailabilityRequest = {
@@ -154,7 +156,7 @@ const implementation = Effect.gen(function* () {
                     { cause }
                   )
                 ),
-                Effect.orElseSucceed(() => [] as readonly string[])
+                Effect.orElseSucceed((): readonly DotyposReservationId[] => [])
               ),
           ],
           { concurrency: "inherit" }
@@ -214,7 +216,7 @@ const implementation = Effect.gen(function* () {
         reservationInterval,
       });
       const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
-      const occupancyByDate = new Map<string, Map<string, number>>();
+      const occupancyByDate = new Map<string, Map<DotyposTableId, number>>();
       const shouldCheckRangeDateSelection =
         query.kind === officeReservationKind ||
         !reservation ||
@@ -244,7 +246,7 @@ const implementation = Effect.gen(function* () {
           (shouldCheckRangeDateSelection || day === selectedDate) &&
           (yield* isUnavailableForSelection(
             tables,
-            occupancyByDate.get(day) ?? new Map(),
+            occupancyByDate.get(day) ?? new Map<DotyposTableId, number>(),
             query
           ))
         ) {
@@ -253,8 +255,9 @@ const implementation = Effect.gen(function* () {
       }
 
       const selectedDateOccupancy = selectedDate
-        ? (occupancyByDate.get(selectedDate) ?? new Map<string, number>())
-        : new Map<string, number>();
+        ? (occupancyByDate.get(selectedDate) ??
+          new Map<DotyposTableId, number>())
+        : new Map<DotyposTableId, number>();
       const selectedOfficeRangeOccupancy =
         query.kind === officeReservationKind && reservation
           ? getWorkspaceTableOccupancyById(reservations, reservation)
@@ -447,8 +450,8 @@ const getCalendarNotices = (
     );
 
 const isUnavailableForSelection = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   query: WorkspaceAvailabilityQuery
 ) =>
   Match.value(query).pipe(
@@ -471,13 +474,13 @@ const isUnavailableForSelection = (
   );
 
 const isMeetingRoomUnavailableForSelection = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
 ) => isMeetingRoomUnavailable(tables, occupancyByTableId);
 
 const isCoworkUnavailableForSelection = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>
 ) => {
   const { entryTier, monitorOption } = query;
@@ -507,8 +510,8 @@ const isCoworkUnavailableForSelection = (
 };
 
 const isTierUnavailable = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   tier: WorkspaceCoworkProductTier
 ) => {
   const product = getWorkspaceProductByTier(tier);
@@ -528,8 +531,8 @@ const isTierUnavailable = (
 };
 
 const isMeetingRoomUnavailable = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>
 ) =>
   hasAvailableWorkspaceTableCandidate(
     tables,
@@ -540,8 +543,8 @@ const isMeetingRoomUnavailable = (
   ).pipe(Effect.map((available) => !available));
 
 const isOfficeUnavailable = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   seats: number
 ) =>
   hasAvailableWorkspaceTableCandidate(
@@ -553,8 +556,8 @@ const isOfficeUnavailable = (
   ).pipe(Effect.map((available) => !available));
 
 const isMonitorOptionUnavailable = (
-  tables: readonly Table[],
-  occupancyByTableId: ReadonlyMap<string, number>,
+  tables: readonly DotyposTable[],
+  occupancyByTableId: ReadonlyMap<DotyposTableId, number>,
   monitorOption: WorkspaceProductMonitorOption
 ) =>
   hasAvailableWorkspaceTableCandidate(

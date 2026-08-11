@@ -1,6 +1,10 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import type { EmailMessage, EmailProviderConfig } from "../types/email.types";
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+} from "../types/email.types";
 import { NetworkError } from "./network-error";
 import {
   EmailConfigTag,
@@ -19,7 +23,7 @@ const config: EmailProviderConfig = {
 };
 
 const success = {
-  id: "email-id",
+  id: EmailDeliveryIdSchema.make("email-id"),
   status: "sent" as const,
   provider: "fake",
   timestamp: new Date("2026-06-20T10:00:00Z"),
@@ -146,7 +150,6 @@ describe("EmailService", () => {
           type: "reservation-confirmation",
           data: {
             customerName: "Ada",
-            reservationId: "reservation-id",
             datetime: new Date("2026-06-20T10:00:00Z"),
             duration: 120,
             guestCount: 2,

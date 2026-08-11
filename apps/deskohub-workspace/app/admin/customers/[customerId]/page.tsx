@@ -6,12 +6,12 @@ import {
   ReservationTable,
 } from "@/features/administration/components";
 import { loadAdministrationCustomerActivity } from "@/features/administration/page-data.server";
+import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerAdministrationDetailPage } from "@/features/discounts/admin/customer-admin-components";
 import {
   type DiscountAdminSearchParams,
   loadOptionalDiscountAdminCustomerPageData,
 } from "@/features/discounts/admin/page-data.server";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
 export default async function DiscountCustomerAdminDetailPage({
   params,
@@ -21,11 +21,9 @@ export default async function DiscountCustomerAdminDetailPage({
   readonly searchParams: DiscountAdminSearchParams;
 }) {
   const { customerId } = await params;
+  const decodedCustomerId = requireDotyposCustomerRouteId(customerId);
   const [liveData, activity] = await Promise.all([
-    loadOptionalDiscountAdminCustomerPageData(
-      customerId as DotyposCustomerId,
-      searchParams
-    ),
+    loadOptionalDiscountAdminCustomerPageData(decodedCustomerId, searchParams),
     loadAdministrationCustomerActivity(customerId),
   ]);
   const { notice, profile } = liveData;

@@ -1,5 +1,4 @@
-import { ValidationError } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import { type DotyposTable, ValidationError } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import {
   getWorkspaceTableCandidates,
@@ -7,7 +6,9 @@ import {
   workspaceOfficeReservationTableTag,
 } from "@/features/checkout/backend/reservation";
 
-export const getOfficeReservationSeatCapacity = (tables: readonly Table[]) =>
+export const getOfficeReservationSeatCapacity = (
+  tables: readonly DotyposTable[]
+) =>
   Effect.gen(function* () {
     const candidates = getWorkspaceTableCandidates(tables, [
       workspaceOfficeReservationTableTag,

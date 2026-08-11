@@ -1,16 +1,29 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Logger, Predicate, References } from "effect";
+import { Effect, Layer, Logger, Predicate, References, Schema } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import { makeDotyposRuntimeConfigLayer } from "../config";
+import {
+  DotyposRuntimeConfigSchema,
+  makeDotyposRuntimeConfigLayer,
+} from "../config";
 import type {
   Category,
   Customer,
   Reservation,
   Table,
 } from "../generated/effect.gen";
+import {
+  DotyposCategorySchema,
+  DotyposCustomerIdSchema,
+  DotyposCustomerSchema,
+  DotyposDiscountGroupIdSchema,
+  DotyposReservationIdSchema,
+  DotyposReservationSchema,
+  DotyposTableIdSchema,
+  DotyposTableSchema,
+} from "../types";
 import { DotyposService } from "./service";
 
-const config = {
+const config = Schema.decodeUnknownSync(DotyposRuntimeConfigSchema)({
   clientId: "client-id",
   clientSecret: "client-secret",
   refreshToken: "refresh-token",
@@ -20,48 +33,68 @@ const config = {
   apiUrl: "https://dotypos.example.test",
   apiTimeout: 1000,
   reservationTableIds: ["table-id"],
-};
-
-const customer = (overrides: Partial<Customer> = {}): Customer => ({
-  _cloudId: config.cloudId,
-  id: "customer-id",
-  firstName: "Ada",
-  points: null,
-  flags: "0",
-  display: true,
-  deleted: false,
-  ...overrides,
 });
 
-const reservation = (overrides: Partial<Reservation> = {}): Reservation => ({
-  id: "reservation-id",
-  _branchId: config.branchId,
-  _cloudId: config.cloudId,
-  _customerId: "customer-id",
-  _tableId: "table-id",
-  startDate: "2026-06-20T10:00:00.000Z",
-  endDate: "2026-06-20T12:00:00.000Z",
-  seats: "2",
-  status: "NEW",
-  ...overrides,
-});
+const dotyposCustomerId = Schema.decodeUnknownSync(DotyposCustomerIdSchema);
+const dotyposDiscountGroupId = Schema.decodeUnknownSync(
+  DotyposDiscountGroupIdSchema
+);
+const dotyposReservationId = Schema.decodeUnknownSync(
+  DotyposReservationIdSchema
+);
+const dotyposTableId = Schema.decodeUnknownSync(DotyposTableIdSchema);
 
-const table = (overrides: Partial<Table> = {}): Table => ({
-  id: "table-id",
-  _cloudId: config.cloudId,
-  name: "Table 1",
-  display: true,
-  enabled: true,
-  ...overrides,
-});
+const omitUndefinedProperties = (value: Record<string, unknown>) =>
+  Object.fromEntries(
+    Object.entries(value).filter(([, property]) => property !== undefined)
+  );
 
-const category = (overrides: Partial<Category> = {}): Category => ({
-  id: "category-id",
-  _cloudId: config.cloudId,
-  name: "Coffee",
-  tags: null,
-  ...overrides,
-});
+const customer = (overrides: Partial<Customer> = {}) =>
+  Schema.decodeUnknownSync(DotyposCustomerSchema)(
+    omitUndefinedProperties({
+      _cloudId: config.cloudId,
+      id: "customer-id",
+      firstName: "Ada",
+      points: null,
+      flags: "0",
+      display: true,
+      deleted: false,
+      ...overrides,
+    })
+  );
+
+const reservation = (overrides: Partial<Reservation> = {}) =>
+  Schema.decodeUnknownSync(DotyposReservationSchema)({
+    id: "reservation-id",
+    _branchId: config.branchId,
+    _cloudId: config.cloudId,
+    _customerId: dotyposCustomerId("customer-id"),
+    _tableId: dotyposTableId("table-id"),
+    startDate: "2026-06-20T10:00:00.000Z",
+    endDate: "2026-06-20T12:00:00.000Z",
+    seats: "2",
+    status: "NEW",
+    ...overrides,
+  });
+
+const table = (overrides: Partial<Table> = {}) =>
+  Schema.decodeUnknownSync(DotyposTableSchema)({
+    id: "table-id",
+    _cloudId: config.cloudId,
+    name: "Table 1",
+    display: true,
+    enabled: true,
+    ...overrides,
+  });
+
+const category = (overrides: Partial<Category> = {}) =>
+  Schema.decodeUnknownSync(DotyposCategorySchema)({
+    id: "category-id",
+    _cloudId: config.cloudId,
+    name: "Coffee",
+    tags: null,
+    ...overrides,
+  });
 
 type FetchCall = [RequestInfo | URL, RequestInit?];
 
@@ -720,7 +753,9 @@ describe("DotyposService reservations", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getReservation("missing").pipe(Effect.result);
+        return yield* dotypos
+          .getReservation(dotyposReservationId("missing"))
+          .pipe(Effect.result);
       }),
       fetchMock
     );
@@ -751,7 +786,9 @@ describe("DotyposService reservations", () => {
     const status = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.getReservationStatus(" reservation-id ");
+        return yield* dotypos.getReservationStatus(
+          dotyposReservationId(" reservation-id ")
+        );
       }),
       fetchMock
     );
@@ -788,8 +825,8 @@ describe("DotyposService reservations", () => {
     });
 
     const input = {
-      customerId: " customer-id ",
-      tableId: " table-id ",
+      customerId: dotyposCustomerId(" customer-id "),
+      tableId: dotyposTableId(" table-id "),
       startDate: new Date("2026-06-20T10:00:00.000Z"),
       endDate: new Date("2026-06-20T12:00:00.000Z"),
       seats: 2,
@@ -805,7 +842,7 @@ describe("DotyposService reservations", () => {
       fetchMock
     );
 
-    expect(result.id).toBe("reservation-id");
+    expect(result.id).toBe(dotyposReservationId("reservation-id"));
     expect(reservationAttempts).toBe(2);
 
     const createCall = fetchMock.mock.calls.find(
@@ -817,8 +854,8 @@ describe("DotyposService reservations", () => {
       {
         _branchId: config.branchId,
         _cloudId: config.cloudId,
-        _customerId: "customer-id",
-        _tableId: "table-id",
+        _customerId: dotyposCustomerId("customer-id"),
+        _tableId: dotyposTableId("table-id"),
         _employeeId: config.employeeId,
         startDate: input.startDate.getTime(),
         endDate: input.endDate.getTime(),
@@ -854,7 +891,9 @@ describe("DotyposService reservations", () => {
     await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.confirmReservation(" reservation-id ");
+        return yield* dotypos.confirmReservation(
+          dotyposReservationId(" reservation-id ")
+        );
       }),
       fetchMock
     );
@@ -892,7 +931,7 @@ describe("DotyposService reservations", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.updateReservation({
-          reservationId: " reservation-id ",
+          reservationId: dotyposReservationId(" reservation-id "),
           note: " accepted quote ",
         });
       }),
@@ -907,7 +946,7 @@ describe("DotyposService reservations", () => {
     expect(await readJsonBody(patchCall)).toEqual({ note: "accepted quote" });
   });
 
-  test("rejects empty reservation update inputs before calling Dotypos", async () => {
+  test("rejects an empty reservation update note before calling Dotypos", async () => {
     const fetchMock = mockDotyposFetch(() => {
       throw new Error("unused");
     });
@@ -915,25 +954,17 @@ describe("DotyposService reservations", () => {
     const errors = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* Effect.all([
-          dotypos
-            .updateReservation({ reservationId: " ", note: "note" })
-            .pipe(Effect.flip),
-          dotypos
-            .updateReservation({
-              reservationId: "reservation-id",
-              note: " ",
-            })
-            .pipe(Effect.flip),
-        ]);
+        return yield* dotypos
+          .updateReservation({
+            reservationId: dotyposReservationId("reservation-id"),
+            note: " ",
+          })
+          .pipe(Effect.flip);
       }),
       fetchMock
     );
 
-    expect(errors.map((error) => error._tag)).toEqual([
-      "ValidationError",
-      "ValidationError",
-    ]);
+    expect(errors._tag).toBe("ValidationError");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -955,7 +986,7 @@ describe("DotyposService reservations", () => {
         const dotypos = yield* DotyposService;
         return yield* dotypos
           .updateReservation({
-            reservationId: "reservation-id",
+            reservationId: dotyposReservationId("reservation-id"),
             note: "accepted quote",
           })
           .pipe(Effect.flip);
@@ -1048,8 +1079,8 @@ describe("DotyposService customer discounts", () => {
     expect(
       result.map(({ id, discountPercent }) => ({ id, discountPercent }))
     ).toEqual([
-      { id: "ten", discountPercent: "10" },
-      { id: "twenty", discountPercent: "20" },
+      { id: dotyposDiscountGroupId("ten"), discountPercent: "10" },
+      { id: dotyposDiscountGroupId("twenty"), discountPercent: "20" },
     ]);
     expect(requestedPages).toEqual(["1", "2"]);
   });
@@ -1114,7 +1145,9 @@ describe("DotyposService customer discounts", () => {
         url.pathname === "/clouds/cloud-id/customers/customer-id" &&
         request.method === "PATCH"
       ) {
-        return Response.json(customer({ _discountGroupId: "group-id" }));
+        return Response.json(
+          customer({ _discountGroupId: dotyposDiscountGroupId("group-id") })
+        );
       }
       return new Response("Not found", { status: 404 });
     });
@@ -1123,8 +1156,8 @@ describe("DotyposService customer discounts", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.setCustomerDiscountGroup(
-          "customer-id",
-          "group-id"
+          dotyposCustomerId("customer-id"),
+          dotyposDiscountGroupId("group-id")
         );
       }),
       fetchMock
@@ -1134,9 +1167,9 @@ describe("DotyposService customer discounts", () => {
     expect(patchRequest).toBeDefined();
     expect(patchRequest?.headers.get("if-match")).toBe('"customer-version"');
     expect(await patchRequest?.json()).toEqual({
-      _discountGroupId: "group-id",
+      _discountGroupId: dotyposDiscountGroupId("group-id"),
     });
-    expect(result._discountGroupId).toBe("group-id");
+    expect(result._discountGroupId).toBe(dotyposDiscountGroupId("group-id"));
   });
 
   test("loads a customer's generated discount group by customer ID", async () => {
@@ -1144,7 +1177,9 @@ describe("DotyposService customer discounts", () => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
-        return Response.json(customer({ _discountGroupId: "group-id" }));
+        return Response.json(
+          customer({ _discountGroupId: dotyposDiscountGroupId("group-id") })
+        );
       }
       if (url.pathname === "/clouds/cloud-id/discount-groups/group-id") {
         return Response.json({ discountPercent: "12.5" });
@@ -1156,14 +1191,14 @@ describe("DotyposService customer discounts", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.getCustomerDiscountGroup({
-          customerId: "customer-id",
+          customerId: dotyposCustomerId("customer-id"),
         });
       }),
       fetchMock
     );
 
     expect(result).toEqual({
-      discountGroupId: "group-id",
+      discountGroupId: dotyposDiscountGroupId("group-id"),
       discountPercent: "12.5",
     });
   });
@@ -1192,10 +1227,14 @@ describe("DotyposService customer discounts", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* Effect.all([
-          dotypos.getCustomerDiscount(customer({ _discountGroupId: "ten" })),
-          dotypos.getCustomerDiscount(customer({ _discountGroupId: "zero" })),
           dotypos.getCustomerDiscount(
-            customer({ _discountGroupId: "tooHigh" })
+            customer({ _discountGroupId: dotyposDiscountGroupId("ten") })
+          ),
+          dotypos.getCustomerDiscount(
+            customer({ _discountGroupId: dotyposDiscountGroupId("zero") })
+          ),
+          dotypos.getCustomerDiscount(
+            customer({ _discountGroupId: dotyposDiscountGroupId("tooHigh") })
           ),
         ]);
       }),
@@ -1205,7 +1244,7 @@ describe("DotyposService customer discounts", () => {
     expect(result).toEqual([
       {
         source: "dotypos-discount-group",
-        discountGroupId: "ten",
+        discountGroupId: dotyposDiscountGroupId("ten"),
         percent: 10,
       },
       undefined,
@@ -1465,7 +1504,7 @@ describe("DotyposService reservation listing", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.listReservations({
-          customerId: "customer-id",
+          customerId: dotyposCustomerId("customer-id"),
           startsAtOrAfter: "2026-08-04T00:00:00+02:00",
           startsBefore: "2026-08-05T00:00:00+02:00",
           order: "startDateDescending",
@@ -1492,7 +1531,9 @@ describe("DotyposService reservation listing", () => {
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos
-          .listReservations({ customerId: "customer|eq|other" })
+          .listReservations({
+            customerId: dotyposCustomerId("customer|eq|other"),
+          })
           .pipe(Effect.result);
       }),
       fetchMock

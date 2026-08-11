@@ -2,6 +2,7 @@
 
 import type { FormEvent, ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { type Locale, m } from "@/features/i18n";
@@ -38,7 +39,7 @@ type ReservationCheckoutFormProps<
     readonly unavailableMessage?: string;
   };
   readonly afterCustomerFields?: ReactNode;
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly children: ReactNode;
   readonly form: UseFormReturn<Input, unknown, Data>;
   readonly getReservation: (data: Data) => ReservationOrderData;

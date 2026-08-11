@@ -1,8 +1,11 @@
 "use server";
 
-import type { CloudinaryAsset } from "@deskohub/cloudinary";
+import {
+  type CloudinaryAsset,
+  CloudinaryPublicIdSchema,
+} from "@deskohub/cloudinary";
 import { CloudinaryService } from "@deskohub/cloudinary/server";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import { CloudinaryServiceLive } from "../backend/cloudinary.service";
 
@@ -11,12 +14,19 @@ export async function getCloudinaryImageByPublicId(
 ): Promise<CloudinaryAsset | undefined> {
   "use cache";
 
-  applyCacheTags(cloudinaryTags.all(), cloudinaryTags.image(publicId));
-
   const imageLookup = Effect.provide(
     Effect.gen(function* () {
+      const decodedPublicId = yield* Schema.decodeUnknownEffect(
+        CloudinaryPublicIdSchema
+      )(publicId);
+
+      applyCacheTags(
+        cloudinaryTags.all(),
+        cloudinaryTags.image(decodedPublicId)
+      );
+
       const service = yield* CloudinaryService;
-      return yield* service.getByPublicId(publicId);
+      return yield* service.getByPublicId(decodedPublicId);
     }),
     CloudinaryServiceLive
   ).pipe(

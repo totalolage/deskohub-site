@@ -1,5 +1,4 @@
-import type { Reservation } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import type { DotyposReservation, DotyposTable } from "@deskohub/dotypos";
 import "@/shared/polyfills/temporal";
 import {
   workspaceMeetingRoomReservationTableTag,
@@ -186,8 +185,8 @@ export const makeWorkspaceE2ECapacityReport = ({
   to,
 }: {
   readonly from: Date;
-  readonly reservations: readonly Reservation[];
-  readonly tables: readonly Table[];
+  readonly reservations: readonly DotyposReservation[];
+  readonly tables: readonly DotyposTable[];
   readonly to: Date;
 }): WorkspaceE2ECapacityReport => {
   const groups = capacityGroups.map((group) => {
@@ -285,14 +284,18 @@ const parsePositiveInteger = (value: string | undefined) => {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 };
 
-const intervalsOverlap = (reservation: Reservation, from: Date, to: Date) => {
+const intervalsOverlap = (
+  reservation: DotyposReservation,
+  from: Date,
+  to: Date
+) => {
   const startsAt = Date.parse(reservation.startDate);
   const endsAt = Date.parse(reservation.endDate);
   return startsAt < to.getTime() && endsAt > from.getTime();
 };
 
 const getPeakActiveReservationUsage = (
-  reservations: readonly Reservation[]
+  reservations: readonly DotyposReservation[]
 ) => {
   const events = reservations.flatMap((reservation) => {
     const tableId = reservation._tableId?.trim();

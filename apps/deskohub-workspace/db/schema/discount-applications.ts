@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -8,12 +9,14 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { DiscountId } from "@/features/discounts";
 import type {
   DiscountApplicationId,
   DiscountCodeClaimId,
   DiscountCodeId,
 } from "@/features/discounts/persistence-contracts";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { discountCodes } from "./discounts";
@@ -38,9 +41,11 @@ export const discountApplications = pgTable(
       .$type<DiscountApplicationId>(),
     paymentAttemptId: text("payment_attempt_id")
       .notNull()
+      .$type<PaymentAttemptId>()
       .references(() => paymentAttempts.id),
     workspaceReservationId: text("workspace_reservation_id")
       .notNull()
+      .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
     sequence: integer("sequence").notNull(),
     publicDiscountId: text("public_discount_id").notNull().$type<DiscountId>(),
@@ -117,8 +122,11 @@ export const discountCodeRedemptions = pgTable(
       .references(() => discountApplications.id),
     paymentAttemptId: text("payment_attempt_id")
       .notNull()
+      .$type<PaymentAttemptId>()
       .references(() => paymentAttempts.id),
-    dotyposCustomerId: text("dotypos_customer_id").notNull(),
+    dotyposCustomerId: text("dotypos_customer_id")
+      .notNull()
+      .$type<DotyposCustomerId>(),
     state: text("state").notNull().$type<DiscountCodeClaimState>(),
     reservationExpiresAt: instant("reservation_expires_at").notNull(),
     reservedAt: instant("reserved_at").notNull().default(sql`now()`),

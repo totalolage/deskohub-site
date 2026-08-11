@@ -255,6 +255,126 @@ export const AdministrationReservationStatusGroup = Schema.Literals([
 export type AdministrationReservationStatusGroup =
   typeof AdministrationReservationStatusGroup.Type;
 
+export const AdministrationWorkspaceReservationId = Schema.NonEmptyString.pipe(
+  Schema.brand("WorkspaceReservationId")
+).annotate({
+  identifier: "WorkspaceReservationId",
+  description: "Opaque identifier for a persisted Workspace reservation.",
+});
+export type AdministrationWorkspaceReservationId =
+  typeof AdministrationWorkspaceReservationId.Type;
+
+export const AdministrationPaymentAttemptId = Schema.NonEmptyString.pipe(
+  Schema.brand("PaymentAttemptId")
+).annotate({
+  identifier: "PaymentAttemptId",
+  description: "Opaque identifier for a persisted payment attempt.",
+});
+export type AdministrationPaymentAttemptId =
+  typeof AdministrationPaymentAttemptId.Type;
+
+export const AdministrationNexiOrderId = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiOrderId")
+).annotate({
+  identifier: "NexiOrderId",
+  description: "Opaque order identifier assigned by Nexi.",
+});
+export type AdministrationNexiOrderId = typeof AdministrationNexiOrderId.Type;
+
+export const AdministrationNexiOperationId = Schema.NonEmptyString.pipe(
+  Schema.brand("NexiOperationId")
+).annotate({
+  identifier: "NexiOperationId",
+  description: "Opaque payment-operation identifier assigned by Nexi.",
+});
+export type AdministrationNexiOperationId =
+  typeof AdministrationNexiOperationId.Type;
+
+export const AdministrationDotyposCustomerId = Schema.NonEmptyString.pipe(
+  Schema.brand("DotyposCustomerId")
+).annotate({
+  identifier: "DotyposCustomerId",
+  description: "Opaque customer identifier assigned by Dotypos.",
+});
+export type AdministrationDotyposCustomerId =
+  typeof AdministrationDotyposCustomerId.Type;
+
+export const AdministrationDotyposReservationId = Schema.NonEmptyString.pipe(
+  Schema.brand("DotyposReservationId")
+).annotate({
+  identifier: "DotyposReservationId",
+  description: "Opaque reservation identifier assigned by Dotypos.",
+});
+export type AdministrationDotyposReservationId =
+  typeof AdministrationDotyposReservationId.Type;
+
+export const AdministrationDotyposTableId = Schema.NonEmptyString.pipe(
+  Schema.brand("DotyposTableId")
+).annotate({
+  identifier: "DotyposTableId",
+  description: "Opaque table identifier assigned by Dotypos.",
+});
+export type AdministrationDotyposTableId =
+  typeof AdministrationDotyposTableId.Type;
+
+export const AdministrationDotyposDiscountGroupId = Schema.NonEmptyString.pipe(
+  Schema.brand("DotyposDiscountGroupId")
+).annotate({
+  identifier: "DotyposDiscountGroupId",
+  description: "Opaque discount-group identifier assigned by Dotypos.",
+});
+export type AdministrationDotyposDiscountGroupId =
+  typeof AdministrationDotyposDiscountGroupId.Type;
+
+export const AdministrationDiscountApplicationId = Schema.NonEmptyString.pipe(
+  Schema.brand("DiscountApplicationId")
+).annotate({
+  identifier: "DiscountApplicationId",
+  description: "Opaque identifier for an immutable discount application.",
+});
+export type AdministrationDiscountApplicationId =
+  typeof AdministrationDiscountApplicationId.Type;
+
+export const AdministrationDiscountCodeClaimId = Schema.NonEmptyString.pipe(
+  Schema.brand("DiscountCodeClaimId")
+).annotate({
+  identifier: "DiscountCodeClaimId",
+  description: "Opaque identifier for a discount-code claim lifecycle.",
+});
+export type AdministrationDiscountCodeClaimId =
+  typeof AdministrationDiscountCodeClaimId.Type;
+
+export const AdministrationStoredDiscountId = uuidSchema
+  .pipe(Schema.brand("DiscountId"))
+  .pipe(Schema.brand("StoredDiscountId"))
+  .annotate({ identifier: "StoredDiscountId" });
+export type AdministrationStoredDiscountId =
+  typeof AdministrationStoredDiscountId.Type;
+
+export const AdministrationDiscountCodeId = Schema.NonEmptyString.pipe(
+  Schema.brand("DiscountCodeId")
+).annotate({ identifier: "DiscountCodeId" });
+export type AdministrationDiscountCodeId =
+  typeof AdministrationDiscountCodeId.Type;
+
+export const AdministrationGoogleCalendarEventId = Schema.NonEmptyString.pipe(
+  Schema.brand("GoogleCalendarEventId")
+).annotate({
+  identifier: "GoogleCalendarEventId",
+  description: "Opaque event identifier assigned by Google Calendar.",
+});
+export type AdministrationGoogleCalendarEventId =
+  typeof AdministrationGoogleCalendarEventId.Type;
+
+export const AdministrationGoogleCalendarICalUid = Schema.NonEmptyString.pipe(
+  Schema.brand("GoogleCalendarICalUid")
+).annotate({
+  identifier: "GoogleCalendarICalUid",
+  description: "iCalendar UID assigned to a Google Calendar event.",
+});
+export type AdministrationGoogleCalendarICalUid =
+  typeof AdministrationGoogleCalendarICalUid.Type;
+
 const isCalendarDate = (value: string) => {
   try {
     return Temporal.PlainDate.from(value).toString() === value;
@@ -270,7 +390,7 @@ const administrationCalendarDate = Schema.String.check(
 ).annotate({ format: "date" });
 
 export const AdministrationReservationQuery = Schema.Struct({
-  customerId: Schema.optional(Schema.String.check(Schema.isNonEmpty())),
+  customerId: Schema.optional(AdministrationDotyposCustomerId),
   date: Schema.optional(administrationCalendarDate),
   direction: Schema.optional(AdministrationReservationSortDirection),
   page: Schema.optional(
@@ -292,13 +412,13 @@ export type AdministrationReservationLookupQuery =
   typeof AdministrationReservationLookupQuery.Type;
 
 export const AdministrationReservationLookupResult = Schema.Struct({
-  reservationId: Schema.NullOr(Schema.String),
+  reservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
 });
 export type AdministrationReservationLookupResult =
   typeof AdministrationReservationLookupResult.Type;
 
 export const AdministrationCustomer = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationDotyposCustomerId,
   displayName: Schema.String,
   email: Schema.NullOr(Schema.String),
   phone: Schema.NullOr(Schema.String),
@@ -313,7 +433,7 @@ export const AdministrationMoney = Schema.Struct({
 export type AdministrationMoney = typeof AdministrationMoney.Type;
 
 export const AdministrationPaymentAttempt = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationPaymentAttemptId,
   state: Schema.Literals([
     "created",
     "pending",
@@ -322,7 +442,7 @@ export const AdministrationPaymentAttempt = Schema.Struct({
     "cancelled",
     "expired",
   ]),
-  providerOrderId: Schema.NullOr(Schema.String),
+  providerOrderId: Schema.NullOr(AdministrationNexiOrderId),
   providerLabel: Schema.String,
   stateLabel: Schema.String,
   amount: AdministrationMoney,
@@ -334,8 +454,8 @@ export type AdministrationPaymentAttempt =
   typeof AdministrationPaymentAttempt.Type;
 
 export const AdministrationReservationSummary = Schema.Struct({
-  id: Schema.String,
-  customerId: Schema.String,
+  id: AdministrationWorkspaceReservationId,
+  customerId: AdministrationDotyposCustomerId,
   customer: Schema.NullOr(AdministrationCustomer),
   liveDetailsAvailable: Schema.Boolean,
   startsAt: Schema.NullOr(Schema.String),
@@ -367,19 +487,22 @@ export type AdministrationReservationPage =
   typeof AdministrationReservationPage.Type;
 
 export const AdministrationBookingSummary = Schema.Struct({
-  id: Schema.String,
-  customerId: Schema.NullOr(Schema.String),
+  id: AdministrationDotyposReservationId,
+  customerId: Schema.NullOr(AdministrationDotyposCustomerId),
   customer: Schema.NullOr(AdministrationCustomer),
   startsAt: Schema.String,
   endsAt: Schema.String,
   seats: Schema.String,
   status: Schema.Literals(["NEW", "CONFIRMED", "CANCELLED"]),
   statusLabel: Schema.String,
-  tableId: Schema.NullOr(Schema.String),
+  tableId: Schema.NullOr(AdministrationDotyposTableId),
   tableName: Schema.NullOr(Schema.String),
   tableLocation: Schema.NullOr(Schema.String),
   linkedReservation: Schema.NullOr(
-    Schema.Struct({ id: Schema.String, label: Schema.String })
+    Schema.Struct({
+      id: AdministrationWorkspaceReservationId,
+      label: Schema.String,
+    })
   ),
   createdAt: Schema.NullOr(Schema.String),
   updatedAt: Schema.NullOr(Schema.String),
@@ -406,30 +529,30 @@ export type AdministrationBookingQuery = typeof AdministrationBookingQuery.Type;
 export const AdministrationBookingDetail = Schema.Struct({
   booking: AdministrationBookingSummary,
   references: Schema.Struct({
-    bookingId: Schema.String,
-    customerId: Schema.NullOr(Schema.String),
-    workspaceReservationId: Schema.NullOr(Schema.String),
+    bookingId: AdministrationDotyposReservationId,
+    customerId: Schema.NullOr(AdministrationDotyposCustomerId),
+    workspaceReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
   }),
 });
 export type AdministrationBookingDetail =
   typeof AdministrationBookingDetail.Type;
 
 export const AdministrationNexiOperation = Schema.Struct({
-  orderId: Schema.optional(Schema.String),
-  operationId: Schema.optional(Schema.String),
+  orderId: Schema.optional(AdministrationNexiOrderId),
+  operationId: Schema.optional(AdministrationNexiOperationId),
   channel: Schema.optional(Schema.String),
   operationType: Schema.optional(Schema.String),
   operationResult: Schema.optional(Schema.String),
   operationTime: Schema.optional(Schema.String),
   amount: Schema.optional(Schema.String),
   currency: Schema.optional(Schema.String),
-  cancelledOperationId: Schema.optional(Schema.String),
+  cancelledOperationId: Schema.optional(AdministrationNexiOperationId),
 });
 export type AdministrationNexiOperation =
   typeof AdministrationNexiOperation.Type;
 
 export const AdministrationNexiOrder = Schema.Struct({
-  orderId: Schema.String,
+  orderId: AdministrationNexiOrderId,
   amount: Schema.optional(Schema.String),
   currency: Schema.optional(Schema.String),
   authorizedAmount: Schema.optional(Schema.String),
@@ -441,8 +564,8 @@ export const AdministrationNexiOrder = Schema.Struct({
 export type AdministrationNexiOrder = typeof AdministrationNexiOrder.Type;
 
 export const AdministrationOrderLink = Schema.Struct({
-  paymentAttemptId: Schema.String,
-  reservationId: Schema.String,
+  paymentAttemptId: AdministrationPaymentAttemptId,
+  reservationId: AdministrationWorkspaceReservationId,
   state: Schema.Literals([
     "created",
     "pending",
@@ -460,7 +583,7 @@ export const AdministrationOrderLink = Schema.Struct({
 export type AdministrationOrderLink = typeof AdministrationOrderLink.Type;
 
 export const AdministrationOrder = Schema.Struct({
-  orderId: Schema.String,
+  orderId: AdministrationNexiOrderId,
   provider: Schema.NullOr(AdministrationNexiOrder),
   providerAvailable: Schema.Boolean,
   providerStatus: Schema.Literals([
@@ -492,7 +615,7 @@ export type AdministrationOrderQuery = typeof AdministrationOrderQuery.Type;
 
 export const AdministrationOperation = Schema.Struct({
   ...AdministrationNexiOperation.fields,
-  linkedReservationId: Schema.NullOr(Schema.String),
+  linkedReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
 });
 export type AdministrationOperation = typeof AdministrationOperation.Type;
 
@@ -513,11 +636,11 @@ export type AdministrationOperationQuery =
   typeof AdministrationOperationQuery.Type;
 
 export const AdministrationOperationDetail = Schema.Struct({
-  operationId: Schema.String,
+  operationId: AdministrationNexiOperationId,
   operation: Schema.NullOr(AdministrationNexiOperation),
   providerAvailable: Schema.Boolean,
   providerStatus: Schema.Literals(["available", "not_found", "unavailable"]),
-  linkedReservationId: Schema.NullOr(Schema.String),
+  linkedReservationId: Schema.NullOr(AdministrationWorkspaceReservationId),
 });
 export type AdministrationOperationDetail =
   typeof AdministrationOperationDetail.Type;
@@ -555,7 +678,7 @@ export const AdministrationTimelineItem = Schema.Struct({
 export type AdministrationTimelineItem = typeof AdministrationTimelineItem.Type;
 
 export const AdministrationDiscountApplication = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationDiscountApplicationId,
   label: Schema.String,
   amount: AdministrationMoney,
 });
@@ -573,9 +696,9 @@ export const AdministrationReservationDetail = Schema.Struct({
   otherCustomerReservations: Schema.Array(AdministrationReservationSummary),
   sameDateReservations: Schema.Array(AdministrationReservationSummary),
   references: Schema.Struct({
-    workspaceReservationId: Schema.String,
-    dotyposReservationId: Schema.NullOr(Schema.String),
-    customerId: Schema.String,
+    workspaceReservationId: AdministrationWorkspaceReservationId,
+    dotyposReservationId: Schema.NullOr(AdministrationDotyposReservationId),
+    customerId: AdministrationDotyposCustomerId,
   }),
 });
 export type AdministrationReservationDetail =
@@ -583,7 +706,7 @@ export type AdministrationReservationDetail =
 
 export const AdministrationCustomerSummary = Schema.Struct({
   customer: Schema.NullOr(AdministrationCustomer),
-  customerId: Schema.String,
+  customerId: AdministrationDotyposCustomerId,
   reservationCount: Schema.Number,
   lastActivityAt: Schema.String,
 });
@@ -617,11 +740,11 @@ export type AdministrationCustomerSearchQuery =
   typeof AdministrationCustomerSearchQuery.Type;
 
 export const AdministrationExternalCustomer = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationDotyposCustomerId,
   displayName: Schema.String,
   email: Schema.NullOr(Schema.String),
   phone: Schema.NullOr(Schema.String),
-  discountGroupId: Schema.NullOr(Schema.String),
+  discountGroupId: Schema.NullOr(AdministrationDotyposDiscountGroupId),
 });
 export type AdministrationExternalCustomer =
   typeof AdministrationExternalCustomer.Type;
@@ -636,7 +759,7 @@ export type AdministrationCustomerSearchResult =
 export const AdministrationCustomerTransaction = Schema.Struct({
   attempt: AdministrationPaymentAttempt,
   reservation: Schema.Struct({
-    id: Schema.String,
+    id: AdministrationWorkspaceReservationId,
     typeLabel: Schema.String,
   }),
 });
@@ -669,7 +792,7 @@ export type AdministrationCustomerActivity =
   typeof AdministrationCustomerActivity.Type;
 
 export const AdministrationDiscountGroup = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationDotyposDiscountGroupId,
   name: Schema.String,
   basisPoints: Schema.Number,
 });
@@ -677,8 +800,8 @@ export type AdministrationDiscountGroup =
   typeof AdministrationDiscountGroup.Type;
 
 export const AdministrationDiscountCode = Schema.Struct({
-  id: Schema.String,
-  discountId: Schema.String,
+  id: AdministrationDiscountCodeId,
+  discountId: AdministrationStoredDiscountId,
   code: Schema.String,
   enabled: Schema.Boolean,
   validFrom: Schema.NullOr(Schema.String),
@@ -702,12 +825,12 @@ export const AdministrationCustomerCode = Schema.Struct({
 export type AdministrationCustomerCode = typeof AdministrationCustomerCode.Type;
 
 export const AdministrationDiscountCodeClaim = Schema.Struct({
-  id: Schema.String,
-  codeId: Schema.String,
-  dotyposCustomerId: Schema.String,
+  id: AdministrationDiscountCodeClaimId,
+  codeId: AdministrationDiscountCodeId,
+  dotyposCustomerId: AdministrationDotyposCustomerId,
   state: Schema.Literals(["reserved", "redeemed", "released"]),
-  paymentAttemptId: Schema.String,
-  workspaceReservationId: Schema.String,
+  paymentAttemptId: AdministrationPaymentAttemptId,
+  workspaceReservationId: AdministrationWorkspaceReservationId,
   reservationExpiresAt: Schema.String,
   reservedAt: Schema.String,
   redeemedAt: Schema.NullOr(Schema.String),
@@ -770,25 +893,6 @@ export const AdministrationDiscountAdjustment = Schema.Union([
 ]);
 export type AdministrationDiscountAdjustment =
   typeof AdministrationDiscountAdjustment.Type;
-
-export const AdministrationStoredDiscountId = uuidSchema
-  .pipe(Schema.brand("DiscountId"))
-  .pipe(Schema.brand("StoredDiscountId"))
-  .annotate({ identifier: "StoredDiscountId" });
-export type AdministrationStoredDiscountId =
-  typeof AdministrationStoredDiscountId.Type;
-
-export const AdministrationDiscountCodeId = Schema.NonEmptyString.pipe(
-  Schema.brand("DiscountCodeId")
-).annotate({ identifier: "DiscountCodeId" });
-export type AdministrationDiscountCodeId =
-  typeof AdministrationDiscountCodeId.Type;
-
-export const AdministrationDotyposCustomerId = Schema.NonEmptyString.pipe(
-  Schema.brand("DotyposCustomerId")
-).annotate({ identifier: "DotyposCustomerId" });
-export type AdministrationDotyposCustomerId =
-  typeof AdministrationDotyposCustomerId.Type;
 
 export const AdministrationCanonicalDiscountCode = Schema.String.check(
   Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
@@ -988,7 +1092,7 @@ export const AdministrationDiscountMutation = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("set-customer-discount-group"),
     customerId: AdministrationDotyposCustomerId,
-    discountGroupId: Schema.NullOr(Schema.Trim.check(Schema.isNonEmpty())),
+    discountGroupId: Schema.NullOr(AdministrationDotyposDiscountGroupId),
   }),
 ]).annotate({
   parseOptions: { errors: "all", onExcessProperty: "error" },
@@ -1005,7 +1109,7 @@ export type AdministrationDiscountMutationResult =
   typeof AdministrationDiscountMutationResult.Type;
 
 export const AdministrationDiscount = Schema.Struct({
-  id: Schema.String,
+  id: AdministrationStoredDiscountId,
   labels: Schema.Struct({
     "en-US": Schema.String,
     "cs-CZ": Schema.String,
@@ -1019,7 +1123,12 @@ export const AdministrationDiscount = Schema.Struct({
 export type AdministrationDiscount = typeof AdministrationDiscount.Type;
 
 export const AdministrationCalendarSale = Schema.Struct({
-  eventReference: Schema.String,
+  eventReference: Schema.optional(
+    Schema.Union([
+      AdministrationGoogleCalendarEventId,
+      AdministrationGoogleCalendarICalUid,
+    ])
+  ),
   title: Schema.String,
   description: Schema.String,
   start: Schema.String,
@@ -1029,14 +1138,14 @@ export const AdministrationCalendarSale = Schema.Struct({
   association: Schema.Union([
     Schema.Struct({
       kind: Schema.Literal("associated"),
-      discountId: Schema.String,
+      discountId: AdministrationStoredDiscountId,
       discountLabel: Schema.String,
     }),
     Schema.Struct({ kind: Schema.Literal("missing-description") }),
     Schema.Struct({ kind: Schema.Literal("invalid-description") }),
     Schema.Struct({
       kind: Schema.Literal("missing-discount"),
-      discountId: Schema.String,
+      discountId: AdministrationStoredDiscountId,
     }),
   ]),
 });
@@ -1061,7 +1170,7 @@ export const AdministrationDiscountCodeDetail = Schema.Struct({
   discountLabel: Schema.String,
   customers: Schema.Array(
     Schema.Struct({
-      customerId: Schema.String,
+      customerId: AdministrationDotyposCustomerId,
       customer: Schema.NullOr(AdministrationExternalCustomer),
     })
   ),
@@ -1135,7 +1244,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getReservation", "/reservations/:reservationId", {
-      params: { reservationId: Schema.String },
+      params: { reservationId: AdministrationWorkspaceReservationId },
       success: AdministrationReservationDetail,
       error: CliResourceNotFound.schema,
     })
@@ -1154,7 +1263,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getBooking", "/bookings/:bookingId", {
-      params: { bookingId: Schema.String },
+      params: { bookingId: AdministrationDotyposReservationId },
       success: AdministrationBookingDetail,
       error: CliResourceNotFound.schema,
     })
@@ -1167,7 +1276,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getOrder", "/orders/:orderId", {
-      params: { orderId: Schema.String },
+      params: { orderId: AdministrationNexiOrderId },
       success: AdministrationOrder,
     })
   )
@@ -1179,7 +1288,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getOperation", "/operations/:operationId", {
-      params: { operationId: Schema.String },
+      params: { operationId: AdministrationNexiOperationId },
       success: AdministrationOperationDetail,
     })
   )
@@ -1197,7 +1306,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getCustomer", "/customers/:customerId", {
-      params: { customerId: Schema.String },
+      params: { customerId: AdministrationDotyposCustomerId },
       success: AdministrationCustomerDetail,
     })
   )
@@ -1206,7 +1315,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
       "listCustomerReservations",
       "/customers/:customerId/reservations",
       {
-        params: { customerId: Schema.String },
+        params: { customerId: AdministrationDotyposCustomerId },
         query: AdministrationCustomerReservationsQuery,
         success: AdministrationCustomerReservationPage,
       }
@@ -1219,7 +1328,7 @@ export const AdminCliAdministrationApi = HttpApiGroup.make("administration")
   )
   .add(
     HttpApiEndpoint.get("getDiscountCode", "/codes/:codeId", {
-      params: { codeId: Schema.String },
+      params: { codeId: AdministrationDiscountCodeId },
       success: AdministrationDiscountCodeDetail,
       error: CliResourceNotFound.schema,
     })

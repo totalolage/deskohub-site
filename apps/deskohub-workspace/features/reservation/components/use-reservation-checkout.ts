@@ -3,7 +3,11 @@
 import { track } from "@vercel/analytics/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useRef, useState } from "react";
-import { createCheckoutIdentifier } from "@/features/checkout/checkout-identifiers";
+import {
+  type CheckoutSessionId,
+  createCheckoutAttemptId,
+  createCheckoutSessionId,
+} from "@/features/checkout/checkout-identifiers";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
@@ -18,7 +22,7 @@ type ReservationCheckoutDetails = {
 };
 
 type UseReservationCheckoutOptions = {
-  readonly initialCheckoutSessionId?: string;
+  readonly initialCheckoutSessionId?: CheckoutSessionId;
   readonly locale: Locale;
 };
 
@@ -32,10 +36,10 @@ export function useReservationCheckout({
   const hasTrackedSuccessfulSubmission = useRef(false);
   const lastSubmittedReservationRef = useRef<string | null>(null);
   const [checkoutSessionId] = useState(
-    () => initialCheckoutSessionId ?? createCheckoutIdentifier()
+    () => initialCheckoutSessionId ?? createCheckoutSessionId()
   );
   const [checkoutAttemptId, setCheckoutAttemptId] = useState(
-    createCheckoutIdentifier
+    createCheckoutAttemptId
   );
   const [submissionError, setSubmissionError] = useState<string>();
   const analyticsProperties = useMemo(
@@ -92,7 +96,7 @@ export function useReservationCheckout({
     const effectiveCheckoutAttemptId =
       lastSubmittedReservationRef.current &&
       lastSubmittedReservationRef.current !== reservationFingerprint
-        ? createCheckoutIdentifier()
+        ? createCheckoutAttemptId()
         : checkoutAttemptId;
     if (effectiveCheckoutAttemptId !== checkoutAttemptId) {
       setCheckoutAttemptId(effectiveCheckoutAttemptId);

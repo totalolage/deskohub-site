@@ -5,7 +5,9 @@ import {
   deriveNexiWebhookEventIdentity,
   getNexiPaymentMetadata,
   NexiCurrencySchema,
+  type NexiOrderId,
   NexiService,
+  type NexiWebhookEventId,
   type PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
@@ -54,16 +56,16 @@ export class NexiWebhookProcessingError extends Data.TaggedError(
   "NexiWebhookProcessingError"
 )<{
   readonly errorCode: NexiWebhookFailureCode;
-  readonly eventId?: string;
-  readonly orderId?: string;
+  readonly eventId?: NexiWebhookEventId;
+  readonly orderId?: NexiOrderId;
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
 export interface NexiWebhookResult {
   readonly status: "accepted" | "duplicate";
-  readonly orderId?: string;
-  readonly eventId?: string;
+  readonly orderId?: NexiOrderId;
+  readonly eventId?: NexiWebhookEventId;
 }
 
 export interface NexiWebhookService {
@@ -102,8 +104,8 @@ const failAfterMarkingEvent = (
 
 const failOnVerificationMismatch = Effect.fn(
   function* (input: {
-    readonly eventId: string;
-    readonly orderId: string;
+    readonly eventId: NexiWebhookEventId;
+    readonly orderId: NexiOrderId;
     readonly verification: PaymentVerificationResult;
     readonly webhookEvents: WebhookEventRepository;
   }) {

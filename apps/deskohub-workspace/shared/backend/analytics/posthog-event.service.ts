@@ -1,5 +1,9 @@
 import "server-only";
 
+import type {
+  PostHogDistinctId,
+  PostHogEventId,
+} from "@deskohub/posthog/identifiers";
 import { Context, Effect, Layer, Option, References } from "effect";
 import { type EventMessage, PostHog } from "posthog-node";
 import {
@@ -13,11 +17,11 @@ import { temporalInstantToDate } from "@/shared/utils/temporal";
 export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
 
 export interface CapturePostHogEventInput {
-  readonly distinctId: string;
+  readonly distinctId: PostHogDistinctId;
   readonly event: string;
   readonly properties?: PostHogEventProperties;
   readonly timestamp: Temporal.Instant;
-  readonly uuid: string;
+  readonly uuid: PostHogEventId;
 }
 
 export interface IPostHogEventService {

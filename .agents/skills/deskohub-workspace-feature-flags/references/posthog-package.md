@@ -44,7 +44,12 @@ Create a generator script in the consuming application:
 
 ```ts
 import { generatePostHogFeatureFlagContract } from "@deskohub/posthog/feature-flags/codegen";
-import { Effect } from "effect";
+import { PostHogProjectId } from "@deskohub/posthog/identifiers";
+import { Effect, Schema } from "effect";
+
+const projectId = Schema.decodeUnknownSync(PostHogProjectId)(
+  process.env.WORKSPACE_POSTHOG_PROJECT_ID
+);
 
 const program = generatePostHogFeatureFlagContract({
   apiKey: process.env.WORKSPACE_POSTHOG_FEATURE_FLAGS_API_KEY!,
@@ -53,7 +58,7 @@ const program = generatePostHogFeatureFlagContract({
     "../features/feature-flags/generated/contract.ts",
     import.meta.url
   ),
-  projectId: process.env.WORKSPACE_POSTHOG_PROJECT_ID!,
+  projectId,
 });
 
 if (import.meta.main) await Effect.runPromise(program);

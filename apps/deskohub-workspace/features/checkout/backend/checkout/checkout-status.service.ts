@@ -21,6 +21,7 @@ import { getDotyposReservationTiming } from "@/features/reservation/backend/work
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
@@ -78,7 +79,7 @@ export type CheckoutStatusContactPrefill = {
 export type CheckoutStatusTableMap = WorkspaceTableMap;
 
 type CheckoutStatusViewModelBase = {
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
 };
 
@@ -147,11 +148,11 @@ type CheckoutStatusError =
 
 export interface ICheckoutStatusService {
   readonly getStatus: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
   readonly refreshStatus: (input: {
-    readonly orderId: string;
+    readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
 }
@@ -416,7 +417,7 @@ const implementation = Effect.gen(function* () {
 
   const getStatus = Effect.fn("CheckoutStatusService.getStatus")(
     function* (input: {
-      readonly orderId: string;
+      readonly orderId: WorkspaceReservationId;
       readonly returnOutcome: CheckoutStatusReturnOutcome;
     }) {
       yield* Effect.logInfo("Checkout status lookup started");

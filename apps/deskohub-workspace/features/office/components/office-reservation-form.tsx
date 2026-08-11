@@ -9,6 +9,7 @@ import {
   isOfficeAdvertisedPrice,
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
+import type { CheckoutSessionId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceOfficeProductTitle } from "@/features/checkout/product-catalog.i18n";
 import {
   formatWorkspaceMoney,
@@ -57,7 +58,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 
 type OfficeReservationFormProps = {
-  readonly checkoutSessionId?: string;
+  readonly checkoutSessionId?: CheckoutSessionId;
   readonly seatCapacity: number;
   readonly initialAdvertisedPrices?: ReadonlyArray<PreloadedAdvertisedPrice>;
   readonly initialReservation?: NormalizedOfficeReservationOrder;

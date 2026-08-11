@@ -1,10 +1,11 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailSendResult,
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailProviderConfig,
+  type EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import {
@@ -16,7 +17,7 @@ import { m } from "@/features/i18n";
 import { ContactService, ContactServiceLive } from "./contact.service";
 
 const sentResult = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "test",
   timestamp: new Date(),

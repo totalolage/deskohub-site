@@ -7,6 +7,9 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AccountingSnapshotKeyId } from "@/features/accounting/accounting-document-snapshot";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { paymentAttempts } from "./payment-attempts";
 import { workspaceReservations } from "./workspace-reservations";
@@ -16,12 +19,14 @@ export const accountingDocumentSnapshots = pgTable(
   {
     paymentAttemptId: text("payment_attempt_id")
       .primaryKey()
+      .$type<PaymentAttemptId>()
       .references(() => paymentAttempts.id),
     workspaceReservationId: text("workspace_reservation_id")
       .notNull()
+      .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id),
     schemaVersion: integer("schema_version").notNull(),
-    keyId: text("key_id").notNull(),
+    keyId: text("key_id").notNull().$type<AccountingSnapshotKeyId>(),
     encryptedSnapshot: bytea("encrypted_snapshot").notNull(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
   },

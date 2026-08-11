@@ -1,7 +1,24 @@
 import * as Schema from "effect/Schema";
 
+export const CloudinaryPublicIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("CloudinaryPublicId")
+).annotate({
+  identifier: "CloudinaryPublicId",
+  description: "Opaque public identifier assigned to a Cloudinary asset.",
+});
+
+export type CloudinaryPublicId = typeof CloudinaryPublicIdSchema.Type;
+
+export const CloudinarySearchCursorSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("CloudinarySearchCursor")
+).annotate({
+  identifier: "CloudinarySearchCursor",
+  description: "Opaque cursor identifying a Cloudinary search result page.",
+});
+export type CloudinarySearchCursor = typeof CloudinarySearchCursorSchema.Type;
+
 export const CloudinaryAssetSchema = Schema.Struct({
-  public_id: Schema.String,
+  public_id: CloudinaryPublicIdSchema,
   secure_url: Schema.String,
   url: Schema.String,
   width: Schema.Finite,
@@ -33,7 +50,7 @@ export const CloudinaryAssetSchema = Schema.Struct({
 export type CloudinaryAsset = Schema.Schema.Type<typeof CloudinaryAssetSchema>;
 
 export const CloudinarySearchResponseSchema = Schema.Struct({
-  next_cursor: Schema.optional(Schema.String),
+  next_cursor: Schema.optional(CloudinarySearchCursorSchema),
   resources: Schema.Array(CloudinaryAssetSchema),
 });
 

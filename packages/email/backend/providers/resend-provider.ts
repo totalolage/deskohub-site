@@ -1,6 +1,10 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { Resend } from "resend";
-import type { EmailMessage, EmailSendResult } from "../../types/email.types";
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailSendResult,
+} from "../../types/email.types";
 import { NetworkError } from "../network-error";
 import {
   EmailConfigTag,
@@ -175,12 +179,25 @@ const createResendProvider = (apiKey: string): EmailProvider => {
           )
         );
 
-        const sendResult = {
-          id: result.data?.id || `resend-${Date.now()}`,
+        const deliveryId = yield* Schema.decodeUnknownEffect(
+          EmailDeliveryIdSchema
+        )(result.data?.id).pipe(
+          Effect.mapError(
+            (cause) =>
+              new EmailServiceError(
+                "Resend response did not contain a valid email delivery ID",
+                cause,
+                "resend"
+              )
+          )
+        );
+
+        const sendResult: EmailSendResult = {
+          id: deliveryId,
           status: "sent",
           provider: "resend",
           timestamp: new Date(),
-        } satisfies EmailSendResult;
+        };
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
         yield* Effect.logDebug("Resend email send result created", {

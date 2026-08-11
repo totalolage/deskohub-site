@@ -6,8 +6,8 @@ import {
   loadAdministrationBooking,
   loadAdministrationReservation,
 } from "@/features/administration/page-data.server";
+import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { loadDiscountAdminCustomerBreadcrumbLabel } from "@/features/discounts/admin/page-data.server";
-import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 
 export async function AdministrationBreadcrumb({
   segments,
@@ -18,7 +18,7 @@ export async function AdministrationBreadcrumb({
 
   if (segments[0] === "customers" && segments[1]) {
     entityLabel = await loadDiscountAdminCustomerBreadcrumbLabel(
-      segments[1] as DotyposCustomerId
+      requireDotyposCustomerRouteId(segments[1])
     );
   }
 

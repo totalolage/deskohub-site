@@ -1,6 +1,7 @@
 "use server";
 
 import {
+  DotyposReservationIdSchema,
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
@@ -36,6 +37,11 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
+import {
+  type CheckoutAttemptId,
+  type CheckoutSessionId,
+  promoteCheckoutAttemptToSessionId,
+} from "@/features/checkout/checkout-identifiers";
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
@@ -59,7 +65,10 @@ import {
   type DotyposCustomerId,
   dotyposCustomerIdSchema,
 } from "@/features/reservation/dotypos-customer";
-import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
+import {
+  getStoredWorkspaceReservationDetails,
+  type WorkspaceReservationId,
+} from "@/features/reservation/persistence-contracts";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -139,7 +148,7 @@ const quotePreparedReservation = Effect.fn(
 });
 
 const DotyposEntityWithIdSchema = Schema.Struct({
-  id: Schema.NonEmptyString,
+  id: DotyposReservationIdSchema,
 });
 
 const decodeDotyposEntityId = Effect.fn(
@@ -204,8 +213,8 @@ const toReadyResult = Effect.fn("preparePayState.toReadyResult")(
   function* (input: {
     readonly locale: Locale;
     readonly prepared: PreparedPayState;
-    readonly reservationId: string;
-    readonly checkoutSessionId: string;
+    readonly reservationId: WorkspaceReservationId;
+    readonly checkoutSessionId: CheckoutSessionId;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
   }) {
     const state = yield* buildSignedPayState({
@@ -256,7 +265,7 @@ const mustRotateCheckoutSession = (reservation: WorkspaceReservation) =>
 const enqueueReservationHoldCleanup = Effect.fn(
   "preparePayState.enqueueReservationHoldCleanup"
 )(function* (input: {
-  readonly orderId: string;
+  readonly orderId: WorkspaceReservationId;
   readonly reservationHoldExpiresAt: Temporal.Instant | null;
 }) {
   if (!input.reservationHoldExpiresAt) {
@@ -318,7 +327,7 @@ const waitForPendingReservationTransition = Effect.fn(
   "preparePayState.waitForPendingReservationTransition"
 )(function* (input: {
   readonly reservations: WorkspaceReservationRepository;
-  readonly reservationId: string;
+  readonly reservationId: WorkspaceReservationId;
   readonly pendingStates?: readonly WorkspaceReservation["reservationState"][];
 }) {
   const pendingStates = input.pendingStates ?? ["creating_hold", "cancelling"];
@@ -384,8 +393,8 @@ const ensureReservationAvailable = (input: {
 const prepareReservationDraft = Effect.fn(
   "preparePayState.prepareReservationDraft"
 )(function* (input: {
-  readonly checkoutSessionId: string;
-  readonly checkoutAttemptId: string;
+  readonly checkoutSessionId: CheckoutSessionId;
+  readonly checkoutAttemptId: CheckoutAttemptId;
   readonly reservation: PreparePayStateInput["reservation"];
   readonly draft: Omit<
     CreateWorkspaceReservationInput,
@@ -439,12 +448,17 @@ const prepareReservationDraft = Effect.fn(
       }
 
       if (mustRotateCheckoutSession(existingAttempt)) {
-        if (checkoutSessionId === input.checkoutAttemptId) {
+        if (
+          checkoutSessionId ===
+          promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+        ) {
           return yield* new CheckoutAttemptUnavailableError({
             reservation: existingAttempt,
           });
         }
-        checkoutSessionId = input.checkoutAttemptId;
+        checkoutSessionId = promoteCheckoutAttemptToSessionId(
+          input.checkoutAttemptId
+        );
         continue;
       }
 
@@ -486,12 +500,17 @@ const prepareReservationDraft = Effect.fn(
           previousPaymentState: currentReservation.paymentState,
         }
       );
-      if (checkoutSessionId === input.checkoutAttemptId) {
+      if (
+        checkoutSessionId ===
+        promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+      ) {
         return yield* new CheckoutAttemptUnavailableError({
           reservation: currentReservation,
         });
       }
-      checkoutSessionId = input.checkoutAttemptId;
+      checkoutSessionId = promoteCheckoutAttemptToSessionId(
+        input.checkoutAttemptId
+      );
       continue;
     }
 
@@ -559,12 +578,17 @@ const prepareReservationDraft = Effect.fn(
             ),
             Effect.ignore
           );
-        if (checkoutSessionId === input.checkoutAttemptId) {
+        if (
+          checkoutSessionId ===
+          promoteCheckoutAttemptToSessionId(input.checkoutAttemptId)
+        ) {
           return yield* new CheckoutAttemptUnavailableError({
             reservation: claimed,
           });
         }
-        checkoutSessionId = input.checkoutAttemptId;
+        checkoutSessionId = promoteCheckoutAttemptToSessionId(
+          input.checkoutAttemptId
+        );
         continue;
       }
 

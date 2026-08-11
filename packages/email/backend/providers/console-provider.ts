@@ -1,5 +1,9 @@
 import { Effect, Layer } from "effect";
-import type { EmailMessage, EmailSendResult } from "../../types/email.types";
+import {
+  EmailDeliveryIdSchema,
+  type EmailMessage,
+  type EmailSendResult,
+} from "../../types/email.types";
 import { type EmailProvider, EmailProviderTag } from "../service";
 
 const ConsoleEmailProvider: EmailProvider = {
@@ -60,7 +64,9 @@ const ConsoleEmailProvider: EmailProvider = {
     }
 
     const result: EmailSendResult = {
-      id: `console-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+      id: EmailDeliveryIdSchema.make(
+        `console-${Date.now()}-${Math.random().toString(36).substring(7)}`
+      ),
       status: "sent",
       provider: "console",
       timestamp: new Date(),

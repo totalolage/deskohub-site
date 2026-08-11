@@ -6,6 +6,7 @@ import {
   PostHog,
   type PostHogOptions,
 } from "posthog-node";
+import type { PostHogDistinctId } from "../identifiers";
 import type {
   PostHogFeatureFlagContract,
   PostHogFeatureFlagDefinitionContract,
@@ -27,7 +28,7 @@ export interface PostHogNodeFeatureFlagServiceConfig<Definitions> {
 }
 
 export interface PostHogFeatureFlagSubject {
-  readonly distinctId: string;
+  readonly distinctId: PostHogDistinctId;
   readonly sendFeatureFlagEvents: boolean;
 }
 
@@ -140,7 +141,7 @@ export type PostHogFeatureFlagEvaluationSnapshot = Pick<
 
 export interface PostHogFeatureFlagEvaluationClient {
   readonly evaluateFlags: (
-    distinctId: string,
+    distinctId: PostHogDistinctId,
     options?: AllFlagsOptions
   ) => Promise<PostHogFeatureFlagEvaluationSnapshot>;
 }
@@ -192,7 +193,7 @@ export const createPostHogNodeFeatureFlags = <
   client: PostHogFeatureFlagEvaluationClient
 ) => ({
   evaluateFlags: (
-    distinctId: string,
+    distinctId: PostHogDistinctId,
     options?: PostHogFeatureFlagEvaluationOptions<Definitions>
   ): Effect.Effect<
     TypedPostHogFeatureFlagEvaluationSnapshot<Definitions>,
@@ -241,7 +242,7 @@ const evaluatePostHogFeatureFlagsWithoutEvents = Effect.fn(
     options,
   }: {
     readonly client: PostHog;
-    readonly distinctId: string;
+    readonly distinctId: PostHogDistinctId;
     readonly options: PostHogFeatureFlagEvaluationOptions<Definitions>;
   }) =>
     Effect.tryPromise({

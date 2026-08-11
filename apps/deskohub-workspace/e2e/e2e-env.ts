@@ -1,3 +1,9 @@
+import {
+  DotyposBranchIdSchema,
+  DotyposClientIdSchema,
+  DotyposCloudIdSchema,
+  DotyposEmployeeIdSchema,
+} from "@deskohub/dotypos";
 import { createEnv } from "@t3-oss/env-core";
 import { Schema } from "effect";
 import { urlStringSchema } from "../shared/utils/url-schema";
@@ -46,11 +52,11 @@ export const e2eEnvironmentSchema = Schema.Struct({
   CI: optionalNonEmptyString,
   DATABASE_URL: nonEmptyString,
   DOTYPOS_API_URL: url,
-  DOTYPOS_BRANCH_ID: nonEmptyString,
-  DOTYPOS_CLIENT_ID: nonEmptyString,
+  DOTYPOS_BRANCH_ID: toEnvironmentSchema(DotyposBranchIdSchema),
+  DOTYPOS_CLIENT_ID: toEnvironmentSchema(DotyposClientIdSchema),
   DOTYPOS_CLIENT_SECRET: nonEmptyString,
-  DOTYPOS_CLOUD_ID: nonEmptyString,
-  DOTYPOS_EMPLOYEE_ID: nonEmptyString,
+  DOTYPOS_CLOUD_ID: toEnvironmentSchema(DotyposCloudIdSchema),
+  DOTYPOS_EMPLOYEE_ID: toEnvironmentSchema(DotyposEmployeeIdSchema),
   DOTYPOS_REFRESH_TOKEN: nonEmptyString,
   GITHUB_ACTIONS: toEnvironmentSchema(
     Schema.optional(Schema.Literals(["false", "true"]))

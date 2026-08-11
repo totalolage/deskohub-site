@@ -1,3 +1,7 @@
+import {
+  PostHogEventId,
+  type PostHogProjectId,
+} from "@deskohub/posthog/identifiers";
 import { Context, Effect, Layer, Schema } from "effect";
 import {
   FetchHttpClient,
@@ -6,6 +10,7 @@ import {
   HttpClientResponse,
 } from "effect/unstable/http";
 import { env } from "@/env";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { AdministrationTimelineItem } from "./administration.service";
 
 const lifecycleEvents = [
@@ -26,7 +31,7 @@ const postHogHistoryResponseSchema = Schema.Struct({
     Schema.Tuple([
       lifecycleEventSchema,
       Schema.String,
-      Schema.String,
+      PostHogEventId,
       Schema.Union([Schema.String, Schema.Null]),
       Schema.Union([Schema.String, Schema.Null]),
     ])
@@ -90,7 +95,7 @@ export type PostHogHistoryConfig = {
   readonly apiKey?: string;
   readonly environment: string;
   readonly host?: string;
-  readonly projectId?: string;
+  readonly projectId?: PostHogProjectId;
   readonly serviceName: string;
 };
 
@@ -135,7 +140,7 @@ export class PostHogReservationHistory extends Context.Service<
   PostHogReservationHistory,
   {
     readonly load: (
-      workspaceReservationId: string
+      workspaceReservationId: WorkspaceReservationId
     ) => Effect.Effect<ReservationHistoryResult>;
   }
 >()("@deskohub-workspace/administration/PostHogReservationHistory") {
@@ -146,7 +151,7 @@ export class PostHogReservationHistory extends Context.Service<
       const httpClient = yield* HttpClient.HttpClient;
 
       const load = Effect.fn("PostHogReservationHistory.load")(
-        (workspaceReservationId: string) => {
+        (workspaceReservationId: WorkspaceReservationId) => {
           if (!config.apiKey || !config.host || !config.projectId) {
             return Effect.succeed({
               kind: "unavailable",

@@ -1,18 +1,30 @@
+import {
+  PostHogDistinctId,
+  PostHogSessionId,
+} from "@deskohub/posthog/identifiers";
+import { Schema } from "effect";
+
 export const POSTHOG_DISTINCT_ID_COOKIE = "dh_ph_distinct_id";
 export const POSTHOG_SESSION_ID_COOKIE = "dh_ph_session_id";
 
 const DISTINCT_ID_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const SESSION_ID_MAX_AGE_SECONDS = 60 * 60 * 24;
 
-type PostHogSessionCookieValues = {
-  distinctId: string;
-  sessionId: string;
-};
+const PostHogSessionCookieValues = Schema.Struct({
+  distinctId: PostHogDistinctId,
+  sessionId: PostHogSessionId,
+});
 
-export function createPostHogSessionCookieStrings({
-  distinctId,
-  sessionId,
-}: PostHogSessionCookieValues) {
+const decodePostHogSessionCookieValues = Schema.decodeUnknownSync(
+  PostHogSessionCookieValues
+);
+
+export function createPostHogSessionCookieStrings(input: {
+  readonly distinctId: unknown;
+  readonly sessionId: unknown;
+}) {
+  const { distinctId, sessionId } = decodePostHogSessionCookieValues(input);
+
   return [
     createCookieString(
       POSTHOG_DISTINCT_ID_COOKIE,

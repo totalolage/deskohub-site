@@ -1,5 +1,9 @@
 import { deepStrictEqual } from "node:assert/strict";
 import {
+  NexiOperationIdSchema,
+  NexiWebhookEventIdSchema,
+} from "@deskohub/nexi";
+import {
   and,
   asc,
   count,
@@ -28,6 +32,11 @@ import {
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
+import type {
+  PaymentAttemptId,
+  StoredWebhookEventId,
+} from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
   isNexiWebhookDiagnosticCode,
@@ -54,7 +63,7 @@ import {
 } from "./database-operation";
 
 export const requireProviderSessionRowAfterRedirect = (
-  orderId: string,
+  orderId: WorkspaceReservationId,
   options: {
     readonly onRow?: (row: CheckoutRow) => void;
     readonly timeoutMs: number;
@@ -141,8 +150,8 @@ export const getProviderSessionRowDiagnosticCode = (
 type ProviderSessionRow = CheckoutRow & {
   readonly amount_value: number;
   readonly currency: string;
-  readonly payment_attempt_id: string;
-  readonly provider_order_id: string;
+  readonly payment_attempt_id: NonNullable<CheckoutRow["payment_attempt_id"]>;
+  readonly provider_order_id: NonNullable<CheckoutRow["provider_order_id"]>;
   readonly provider_redirect_url: string;
   readonly security_token: string;
 };
@@ -173,14 +182,16 @@ export const replayNexiWebhook = (
     const response = yield* HttpClientRequest.post(webhookUrl).pipe(
       HttpClientRequest.setHeaders(previewWebhookHeaders(config)),
       HttpClientRequest.bodyJson({
-        eventId: `workspace-e2e-nexi-${row.reservation_id}`,
+        eventId: NexiWebhookEventIdSchema.make(
+          `workspace-e2e-nexi-${row.reservation_id}`
+        ),
         eventTime: new Date().toISOString(),
         securityToken: row.security_token,
         operation: {
           orderId: row.provider_order_id,
           operationId:
             row.last_provider_operation_id ??
-            `workspace-e2e-${row.reservation_id}`,
+            NexiOperationIdSchema.make(`workspace-e2e-${row.reservation_id}`),
           operationType: "CAPTURE",
           operationResult: "EXECUTED",
           operationTime: new Date().toISOString(),
@@ -229,7 +240,7 @@ const previewWebhookHeaders = (config: WorkspaceE2EConfig) => ({
 export const validatePostgres = (
   config: DatasourceConfig,
   data: CheckoutData,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   onRow?: (row: CheckoutRow) => void
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -282,7 +293,7 @@ export interface ExpectedDiscountApplication {
 
 export const validateDiscountApplications = (
   config: DatasourceConfig,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   expected: readonly ExpectedDiscountApplication[]
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -429,7 +440,7 @@ export const assertDiscountApplications = (
 };
 
 export const assertNoDiscountPaymentState = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -482,7 +493,7 @@ export const assertNoDiscountPaymentState = (
 export const validateInternalPostgres = (
   config: DatasourceConfig,
   data: CheckoutData,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   onRow?: (row: CheckoutRow) => void
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
@@ -566,7 +577,7 @@ const checkoutRowSelection = {
 
 const readCheckoutRowFromDatabase = (
   db: DatabaseClient,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
   runRetrySafeDatabaseOperation(
     "read checkout row",
@@ -586,7 +597,7 @@ const readCheckoutRowFromDatabase = (
   ).pipe(Effect.map((rows) => rows[0]));
 
 export const readCheckoutRow = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -595,7 +606,7 @@ export const readCheckoutRow = (
 
 export const waitForCheckoutRow = (
   config: DatasourceConfig,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -647,14 +658,16 @@ export const readCleanupCheckoutRows = (
   });
 
 export const markPaymentTerminalForE2E = (
-  orderId: string,
-  paymentAttemptId: string,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId,
   scenario: PaymentTerminalScenario
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
     const failureCode = `workspace_e2e_nexi_${scenario.state}`;
-    const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
+    const providerOperationId = NexiOperationIdSchema.make(
+      `workspace-e2e-${scenario.state}-${orderId}`
+    );
     const now = Temporal.Now.instant();
 
     yield* runDatabaseOperation(
@@ -718,7 +731,7 @@ export const markPaymentTerminalForE2E = (
   });
 
 export const markFulfillmentFailedForE2E = (
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -753,7 +766,7 @@ export const markFulfillmentFailedForE2E = (
 
 export const markPreviewFulfillmentDeliveredForE2E = (
   config: DatasourceConfig,
-  orderId: string
+  orderId: WorkspaceReservationId
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
@@ -1029,10 +1042,9 @@ const assertInternalDiscountState = (
           eq(discountCodeRedemptions.applicationId, discountApplications.id)
         )
         .where(
-          eq(
-            discountApplications.paymentAttemptId,
-            row.payment_attempt_id ?? ""
-          )
+          row.payment_attempt_id
+            ? eq(discountApplications.paymentAttemptId, row.payment_attempt_id)
+            : sql`false`
         )
     );
 
@@ -1079,7 +1091,7 @@ export const assertInternalDiscountApplications = (
 
 const assertLegalEvidence = (
   db: DatabaseClient,
-  orderId: string,
+  orderId: WorkspaceReservationId,
   locale: CheckoutData["locale"]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -1135,9 +1147,9 @@ export const assertLegalEvidenceRows = (
 
 const assertNoLocalPii = (
   db: DatabaseClient,
-  orderId: string,
-  paymentAttemptId: string | null,
-  webhookEventId: string | null,
+  orderId: WorkspaceReservationId,
+  paymentAttemptId: PaymentAttemptId | null,
+  webhookEventId: StoredWebhookEventId | null,
   data: CheckoutData
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -1174,7 +1186,9 @@ const assertNoLocalPii = (
             .from(paymentAttempts)
             .where(
               and(
-                eq(paymentAttempts.id, paymentAttemptId ?? ""),
+                paymentAttemptId
+                  ? eq(paymentAttempts.id, paymentAttemptId)
+                  : sql`false`,
                 or(
                   ...patterns.map((pattern) =>
                     ilike(sql`to_jsonb(${paymentAttempts})::text`, pattern)
@@ -1187,7 +1201,9 @@ const assertNoLocalPii = (
             .from(webhookEvents)
             .where(
               and(
-                eq(webhookEvents.id, webhookEventId ?? ""),
+                webhookEventId
+                  ? eq(webhookEvents.id, webhookEventId)
+                  : sql`false`,
                 or(
                   ...patterns.map((pattern) =>
                     ilike(sql`to_jsonb(${webhookEvents})::text`, pattern)

@@ -151,7 +151,7 @@ export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
       { onExcessProperty: "error" }
     )(state).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 
-    return yield* sealCheckoutState(encodedState, options).pipe(
+    return yield* sealCheckoutState(encodedState, state.kid, options).pipe(
       Effect.mapError(toAdvertisedPriceStateTokenError)
     );
   }

@@ -11,9 +11,14 @@ import {
   type AdministrationCustomerSearchQueryType,
   type AdministrationCustomerSearchResultType,
   type AdministrationDiscountCodeDetailType,
+  type AdministrationDiscountCodeIdType,
   type AdministrationDiscountDashboardType,
   type AdministrationDiscountMutationResultType,
   type AdministrationDiscountMutationType,
+  type AdministrationDotyposCustomerIdType,
+  type AdministrationDotyposReservationIdType,
+  type AdministrationNexiOperationIdType,
+  type AdministrationNexiOrderIdType,
   type AdministrationOperationDetailType,
   type AdministrationOperationListType,
   type AdministrationOperationQueryType,
@@ -25,6 +30,7 @@ import {
   type AdministrationReservationLookupResultType,
   type AdministrationReservationPageType,
   type AdministrationReservationQueryType,
+  type AdministrationWorkspaceReservationIdType,
   type CliAccessTokenType,
   type CliAuthenticationCodeType,
   CliAuthenticationRateLimited,
@@ -108,7 +114,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getReservation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    reservationId: string
+    reservationId: AdministrationWorkspaceReservationIdType
   ) => Effect.Effect<
     AdministrationReservationDetailType,
     | CliApiRequestError
@@ -132,7 +138,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getBooking: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    bookingId: string
+    bookingId: AdministrationDotyposReservationIdType
   ) => Effect.Effect<
     AdministrationBookingDetailType,
     | CliApiRequestError
@@ -149,7 +155,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getOrder: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    orderId: string
+    orderId: AdministrationNexiOrderIdType
   ) => Effect.Effect<
     AdministrationOrderType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
@@ -163,7 +169,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getOperation: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    operationId: string
+    operationId: AdministrationNexiOperationIdType
   ) => Effect.Effect<
     AdministrationOperationDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
@@ -184,14 +190,14 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getCustomer: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    customerId: string
+    customerId: AdministrationDotyposCustomerIdType
   ) => Effect.Effect<
     AdministrationCustomerDetailType,
     CliApiRequestError | CliSessionUnauthorized | CliServiceUnavailable
   >;
   readonly listCustomerReservations: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    customerId: string,
+    customerId: AdministrationDotyposCustomerIdType,
     query: AdministrationCustomerReservationsQueryType
   ) => Effect.Effect<
     AdministrationCustomerReservationPageType,
@@ -205,7 +211,7 @@ interface IWorkspaceAdminApiClient {
   >;
   readonly getDiscountCode: (
     accessToken: Redacted.Redacted<CliAccessTokenType>,
-    codeId: string
+    codeId: AdministrationDiscountCodeIdType
   ) => Effect.Effect<
     AdministrationDiscountCodeDetailType,
     | CliApiRequestError
@@ -340,7 +346,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getReservation: Effect.fn("WorkspaceAdminApiClient.getReservation")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        reservationId: string
+        reservationId: AdministrationWorkspaceReservationIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -378,7 +384,10 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         )
     ),
     getBooking: Effect.fn("WorkspaceAdminApiClient.getBooking")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, bookingId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        bookingId: AdministrationDotyposReservationIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getBooking({ params: { bookingId } })
@@ -399,7 +408,10 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
         )
     ),
     getOrder: Effect.fn("WorkspaceAdminApiClient.getOrder")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, orderId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        orderId: AdministrationNexiOrderIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getOrder({ params: { orderId } })
@@ -422,7 +434,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getOperation: Effect.fn("WorkspaceAdminApiClient.getOperation")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        operationId: string
+        operationId: AdministrationNexiOperationIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -460,7 +472,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     getCustomer: Effect.fn("WorkspaceAdminApiClient.getCustomer")(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        customerId: string
+        customerId: AdministrationDotyposCustomerIdType
       ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
@@ -474,7 +486,7 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
     )(
       (
         accessToken: Redacted.Redacted<CliAccessTokenType>,
-        customerId: string,
+        customerId: AdministrationDotyposCustomerIdType,
         query: AdministrationCustomerReservationsQueryType
       ) =>
         makeClient(accessToken).pipe(
@@ -498,7 +510,10 @@ const makeWorkspaceAdminApiClient = Effect.gen(function* () {
       )
     ),
     getDiscountCode: Effect.fn("WorkspaceAdminApiClient.getDiscountCode")(
-      (accessToken: Redacted.Redacted<CliAccessTokenType>, codeId: string) =>
+      (
+        accessToken: Redacted.Redacted<CliAccessTokenType>,
+        codeId: AdministrationDiscountCodeIdType
+      ) =>
         makeClient(accessToken).pipe(
           Effect.flatMap((authorized) =>
             authorized.administration.getDiscountCode({ params: { codeId } })

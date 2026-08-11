@@ -1,5 +1,9 @@
-import type { DotyposReservationInterval } from "@deskohub/dotypos";
-import type { Reservation } from "@deskohub/dotypos/generated";
+import type {
+  DotyposReservation,
+  DotyposReservationId,
+  DotyposReservationInterval,
+  DotyposTableId,
+} from "@deskohub/dotypos";
 import { Option, Schema } from "effect";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
@@ -12,10 +16,10 @@ const decodeReservationSeats = Schema.decodeUnknownOption(
 );
 
 export const getWorkspaceTableOccupancyById = (
-  reservations: readonly Reservation[],
+  reservations: readonly DotyposReservation[],
   input: ReservationInterval | Temporal.PlainDate
 ) => {
-  const occupancyByTableId = new Map<string, number>();
+  const occupancyByTableId = new Map<DotyposTableId, number>();
   const interval = getWorkspaceReservationIntervalDates(input);
   const startsAt = interval.startDate.getTime();
   const endsAt = interval.endDate.getTime();
@@ -73,8 +77,8 @@ export const getWorkspaceReservationIntervalDates = (
 };
 
 export const excludeDotyposReservationsById = (
-  reservations: readonly Reservation[],
-  excludedDotyposReservationIds: readonly string[]
+  reservations: readonly DotyposReservation[],
+  excludedDotyposReservationIds: readonly DotyposReservationId[]
 ) => {
   if (excludedDotyposReservationIds.length === 0) return reservations;
 

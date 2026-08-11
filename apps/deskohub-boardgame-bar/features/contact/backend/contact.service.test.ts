@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
+  EmailDeliveryIdSchema,
   type EmailSendResult,
   EmailServiceError,
   EmailServiceTag,
@@ -15,7 +16,7 @@ const input = {
 };
 
 const sent = (id: string): EmailSendResult => ({
-  id,
+  id: EmailDeliveryIdSchema.make(id),
   status: "sent",
   provider: "fake",
   timestamp: new Date("2026-06-20T12:00:00.000Z"),

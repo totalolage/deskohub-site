@@ -1,7 +1,9 @@
 import {
   type GoogleCalendarError,
   type GoogleCalendarEvent,
+  type GoogleCalendarEventId,
   type GoogleCalendarEventQuery,
+  type GoogleCalendarICalUid,
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
@@ -15,14 +17,14 @@ const partialMarker = "[workspace:partial]";
 export type WorkspaceCalendarLimitation = Data.TaggedEnum<{
   FullyOccupied: {
     readonly date: string;
-    readonly sourceEventId: string;
+    readonly sourceEventId: GoogleCalendarEventId | GoogleCalendarICalUid;
     readonly summary?: string;
   };
   PartiallyOccupied: {
     readonly date: string;
     readonly startsAt: string;
     readonly endsAt: string;
-    readonly sourceEventId: string;
+    readonly sourceEventId: GoogleCalendarEventId | GoogleCalendarICalUid;
     readonly summary?: string;
   };
 }>;

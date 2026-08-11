@@ -1,3 +1,4 @@
+import type { DotyposCustomerId } from "@deskohub/dotypos";
 import { and, count, eq, inArray, sql } from "drizzle-orm";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { discountCodeCustomers, discountCodeRedemptions } from "@/db/schema";
@@ -6,7 +7,7 @@ import type { DiscountCodeId } from "./persistence-contracts";
 export const buildDiscountCodeAvailabilityQueries = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly codeId: DiscountCodeId;
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
 }) => ({
   allowlist: input.db
     .select({

@@ -5,8 +5,16 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
+export const checkoutStateKeyIdSchema = Schema.Trim.check(Schema.isNonEmpty())
+  .pipe(Schema.brand("CheckoutStateKeyId"))
+  .annotate({
+    identifier: "CheckoutStateKeyId",
+    description: "Identifier selecting a checkout state encryption key.",
+  });
+export type CheckoutStateKeyId = typeof checkoutStateKeyIdSchema.Type;
+
 export const checkoutStateClaimsSchema = Schema.Struct({
-  kid: Schema.NonEmptyString,
+  kid: checkoutStateKeyIdSchema,
   iat: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   exp: Schema.Int.check(Schema.isGreaterThan(0)),
 });
@@ -18,7 +26,7 @@ export const checkoutStateProtectedHeaderSchema = Schema.Struct({
 export type CheckoutStateClaims = typeof checkoutStateClaimsSchema.Type;
 
 export type CheckoutStateKey = {
-  readonly kid: string;
+  readonly kid: CheckoutStateKeyId;
   readonly key: Buffer;
 };
 
@@ -69,6 +77,13 @@ const base64UrlDecode = Effect.fn("checkoutStateToken.base64UrlDecode")(
 
 export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
   function* (kid: string, base64UrlKey: string) {
+    const decodedKid = yield* Schema.decodeUnknownEffect(
+      checkoutStateKeyIdSchema
+    )(kid).pipe(
+      Effect.mapError((cause) =>
+        invalidSecret("Checkout state key ID is invalid.", cause)
+      )
+    );
     const key = yield* Effect.try({
       try: () => Buffer.from(base64UrlKey, "base64url"),
       catch: (cause) =>
@@ -84,7 +99,7 @@ export const parseCheckoutStateKey = Effect.fn("checkoutStateToken.parseKey")(
       );
     }
 
-    return { kid, key } satisfies CheckoutStateKey;
+    return { kid: decodedKid, key } satisfies CheckoutStateKey;
   }
 );
 
@@ -183,7 +198,10 @@ export const createCheckoutStateClaims = Effect.fn(
 });
 
 const getCheckoutStateKeyByKid = Effect.fn("checkoutStateToken.getKeyByKid")(
-  function* (kid: string, options: CheckoutStateCryptoOptions = {}) {
+  function* (
+    kid: CheckoutStateKeyId,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
     const keys = yield* getCheckoutStateKeys(options);
     const key = keys.find((candidate) => candidate.kid === kid);
     if (!key) {
@@ -245,10 +263,11 @@ const decodeProtectedHeader = Schema.decodeUnknownEffect(
 
 export const sealCheckoutState = Effect.fn("checkoutStateToken.seal")(
   function* (
-    state: { readonly kid: string },
+    state: unknown,
+    keyId: CheckoutStateKeyId,
     options: CheckoutStateCryptoOptions = {}
   ) {
-    const key = yield* getCheckoutStateKeyByKid(state.kid, options);
+    const key = yield* getCheckoutStateKeyByKid(keyId, options);
     const headerJson = yield* stringifyJson({ kid: key.kid });
     const stateJson = yield* stringifyJson(state);
 

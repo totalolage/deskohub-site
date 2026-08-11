@@ -100,7 +100,7 @@ describe("advertised price state", () => {
   test("strictly rejects extra snapshot fields", () => {
     const state = { ...buildState(), customerEmail: "ada@example.test" };
     const token = Effect.runSync(
-      sealCheckoutState(state, {
+      sealCheckoutState(state, state.kid, {
         keys: [fixedKey],
         randomBytes: fixedRandomBytes,
       })

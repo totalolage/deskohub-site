@@ -9,7 +9,8 @@
     "./feature-flags/codegen": "./src/feature-flags/codegen.ts",
     "./feature-flags/node": "./src/feature-flags/node.ts",
     "./feature-flags/react": "./src/feature-flags/react.ts",
-    "./generated": "./src/generated/effect.gen.ts"
+    "./generated": "./src/generated/effect.gen.ts",
+    "./identifiers": "./src/identifiers.ts"
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",

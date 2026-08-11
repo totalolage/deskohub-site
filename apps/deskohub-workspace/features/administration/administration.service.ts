@@ -1,9 +1,24 @@
-import { DotyposService } from "@deskohub/dotypos";
+import {
+  type DotyposCustomerId,
+  DotyposCustomerIdSchema,
+  type DotyposReservationId,
+  DotyposReservationIdSchema,
+  DotyposService,
+  type DotyposTableId,
+  DotyposTableIdSchema,
+} from "@deskohub/dotypos";
 import type {
   Customer as DotyposCustomer,
   Reservation as DotyposReservation,
   Table as DotyposTable,
 } from "@deskohub/dotypos/generated";
+import {
+  NexiCorrelationIdSchema,
+  NexiOperationIdSchema,
+  type NexiOrderId,
+  NexiOrderIdSchema,
+  NexiWebhookEventIdSchema,
+} from "@deskohub/nexi";
 import {
   and,
   asc,
@@ -20,7 +35,7 @@ import {
   sql,
   sum,
 } from "drizzle-orm";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   customerMarketingConsents,
@@ -32,6 +47,22 @@ import {
   webhookEvents,
   workspaceReservations,
 } from "@/db/schema";
+import {
+  checkoutAttemptKeySchema,
+  checkoutSessionKeySchema,
+  type PaymentAttemptId,
+  paymentAttemptIdSchema,
+  storedWebhookEventIdSchema,
+} from "@/features/checkout/checkout-identifiers";
+import { legalEvidenceEventIdSchema } from "@/features/checkout/legal-evidence";
+import {
+  type DiscountApplicationId,
+  discountApplicationIdSchema,
+} from "@/features/discounts/persistence-contracts";
+import {
+  type WorkspaceReservationId,
+  workspaceReservationIdSchema,
+} from "@/features/reservation/persistence-contracts";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import { workspaceSiteConstants } from "@/shared/utils";
 import {
@@ -75,7 +106,7 @@ const paymentAttemptStateLabels = {
 } as const;
 
 export type AdministrationReservationListInput = {
-  readonly customerId?: string;
+  readonly customerId?: DotyposCustomerId;
   readonly date?: string;
   readonly direction?: AdministrationReservationSortDirection;
   readonly page?: number;
@@ -101,15 +132,15 @@ export type AdministrationCustomerListInput = {
 };
 
 export type AdministrationCustomer = {
-  readonly id: string;
+  readonly id: DotyposCustomerId;
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
 };
 
 export type AdministrationReservationSummary = {
-  readonly id: string;
-  readonly customerId: string;
+  readonly id: WorkspaceReservationId;
+  readonly customerId: DotyposCustomerId;
   readonly customer: AdministrationCustomer | null;
   readonly liveDetailsAvailable: boolean;
   readonly startsAt: string | null;
@@ -132,19 +163,19 @@ export type AdministrationReservationPage = {
 };
 
 export type AdministrationBookingSummary = {
-  readonly id: string;
-  readonly customerId: string | null;
+  readonly id: DotyposReservationId;
+  readonly customerId: DotyposCustomerId | null;
   readonly customer: AdministrationCustomer | null;
   readonly startsAt: string;
   readonly endsAt: string;
   readonly seats: string;
   readonly status: "NEW" | "CONFIRMED" | "CANCELLED";
   readonly statusLabel: string;
-  readonly tableId: string | null;
+  readonly tableId: DotyposTableId | null;
   readonly tableName: string | null;
   readonly tableLocation: string | null;
   readonly linkedReservation: {
-    readonly id: string;
+    readonly id: WorkspaceReservationId;
     readonly label: string;
   } | null;
   readonly createdAt: string | null;
@@ -161,16 +192,16 @@ export type AdministrationBookingPage = {
 export type AdministrationBookingDetail = {
   readonly booking: AdministrationBookingSummary;
   readonly references: {
-    readonly bookingId: string;
-    readonly customerId: string | null;
-    readonly workspaceReservationId: string | null;
+    readonly bookingId: DotyposReservationId;
+    readonly customerId: DotyposCustomerId | null;
+    readonly workspaceReservationId: WorkspaceReservationId | null;
   };
 };
 
 export type AdministrationPaymentAttempt = {
-  readonly id: string;
+  readonly id: PaymentAttemptId;
   readonly state: PaymentAttemptState;
-  readonly providerOrderId: string | null;
+  readonly providerOrderId: NexiOrderId | null;
   readonly providerLabel: string;
   readonly stateLabel: string;
   readonly amount: {
@@ -219,7 +250,7 @@ export type AdministrationCustomerActivity = {
 };
 
 export type AdministrationDiscountApplication = {
-  readonly id: string;
+  readonly id: DiscountApplicationId;
   readonly label: string;
   readonly amount: {
     readonly value: number;
@@ -248,15 +279,15 @@ export type AdministrationReservationDetail = {
   readonly otherCustomerReservations: readonly AdministrationReservationSummary[];
   readonly sameDateReservations: readonly AdministrationReservationSummary[];
   readonly references: {
-    readonly workspaceReservationId: string;
-    readonly dotyposReservationId: string | null;
-    readonly customerId: string;
+    readonly workspaceReservationId: WorkspaceReservationId;
+    readonly dotyposReservationId: DotyposReservationId | null;
+    readonly customerId: DotyposCustomerId;
   };
 };
 
 export type AdministrationCustomerSummary = {
   readonly customer: AdministrationCustomer | null;
-  readonly customerId: string;
+  readonly customerId: DotyposCustomerId;
   readonly reservationCount: number;
   readonly lastActivityAt: string;
 };
@@ -307,16 +338,54 @@ const safeReservationSelection = {
 
 const toIsoString = (instant: Temporal.Instant) => instant.toString();
 
+const decodeDotyposCustomerId = Schema.decodeUnknownOption(
+  DotyposCustomerIdSchema
+);
+const decodeDotyposReservationId = Schema.decodeUnknownOption(
+  DotyposReservationIdSchema
+);
+const decodeDotyposTableId = Schema.decodeUnknownOption(DotyposTableIdSchema);
+const decodeCheckoutAttemptKey = Schema.decodeUnknownOption(
+  checkoutAttemptKeySchema
+);
+const decodeCheckoutSessionKey = Schema.decodeUnknownOption(
+  checkoutSessionKeySchema
+);
+const decodeNexiCorrelationId = Schema.decodeUnknownOption(
+  NexiCorrelationIdSchema
+);
+const decodeDiscountApplicationId = Schema.decodeUnknownOption(
+  discountApplicationIdSchema
+);
+const decodeLegalEvidenceEventId = Schema.decodeUnknownOption(
+  legalEvidenceEventIdSchema
+);
+const decodeNexiOperationId = Schema.decodeUnknownOption(NexiOperationIdSchema);
+const decodeNexiOrderId = Schema.decodeUnknownOption(NexiOrderIdSchema);
+const decodeNexiWebhookEventId = Schema.decodeUnknownOption(
+  NexiWebhookEventIdSchema
+);
+const decodePaymentAttemptId = Schema.decodeUnknownOption(
+  paymentAttemptIdSchema
+);
+const decodeStoredWebhookEventId = Schema.decodeUnknownOption(
+  storedWebhookEventIdSchema
+);
+const decodeWorkspaceReservationId = Schema.decodeUnknownOption(
+  workspaceReservationIdSchema
+);
+
 const toCustomer = (
   customer: DotyposCustomer,
-  fallbackId: string
+  fallbackId: DotyposCustomerId
 ): AdministrationCustomer => {
   const personalName = [customer.firstName, customer.lastName]
     .filter(Boolean)
     .join(" ")
     .trim();
   return {
-    id: customer.id ?? fallbackId,
+    id:
+      Option.getOrUndefined(decodeDotyposCustomerId(customer.id)) ?? fallbackId,
     displayName:
       personalName || customer.companyName?.trim() || "Unnamed customer",
     email: customer.email?.trim() || null,
@@ -325,9 +394,9 @@ const toCustomer = (
 };
 
 type SafePaymentAttemptRow = {
-  readonly id: string;
-  readonly workspaceReservationId: string;
-  readonly providerOrderId: string | null;
+  readonly id: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
+  readonly providerOrderId: NexiOrderId | null;
   readonly provider: "internal" | "nexi";
   readonly state: PaymentAttemptState;
   readonly amountValue: number;
@@ -448,37 +517,45 @@ const bookingStatusLabels = {
   CANCELLED: "Cancelled",
 } as const;
 
+type IdentifiedDotyposReservation = DotyposReservation & {
+  readonly id: DotyposReservationId;
+};
+
 const toBookingSummary = ({
   booking,
   customer,
   row,
   table,
 }: {
-  readonly booking: DotyposReservation & { readonly id: string };
+  readonly booking: IdentifiedDotyposReservation;
   readonly customer: DotyposCustomer | null;
   readonly row: SafeReservationRow | null;
   readonly table: DotyposTable | null;
-}): AdministrationBookingSummary => ({
-  id: booking.id,
-  customerId: booking._customerId ?? null,
-  customer:
-    booking._customerId && customer
-      ? toCustomer(customer, booking._customerId)
+}): AdministrationBookingSummary => {
+  const customerId = Option.getOrUndefined(
+    decodeDotyposCustomerId(booking._customerId)
+  );
+  const tableId = Option.getOrUndefined(decodeDotyposTableId(booking._tableId));
+
+  return {
+    id: booking.id,
+    customerId: customerId ?? null,
+    customer: customerId && customer ? toCustomer(customer, customerId) : null,
+    startsAt: booking.startDate,
+    endsAt: booking.endDate,
+    seats: booking.seats,
+    status: booking.status,
+    statusLabel: bookingStatusLabels[booking.status],
+    tableId: tableId ?? null,
+    tableName: table?.name ?? null,
+    tableLocation: table?.locationName ?? null,
+    linkedReservation: row
+      ? { id: row.id, label: getReservationTypeLabel(row) }
       : null,
-  startsAt: booking.startDate,
-  endsAt: booking.endDate,
-  seats: booking.seats,
-  status: booking.status,
-  statusLabel: bookingStatusLabels[booking.status],
-  tableId: booking._tableId ?? null,
-  tableName: table?.name ?? null,
-  tableLocation: table?.locationName ?? null,
-  linkedReservation: row
-    ? { id: row.id, label: getReservationTypeLabel(row) }
-    : null,
-  createdAt: booking.created ?? null,
-  updatedAt: booking.versionDate ?? null,
-});
+    createdAt: booking.created ?? null,
+    updatedAt: booking.versionDate ?? null,
+  };
+};
 
 const getDateRangeBounds = (startDate: string, endDate: string) => {
   const start = Temporal.PlainDate.from(startDate).toZonedDateTime({
@@ -789,17 +866,17 @@ export class AdministrationService extends Context.Service<
       unknown
     >;
     readonly loadReservation: (
-      id: string
+      id: WorkspaceReservationId
     ) => Effect.Effect<AdministrationReservationDetail | null, unknown>;
     readonly findReservationId: (
       identifier: string
-    ) => Effect.Effect<string | null, unknown>;
+    ) => Effect.Effect<WorkspaceReservationId | null, unknown>;
     readonly listBookings: (input: {
       readonly date: string;
       readonly page?: number;
     }) => Effect.Effect<AdministrationBookingPage, unknown>;
     readonly loadBooking: (
-      id: string
+      id: DotyposReservationId
     ) => Effect.Effect<AdministrationBookingDetail | null, unknown>;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
@@ -813,11 +890,11 @@ export class AdministrationService extends Context.Service<
       unknown
     >;
     readonly loadCustomerReservations: (input: {
-      readonly customerId: string;
+      readonly customerId: DotyposCustomerId;
       readonly page?: number;
     }) => Effect.Effect<AdministrationReservationPage, unknown>;
     readonly loadCustomerActivity: (
-      customerId: string
+      customerId: DotyposCustomerId
     ) => Effect.Effect<AdministrationCustomerActivity, unknown>;
     readonly listOrders: IPaymentAdministrationService["listOrders"];
     readonly loadOrder: IPaymentAdministrationService["loadOrder"];
@@ -940,11 +1017,14 @@ export class AdministrationService extends Context.Service<
                     Effect.map(
                       (reservations) =>
                         new Map(
-                          reservations.flatMap((reservation) =>
-                            reservation.id
-                              ? [[reservation.id, reservation] as const]
-                              : []
-                          )
+                          reservations.flatMap((reservation) => {
+                            const reservationId = Option.getOrUndefined(
+                              decodeDotyposReservationId(reservation.id)
+                            );
+                            return reservationId
+                              ? [[reservationId, reservation] as const]
+                              : [];
+                          })
                         )
                     ),
                     Effect.catch((cause) =>
@@ -964,7 +1044,7 @@ export class AdministrationService extends Context.Service<
       )(function* (
         input: AdministrationReservationListInput,
         dateReservations:
-          | ReadonlyMap<string, DotyposReservation>
+          | ReadonlyMap<DotyposReservationId, DotyposReservation>
           | null
           | undefined
       ) {
@@ -985,7 +1065,12 @@ export class AdministrationService extends Context.Service<
           })
           .pipe(
             Effect.map((reservations) =>
-              reservations.flatMap(({ id }) => (id ? [id] : []))
+              reservations.flatMap(({ id }) => {
+                const reservationId = Option.getOrUndefined(
+                  decodeDotyposReservationId(id)
+                );
+                return reservationId ? [reservationId] : [];
+              })
             ),
             Effect.catch((cause) =>
               Effect.logWarning("Reservation date sorting unavailable", {
@@ -1000,7 +1085,7 @@ export class AdministrationService extends Context.Service<
       )(function* (input: {
         readonly startDate: string;
         readonly endDate: string;
-        readonly linkedReservationIds: ReadonlySet<string>;
+        readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
       }) {
         const reservations = yield* dotypos
           .listReservations({
@@ -1023,9 +1108,15 @@ export class AdministrationService extends Context.Service<
         return {
           unavailable: false,
           value: new Set(
-            reservations.items.flatMap(({ id }) =>
-              id && input.linkedReservationIds.has(id) ? [id] : []
-            )
+            reservations.items.flatMap(({ id }) => {
+              const reservationId = Option.getOrUndefined(
+                decodeDotyposReservationId(id)
+              );
+              return reservationId &&
+                input.linkedReservationIds.has(reservationId)
+                ? [reservationId]
+                : [];
+            })
           ).size,
         };
       });
@@ -1127,7 +1218,7 @@ export class AdministrationService extends Context.Service<
 
       const loadReservation = Effect.fn(
         "AdministrationService.loadReservation"
-      )(function* (id: string) {
+      )(function* (id: WorkspaceReservationId) {
         const [row] = yield* db
           .select(safeReservationSelection)
           .from(workspaceReservations)
@@ -1219,9 +1310,13 @@ export class AdministrationService extends Context.Service<
           );
 
         const attempts = attemptRows.map(toAdministrationPaymentAttempt);
-        const table = live.reservation?._tableId
+        const liveTableId = Option.getOrUndefined(
+          decodeDotyposTableId(live.reservation?._tableId)
+        );
+        const table = liveTableId
           ? (tables.find(
-              ({ id: tableId }) => tableId === live.reservation?._tableId
+              ({ id }) =>
+                Option.getOrUndefined(decodeDotyposTableId(id)) === liveTableId
             ) ?? null)
           : null;
 
@@ -1281,6 +1376,42 @@ export class AdministrationService extends Context.Service<
       const findReservationId = Effect.fn(
         "AdministrationService.findReservationId"
       )(function* (identifier: string) {
+        const lookupIds = {
+          checkoutAttemptKey: Option.getOrUndefined(
+            decodeCheckoutAttemptKey(identifier)
+          ),
+          checkoutSessionKey: Option.getOrUndefined(
+            decodeCheckoutSessionKey(identifier)
+          ),
+          correlationId: Option.getOrUndefined(
+            decodeNexiCorrelationId(identifier)
+          ),
+          discountApplicationId: Option.getOrUndefined(
+            decodeDiscountApplicationId(identifier)
+          ),
+          dotyposReservationId: Option.getOrUndefined(
+            decodeDotyposReservationId(identifier)
+          ),
+          legalEvidenceEventId: Option.getOrUndefined(
+            decodeLegalEvidenceEventId(identifier)
+          ),
+          nexiOperationId: Option.getOrUndefined(
+            decodeNexiOperationId(identifier)
+          ),
+          nexiOrderId: Option.getOrUndefined(decodeNexiOrderId(identifier)),
+          nexiWebhookEventId: Option.getOrUndefined(
+            decodeNexiWebhookEventId(identifier)
+          ),
+          paymentAttemptId: Option.getOrUndefined(
+            decodePaymentAttemptId(identifier)
+          ),
+          storedWebhookEventId: Option.getOrUndefined(
+            decodeStoredWebhookEventId(identifier)
+          ),
+          workspaceReservationId: Option.getOrUndefined(
+            decodeWorkspaceReservationId(identifier)
+          ),
+        };
         const {
           applicationRows,
           evidenceRows,
@@ -1294,13 +1425,43 @@ export class AdministrationService extends Context.Service<
               .from(workspaceReservations)
               .where(
                 or(
-                  eq(workspaceReservations.id, identifier),
-                  eq(workspaceReservations.checkoutSessionKey, identifier),
-                  eq(workspaceReservations.checkoutAttemptKey, identifier),
-                  eq(workspaceReservations.correlationId, identifier),
-                  eq(workspaceReservations.dotyposReservationId, identifier),
-                  eq(workspaceReservations.activePaymentAttemptId, identifier)
-                )
+                  lookupIds.workspaceReservationId
+                    ? eq(
+                        workspaceReservations.id,
+                        lookupIds.workspaceReservationId
+                      )
+                    : undefined,
+                  lookupIds.checkoutSessionKey
+                    ? eq(
+                        workspaceReservations.checkoutSessionKey,
+                        lookupIds.checkoutSessionKey
+                      )
+                    : undefined,
+                  lookupIds.checkoutAttemptKey
+                    ? eq(
+                        workspaceReservations.checkoutAttemptKey,
+                        lookupIds.checkoutAttemptKey
+                      )
+                    : undefined,
+                  lookupIds.correlationId
+                    ? eq(
+                        workspaceReservations.correlationId,
+                        lookupIds.correlationId
+                      )
+                    : undefined,
+                  lookupIds.dotyposReservationId
+                    ? eq(
+                        workspaceReservations.dotyposReservationId,
+                        lookupIds.dotyposReservationId
+                      )
+                    : undefined,
+                  lookupIds.paymentAttemptId
+                    ? eq(
+                        workspaceReservations.activePaymentAttemptId,
+                        lookupIds.paymentAttemptId
+                      )
+                    : undefined
+                ) ?? sql`false`
               )
               .limit(2),
             paymentRows: db
@@ -1310,11 +1471,25 @@ export class AdministrationService extends Context.Service<
               .from(paymentAttempts)
               .where(
                 or(
-                  eq(paymentAttempts.id, identifier),
-                  eq(paymentAttempts.providerOrderId, identifier),
-                  eq(paymentAttempts.lastWebhookEventId, identifier),
-                  eq(paymentAttempts.lastProviderOperationId, identifier)
-                )
+                  lookupIds.paymentAttemptId
+                    ? eq(paymentAttempts.id, lookupIds.paymentAttemptId)
+                    : undefined,
+                  lookupIds.nexiOrderId
+                    ? eq(paymentAttempts.providerOrderId, lookupIds.nexiOrderId)
+                    : undefined,
+                  lookupIds.nexiWebhookEventId
+                    ? eq(
+                        paymentAttempts.lastWebhookEventId,
+                        lookupIds.nexiWebhookEventId
+                      )
+                    : undefined,
+                  lookupIds.nexiOperationId
+                    ? eq(
+                        paymentAttempts.lastProviderOperationId,
+                        lookupIds.nexiOperationId
+                      )
+                    : undefined
+                ) ?? sql`false`
               )
               .limit(2),
             applicationRows: db
@@ -1322,14 +1497,22 @@ export class AdministrationService extends Context.Service<
                 reservationId: discountApplications.workspaceReservationId,
               })
               .from(discountApplications)
-              .where(sql`${discountApplications.id} = ${identifier}`)
+              .where(
+                lookupIds.discountApplicationId
+                  ? eq(discountApplications.id, lookupIds.discountApplicationId)
+                  : sql`false`
+              )
               .limit(2),
             evidenceRows: db
               .selectDistinct({
                 reservationId: legalEvidenceEvents.workspaceReservationId,
               })
               .from(legalEvidenceEvents)
-              .where(eq(legalEvidenceEvents.id, identifier))
+              .where(
+                lookupIds.legalEvidenceEventId
+                  ? eq(legalEvidenceEvents.id, lookupIds.legalEvidenceEventId)
+                  : sql`false`
+              )
               .limit(2),
             webhookRows: db
               .selectDistinct({
@@ -1348,10 +1531,16 @@ export class AdministrationService extends Context.Service<
               )
               .where(
                 or(
-                  eq(webhookEvents.id, identifier),
-                  eq(webhookEvents.eventId, identifier),
-                  eq(webhookEvents.providerOrderId, identifier)
-                )
+                  lookupIds.storedWebhookEventId
+                    ? eq(webhookEvents.id, lookupIds.storedWebhookEventId)
+                    : undefined,
+                  lookupIds.nexiWebhookEventId
+                    ? eq(webhookEvents.eventId, lookupIds.nexiWebhookEventId)
+                    : undefined,
+                  lookupIds.nexiOrderId
+                    ? eq(webhookEvents.providerOrderId, lookupIds.nexiOrderId)
+                    : undefined
+                ) ?? sql`false`
               )
               .limit(2),
           },
@@ -1372,9 +1561,12 @@ export class AdministrationService extends Context.Service<
           const bookings = (yield* dotypos.listReservations({
             ...getDateBounds(input.date),
             order: "startDateAscending",
-          })).flatMap((booking) =>
-            booking.id ? [{ ...booking, id: booking.id }] : []
-          );
+          })).flatMap((booking) => {
+            const id = Option.getOrUndefined(
+              decodeDotyposReservationId(booking.id)
+            );
+            return id ? [{ ...booking, id }] : [];
+          });
           const pagination = getAdministrationPagination({
             pageSize: bookingPageSize,
             requestedPage: input.page,
@@ -1388,9 +1580,12 @@ export class AdministrationService extends Context.Service<
           const { customers, rows, tables } = yield* Effect.all(
             {
               customers: Effect.all(
-                pageBookings.map((booking) =>
-                  booking._customerId
-                    ? dotypos.getCustomer(booking._customerId).pipe(
+                pageBookings.map((booking) => {
+                  const customerId = Option.getOrUndefined(
+                    decodeDotyposCustomerId(booking._customerId)
+                  );
+                  return customerId
+                    ? dotypos.getCustomer(customerId).pipe(
                         Effect.map(
                           (customer) => [booking.id, customer] as const
                         ),
@@ -1398,8 +1593,8 @@ export class AdministrationService extends Context.Service<
                           Effect.succeed([booking.id, null] as const)
                         )
                       )
-                    : Effect.succeed([booking.id, null] as const)
-                ),
+                    : Effect.succeed([booking.id, null] as const);
+                }),
                 { concurrency: 5 }
               ),
               rows:
@@ -1427,9 +1622,12 @@ export class AdministrationService extends Context.Service<
             )
           );
           const tablesById = new Map(
-            tables.flatMap((table) =>
-              table.id ? [[table.id, table] as const] : []
-            )
+            tables.flatMap((table) => {
+              const tableId = Option.getOrUndefined(
+                decodeDotyposTableId(table.id)
+              );
+              return tableId ? [[tableId, table] as const] : [];
+            })
           );
 
           return {
@@ -1438,9 +1636,10 @@ export class AdministrationService extends Context.Service<
                 booking,
                 customer: customersByBookingId.get(booking.id) ?? null,
                 row: rowsByBookingId.get(booking.id) ?? null,
-                table: booking._tableId
-                  ? (tablesById.get(booking._tableId) ?? null)
-                  : null,
+                table: Option.match(decodeDotyposTableId(booking._tableId), {
+                  onNone: () => null,
+                  onSome: (tableId) => tablesById.get(tableId) ?? null,
+                }),
               })
             ),
             page: pagination.page,
@@ -1451,7 +1650,7 @@ export class AdministrationService extends Context.Service<
       );
 
       const loadBooking = Effect.fn("AdministrationService.loadBooking")(
-        function* (id: string) {
+        function* (id: DotyposReservationId) {
           const [details, tables] = yield* Effect.all(
             [
               dotypos
@@ -1474,9 +1673,14 @@ export class AdministrationService extends Context.Service<
             .from(workspaceReservations)
             .where(eq(workspaceReservations.dotyposReservationId, id))
             .limit(1);
-          const table = reservation._tableId
+          const reservationTableId = Option.getOrUndefined(
+            decodeDotyposTableId(reservation._tableId)
+          );
+          const table = reservationTableId
             ? (tables.find(
-                ({ id: tableId }) => tableId === reservation._tableId
+                ({ id: tableId }) =>
+                  Option.getOrUndefined(decodeDotyposTableId(tableId)) ===
+                  reservationTableId
               ) ?? null)
             : null;
           const booking = toBookingSummary({
@@ -1550,7 +1754,7 @@ export class AdministrationService extends Context.Service<
       const loadCustomerReservations = Effect.fn(
         "AdministrationService.loadCustomerReservations"
       )(function* (input: {
-        readonly customerId: string;
+        readonly customerId: DotyposCustomerId;
         readonly page?: number;
       }) {
         const where = eq(
@@ -1584,7 +1788,7 @@ export class AdministrationService extends Context.Service<
 
       const loadCustomerActivity = Effect.fn(
         "AdministrationService.loadCustomerActivity"
-      )(function* (customerId: string) {
+      )(function* (customerId: DotyposCustomerId) {
         const { attemptRowsWithSentinel, marketingConsentRows, recentRows } =
           yield* Effect.all(
             {

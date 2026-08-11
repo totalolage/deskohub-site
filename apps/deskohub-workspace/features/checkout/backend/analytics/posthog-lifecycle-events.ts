@@ -1,7 +1,13 @@
+import {
+  PostHogDistinctId,
+  PostHogEventId,
+} from "@deskohub/posthog/identifiers";
 import { Effect } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { PaymentAttempt } from "@/features/checkout/backend/repositories/payment-attempt.repository";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { toWorkspaceMoneyMajorAmount } from "@/features/checkout/workspace-money";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import {
   type PostHogEventProperties,
   PostHogEventService,
@@ -37,20 +43,20 @@ const paymentProperties = (
 });
 
 const captureLifecycleEvent = (input: {
-  readonly distinctId: string;
+  readonly distinctId: WorkspaceReservationId;
   readonly event: string;
-  readonly id: string;
+  readonly id: WorkspaceReservationId | PaymentAttemptId;
   readonly properties: PostHogEventProperties;
   readonly timestamp: LifecycleEventTimestamp;
 }) =>
   Effect.gen(function* () {
     const posthog = yield* PostHogEventService;
     yield* posthog.capture({
-      distinctId: input.distinctId,
+      distinctId: PostHogDistinctId.make(input.distinctId),
       event: input.event,
       properties: input.properties,
       timestamp: input.timestamp,
-      uuid: `${input.id}:${input.event}`,
+      uuid: PostHogEventId.make(`${input.id}:${input.event}`),
     });
   });
 

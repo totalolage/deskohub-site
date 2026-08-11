@@ -1,3 +1,8 @@
+import type {
+  NexiOperationId,
+  NexiOrderId,
+  NexiWebhookEventId,
+} from "@deskohub/nexi";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -7,6 +12,8 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
@@ -36,20 +43,28 @@ const paymentAttemptStatesRequiringFailureCode = [
 export const paymentAttempts = pgTable(
   "payment_attempts",
   {
-    id: text("id").primaryKey().default(postgresUuidV7),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<PaymentAttemptId>(),
     workspaceReservationId: text("workspace_reservation_id")
       .notNull()
+      .$type<WorkspaceReservationId>()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
     provider: text("provider").notNull().$type<PaymentProvider>(),
-    providerOrderId: text("provider_order_id"),
+    providerOrderId: text("provider_order_id").$type<NexiOrderId>(),
     securityToken: text("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
     providerRedirectUrl: text("provider_redirect_url"),
-    lastWebhookEventId: text("last_webhook_event_id"),
-    lastProviderOperationId: text("last_provider_operation_id"),
+    lastWebhookEventId: text(
+      "last_webhook_event_id"
+    ).$type<NexiWebhookEventId>(),
+    lastProviderOperationId: text(
+      "last_provider_operation_id"
+    ).$type<NexiOperationId>(),
     lastProviderStatus: text("last_provider_status"),
     failureCode: text("failure_code"),
     providerOrderCreatedAt: instant("provider_order_created_at"),

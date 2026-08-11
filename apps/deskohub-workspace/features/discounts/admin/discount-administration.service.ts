@@ -1,4 +1,7 @@
 import {
+  DotyposCustomerIdSchema,
+  type DotyposDiscountGroupId,
+  DotyposDiscountGroupIdSchema,
   DotyposService,
   type ExternalAPIError,
   type NetworkError,
@@ -8,10 +11,14 @@ import type {
   Customer as DotyposCustomer,
   DiscountGroup as DotyposDiscountGroup,
 } from "@deskohub/dotypos/generated";
-import { GoogleCalendarService } from "@deskohub/google-calendar";
+import {
+  type GoogleCalendarEventId,
+  type GoogleCalendarICalUid,
+  GoogleCalendarService,
+} from "@deskohub/google-calendar";
 import { and, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Option, Schema } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
@@ -26,9 +33,14 @@ import {
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
+import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
+import {
+  CalendarResourceConfig,
+  type SalesCalendarId,
+} from "@/shared/backend/config/calendar-resource.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { DiscountAdjustment } from "../contracts";
@@ -81,11 +93,11 @@ export type AdminDotyposCustomer = {
   readonly displayName: string;
   readonly email: string | null;
   readonly phone: string | null;
-  readonly discountGroupId: string | null;
+  readonly discountGroupId: DotyposDiscountGroupId | null;
 };
 
 export type AdminDiscountGroup = {
-  readonly id: string;
+  readonly id: DotyposDiscountGroupId;
   readonly name: string;
   readonly basisPoints: number;
 };
@@ -95,8 +107,8 @@ export type AdminDiscountCodeClaim = {
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly state: DiscountCodeClaimState;
-  readonly paymentAttemptId: string;
-  readonly workspaceReservationId: string;
+  readonly paymentAttemptId: PaymentAttemptId;
+  readonly workspaceReservationId: WorkspaceReservationId;
   readonly reservationExpiresAt: Temporal.Instant;
   readonly reservedAt: Temporal.Instant;
   readonly redeemedAt: Temporal.Instant | null;
@@ -137,7 +149,7 @@ export type AdminCustomerSearchResult = {
 };
 
 export type AdminCalendarSale = {
-  readonly eventReference: string;
+  readonly eventReference?: GoogleCalendarEventId | GoogleCalendarICalUid;
   readonly title: string;
   readonly description: string;
   readonly start: string;
@@ -296,7 +308,7 @@ export interface IDiscountAdministration {
   >;
   readonly setCustomerDiscountGroup: (input: {
     readonly customerId: DotyposCustomerId;
-    readonly discountGroupId: string | null;
+    readonly discountGroupId: DotyposDiscountGroupId | null;
   }) => Effect.Effect<
     void,
     | ExternalAPIError
@@ -334,8 +346,7 @@ export class DiscountAdministration extends Context.Service<
             Effect.fail(
               error.statusCode === 404
                 ? new DiscountAdminNotFoundError({
-                    resource: "Dotypos customer",
-                    id: customerId,
+                    resource: { kind: "Dotypos customer", id: customerId },
                     message:
                       "The Dotypos customer does not exist or is deleted.",
                   })
@@ -346,8 +357,7 @@ export class DiscountAdministration extends Context.Service<
             (customer) => Boolean(customer.id) && !customer.deleted,
             () =>
               new DiscountAdminNotFoundError({
-                resource: "Dotypos customer",
-                id: customerId,
+                resource: { kind: "Dotypos customer", id: customerId },
                 message: "The Dotypos customer does not exist or is deleted.",
               })
           )
@@ -442,7 +452,10 @@ export class DiscountAdministration extends Context.Service<
                 })
                 .where(eq(discounts.id, input.id))
                 .returning({ id: discounts.id });
-              yield* requireUpdatedRow(rows, "discount", input.id);
+              yield* requireUpdatedRow(rows, {
+                kind: "discount",
+                id: input.id,
+              });
               yield* tx
                 .delete(discountProductTargets)
                 .where(eq(discountProductTargets.discountId, input.id));
@@ -461,7 +474,7 @@ export class DiscountAdministration extends Context.Service<
             .returning({ id: discounts.id })
             .pipe(
               Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, "discount", input.id)
+                requireUpdatedRow(rows, { kind: "discount", id: input.id })
               )
             )
       );
@@ -480,7 +493,10 @@ export class DiscountAdministration extends Context.Service<
                       .for("update")
                       .pipe(
                         Effect.flatMap((rows) =>
-                          requireUpdatedRow(rows, "discount", discountId)
+                          requireUpdatedRow(rows, {
+                            kind: "discount",
+                            id: discountId,
+                          })
                         ),
                         Effect.as(discountId)
                       ),
@@ -536,7 +552,10 @@ export class DiscountAdministration extends Context.Service<
                     .for("update")
                     .pipe(
                       Effect.flatMap((rows) =>
-                        requireUpdatedRow(rows, "discount", discountId)
+                        requireUpdatedRow(rows, {
+                          kind: "discount",
+                          id: discountId,
+                        })
                       ),
                       Effect.as(discountId)
                     ),
@@ -592,7 +611,10 @@ export class DiscountAdministration extends Context.Service<
             .returning({ id: discountCodes.id })
             .pipe(
               Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, "discount code", input.id)
+                requireUpdatedRow(rows, {
+                  kind: "discount code",
+                  id: input.id,
+                })
               )
             )
       );
@@ -605,7 +627,10 @@ export class DiscountAdministration extends Context.Service<
             .returning({ id: discountCodes.id })
             .pipe(
               Effect.flatMap((rows) =>
-                requireUpdatedRow(rows, "discount code", input.id)
+                requireUpdatedRow(rows, {
+                  kind: "discount code",
+                  id: input.id,
+                })
               )
             )
       );
@@ -631,8 +656,10 @@ export class DiscountAdministration extends Context.Service<
                   ? Effect.succeed(row)
                   : Effect.fail(
                       new DiscountAdminNotFoundError({
-                        resource: "discount code",
-                        id: input.codeId,
+                        resource: {
+                          kind: "discount code",
+                          id: input.codeId,
+                        },
                         message: "The discount code no longer exists.",
                       })
                     )
@@ -646,7 +673,7 @@ export class DiscountAdministration extends Context.Service<
                       Effect.map(toAdminDotyposCustomer),
                       Effect.orElseSucceed(() => null),
                       Effect.map((customer) => ({
-                        customerId: dotyposCustomerId as DotyposCustomerId,
+                        customerId: dotyposCustomerId,
                         customer,
                       }))
                     ),
@@ -763,7 +790,10 @@ export class DiscountAdministration extends Context.Service<
               .from(discountCodes)
               .where(eq(discountCodes.id, input.codeId))
               .for("update");
-            yield* requireUpdatedRow(codeRows, "discount code", input.codeId);
+            yield* requireUpdatedRow(codeRows, {
+              kind: "discount code",
+              id: input.codeId,
+            });
             yield* tx
               .insert(discountCodeCustomers)
               .values({
@@ -789,7 +819,10 @@ export class DiscountAdministration extends Context.Service<
                 .from(discountCodes)
                 .where(eq(discountCodes.id, input.codeId))
                 .for("update");
-              yield* requireUpdatedRow(codeRows, "discount code", input.codeId);
+              yield* requireUpdatedRow(codeRows, {
+                kind: "discount code",
+                id: input.codeId,
+              });
               const audience = yield* tx
                 .select({
                   customerId: discountCodeCustomers.dotyposCustomerId,
@@ -802,8 +835,10 @@ export class DiscountAdministration extends Context.Service<
                 )
               ) {
                 return yield* new DiscountAdminNotFoundError({
-                  resource: "code audience membership",
-                  id: input.customerId,
+                  resource: {
+                    kind: "code audience membership",
+                    id: input.customerId,
+                  },
                   message: "This customer is no longer in the code audience.",
                 });
               }
@@ -838,7 +873,10 @@ export class DiscountAdministration extends Context.Service<
               .from(discountCodes)
               .where(eq(discountCodes.id, input.codeId))
               .for("update");
-            yield* requireUpdatedRow(codeRows, "discount code", input.codeId);
+            yield* requireUpdatedRow(codeRows, {
+              kind: "discount code",
+              id: input.codeId,
+            });
             yield* tx
               .delete(discountCodeCustomers)
               .where(eq(discountCodeCustomers.codeId, input.codeId));
@@ -850,7 +888,7 @@ export class DiscountAdministration extends Context.Service<
         "DiscountAdministration.setCustomerDiscountGroup"
       )(function* (input: {
         readonly customerId: DotyposCustomerId;
-        readonly discountGroupId: string | null;
+        readonly discountGroupId: DotyposDiscountGroupId | null;
       }) {
         const customer = yield* loadActiveCustomer(input.customerId);
         if (input.discountGroupId !== null) {
@@ -863,8 +901,10 @@ export class DiscountAdministration extends Context.Service<
           );
           if (!group || group.deleted || group.display === false) {
             return yield* new DiscountAdminNotFoundError({
-              resource: "Dotypos discount group",
-              id: input.discountGroupId,
+              resource: {
+                kind: "Dotypos discount group",
+                id: input.discountGroupId,
+              },
               message:
                 "The Dotypos discount group does not exist or is unavailable.",
             });
@@ -906,16 +946,26 @@ export class DiscountAdministration extends Context.Service<
   );
 }
 
+type DiscountAdminMissingResource =
+  | { readonly kind: "discount"; readonly id: StoredDiscountId }
+  | { readonly kind: "discount code"; readonly id: DiscountCodeId }
+  | {
+      readonly kind: "Dotypos customer";
+      readonly id: DotyposCustomerId;
+    }
+  | {
+      readonly kind: "Dotypos discount group";
+      readonly id: DotyposDiscountGroupId;
+    }
+  | {
+      readonly kind: "code audience membership";
+      readonly id: DotyposCustomerId;
+    };
+
 export class DiscountAdminNotFoundError extends Data.TaggedError(
   "DiscountAdminNotFoundError"
 )<{
-  readonly resource:
-    | "discount"
-    | "discount code"
-    | "Dotypos customer"
-    | "Dotypos discount group"
-    | "code audience membership";
-  readonly id: string;
+  readonly resource: DiscountAdminMissingResource;
   readonly message: string;
 }> {}
 
@@ -1000,7 +1050,7 @@ type AdminDiscountRow = StoredDiscount & {
 
 type AdminDiscountCodeRow = DiscountCode & {
   readonly customers: readonly {
-    readonly dotyposCustomerId: string;
+    readonly dotyposCustomerId: DotyposCustomerId;
   }[];
   readonly redemptions: readonly DiscountCodeRedemption[];
 };
@@ -1060,7 +1110,7 @@ const toAdminDotyposCustomer = (
     .trim();
 
   return {
-    id: customer.id as DotyposCustomerId,
+    id: Schema.decodeUnknownSync(DotyposCustomerIdSchema)(customer.id),
     displayName:
       customer.companyName?.trim() ||
       personName ||
@@ -1069,14 +1119,20 @@ const toAdminDotyposCustomer = (
       "Unnamed customer",
     email: customer.email?.trim() || null,
     phone: customer.phone?.trim() || null,
-    discountGroupId: customer._discountGroupId?.trim() || null,
+    discountGroupId: Option.getOrNull(
+      Schema.decodeUnknownOption(DotyposDiscountGroupIdSchema)(
+        customer._discountGroupId?.trim()
+      )
+    ),
   };
 };
 
 const toAdminDiscountGroup = (
   group: DotyposDiscountGroup
 ): readonly AdminDiscountGroup[] => {
-  const id = group.id?.trim();
+  const id = Option.getOrUndefined(
+    Schema.decodeUnknownOption(DotyposDiscountGroupIdSchema)(group.id?.trim())
+  );
   const basisPoints = toDotyposDiscountBasisPoints(group.discountPercent);
   if (
     !id ||
@@ -1099,13 +1155,13 @@ const toAdminDiscountGroup = (
 const toAdminDiscountCodeClaim = (
   row: DiscountCodeRedemption & {
     readonly application: {
-      readonly workspaceReservationId: string;
+      readonly workspaceReservationId: WorkspaceReservationId;
     };
   }
 ): AdminDiscountCodeClaim => ({
   id: row.id,
   codeId: row.codeId,
-  dotyposCustomerId: row.dotyposCustomerId as DotyposCustomerId,
+  dotyposCustomerId: row.dotyposCustomerId,
   state: row.state,
   paymentAttemptId: row.paymentAttemptId,
   workspaceReservationId: row.application.workspaceReservationId,
@@ -1173,25 +1229,28 @@ const toDiscountCodeValues = (
   maxUses: input.maxUses,
 });
 
-const requireUpdatedRow = (
-  rows: readonly { readonly id: string }[],
-  resource: "discount" | "discount code",
-  id: string
+type PersistedDiscountResource = Extract<
+  DiscountAdminMissingResource,
+  { readonly kind: "discount" | "discount code" }
+>;
+
+const requireUpdatedRow = <const Resource extends PersistedDiscountResource>(
+  rows: readonly { readonly id: Resource["id"] }[],
+  resource: Resource
 ) =>
   rows.length === 1
     ? Effect.void
     : Effect.fail(
         new DiscountAdminNotFoundError({
           resource,
-          id,
-          message: `The ${resource} no longer exists.`,
+          message: `The ${resource.kind} no longer exists.`,
         })
       );
 
 const loadCalendarDashboard = (input: {
   readonly calendar: GoogleCalendarService["Service"];
   readonly discounts: readonly AdminDiscount[];
-  readonly salesCalendarId: string;
+  readonly salesCalendarId: SalesCalendarId;
 }) => {
   const today = Temporal.Now.plainDateISO(
     workspaceSiteConstants.location.timeZone
@@ -1241,8 +1300,8 @@ const toAdminCalendarSale = (input: {
   readonly calendarUrl: string;
   readonly discounts: readonly AdminDiscount[];
   readonly event: {
-    readonly id?: string;
-    readonly iCalUID?: string;
+    readonly id?: GoogleCalendarEventId;
+    readonly iCalUID?: GoogleCalendarICalUid;
     readonly htmlLink?: string;
     readonly summary?: string;
     readonly description?: string;
@@ -1253,9 +1312,9 @@ const toAdminCalendarSale = (input: {
 }): AdminCalendarSale => {
   const description = input.event.description?.trim() ?? "";
   const normalizedId = description.toLowerCase();
-  const discountId = Schema.is(storedDiscountIdSchema)(normalizedId)
-    ? (normalizedId as StoredDiscountId)
-    : undefined;
+  const discountId = Option.getOrUndefined(
+    Schema.decodeUnknownOption(storedDiscountIdSchema)(normalizedId)
+  );
   const matchedDiscount = input.discounts.find(({ id }) => id === discountId);
   let association: AdminCalendarSale["association"] = {
     kind: "missing-description",
@@ -1273,7 +1332,9 @@ const toAdminCalendarSale = (input: {
   }
 
   return {
-    eventReference: input.event.id ?? input.event.iCalUID ?? "unknown",
+    ...(input.event.id || input.event.iCalUID
+      ? { eventReference: input.event.id ?? input.event.iCalUID }
+      : {}),
     title: input.event.summary?.trim() || "Untitled event",
     description,
     start:

@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
 import {
   type BuildSignedPayStateInput,
@@ -14,7 +15,7 @@ export const discountCodeErrorQueryParam = "discountCodeError" as const;
 
 type CheckoutPayPathOptions = {
   readonly discountCodeError?: "unavailable";
-  readonly orderId?: string;
+  readonly orderId?: WorkspaceReservationId;
 };
 
 export const buildCheckoutPayPathFromToken = (
