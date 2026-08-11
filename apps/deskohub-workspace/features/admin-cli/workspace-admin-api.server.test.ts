@@ -201,7 +201,7 @@ describe("Workspace Admin API", () => {
       id: discountId,
       labels: { "en-US": "Summer sale", "cs-CZ": "Letní sleva" },
       adjustment: { kind: "percentage" as const, basisPoints: 1000 },
-      products: [{ kind: "cowork" as const, tier: "basic" as const }],
+      products: [{ kind: "cowork" as const }],
       codeCount: 1,
       createdAt: Temporal.Instant.from(timestamp),
       updatedAt: Temporal.Instant.from(timestamp),
@@ -547,7 +547,7 @@ describe("Workspace Admin API", () => {
     const discountDefinition = {
       labels: { "cs-CZ": "Léto", "en-US": "Summer" },
       adjustment: { kind: "percentage" as const, basisPoints: 1000 },
-      products: [{ kind: "cowork" as const, tier: "basic" as const }] as const,
+      products: [{ kind: "cowork" as const }] as const,
     };
     const codeConfiguration = {
       code,

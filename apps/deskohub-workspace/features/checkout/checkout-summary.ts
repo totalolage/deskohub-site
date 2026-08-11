@@ -8,6 +8,10 @@ import {
   meetingRoomCheckoutSummaryProductItemSchema,
 } from "@/features/checkout/checkout-summary-meeting-room-item";
 import {
+  officeCheckoutSummaryDiscountedProductItemSchema,
+  officeCheckoutSummaryProductItemSchema,
+} from "@/features/checkout/checkout-summary-office-item";
+import {
   nonNegativeWorkspaceMoneyCodec,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
@@ -30,6 +34,8 @@ export const checkoutSummaryOrderItemSchema = Schema.Union([
   meetingRoomCheckoutSummaryProductItemSchema,
   coworkCheckoutSummaryDiscountedProductItemSchema,
   coworkCheckoutSummaryProductItemSchema,
+  officeCheckoutSummaryDiscountedProductItemSchema,
+  officeCheckoutSummaryProductItemSchema,
   checkoutSummaryAddOnItemSchema,
 ]);
 
@@ -85,6 +91,10 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
   amount: item.amount,
   ...("product" in item && { product: item.product }),
+  ...("dayCount" in item && { dayCount: item.dayCount }),
+  ...("seats" in item && { seats: item.seats }),
+  ...("accessAmount" in item && { accessAmount: item.accessAmount }),
+  ...("seatAmount" in item && { seatAmount: item.seatAmount }),
   ...("originalAmount" in item && {
     originalAmount: item.originalAmount,
     discounts: item.discounts,

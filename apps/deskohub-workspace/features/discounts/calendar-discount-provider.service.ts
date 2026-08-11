@@ -14,6 +14,7 @@ import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
+import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
 import type {
@@ -263,7 +264,7 @@ const toEligibleCalendarCandidates = (input: {
     )
     .filter(({ definition }) =>
       definition.products.some((product) =>
-        isSameProduct(product, input.product)
+        workspaceProductTargetMatches(product, input.product)
       )
     )
     .map((resolvedSale) =>
@@ -326,11 +327,6 @@ type ResolvedCalendarSale = {
   readonly sale: CalendarSale;
   readonly definition: DiscountDefinition;
 };
-
-const isSameProduct = (
-  left: WorkspaceProductIdentity,
-  right: WorkspaceProductIdentity
-) => getWorkspaceProductKey(left) === getWorkspaceProductKey(right);
 
 const withProviderAnnotations =
   (operation: "discover" | "revalidate") =>

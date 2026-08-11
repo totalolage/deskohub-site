@@ -58,7 +58,7 @@ names. Inspect settings and deployment metadata without printing their values.
   Resend plan. Keep `EMAIL_PROVIDER=resend` and `EMAIL_API_KEY` scoped to
   Production.
 - The non-sensitive Preview-only
-  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true}`.
+  `POSTHOG_FEATURE_FLAG_OVERRIDES={"calendar_sales":true,"customer_discounts":true,"discount_codes":true,"meeting_room_page":true,"office_page":true}`.
   Set this before the immutable Git preview is built; the runner never mutates
   deployment configuration or the real PostHog rollout state.
 - `GOOGLE_CALENDAR_SALES_ID` must identify the dedicated Preview E2E sales
@@ -197,12 +197,16 @@ in a contiguous part of the range. The checked-out runner receives the leased
 one-based shard through `WORKSPACE_E2E_ALLOCATION_SHARD`; its identity fallback
 exists only for rollout compatibility.
 
-Cowork and meeting-room candidates remain validated through the deployed
+Cowork, meeting-room, and office candidates remain validated through the deployed
 availability route. Basic cases deliberately use at most four same-date
 reservations; Plus and every monitor-specific Profi pool use at most one.
 Calendar-sensitive Plus and Profi dates remain distinct from the Basic dates
 and from one another. Meeting-room cases use distinct dates within the run's
 shard, including the dates touched by a whole-day reservation.
+The paid office case uses one Thursday-Friday range per suite. Thursday starts
+are assigned through the same absolute weekday shard before availability is
+checked, so the single office table never receives overlapping ranges from the
+three supported concurrent runs.
 
 The job-level `workspace-e2e-dotypos-sandbox` lock was removed after five
 three-way exact-SHA rounds passed on unchanged builds. All 15 accepted runs
@@ -273,13 +277,18 @@ and remaining capacity for these groups:
   each exact tag set; a generic Profi table does not satisfy a specific set;
 - `reservation:meeting-room`: at least four active visible assignable tables,
   covering three supported runs plus one room of failure/cleanup headroom.
+- `reservation:office`: at least one active visible assignable table with at
+  least two seats for the paid multi-day party-size case. Exact selected-range
+  availability, rather than aggregate whole-window vacancy, remains
+  authoritative because office ranges are disjoint across shards.
 
 The testing-cloud inventory was operationally provisioned on 2026-08-04 with
 16 Basic seats, 16 Plus seats, four seats for every exact Profi monitor option,
-and four meeting-room tables. Treat these as expected aggregates, not verified
-evidence, until the protected workflow validator confirms that every table is
-active, visible, assignable, and exactly tagged. No provider identifiers belong
-in this document or the validator output.
+and four meeting-room tables. An office table was added on 2026-08-06. Treat
+these as expected aggregates, not verified evidence, until the protected
+workflow validator confirms that every table is active, visible, assignable,
+and exactly tagged. No provider identifiers belong in this document or the
+validator output.
 
 The cowork budgets cover the supported three runs plus one run of inventory
 headroom. Meeting-room seat counts do not increase concurrency because normal
@@ -359,15 +368,14 @@ covers customer-only, customer-plus-code, Calendar-plus-customer, and all three
 sources together. A separate customer's group is cleared after summary
 creation; payment must return `pricing_changed`.
 
-The stable Calendar definition targets Plus, Profi, and the one-hour meeting
-room. Calendar pricing-change edge cases use Profi while all Calendar happy
-paths use Plus. In one serialized top-level case, the runner removes only the
-Profi target after reservation-page advertisement and again after
-signed-summary creation. Each scenario restores the Profi target in an
+The stable Calendar definition targets the cowork and meeting-room families.
+Calendar pricing-change edge cases use Profi while Calendar happy paths use
+Plus. After all parallel cases finish, one serialized top-level case removes
+the cowork target after reservation-page advertisement and again after
+signed-summary creation. Each scenario restores the cowork target in an
 interruption-safe finalizer. Both must show the normal pricing-change state with
-no payment attempt. The Calendar event itself remains immutable, and Plus and
-meeting-room eligibility are never mutated, so every other top-level case
-continues to run in parallel.
+no payment attempt. The Calendar event itself remains immutable, and
+meeting-room eligibility is never mutated.
 
 Calendar all-day expiry is tied to the selected reservation date, so a browser
 case cannot safely wait across its real Prague-midnight boundary. Deterministic
@@ -538,7 +546,7 @@ semantic-step timeouts.
 
 The Bun E2E process exports an OTLP trace to PostHog under its own
 `deskohub-workspace-e2e` service name. One root `e2e.run` span contains fixed
-`e2e.phase` spans for preview readiness, fixture seeding, cowork/meeting-room
+`e2e.phase` spans for preview readiness, fixture seeding, cowork/meeting-room/office
 availability preparation, case construction, the independent and
 shared-fixture phases, per-case finalization, and suite cleanup. It also
 contains an `e2e.case` child for every case, and every semantic step is an
@@ -570,7 +578,8 @@ case is using the documented provider-capacity boundary.
 
 Fixture seeding completes before availability preparation because Calendar
 availability resolves the seeded discount definition. Once that transaction
-commits, cowork and meeting-room availability preparation run concurrently.
+commits, cowork, meeting-room, and office availability preparation run
+concurrently.
 
 The typed `WORKSPACE_E2E_EXECUTION_CONTEXT` value distinguishes `manual` from
 `ci`. Local execution defaults to `manual`. GitHub Actions sets it explicitly:

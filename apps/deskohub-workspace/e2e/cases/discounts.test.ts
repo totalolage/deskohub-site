@@ -69,6 +69,7 @@ test("reads discount details from the focused trigger's accessible description",
     "focus",
     "wait",
   ]);
+  expect(calls.at(0)?.at(4)).toContain("data-checkout-discount-details");
   expect(calls.at(3)?.at(4)).toContain(
     "trigger?.getAttribute('aria-describedby')"
   );

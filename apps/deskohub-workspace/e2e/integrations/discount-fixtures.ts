@@ -8,7 +8,7 @@ import {
   discounts,
 } from "@/db/schema";
 import type { DatabaseClient } from "@/db/database-client";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
@@ -70,7 +70,7 @@ export const discountCodeFixtures = {
 
 const partialCodeDiscountId =
   "816a6ec2-514e-45d2-afdd-5c04f13f9a84" as StoredDiscountId;
-const plusOnlyCodeDiscountId =
+const wrongProductCodeDiscountId =
   "521293fa-37da-4067-b1bb-7b400112df34" as StoredDiscountId;
 const zeroTotalDiscountId =
   "019c91dd-c560-7e55-b9d8-c95065efd51d" as StoredDiscountId;
@@ -83,14 +83,7 @@ const definitions: readonly DiscountDefinitionFixture[] = [
       "cs-CZ": "E2E kalendářová sleva",
       "en-US": "E2E Calendar sale",
     },
-    products: [
-      { kind: "cowork", tier: "plus" },
-      { kind: "cowork", tier: "profi" },
-      {
-        kind: "meeting-room",
-        duration: { unit: "hour", amount: 1 },
-      },
-    ],
+    products: [{ kind: "cowork" }, { kind: "meeting-room" }],
   },
   {
     basisPoints: 1000,
@@ -99,19 +92,16 @@ const definitions: readonly DiscountDefinitionFixture[] = [
       "cs-CZ": "E2E promo kód",
       "en-US": "E2E promo code",
     },
-    products: [
-      { kind: "cowork", tier: "basic" },
-      { kind: "cowork", tier: "plus" },
-    ],
+    products: [{ kind: "cowork" }],
   },
   {
     basisPoints: 1000,
-    id: plusOnlyCodeDiscountId,
+    id: wrongProductCodeDiscountId,
     labels: {
-      "cs-CZ": "E2E promo kód pro Plus",
-      "en-US": "E2E Plus-only promo code",
+      "cs-CZ": "E2E promo kód pro jiný produkt",
+      "en-US": "E2E wrong-product promo code",
     },
-    products: [{ kind: "cowork", tier: "plus" }],
+    products: [{ kind: "meeting-room" }],
   },
   {
     basisPoints: 10_000,
@@ -120,13 +110,7 @@ const definitions: readonly DiscountDefinitionFixture[] = [
       "cs-CZ": "E2E sleva 100 %",
       "en-US": "E2E 100% discount",
     },
-    products: [
-      { kind: "cowork", tier: "basic" },
-      {
-        kind: "meeting-room",
-        duration: { unit: "hour", amount: 4 },
-      },
-    ],
+    products: [{ kind: "cowork" }, { kind: "meeting-room" }],
   },
 ];
 
@@ -167,9 +151,9 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             yield* tx
               .insert(discountProductTargets)
               .values(
-                definition.products.map((productIdentity) => ({
+                definition.products.map((productTarget) => ({
                   discountId: definition.id,
-                  productIdentity,
+                  productTarget,
                 }))
               )
               .onConflictDoNothing();
@@ -227,7 +211,7 @@ export const seedDiscountE2EFixtures: Effect.Effect<
             },
             {
               ...discountCodeFixtures.productIneligible,
-              discountId: plusOnlyCodeDiscountId,
+              discountId: wrongProductCodeDiscountId,
               enabled: true,
             },
             {
@@ -265,7 +249,6 @@ export const seedDiscountE2EFixtures: Effect.Effect<
 
     log("Discount E2E fixtures seeded");
   });
-
 export const expireDiscountCodeForE2E = (
   codeId: string
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
@@ -293,26 +276,23 @@ export const expireDiscountCodeForE2E = (
     }
   });
 
-export const setE2ECalendarSaleProfiEligibility = (
+export const setE2ECalendarSaleCoworkEligibility = (
   eligible: boolean
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
     const { db } = yield* E2EDatabase;
-    const product = {
-      kind: "cowork",
-      tier: "profi",
-    } satisfies WorkspaceProductIdentity;
+    const product = { kind: "cowork" } satisfies WorkspaceProductTarget;
 
     yield* runRetrySafeDatabaseOperation(
       eligible
-        ? "restore E2E Calendar sale Profi eligibility"
-        : "remove E2E Calendar sale Profi eligibility",
+        ? "restore E2E Calendar sale cowork eligibility"
+        : "remove E2E Calendar sale cowork eligibility",
       eligible
         ? db
             .insert(discountProductTargets)
             .values({
               discountId: E2E_CALENDAR_SALE_DISCOUNT_ID,
-              productIdentity: product,
+              productTarget: product,
             })
             .onConflictDoNothing()
         : db.delete(discountProductTargets).where(
@@ -321,7 +301,7 @@ export const setE2ECalendarSaleProfiEligibility = (
                 discountProductTargets.discountId,
                 E2E_CALENDAR_SALE_DISCOUNT_ID
               ),
-              eq(discountProductTargets.productIdentity, product)
+              eq(discountProductTargets.productTarget, product)
             )
           )
     );
@@ -331,7 +311,7 @@ interface DiscountDefinitionFixture {
   readonly basisPoints: number;
   readonly id: StoredDiscountId;
   readonly labels: Readonly<Record<"cs-CZ" | "en-US", string>>;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
 }
 
 interface DiscountCodeFixture {

@@ -38,6 +38,7 @@ import {
 } from "./discounts";
 import { assertLocaleSwitcher } from "./locale";
 import { makeMeetingRoomE2ECases, prepareMeetingRoomE2E } from "./meeting-room";
+import { makeOfficeE2ECases, prepareOfficeE2E } from "./office";
 import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
@@ -75,6 +76,10 @@ export const makeWorkspaceE2ECases = ({
             meetingRoom: telemetry.tracePhase({
               effect: prepareMeetingRoomE2E(config, allocation),
               phaseId: "meeting-room-availability-preparation",
+            }),
+            office: telemetry.tracePhase({
+              effect: prepareOfficeE2E(config, allocation),
+              phaseId: "office-availability-preparation",
             }),
           },
           { concurrency: "unbounded" }
@@ -298,6 +303,16 @@ export const makeWorkspaceE2ECases = ({
             datasourceConfig,
             flowStates,
             preparation: availability.meetingRoom,
+            run,
+          }))
+        );
+
+        cases.push(
+          ...(yield* makeOfficeE2ECases({
+            config,
+            datasourceConfig,
+            flowStates,
+            preparation: availability.office,
             run,
           }))
         );

@@ -6,6 +6,7 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { isMeetingRoomWholeDayReservationDuration } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
   formatReservationDisplayTimeRange,
 } from "@/features/reservation/reservation-date";
 import { isSingleDayReservationInterval } from "@/features/reservation/reservation-interval-domain";
@@ -303,40 +304,56 @@ export const assertFulfilledStatusPage = ({
       session,
       timeoutMs: config.timeouts.uiTransition,
     });
-    const expectedMeetingRoomText = yield* tryWorkspaceE2ESync(
+    const expectedReservationText = yield* tryWorkspaceE2ESync(
       "read confirmed reservation interval for status assertion",
-      () =>
-        data.meetingRoom
-          ? (() => {
-              const interval = {
-                startsAt: dotyposReservation.reservedFrom,
-                endsAt: dotyposReservation.reservedUntil,
-              };
+      () => {
+        if (data.office) {
+          return [
+            "Private office",
+            formatReservationDisplayDateRange(
+              dotyposReservation.reservedFrom,
+              dotyposReservation.reservedUntil,
+              data.locale
+            ),
+            "Seats",
+            String(data.office.seats),
+            expectedPaymentPrice,
+          ];
+        }
+        if (!data.meetingRoom) return [];
 
-              return [
-                formatReservationDisplayDate(interval.startsAt, data.locale),
-                isSingleDayReservationInterval(interval)
-                  ? "whole day"
-                  : formatReservationDisplayTimeRange(
-                      interval.startsAt,
-                      interval.endsAt,
-                      data.locale
-                    ),
-                expectedPaymentPrice,
-              ];
-            })()
-          : []
+        const interval = {
+          startsAt: dotyposReservation.reservedFrom,
+          endsAt: dotyposReservation.reservedUntil,
+        };
+
+        return [
+          formatReservationDisplayDate(interval.startsAt, data.locale),
+          isSingleDayReservationInterval(interval)
+            ? "whole day"
+            : formatReservationDisplayTimeRange(
+                interval.startsAt,
+                interval.endsAt,
+                data.locale
+              ),
+          expectedPaymentPrice,
+        ];
+      }
     );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
       matches: (text) => {
-        const normalizedText = normalizeBrowserText(text);
+        const normalizedText = normalizeBrowserText(text).toLocaleLowerCase(
+          data.locale
+        );
 
         return (
           /Your workspace access is ready\./i.test(normalizedText) &&
           /sent by email/i.test(normalizedText) &&
-          expectedMeetingRoomText.every((expected) =>
-            normalizedText.includes(normalizeBrowserText(expected))
+          expectedReservationText.every((expected) =>
+            normalizedText.includes(
+              normalizeBrowserText(expected).toLocaleLowerCase(data.locale)
+            )
           )
         );
       },

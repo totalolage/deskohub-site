@@ -93,15 +93,14 @@ describe("discount persistence contracts", () => {
     );
   });
 
-  test("uses composite identities for targets and allowlists", () => {
+  test("uses family targets for discounts and composite customer allowlists", () => {
     const targetConfig = configOf(discountProductTargets);
 
-    expect(namesOf(targetConfig.primaryKeys)).toEqual([
-      "discount_product_targets_pk",
-    ]);
+    expect(targetConfig.name).toBe("discount_targets");
+    expect(namesOf(targetConfig.primaryKeys)).toEqual(["discount_targets_pk"]);
     expect(targetConfig.columns.map(({ name }) => name)).toEqual([
       "discount_id",
-      "product_identity",
+      "product_target",
     ]);
     expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
       "discount_code_customers_pk",
@@ -151,6 +150,51 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain(
       "Cannot migrate an unknown legacy meeting-room duration"
     );
+  });
+
+  test("migrates identities to canonical family targets with rollout compatibility", async () => {
+    const migration = await Bun.file(
+      new URL(
+        "../migrations/20260810143301_late_morbius/migration.sql",
+        import.meta.url
+      )
+    ).text();
+
+    expect(migration).toContain('CREATE TABLE "discount_targets"');
+    expect(migration).toContain(
+      'CONSTRAINT "discount_targets_pk" PRIMARY KEY("discount_id","product_target")'
+    );
+    expect(migration).toContain(
+      "SELECT DISTINCT\n\t\"discount_id\",\n\tjsonb_build_object('kind', \"product_identity\" ->> 'kind')"
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "sync_legacy_discount_product_targets"'
+    );
+    expect(migration).toContain(
+      'CREATE TRIGGER "sync_discount_targets_to_legacy"'
+    );
+    expect(migration).toContain("'tier', 'profi'");
+    expect(migration).toContain(
+      "'duration', jsonb_build_object('unit', 'day', 'amount', 1)"
+    );
+    expect(migration).not.toContain('DROP TABLE "discount_product_targets"');
+    expect(migration).not.toContain('DROP COLUMN "product_identity"');
+    expect(migration).toContain(
+      "Cannot migrate an unknown discount product identity"
+    );
+  });
+
+  test("documents writes against the canonical discount target table", async () => {
+    const documentation = await Bun.file(
+      new URL("../../docs/discount-codes.md", import.meta.url)
+    ).text();
+
+    expect(documentation).not.toContain(
+      "INSERT INTO discount_product_targets (\n  discount_id,\n  product_target"
+    );
+    expect(
+      documentation.match(/INSERT INTO discount_targets \(/g)
+    ).toHaveLength(2);
   });
 
   test("removes the superseded scalar discount label", async () => {

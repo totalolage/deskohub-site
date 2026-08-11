@@ -10,7 +10,6 @@ import {
   AdministrationExistingDiscountCodeCreateInput,
 } from "@deskohub/workspace-admin-api";
 import { Schema } from "effect";
-
 export const discountAdminLabelsSchema = AdministrationDiscountLabels;
 export const createDiscountAdminInputSchema =
   AdministrationDiscountDefinitionInput;

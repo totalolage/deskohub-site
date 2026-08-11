@@ -1,9 +1,15 @@
 import type { DotyposReservationInterval } from "@deskohub/dotypos";
 import type { Reservation } from "@deskohub/dotypos/generated";
+import { Option, Schema } from "effect";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
+import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-export const workspaceBookingGuestCount = 1;
+export const workspaceBookingSeatCount = 1;
+
+const decodeReservationSeats = Schema.decodeUnknownOption(
+  dotyposReservationSeatsSchema
+);
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
@@ -34,7 +40,7 @@ export const getWorkspaceTableOccupancyById = (
       occupancyByTableId.set(
         tableId,
         (occupancyByTableId.get(tableId) ?? 0) +
-          (parsePositiveNumber(reservation.seats) ?? 1)
+          Option.getOrElse(decodeReservationSeats(reservation.seats), () => 1)
       );
     }
   }
@@ -76,9 +82,4 @@ export const excludeDotyposReservationsById = (
   return reservations.filter(
     (reservation) => !reservation.id || !excludedIds.has(reservation.id)
   );
-};
-
-const parsePositiveNumber = (value: string | undefined) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 };

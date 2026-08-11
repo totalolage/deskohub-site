@@ -81,19 +81,19 @@ services as the Admin UI. Representative commands are:
 ```bash
 dhw discounts create percentage \
   --label-en "Summer sale" --label-cs "Letní sleva" \
-  --percentage 10 --product cowork:basic --product cowork:plus
+  --percentage 10 --product cowork --product office
 dhw discounts create fixed \
   --label-en "100 CZK off" --label-cs "Sleva 100 Kč" \
-  --fixed-value 10000 --currency CZK --product meeting-room:hour:1
+  --fixed-value 10000 --currency CZK --product meeting-room
 dhw discounts update percentage <discount-id> \
   --label-en "Summer sale" --label-cs "Letní sleva" \
-  --percentage 15 --product cowork:basic
+  --percentage 15 --product cowork
 dhw discounts delete <discount-id>
 
 dhw codes create existing SUMMER10 <discount-id>
 dhw codes create percentage VIP15 --customer <customer-id> \
   --label-en "VIP discount" --label-cs "VIP sleva" \
-  --percentage 15 --product cowork:profi
+  --percentage 15 --product cowork
 dhw codes update <code-id> SUMMER15 <discount-id> --enabled true
 dhw codes add-customer <code-id> <customer-id>
 dhw codes remove-customer <code-id> <customer-id>

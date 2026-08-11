@@ -69,16 +69,11 @@ export const prepareMeetingRoomAdvertisement = Effect.fn(
 
   const reservation = input.reservation;
   const pricing = yield* CheckoutPricingService;
-  const affirmed = yield* pricing.affirmAdvertisement({
+  const affirmed = yield* pricing.affirmMeetingRoomAdvertisement({
     reservation: getMeetingRoomAdvertisedPriceReservation(reservation),
     locale: input.locale,
     advertisedQuote: state.quote,
   });
-  if (affirmed.kind !== "meeting-room") {
-    return yield* Effect.die(
-      "Meeting-room advertisement affirmation returned another reservation family."
-    );
-  }
   const changed = state.quote.fingerprint !== affirmed.quote.fingerprint;
 
   return {

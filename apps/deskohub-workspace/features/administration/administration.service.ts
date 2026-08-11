@@ -81,7 +81,7 @@ export type AdministrationReservationListInput = {
   readonly page?: number;
   readonly sort?: AdministrationReservationSort;
   readonly status?: Exclude<AdministrationStatusGroup, "attention">;
-  readonly type?: "cowork" | "meeting-room";
+  readonly type?: "cowork" | "meeting-room" | "office";
 };
 
 export type AdministrationReservationSort =
@@ -115,7 +115,7 @@ export type AdministrationReservationSummary = {
   readonly startsAt: string | null;
   readonly endsAt: string | null;
   readonly date: string | null;
-  readonly type: "cowork" | "meeting-room";
+  readonly type: "cowork" | "meeting-room" | "office";
   readonly typeLabel: string;
   readonly status: ReturnType<typeof getAdministrationReservationStatus>;
   readonly statusNote: string | null;
@@ -386,6 +386,7 @@ const getReservationTypeLabel = (
   row: Pick<SafeReservationRow, "reservationDetails">
 ) => {
   if (row.reservationDetails.kind === "meeting-room") return "Meeting Room";
+  if (row.reservationDetails.kind === "office") return "Private Office";
   const tier = row.reservationDetails.entryTier;
   return `Cowork ${tier[0]?.toUpperCase()}${tier.slice(1)}`;
 };

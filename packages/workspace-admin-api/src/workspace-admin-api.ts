@@ -280,7 +280,7 @@ export const AdministrationReservationQuery = Schema.Struct({
   status: Schema.optional(
     Schema.Literals(["in_progress", "complete", "cancelled"])
   ),
-  type: Schema.optional(Schema.Literals(["cowork", "meeting-room"])),
+  type: Schema.optional(Schema.Literals(["cowork", "meeting-room", "office"])),
 });
 export type AdministrationReservationQuery =
   typeof AdministrationReservationQuery.Type;
@@ -341,7 +341,7 @@ export const AdministrationReservationSummary = Schema.Struct({
   startsAt: Schema.NullOr(Schema.String),
   endsAt: Schema.NullOr(Schema.String),
   date: Schema.NullOr(Schema.String),
-  type: Schema.Literals(["cowork", "meeting-room"]),
+  type: Schema.Literals(["cowork", "meeting-room", "office"]),
   typeLabel: Schema.String,
   status: Schema.Struct({
     group: AdministrationReservationStatusGroup,
@@ -750,28 +750,13 @@ export const AdministrationCustomerReservationPage = Schema.Struct({
 export type AdministrationCustomerReservationPage =
   typeof AdministrationCustomerReservationPage.Type;
 
-export const AdministrationWorkspaceProduct = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("cowork"),
-    tier: Schema.Literals(["basic", "plus", "profi"]),
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("meeting-room"),
-    duration: Schema.Union([
-      Schema.Struct({
-        unit: Schema.Literal("hour"),
-        amount: Schema.Literal(1),
-      }),
-      Schema.Struct({
-        unit: Schema.Literal("hour"),
-        amount: Schema.Literal(4),
-      }),
-      Schema.Struct({ unit: Schema.Literal("day"), amount: Schema.Literal(1) }),
-    ]),
-  }),
+export const AdministrationWorkspaceProductTarget = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("cowork") }),
+  Schema.Struct({ kind: Schema.Literal("meeting-room") }),
+  Schema.Struct({ kind: Schema.Literal("office") }),
 ]);
-export type AdministrationWorkspaceProduct =
-  typeof AdministrationWorkspaceProduct.Type;
+export type AdministrationWorkspaceProductTarget =
+  typeof AdministrationWorkspaceProductTarget.Type;
 
 export const AdministrationDiscountAdjustment = Schema.Union([
   Schema.Struct({
@@ -842,20 +827,12 @@ const administrationDiscountAdjustmentInput =
     })
   );
 
-const administrationWorkspaceProductKey = (
-  product: AdministrationWorkspaceProduct
-) =>
-  product.kind === "cowork"
-    ? `${product.kind}:${product.tier}`
-    : `${product.kind}:${product.duration.unit}:${product.duration.amount}`;
-
 const administrationDiscountProducts = Schema.NonEmptyArray(
-  AdministrationWorkspaceProduct
+  AdministrationWorkspaceProductTarget
 ).check(
   Schema.makeFilter(
     (products) =>
-      new Set(products.map(administrationWorkspaceProductKey)).size ===
-      products.length
+      new Set(products.map(({ kind }) => kind)).size === products.length
   )
 );
 
@@ -1034,7 +1011,7 @@ export const AdministrationDiscount = Schema.Struct({
     "cs-CZ": Schema.String,
   }),
   adjustment: AdministrationDiscountAdjustment,
-  products: Schema.Array(AdministrationWorkspaceProduct),
+  products: Schema.Array(AdministrationWorkspaceProductTarget),
   codeCount: Schema.Number,
   createdAt: Schema.String,
   updatedAt: Schema.String,

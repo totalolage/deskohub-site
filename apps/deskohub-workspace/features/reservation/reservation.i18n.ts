@@ -1,9 +1,9 @@
 import { Match } from "effect";
-import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import { formatMeetingRoomReservationDisplayTimeValue } from "@/features/reservation/meeting-room-reservation-display-time";
 import { formatReservationInputDate } from "@/features/reservation/reservation-date";
+import type { WorkspaceAvailabilityUnavailableTarget } from "@/features/reservation/workspace-availability";
 
 export const formatMeetingRoomReservationDisplayTime = (
   interval: {
@@ -22,14 +22,7 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;
   readonly dateFallback?: string;
   readonly locale: Locale;
-  readonly reservation:
-    | {
-        readonly kind: "cowork";
-        readonly entryTier: WorkspaceCoworkProductTier;
-      }
-    | {
-        readonly kind: "meeting-room";
-      };
+  readonly reservation: WorkspaceAvailabilityUnavailableTarget;
 }) =>
   Match.value(input.reservation).pipe(
     Match.discriminatorsExhaustive("kind")({
@@ -47,5 +40,7 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
         ),
       "meeting-room": () =>
         m.reservationMeetingRoomUnavailable({}, { locale: input.locale }),
+      office: () =>
+        m.reservationOfficeUnavailable({}, { locale: input.locale }),
     })
   );

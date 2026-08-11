@@ -98,7 +98,9 @@ export const loadAdministrationReservations = async (
     sort: parseReservationSort(firstParam(params.sort)),
     status: parseStatus(firstParam(params.status)),
     type:
-      typeValue === "cowork" || typeValue === "meeting-room"
+      typeValue === "cowork" ||
+      typeValue === "meeting-room" ||
+      typeValue === "office"
         ? typeValue
         : undefined,
   };

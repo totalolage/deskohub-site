@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import type { Table } from "@deskohub/dotypos/generated";
-import { selectWorkspaceTableFromCandidates } from "./workspace-table-selection";
+import { Effect } from "effect";
+import {
+  getWorkspaceTableSeatCapacity,
+  isDisplayableWorkspaceTable,
+  selectWorkspaceTableFromCandidates as selectWorkspaceTableFromCandidatesEffect,
+} from "./workspace-table-selection";
+
+const selectWorkspaceTableFromCandidates = (
+  ...args: Parameters<typeof selectWorkspaceTableFromCandidatesEffect>
+) => Effect.runSync(selectWorkspaceTableFromCandidatesEffect(...args));
 
 const makeTable = (input: {
   readonly id: string;
@@ -20,6 +29,50 @@ const makeTable = (input: {
 });
 
 describe("selectWorkspaceTableFromCandidates", () => {
+  test("recognizes table tags for every reservation family", () => {
+    for (const [id, tags] of [
+      ["cowork", ["tier:basic"]],
+      ["meeting-room", ["reservation:meeting-room"]],
+      ["office", ["reservation:office"]],
+    ] as const) {
+      expect(
+        isDisplayableWorkspaceTable(makeTable({ id, name: id, tags }))
+      ).toBe(true);
+    }
+
+    expect(
+      isDisplayableWorkspaceTable(
+        makeTable({ id: "event", name: "Event", tags: ["reservation:event"] })
+      )
+    ).toBe(false);
+  });
+
+  test("reads positive whole-seat capacities", () => {
+    expect(
+      Effect.runSync(
+        getWorkspaceTableSeatCapacity(
+          makeTable({ id: "office", name: "Office", seats: "8" })
+        )
+      )
+    ).toBe(8);
+  });
+
+  test.each([
+    undefined,
+    "not-a-number",
+    "8.5",
+    "0",
+    "-1",
+  ])("rejects an invalid seat capacity of %s", (seats) => {
+    expect(() =>
+      Effect.runSync(
+        getWorkspaceTableSeatCapacity(
+          makeTable({ id: "invalid", name: "Office", seats })
+        )
+      )
+    ).toThrow("invalid seat capacity");
+  });
+
   test("selects the candidate with the strongest normalized distance score", () => {
     const occupied = makeTable({
       id: "occupied",
@@ -125,7 +178,7 @@ describe("selectWorkspaceTableFromCandidates", () => {
     ).toBe("nearest-unoccupied");
   });
 
-  test("does not select tables with invalid seats", () => {
+  test("rejects eligible tables with invalid seats", () => {
     const cases = [
       { seats: undefined, label: "missing seats" },
       { seats: "not-a-number", label: "non-numeric seats" },
@@ -137,19 +190,38 @@ describe("selectWorkspaceTableFromCandidates", () => {
       const invalid = makeTable({ id: label, name: "1", seats });
       const valid = makeTable({ id: `valid-${label}`, name: "2" });
 
-      expect(
-        selectWorkspaceTableFromCandidates([invalid], [invalid], new Map()),
-        label
-      ).toBeUndefined();
-      expect(
+      expect(() =>
+        selectWorkspaceTableFromCandidates([invalid], [invalid], new Map())
+      ).toThrow("invalid seat capacity");
+      expect(() =>
         selectWorkspaceTableFromCandidates(
           [invalid, valid],
           [invalid, valid],
           new Map()
-        )?.id,
-        label
-      ).toBe(valid.id);
+        )
+      ).toThrow("invalid seat capacity");
     }
+  });
+
+  test("requires both an empty exclusive table and enough seats", () => {
+    const office = makeTable({ id: "office", name: "Office", seats: "2" });
+
+    expect(
+      selectWorkspaceTableFromCandidates([office], [office], new Map(), 3, true)
+    ).toBeUndefined();
+    expect(
+      selectWorkspaceTableFromCandidates(
+        [office],
+        [office],
+        new Map([["office", 1]]),
+        2,
+        true
+      )
+    ).toBeUndefined();
+    expect(
+      selectWorkspaceTableFromCandidates([office], [office], new Map(), 2, true)
+        ?.id
+    ).toBe("office");
   });
 
   test("uses natural table order as the tie-breaker", () => {

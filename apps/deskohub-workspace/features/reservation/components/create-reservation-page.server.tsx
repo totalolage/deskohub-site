@@ -2,6 +2,7 @@ import "server-only";
 
 import { Effect, Option } from "effect";
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import type { ReactNode } from "react";
 import {
@@ -37,6 +38,7 @@ type ReservationPageContext<Kind extends ReservationKind> = {
 
 type ReservationPageDefinition<Kind extends ReservationKind> = {
   readonly fallback: (locale: Locale) => ReactNode;
+  readonly isEnabled?: () => boolean | Promise<boolean>;
   readonly kind: Kind;
   readonly metadata: (locale: Locale) => {
     readonly description: string;
@@ -83,7 +85,9 @@ export function createReservationPage<const Kind extends ReservationKind>(
   definition: ReservationPageDefinition<Kind>
 ) {
   async function generateMetadata(): Promise<Metadata> {
-    return runWithRequestLocale((locale) => {
+    return runWithRequestLocale(async (locale) => {
+      if (definition.isEnabled && !(await definition.isEnabled())) notFound();
+
       const { description, title } = definition.metadata(locale);
       const url = getWorkspaceLocalizedCanonicalUrl(
         locale,
@@ -118,14 +122,18 @@ export function createReservationPage<const Kind extends ReservationKind>(
   }
 
   async function Page({ searchParams }: LocalizedReservationPageProps) {
-    return runWithRequestLocale((locale) => (
-      <ReservationPage fallback={definition.fallback(locale)} locale={locale}>
-        <ReservationPageContent
-          definition={definition}
-          searchParams={searchParams}
-        />
-      </ReservationPage>
-    ));
+    return runWithRequestLocale(async (locale) => {
+      if (definition.isEnabled && !(await definition.isEnabled())) notFound();
+
+      return (
+        <ReservationPage fallback={definition.fallback(locale)} locale={locale}>
+          <ReservationPageContent
+            definition={definition}
+            searchParams={searchParams}
+          />
+        </ReservationPage>
+      );
+    });
   }
 
   return { generateMetadata, Page };

@@ -9,6 +9,8 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import {
   CENSORED_LOG_VALUE,
   censorDatabaseQueryParams,
@@ -50,6 +52,22 @@ const makeSnapshot = () =>
     prepared,
   });
 
+const officeReservation = normalizedOfficeReservationOrderSchema.make({
+  kind: "office",
+  startsOn: "2099-06-20",
+  endsOn: "2099-06-21",
+  seats: 3,
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
+});
+
+const officePrepared: PreparedCustomerQuote = {
+  kind: "office",
+  reservation: officeReservation,
+  quote: Effect.runSync(buildOfficeReservationQuote(officeReservation)),
+};
+
 describe("accounting document snapshot", () => {
   test("freezes supplier, buyer, reservation, and accepted quote facts", () => {
     expect(makeSnapshot()).toMatchObject({
@@ -81,6 +99,37 @@ describe("accounting document snapshot", () => {
     expect(serialized).not.toContain("ada@example.com");
     expect(serialized).not.toContain("+420 777 777 777");
     expect(serialized).not.toContain('"message"');
+  });
+
+  test("freezes office reservation and accepted quote facts", async () => {
+    const snapshot = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "office-reservation-id",
+      dotyposReservationId: "dotypos-office-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "en-US",
+      prepared: officePrepared,
+    });
+
+    expect(snapshot).toMatchObject({
+      reservation: {
+        kind: "office",
+        startsOn: "2099-06-20",
+        endsOn: "2099-06-21",
+        seats: 3,
+      },
+      quote: officePrepared.quote,
+    });
+    await expect(
+      Effect.runPromise(
+        Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema, {
+          onExcessProperty: "error",
+        })(snapshot)
+      )
+    ).resolves.toEqual(snapshot);
+
+    const serialized = JSON.stringify(snapshot);
+    expect(serialized).not.toContain("ada@example.com");
+    expect(serialized).not.toContain("+420 777 777 777");
   });
 
   test("supports a reservation-specific business billing identity", () => {

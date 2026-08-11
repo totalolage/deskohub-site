@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
   getWorkspaceTableOccupancyById,
-  workspaceBookingGuestCount,
+  workspaceBookingSeatCount,
 } from "@/features/checkout/backend/reservation/workspace-table-occupancy";
 import {
   hasAvailableWorkspaceTableCandidate,
@@ -389,7 +389,7 @@ const assertHeldMeetingRoomSlotAvailability = (
           tables: inventory.tables,
         })
     );
-    const expectedUnavailable = isMeetingRoomUnavailableFromInventory({
+    const expectedUnavailable = yield* isMeetingRoomUnavailableFromInventory({
       reservations: inventory.reservations,
       slot,
       tables: inventory.tables,
@@ -491,15 +491,20 @@ export const isMeetingRoomUnavailableFromInventory = ({
   readonly slot: MeetingRoomCheckoutSlot;
   readonly tables: readonly Table[];
 }) =>
-  !hasAvailableWorkspaceTableCandidate(
+  hasAvailableWorkspaceTableCandidate(
     tables,
     [workspaceMeetingRoomReservationTableTag],
     getWorkspaceTableOccupancyById(reservations, {
       endsAt: slot.endsAt,
       startsAt: slot.startsAt,
     }),
-    workspaceBookingGuestCount,
+    workspaceBookingSeatCount,
     true
+  ).pipe(
+    Effect.map((hasAvailableTable) => !hasAvailableTable),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("read meeting-room table capacity", cause)
+    )
   );
 
 const assertMeetingRoomPayPage = (

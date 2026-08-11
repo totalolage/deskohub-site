@@ -29,7 +29,7 @@ export const getCoworkCheckoutDetails = (input: {
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,
-    discounts: [...input.quote.payment.discounts],
+    discounts: input.quote.payment.discounts,
     summary: getCoworkCheckoutSummary(input.reservation, input.quote),
   },
   legal: input.legalEvidence,

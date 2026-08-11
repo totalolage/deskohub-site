@@ -17,13 +17,17 @@ import { ReservationNotificationEmail } from "@/emails/reservation-notification"
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
 import {
+  getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayDateRange,
+} from "@/features/reservation/reservation-date";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
@@ -212,6 +216,24 @@ const createReservationDetails = (
           timeLabel: m.reservationEmailTimeLabel({}, { locale }),
           wholeDay: m.reservationMeetingRoomDurationWholeDay({}, { locale }),
         }),
+      office: () => [
+        {
+          label: m.reservationEmailReservationLabel({}, { locale }),
+          value: getWorkspaceOfficeProductTitle(locale),
+        },
+        {
+          label: m.reservationEmailDateLabel({}, { locale }),
+          value: formatReservationDisplayDateRange(
+            reservation.reservedFrom,
+            reservation.reservedUntil,
+            locale
+          ),
+        },
+        {
+          label: m.reservationEmailSeatsLabel({}, { locale }),
+          value: String(reservation.seats),
+        },
+      ],
     })
   );
 

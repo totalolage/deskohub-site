@@ -411,7 +411,7 @@ describe("WorkspaceAdminApiClient", () => {
                   "cs-CZ": "Letní sleva",
                 },
                 adjustment: { kind: "percentage", basisPoints: 1000 },
-                products: [{ kind: "cowork", tier: "basic" }],
+                products: [{ kind: "office" }],
                 codeCount: 1,
                 createdAt: expiresAt,
                 updatedAt: expiresAt,

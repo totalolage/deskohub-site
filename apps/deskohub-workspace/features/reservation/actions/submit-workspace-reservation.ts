@@ -54,6 +54,12 @@ export const submitWorkspaceReservation = Effect.fn(
                         { locale: input.locale }
                       )
                     ),
+                    Match.when("office_reservation_ended", () =>
+                      m.reservationValidationOfficeEnded(
+                        {},
+                        { locale: input.locale }
+                      )
+                    ),
                     Match.when("checkout_failed", () =>
                       Match.value(checkoutError.cause).pipe(
                         Match.when(

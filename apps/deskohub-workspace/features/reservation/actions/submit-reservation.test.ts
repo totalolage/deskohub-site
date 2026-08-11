@@ -238,4 +238,33 @@ describe("submitWorkspaceReservation", () => {
       message: m.reservationValidationMeetingRoomEnded({}, { locale }),
     });
   });
+
+  test.each([
+    "en-US",
+    "cs-CZ",
+  ] as const)("localizes an ended office reservation in %s", async (locale) => {
+    const { CheckoutError } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const { m } = await import("@/features/i18n");
+    const createHostedPaymentCheckout = mock(() =>
+      Effect.fail(
+        new CheckoutError({
+          code: "office_reservation_ended",
+          message: "internal diagnostic",
+        })
+      )
+    );
+    const scenario = await runSubmitReservation({
+      createHostedPaymentCheckout,
+      locale,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(scenario.effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationValidationOfficeEnded({}, { locale }),
+    });
+  });
 });

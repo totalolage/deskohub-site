@@ -4,6 +4,7 @@ import {
   getWorkspaceProductKey,
   type WorkspaceProductIdentity,
 } from "@/features/checkout/product-identity";
+import { workspaceProductTargetMatches } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import {
@@ -227,7 +228,7 @@ const validateDiscountCodeProduct = (input: {
   readonly product: WorkspaceProductIdentity;
 }) =>
   input.definition.products.some((product) =>
-    isSameProduct(product, input.product)
+    workspaceProductTargetMatches(product, input.product)
   )
     ? Effect.void
     : unavailable(input.configuration, "product_ineligible");
@@ -307,11 +308,6 @@ const toDiscountCodeCandidate = (input: {
     },
   };
 };
-
-const isSameProduct = (
-  left: WorkspaceProductIdentity,
-  right: WorkspaceProductIdentity
-) => getWorkspaceProductKey(left) === getWorkspaceProductKey(right);
 
 const unavailable = (
   configuration: DiscountCodeConfiguration,

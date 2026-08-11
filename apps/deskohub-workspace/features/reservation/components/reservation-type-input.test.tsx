@@ -91,14 +91,10 @@ describe("ReservationTypeInput", () => {
     ).toContain("cursor-not-allowed");
   });
 
-  test("renders the shared discount treatment around caller-owned content", () => {
+  test("renders caller-owned content without pricing campaign state", () => {
     const view = render(
       <ReservationTypeInput onChange={() => undefined} value="basic">
         <ReservationTypeOption
-          discount={{
-            labels: [{ id: "summer-sale", label: "Summer sale" }],
-            details: <button type="button">Discount details</button>,
-          }}
           price="CZK 175 / day"
           title="Basic"
           value="basic"
@@ -111,24 +107,11 @@ describe("ReservationTypeInput", () => {
       '[data-reservation-type-option="basic"]'
     );
 
-    expect(option?.className).toContain("outline-purple-500");
-    expect(
-      option?.querySelector('[data-reservation-type-discount="summer-sale"]')
-        ?.textContent
-    ).toBe("Summer sale");
-    expect(option?.className.split(" ")).toEqual(
-      expect.arrayContaining([
-        "glow-border",
-        "glow-border-purple-300",
-        "glow-border-count-1",
-        "glow-border-duration-5000",
-      ])
-    );
+    expect(option?.className).toContain("outline-burned-orange");
+    expect(option?.className).toContain("lg:row-span-4");
+    expect(option?.className).not.toContain("glow-border");
     expect(
       option?.querySelector("[data-domain-description]")?.textContent
     ).toBe("Open-space desk");
-    expect(
-      view.getByRole("button", { name: "Discount details" })
-    ).toBeDefined();
   });
 });

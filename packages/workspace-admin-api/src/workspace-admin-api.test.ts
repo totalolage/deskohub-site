@@ -11,6 +11,8 @@ import {
   AdministrationOrderQuery,
   AdministrationReservationLookupQuery,
   AdministrationReservationQuery,
+  AdministrationReservationSummary,
+  AdministrationWorkspaceProductTarget,
   CliClientName,
   StartCliAuthentication,
 } from "./workspace-admin-api";
@@ -102,6 +104,50 @@ describe("administration contract", () => {
     ).toEqual({ page: 2, status: "complete" });
   });
 
+  test("accepts office reservations throughout the read contract", () => {
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationQuery)({
+        type: "office",
+      })
+    ).toEqual({ type: "office" });
+    expect(
+      Schema.decodeUnknownSync(AdministrationReservationSummary)({
+        id: "reservation-id",
+        customerId: "customer-id",
+        customer: null,
+        liveDetailsAvailable: false,
+        startsAt: "2026-08-10T00:00:00+02:00[Europe/Prague]",
+        endsAt: "2026-08-11T00:00:00+02:00[Europe/Prague]",
+        date: "2026-08-10",
+        type: "office",
+        typeLabel: "Office",
+        status: { group: "in_progress", label: "In progress" },
+        statusNote: null,
+        createdAt: "2026-08-01T12:00:00Z",
+        latestPayment: null,
+        updatedAt: "2026-08-01T12:00:00Z",
+      }).type
+    ).toBe("office");
+  });
+
+  test("uses product targets instead of purchase identities", () => {
+    for (const target of [
+      { kind: "cowork" },
+      { kind: "meeting-room" },
+      { kind: "office" },
+    ] as const) {
+      expect(
+        Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(target)
+      ).toEqual(target);
+    }
+    expect(() =>
+      Schema.decodeUnknownSync(AdministrationWorkspaceProductTarget)(
+        { kind: "cowork", tier: "basic" },
+        { onExcessProperty: "error" }
+      )
+    ).toThrow();
+  });
+
   test("validates discount mutations at the shared HTTP boundary", () => {
     const discountId = "01980000-0000-7000-8000-000000000001";
     const decode = Schema.decodeUnknownSync(AdministrationDiscountMutation);
@@ -112,7 +158,7 @@ describe("administration contract", () => {
         discount: {
           labels: { "cs-CZ": "Léto", "en-US": "Summer" },
           adjustment: { kind: "percentage", basisPoints: 1500 },
-          products: [{ kind: "cowork", tier: "plus" }],
+          products: [{ kind: "cowork" }],
         },
       })
     ).toEqual({
@@ -120,7 +166,7 @@ describe("administration contract", () => {
       discount: {
         labels: { "cs-CZ": "Léto", "en-US": "Summer" },
         adjustment: { kind: "percentage", basisPoints: 1500 },
-        products: [{ kind: "cowork", tier: "plus" }],
+        products: [{ kind: "cowork" }],
       },
     });
 
@@ -132,12 +178,9 @@ describe("administration contract", () => {
           labels: { "cs-CZ": "Léto", "en-US": "Summer" },
           adjustment: {
             kind: "fixed",
-            amount: { value: 1000, exponent: 0, currency: "CZK" },
+            amount: { value: 1000, exponent: 2, currency: "CZK" },
           },
-          products: [
-            { kind: "cowork", tier: "plus" },
-            { kind: "cowork", tier: "plus" },
-          ],
+          products: [{ kind: "cowork" }, { kind: "cowork" }],
         },
       })
     ).toThrow();
@@ -152,7 +195,7 @@ describe("administration contract", () => {
             "de-DE": "Sommer",
           },
           adjustment: { kind: "percentage", basisPoints: 1500 },
-          products: [{ kind: "cowork", tier: "plus" }],
+          products: [{ kind: "cowork" }],
         },
       })
     ).toThrow();
@@ -171,7 +214,6 @@ describe("administration contract", () => {
       })
     ).toThrow();
   });
-
   test("rejects invalid reservation filters before service execution", () => {
     expect(() =>
       Schema.decodeUnknownSync(AdministrationReservationQuery)({ page: 0 })

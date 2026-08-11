@@ -267,7 +267,7 @@ Statement/duration logging must not be configured to record bind values. Both `l
 After applying the generated migration to an isolated preview database:
 
 1. Confirm `pgcrypto` is installed and the immutability trigger exists.
-2. Complete one cowork and one meeting-room checkout, including a zero-total case if available.
+2. Complete one cowork, one meeting-room, and one office checkout, including a zero-total case if available.
 3. Confirm each new payment attempt has exactly one snapshot row and that `encrypted_snapshot` is `bytea` with no plaintext buyer sentinel in a raw database export.
 4. Read each snapshot through `AccountingDocumentSnapshotRepository` and compare it with the accepted quote and reservation-specific buyer input.
 5. Confirm a retry returns the existing payment attempt/snapshot rather than replacing it.

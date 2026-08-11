@@ -12,7 +12,7 @@ Keep the production release sequence intentionally simple:
 2. Run pending migrations against the production Neon branch.
 3. Promote the ready deployment.
 
-Do not introduce expand/contract migrations or database branch swapping unless the user explicitly requests them.
+Do not introduce database branch swapping unless the user explicitly requests it. When a schema change would break queries, mutations, constraints, or decoded data from the previous Vercel deployment, use an expand/backfill/compatibility release that retains and synchronizes both representations while old and new functions can overlap. Defer the destructive contract migration until a later release after the compatibility version is fully deployed; never rename or drop the old representation in the same rollout.
 
 Do not add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. These changes are too infrequent to justify maintaining a classifier; rely on Vercel's automatic affected-project skipping.
 

@@ -8,8 +8,13 @@ import {
   type CanonicalMeetingRoomReservation,
   getCanonicalMeetingRoomReservation,
 } from "@/features/checkout/reservation-quote-meeting-room";
+import {
+  type CanonicalOfficeReservation,
+  getCanonicalOfficeReservation,
+} from "@/features/checkout/reservation-quote-office";
 import type { CoworkReservationDetails } from "@/features/reservation/cowork-reservation";
 import type { MeetingRoomReservationPricingInput } from "@/features/reservation/meeting-room-reservation";
+import type { OfficeReservationPricingInput } from "@/features/reservation/office-reservation";
 
 type AppliedDiscount = ReservationQuote["payment"]["discounts"][number];
 type CanonicalAppliedDiscount = {
@@ -26,11 +31,13 @@ type CanonicalAppliedDiscount = {
 };
 type CanonicalReservation =
   | CanonicalCoworkReservation
-  | CanonicalMeetingRoomReservation;
+  | CanonicalMeetingRoomReservation
+  | CanonicalOfficeReservation;
 type ReservationQuoteFingerprintReservation =
   | CoworkReservationDetails
   | CoworkReservationPricingInput
-  | MeetingRoomReservationPricingInput;
+  | MeetingRoomReservationPricingInput
+  | OfficeReservationPricingInput;
 
 const getCanonicalAppliedDiscount = (
   application: AppliedDiscount
@@ -65,6 +72,7 @@ const getCanonicalReservation = (
     Match.discriminatorsExhaustive("kind")({
       cowork: () => ({ kind: "cowork" as const }),
       "meeting-room": getCanonicalMeetingRoomReservation,
+      office: getCanonicalOfficeReservation,
     })
   );
 

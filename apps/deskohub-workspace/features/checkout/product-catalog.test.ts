@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { getMeetingRoomReservationDurationKey } from "@/features/reservation/meeting-room-reservation-duration";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
+  getWorkspaceOfficePrice,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductTier,
@@ -55,6 +56,19 @@ describe("workspace product catalog", () => {
       getWorkspaceMeetingRoomPriceForDuration({ unit: "day", amount: 1 })
     ).toEqual({
       value: 232_000,
+      exponent: 2,
+      currency: "CZK",
+    });
+  });
+
+  test("prices the office base and every seat per calendar day", () => {
+    expect(getWorkspaceOfficePrice({ seats: 1, dayCount: 1 })).toEqual({
+      value: 84_500,
+      exponent: 2,
+      currency: "CZK",
+    });
+    expect(getWorkspaceOfficePrice({ seats: 3, dayCount: 2 })).toEqual({
+      value: 295_000,
       exponent: 2,
       currency: "CZK",
     });

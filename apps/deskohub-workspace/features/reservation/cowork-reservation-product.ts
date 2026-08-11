@@ -33,6 +33,18 @@ export const workspaceCoworkProductIdentitySchema = Schema.Struct({
 export type WorkspaceCoworkProductIdentity =
   typeof workspaceCoworkProductIdentitySchema.Type;
 
+export const workspaceCoworkProductTargetSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
+});
+
+export type WorkspaceCoworkProductTarget =
+  typeof workspaceCoworkProductTargetSchema.Type;
+
+export type WorkspaceCoworkAvailabilityTarget = WorkspaceCoworkProductTarget & {
+  readonly entryTier: WorkspaceCoworkProductTier;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
+
 export const workspaceCoworkProductKeySchema = Schema.TemplateLiteral([
   workspaceCoworkProductIdentitySchema.fields.kind,
   ":",

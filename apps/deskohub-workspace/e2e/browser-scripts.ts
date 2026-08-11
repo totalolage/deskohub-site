@@ -5,9 +5,18 @@ import {
 import { workspaceE2ETimeouts } from "./timeouts";
 import type { CheckoutData } from "./types";
 
+const getOfficeDayCount = (office: NonNullable<CheckoutData["office"]>) =>
+  Temporal.PlainDate.from(office.startsOn).until(
+    Temporal.PlainDate.from(office.endsOn),
+    { largestUnit: "day" }
+  ).days + 1;
+
 export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
   if (data.expectedReservationDetails.kind === "meeting-room") {
     return getAssertPrefilledMeetingRoomReservationScript(data);
+  }
+  if (data.expectedReservationDetails.kind === "office") {
+    return getAssertPrefilledOfficeReservationScript(data);
   }
 
   const expectedReservation = data.expectedReservationDetails;
@@ -118,6 +127,47 @@ const getAssertPrefilledMeetingRoomReservationScript = (data: CheckoutData) => {
 `;
 };
 
+const getAssertPrefilledOfficeReservationScript = (data: CheckoutData) => {
+  if (!data.office) {
+    throw new Error("Office backfill assertions require range data");
+  }
+
+  return `
+(() => {
+  const expected = ${JSON.stringify({
+    email: data.email,
+    dayCount: getOfficeDayCount(data.office),
+    message: data.message,
+    name: data.name,
+    phone: data.phone,
+    seats: data.office.seats,
+    startsOn: data.office.startsOn,
+  })};
+  const fail = (field) => {
+    throw new Error('restored office ' + field + ' did not match');
+  };
+  const value = (selector, field) => {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
+    return element.value;
+  };
+
+  if (value('input[name="startsOn"]', 'start date') !== expected.startsOn) fail('start date');
+  if (value('input[name="dayCount"]', 'day count') !== String(expected.dayCount)) fail('day count');
+  const seats = document.querySelector('input[name="seats"]:checked');
+  if (!(seats instanceof HTMLInputElement) || seats.value !== String(expected.seats)) fail('seats');
+  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
+
+  const marketingConsent = document.querySelector('#reservation-marketing-consent');
+  if (!(marketingConsent instanceof HTMLButtonElement) || marketingConsent.getAttribute('aria-checked') !== 'false') fail('marketing consent reset');
+  return true;
+})()
+`;
+};
+
 export const getPrefilledReservationConditionScript = (data: CheckoutData) => {
   const assertion = getAssertPrefilledReservationScript(data).trim();
 
@@ -150,6 +200,17 @@ export const getSubmitMeetingRoomReservationScript = (data: CheckoutData) => {
 (async () => {
   await (${prepare});
   return await (${submitPreparedMeetingRoomReservationScript.trim()});
+})()
+`;
+};
+
+export const getSubmitOfficeReservationScript = (data: CheckoutData) => {
+  const prepare = getPrepareOfficeAdvertisedPriceScript(data).trim();
+
+  return `
+(async () => {
+  await (${prepare});
+  return await (${submitPreparedOfficeReservationScript.trim()});
 })()
 `;
 };
@@ -499,6 +560,234 @@ export const getPrepareMeetingRoomAdvertisedPriceScript = (
 `;
 };
 
+export const getPrepareOfficeAdvertisedPriceScript = (data: CheckoutData) => {
+  if (data.expectedReservationDetails.kind !== "office" || !data.office) {
+    throw new Error("Office reservation submission requires office data");
+  }
+
+  return `
+(async () => {
+  const expected = ${JSON.stringify({
+    email: data.email,
+    dayCount: getOfficeDayCount(data.office),
+    message: data.message,
+    name: data.name,
+    phone: data.phone,
+    seats: data.office.seats,
+    startsOn: data.office.startsOn,
+  })};
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + ${workspaceE2ETimeouts.uiTransition};
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    if (predicate()) return;
+    throw new Error(typeof label === 'function' ? label() : label);
+  };
+  const setField = (selector, value) => {
+    const field = document.querySelector(selector);
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) {
+      throw new Error(selector + ' not found');
+    }
+    field.focus();
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(field), 'value');
+    descriptor?.set?.call(field, value);
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const visibleCalendarDates = () =>
+    [...document.querySelectorAll('[data-day]')]
+      .map((day) => day.getAttribute('data-day') ?? '')
+      .join('|');
+  const selectDate = async (ariaLabel, inputName, desiredDate, label) => {
+    const hidden = document.querySelector('input[name="' + inputName + '"]');
+    if (!(hidden instanceof HTMLInputElement)) {
+      throw new Error(label + ' hidden input not found');
+    }
+    if (hidden.value === desiredDate) return;
+
+    let trigger;
+    await waitUntil(() => {
+      const candidate = document.querySelector('button[aria-label="' + ariaLabel + '"]');
+      if (candidate instanceof HTMLButtonElement) {
+        trigger = candidate;
+        return true;
+      }
+      return false;
+    }, label + ' control not found');
+    trigger.click();
+
+    const findSelectableDateButton = () => {
+      const candidate = document.querySelector(
+        '[data-day="' + desiredDate + '"] button:not(:disabled)'
+      );
+      return candidate instanceof HTMLButtonElement ? candidate : undefined;
+    };
+    let dateButton;
+    for (let month = 0; month < 5; month += 1) {
+      let nextMonth;
+      await waitUntil(() => {
+        dateButton = findSelectableDateButton();
+        if (dateButton instanceof HTMLButtonElement) return true;
+        const candidate = document.querySelector(
+          'button[aria-label="Go to the Next Month"]'
+        );
+        if (candidate instanceof HTMLButtonElement && !candidate.disabled) {
+          nextMonth = candidate;
+          return true;
+        }
+        return false;
+      }, label + ' is outside the selectable calendar');
+      if (dateButton instanceof HTMLButtonElement) break;
+
+      const previousDates = visibleCalendarDates();
+      nextMonth.click();
+      await waitUntil(() => {
+        dateButton = findSelectableDateButton();
+        const renderedDates = visibleCalendarDates();
+        return (
+          dateButton instanceof HTMLButtonElement ||
+          (renderedDates.length > 0 && renderedDates !== previousDates)
+        );
+      }, label + ' calendar did not advance');
+    }
+    if (!(dateButton instanceof HTMLButtonElement)) {
+      throw new Error(label + ' was not found in the calendar');
+    }
+    dateButton.click();
+    await waitUntil(() => hidden.value === desiredDate, label + ' did not update');
+  };
+  const selectDateAfterRequestSettles = async (
+    ariaLabel,
+    inputName,
+    desiredDate,
+    label
+  ) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const submit = document.querySelector('button[type="submit"]');
+      if (!(submit instanceof HTMLButtonElement)) {
+        throw new Error('office reservation submit control not found');
+      }
+      let sawPendingRequest =
+        submit.dataset.reservationAvailabilityLoading === 'true' ||
+        submit.dataset.reservationPriceLoading === 'true';
+      const requestObserver = new MutationObserver((records) => {
+        if (
+          records.some(
+            (record) =>
+              record.oldValue === 'true' ||
+              (record.target instanceof HTMLButtonElement &&
+                (record.target.dataset.reservationAvailabilityLoading === 'true' ||
+                  record.target.dataset.reservationPriceLoading === 'true'))
+          )
+        ) {
+          sawPendingRequest = true;
+        }
+      });
+      requestObserver.observe(submit, {
+        attributeFilter: [
+          'data-reservation-availability-loading',
+          'data-reservation-price-loading',
+        ],
+        attributeOldValue: true,
+      });
+
+      let dateRegressed = false;
+      try {
+        await selectDate(ariaLabel, inputName, desiredDate, label);
+        await waitUntil(() => {
+          const hidden = document.querySelector('input[name="' + inputName + '"]');
+          const currentSubmit = document.querySelector('button[type="submit"]');
+          if (!(hidden instanceof HTMLInputElement)) return false;
+          if (hidden.value !== desiredDate) {
+            dateRegressed = true;
+            return true;
+          }
+          if (!(currentSubmit instanceof HTMLButtonElement)) return false;
+          const requestPending =
+            currentSubmit.dataset.reservationAvailabilityLoading === 'true' ||
+            currentSubmit.dataset.reservationPriceLoading === 'true';
+          if (requestPending) sawPendingRequest = true;
+          return sawPendingRequest && !requestPending;
+        }, label + ' request did not settle');
+      } finally {
+        requestObserver.disconnect();
+      }
+
+      if (!dateRegressed) return;
+    }
+
+    throw new Error(label + ' did not remain selected');
+  };
+
+  await selectDateAfterRequestSettles(
+    'Office reservation start date',
+    'startsOn',
+    expected.startsOn,
+    'office start date'
+  );
+  setField('input[name="dayCount"]', String(expected.dayCount));
+  const seatsOption = document.querySelector(
+    'input[name="seats"][value="' + expected.seats + '"]'
+  );
+  if (!(seatsOption instanceof HTMLInputElement)) {
+    throw new Error('office seat option not found');
+  }
+  seatsOption.click();
+  setField('input[name="email"]', expected.email);
+  setField('input[name="phone"]', expected.phone);
+  setField('input[name="name"]', expected.name);
+  setField('textarea[name="message"]', expected.message);
+
+  let priceRetryAttempted = false;
+  await waitUntil(() => {
+    const startsOn = document.querySelector('input[name="startsOn"]');
+    const dayCount = document.querySelector('input[name="dayCount"]');
+    const seats = document.querySelector('input[name="seats"]:checked');
+    const submit = document.querySelector('button[type="submit"]');
+    const priceRetry = document.querySelector('#reservation-advertised-price-retry');
+    if (
+      !priceRetryAttempted &&
+      priceRetry instanceof HTMLButtonElement &&
+      !priceRetry.disabled
+    ) {
+      priceRetryAttempted = true;
+      priceRetry.click();
+    }
+    return (
+      startsOn instanceof HTMLInputElement &&
+      startsOn.value === expected.startsOn &&
+      dayCount instanceof HTMLInputElement &&
+      dayCount.value === String(expected.dayCount) &&
+      seats instanceof HTMLInputElement &&
+      seats.value === String(expected.seats) &&
+      submit instanceof HTMLButtonElement &&
+      !submit.disabled
+    );
+  }, () => {
+    const submit = document.querySelector('button[type="submit"]');
+    const priceRetry = document.querySelector('#reservation-advertised-price-retry');
+    const value = (name) =>
+      submit instanceof HTMLButtonElement ? submit.dataset[name] ?? 'unknown' : 'missing';
+    return [
+      'office availability or advertised price did not become ready',
+      'availability_loading=' + value('reservationAvailabilityLoading'),
+      'price_error=' + value('reservationPriceError'),
+      'price_loading=' + value('reservationPriceLoading'),
+      'unavailable=' + value('reservationUnavailable'),
+      'price_retry_available=' + String(
+        priceRetry instanceof HTMLButtonElement && !priceRetry.disabled
+      ),
+      'price_retry_attempted=' + String(priceRetryAttempted),
+    ].join('; ');
+  });
+  return location.href;
+})()
+`;
+};
+
 const getSubmitPreparedReservationScript = () => `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -530,6 +819,9 @@ export const submitPreparedCoworkReservationScript =
   getSubmitPreparedReservationScript();
 
 export const submitPreparedMeetingRoomReservationScript =
+  getSubmitPreparedReservationScript();
+
+export const submitPreparedOfficeReservationScript =
   getSubmitPreparedReservationScript();
 
 export const getSubmitContactFormScript = (data: {

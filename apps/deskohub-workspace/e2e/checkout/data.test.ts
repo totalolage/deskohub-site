@@ -11,10 +11,12 @@ import { workspaceE2ETimeouts } from "../timeouts";
 import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
+  makeOfficeCheckoutData,
   reuseCoworkCheckoutContact,
   reuseMeetingRoomCheckoutContact,
   selectAvailableCoworkDates,
   selectAvailableMeetingRoomSlots,
+  selectAvailableOfficeSlot,
   selectCoworkDates,
 } from "./data";
 
@@ -197,6 +199,24 @@ test("reuses a meeting-room customer while changing the interval", () => {
   });
   expect(second.meetingRoom?.duration).toEqual({ unit: "hour", amount: 4 });
   expect(second.meetingRoom?.startsAt).toBe(secondInterval!.startsAt);
+});
+
+test("builds minimal office persistence data with transient range and seats", () => {
+  const slot = {
+    startsOn: "2099-09-01",
+    endsOn: "2099-09-02",
+    seats: 2,
+    startsAt: "2099-08-31T22:00:00Z",
+    endsAt: "2099-09-02T22:00:00Z",
+  } as const;
+  const data = makeOfficeCheckoutData("https://workspace.example.com", slot);
+
+  expect(new URL(data.checkoutUrl).pathname).toBe("/en-US/reservation/office");
+  expect(data.date).toBe(slot.startsOn);
+  expect(data.expectedReservationDetails).toEqual({ kind: "office" });
+  expect(data.office).toEqual(slot);
+  expect(data.expectedReservationDetails).not.toHaveProperty("startsOn");
+  expect(data.expectedReservationDetails).not.toHaveProperty("seats");
 });
 
 test("loads availability through the provided HTTP client", async () => {
@@ -531,6 +551,93 @@ test("keeps meeting-room dates disjoint across allocation shards", async () => {
   );
 
   expect(new Set(slotsByShard.flat().map(({ date }) => date)).size).toBe(3);
+});
+
+test("selects disjoint multi-day office ranges across allocation shards", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  const requests: Request[] = [];
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push(request);
+      return Response.json({
+        officeUnavailable: false,
+        unavailableDates: [],
+      });
+    }
+  );
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const slots = await Promise.all(
+    Array.from({ length: 3 }, (_, shardIndex) =>
+      Effect.runPromise(
+        selectAvailableOfficeSlot(
+          makeConfig(),
+          makeWorkspaceE2EDateAllocation({
+            runId: `office-${shardIndex}`,
+            shardIndex,
+          })
+        ).pipe(Effect.provide(httpClientLayer))
+      )
+    )
+  );
+  const touchedDates = slots.flatMap(({ endsOn, startsOn }) => [
+    startsOn,
+    endsOn,
+  ]);
+
+  expect(new Set(touchedDates).size).toBe(touchedDates.length);
+  expect(
+    slots.every(
+      ({ endsOn, startsOn }) =>
+        Temporal.PlainDate.from(startsOn).add({ days: 1 }).toString() ===
+          endsOn && endsOn <= "2099-08-17"
+    )
+  ).toBe(true);
+  expect(requests).toHaveLength(3);
+  expect(requests[0]?.url).toContain("kind=office");
+  expect(requests[0]?.url).toContain("seats=2");
+  expect(requests[0]?.headers.get("x-vercel-protection-bypass")).toBe(
+    "test-protection-bypass"
+  );
+});
+
+test("skips an unavailable office range before selecting the next owned range", async () => {
+  setSystemTime(new Date("2099-07-17T09:48:00.000Z"));
+  let requestCount = 0;
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        mock(async () => {
+          requestCount += 1;
+          return Response.json({
+            officeUnavailable: requestCount === 1,
+            unavailableDates: [],
+          });
+        }) as unknown as typeof globalThis.fetch
+      )
+    )
+  );
+
+  const slot = await Effect.runPromise(
+    selectAvailableOfficeSlot(makeConfig()).pipe(
+      Effect.provide(httpClientLayer)
+    )
+  );
+
+  expect(requestCount).toBe(2);
+  expect(slot.endsOn).toBe(
+    Temporal.PlainDate.from(slot.startsOn).add({ days: 1 }).toString()
+  );
 });
 
 test("rejects meeting-room slots that touch an unavailable date", async () => {

@@ -1,13 +1,6 @@
 import { formatDiscountAdjustment } from "@/features/checkout/format-discount-adjustment";
-import {
-  workspaceCoworkProductTiers,
-  workspaceMeetingRoomCatalog,
-} from "@/features/checkout/product-catalog";
-import {
-  getWorkspaceProductKey,
-  type WorkspaceProductIdentity,
-} from "@/features/checkout/product-identity";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { getReservationStartPath } from "@/features/reservation/routes";
@@ -16,7 +9,7 @@ import type { LandingPageSaleBannerContent } from "./components/landing-page-sal
 type LandingPageSale = {
   readonly title: string;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
 };
 
 export function getLandingPageSaleBannerContent({
@@ -49,44 +42,22 @@ export function formatLandingPageSaleBannerLabel(
   sale: LandingPageSale,
   locale: Locale
 ) {
-  const productKeys = new Set(sale.products.map(getWorkspaceProductKey));
-  const coworkCount = workspaceCoworkProductTiers.filter((tier) =>
-    productKeys.has(`cowork:${tier}`)
-  ).length;
-  const meetingRoomCount = workspaceMeetingRoomCatalog.filter(({ duration }) =>
-    productKeys.has(getWorkspaceProductKey({ kind: "meeting-room", duration }))
-  ).length;
-  const hasAllCoworkProducts =
-    coworkCount === workspaceCoworkProductTiers.length;
-  const hasAllMeetingRoomProducts =
-    meetingRoomCount === workspaceMeetingRoomCatalog.length;
+  const productKinds = new Set(sale.products.map(({ kind }) => kind));
   const values = {
     title: sale.title,
     adjustment: formatDiscountAdjustment(sale.adjustment, locale),
   };
 
-  if (hasAllCoworkProducts && hasAllMeetingRoomProducts) {
+  if (productKinds.size === 3) {
     return m.landingSaleBannerAllProducts(values, { locale });
   }
 
-  if (hasAllCoworkProducts && meetingRoomCount === 0) {
+  if (productKinds.size === 1 && productKinds.has("cowork")) {
     return m.landingSaleBannerAllCoworkProducts(values, { locale });
   }
 
-  if (coworkCount === 0 && hasAllMeetingRoomProducts) {
+  if (productKinds.size === 1 && productKinds.has("meeting-room")) {
     return m.landingSaleBannerAllMeetingRoomProducts(values, { locale });
-  }
-
-  if (hasAllCoworkProducts && meetingRoomCount > 0) {
-    return m.landingSaleBannerAllCoworkAndSelectedMeetingRoomProducts(values, {
-      locale,
-    });
-  }
-
-  if (coworkCount > 0 && hasAllMeetingRoomProducts) {
-    return m.landingSaleBannerSelectedCoworkAndAllMeetingRoomProducts(values, {
-      locale,
-    });
   }
 
   return m.landingSaleBannerSelectedProducts(values, { locale });

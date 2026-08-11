@@ -6,14 +6,18 @@ import {
   getAssertPrefilledReservationScript,
   getPrepareCoworkAdvertisedPriceScript,
   getPrepareMeetingRoomAdvertisedPriceScript,
+  getPrepareOfficeAdvertisedPriceScript,
   getSubmitCoworkReservationScript,
   getSubmitMeetingRoomReservationScript,
+  getSubmitOfficeReservationScript,
   submitPreparedCoworkReservationScript,
   submitPreparedMeetingRoomReservationScript,
+  submitPreparedOfficeReservationScript,
 } from "./browser-scripts";
 import {
   makeCoworkCheckoutData,
   makeMeetingRoomCheckoutData,
+  makeOfficeCheckoutData,
 } from "./checkout/data";
 import { workspaceE2ETimeouts } from "./timeouts";
 
@@ -25,6 +29,13 @@ const getTestMeetingRoomInterval = (
   startDateTime: string,
   duration: MeetingRoomReservationDuration
 ) => getMeetingRoomReservationInterval(startDateTime, duration);
+const officeSlot = {
+  startsOn: "2099-09-01",
+  endsOn: "2099-09-02",
+  seats: 2,
+  startsAt: "2099-08-31T22:00:00Z",
+  endsAt: "2099-09-02T22:00:00Z",
+} as const;
 
 test("keeps advertised-price preparation separable from form submission", () => {
   const data = makeCoworkCheckoutData(
@@ -874,6 +885,149 @@ test("asserts restored whole-day meeting-room state and reset marketing consent"
     document.body.innerHTML = `
       <input name="startDateTime" value="2099-09-01" />
       <input id="meeting-room-duration-day:1" type="radio" value="day:1" checked />
+      <input name="email" value="${data.email}" />
+      <input name="phone" value="${data.phone}" />
+      <input name="name" value="${data.name}" />
+      <textarea name="message">${data.message}</textarea>
+      <button id="reservation-marketing-consent" aria-checked="false"></button>
+    `;
+    const run = new Function(
+      "document",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      `return (${assertion})`
+    );
+
+    expect(
+      run(document, HTMLButtonElement, HTMLInputElement, HTMLTextAreaElement)
+    ).toBe(true);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("prepares a multi-day office reservation with selected seats", async () => {
+  const data = makeOfficeCheckoutData(
+    "https://workspace.example.test",
+    officeSlot
+  );
+  const prepare = getPrepareOfficeAdvertisedPriceScript(data);
+  const combined = getSubmitOfficeReservationScript(data);
+
+  expect(prepare).toContain("Office reservation start date");
+  expect(prepare).toContain('input[name="dayCount"]');
+  expect(prepare).not.toContain("Office reservation end date");
+  expect(prepare).toContain(
+    "office availability or advertised price did not become ready"
+  );
+  expect(prepare).not.toContain("reservation-privacy-consent");
+  expect(submitPreparedOfficeReservationScript).toContain("reservation-submit");
+  expect(submitPreparedOfficeReservationScript).not.toContain(
+    "reservation-privacy-consent"
+  );
+  expect(combined).toContain(prepare.trim());
+  expect(() => new Function(`return ${combined}`)).not.toThrow();
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/office",
+  });
+  try {
+    document.body.innerHTML = `
+      <button aria-label="Office reservation start date" type="button"></button>
+      <div data-day="${officeSlot.startsOn}"><button type="button"></button></div>
+      <input name="startsOn" value="" />
+      <input name="dayCount" type="number" value="1" />
+      <input name="seats" type="radio" value="1" />
+      <input checked name="seats" type="radio" value="2" />
+      <input name="email" />
+      <input name="phone" />
+      <input name="name" />
+      <textarea name="message"></textarea>
+      <button
+        data-reservation-availability-loading="false"
+        data-reservation-price-loading="false"
+        type="submit"
+      ></button>
+    `;
+    for (const dateButton of document.querySelectorAll<HTMLButtonElement>(
+      "[data-day] button"
+    )) {
+      dateButton.addEventListener("click", () => {
+        const selectedDate = dateButton.parentElement?.dataset.day;
+        if (!selectedDate) return;
+        const input = document.querySelector<HTMLInputElement>(
+          'input[name="startsOn"]'
+        );
+        if (!input) return;
+        input.value = selectedDate;
+        const submit = document.querySelector<HTMLButtonElement>(
+          'button[type="submit"]'
+        );
+        if (submit) submit.dataset.reservationPriceLoading = "true";
+        setTimeout(() => {
+          if (submit) submit.dataset.reservationPriceLoading = "false";
+        }, 20);
+      });
+    }
+    const run = new Function(
+      "document",
+      "HTMLElement",
+      "HTMLButtonElement",
+      "HTMLInputElement",
+      "HTMLTextAreaElement",
+      "Event",
+      "Date",
+      "setTimeout",
+      "location",
+      `return (${prepare.trim()})`
+    );
+
+    await expect(
+      run(
+        document,
+        HTMLElement,
+        HTMLButtonElement,
+        HTMLInputElement,
+        HTMLTextAreaElement,
+        Event,
+        Date,
+        setTimeout,
+        location
+      )
+    ).resolves.toBe(location.href);
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="dayCount"]')?.value
+    ).toBe("2");
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="seats"]:checked')
+        ?.value
+    ).toBe("2");
+    expect(
+      document.querySelector<HTMLInputElement>('input[name="email"]')?.value
+    ).toBe(data.email);
+  } finally {
+    await GlobalRegistrator.unregister();
+    globalThis.Temporal = workspaceTemporal;
+  }
+});
+
+test("asserts restored office range, seats, and reset marketing consent", async () => {
+  const data = makeOfficeCheckoutData(
+    "https://workspace.example.test",
+    officeSlot
+  );
+  const assertion = getAssertPrefilledReservationScript(data);
+
+  GlobalRegistrator.register({
+    url: "https://workspace.example.test/en-US/reservation/office",
+  });
+  try {
+    document.body.innerHTML = `
+      <input name="startsOn" value="${officeSlot.startsOn}" />
+      <input name="dayCount" type="number" value="2" />
+      <input checked name="seats" type="radio" value="${officeSlot.seats}" />
       <input name="email" value="${data.email}" />
       <input name="phone" value="${data.phone}" />
       <input name="name" value="${data.name}" />

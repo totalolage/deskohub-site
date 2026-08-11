@@ -164,7 +164,8 @@ const getAvailability = (input: {
   readonly startsAt?: string;
   readonly endsAt?: string;
   readonly to?: string;
-  readonly kind?: "cowork" | "meeting-room";
+  readonly kind?: "cowork" | "meeting-room" | "office";
+  readonly seats?: number;
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -187,24 +188,38 @@ const getAvailability = (input: {
         to: input.to ?? testDate,
       };
 
-      return yield* input.kind === "meeting-room"
-        ? service.getAvailability({
-            query: {
-              ...baseQuery,
-              kind: "meeting-room",
-              startsAt: input.startsAt,
-              endsAt: input.endsAt,
-            },
-          })
-        : service.getAvailability({
-            query: {
-              ...baseQuery,
-              kind: "cowork",
-              date: input.date,
-              entryTier: input.entryTier,
-              monitorOption: input.monitorOption,
-            },
-          });
+      if (input.kind === "meeting-room") {
+        return yield* service.getAvailability({
+          query: {
+            ...baseQuery,
+            kind: "meeting-room",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+          },
+        });
+      }
+
+      if (input.kind === "office") {
+        return yield* service.getAvailability({
+          query: {
+            ...baseQuery,
+            kind: "office",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+            seats: input.seats,
+          },
+        });
+      }
+
+      return yield* service.getAvailability({
+        query: {
+          ...baseQuery,
+          kind: "cowork",
+          date: input.date,
+          entryTier: input.entryTier,
+          monitorOption: input.monitorOption,
+        },
+      });
     }),
     input
   );
@@ -237,6 +252,22 @@ const getReplacementAvailability = (input: {
   );
 
 describe("WorkspaceAvailabilityService", () => {
+  test("fails when an eligible table has an invalid seat capacity", async () => {
+    await expect(
+      getAvailability({
+        date: testDate,
+        entryTier: "basic",
+        tables: [
+          makeTable({
+            id: "invalid-basic",
+            tags: ["tier:basic"],
+            seats: "not-a-number",
+          }),
+        ],
+      })
+    ).rejects.toMatchObject({ _tag: "ValidationError" });
+  });
+
   test("loads only the active reservation interval covering Prague dates", async () => {
     let interval: DotyposReservationInterval | undefined;
 
@@ -427,6 +458,63 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
     expect(fullyOccupied.unavailableCoworkTiers).toContain("basic");
+  });
+
+  test("marks an office unavailable after any overlapping occupancy", async () => {
+    const officeTable = makeTable({
+      id: "office",
+      tags: ["reservation:office"],
+      seats: "8",
+    });
+    const query = {
+      kind: "office" as const,
+      startsAt: testStart,
+      endsAt: testEnd,
+      seats: 2,
+      tables: [officeTable],
+    };
+
+    const empty = await getAvailability(query);
+    const partiallyOccupied = await getAvailability({
+      ...query,
+      reservations: [
+        makeReservation({
+          tableId: "office",
+          status: "CONFIRMED",
+          seats: "1",
+        }),
+      ],
+    });
+
+    expect(empty.officeUnavailable).toBe(false);
+    expect(partiallyOccupied.officeUnavailable).toBe(true);
+  });
+
+  test("returns occupied office dates without a selected interval or seats", async () => {
+    const availability = await getAvailability({
+      kind: "office",
+      from: testDate,
+      to: nextTestDate,
+      tables: [
+        makeTable({
+          id: "office",
+          tags: ["reservation:office"],
+          seats: "8",
+        }),
+      ],
+      reservations: [
+        makeReservation({
+          tableId: "office",
+          status: "CONFIRMED",
+          seats: "1",
+          startDate: "2099-06-10T22:00:00Z",
+          endDate: "2099-06-11T22:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.unavailableDates).toContain(nextTestDate);
   });
 
   test("marks a meeting room unavailable after any overlapping booking", async () => {

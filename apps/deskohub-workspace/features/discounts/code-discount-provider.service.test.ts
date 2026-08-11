@@ -83,7 +83,7 @@ const definition = (
     "cs-CZ": "Letní databázová sleva",
   },
   adjustment: { kind: "percentage", basisPoints: 5000 },
-  products: [product],
+  products: [{ kind: "cowork" }],
   ...overrides,
 });
 
@@ -353,9 +353,7 @@ describe("CodeDiscountProvider", () => {
   test("fails explicitly when the product is not targeted", async () => {
     const result = await runWithProvider(resolve().pipe(Effect.result), {
       loadDefinition: () =>
-        Effect.succeed(
-          definition({ products: [{ kind: "cowork", tier: "plus" }] })
-        ),
+        Effect.succeed(definition({ products: [{ kind: "meeting-room" }] })),
     });
 
     expect(result).toMatchObject({

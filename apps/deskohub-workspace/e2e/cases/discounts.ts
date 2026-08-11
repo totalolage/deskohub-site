@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceE2EDateAllocation } from "../allocation";
 import {
   evalBrowserScript,
@@ -47,7 +46,7 @@ import type { E2EDatabase } from "../integrations/database.service";
 import {
   discountCodeFixtures,
   expireDiscountCodeForE2E,
-  setE2ECalendarSaleProfiEligibility,
+  setE2ECalendarSaleCoworkEligibility,
 } from "../integrations/discount-fixtures";
 import {
   changeDotyposCustomerDiscount,
@@ -149,6 +148,7 @@ export const makeDiscountE2ECases = ({
     const customerDiscountExpectation = makeCustomerDiscountExpectation(
       customerDiscountGroup.basisPoints
     );
+    const coworkAutomaticDiscounts = [calendarDiscountExpectation] as const;
     const checkoutDates = yield* selectCoworkDates(
       preparation.availableBasicDates,
       unavailableCodeScenarios.length + 9,
@@ -200,7 +200,10 @@ export const makeDiscountE2ECases = ({
           data: codeCheckoutData,
           datasourceConfig,
           discountCode: discountCodeFixtures.partial.code,
-          expectedDiscounts: [codeDiscountExpectation],
+          expectedDiscounts: [
+            ...coworkAutomaticDiscounts,
+            codeDiscountExpectation,
+          ],
           flowId: "cowork-discount-code",
           resources,
           run,
@@ -262,7 +265,7 @@ export const makeDiscountE2ECases = ({
           config,
           data: calendarCheckoutData,
           datasourceConfig,
-          expectedDiscounts: [calendarDiscountExpectation],
+          expectedDiscounts: coworkAutomaticDiscounts,
           flowId: "cowork-calendar-sale",
           resources,
           run,
@@ -298,7 +301,7 @@ export const makeDiscountE2ECases = ({
           datasourceConfig,
           discountCode: discountCodeFixtures.partial.code,
           expectedDiscounts: [
-            calendarDiscountExpectation,
+            ...coworkAutomaticDiscounts,
             codeDiscountExpectation,
           ],
           flowId: "cowork-calendar-sale-and-code",
@@ -340,7 +343,7 @@ export const makeDiscountE2ECases = ({
     cases.push({
       checkoutStates: [quoteChangeState, paymentChangeState],
       execute: ({ runStep, session }) =>
-        withE2ECalendarSaleProfiEligibility(
+        withE2ECalendarSaleCoworkEligibility(
           executeCalendarSaleDisappearsBeforeQuote({
             config,
             data: quoteChangeData,
@@ -351,7 +354,7 @@ export const makeDiscountE2ECases = ({
           })
         ).pipe(
           Effect.andThen(
-            withE2ECalendarSaleProfiEligibility(
+            withE2ECalendarSaleCoworkEligibility(
               executeCalendarSaleDisappearsBeforePayment({
                 config,
                 data: paymentChangeData,
@@ -381,7 +384,10 @@ export const makeDiscountE2ECases = ({
           yield* requireCheckoutDate(checkoutDates, nextDateIndex),
           "cowork-customer-discount"
         ),
-        expectedDiscounts: [customerDiscountExpectation],
+        expectedDiscounts: [
+          ...coworkAutomaticDiscounts,
+          customerDiscountExpectation,
+        ],
         id: "customer-discount",
       },
       {
@@ -392,6 +398,7 @@ export const makeDiscountE2ECases = ({
         ),
         discountCode: discountCodeFixtures.partial.code,
         expectedDiscounts: [
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
@@ -405,7 +412,7 @@ export const makeDiscountE2ECases = ({
           { entryTier: "plus" }
         ),
         expectedDiscounts: [
-          calendarDiscountExpectation,
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
         ],
         id: "calendar-and-customer-discount",
@@ -419,7 +426,7 @@ export const makeDiscountE2ECases = ({
         ),
         discountCode: discountCodeFixtures.partial.code,
         expectedDiscounts: [
-          calendarDiscountExpectation,
+          ...coworkAutomaticDiscounts,
           customerDiscountExpectation,
           codeDiscountExpectation,
         ],
@@ -660,14 +667,13 @@ const executeCalendarSaleDisappearsBeforeQuote = ({
           discounts: [calendarDiscountExpectation],
           run,
           session,
-          tier: "profi",
         });
       }),
       id: "advertise-calendar-sale",
       timeoutMs: config.timeouts.checkoutStart,
     });
     yield* runStep({
-      execute: setE2ECalendarSaleProfiEligibility(false),
+      execute: setE2ECalendarSaleCoworkEligibility(false),
       id: "remove-calendar-sale-eligibility-before-quote",
       timeoutMs: config.timeouts.datasource,
     });
@@ -741,7 +747,7 @@ const executeCalendarSaleDisappearsBeforePayment = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      execute: setE2ECalendarSaleProfiEligibility(false),
+      execute: setE2ECalendarSaleCoworkEligibility(false),
       id: "remove-calendar-sale-eligibility-before-payment",
       timeoutMs: config.timeouts.datasource,
     });
@@ -854,14 +860,16 @@ const executeCustomerDiscountChangesBeforePayment = ({
     log(`changed-before-payment customer discount passed for order ${orderId}`);
   });
 
-const withE2ECalendarSaleProfiEligibility = <A>(
+const withE2ECalendarSaleCoworkEligibility = <A>(
   effect: Effect.Effect<A, WorkspaceE2EError, E2EDatabase>
 ): Effect.Effect<A, WorkspaceE2EError, E2EDatabase> =>
   Effect.gen(function* () {
-    yield* setE2ECalendarSaleProfiEligibility(true);
+    yield* setE2ECalendarSaleCoworkEligibility(true);
     return yield* effect;
   }).pipe(
-    Effect.ensuring(setE2ECalendarSaleProfiEligibility(true).pipe(Effect.orDie))
+    Effect.ensuring(
+      setE2ECalendarSaleCoworkEligibility(true).pipe(Effect.orDie)
+    )
   );
 
 const executeConsumedDiscountCode = ({
@@ -1176,18 +1184,14 @@ export const assertDisplayedDiscounts = ({
   discounts,
   run,
   session,
-  tier,
 }: {
   readonly config: WorkspaceE2EConfig;
   readonly discounts: readonly ExpectedDiscountApplication[];
   readonly run: Runner;
   readonly session: string;
-  readonly tier?: WorkspaceCoworkProductTier;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const triggerSelector = tier
-      ? `[data-reservation-type-option="${tier}"] button[aria-label^="Show discounts applied to"]`
-      : 'button[aria-label^="Show discounts applied to"]';
+    const triggerSelector = "[data-checkout-discount-details]";
     yield* waitForBrowserReactHandler(
       run,
       session,

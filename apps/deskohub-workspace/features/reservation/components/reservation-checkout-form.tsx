@@ -2,12 +2,14 @@
 
 import type { FormEvent, ReactNode } from "react";
 import type { FieldValues, UseFormReturn } from "react-hook-form";
+import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-summary";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { Form } from "@/shared/components/ui/form";
 import { ReservationCustomerFields } from "./reservation-customer-fields";
 import { ReservationFormCard } from "./reservation-form-card";
+import { ReservationFormSale } from "./reservation-form-sale";
 import { ReservationMarketingConsentField } from "./reservation-marketing-consent-field";
 import { ReservationPrivacyNotice } from "./reservation-privacy-notice";
 import { ReservationSubmitSection } from "./reservation-submit-section";
@@ -26,6 +28,10 @@ type ReservationCheckoutFormProps<
     readonly isFetching: boolean;
     readonly retry: () => void;
     readonly token?: string;
+    readonly sale?: {
+      readonly discounts: readonly CheckoutSummaryDiscount[];
+      readonly productLabel: string;
+    };
   };
   readonly availability: {
     readonly isFetching: boolean;
@@ -94,7 +100,17 @@ export function ReservationCheckoutForm<
   }
 
   return (
-    <ReservationFormCard>
+    <ReservationFormCard
+      sale={
+        advertisedPrice.sale?.discounts.length ? (
+          <ReservationFormSale
+            discounts={advertisedPrice.sale.discounts}
+            locale={locale}
+            productLabel={advertisedPrice.sale.productLabel}
+          />
+        ) : undefined
+      }
+    >
       <Form {...form}>
         <form className="space-y-7" onSubmit={handleSubmit}>
           {children}

@@ -7,7 +7,7 @@ import {
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
-  discountProductIdentitySchema,
+  discountProductTargetSchema,
 } from "./contracts";
 import { DiscountService } from "./discount.service";
 import { DiscountServiceMock } from "./discount.service.mock";
@@ -28,56 +28,56 @@ describe("discount contracts", () => {
     expect(() => decodeDiscountId("")).toThrow();
   });
 
-  test("decodes every current cowork product identity", () => {
-    expect(
-      ["basic", "plus", "profi"].map((tier) =>
-        decodeStandardSchema(discountProductIdentitySchema, {
-          kind: "cowork",
-          tier,
-        })
-      )
-    ).toEqual([
-      { kind: "cowork", tier: "basic" },
-      { kind: "cowork", tier: "plus" },
-      { kind: "cowork", tier: "profi" },
-    ]);
-  });
-
-  test("decodes every meeting-room product identity", () => {
+  test("decodes exactly one target for each reservation family", () => {
     const products = [
-      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
+      { kind: "cowork" },
+      { kind: "meeting-room" },
+      { kind: "office" },
     ] as const;
 
     expect(
       products.map((product) =>
-        decodeStandardSchema(discountProductIdentitySchema, product)
+        decodeStandardSchema(discountProductTargetSchema, product)
       )
     ).toEqual(products);
   });
 
-  test("strictly rejects unknown product kinds, tiers, durations, and fields", () => {
+  test("keeps family targets separate from exact product identities", () => {
+    for (const product of [
+      { kind: "cowork", tier: "basic" },
+      {
+        kind: "meeting-room",
+        duration: { unit: "hour", amount: 1 },
+      },
+      { kind: "office", seats: 3, dayCount: 2 },
+    ]) {
+      expect(
+        decodeStandardSchema(discountProductTargetSchema, product)
+      ).toBeUndefined();
+    }
+  });
+
+  test("strictly rejects unknown product kinds and fields", () => {
     expect(
-      decodeStandardSchema(discountProductIdentitySchema, {
+      decodeStandardSchema(discountProductTargetSchema, {
         kind: "event",
         tier: "basic",
       })
     ).toBeUndefined();
     expect(
-      decodeStandardSchema(discountProductIdentitySchema, {
+      decodeStandardSchema(discountProductTargetSchema, {
         kind: "meeting-room",
         duration: { unit: "hour", amount: 2 },
       })
     ).toBeUndefined();
     expect(
-      decodeStandardSchema(discountProductIdentitySchema, {
+      decodeStandardSchema(discountProductTargetSchema, {
         kind: "cowork",
         tier: "enterprise",
       })
     ).toBeUndefined();
     expect(
-      decodeStandardSchema(discountProductIdentitySchema, {
+      decodeStandardSchema(discountProductTargetSchema, {
         kind: "cowork",
         tier: "basic",
         roomId: "private-provider-field",

@@ -526,6 +526,107 @@ describe("CheckoutStatusService", () => {
     expect(JSON.stringify(status)).not.toContain("customer-access-code");
   });
 
+  test("reconstructs office dates and seats from Dotypos", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "../holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            reservationDetails: { kind: "office" },
+            productTier: null,
+            productCoffee: false,
+            productMonitorOption: null,
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "office-table",
+            startDate: "2026-06-11T22:00:00.000Z",
+            endDate: "2026-06-14T22:00:00.000Z",
+            seats: "3",
+            status: "CONFIRMED",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+    });
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderPaymentFinalizationService, finalization),
+              Layer.succeed(WorkspaceReservationRepository, reservations),
+              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+              Layer.succeed(DotyposService, dotypos),
+              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      kind: "office",
+      status: "fulfilled",
+      summary: {
+        kind: "office",
+        seats: 3,
+        price: { value: 55_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(status.summary?.reservedFrom.toString()).toBe(
+      "2026-06-11T22:00:00Z"
+    );
+    expect(status.summary?.reservedUntil.toString()).toBe(
+      "2026-06-14T22:00:00Z"
+    );
+  });
+
   test("includes support contact prefill only after fulfillment fails", async () => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(

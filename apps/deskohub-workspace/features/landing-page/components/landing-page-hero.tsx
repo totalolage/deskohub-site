@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import type { Locale } from "@/features/i18n";
 import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
+import { OfficeReservationFeatureFlagServiceLive } from "@/features/office/backend/office-reservation-feature-flag.server";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getActiveLandingPageSaleBanner } from "../landing-page-sale-banner.server";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
@@ -45,6 +46,7 @@ async function LandingPageHeroContent({
     isMeetingRoomPageEnabled(),
     getActiveLandingPageSaleBanner({ locale }).pipe(
       Effect.provide(DiscountServiceLiveWithDependencies),
+      Effect.provide(OfficeReservationFeatureFlagServiceLive),
       runWorkspaceEffect("landing-page.sale-banner.load", {
         boundary: "page",
       })

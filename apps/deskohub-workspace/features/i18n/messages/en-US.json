@@ -41,8 +41,6 @@
   "landingSaleBannerAllProducts": "{title}: {adjustment} off!",
   "landingSaleBannerAllCoworkProducts": "{title}: {adjustment} off cowork access!",
   "landingSaleBannerAllMeetingRoomProducts": "{title}: {adjustment} off meeting room reservations!",
-  "landingSaleBannerAllCoworkAndSelectedMeetingRoomProducts": "{title}: {adjustment} off cowork access and chosen meeting room reservations!",
-  "landingSaleBannerSelectedCoworkAndAllMeetingRoomProducts": "{title}: {adjustment} off chosen cowork access and meeting room reservations!",
   "landingSaleBannerSelectedProducts": "{title}: {adjustment} off chosen products!",
   "landingSaleBannerCta": "Book with discount",
   "landingHeroHighlightOne": "24/7 unique code access",
@@ -272,6 +270,40 @@
   "reservationMeetingRoomDurationLabel": "Duration",
   "reservationMeetingRoomMessagePlaceholder": "Company name, room setup, invoice note, or anything we should know.",
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
+  "reservationOfficeProductTitle": "Private office",
+  "reservationOfficeBasePriceLabel": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Private office - {dayCount} day",
+        "dayCountPlural=other": "Private office - {dayCount} days"
+      }
+    }
+  ],
+  "reservationOfficeMetadataTitle": "Private office reservation | Deskohub Workspace",
+  "reservationOfficeMetadataDescription": "Reserve a private office at Deskohub Workspace for one or more whole days and choose the seats you need.",
+  "reservationOfficeFormTitle": "Reserve a private office.",
+  "reservationOfficeFormDescription": "Choose a start date and number of days, select the office seats, and continue to secure payment.",
+  "reservationOfficeDateRangeLabel": "Reservation dates",
+  "reservationOfficeStartDateLabel": "Office reservation start date",
+  "reservationOfficeDayCountLabel": "Number of days",
+  "reservationOfficeSeatCountLabel": "How many office seats do you need?",
+  "reservationOfficeSeatCountOption": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} seat",
+        "countPlural=other": "{count} seats"
+      }
+    }
+  ],
+  "reservationOfficeMessagePlaceholder": "Company name, office setup, invoice note, or anything we should know.",
+  "reservationOfficeUnavailable": "The office is not available for all the selected days. Try another start date or a shorter stay.",
   "reservationCoffeeLabel": "Coffee",
   "reservationMonitorLabel": "Monitor setup",
   "reservationMonitor2x27QhdTitle": "2x 27 QHD",
@@ -336,6 +368,46 @@
   "checkoutSummaryDiscountedPrice": "Discounted price: {price}",
   "checkoutSummaryItemCoffee": "Coffee",
   "checkoutSummaryItemMeetingRoom": "Meeting room - {duration}",
+  "checkoutSummaryItemOfficeAccess": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "Private office access · {dayCount} day",
+        "dayCountPlural=other": "Private office access · {dayCount} days"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeSeatCount": [
+    {
+      "declarations": [
+        "input seatCount",
+        "local seatCountPlural = seatCount: plural"
+      ],
+      "selectors": ["seatCountPlural"],
+      "match": {
+        "seatCountPlural=one": "{seatCount} office seat",
+        "seatCountPlural=other": "{seatCount} office seats"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDayCount": [
+    {
+      "declarations": [
+        "input dayCount",
+        "local dayCountPlural = dayCount: plural"
+      ],
+      "selectors": ["dayCountPlural"],
+      "match": {
+        "dayCountPlural=one": "{dayCount} day",
+        "dayCountPlural=other": "{dayCount} days"
+      }
+    }
+  ],
+  "checkoutSummaryItemOfficeDiscount": "Office discount",
   "checkoutSummaryItemCustomerDiscount": "Customer discount",
   "checkoutSummaryItemTotal": "Total to pay",
   "checkoutPayConsentBefore": "I agree to the",
@@ -389,6 +461,7 @@
   "checkoutStatusSummaryTimeLabel": "Time",
   "checkoutStatusSummaryCoffeeLabel": "Coffee",
   "checkoutStatusSummaryMonitorLabel": "Monitor setup",
+  "checkoutStatusSummarySeatsLabel": "Seats",
   "checkoutStatusSummaryPriceLabel": "Price",
   "checkoutStatusYes": "Yes",
   "checkoutStatusNo": "No",
@@ -406,6 +479,7 @@
   "reservationEmailTimeLabel": "Reservation time",
   "reservationEmailCoffeeLabel": "Coffee",
   "reservationEmailMonitorsLabel": "Monitors",
+  "reservationEmailSeatsLabel": "Seats",
   "reservationEmailNameLabel": "Name",
   "reservationEmailEmailLabel": "Email",
   "reservationEmailPhoneLabel": "Phone",
@@ -480,6 +554,11 @@
   "reservationValidationMeetingRoomStartWholeHour": "Meeting room reservations must start on a whole hour.",
   "reservationValidationMeetingRoomDuration": "Meeting room duration must be one of: {durations}.",
   "reservationValidationMeetingRoomEnded": "Choose a meeting room time whose reservation has not already ended.",
+  "reservationValidationOfficeSeats": "Select a whole number of seats.",
+  "reservationValidationOfficeEndBeforeStart": "The last day cannot be before the first day.",
+  "reservationValidationOfficeEnded": "Choose an office date range that has not already ended.",
+  "reservationValidationOfficeStartPassed": "Choose an office start date that has not already passed.",
+  "reservationValidationOfficeMaximumEnd": "The last reservation day must be no later than one month from today.",
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",

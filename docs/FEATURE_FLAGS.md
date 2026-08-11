@@ -20,6 +20,7 @@ Current runtime flags:
 - `customer_discounts` — gates Workspace Dotypos customer discounts.
 - `discount_codes` — gates Workspace discount-code resolution and affirmation.
 - `meeting_room_page` — controls the Workspace Meeting Room page and its header link.
+- `office_page` — controls the Workspace Office reservation page and its header link.
 - `seating_map` — controls whether checkout status and paid-reservation emails include the assigned seating map.
 
 The server evaluates flags through the app-owned `WorkspaceFeatureFlagService`, which wraps the package-owned typed Node service and resolves the current request subject. Server features must consume this Context capability instead of importing the Node client or subject resolver directly. Feature-specific services own their fail-closed logging and fallback behavior. The shared capability uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. Unavailable, absent, or disabled release flags fail closed at their feature boundaries. React consumers can use the generated typed hook to stay aligned with PostHog after hydration.

@@ -2,13 +2,21 @@ import {
   decodeStandardSchema,
   parseStandardSchema,
 } from "@deskohub/standard-schema";
-import { Match, Schema } from "effect";
+import { Match, Option, Schema } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
+import {
+  type WorkspaceCoworkAvailabilityTarget,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/reservation/cowork-reservation-product";
+import type { WorkspaceMeetingRoomProductTarget } from "@/features/reservation/meeting-room-reservation";
+import {
+  officeSeatsSchema,
+  type WorkspaceOfficeProductTarget,
+} from "@/features/reservation/office-reservation";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
@@ -18,6 +26,8 @@ import {
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
+  officeReservationKind,
+  workspaceReservationKindSchema,
 } from "@/features/reservation/reservation-kind";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
@@ -43,9 +53,18 @@ export const meetingRoomWorkspaceAvailabilityQuerySchema = Schema.Struct({
   endsAt: Schema.optional(reservationTimestampInputSchema),
 });
 
+export const officeWorkspaceAvailabilityQuerySchema = Schema.Struct({
+  kind: Schema.Literal(officeReservationKind),
+  ...workspaceAvailabilityQueryBaseFields,
+  startsAt: Schema.optional(reservationTimestampInputSchema),
+  endsAt: Schema.optional(reservationTimestampInputSchema),
+  seats: Schema.optional(officeSeatsSchema),
+});
+
 export const workspaceAvailabilityQuerySchema = Schema.Union([
   coworkWorkspaceAvailabilityQuerySchema,
   meetingRoomWorkspaceAvailabilityQuerySchema,
+  officeWorkspaceAvailabilityQuerySchema,
 ]);
 
 export type WorkspaceAvailabilityQuery =
@@ -54,6 +73,13 @@ export type CoworkWorkspaceAvailabilityQuery =
   typeof coworkWorkspaceAvailabilityQuerySchema.Type;
 export type MeetingRoomWorkspaceAvailabilityQuery =
   typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
+export type OfficeWorkspaceAvailabilityQuery =
+  typeof officeWorkspaceAvailabilityQuerySchema.Type;
+
+export type WorkspaceAvailabilityUnavailableTarget =
+  | WorkspaceCoworkAvailabilityTarget
+  | WorkspaceMeetingRoomProductTarget
+  | WorkspaceOfficeProductTarget;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
@@ -76,6 +102,7 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
     workspaceCoworkProductIdentitySchema.fields.tier
   ),
   meetingRoomUnavailable: Schema.Boolean,
+  officeUnavailable: Schema.Boolean,
   unavailableMonitorOptions: Schema.Array(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
@@ -119,11 +146,22 @@ const getTierParam = (value: string | null) => {
   return isWorkspaceCoworkProductTier(normalized) ? normalized : undefined;
 };
 
-const getReservationKindParam = (searchParams: URLSearchParams) => {
-  const kind = searchParams.get("kind")?.trim();
-  if (kind === "meeting-room") return "meeting-room";
-  return "cowork";
-};
+const decodeReservationKindParam = Schema.decodeUnknownOption(
+  workspaceReservationKindSchema
+);
+
+const getReservationKindParam = (searchParams: URLSearchParams) =>
+  Option.getOrElse(
+    decodeReservationKindParam(searchParams.get("kind")?.trim()),
+    () => coworkReservationKind
+  );
+
+const decodeOfficeSeatsParam = Schema.decodeUnknownOption(
+  Schema.NumberFromString.pipe(Schema.decodeTo(officeSeatsSchema))
+);
+
+const getOfficeSeatsParam = (value: string | null) =>
+  Option.getOrUndefined(decodeOfficeSeatsParam(value));
 
 const getMonitorParam = (value: string | null) => {
   const normalized = value?.trim();
@@ -156,30 +194,44 @@ export const parseWorkspaceAvailabilityQuery = (
   const from = getDateParam(searchParams, "from") ?? today.toString();
   const to =
     getDateParam(searchParams, "to") ?? today.add({ months: 6 }).toString();
-  const date = getDateParam(searchParams, "date");
   const reservationKind = getReservationKindParam(searchParams);
-  const entryTier =
-    reservationKind === "cowork" && getTierParam(searchParams.get("entryTier"));
-  const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
-  const interval =
-    reservationKind === "meeting-room" ? getIntervalParam(searchParams) : {};
 
   return Match.value(reservationKind).pipe(
-    Match.when("meeting-room", () => ({
-      kind: meetingRoomReservationKind,
-      from,
-      to,
-      ...(interval.startsAt && { startsAt: interval.startsAt }),
-      ...(interval.endsAt && { endsAt: interval.endsAt }),
-    })),
-    Match.when("cowork", () => ({
-      kind: coworkReservationKind,
-      from,
-      to,
-      ...(date && { date }),
-      ...(entryTier && { entryTier }),
-      ...(monitorOption && { monitorOption }),
-    })),
+    Match.when("meeting-room", () => {
+      const interval = getIntervalParam(searchParams);
+      return {
+        kind: meetingRoomReservationKind,
+        from,
+        to,
+        ...(interval.startsAt && { startsAt: interval.startsAt }),
+        ...(interval.endsAt && { endsAt: interval.endsAt }),
+      };
+    }),
+    Match.when("cowork", () => {
+      const date = getDateParam(searchParams, "date");
+      const entryTier = getTierParam(searchParams.get("entryTier"));
+      const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
+      return {
+        kind: coworkReservationKind,
+        from,
+        to,
+        ...(date && { date }),
+        ...(entryTier && { entryTier }),
+        ...(monitorOption && { monitorOption }),
+      };
+    }),
+    Match.when("office", () => {
+      const interval = getIntervalParam(searchParams);
+      const seats = getOfficeSeatsParam(searchParams.get("seats"));
+      return {
+        kind: officeReservationKind,
+        from,
+        to,
+        ...(interval.startsAt && { startsAt: interval.startsAt }),
+        ...(interval.endsAt && { endsAt: interval.endsAt }),
+        ...(seats && { seats }),
+      };
+    }),
     Match.exhaustive
   );
 };

@@ -2,7 +2,9 @@ import { Match, Schema } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
+import { officeReservationQuoteSchema } from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
+import { officeReservationDetailsSchema } from "@/features/reservation/office-reservation";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
@@ -87,9 +89,16 @@ const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: meetingRoomReservationQuoteSchema,
 });
 
+const officeAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...accountingSnapshotIdentitySchema.fields,
+  reservation: officeReservationDetailsSchema,
+  quote: officeReservationQuoteSchema,
+});
+
 export const accountingDocumentSnapshotSchema = Schema.Union([
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
+  officeAccountingDocumentSnapshotSchema,
 ]).annotate({
   identifier: "AccountingDocumentSnapshot",
   description:
@@ -147,6 +156,16 @@ export const makeAccountingDocumentSnapshot = (input: {
           kind: "meeting-room" as const,
           startsAt: reservation.startsAt,
           endsAt: reservation.endsAt,
+        },
+        quote,
+      }),
+      office: ({ quote, reservation }) => ({
+        ...identity,
+        reservation: {
+          kind: "office" as const,
+          startsOn: reservation.startsOn,
+          endsOn: reservation.endsOn,
+          seats: reservation.seats,
         },
         quote,
       }),

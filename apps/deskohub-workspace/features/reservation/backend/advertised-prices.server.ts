@@ -7,6 +7,7 @@ import {
   type PreloadedAdvertisedPrice,
 } from "@/features/checkout/advertised-price";
 import { buildAdvertisedPrice } from "@/features/checkout/backend/checkout/advertised-price.server";
+import { OfficeReservationFeatureFlagServiceLive } from "@/features/office/backend/office-reservation-feature-flag.server";
 
 export const loadAdvertisedPrices = Effect.fn(
   "reservation.loadAdvertisedPrices"
@@ -20,6 +21,7 @@ export const loadAdvertisedPrices = Effect.fn(
   const results = yield* Effect.all(
     uniqueRequests.map((request) =>
       buildAdvertisedPrice(request).pipe(
+        Effect.provide(OfficeReservationFeatureFlagServiceLive),
         Effect.tapError(() =>
           Effect.logError("Advertised price load failed", {
             reservationKind: request.reservation.kind,

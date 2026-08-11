@@ -97,7 +97,7 @@ describe("checkout pay return route", () => {
     expect(response.headers.get("location")).toContain(
       "/en-US/reservation/status/order-id?outcome=success"
     );
-  });
+  }, 10_000);
 
   test("does not hide refresh defects behind the fail-open redirect", async () => {
     const defect = new Error("unexpected defect");

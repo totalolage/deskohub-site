@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import { formatReservationDisplayDateRange } from "@/features/reservation/reservation-date";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { E2EDatabase } from "../integrations/database.service";
 import type { Runner } from "../runtime";
@@ -170,6 +172,65 @@ test("observes fulfillment across server and runner whitespace variants", async 
 
   expect(commands.some((args) => args.includes("open"))).toBe(false);
   expect(commands.filter((args) => args.includes("eval"))).toHaveLength(2);
+});
+
+test("asserts office range, seats, and price on the fulfilled status page", async () => {
+  const reservedFrom = Temporal.Instant.from("2099-08-31T22:00:00Z");
+  const reservedUntil = Temporal.Instant.from("2099-09-02T22:00:00Z");
+  const expectedDateRange = formatReservationDisplayDateRange(
+    reservedFrom,
+    reservedUntil,
+    "en-US"
+  );
+  const expectedPrice = formatWorkspaceMoney(
+    { value: 232_000, exponent: 2, currency: "CZK" },
+    "en-US"
+  );
+  const run = (async (_command: string, args: string[]) => {
+    const readsUrl = args.at(-2) === "get" && args.at(-1) === "url";
+
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: readsUrl
+        ? "https://workspace.test/en-US/reservation/status/order-id?outcome=success"
+        : `Your workspace access is ready. Access details were sent by email. Private office ${expectedDateRange} SEATS 2 ${expectedPrice}`,
+    };
+  }) as Runner;
+
+  await Effect.runPromise(
+    assertFulfilledStatusPage({
+      checkoutRow: {
+        amount_exponent: 2,
+        amount_value: 232_000,
+        currency: "CZK",
+      } as CheckoutRow,
+      config: {
+        expectedHost: "workspace.test",
+        timeouts: workspaceE2ETimeouts,
+      } as WorkspaceE2EConfig,
+      data: {
+        locale: "en-US",
+        office: {
+          seats: 2,
+          startsOn: "2099-09-01",
+          endsOn: "2099-09-02",
+          startsAt: reservedFrom.toString(),
+          endsAt: reservedUntil.toString(),
+        },
+      } as CheckoutData,
+      dotyposReservation: {
+        customer,
+        reservedFrom,
+        reservedUntil,
+      },
+      orderId: "order-id",
+      run,
+      session: "office-status-page",
+    }).pipe(
+      Effect.provideService(E2EDatabase, E2EDatabase.of({ db: {} as never }))
+    )
+  );
 });
 
 test("scopes reservation, hosted-payment, and verification capacity", async () => {

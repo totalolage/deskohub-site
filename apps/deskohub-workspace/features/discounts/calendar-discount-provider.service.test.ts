@@ -27,6 +27,7 @@ import {
 const salesCalendarId = "sales-calendar";
 const providerNamespace = "google-calendar-sales";
 const basicProduct = { kind: "cowork", tier: "basic" } as const;
+const coworkTarget = { kind: "cowork" } as const;
 
 const discountIdA = Schema.decodeUnknownSync(storedDiscountIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
@@ -50,7 +51,7 @@ const definition = (
     "cs-CZ": "Databázová sleva",
   },
   adjustment: { kind: "percentage", basisPoints: 2000 },
-  products: [basicProduct],
+  products: [coworkTarget],
   ...overrides,
 });
 
@@ -125,10 +126,7 @@ const invalidEventCases = [
 
 describe("CalendarDiscountProvider", () => {
   test("discovers localized active sales with their complete product targets", async () => {
-    const products = [
-      basicProduct,
-      { kind: "meeting-room", durationMinutes: 60 } as const,
-    ];
+    const products = [coworkTarget, { kind: "meeting-room" } as const];
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
 
     const result = await runWithProvider(
@@ -196,7 +194,7 @@ describe("CalendarDiscountProvider", () => {
         discountIdA,
         definition(discountIdA, {
           labels: {
-            "en-US": "Basic database sale",
+            "en-US": "Percentage database sale",
             "cs-CZ": "Základní databázová sleva",
           },
           adjustment: { kind: "percentage", basisPoints: 1000 },
@@ -213,11 +211,7 @@ describe("CalendarDiscountProvider", () => {
             kind: "fixed",
             amount: { value: 5000, exponent: 2, currency: "CZK" },
           },
-          products: [
-            basicProduct,
-            { kind: "cowork", tier: "plus" },
-            { kind: "cowork", tier: "profi" },
-          ],
+          products: [coworkTarget],
         }),
       ],
     ]);
@@ -264,7 +258,7 @@ describe("CalendarDiscountProvider", () => {
     );
     expect(
       result.basic.map(({ discount }) => discount.label).toSorted()
-    ).toEqual(["All-tier fixed sale", "Basic database sale"]);
+    ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
     expect(result.basic.map(({ discount }) => discount.adjustment)).toEqual(
       expect.arrayContaining([
         { kind: "percentage", basisPoints: 1000 },
@@ -274,8 +268,9 @@ describe("CalendarDiscountProvider", () => {
         },
       ])
     );
-    expect(result.plus).toHaveLength(1);
-    expect(result.plus[0]?.discount.label).toBe("All-tier fixed sale");
+    expect(
+      result.plus.map(({ discount }) => discount.label).toSorted()
+    ).toEqual(["All-tier fixed sale", "Percentage database sale"]);
     expect(result.basic[0]?.discount.expiresAt).toBe(
       "2026-08-01T22:00:00.000Z"
     );

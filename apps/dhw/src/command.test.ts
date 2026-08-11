@@ -83,7 +83,7 @@ describe("dhw mutation commands", () => {
           "--percentage",
           "0.015",
           "--product",
-          "cowork:basic",
+          "cowork",
         ],
         layer
       ).pipe(Effect.runPromise)
@@ -108,7 +108,7 @@ describe("dhw mutation commands", () => {
         "--percentage",
         "0.01",
         "--product",
-        "cowork:basic",
+        "cowork",
       ],
       layer
     ).pipe(Effect.runPromise);
@@ -119,7 +119,7 @@ describe("dhw mutation commands", () => {
         discount: {
           labels: { "cs-CZ": "Léto", "en-US": "Summer" },
           adjustment: { kind: "percentage", basisPoints: 1 },
-          products: [{ kind: "cowork", tier: "basic" }],
+          products: [{ kind: "cowork" }],
         },
       },
     ]);
@@ -141,9 +141,9 @@ describe("dhw mutation commands", () => {
         "--percentage",
         "10",
         "--product",
-        "cowork:basic",
+        "cowork",
         "--product",
-        "cowork:basic",
+        "cowork",
       ],
       layer
     ).pipe(Effect.flip, Effect.runPromise);

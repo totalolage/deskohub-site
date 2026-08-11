@@ -17,7 +17,7 @@ export {
   type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
-  discountProductIdentitySchema,
+  discountProductTargetSchema,
   discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";

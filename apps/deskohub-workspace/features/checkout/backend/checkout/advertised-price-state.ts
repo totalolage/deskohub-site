@@ -7,6 +7,10 @@ import {
   type MeetingRoomReservationQuote,
   meetingRoomReservationQuoteSchema,
 } from "@/features/checkout/reservation-quote-meeting-room";
+import {
+  type OfficeReservationQuote,
+  officeReservationQuoteSchema,
+} from "@/features/checkout/reservation-quote-office";
 import type { Locale } from "@/features/i18n";
 import {
   type CoworkAdvertisedPriceReservation,
@@ -16,6 +20,10 @@ import {
   type MeetingRoomAdvertisedPriceReservation,
   meetingRoomAdvertisedPriceReservationSchema,
 } from "@/features/reservation/meeting-room-reservation";
+import {
+  type OfficeAdvertisedPriceReservation,
+  officeAdvertisedPriceReservationSchema,
+} from "@/features/reservation/office-reservation";
 import {
   type CheckoutStateCryptoOptions,
   CheckoutStateTokenError,
@@ -40,6 +48,12 @@ export const advertisedPriceStateSchema = Schema.Union([
     reservation: meetingRoomAdvertisedPriceReservationSchema,
     quote: meetingRoomReservationQuoteSchema,
   }),
+  Schema.Struct({
+    ...workspaceCheckoutPriceStateSchema.fields,
+    kind: officeAdvertisedPriceReservationSchema.fields.kind,
+    reservation: officeAdvertisedPriceReservationSchema,
+    quote: officeReservationQuoteSchema,
+  }),
 ]).annotate({
   identifier: "AdvertisedPriceState",
   description:
@@ -61,6 +75,13 @@ type AdvertisedPriceStateInput =
       readonly locale: Locale;
       readonly reservation: MeetingRoomAdvertisedPriceReservation;
       readonly quote: MeetingRoomReservationQuote;
+      readonly ttlMilliseconds?: number;
+    }
+  | {
+      readonly kind: "office";
+      readonly locale: Locale;
+      readonly reservation: OfficeAdvertisedPriceReservation;
+      readonly quote: OfficeReservationQuote;
       readonly ttlMilliseconds?: number;
     };
 

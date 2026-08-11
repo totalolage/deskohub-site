@@ -37,6 +37,13 @@ export const workspaceMeetingRoomProductIdentitySchema = Schema.Struct({
 export type WorkspaceMeetingRoomProductIdentity =
   typeof workspaceMeetingRoomProductIdentitySchema.Type;
 
+export const workspaceMeetingRoomProductTargetSchema = Schema.Struct({
+  kind: workspaceMeetingRoomProductIdentitySchema.fields.kind,
+});
+
+export type WorkspaceMeetingRoomProductTarget =
+  typeof workspaceMeetingRoomProductTargetSchema.Type;
+
 export const workspaceMeetingRoomProductKeySchema = Schema.TemplateLiteral([
   workspaceMeetingRoomProductIdentitySchema.fields.kind,
   ":",
@@ -166,14 +173,6 @@ export const getStoredMeetingRoomReservationDetails = (
 ): StoredMeetingRoomReservationDetails => ({
   kind: meetingRoomReservationKind,
 });
-
-export const getMeetingRoomReservationProductCoffee = (
-  _reservation: MeetingRoomReservationProductInput
-) => false;
-
-export const getMeetingRoomReservationProductMonitorOption = (
-  _reservation: MeetingRoomReservationProductInput
-) => undefined;
 
 const intervalMatchesMeetingRoomReservationDuration = (
   reservation: MeetingRoomReservationOrderInput,

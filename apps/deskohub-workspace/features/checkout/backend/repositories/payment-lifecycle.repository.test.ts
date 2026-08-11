@@ -161,6 +161,13 @@ describe("PaymentLifecycleRepository", () => {
     expect(reserveClaim).toContain(
       "currentDefinition.labels[input.locale] !=="
     );
+    expect(reserveClaim).toContain("discountProductTargets.productTarget");
+    expect(reserveClaim).toContain(
+      "getWorkspaceProductTarget(input.claim.product)"
+    );
+    expect(reserveClaim).not.toContain(
+      "eq(discountProductTargets.productTarget, input.claim.product)"
+    );
     expect(reserveClaim).toContain(
       'inArray(discountCodeRedemptions.state, ["reserved", "redeemed"])'
     );

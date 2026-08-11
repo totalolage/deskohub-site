@@ -2,6 +2,7 @@ import "server-only";
 import { Clock, Effect } from "effect";
 import { type ActiveSale, DiscountService } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
+import { OfficeReservationFeatureFlagService } from "@/features/office/backend/office-reservation-feature-flag.service";
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import type { LandingPageSaleBannerContent } from "./components/landing-page-sale-banner";
@@ -21,13 +22,27 @@ export const getActiveLandingPageSaleBanner = Effect.fn(
       )
     ),
     Effect.tap(logAmbiguousActiveSales),
-    Effect.map(({ activeSales, locale }) =>
-      activeSales.length === 1
-        ? toLandingPageSaleBannerContent({ locale, sale: activeSales[0]! })
-        : undefined
-    )
+    Effect.flatMap(getEligibleLandingPageSaleBanner)
   )
 );
+
+const getEligibleLandingPageSaleBanner = Effect.fn(
+  "LandingPage.getEligibleSaleBanner"
+)(function* (input: {
+  readonly activeSales: readonly ActiveSale[];
+  readonly locale: Locale;
+}) {
+  if (input.activeSales.length !== 1) return undefined;
+
+  const sale = input.activeSales[0];
+  if (!sale) return undefined;
+  if (sale.products.some(({ kind }) => kind === "office")) {
+    const officeFeatureFlag = yield* OfficeReservationFeatureFlagService;
+    if (!(yield* officeFeatureFlag.isEnabled)) return undefined;
+  }
+
+  return toLandingPageSaleBannerContent({ locale: input.locale, sale });
+});
 
 const logAmbiguousActiveSales = (input: {
   readonly activeSales: readonly ActiveSale[];
@@ -57,7 +72,10 @@ const toLandingPageSaleBannerContent = (input: {
 
 const getBannerReservationKind = (
   sale: ActiveSale
-): ReservationOrderData["kind"] =>
-  sale.products.every(({ kind }) => kind === "meeting-room")
-    ? "meeting-room"
-    : "cowork";
+): ReservationOrderData["kind"] => {
+  if (sale.products.some(({ kind }) => kind === "cowork")) return "cowork";
+  if (sale.products.some(({ kind }) => kind === "meeting-room")) {
+    return "meeting-room";
+  }
+  return "office";
+};

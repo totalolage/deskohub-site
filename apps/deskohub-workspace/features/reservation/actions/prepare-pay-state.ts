@@ -39,9 +39,14 @@ import {
 import type { CheckoutSummaryChangedKeys } from "@/features/checkout/checkout-summary";
 import { legalEvidenceMapSchema } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetails } from "@/features/checkout/schemas/checkout-details";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import { type Locale, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { CustomerMarketingConsentRepository } from "@/features/legal/backend/customer-marketing-consent.repository";
+import {
+  ensureOfficeReservationsEnabled,
+  OfficeReservationFeatureFlagService,
+} from "@/features/office/backend/office-reservation-feature-flag.service";
 import { supersedableReservationPaymentStates } from "@/features/reservation/backend/reservation-supersession";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
@@ -75,6 +80,13 @@ import {
   prepareMeetingRoomAdvertisement,
 } from "./prepare-meeting-room-pay-state";
 import {
+  ensureOfficePayStateAvailable,
+  getPreparedOfficeCheckoutDetails,
+  type PreparedOfficeAdvertisement,
+  type PreparedOfficePayState,
+  prepareOfficeAdvertisement,
+} from "./prepare-office-pay-state";
+import {
   type PreparePayStateInput,
   preparePayStateSchema,
 } from "./prepare-pay-state.schema";
@@ -92,20 +104,20 @@ const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
 
 type PreparedAdvertisement =
   | PreparedCoworkAdvertisement
-  | PreparedMeetingRoomAdvertisement;
+  | PreparedMeetingRoomAdvertisement
+  | PreparedOfficeAdvertisement;
 
 const prepareAdvertisement = Effect.fn("preparePayState.prepareAdvertisement")(
   (input: PreparePayStateInput) =>
-    Match.value(input).pipe(
-      Match.when(
-        { reservation: { kind: "cowork" } },
-        prepareCoworkAdvertisement
-      ),
-      Match.when(
-        { reservation: { kind: "meeting-room" } },
-        prepareMeetingRoomAdvertisement
-      ),
-      Match.exhaustive
+    Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: (reservation) =>
+          prepareCoworkAdvertisement({ ...input, reservation }),
+        "meeting-room": (reservation) =>
+          prepareMeetingRoomAdvertisement({ ...input, reservation }),
+        office: (reservation) =>
+          prepareOfficeAdvertisement({ ...input, reservation }),
+      })
     )
 );
 
@@ -167,7 +179,10 @@ const getDotyposCustomerId = Effect.fn(
   )
 );
 
-type PreparedPayState = PreparedCoworkPayState | PreparedMeetingRoomPayState;
+type PreparedPayState =
+  | PreparedCoworkPayState
+  | PreparedMeetingRoomPayState
+  | PreparedOfficePayState;
 
 const getReservationCheckoutDetails = (input: {
   readonly locale: Locale;
@@ -180,6 +195,8 @@ const getReservationCheckoutDetails = (input: {
         getPreparedCoworkCheckoutDetails({ ...input, prepared }),
       "meeting-room": (prepared) =>
         getPreparedMeetingRoomCheckoutDetails({ ...input, prepared }),
+      office: (prepared) =>
+        getPreparedOfficeCheckoutDetails({ ...input, prepared }),
     })
   );
 
@@ -353,6 +370,11 @@ const ensureReservationAvailable = (input: {
         }),
       "meeting-room": (reservation) =>
         ensureMeetingRoomPayStateAvailable({
+          availability: input.availability,
+          reservation,
+        }),
+      office: (reservation) =>
+        ensureOfficePayStateAvailable({
           availability: input.availability,
           reservation,
         }),
@@ -598,6 +620,14 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+
+    yield* Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: () => Effect.void,
+        "meeting-room": () => Effect.void,
+        office: () => ensureOfficeReservationsEnabled,
+      })
+    );
 
     const advertisement = yield* prepareAdvertisement(input);
     const reservation = advertisement.reservation;
@@ -955,7 +985,10 @@ const PreparePayStateLive = Layer.mergeAll(
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,
-  CheckoutPricingServiceLiveWithDependencies
+  CheckoutPricingServiceLiveWithDependencies,
+  OfficeReservationFeatureFlagService.Live.pipe(
+    Layer.provide(WorkspaceFeatureFlagServiceLive)
+  )
 );
 
 const preparePayStateAction = defineWorkspaceAction(

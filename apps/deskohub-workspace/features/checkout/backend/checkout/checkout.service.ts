@@ -18,6 +18,7 @@ import {
 } from "@/features/checkout/checkout-summary";
 import { getCoworkCheckoutSummary } from "@/features/checkout/checkout-summary-cowork";
 import { getMeetingRoomCheckoutSummary } from "@/features/checkout/checkout-summary-meeting-room";
+import { getOfficeCheckoutSummary } from "@/features/checkout/checkout-summary-office";
 import {
   type LegalEvidenceMap,
   legalEvidenceMapSchema,
@@ -25,6 +26,7 @@ import {
 } from "@/features/checkout/legal-evidence";
 import { getCoworkCheckoutDetails } from "@/features/checkout/schemas/checkout-details-cowork";
 import { getMeetingRoomCheckoutDetails } from "@/features/checkout/schemas/checkout-details-meeting-room";
+import { getOfficeCheckoutDetails } from "@/features/checkout/schemas/checkout-details-office";
 import {
   type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
@@ -42,6 +44,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { dotyposCustomerIdSchema } from "@/features/reservation/dotypos-customer";
+import { hasOfficeReservationEnded } from "@/features/reservation/office-reservation";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/persistence-contracts";
 import { hasReservationIntervalEnded } from "@/features/reservation/reservation-interval";
 import {
@@ -109,28 +112,42 @@ const decodeDotyposCustomerId = Schema.decodeUnknownEffect(
 );
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
-  readonly code: "checkout_failed" | "meeting_room_reservation_ended";
+  readonly code:
+    | "checkout_failed"
+    | "meeting_room_reservation_ended"
+    | "office_reservation_ended";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
 
-const ensureMeetingRoomReservationHasNotEnded = Effect.fn(
-  "checkout.ensureMeetingRoomReservationHasNotEnded"
+const ensureReservationHasNotEnded = Effect.fn(
+  "checkout.ensureReservationHasNotEnded"
 )(function* (reservation: SignedPayState["reservation"]) {
-  if (
-    reservation.kind !== "meeting-room" ||
-    !hasReservationIntervalEnded(reservation)
-  ) {
-    return;
-  }
+  const error = Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: () => undefined,
+      "meeting-room": (meetingRoomReservation) => {
+        if (!hasReservationIntervalEnded(meetingRoomReservation)) return;
+        return new CheckoutError({
+          code: "meeting_room_reservation_ended",
+          message: "Meeting-room reservation has already ended.",
+        });
+      },
+      office: (officeReservation) => {
+        if (!hasOfficeReservationEnded(officeReservation)) return;
+        return new CheckoutError({
+          code: "office_reservation_ended",
+          message: "Office reservation has already ended.",
+        });
+      },
+    })
+  );
+  if (!error) return;
 
   yield* Effect.logInfo(
     "Hosted payment checkout rejected: reservation already ended"
   );
-  return yield* new CheckoutError({
-    code: "meeting_room_reservation_ended",
-    message: "Meeting-room reservation has already ended.",
-  });
+  return yield* error;
 });
 
 export interface CheckoutService {
@@ -300,6 +317,13 @@ const getCheckoutDetails = (
         }),
       "meeting-room": ({ quote, reservation }) =>
         getMeetingRoomCheckoutDetails({
+          locale,
+          reservation,
+          quote,
+          legalEvidence,
+        }),
+      office: ({ quote, reservation }) =>
+        getOfficeCheckoutDetails({
           locale,
           reservation,
           quote,
@@ -808,7 +832,7 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
-          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
+          yield* ensureReservationHasNotEnded(state.reservation);
 
           if (state.changedKeys) {
             yield* Effect.logInfo(
@@ -852,6 +876,7 @@ export const CheckoutServiceLive = Layer.effect(
                 getCoworkCheckoutSummary(reservation, quote),
               "meeting-room": ({ quote }) =>
                 getMeetingRoomCheckoutSummary(quote),
+              office: ({ quote }) => getOfficeCheckoutSummary(quote),
             })
           );
           yield* Effect.annotateLogsScoped({ quote: prepared.quote });
@@ -953,7 +978,7 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout Dotypos reservation note updated"
           );
 
-          yield* ensureMeetingRoomReservationHasNotEnded(state.reservation);
+          yield* ensureReservationHasNotEnded(state.reservation);
           const accountingSnapshot = makeAccountingDocumentSnapshot({
             workspaceReservationId: reservation.id,
             dotyposReservationId,
@@ -1010,6 +1035,7 @@ export const CheckoutServiceLive = Layer.effect(
                       getCoworkCheckoutSummary(reservation, quote),
                     "meeting-room": ({ quote }) =>
                       getMeetingRoomCheckoutSummary(quote),
+                    office: ({ quote }) => getOfficeCheckoutSummary(quote),
                   })
                 );
                 const changedKeys = getCheckoutSummaryChangedKeys(

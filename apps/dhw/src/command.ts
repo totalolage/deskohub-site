@@ -16,7 +16,7 @@ import {
   type AdministrationReservationQueryType,
   type AdministrationReservationSummaryType,
   AdministrationStoredDiscountId,
-  type AdministrationWorkspaceProductType,
+  type AdministrationWorkspaceProductTargetType,
   type CliAccessTokenType,
   CliClientName,
   type CliMutationRequestIdType,
@@ -143,7 +143,7 @@ const reservationsListCommand = Command.make(
       "complete",
       "cancelled",
     ]).pipe(Flag.optional, Flag.withDescription("Reservation status")),
-    type: Flag.choice("type", ["cowork", "meeting-room"]).pipe(
+    type: Flag.choice("type", ["cowork", "meeting-room", "office"]).pipe(
       Flag.optional,
       Flag.withDescription("Reservation type")
     ),
@@ -664,24 +664,14 @@ const discountDefinitionFlags = {
     Flag.withDescription("English customer-facing label")
   ),
   products: Flag.choiceWithValue("product", [
-    ["cowork:basic", { kind: "cowork", tier: "basic" }],
-    ["cowork:plus", { kind: "cowork", tier: "plus" }],
-    ["cowork:profi", { kind: "cowork", tier: "profi" }],
-    [
-      "meeting-room:hour:1",
-      { kind: "meeting-room", duration: { unit: "hour", amount: 1 } },
-    ],
-    [
-      "meeting-room:hour:4",
-      { kind: "meeting-room", duration: { unit: "hour", amount: 4 } },
-    ],
-    [
-      "meeting-room:day:1",
-      { kind: "meeting-room", duration: { unit: "day", amount: 1 } },
-    ],
+    ["cowork", { kind: "cowork" }],
+    ["meeting-room", { kind: "meeting-room" }],
+    ["office", { kind: "office" }],
   ] as const).pipe(
     Flag.atLeast(1),
-    Flag.withDescription("Eligible product; repeat for multiple products")
+    Flag.withDescription(
+      "Eligible reservation family; repeat for multiple families"
+    )
   ),
 };
 
@@ -1526,7 +1516,7 @@ const makeDiscountDefinition = ({
   readonly adjustment: AdministrationDiscountDefinitionInputType["adjustment"];
   readonly labelCs: string;
   readonly labelEn: string;
-  readonly products: ReadonlyArray<AdministrationWorkspaceProductType>;
+  readonly products: ReadonlyArray<AdministrationWorkspaceProductTargetType>;
 }): AdministrationDiscountDefinitionInputType => ({
   adjustment,
   labels: { "cs-CZ": labelCs, "en-US": labelEn },

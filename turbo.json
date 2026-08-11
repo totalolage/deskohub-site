@@ -96,6 +96,7 @@
     },
     "test:e2e": {
       "cache": false,
+      "dependsOn": ["i18n:compile"],
       "passThroughEnv": [
         "GITHUB_ACTIONS",
         "GITHUB_EVENT_NAME",

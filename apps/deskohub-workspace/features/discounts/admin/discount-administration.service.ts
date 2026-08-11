@@ -26,7 +26,7 @@ import {
   discounts,
   type StoredDiscount,
 } from "@/db/schema";
-import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
+import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { sensitiveDatabaseParameter } from "@/shared/backend/logging/database-query-parameter-classifier";
@@ -53,7 +53,7 @@ export type AdminDiscount = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly WorkspaceProductIdentity[];
+  readonly products: readonly WorkspaceProductTarget[];
   readonly codeCount: number;
   readonly createdAt: Temporal.Instant;
   readonly updatedAt: Temporal.Instant;
@@ -422,12 +422,9 @@ export class DiscountAdministration extends Context.Service<
                   new Error("Discount insert returned no identifier.")
                 );
               }
-              yield* tx.insert(discountProductTargets).values(
-                input.products.map((productIdentity) => ({
-                  discountId: row.id,
-                  productIdentity,
-                }))
-              );
+              yield* tx
+                .insert(discountProductTargets)
+                .values(toDiscountProductTargetRows(row.id, input.products));
               return row.id;
             })
           )
@@ -449,12 +446,9 @@ export class DiscountAdministration extends Context.Service<
               yield* tx
                 .delete(discountProductTargets)
                 .where(eq(discountProductTargets.discountId, input.id));
-              yield* tx.insert(discountProductTargets).values(
-                input.products.map((productIdentity) => ({
-                  discountId: input.id,
-                  productIdentity,
-                }))
-              );
+              yield* tx
+                .insert(discountProductTargets)
+                .values(toDiscountProductTargetRows(input.id, input.products));
             })
           )
       );
@@ -502,12 +496,11 @@ export class DiscountAdministration extends Context.Service<
                           new Error("Discount insert returned no identifier.")
                         );
                       }
-                      yield* tx.insert(discountProductTargets).values(
-                        discount.products.map((productIdentity) => ({
-                          discountId: row.id,
-                          productIdentity,
-                        }))
-                      );
+                      yield* tx
+                        .insert(discountProductTargets)
+                        .values(
+                          toDiscountProductTargetRows(row.id, discount.products)
+                        );
                       return row.id;
                     }),
                 })
@@ -559,12 +552,11 @@ export class DiscountAdministration extends Context.Service<
                         new Error("Discount insert returned no identifier.")
                       );
                     }
-                    yield* tx.insert(discountProductTargets).values(
-                      discount.products.map((productIdentity) => ({
-                        discountId: row.id,
-                        productIdentity,
-                      }))
-                    );
+                    yield* tx
+                      .insert(discountProductTargets)
+                      .values(
+                        toDiscountProductTargetRows(row.id, discount.products)
+                      );
                     return row.id;
                   }),
               })
@@ -1141,7 +1133,7 @@ const toAdminDiscount = (row: AdminDiscountRow): AdminDiscount => ({
           kind: "percentage",
           basisPoints: row.percentageBasisPoints,
         },
-  products: row.productTargets.map(({ productIdentity }) => productIdentity),
+  products: row.productTargets.map(({ productTarget }) => productTarget),
   codeCount: row.codes.length,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -1162,6 +1154,11 @@ const toDiscountValues = (
   fixedAmountCurrency:
     input.adjustment.kind === "fixed" ? input.adjustment.amount.currency : null,
 });
+
+const toDiscountProductTargetRows = (
+  discountId: StoredDiscountId,
+  productTargets: readonly WorkspaceProductTarget[]
+) => productTargets.map((productTarget) => ({ discountId, productTarget }));
 
 const toDiscountCodeValues = (
   input: CreateDiscountCodeAdminInput | UpdateDiscountCodeAdminInput
