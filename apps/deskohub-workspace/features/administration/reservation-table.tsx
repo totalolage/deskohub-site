@@ -1,4 +1,3 @@
-import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import Link from "next/link";
 import {
   Table,
@@ -8,7 +7,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
-import { cn } from "@/shared/utils";
 import type {
   AdministrationReservationSort,
   AdministrationReservationSortDirection,
@@ -20,7 +18,11 @@ import {
   formatAdministrationMoney,
   formatAdministrationReservationDate,
 } from "./formatters";
+import { NexiOrderLink } from "./nexi-order-link";
 import type { AdministrationReservationStatus } from "./reservation-status";
+import { AdministrationSortHead } from "./sort-head";
+import { AdministrationStatusBadge } from "./status-badge";
+import { AdministrationResponsiveTable } from "./table-frame";
 
 export function ReservationStatusBadge({
   status,
@@ -28,21 +30,18 @@ export function ReservationStatusBadge({
   readonly status: AdministrationReservationStatus;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        status.group === "attention" &&
-          "border-burned-orange/25 bg-burned-orange/10 text-burned-orange-ink",
-        status.group === "in_progress" &&
-          "border-sunset-yellow/35 bg-sunset-yellow/15 text-navy-blue",
-        status.group === "complete" &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        status.group === "cancelled" &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/60"
-      )}
+    <AdministrationStatusBadge
+      tone={
+        {
+          attention: "attention",
+          cancelled: "neutral",
+          complete: "positive",
+          in_progress: "progress",
+        }[status.group] as "attention" | "neutral" | "positive" | "progress"
+      }
     >
       {status.label}
-    </span>
+    </AdministrationStatusBadge>
   );
 }
 
@@ -69,8 +68,8 @@ export function ReservationTable({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
-      <div className="hidden overflow-x-auto md:block">
+    <AdministrationResponsiveTable
+      desktop={
         <Table
           aria-label="Reservations"
           className={showCustomer ? "min-w-[1060px]" : "min-w-[880px]"}
@@ -122,54 +121,56 @@ export function ReservationTable({
             ))}
           </TableBody>
         </Table>
-      </div>
-      <ul className="divide-y divide-navy-blue/10 md:hidden">
-        {reservations.map((reservation) => (
-          <li key={reservation.id}>
-            <div className="px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    <Link
-                      className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
-                      href={`/admin/reservations/${reservation.id}`}
-                    >
-                      {showCustomer
-                        ? (reservation.customer?.displayName ??
-                          reservation.typeLabel)
-                        : reservation.typeLabel}
-                    </Link>
-                  </p>
-                  <p className="mt-1 text-sm text-navy-blue/65">
-                    {formatAdministrationReservationDate(reservation) ??
-                      "Booking details unavailable"}
-                  </p>
+      }
+      mobile={
+        <ul className="divide-y divide-navy-blue/10">
+          {reservations.map((reservation) => (
+            <li key={reservation.id}>
+              <div className="px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">
+                      <Link
+                        className="underline decoration-navy-blue/20 underline-offset-4 hover:decoration-navy-blue"
+                        href={`/admin/reservations/${reservation.id}`}
+                      >
+                        {showCustomer
+                          ? (reservation.customer?.displayName ??
+                            reservation.typeLabel)
+                          : reservation.typeLabel}
+                      </Link>
+                    </p>
+                    <p className="mt-1 text-sm text-navy-blue/65">
+                      {formatAdministrationReservationDate(reservation) ??
+                        "Booking details unavailable"}
+                    </p>
+                  </div>
+                  <ReservationStatus reservation={reservation} alignRight />
                 </div>
-                <ReservationStatus reservation={reservation} alignRight />
-              </div>
-              <p className="mt-3 text-xs text-navy-blue/65">
-                {reservation.typeLabel}
-                {reservation.latestPayment && (
-                  <>
-                    {" "}
-                    ·{" "}
-                    {formatAdministrationMoney(
-                      reservation.latestPayment.amount
-                    )}
-                  </>
+                <p className="mt-3 text-xs text-navy-blue/65">
+                  {reservation.typeLabel}
+                  {reservation.latestPayment && (
+                    <>
+                      {" "}
+                      ·{" "}
+                      {formatAdministrationMoney(
+                        reservation.latestPayment.amount
+                      )}
+                    </>
+                  )}
+                </p>
+                {reservation.latestPayment?.providerOrderId && (
+                  <PaymentLink
+                    className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
+                    providerOrderId={reservation.latestPayment.providerOrderId}
+                  />
                 )}
-              </p>
-              {reservation.latestPayment?.providerOrderId && (
-                <PaymentLink
-                  className="mt-2 block break-all font-mono text-xs text-burned-orange-ink underline underline-offset-4"
-                  providerOrderId={reservation.latestPayment.providerOrderId}
-                />
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      }
+    />
   );
 }
 
@@ -190,19 +191,13 @@ function ReservationSortHead({
   }
   search.set("sort", field);
   search.set("direction", sorted === "asc" ? "desc" : "asc");
-  let ariaSort: "ascending" | "descending" | "none" = "none";
-  if (sorted === "asc") ariaSort = "ascending";
-  else if (sorted === "desc") ariaSort = "descending";
   return (
-    <TableHead aria-sort={ariaSort}>
-      <Link
-        className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-        href={`${sorting.basePath}?${search.toString()}`}
-      >
-        {children}
-        <SortIcon sorted={sorted} />
-      </Link>
-    </TableHead>
+    <AdministrationSortHead
+      direction={sorted}
+      href={`${sorting.basePath}?${search.toString()}`}
+    >
+      {children}
+    </AdministrationSortHead>
   );
 }
 
@@ -330,22 +325,10 @@ function PaymentLink({
   readonly providerOrderId: string;
 }) {
   return (
-    <a
-      aria-label={`Payment ${providerOrderId} (opens in XPay)`}
+    <NexiOrderLink
+      accessibleLabel={`Payment ${providerOrderId}`}
       className={className}
-      href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(providerOrderId)}`}
-      rel="noreferrer"
-      target="_blank"
-    >
-      {providerOrderId} ↗
-    </a>
+      orderId={providerOrderId}
+    />
   );
-}
-
-function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }) {
-  if (sorted === "asc") return <ArrowUp aria-hidden className="size-3.5" />;
-  if (sorted === "desc") {
-    return <ArrowDown aria-hidden className="size-3.5" />;
-  }
-  return <ArrowUpDown aria-hidden className="size-3.5 opacity-55" />;
 }

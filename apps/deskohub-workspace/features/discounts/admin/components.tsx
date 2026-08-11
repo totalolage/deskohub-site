@@ -1,15 +1,15 @@
-import { ArrowUpRight, Plus } from "lucide-react";
+import { ArrowUpRight } from "lucide-react";
 import {
+  AdministrationAlert,
   AdministrationNoticeBanner,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableToolbar,
+  EmptyState,
 } from "@/features/administration/components";
 import { Button } from "@/shared/components/ui/button";
 import {
   CalendarSalesAdminTable,
-  CreateDiscountForm,
   DiscountCodesAdminTable,
-  DiscountsAdminTable,
   type DiscountTableItem,
 } from "./admin-tables";
 import {
@@ -25,44 +25,6 @@ type DiscountAdministrationProps = {
     readonly status: "error" | "success";
   };
 };
-
-export function DiscountsAdministrationPage({
-  dashboard,
-  notice,
-}: DiscountAdministrationProps) {
-  const discounts = toDiscountTableItems(dashboard);
-
-  return (
-    <AdminPageShell
-      activeSection="discounts"
-      count={discounts.length}
-      notice={notice}
-      title="Discounts"
-    >
-      <section>
-        <details className="group rounded-xl border border-navy-blue/10 bg-white">
-          <summary className="flex cursor-pointer list-none items-center gap-3 px-5 py-4 font-semibold marker:hidden">
-            <span className="grid size-8 place-items-center rounded-lg bg-burned-orange-ink text-white">
-              <Plus aria-hidden className="size-4" />
-            </span>
-            Create a discount
-          </summary>
-          <div className="px-5 pb-6">
-            <CreateDiscountForm />
-          </div>
-        </details>
-
-        <div className="mt-4">
-          {discounts.length === 0 ? (
-            <EmptyState message="No discounts yet. Create the first definition above." />
-          ) : (
-            <DiscountsAdminTable discounts={discounts} />
-          )}
-        </div>
-      </section>
-    </AdminPageShell>
-  );
-}
 
 export function CodesAdministrationPage({
   dashboard,
@@ -84,33 +46,25 @@ export function CodesAdministrationPage({
   }));
 
   return (
-    <AdminPageShell
-      activeSection="codes"
-      count={codes.length}
-      notice={notice}
-      showHeader={false}
-      title="Codes"
-    >
+    <AdministrationPage>
       <h1 className="sr-only">Codes</h1>
-      <div>
-        <section aria-labelledby="discount-codes-heading">
-          <h2 className="sr-only" id="discount-codes-heading">
-            Codes
-          </h2>
-          <div className="flex justify-end">
-            <DiscountCodeCreationDialog discounts={discounts} />
-          </div>
-
-          <div className="mt-4">
-            {codes.length === 0 ? (
-              <EmptyState message="No discount codes yet." />
-            ) : (
-              <DiscountCodesAdminTable codes={codes} discounts={discounts} />
-            )}
-          </div>
-        </section>
-      </div>
-    </AdminPageShell>
+      <AdministrationNoticeBanner notice={notice} />
+      <AdministrationTableToolbar
+        actions={<DiscountCodeCreationDialog discounts={discounts} />}
+        count={codes.length}
+        itemLabel="discount code"
+      />
+      <section aria-labelledby="discount-codes-heading">
+        <h2 className="sr-only" id="discount-codes-heading">
+          Codes
+        </h2>
+        {codes.length === 0 ? (
+          <EmptyState message="No discount codes yet." />
+        ) : (
+          <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+        )}
+      </section>
+    </AdministrationPage>
   );
 }
 
@@ -120,38 +74,15 @@ export function SalesAdministrationPage({
 }: DiscountAdministrationProps) {
   const discounts = toDiscountTableItems(dashboard);
   return (
-    <AdminPageShell
-      activeSection="sales"
-      count={dashboard.calendar.events.length}
-      notice={notice}
-      showHeader={false}
-      title="Sales"
-    >
-      <h1 className="sr-only">Sales</h1>
-      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
-    </AdminPageShell>
-  );
-}
-
-export function AdminPageShell({
-  children,
-  count,
-  notice,
-  showHeader = true,
-  title,
-}: {
-  readonly activeSection: "codes" | "customers" | "discounts" | "sales";
-  readonly children: React.ReactNode;
-  readonly count: number;
-  readonly notice: DiscountAdministrationProps["notice"];
-  readonly showHeader?: boolean;
-  readonly title: string;
-}) {
-  return (
     <AdministrationPage>
-      {showHeader && <AdministrationPageHeader count={count} title={title} />}
+      <h1 className="sr-only">Sales</h1>
       <AdministrationNoticeBanner notice={notice} />
-      {children}
+      <AdministrationTableToolbar
+        actions={<SaleDiscountCreationDialog />}
+        count={dashboard.calendar.events.length}
+        itemLabel="sale"
+      />
+      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
     </AdministrationPage>
   );
 }
@@ -168,7 +99,10 @@ function CalendarSection({
   );
   if (calendar.unavailable) {
     calendarContent = (
-      <EmptyState message="Google Calendar is temporarily unavailable. Database editing still works." />
+      <AdministrationAlert status="warning">
+        Google Calendar is temporarily unavailable. Database editing still
+        works.
+      </AdministrationAlert>
     );
   } else if (calendar.events.length === 0) {
     calendarContent = <EmptyState message="No Calendar sale events found." />;
@@ -180,10 +114,7 @@ function CalendarSection({
         <h2 className="sr-only" id="calendar-sales-heading">
           Calendar sales
         </h2>
-        <div className="flex justify-end">
-          <SaleDiscountCreationDialog />
-        </div>
-        <div className="mt-4">{calendarContent}</div>
+        {calendarContent}
       </section>
 
       <aside className="h-fit rounded-xl border border-navy-blue/10 bg-white p-5 xl:sticky xl:top-24">
@@ -201,14 +132,6 @@ function CalendarSection({
           </a>
         </Button>
       </aside>
-    </div>
-  );
-}
-
-export function EmptyState({ message }: { readonly message: string }) {
-  return (
-    <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-10 text-center text-sm text-navy-blue/62">
-      {message}
     </div>
   );
 }

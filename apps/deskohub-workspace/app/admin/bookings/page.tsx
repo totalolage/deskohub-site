@@ -1,6 +1,9 @@
 import {
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableToolbar,
   BookingTable,
   Pagination,
 } from "@/features/administration/components";
@@ -18,36 +21,30 @@ export default async function BookingsAdministrationPage({
   const { input, result } = await loadAdministrationBookings(searchParams);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
+      <h1 className="sr-only">Bookings</h1>
+      <AdministrationTableToolbar
         count={result.total}
-        description="Bookings recorded in Dotypos, with their customer, table, and linked Workspace reservation."
-        eyebrow="Operations"
-        title="Bookings"
+        filters={
+          <AdministrationFilterForm variant="standalone">
+            <AdministrationFilterField
+              htmlFor="booking-date"
+              label="Booking date"
+            >
+              <AdministrationFilterInput
+                defaultValue={input.date}
+                id="booking-date"
+                name="date"
+                required
+                type="date"
+              />
+            </AdministrationFilterField>
+            <Button className="min-h-10" size="sm" type="submit">
+              Show bookings
+            </Button>
+          </AdministrationFilterForm>
+        }
+        itemLabel="booking"
       />
-
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-navy-blue/10 bg-white p-4">
-        <label
-          className="grid gap-1.5 text-sm font-semibold"
-          htmlFor="booking-date"
-        >
-          Booking date
-          <input
-            className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
-            defaultValue={input.date}
-            id="booking-date"
-            name="date"
-            required
-            type="date"
-          />
-        </label>
-        <Button
-          className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          size="sm"
-          type="submit"
-        >
-          Show bookings
-        </Button>
-      </form>
 
       <BookingTable bookings={result.items} />
       <Pagination

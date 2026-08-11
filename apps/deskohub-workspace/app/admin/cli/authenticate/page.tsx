@@ -1,7 +1,8 @@
-import { CheckCircle2, Clock3, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ShieldAlert } from "lucide-react";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
 import { loadCliAuthenticationApproval } from "@/features/admin-cli/page-data.server";
 import {
+  AdministrationAlert,
   AdministrationPage,
   AdministrationPageHeader,
   formatAdministrationDateTime,
@@ -63,14 +64,13 @@ function AuthenticationRequestState({
   if (request.state === "pending") {
     return (
       <>
-        <div className="mb-5 flex items-start gap-3 rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm leading-6">
-          <Clock3 aria-hidden className="mt-0.5 size-5 shrink-0" />
+        <AdministrationAlert className="mb-5" status="warning">
           <p>
             This request expires at{" "}
             <strong>{formatAdministrationDateTime(request.expiresAt)}</strong>.
             Approve it only if you initiated the request in your terminal.
           </p>
-        </div>
+        </AdministrationAlert>
         <form action={approveCliAuthentication}>
           <input name="code" type="hidden" value={code} />
           <Button type="submit">Approve this CLI</Button>

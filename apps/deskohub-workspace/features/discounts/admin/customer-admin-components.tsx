@@ -7,15 +7,19 @@ import type {
   AdministrationMoney,
 } from "@/features/administration/administration.service";
 import {
+  AdministrationFact,
   AdministrationNoticeBanner,
   AdministrationPage,
   AdministrationPageHeader,
+  AdministrationStatusBadge,
+  AdministrationTableFrame,
+  EmptyState,
   formatAdministrationDateTime,
   formatAdministrationMoney,
+  NexiOrderLink,
   ReservationTable,
 } from "@/features/administration/components";
 import { groupCustomerReservations } from "@/features/administration/customer-activity";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
   Table,
@@ -25,13 +29,11 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
-import { AdminPageShell, EmptyState } from "./components";
 import {
   AddCodeCustomerForm,
   AdminMutationButton,
   CustomerCodeAction,
   CustomerDiscountGroupForm,
-  CustomerSearch,
 } from "./customer-admin-client";
 import type {
   AdminCustomerProfile,
@@ -53,23 +55,6 @@ const getCustomerCodeAvailability = (
   return `${code.audienceSize} selected customers`;
 };
 
-export function CustomersAdministrationPage({
-  notice,
-}: {
-  readonly notice?: Notice;
-}) {
-  return (
-    <AdminPageShell
-      activeSection="customers"
-      count={0}
-      notice={notice}
-      title="Customers"
-    >
-      <CustomerSearch />
-    </AdminPageShell>
-  );
-}
-
 export function CodeAdministrationDetailPage({
   detail,
   notice,
@@ -79,12 +64,9 @@ export function CodeAdministrationDetailPage({
 }) {
   const { code } = detail;
   return (
-    <AdminPageShell
-      activeSection="codes"
-      count={detail.customers.length}
-      notice={notice}
-      title={code.code}
-    >
+    <AdministrationPage>
+      <AdministrationPageHeader title={code.code} />
+      <AdministrationNoticeBanner notice={notice} />
       <Button asChild className="mb-4" size="sm" variant="ghost">
         <Link href="/admin/codes">← Back to codes</Link>
       </Button>
@@ -180,7 +162,7 @@ export function CodeAdministrationDetailPage({
         <h2 className="mb-3 font-semibold">Claim history</h2>
         <ClaimHistory claims={detail.claims} showCode={false} />
       </section>
-    </AdminPageShell>
+    </AdministrationPage>
   );
 }
 
@@ -318,7 +300,7 @@ export function CustomerAdministrationDetailPage({
             {visibleCodes.length === 0 ? (
               <EmptyState message="No discount codes are available to this customer." />
             ) : (
-              <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+              <AdministrationTableFrame className="overflow-x-auto">
                 <Table
                   aria-label="Customer code eligibility"
                   className="min-w-[620px]"
@@ -364,7 +346,7 @@ export function CustomerAdministrationDetailPage({
                     })}
                   </TableBody>
                 </Table>
-              </div>
+              </AdministrationTableFrame>
             )}
           </section>
 
@@ -378,15 +360,18 @@ export function CustomerAdministrationDetailPage({
           <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
             <h2 className="font-semibold">Contact</h2>
             <dl className="mt-4 grid gap-4 text-sm">
-              <CustomerFact
+              <AdministrationFact
                 label="Email"
                 value={profile.customer.email ?? "—"}
               />
-              <CustomerFact
+              <AdministrationFact
                 label="Phone"
                 value={profile.customer.phone ?? "—"}
               />
-              <CustomerFact label="Current group" value={currentGroupLabel} />
+              <AdministrationFact
+                label="Current group"
+                value={currentGroupLabel}
+              />
             </dl>
           </section>
 
@@ -404,10 +389,10 @@ export function CustomerAdministrationDetailPage({
               Reference
             </summary>
             <div className="border-t border-navy-blue/10 px-5 py-4">
-              <CustomerFact
+              <AdministrationFact
                 label="Customer ID"
                 value={profile.customer.id}
-                mono
+                valueClassName="break-all font-mono text-xs"
               />
             </div>
           </details>
@@ -492,15 +477,11 @@ function CustomerConsent({
       <dd className="text-sm text-navy-blue/65 sm:text-right">
         {consent ? (
           <>
-            <span
-              className={
-                withdrawnAt
-                  ? "font-semibold text-red-600"
-                  : "font-semibold text-aquamarine-ink"
-              }
+            <AdministrationStatusBadge
+              tone={withdrawnAt ? "attention" : "positive"}
             >
               {withdrawnAt ? "Withdrawn" : "Granted"}
-            </span>{" "}
+            </AdministrationStatusBadge>{" "}
             · {formatAdministrationDateTime(withdrawnAt ?? consent.grantedAt)}
             <span className="mt-0.5 block break-all text-xs">
               {withdrawnAt && (
@@ -528,7 +509,7 @@ function CustomerTransactionHistory({
     return <EmptyState message="This customer has no payments." />;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame className="overflow-x-auto">
       <Table
         aria-label="Customer transaction history"
         className="min-w-[760px]"
@@ -549,11 +530,11 @@ function CustomerTransactionHistory({
                 {formatAdministrationDateTime(attempt.updatedAt)}
               </TableCell>
               <TableCell>
-                <Badge
-                  variant={attempt.state === "paid" ? "default" : "subtle"}
+                <AdministrationStatusBadge
+                  tone={attempt.state === "paid" ? "positive" : "neutral"}
                 >
                   {attempt.stateLabel}
-                </Badge>
+                </AdministrationStatusBadge>
               </TableCell>
               <TableCell>
                 <Link
@@ -568,14 +549,10 @@ function CustomerTransactionHistory({
               </TableCell>
               <TableCell>
                 {attempt.providerOrderId ? (
-                  <a
-                    className="font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
-                    href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(attempt.providerOrderId)}`}
-                    rel="noreferrer"
-                    target="_blank"
-                  >
-                    {attempt.providerOrderId} ↗
-                  </a>
+                  <NexiOrderLink
+                    className="font-mono text-xs"
+                    orderId={attempt.providerOrderId}
+                  />
                 ) : (
                   <span className="font-mono text-xs">{attempt.id}</span>
                 )}
@@ -584,7 +561,7 @@ function CustomerTransactionHistory({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
 }
 
@@ -636,27 +613,6 @@ function SummaryFact({
   );
 }
 
-function CustomerFact({
-  label,
-  mono = false,
-  value,
-}: {
-  readonly label: string;
-  readonly mono?: boolean;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className={mono ? "mt-1 break-all font-mono text-xs" : "mt-1"}>
-        {value}
-      </dd>
-    </div>
-  );
-}
-
 function ClaimHistory({
   claims,
   showCode,
@@ -669,7 +625,7 @@ function ClaimHistory({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame className="overflow-x-auto">
       <Table aria-label="Discount code claim history" className="min-w-[820px]">
         <TableHeader>
           <TableRow>
@@ -707,12 +663,12 @@ function ClaimHistory({
                 </TableCell>
               )}
               <TableCell>
-                <Badge
-                  variant={claim.state === "released" ? "subtle" : "default"}
+                <AdministrationStatusBadge
+                  tone={claim.state === "released" ? "neutral" : "positive"}
                 >
                   {claim.state[0]?.toUpperCase()}
                   {claim.state.slice(1)}
-                </Badge>
+                </AdministrationStatusBadge>
                 {claim.releaseReason && (
                   <p className="mt-1 max-w-48 text-xs text-navy-blue/65">
                     {claim.releaseReason}
@@ -737,7 +693,7 @@ function ClaimHistory({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
 }
 
