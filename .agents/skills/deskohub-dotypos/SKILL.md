@@ -1,9 +1,15 @@
 ---
 name: deskohub-dotypos
-description: Research, add, or change Deskohub Dotypos API resources and operations by verifying official documentation and live capabilities, updating the OpenAPI contract, and regenerating the client.
+description: Dotypos API, OpenAPI contract, generated client, authorization, and diagnostic handling.
 ---
 
 # Deskohub Dotypos
+
+Read only the reference relevant to the change:
+
+- For the package boundary and client generation, read [references/openapi.md](references/openapi.md).
+- For Connector authorization and refresh-token acquisition, read [references/authorization.md](references/authorization.md).
+- For bounded manual API inspection, read [references/manual-diagnostics.md](references/manual-diagnostics.md) and the Workspace production-diagnostics reference before accessing production.
 
 For a Dotypos resource or item operation:
 

@@ -1,9 +1,14 @@
 ---
 name: deskohub-workspace-e2e
-description: Run, debug, or modify Deskohub Workspace E2E and integration tests, especially protected exact-SHA previews, checkout, Nexi payment, webhooks, preview databases, Dotypos state, or localized-copy validation flows.
+description: Workspace protected-preview, checkout, Nexi, webhook, database, and browser E2E testing.
 ---
 
 # Deskohub Workspace E2E
+
+## Contents
+
+- [Establish the workflow](#establish-the-workflow)
+- [Preserve E2E invariants](#preserve-e2e-invariants)
 
 ## Establish the workflow
 
@@ -11,9 +16,9 @@ Treat [the Workspace E2E entry point](../../../apps/deskohub-workspace/scripts/w
 
 Read only the supporting documentation needed for the scenario:
 
-- Preview environment, deployment protection, callbacks, and state checks: [Workspace Vercel preview E2E](../../../apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md).
-- Current checkout persistence and lifecycle: [checkout lifecycle](../../../apps/deskohub-workspace/docs/checkout-lifecycle.md).
-- Nexi sandbox behavior and test inputs: [Nexi testing API](../../../packages/nexi/docs/TESTING_API.md).
+- Preview environment, deployment protection, callbacks, and state checks: [preview workflow](references/preview-workflow.md).
+- Current checkout persistence and lifecycle: [checkout lifecycle](../deskohub-workspace-checkout/references/lifecycle.md).
+- Nexi sandbox behavior and test inputs: [Nexi sandbox](references/nexi-sandbox.md).
 
 Distinguish automated-runner behavior from manual procedures before treating a difference as stale. If documentation conflicts with the runner about an automated run, follow the runner and update the stale documentation in the same change.
 

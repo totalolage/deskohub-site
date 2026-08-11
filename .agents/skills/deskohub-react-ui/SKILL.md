@@ -1,6 +1,6 @@
 ---
 name: deskohub-react-ui
-description: Apply Deskohub React and TSX conventions when creating, editing, or refactoring components, conditional rendering, variant mappings, JSX className values, or one-use UI literals.
+description: React, TSX, JSX, component, and UI convention handling.
 ---
 
 # Deskohub React UI

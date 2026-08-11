@@ -1,6 +1,6 @@
 ---
 name: deskohub-workspace-feature-flags
-description: Implement or review Deskohub Workspace feature flags using the app-owned generated PostHog contract and request-subject-aware typed clients.
+description: Workspace PostHog feature flags, generated contracts, release subjects, and preview overrides.
 ---
 
 # Deskohub Workspace feature flags
@@ -17,7 +17,7 @@ unrelated families do not even evaluate the gated lookup.
 
 Keep the package Node service as a thin typed wrapper around one lazily created SDK client. A key/value lookup does not need its own nested Context service, Layer, or ManagedRuntime.
 
-Follow the architecture documented in [FEATURE_FLAGS.md](../../../docs/FEATURE_FLAGS.md). Update the generated contract through the documented sync workflow, keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.
+Read [the feature-flag architecture](references/architecture.md) for generation, runtime evaluation, subjects, and deployment-scoped overrides. Read [the PostHog package reference](references/posthog-package.md) when changing the shared generated client or typed feature-flag adapters. Keep flag evaluation fail-closed where the feature requires it, and update this skill when developer feedback changes a durable feature-flag convention.
 
 Deployment-scoped overrides use the optional server-only `POSTHOG_FEATURE_FLAG_OVERRIDES` value, decoded against the generated Workspace contract. Only preview and development deployments may configure a non-empty map; production configuration must fail validation. Apply the map once to the process-scoped Node client and pass that identical typed map from the server layout to the consent-aware browser boundary. Never derive overrides from a request, cookie, header, URL, or visitor identity. After browser initialization, replace the complete override set and explicitly clear persisted overrides when the map is absent. Do not initialize PostHog before analytics consent merely to apply an override.
 

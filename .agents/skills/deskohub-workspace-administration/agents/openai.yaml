@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace Administration"
+  short_description: "Maintain Workspace administration surfaces"
+  default_prompt: "Use $deskohub-workspace-administration to change the Workspace dashboard, administration API, or dhw CLI."

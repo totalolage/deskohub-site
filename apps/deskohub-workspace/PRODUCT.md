@@ -1,38 +1,36 @@
-# Product
+# Workspace product
 
 <!-- impeccable:product-schema 1 -->
 
-## Platform
-
-web
-
 ## Users
 
-Deskohub customers reserve cowork and meeting-room products. Deskohub operators maintain the product configuration used by those reservation and checkout flows, including discounts and sales.
+Deskohub customers discover and reserve cowork, meeting-room, and office products. Deskohub operators maintain availability, discounts, sales, and the operational configuration used by reservation and checkout flows.
 
-## Product Purpose
+## Purpose
 
-Deskohub Workspace lets customers discover, price, reserve, and pay for Workspace products. Operational administration should make app-owned configuration safe to maintain without requiring direct database access.
+Workspace lets customers understand the offer, see an accurate price, reserve suitable capacity, pay when required, and receive the information needed to use the space. Its administration surfaces let authorized operators manage configuration and understand the current condition of a reservation without changing historical customer commitments.
 
-## Operating Context
+## Product commitments
 
-Discount definitions and codes live in Workspace Postgres. A dedicated Google Calendar is the read-only scheduling surface for sales: an all-day event owns timing, while its description references exactly one database discount UUID.
+- Preserve the price, product, discount labels, and legal terms that a customer accepted.
+- Keep customer and reservation facts in their designated operational systems rather than building competing records.
+- Show a changed price for renewed acceptance before payment begins.
+- Keep configuration failures isolated so one malformed discount or schedule does not suppress unrelated valid offers.
+- Protect customer contact, billing, payment, and access information from unnecessary storage or operator exposure.
+- Preserve immutable evidence of completed payments, accepted discounts, redemptions, legal acceptance, and issued accounting documents.
 
-## Capabilities and Constraints
+## Operating model
 
-- Discount definitions own complete Czech and English customer labels, one percentage or fixed-money adjustment, and one or more explicit product targets.
-- Discount codes reference a discount definition and own enabled state, validity window, and optional global-use limit.
-- Google Calendar remains read-only to the app. Operators associate an event by writing exactly one discount UUID in its Description field.
-- Discount application and code-redemption records are immutable operational evidence.
-- Administrative access uses HTTP Basic authentication checked against a credential hash supplied through server environment configuration.
+- Product availability reflects current reservations and business-calendar limitations.
+- Sales schedules and discount definitions have separate ownership so timing can change without rewriting the customer-facing benefit.
+- Discounts may be automatic, customer-specific, or deliberately entered as a code.
+- Reservation holds are temporary until payment or a zero-price completion succeeds.
+- Failed or abandoned payment must not leave capacity held indefinitely.
+- Administrative history is operational visibility unless a workflow explicitly defines immutable audit evidence.
 
-## Evidence on Hand
+## Product principles
 
-The database schema, checkout discount providers, Calendar normalization, operational discount guide, and automated checkout coverage are the source of truth. No customer claims or external proof should be invented.
-
-## Product Principles
-
-- Preserve the price and label a customer affirmed.
-- Keep scheduling ownership in Calendar and discount ownership in Postgres.
-- Fail safely when configuration is malformed or historical evidence blocks deletion.
-- Prefer a small, direct operator workflow over speculative administration features.
+- Prefer a small, direct customer and operator workflow.
+- Fail safely when configuration is invalid or current facts cannot be verified.
+- Never silently substitute a materially different price, product, or reservation.
+- Treat external systems as unavailable without hiding the Workspace record that operators still need to understand.
