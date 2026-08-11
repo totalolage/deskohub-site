@@ -28,7 +28,10 @@ const notifyCheckoutPaymentWindow = () => {
   }
 
   try {
-    checkoutPaymentWindow.postMessage(checkoutStatusTabAliveMessage, "*");
+    checkoutPaymentWindow.postMessage(
+      checkoutStatusTabAliveMessage,
+      window.location.origin
+    );
   } catch {
     checkoutPaymentWindow = null;
   }
@@ -39,6 +42,7 @@ export function CheckoutPaymentWindowCoordinator({
 }: CheckoutPaymentWindowCoordinatorProps) {
   useEffect(() => {
     const closeReturnedPaymentTab = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
       if (event.data !== checkoutStatusTabAliveMessage) return;
       window.close();
     };

@@ -35,7 +35,7 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("notifies the tracked payment tab while it remains cross-origin", () => {
+  test("targets the application origin when notifying the payment tab", () => {
     jest.useFakeTimers();
     const postMessage = mock(() => undefined);
     const paymentWindow = {
@@ -53,7 +53,7 @@ describe("CheckoutPaymentWindowCoordinator", () => {
 
     expect(postMessage).toHaveBeenCalledWith(
       "deskohub:checkout-status-tab-alive",
-      "*"
+      window.location.origin
     );
     expect(postMessage).toHaveBeenCalledTimes(2);
   });
@@ -65,6 +65,7 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: "deskohub:checkout-status-tab-alive",
+        origin: window.location.origin,
       })
     );
 
@@ -94,6 +95,20 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     expect(closeCurrentWindow).not.toHaveBeenCalled();
   });
 
+  test("ignores the liveness message from another origin", () => {
+    const closeCurrentWindow = jest.spyOn(window, "close");
+    render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: "deskohub:checkout-status-tab-alive",
+        origin: "https://payment.example.com",
+      })
+    );
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
+  });
+
   test("stops watching the payment tab when the original status page unmounts", () => {
     jest.useFakeTimers();
     const postMessage = mock(() => undefined);
@@ -112,6 +127,7 @@ describe("CheckoutPaymentWindowCoordinator", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: "deskohub:checkout-status-tab-alive",
+        origin: window.location.origin,
       })
     );
 

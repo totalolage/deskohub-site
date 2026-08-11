@@ -249,7 +249,7 @@ describe("CheckoutPayPage payment navigation", () => {
 
     expect(postMessage).toHaveBeenCalledWith(
       "deskohub:checkout-status-tab-alive",
-      "*"
+      window.location.origin
     );
     expect(paymentWindow.close).not.toHaveBeenCalled();
   });
