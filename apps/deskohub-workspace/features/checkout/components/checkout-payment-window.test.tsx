@@ -14,12 +14,12 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 import {
-  CheckoutPaymentWindowCloser,
+  CheckoutPaymentWindowCoordinator,
   closeCheckoutPaymentWindow,
   trackCheckoutPaymentWindow,
 } from "./checkout-payment-window";
 
-describe("CheckoutPaymentWindowCloser", () => {
+describe("CheckoutPaymentWindowCoordinator", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
   });
@@ -28,66 +28,94 @@ describe("CheckoutPaymentWindowCloser", () => {
     cleanup();
     closeCheckoutPaymentWindow();
     jest.useRealTimers();
+    jest.restoreAllMocks();
   });
 
   afterAll(() => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("closes the tracked payment tab after it returns to reservation status", () => {
+  test("notifies the tracked payment tab while it remains cross-origin", () => {
     jest.useFakeTimers();
-    let pathname: string | undefined;
-    const close = mock(() => undefined);
+    const postMessage = mock(() => undefined);
     const paymentWindow = {
-      close,
+      close: mock(() => undefined),
       closed: false,
       get location() {
-        if (!pathname) throw new DOMException("Cross-origin", "SecurityError");
-        return { pathname };
+        throw new DOMException("Cross-origin", "SecurityError");
       },
+      postMessage,
     } as unknown as Window;
     trackCheckoutPaymentWindow(paymentWindow);
 
-    render(<CheckoutPaymentWindowCloser intervalMs={100} />);
-
-    act(() => jest.advanceTimersByTime(100));
-    expect(close).not.toHaveBeenCalled();
-
-    pathname = "/en-US/reservation/status/order-id";
+    render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
     act(() => jest.advanceTimersByTime(100));
 
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(
+      "deskohub:checkout-status-tab-alive",
+      "*"
+    );
+    expect(postMessage).toHaveBeenCalledTimes(2);
+  });
+
+  test("closes the returned payment tab when the original status tab responds", () => {
+    const closeCurrentWindow = jest.spyOn(window, "close");
+    render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: "deskohub:checkout-status-tab-alive",
+      })
+    );
+
+    expect(closeCurrentWindow).toHaveBeenCalledTimes(1);
   });
 
   test("keeps the returned tab open when the original status tab is gone", () => {
     jest.useFakeTimers();
     const closeCurrentWindow = jest.spyOn(window, "close");
 
-    render(<CheckoutPaymentWindowCloser intervalMs={100} />);
+    render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
     act(() => jest.advanceTimersByTime(500));
+
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
+  });
+
+  test("ignores unrelated cross-window messages", () => {
+    const closeCurrentWindow = jest.spyOn(window, "close");
+    render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
+
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: "unrelated-message",
+      })
+    );
 
     expect(closeCurrentWindow).not.toHaveBeenCalled();
   });
 
   test("stops watching the payment tab when the original status page unmounts", () => {
     jest.useFakeTimers();
-    let pathname: string | undefined;
-    const close = mock(() => undefined);
+    const postMessage = mock(() => undefined);
+    const closeCurrentWindow = jest.spyOn(window, "close");
     const paymentWindow = {
-      close,
+      close: mock(() => undefined),
       closed: false,
-      get location() {
-        if (!pathname) throw new DOMException("Cross-origin", "SecurityError");
-        return { pathname };
-      },
+      postMessage,
     } as unknown as Window;
     trackCheckoutPaymentWindow(paymentWindow);
-    const view = render(<CheckoutPaymentWindowCloser intervalMs={100} />);
+    const view = render(<CheckoutPaymentWindowCoordinator intervalMs={100} />);
+    postMessage.mockClear();
 
     view.unmount();
-    pathname = "/en-US/reservation/status/order-id";
     act(() => jest.advanceTimersByTime(500));
+    window.dispatchEvent(
+      new MessageEvent("message", {
+        data: "deskohub:checkout-status-tab-alive",
+      })
+    );
 
-    expect(close).not.toHaveBeenCalled();
+    expect(postMessage).not.toHaveBeenCalled();
+    expect(closeCurrentWindow).not.toHaveBeenCalled();
   });
 });

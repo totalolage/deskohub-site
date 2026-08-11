@@ -1,13 +1,13 @@
 "use client";
 
 import { useEffect } from "react";
-import { reservationStatusPath } from "@/features/reservation/routes";
 
-type CheckoutPaymentWindowCloserProps = {
+type CheckoutPaymentWindowCoordinatorProps = {
   readonly intervalMs?: number;
 };
 
 const DEFAULT_PAYMENT_WINDOW_CHECK_INTERVAL_MS = 500;
+const checkoutStatusTabAliveMessage = "deskohub:checkout-status-tab-alive";
 
 let checkoutPaymentWindow: Window | null = null;
 
@@ -20,7 +20,7 @@ export const closeCheckoutPaymentWindow = () => {
   checkoutPaymentWindow = null;
 };
 
-const closeReturnedCheckoutPaymentWindow = () => {
+const notifyCheckoutPaymentWindow = () => {
   if (!checkoutPaymentWindow) return;
   if (checkoutPaymentWindow.closed) {
     checkoutPaymentWindow = null;
@@ -28,31 +28,32 @@ const closeReturnedCheckoutPaymentWindow = () => {
   }
 
   try {
-    if (
-      !checkoutPaymentWindow.location.pathname.includes(
-        `${reservationStatusPath}/`
-      )
-    ) {
-      return;
-    }
+    checkoutPaymentWindow.postMessage(checkoutStatusTabAliveMessage, "*");
   } catch {
-    return;
+    checkoutPaymentWindow = null;
   }
-
-  closeCheckoutPaymentWindow();
 };
 
-export function CheckoutPaymentWindowCloser({
+export function CheckoutPaymentWindowCoordinator({
   intervalMs = DEFAULT_PAYMENT_WINDOW_CHECK_INTERVAL_MS,
-}: CheckoutPaymentWindowCloserProps) {
+}: CheckoutPaymentWindowCoordinatorProps) {
   useEffect(() => {
-    closeReturnedCheckoutPaymentWindow();
+    const closeReturnedPaymentTab = (event: MessageEvent) => {
+      if (event.data !== checkoutStatusTabAliveMessage) return;
+      window.close();
+    };
+
+    window.addEventListener("message", closeReturnedPaymentTab);
+    notifyCheckoutPaymentWindow();
     const intervalId = globalThis.setInterval(
-      closeReturnedCheckoutPaymentWindow,
+      notifyCheckoutPaymentWindow,
       intervalMs
     );
 
-    return () => globalThis.clearInterval(intervalId);
+    return () => {
+      window.removeEventListener("message", closeReturnedPaymentTab);
+      globalThis.clearInterval(intervalId);
+    };
   }, [intervalMs]);
 
   return null;

@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
   openBrowserPage,
+  switchToBrowserTab,
   switchToMainFrame,
   waitForBrowserText,
   waitForBrowserUrl,
@@ -92,7 +93,11 @@ export const assertPaymentTerminalPath = ({
             run,
             session,
             timeouts: config.timeouts,
-          }),
+          }).pipe(
+            Effect.tap(({ checkoutTabId }) =>
+              switchToBrowserTab(run, session, checkoutTabId)
+            )
+          ),
           id: "start-hosted-payment",
           timeoutMs: config.timeouts.providerTransition,
         })

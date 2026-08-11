@@ -163,17 +163,13 @@ describe("CheckoutPayPage payment navigation", () => {
       events.push("execute");
     });
     const replace = mock((_href: string) => undefined);
-    let paymentPathname = "/";
+    const postMessage = mock(() => undefined);
     const paymentWindow = {
       close: mock(() => undefined),
       closed: false,
-      location: {
-        replace,
-        get pathname() {
-          return paymentPathname;
-        },
-      },
+      location: { replace },
       opener: window,
+      postMessage,
     };
     spyOn(window, "open").mockImplementation(() => {
       events.push("open");
@@ -246,13 +242,16 @@ describe("CheckoutPayPage payment navigation", () => {
     );
     expect(paymentWindow.close).not.toHaveBeenCalled();
 
-    paymentPathname = "/en-US/reservation/status/reservation-id";
-    const { CheckoutPaymentWindowCloser } = await import(
+    const { CheckoutPaymentWindowCoordinator } = await import(
       "./checkout-payment-window"
     );
-    render(<CheckoutPaymentWindowCloser />);
+    render(<CheckoutPaymentWindowCoordinator />);
 
-    expect(paymentWindow.close).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith(
+      "deskohub:checkout-status-tab-alive",
+      "*"
+    );
+    expect(paymentWindow.close).not.toHaveBeenCalled();
   });
 });
 
