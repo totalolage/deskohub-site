@@ -34,6 +34,7 @@ const runSubmitReservation = async (options?: {
       Effect.succeed({
         status: "redirect" as const,
         redirectUrl: "https://payments.example.test/checkout",
+        statusUrl: "/en-US/reservation/status/reservation-id",
       })
     );
 
@@ -72,6 +73,7 @@ describe("submitWorkspaceReservation", () => {
         return {
           status: "redirect" as const,
           redirectUrl: "https://payments.example.test/checkout",
+          statusUrl: "/en-US/reservation/status/reservation-id",
         };
       })
     );
@@ -97,6 +99,7 @@ describe("submitWorkspaceReservation", () => {
       message: "Checkout started successfully",
       status: "redirect",
       redirectUrl: "https://payments.example.test/checkout",
+      statusUrl: "/en-US/reservation/status/reservation-id",
     });
   });
 

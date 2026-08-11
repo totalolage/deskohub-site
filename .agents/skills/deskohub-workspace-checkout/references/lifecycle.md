@@ -444,13 +444,20 @@ sequenceDiagram
     App->>Nexi: POST /orders/hpp with the exact signed-summary amount
     Nexi-->>App: hostedPage and securityToken
     App->>DB: Store securityToken, redirect URL, attempt pending
-    App-->>Customer: Redirect to hostedPage
+    App-->>Customer: Open hostedPage in a new tab; navigate the original tab to pending reservation status
   else exactly zero signed price affirmed
     App->>DB: In one transaction insert paid internal attempt, mark reservation paid, persist applications, and admit/redeem code claim
     App->>App: Invoke idempotent paid fulfillment
     App-->>Customer: Redirect to local successful checkout status
   end
 ```
+
+While the original tab shows reservation status, it sends an
+origin-restricted liveness message to the script-opened payment tab. The browser
+delivers it only after that specific tab returns to the Workspace origin, where
+the tab validates the sender origin and closes itself. If the original tab is
+closed or the popup was blocked, no message arrives and the returned status page
+remains open.
 
 A definitive Nexi HPP rejection atomically marks the attempt failed and releases
 its reserved code claim. A network, retryable provider, conflict, rate-limit, or
