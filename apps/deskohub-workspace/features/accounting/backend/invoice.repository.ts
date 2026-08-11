@@ -22,6 +22,7 @@ import {
   invoiceDocumentSchema,
   makeInvoiceDocument,
 } from "@/features/accounting/invoice";
+import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
@@ -99,10 +100,12 @@ export class InvoiceRepository extends Context.Service<
       const findByPaymentAttemptId = Effect.fn(
         "InvoiceRepository.findByPaymentAttemptId"
       )(function* (paymentAttemptId: string) {
+        const decodedPaymentAttemptId =
+          paymentAttemptIdSchema.make(paymentAttemptId);
         const [metadata] = yield* db
           .select({ keyId: invoices.keyId })
           .from(invoices)
-          .where(eq(invoices.paymentAttemptId, paymentAttemptId))
+          .where(eq(invoices.paymentAttemptId, decodedPaymentAttemptId))
           .limit(1);
 
         if (!metadata) return null;
@@ -133,7 +136,7 @@ export class InvoiceRepository extends Context.Service<
             ),
           })
           .from(invoices)
-          .where(eq(invoices.paymentAttemptId, paymentAttemptId))
+          .where(eq(invoices.paymentAttemptId, decodedPaymentAttemptId))
           .limit(1)
           .pipe(
             Effect.withTracerEnabled(false),
@@ -193,19 +196,19 @@ export class InvoiceRepository extends Context.Service<
         readonly paymentAttemptId: string;
         readonly buyer?: AccountingBuyer;
       }) {
-        const alreadyIssued = yield* findByPaymentAttemptId(
+        const paymentAttemptId = paymentAttemptIdSchema.make(
           input.paymentAttemptId
         );
+        const alreadyIssued = yield* findByPaymentAttemptId(paymentAttemptId);
         if (alreadyIssued) {
           return { invoice: alreadyIssued, changed: false };
         }
 
-        const source = yield* accountingSnapshots.findByPaymentAttemptId(
-          input.paymentAttemptId
-        );
+        const source =
+          yield* accountingSnapshots.findByPaymentAttemptId(paymentAttemptId);
         if (!source) {
           return yield* new InvoiceEligibilityError({
-            paymentAttemptId: input.paymentAttemptId,
+            paymentAttemptId,
             message: "A payment-time accounting snapshot is required.",
           });
         }
@@ -217,7 +220,7 @@ export class InvoiceRepository extends Context.Service<
             () =>
               new InvoiceStorageError({
                 operation: "validate",
-                paymentAttemptId: input.paymentAttemptId,
+                paymentAttemptId,
                 message: "Invoice buyer details are invalid.",
               })
           )
@@ -244,13 +247,13 @@ export class InvoiceRepository extends Context.Service<
                   paymentAttempts.workspaceReservationId
                 )
               )
-              .where(eq(paymentAttempts.id, input.paymentAttemptId))
+              .where(eq(paymentAttempts.id, paymentAttemptId))
               .limit(1)
               .for("update");
 
             if (!locked) {
               return yield* invoiceEligibilityError(
-                input.paymentAttemptId,
+                paymentAttemptId,
                 "The payment attempt does not exist."
               );
             }
@@ -262,9 +265,9 @@ export class InvoiceRepository extends Context.Service<
               .limit(1);
 
             if (existing) {
-              if (existing.paymentAttemptId !== input.paymentAttemptId) {
+              if (existing.paymentAttemptId !== paymentAttemptId) {
                 return yield* invoiceEligibilityError(
-                  input.paymentAttemptId,
+                  paymentAttemptId,
                   "The reservation was invoiced from a different payment attempt."
                 );
               }
@@ -278,10 +281,10 @@ export class InvoiceRepository extends Context.Service<
             if (
               locked.paymentAttemptState !== "paid" ||
               locked.reservationPaymentState !== "paid" ||
-              locked.activePaymentAttemptId !== input.paymentAttemptId
+              locked.activePaymentAttemptId !== paymentAttemptId
             ) {
               return yield* invoiceEligibilityError(
-                input.paymentAttemptId,
+                paymentAttemptId,
                 "Only the active paid attempt of a paid reservation can be invoiced."
               );
             }
@@ -292,7 +295,7 @@ export class InvoiceRepository extends Context.Service<
               source.dotyposReservationId !== locked.dotyposReservationId
             ) {
               return yield* invoiceEligibilityError(
-                input.paymentAttemptId,
+                paymentAttemptId,
                 "The accounting snapshot does not match the paid reservation."
               );
             }
@@ -302,7 +305,7 @@ export class InvoiceRepository extends Context.Service<
                 (cause) =>
                   new InvoiceStorageError({
                     operation: "encrypt",
-                    paymentAttemptId: input.paymentAttemptId,
+                    paymentAttemptId,
                     message: "Invoice encryption key is unavailable.",
                     cause: censorLogValue(cause),
                   })
@@ -326,7 +329,7 @@ export class InvoiceRepository extends Context.Service<
             if (!counter) {
               return yield* new InvoiceStorageError({
                 operation: "load",
-                paymentAttemptId: input.paymentAttemptId,
+                paymentAttemptId,
                 message: "Invoice number allocation returned no row.",
               });
             }
@@ -342,7 +345,7 @@ export class InvoiceRepository extends Context.Service<
               makeInvoiceDocument({
                 source,
                 buyer,
-                paymentAttemptId: input.paymentAttemptId,
+                paymentAttemptId,
                 invoiceNumber,
                 issuedAt,
               })
@@ -351,7 +354,7 @@ export class InvoiceRepository extends Context.Service<
                 () =>
                   new InvoiceStorageError({
                     operation: "validate",
-                    paymentAttemptId: input.paymentAttemptId,
+                    paymentAttemptId,
                     message: "Invoice schema is invalid.",
                   })
               )
@@ -361,7 +364,7 @@ export class InvoiceRepository extends Context.Service<
               .insert(invoices)
               .values({
                 workspaceReservationId: locked.reservationId,
-                paymentAttemptId: input.paymentAttemptId,
+                paymentAttemptId,
                 dotyposCustomerId: locked.dotyposCustomerId,
                 invoiceNumber,
                 numberingYear,
@@ -379,14 +382,14 @@ export class InvoiceRepository extends Context.Service<
                   (cause) =>
                     new InvoiceStorageError({
                       operation: "encrypt",
-                      paymentAttemptId: input.paymentAttemptId,
+                      paymentAttemptId,
                       message: "Invoice could not be encrypted.",
                       cause: censorLogValue(cause),
                     })
                 )
               );
 
-            return { paymentAttemptId: input.paymentAttemptId, changed: true };
+            return { paymentAttemptId, changed: true };
           })
         );
 

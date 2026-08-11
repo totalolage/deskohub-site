@@ -54,8 +54,6 @@ describe("invoice repository persistence contract", () => {
       source.indexOf('const issue = Effect.fn("InvoiceRepository.issue")')
     );
 
-    expect(issue).toContain(
-      "existing.paymentAttemptId !== input.paymentAttemptId"
-    );
+    expect(issue).toContain("existing.paymentAttemptId !== paymentAttemptId");
   });
 });
