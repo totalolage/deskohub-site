@@ -18,8 +18,10 @@ const checkoutUrl =
 test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
+  let activeTabId = "t1";
   const activatedRefs: string[] = [];
   const clickedRefs: string[] = [];
+  const switchedTabs: string[] = [];
   let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
   const run = mock(async (_command, args, options = {}) => {
@@ -33,6 +35,7 @@ test("retries a transient reservation preparation failure with the same checkout
         "open",
         "press",
         "snapshot",
+        "tab",
         "wait",
       ].includes(arg)
     );
@@ -40,6 +43,28 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "open") return success();
     if (commandArgs[0] === "wait") return success();
+
+    if (commandArgs[0] === "tab" && commandArgs[1] === "list") {
+      return success(
+        JSON.stringify({
+          data: {
+            tabs: [
+              { active: activeTabId === "t1", tabId: "t1" },
+              ...(hostedPaymentStarted
+                ? [{ active: activeTabId === "t2", tabId: "t2" }]
+                : []),
+            ],
+          },
+          success: true,
+        })
+      );
+    }
+
+    if (commandArgs[0] === "tab") {
+      activeTabId = commandArgs[1] ?? activeTabId;
+      switchedTabs.push(activeTabId);
+      return success();
+    }
 
     if (
       commandArgs[0] === "eval" &&
@@ -57,8 +82,12 @@ test("retries a transient reservation preparation failure with the same checkout
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
-      if (hostedPaymentStarted)
+      if (hostedPaymentStarted && activeTabId === "t2")
         return success("https://xpay.nexigroup.com/hpp/nexi/test");
+      if (hostedPaymentStarted)
+        return success(
+          `https://workspace.example/en-US/reservation/status/${orderId}`
+        );
       if (reservationSubmitAttempts > 1)
         return success(
           `${checkoutUrl.replace("/reservation/cowork", "/checkout/pay")}?orderId=${orderId}`
@@ -94,7 +123,10 @@ test("retries a transient reservation preparation failure with the same checkout
     if (commandArgs[0] === "click") {
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
-      if (commandArgs[1] === "@e3") hostedPaymentStarted = true;
+      if (commandArgs[1] === "@e3") {
+        hostedPaymentStarted = true;
+        activeTabId = "t2";
+      }
       return success();
     }
 
@@ -105,7 +137,10 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
-      if (focusedRef === "@e3") hostedPaymentStarted = true;
+      if (focusedRef === "@e3") {
+        hostedPaymentStarted = true;
+        activeTabId = "t2";
+      }
       return success();
     }
 
@@ -131,6 +166,7 @@ test("retries a transient reservation preparation failure with the same checkout
     "@e2",
     "@e3",
   ]);
+  expect(switchedTabs).toEqual(["t1", "t2"]);
 });
 
 test("detaches long reservation preparation from the CDP evaluation", async () => {

@@ -1,5 +1,9 @@
 import { Effect } from "effect";
-import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import {
+  openBrowserPage,
+  switchToBrowserTab,
+  waitForBrowserUrl,
+} from "../browser";
 import { applyDiscountCode } from "../checkout/discount-code";
 import {
   submitCheckoutPayment,
@@ -73,6 +77,9 @@ export const executeZeroTotalCheckout = ({
     });
     yield* runStep({
       execute: submitCheckoutPayment(run, session).pipe(
+        Effect.flatMap((checkoutTabId) =>
+          switchToBrowserTab(run, session, checkoutTabId)
+        ),
         Effect.andThen(
           waitForBrowserUrl({
             description: "zero-total checkout status page",

@@ -3,6 +3,8 @@ import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
   findEnabledSnapshotRef,
+  readActiveBrowserTabId,
+  switchToBrowserTab,
   waitForBrowserCondition,
 } from "./browser";
 import type { Runner } from "./runtime";
@@ -60,4 +62,35 @@ test("ignores disabled snapshot targets with additional state attributes", () =>
   ].join("\n");
 
   expect(findEnabledSnapshotRef(snapshot, ["Card number"])).toBe("@e2");
+});
+
+test("reads and switches stable browser tabs", async () => {
+  const calls: string[][] = [];
+  const run: Runner = async (_command, args) => {
+    calls.push(args.slice(2));
+    return {
+      exitCode: 0,
+      stderr: "",
+      stdout: JSON.stringify({
+        data: {
+          tabs: [
+            { active: true, tabId: "t1" },
+            { active: false, tabId: "t2" },
+          ],
+        },
+        success: true,
+      }),
+    };
+  };
+
+  const tabId = await Effect.runPromise(
+    readActiveBrowserTabId(run, "browser-test")
+  );
+  await Effect.runPromise(switchToBrowserTab(run, "browser-test", tabId));
+
+  expect(tabId).toBe("t1");
+  expect(calls).toEqual([
+    ["--json", "tab", "list"],
+    ["tab", "t1"],
+  ]);
 });

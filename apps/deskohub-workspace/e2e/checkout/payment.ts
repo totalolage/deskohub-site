@@ -9,11 +9,13 @@ import {
   getSnapshotRef,
   openBrowserPage,
   pressBrowserKey,
+  readActiveBrowserTabId,
   readBrowserUrl,
   readInteractiveSnapshot,
   requireEnabledSnapshotRef,
   requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
+  switchToBrowserTab,
   switchToMainFrame,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
@@ -558,9 +560,9 @@ export const submitPaymentAndWaitForHostedPage = ({
   timeouts: WorkspaceE2ETimeouts;
 }) =>
   Effect.gen(function* () {
-    yield* submitCheckoutPayment(run, session);
+    const checkoutTabId = yield* submitCheckoutPayment(run, session);
 
-    return yield* waitForBrowserUrl({
+    const hostedPaymentUrl = yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
       matches: (url) =>
         url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
@@ -568,12 +570,25 @@ export const submitPaymentAndWaitForHostedPage = ({
       session,
       timeoutMs: timeouts.providerTransition,
     });
+    const hostedPaymentTabId = yield* readActiveBrowserTabId(run, session);
+    yield* switchToBrowserTab(run, session, checkoutTabId);
+    yield* waitForBrowserUrl({
+      description: "checkout status page in original tab",
+      matches: isCheckoutStatusUrl,
+      run,
+      session,
+      timeoutMs: timeouts.providerTransition,
+    });
+    yield* switchToBrowserTab(run, session, hostedPaymentTabId);
+    return hostedPaymentUrl;
   });
 
 export const submitCheckoutPayment = (run: Runner, session: string) =>
   Effect.gen(function* () {
+    const checkoutTabId = yield* readActiveBrowserTabId(run, session);
     yield* clickCheckoutPayConsent(run, session);
     yield* activateCheckoutPayButton(run, session);
+    return checkoutTabId;
   });
 
 const clickCheckoutPayConsent = (run: Runner, session: string) =>
