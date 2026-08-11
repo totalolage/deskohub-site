@@ -134,6 +134,25 @@ test("recognizes a rendered not-found response for a disabled preview page", asy
   ).resolves.toBe(false);
 });
 
+test("rejects a streamed Next server error instead of disabling E2E coverage", async () => {
+  const fetchMock = mock(
+    async () =>
+      new Response('<h1 class="next-error-h1">500</h1>', {
+        status: 200,
+      })
+  );
+
+  await expect(
+    Effect.runPromise(
+      isPreviewPageAvailable(
+        makeConfig(),
+        "/en-US/reservation/office",
+        "data-office-base-price"
+      ).pipe(Effect.provide(makeFetchHttpClientLayer(fetchMock)))
+    )
+  ).rejects.toThrow("did not render its expected content");
+});
+
 test("rejects a preview page without expected content or a rendered not-found boundary", async () => {
   const fetchMock = mock(
     async () => new Response("<main>Unexpected page</main>", { status: 200 })

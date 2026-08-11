@@ -46,7 +46,9 @@ export const isPreviewPageAvailable = (
       )
     );
     if (body.includes(expectedContent)) return true;
-    if (body.includes('class="next-error-h1"')) return false;
+    if (/<h1[^>]*class="next-error-h1"[^>]*>\s*404\s*<\/h1>/.test(body)) {
+      return false;
+    }
 
     return yield* Effect.fail(
       workspaceE2EError(
