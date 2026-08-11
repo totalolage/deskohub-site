@@ -17,6 +17,7 @@ import {
 } from "@/shared/backend/logging/censorship";
 import {
   accountingDocumentSnapshotSchema,
+  decodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import { AccountingSnapshotKeyService } from "./backend/accounting-snapshot-key.service";
@@ -184,6 +185,19 @@ describe("accounting document snapshot", () => {
     await expect(
       Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
     ).rejects.toBeDefined();
+  });
+
+  test("reads previously stored snapshots without retaining obsolete metadata", async () => {
+    const snapshot = makeSnapshot();
+
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 1,
+        })
+      )
+    ).resolves.toEqual(snapshot);
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {

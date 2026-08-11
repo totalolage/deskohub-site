@@ -51,9 +51,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     );
     const [migration, invoiceMigration] = await Promise.all([
       readAppFile("db/migrations/20260810143334_slim_morlun/migration.sql"),
-      readAppFile(
-        "db/migrations/20260811173859_issued_invoices/migration.sql"
-      ),
+      readAppFile("db/migrations/20260811173859_issued_invoices/migration.sql"),
     ]);
 
     expect(schema).toContain('bytea("encrypted_snapshot")');
@@ -138,9 +136,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("follows the corrected migration head before issuing invoices", async () => {
     const [discountJson, invoiceJson] = await Promise.all([
       readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
-      readAppFile(
-        "db/migrations/20260811173859_issued_invoices/snapshot.json"
-      ),
+      readAppFile("db/migrations/20260811173859_issued_invoices/snapshot.json"),
     ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);

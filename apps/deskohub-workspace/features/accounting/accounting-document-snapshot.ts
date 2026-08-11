@@ -146,6 +146,9 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
 
+export const decodeStoredAccountingDocumentSnapshot =
+  Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema);
+
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,
   companyId: companyRegistrationIdSchema.make(
