@@ -3,13 +3,13 @@
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
-import { trackCheckoutPaymentWindow } from "@/features/checkout/components/checkout-payment-window";
+import { markCheckoutStatusWindowOwner } from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -63,6 +63,13 @@ export function CheckoutPayPage({
     paymentWindowRef.current?.close();
     paymentWindowRef.current = null;
   };
+  useEffect(
+    () => () => {
+      paymentWindowRef.current?.close();
+      paymentWindowRef.current = null;
+    },
+    []
+  );
   const {
     execute,
     isExecuting,
@@ -92,7 +99,7 @@ export function CheckoutPayPage({
       if (data.statusUrl && paymentWindow && !paymentWindow.closed) {
         try {
           paymentWindow.location.replace(data.redirectUrl);
-          trackCheckoutPaymentWindow(paymentWindow);
+          markCheckoutStatusWindowOwner(data.statusUrl);
           paymentWindowRef.current = null;
           router.push(data.statusUrl);
           return;

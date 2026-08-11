@@ -1,64 +1,79 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
-type CheckoutPaymentWindowCoordinatorProps = {
-  readonly intervalMs?: number;
-};
-
-const DEFAULT_PAYMENT_WINDOW_CHECK_INTERVAL_MS = 500;
-const checkoutStatusTabAliveMessage = "deskohub:checkout-status-tab-alive";
-
-let checkoutPaymentWindow: Window | null = null;
-
-export const trackCheckoutPaymentWindow = (paymentWindow: Window) => {
-  checkoutPaymentWindow = paymentWindow;
-};
-
-export const closeCheckoutPaymentWindow = () => {
-  checkoutPaymentWindow?.close();
-  checkoutPaymentWindow = null;
-};
-
-const notifyCheckoutPaymentWindow = () => {
-  if (!checkoutPaymentWindow) return;
-  if (checkoutPaymentWindow.closed) {
-    checkoutPaymentWindow = null;
-    return;
-  }
-
+const getCheckoutStatusLockName = () =>
+  `deskohub:checkout-status:${window.location.pathname}`;
+const getCheckoutStatusOwnerStorageKey = (pathname: string) =>
+  `deskohub:checkout-status-owner:${pathname}`;
+const consumeCheckoutStatusWindowOwner = (pathname: string) => {
   try {
-    checkoutPaymentWindow.postMessage(
-      checkoutStatusTabAliveMessage,
-      window.location.origin
-    );
+    const storageKey = getCheckoutStatusOwnerStorageKey(pathname);
+    const ownsStatusWindow = sessionStorage.getItem(storageKey) === "true";
+    sessionStorage.removeItem(storageKey);
+    return ownsStatusWindow;
   } catch {
-    checkoutPaymentWindow = null;
+    return false;
   }
 };
 
-export function CheckoutPaymentWindowCoordinator({
-  intervalMs = DEFAULT_PAYMENT_WINDOW_CHECK_INTERVAL_MS,
-}: CheckoutPaymentWindowCoordinatorProps) {
-  useEffect(() => {
-    const closeReturnedPaymentTab = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
-      if (event.data !== checkoutStatusTabAliveMessage) return;
-      window.close();
-    };
+export const markCheckoutStatusWindowOwner = (statusUrl: string) => {
+  try {
+    const pathname = new URL(statusUrl, "https://deskohub.local").pathname;
+    sessionStorage.setItem(getCheckoutStatusOwnerStorageKey(pathname), "true");
+  } catch {
+    // Ownership coordination must not block payment navigation.
+  }
+};
 
-    window.addEventListener("message", closeReturnedPaymentTab);
-    notifyCheckoutPaymentWindow();
-    const intervalId = globalThis.setInterval(
-      notifyCheckoutPaymentWindow,
-      intervalMs
-    );
+export function CheckoutPaymentWindowCoordinator() {
+  const ownsStatusWindowRef = useRef<boolean | undefined>(undefined);
+
+  useEffect(() => {
+    const ownsStatusWindow =
+      ownsStatusWindowRef.current ??
+      consumeCheckoutStatusWindowOwner(window.location.pathname);
+    ownsStatusWindowRef.current = ownsStatusWindow;
+    if (!navigator.locks) return;
+
+    let active = true;
+    let releaseLock: () => void = () => undefined;
+    const holdLock = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    navigator.locks
+      .request(
+        getCheckoutStatusLockName(),
+        ownsStatusWindow
+          ? { mode: "exclusive", steal: true }
+          : { ifAvailable: true, mode: "exclusive" },
+        (lock) => {
+          if (!active) return;
+          if (!lock) {
+            window.close();
+            return;
+          }
+
+          return holdLock;
+        }
+      )
+      .catch((cause) => {
+        if (
+          active &&
+          !ownsStatusWindow &&
+          cause instanceof DOMException &&
+          cause.name === "AbortError"
+        ) {
+          window.close();
+        }
+      });
 
     return () => {
-      window.removeEventListener("message", closeReturnedPaymentTab);
-      globalThis.clearInterval(intervalId);
+      active = false;
+      releaseLock();
     };
-  }, [intervalMs]);
+  }, []);
 
   return null;
 }

@@ -452,12 +452,12 @@ sequenceDiagram
   end
 ```
 
-While the original tab shows reservation status, it sends an
-origin-restricted liveness message to the script-opened payment tab. The browser
-delivers it only after that specific tab returns to the Workspace origin, where
-the tab validates the sender origin and closes itself. If the original tab is
-closed or the popup was blocked, no message arrives and the returned status page
-remains open.
+After opening the payment tab, the Pay page marks the original tab as owner in
+tab-local session storage before navigating it to status. The owner holds an
+exclusive browser lock scoped to the status path and preempts a returned payment
+tab that wins the hydration race. An unmarked returned tab closes when the lock
+is unavailable or preempted; if the original tab is closed, it keeps the lock
+and remains open. A browser without Web Locks keeps the returned page open.
 
 Starting a new reservation from terminal status or invalid Pay state uses a
 document navigation. Cache Components may retain the previous reservation form

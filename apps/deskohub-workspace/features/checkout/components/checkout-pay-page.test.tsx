@@ -151,6 +151,9 @@ describe("CheckoutPayPage payment navigation", () => {
 
   afterEach(() => {
     cleanup();
+    sessionStorage.removeItem(
+      "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
+    );
   });
 
   afterAll(() => {
@@ -163,13 +166,11 @@ describe("CheckoutPayPage payment navigation", () => {
       events.push("execute");
     });
     const replace = mock((_href: string) => undefined);
-    const postMessage = mock(() => undefined);
     const paymentWindow = {
       close: mock(() => undefined),
       closed: false,
       location: { replace },
       opener: window,
-      postMessage,
     };
     spyOn(window, "open").mockImplementation(() => {
       events.push("open");
@@ -240,18 +241,50 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(workspaceRouterPush).toHaveBeenCalledWith(
       "/en-US/reservation/status/reservation-id"
     );
+    expect(
+      sessionStorage.getItem(
+        "deskohub:checkout-status-owner:/en-US/reservation/status/reservation-id"
+      )
+    ).toBe("true");
     expect(paymentWindow.close).not.toHaveBeenCalled();
+  });
 
-    const { CheckoutPaymentWindowCoordinator } = await import(
-      "./checkout-payment-window"
-    );
-    render(<CheckoutPaymentWindowCoordinator />);
+  test("closes the pre-opened payment tab when checkout unmounts", async () => {
+    const paymentWindow = {
+      close: mock(() => undefined),
+      closed: false,
+      opener: window,
+    };
+    spyOn(window, "open").mockReturnValue(paymentWindow as unknown as Window);
+    workspaceUseAction.mockReturnValue({
+      execute: mock(),
+      isExecuting: false,
+      result: {},
+    });
 
-    expect(postMessage).toHaveBeenCalledWith(
-      "deskohub:checkout-status-tab-alive",
-      window.location.origin
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
     );
-    expect(paymentWindow.close).not.toHaveBeenCalled();
+
+    fireEvent.click(view.getByRole("checkbox"));
+    fireEvent.click(
+      view.getByRole("button", {
+        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+      })
+    );
+    view.unmount();
+
+    expect(paymentWindow.close).toHaveBeenCalledTimes(1);
   });
 });
 
