@@ -103,4 +103,56 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.paymentAttempts.id,
     }),
   },
+  mobileShopPurchaseOrders: {
+    items: r.many.mobileShopPurchaseOrderItems(),
+    paymentAttempts: r.many.mobileShopPurchasePaymentAttempts(),
+    webhookEvents: r.many.mobileShopPurchaseWebhookEvents(),
+    receiptDelivery: r.one.mobileShopPurchaseReceiptDeliveries({
+      from: r.mobileShopPurchaseOrders.id,
+      to: r.mobileShopPurchaseReceiptDeliveries.purchaseOrderId,
+    }),
+    stockAttempt: r.one.mobileShopPurchaseStockAttempts({
+      from: r.mobileShopPurchaseOrders.id,
+      to: r.mobileShopPurchaseStockAttempts.purchaseOrderId,
+    }),
+  },
+  mobileShopPurchaseOrderItems: {
+    purchaseOrder: r.one.mobileShopPurchaseOrders({
+      from: r.mobileShopPurchaseOrderItems.purchaseOrderId,
+      to: r.mobileShopPurchaseOrders.id,
+      optional: false,
+    }),
+  },
+  mobileShopPurchasePaymentAttempts: {
+    purchaseOrder: r.one.mobileShopPurchaseOrders({
+      from: r.mobileShopPurchasePaymentAttempts.purchaseOrderId,
+      to: r.mobileShopPurchaseOrders.id,
+      optional: false,
+    }),
+    webhookEvents: r.many.mobileShopPurchaseWebhookEvents(),
+  },
+  mobileShopPurchaseWebhookEvents: {
+    purchaseOrder: r.one.mobileShopPurchaseOrders({
+      from: r.mobileShopPurchaseWebhookEvents.purchaseOrderId,
+      to: r.mobileShopPurchaseOrders.id,
+    }),
+    paymentAttempt: r.one.mobileShopPurchasePaymentAttempts({
+      from: r.mobileShopPurchaseWebhookEvents.paymentAttemptId,
+      to: r.mobileShopPurchasePaymentAttempts.id,
+    }),
+  },
+  mobileShopPurchaseReceiptDeliveries: {
+    purchaseOrder: r.one.mobileShopPurchaseOrders({
+      from: r.mobileShopPurchaseReceiptDeliveries.purchaseOrderId,
+      to: r.mobileShopPurchaseOrders.id,
+      optional: false,
+    }),
+  },
+  mobileShopPurchaseStockAttempts: {
+    purchaseOrder: r.one.mobileShopPurchaseOrders({
+      from: r.mobileShopPurchaseStockAttempts.purchaseOrderId,
+      to: r.mobileShopPurchaseOrders.id,
+      optional: false,
+    }),
+  },
 }));

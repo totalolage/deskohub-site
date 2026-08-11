@@ -15,10 +15,21 @@ import {
   locales,
 } from "@/features/i18n/routing";
 import { env } from "./env";
+import { auth } from "./features/account/auth.server";
 import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/basic-auth";
 
 const isAdministrationPath = (pathname: string) =>
   pathname === "/admin" || pathname.startsWith("/admin/");
+
+const isAccountPath = (pathname: string, locale: string) => {
+  const accountPath = `/${locale}/account`;
+  return pathname === accountPath || pathname.startsWith(`${accountPath}/`);
+};
+
+const getAccountLoginUrl = (request: NextRequest, locale: string) => {
+  const redirectTo = `${request.nextUrl.pathname}${request.nextUrl.search}`;
+  return `/${locale}/auth/sign-in?redirectTo=${encodeURIComponent(redirectTo)}`;
+};
 
 export function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
@@ -52,6 +63,17 @@ export function proxy(request: NextRequest) {
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   if (localeFromUrl) {
+    if (isAccountPath(request.nextUrl.pathname, localeFromUrl)) {
+      return auth
+        .middleware({
+          loginUrl: getAccountLoginUrl(request, localeFromUrl),
+        })(request)
+        .then((response) => {
+          setLocaleCookie(response, localeCookieName, localeFromUrl);
+          return response;
+        });
+    }
+
     const response = NextResponse.next();
     setLocaleCookie(response, localeCookieName, localeFromUrl);
     return response;

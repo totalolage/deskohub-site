@@ -1,0 +1,44 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bun run build",
+  "outputDirectory": "dist",
+  "cleanUrls": true,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "same-origin"
+        }
+      ]
+    },
+    {
+      "source": "/service-worker.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://workspace.deskohub.cz/api/:path*"
+    },
+    {
+      "source": "/:locale(cs-CZ|en-US)/auth/:path*",
+      "destination": "https://workspace.deskohub.cz/:locale/auth/:path*"
+    },
+    {
+      "source": "/((?!assets/|_expo/|favicon\\.png|icon-256\\.png|icon-1024\\.png|manifest\\.webmanifest|service-worker\\.js|mobile/android/releases/|\\.well-known/).*)",
+      "destination": "/index"
+    }
+  ]
+}

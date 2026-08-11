@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "@neondatabase/auth-ui/tailwind";
 @import "tw-animate-css";
 @import "../shared/styles/glow-border.css";
 

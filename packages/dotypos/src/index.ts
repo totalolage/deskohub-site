@@ -20,6 +20,7 @@ export {
 } from "./errors";
 export type {
   CreateDotyposReservationInput,
+  DeductDotyposWarehouseStockItem,
   DotyposBranchId,
   DotyposCategory,
   DotyposCategoryId,
@@ -41,6 +42,9 @@ export type {
   DotyposTable,
   DotyposTableGroupId,
   DotyposTableId,
+  DotyposWarehouse,
+  DotyposWarehouseId,
+  DotyposWarehouseProduct,
   UpdateDotyposReservationInput,
 } from "./types";
 export {
@@ -62,5 +66,8 @@ export {
   DotyposTableGroupIdSchema,
   DotyposTableIdSchema,
   DotyposTableSchema,
+  DotyposWarehouseIdSchema,
+  DotyposWarehouseProductSchema,
+  DotyposWarehouseSchema,
 } from "./types";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

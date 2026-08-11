@@ -58,6 +58,24 @@ export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
 export const getDatasourceConfig = (environment: E2EEnvironment) => {
   const databaseUrl = environment.DATABASE_URL;
   const databaseUrlUnpooled = environment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED;
+  const neonApiKey = environment.WORKSPACE_E2E_NEON_API_KEY;
+  const neonBranchId = environment.WORKSPACE_E2E_NEON_BRANCH_ID;
+  const neonProjectId = environment.WORKSPACE_E2E_NEON_PROJECT_ID;
+  const hasAnyNeonAuthConfiguration = Boolean(
+    neonApiKey || neonBranchId || neonProjectId
+  );
+  const neonAuth =
+    neonApiKey && neonBranchId && neonProjectId
+      ? {
+          apiKey: neonApiKey,
+          branchId: neonBranchId,
+          projectId: neonProjectId,
+        }
+      : undefined;
+  assert(
+    !hasAnyNeonAuthConfiguration || neonAuth,
+    "Neon Auth E2E configuration must include API key, branch ID, and project ID"
+  );
   [databaseUrl, databaseUrlUnpooled].forEach(addDatabaseUrlRedactions);
   [
     environment.DOTYPOS_API_URL,
@@ -68,6 +86,9 @@ export const getDatasourceConfig = (environment: E2EEnvironment) => {
     environment.DOTYPOS_EMPLOYEE_ID,
     environment.DOTYPOS_REFRESH_TOKEN,
     environment.NEXI_API_ORIGIN,
+    environment.WORKSPACE_E2E_NEON_API_KEY,
+    environment.WORKSPACE_E2E_NEON_BRANCH_ID,
+    environment.WORKSPACE_E2E_NEON_PROJECT_ID,
     environment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
   ].forEach((value) => {
     addRedaction(value);
@@ -87,6 +108,7 @@ export const getDatasourceConfig = (environment: E2EEnvironment) => {
       refreshToken: environment.DOTYPOS_REFRESH_TOKEN,
     },
     expectedCurrency: "CZK",
+    neonAuth,
     nexiApiOrigin: environment.NEXI_API_ORIGIN,
     timeouts: workspaceE2ETimeouts,
   };

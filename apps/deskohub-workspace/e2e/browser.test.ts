@@ -3,12 +3,14 @@ import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
   findEnabledSnapshotRef,
+  openBrowserPage,
   readActiveBrowserTabId,
   readBrowserTabs,
   switchToBrowserTab,
   waitForBrowserCondition,
 } from "./browser";
 import type { Runner } from "./runtime";
+import { workspaceE2ETimeouts } from "./timeouts";
 
 test("activates a hydrated element through focus and keyboard input", async () => {
   const calls: Array<{ readonly args: string[]; readonly input?: string }> = [];
@@ -56,6 +58,31 @@ test("waits for an application state condition instead of sampling it once", asy
   ]);
 });
 
+test("does not log secret browser navigation commands", async () => {
+  let commandOptions: Parameters<Runner>[2];
+  const run: Runner = async (_command, _args, options) => {
+    commandOptions = options;
+    return { exitCode: 0, stderr: "", stdout: "" };
+  };
+
+  await Effect.runPromise(
+    openBrowserPage(
+      {
+        baseUrl: "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+        bypassSecret: "test-protection-bypass",
+        expectedHost: "deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app",
+        timeouts: workspaceE2ETimeouts,
+      },
+      run,
+      "browser-test",
+      "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/api/auth/magic-link/verify?token=secret",
+      { sensitive: true }
+    )
+  );
+
+  expect(commandOptions?.logCommand).toBeFalse();
+});
+
 test("ignores disabled snapshot targets with additional state attributes", () => {
   const snapshot = [
     '- textbox "Card number" [disabled, ref=e1]',
@@ -85,7 +112,9 @@ test("reads and switches stable browser tabs", async () => {
   };
 
   const tabs = await Effect.runPromise(readBrowserTabs(run, "browser-test"));
-  const tabId = await Effect.runPromise(readActiveBrowserTabId(run, "browser-test"));
+  const tabId = await Effect.runPromise(
+    readActiveBrowserTabId(run, "browser-test")
+  );
   await Effect.runPromise(switchToBrowserTab(run, "browser-test", tabId));
 
   expect(tabs).toEqual([

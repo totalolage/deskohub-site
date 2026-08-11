@@ -418,6 +418,22 @@ jobs:
           echo "| agent-browser CLI installation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
 
+      - name: Install cloudflared tunnel client
+        env:
+          CLOUDFLARED_SHA256: ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd
+          CLOUDFLARED_VERSION: 2026.7.2
+        run: |
+          set -euo pipefail
+          started_at=$SECONDS
+          curl --fail --location --silent --show-error \
+            --output /tmp/cloudflared \
+            "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64"
+          echo "${CLOUDFLARED_SHA256}  /tmp/cloudflared" | sha256sum --check
+          chmod 0755 /tmp/cloudflared
+          sudo install -m 0755 /tmp/cloudflared /usr/local/bin/cloudflared
+          cloudflared --version
+          echo "| cloudflared installation | $((SECONDS - started_at))s |" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Verify hosted browser runtime
         run: |
           started_at=$SECONDS
@@ -458,6 +474,9 @@ jobs:
           DATABASE_URL: ${{ steps.preview-database.outputs.pooled_url }}
           WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
           WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.preview-database.outputs.direct_url }}
+          WORKSPACE_E2E_NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          WORKSPACE_E2E_NEON_BRANCH_ID: ${{ steps.preview-database.outputs.branch_id }}
+          WORKSPACE_E2E_NEON_PROJECT_ID: ${{ env.NEON_PROJECT_ID }}
           WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"
           WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: ${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}
           DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}

@@ -5,6 +5,7 @@ import {
   coworkAdvertisedPriceReservationEquals,
   getCoworkAdvertisedPriceReservation,
 } from "@/features/reservation/cowork-reservation";
+import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 import {
   advertisedPriceRequestBatchSize,
   advertisedPriceRequestSchema,
@@ -70,7 +71,7 @@ describe("advertised price contract", () => {
   });
 
   test("rejects office price requests beyond the one-month booking horizon", () => {
-    const startsOn = Temporal.Now.plainDateISO();
+    const startsOn = getCurrentWorkspaceDate();
     const decoded = decodeRequest({
       locale: "en-US",
       reservation: {

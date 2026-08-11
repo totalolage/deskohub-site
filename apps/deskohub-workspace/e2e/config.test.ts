@@ -62,9 +62,26 @@ test("requires a direct datasource URL", () => {
 });
 
 test("keeps canonical local currency in datasource assertions", () => {
-  expect(getDatasourceConfig(makeTestE2EEnvironment()).expectedCurrency).toBe(
-    "CZK"
+  const config = getDatasourceConfig(makeTestE2EEnvironment());
+  expect(config.expectedCurrency).toBe("CZK");
+  expect(config.neonAuth).toEqual({
+    apiKey: "neon-api-key",
+    branchId: "br-preview-123",
+    projectId: "project-preview-123",
+  });
+});
+
+test("keeps Neon Auth optional for standalone datasource diagnostics", () => {
+  const config = getDatasourceConfig(
+    makeE2EEnvironment({
+      ...validE2ERuntimeEnvironment,
+      WORKSPACE_E2E_NEON_API_KEY: undefined,
+      WORKSPACE_E2E_NEON_BRANCH_ID: undefined,
+      WORKSPACE_E2E_NEON_PROJECT_ID: undefined,
+    })
   );
+
+  expect(config.neonAuth).toBeUndefined();
 });
 
 test("rejects a datasource outside the explicit preview allowlist", () => {

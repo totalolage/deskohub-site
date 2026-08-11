@@ -62,6 +62,8 @@ describe("getSiteHeaderConfig", () => {
       "FAQ",
       "Contact",
     ]);
+    expect(config.accountLabel).toBe("Account");
+    expect(config.accountHref).toBe("/en-US/account");
   });
 
   test("uses compact Czech labels for the public navigation", async () => {
@@ -76,6 +78,8 @@ describe("getSiteHeaderConfig", () => {
       "FAQ",
       "Kontakt",
     ]);
+    expect(config.accountLabel).toBe("Účet");
+    expect(config.accountHref).toBe("/cs-CZ/account");
   });
 
   test("omits the Private Office link when its release flag is disabled", async () => {

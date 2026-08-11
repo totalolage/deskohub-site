@@ -1,0 +1,433 @@
+/*
+THESIS: The shop behaves like an honest fridge ticket—immediate, legible, and finished in a few taps, never a generic delivery marketplace.
+OWN-WORLD: Deskohub navy anchors the frame; aquamarine means access and completion; tactile paper surfaces hold the working menu.
+STORY: Confirm access, mark exactly what was taken, review the server-confirmed amount, then pay securely.
+FIRST VIEWPORT: A compact brand bar gives way to today’s access ticket and the question “What are you taking?” with search immediately below.
+FORM: An established-brand Operate surface using a compact Android navigation bar, responsive product ledger, and persistent cart action.
+*/
+
+import { router } from "expo-router";
+import { useMemo, useState } from "react";
+import {
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  useWindowDimensions,
+  View,
+} from "react-native";
+
+import { AppScreen, ScreenIntro } from "@/components/AppScreen";
+import { Brand } from "@/components/Brand";
+import { CartDock } from "@/components/CartDock";
+import {
+  ActionButton,
+  Pill,
+  StatePanel,
+  StatusBanner,
+} from "@/components/Controls";
+import { ProductCard } from "@/components/ProductCard";
+import { palette, radii, spacing, type } from "@/constants/Theme";
+import { formatPragueDay, localizeText } from "@/src/domain/format";
+import { useShop } from "@/src/state/shop-provider";
+
+function LaunchState() {
+  const { t } = useShop();
+  return (
+    <View style={styles.launch}>
+      <Brand inverse />
+      <View style={styles.launchCopy}>
+        <View style={styles.launchLine} />
+        <Text accessibilityRole="header" style={styles.launchTitle}>
+          {t("loadingTitle")}
+        </Text>
+        <Text style={styles.launchBody}>{t("loadingBody")}</Text>
+      </View>
+    </View>
+  );
+}
+
+function SignInState() {
+  const { actionError, beginSignIn, isActionPending, signInState, t } =
+    useShop();
+
+  return (
+    <AppScreen header={false}>
+      <View style={styles.signInShell}>
+        <Brand />
+        <View style={styles.signInHero}>
+          <Text style={styles.signInKicker}>{t("signInKicker")}</Text>
+          <Text accessibilityRole="header" style={styles.signInTitle}>
+            {t("signInTitle")}
+          </Text>
+          <Text style={styles.signInBody}>{t("signInBody")}</Text>
+        </View>
+        <View style={styles.signInForm}>
+          <Text style={styles.handoffBody}>{t("signInHandoffBody")}</Text>
+          {actionError === "native_auth_unavailable" && (
+            <StatusBanner
+              body={t("nativeAuthUnavailableBody")}
+              title={t("nativeAuthUnavailableTitle")}
+              tone="warning"
+            />
+          )}
+          {actionError && actionError !== "native_auth_unavailable" && (
+            <StatusBanner
+              body={t("errorBody")}
+              title={t("errorTitle")}
+              tone="error"
+            />
+          )}
+          <ActionButton
+            label={
+              signInState === "opening"
+                ? t("openingSignIn")
+                : t("continueToSignIn")
+            }
+            loading={isActionPending}
+            onPress={() => void beginSignIn()}
+          />
+        </View>
+      </View>
+    </AppScreen>
+  );
+}
+
+function LockedState() {
+  const { entitlement, locale, session, t } = useShop();
+  if (entitlement?.kind !== "locked" || session.kind !== "signed_in")
+    return null;
+  const nextReservation = entitlement.nextReservationStartsAt
+    ? t("lockedNext", {
+        date: formatPragueDay(entitlement.nextReservationStartsAt, locale),
+      })
+    : t("lockedNoReservation");
+
+  return (
+    <AppScreen>
+      <View style={styles.lockedTicket}>
+        <Text style={styles.lockedKicker}>{t("lockedKicker")}</Text>
+        <Text accessibilityRole="header" style={styles.lockedTitle}>
+          {t("lockedTitle")}
+        </Text>
+        <Text style={styles.lockedBody}>{t("lockedBody")}</Text>
+        <View style={styles.nextReservation}>
+          <Text style={styles.nextReservationText}>{nextReservation}</Text>
+        </View>
+      </View>
+      <StatusBanner
+        body={t("lockedHistory")}
+        title={
+          session.customer.email
+            ? t("signedInAs", { email: session.customer.email })
+            : t("appName")
+        }
+      />
+    </AppScreen>
+  );
+}
+
+function CatalogState() {
+  const { width } = useWindowDimensions();
+  const {
+    actionError,
+    cart,
+    catalog,
+    catalogIsStale,
+    entitlement,
+    isActionPending,
+    locale,
+    refreshShop,
+    session,
+    t,
+  } = useShop();
+  const [search, setSearch] = useState("");
+  const [categoryId, setCategoryId] = useState<string | null>(null);
+  const columns = width >= 680 ? 2 : 1;
+
+  const products = useMemo(() => {
+    if (!catalog) return [];
+    const needle = search.trim().toLocaleLowerCase();
+    return catalog.products.filter((product) => {
+      const categoryMatches =
+        categoryId === null || product.categoryId === categoryId;
+      const searchMatches =
+        needle.length === 0 ||
+        `${product.name.cs} ${product.name.en} ${product.description.cs} ${product.description.en}`
+          .toLocaleLowerCase()
+          .includes(needle);
+      return categoryMatches && searchMatches;
+    });
+  }, [catalog, categoryId, search]);
+
+  if (
+    !catalog ||
+    (!catalogIsStale &&
+      (entitlement?.kind !== "eligible" || session.kind !== "signed_in"))
+  )
+    return null;
+
+  return (
+    <AppScreen
+      footer={<CartDock onPress={() => router.push("/cart")} />}
+      refresh={() => void refreshShop()}
+      refreshing={isActionPending}
+    >
+      {!catalogIsStale && (
+        <View style={styles.accessTicket}>
+          <View style={styles.accessDot} />
+          <View style={styles.accessCopy}>
+            <Text style={styles.accessTitle}>{t("accessToday")}</Text>
+            <Text style={styles.accessBody}>{t("accessUntil")}</Text>
+          </View>
+          <Text style={styles.accessMonogram}>DW</Text>
+        </View>
+      )}
+      <ScreenIntro
+        kicker={
+          session.kind === "signed_in" && session.customer.displayName
+            ? `${t("shopGreeting")}, ${session.customer.displayName}`
+            : t("shopGreeting")
+        }
+        title={t("shopTitle")}
+        body={t("shopSubtitle")}
+      />
+      {actionError && (
+        <StatusBanner
+          body={t("errorBody")}
+          title={t("errorTitle")}
+          tone="error"
+        />
+      )}
+      <TextInput
+        accessibilityLabel={t("searchLabel")}
+        onChangeText={setSearch}
+        placeholder={t("searchPlaceholder")}
+        placeholderTextColor="#737493"
+        returnKeyType="search"
+        style={styles.search}
+        value={search}
+      />
+      <ScrollView
+        contentContainerStyle={styles.categories}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+      >
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => setCategoryId(null)}
+        >
+          <Pill label={t("allCategory")} selected={categoryId === null} />
+        </Pressable>
+        {catalog.categories.map((category) => (
+          <Pressable
+            accessibilityRole="button"
+            key={category.id}
+            onPress={() => setCategoryId(category.id)}
+          >
+            <Pill
+              label={localizeText(category.name, locale)}
+              selected={categoryId === category.id}
+            />
+          </Pressable>
+        ))}
+      </ScrollView>
+      {catalogIsStale ? (
+        <StatusBanner
+          body={t("offlineBody")}
+          title={t("offlineTitle")}
+          tone="warning"
+        />
+      ) : (
+        <StatusBanner
+          body={t("menuInformation")}
+          title={t("accessToday")}
+          tone="info"
+        />
+      )}
+      {catalog.products.length === 0 && (
+        <StatePanel
+          action={
+            <ActionButton
+              label={t("refreshMenu")}
+              onPress={() => void refreshShop()}
+              variant="secondary"
+            />
+          }
+          body={t("emptyCatalogBody")}
+          mark="↻"
+          title={t("emptyCatalogTitle")}
+        />
+      )}
+      {catalog.products.length > 0 && products.length === 0 && (
+        <StatePanel
+          body={t("noSearchBody")}
+          mark="?"
+          title={t("noSearchTitle")}
+        />
+      )}
+      <View style={styles.products}>
+        {products.map((product) => (
+          <View
+            key={product.id}
+            style={{ width: columns === 2 ? "48.8%" : "100%" }}
+          >
+            <ProductCard
+              product={product}
+              quantity={
+                cart.find((line) => line.productId === product.id)?.quantity ??
+                0
+              }
+            />
+          </View>
+        ))}
+      </View>
+    </AppScreen>
+  );
+}
+
+export default function ShopScreen() {
+  const {
+    catalog,
+    catalogIsStale,
+    errorKind,
+    loadState,
+    retryLoad,
+    session,
+    entitlement,
+    t,
+  } = useShop();
+  if (loadState === "loading") return <LaunchState />;
+  if (loadState === "error") {
+    const unavailable = errorKind === "unavailable";
+    return (
+      <AppScreen header={false}>
+        <StatePanel
+          action={
+            <ActionButton label={t("retry")} onPress={() => void retryLoad()} />
+          }
+          body={unavailable ? t("backendUnavailableBody") : t("errorBody")}
+          mark="!"
+          title={unavailable ? t("backendUnavailableTitle") : t("errorTitle")}
+        />
+      </AppScreen>
+    );
+  }
+  if (catalogIsStale && catalog) return <CatalogState />;
+  if (session.kind === "signed_out") return <SignInState />;
+  if (entitlement?.kind === "locked") return <LockedState />;
+  return <CatalogState />;
+}
+
+const styles = StyleSheet.create({
+  launch: {
+    backgroundColor: palette.navy,
+    flex: 1,
+    justifyContent: "space-between",
+    padding: spacing.lg,
+    paddingBottom: 80,
+    paddingTop: 64,
+  },
+  launchCopy: { maxWidth: 560 },
+  launchLine: {
+    backgroundColor: palette.aquamarine,
+    height: 6,
+    marginBottom: spacing.lg,
+    width: 72,
+  },
+  launchTitle: { ...type.display, color: palette.white },
+  launchBody: { ...type.body, color: "#D7D7E5", marginTop: spacing.sm },
+  signInShell: {
+    flex: 1,
+    justifyContent: "center",
+    paddingVertical: spacing.xl,
+  },
+  signInHero: {
+    backgroundColor: palette.navy,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+    padding: spacing.lg,
+  },
+  signInKicker: {
+    ...type.caption,
+    color: palette.aquamarine,
+    letterSpacing: 1.3,
+  },
+  signInTitle: { ...type.display, color: palette.white },
+  signInBody: { ...type.body, color: "#D7D7E5" },
+  signInForm: { gap: spacing.sm, marginTop: spacing.lg },
+  handoffBody: { ...type.body, color: palette.navyMuted },
+  input: {
+    ...type.body,
+    backgroundColor: palette.surface,
+    borderColor: palette.silver,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: palette.navy,
+    minHeight: 54,
+    paddingHorizontal: spacing.md,
+  },
+  stateActions: { gap: spacing.sm },
+  helpText: { ...type.caption, color: palette.navyMuted, textAlign: "center" },
+  lockedTicket: {
+    backgroundColor: palette.navy,
+    borderRadius: radii.lg,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+    padding: spacing.lg,
+  },
+  lockedKicker: { ...type.caption, color: palette.sunset, letterSpacing: 1.3 },
+  lockedTitle: { ...type.display, color: palette.white },
+  lockedBody: { ...type.body, color: "#D7D7E5" },
+  nextReservation: {
+    alignSelf: "flex-start",
+    backgroundColor: palette.white,
+    borderRadius: radii.full,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  nextReservationText: { ...type.label, color: palette.navy },
+  accessTicket: {
+    alignItems: "center",
+    backgroundColor: palette.navy,
+    borderRadius: radii.md,
+    flexDirection: "row",
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+    padding: spacing.md,
+  },
+  accessDot: {
+    backgroundColor: palette.aquamarine,
+    borderRadius: 8,
+    height: 16,
+    width: 16,
+  },
+  accessCopy: { flex: 1 },
+  accessTitle: { ...type.label, color: palette.white },
+  accessBody: { ...type.caption, color: "#D7D7E5" },
+  accessMonogram: {
+    color: palette.aquamarine,
+    fontSize: 18,
+    fontWeight: "900",
+  },
+  search: {
+    ...type.body,
+    backgroundColor: palette.surface,
+    borderColor: palette.silver,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    color: palette.navy,
+    minHeight: 54,
+    paddingHorizontal: spacing.md,
+  },
+  categories: { gap: spacing.xs, paddingVertical: spacing.md },
+  products: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+});

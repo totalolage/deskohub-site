@@ -79,6 +79,32 @@ describe("Workspace E2E environment", () => {
     ).toBeUndefined();
   });
 
+  test("does not require Neon Auth management credentials for standalone diagnostics", () => {
+    const environment = makeE2EEnvironment({
+      ...validE2ERuntimeEnvironment,
+      WORKSPACE_E2E_NEON_API_KEY: undefined,
+      WORKSPACE_E2E_NEON_BRANCH_ID: undefined,
+      WORKSPACE_E2E_NEON_PROJECT_ID: undefined,
+    });
+
+    expect(environment.WORKSPACE_E2E_NEON_API_KEY).toBeUndefined();
+    expect(environment.WORKSPACE_E2E_NEON_BRANCH_ID).toBeUndefined();
+    expect(environment.WORKSPACE_E2E_NEON_PROJECT_ID).toBeUndefined();
+  });
+
+  test.each([
+    "WORKSPACE_E2E_NEON_API_KEY",
+    "WORKSPACE_E2E_NEON_BRANCH_ID",
+    "WORKSPACE_E2E_NEON_PROJECT_ID",
+  ] as const)("requires %s for the full workspace suite", (name) => {
+    expect(() =>
+      makeWorkspaceE2EEnvironment({
+        ...validE2ERuntimeEnvironment,
+        [name]: undefined,
+      })
+    ).toThrow("Invalid workspace E2E environment variables.");
+  });
+
   test("supports the globally locked default-branch workflow during rollout", () => {
     const environment = makeWorkspaceE2EEnvironment({
       ...validE2ERuntimeEnvironment,
@@ -102,6 +128,8 @@ describe("Workspace E2E environment", () => {
         "postgresql://permit:test@ep-coordinator-pooler.eu.neon.tech/neondb",
     },
     { WORKSPACE_E2E_POSTHOG_HOST: "not-a-url" },
+    { WORKSPACE_E2E_NEON_BRANCH_ID: "BRANCH_INVALID" },
+    { WORKSPACE_E2E_NEON_PROJECT_ID: "project/invalid" },
     { WORKSPACE_E2E_PR_NUMBER: "0" },
   ])("rejects invalid E2E configuration", (runtimeEnvironment) => {
     expect(() =>

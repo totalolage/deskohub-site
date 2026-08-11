@@ -21,6 +21,7 @@ import type {
 } from "../generated/effect.gen";
 import type {
   CreateDotyposReservationInput,
+  DeductDotyposWarehouseStockItem,
   DotyposCategoryId,
   DotyposCustomer,
   DotyposCustomerId,
@@ -37,11 +38,14 @@ import {
   DotyposCustomerSchema,
   DotyposDiscountGroupIdSchema,
   DotyposDiscountGroupSchema,
+  DotyposProductIdSchema,
   DotyposProductSchema,
   DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposTableIdSchema,
   DotyposTableSchema,
+  DotyposWarehouseProductSchema,
+  DotyposWarehouseSchema,
 } from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
@@ -1379,22 +1383,26 @@ const makeDotyposService = Effect.gen(function* () {
     categoryId?: DotyposCategoryId;
     includeDeleted?: boolean;
   }) {
-    return yield* runDotyposRequest(
-      client
-        .getProducts(config.cloudId, {
-          params: {
-            limit: 100,
-            ...(options?.categoryId && {
-              filter: `_categoryId|eq|${options.categoryId}`,
-            }),
-          },
-        })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getProducts"
-    ).pipe(
-      Effect.flatMap((products) =>
-        decodeProviderEntities(DotyposProductSchema, products, "getProducts")
-      ),
+    const products = yield* loadAllDotyposPages({
+      operation: "getProducts",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getProducts(config.cloudId, {
+            params: {
+              limit: 100,
+              page,
+              ...(options?.categoryId && {
+                filter: `_categoryId|eq|${options.categoryId}`,
+              }),
+            },
+          }),
+          "getProducts"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposProductSchema, result, "getProducts")
+          )
+        ),
+    }).pipe(
       Effect.map((products: readonly DotyposProduct[]) =>
         options?.includeDeleted
           ? products
@@ -1403,20 +1411,131 @@ const makeDotyposService = Effect.gen(function* () {
       Effect.retry(retryPolicy),
       catchUnexpectedDotyposError("getProducts")
     );
+    return products;
   });
 
-  const getCategories = Effect.fn("getCategories")(function* () {
-    const categories = yield* runDotyposRequest(
-      client
-        .getCategories(config.cloudId, { params: { limit: 100 } })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getCategories"
-    ).pipe(Effect.retry(retryPolicy));
-    return yield* decodeProviderEntities(
-      DotyposCategorySchema,
-      categories,
-      "getCategories"
+  const getCategories = Effect.fn("getCategories")(() =>
+    loadAllDotyposPages({
+      operation: "getCategories",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getCategories(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "getCategories"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposCategorySchema, result, "getCategories")
+          )
+        ),
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getCategories")
+    )
+  );
+
+  const getEnabledWarehouses = Effect.fn("getEnabledWarehouses")(() =>
+    loadAllDotyposPages({
+      operation: "listWarehouses",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.listWarehouses(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "listWarehouses"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(DotyposWarehouseSchema, result, "listWarehouses")
+          )
+        ),
+    }).pipe(
+      Effect.map((warehouses) =>
+        warehouses.filter(
+          (warehouse) => warehouse.enabled && !warehouse.deleted
+        )
+      ),
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("listWarehouses")
+    )
+  );
+
+  const getShopWarehouse = Effect.fn("getShopWarehouse")(function* () {
+    const warehouses = yield* getEnabledWarehouses();
+    if (warehouses.length !== 1) {
+      return yield* new ExternalAPIError({
+        service: "Dotypos",
+        operation: "listWarehouses",
+        message: `Expected exactly one enabled warehouse, received ${warehouses.length}.`,
+        statusCode: 502,
+      });
+    }
+    return warehouses[0]!;
+  });
+
+  const getWarehouseProducts = Effect.fn("getWarehouseProducts")(function* () {
+    const warehouse = yield* getShopWarehouse();
+    return yield* loadAllDotyposPages({
+      operation: "listWarehouseProducts",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.listWarehouseProducts(config.cloudId, warehouse.id, {
+            params: { limit: 100, page },
+          }),
+          "listWarehouseProducts"
+        ).pipe(
+          Effect.flatMap((result) =>
+            decodeProviderPage(
+              DotyposWarehouseProductSchema,
+              result,
+              "listWarehouseProducts"
+            )
+          )
+        ),
+    }).pipe(
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("listWarehouseProducts")
     );
+  });
+
+  const deductWarehouseStock = Effect.fn("deductWarehouseStock")(function* (
+    items: readonly DeductDotyposWarehouseStockItem[]
+  ) {
+    if (items.length === 0 || items.length > 100) {
+      return yield* new ValidationError({
+        message: "A warehouse sale must contain between 1 and 100 items",
+      });
+    }
+    const normalizedItems = yield* Effect.forEach(items, (item) =>
+      normalizeIdentifier(
+        DotyposProductIdSchema,
+        item.productId,
+        "Product ID"
+      ).pipe(
+        Effect.bindTo("productId"),
+        Effect.bind("quantity", () =>
+          Number.isFinite(item.quantity) && item.quantity > 0
+            ? Effect.succeed(item.quantity)
+            : Effect.fail(
+                new ValidationError({
+                  message: "Warehouse sale quantity must be positive",
+                })
+              )
+        ),
+        Effect.map(({ productId, quantity }) => ({
+          _productId: productId,
+          quantity,
+          ...(item.note ? { note: item.note } : {}),
+        }))
+      )
+    );
+    const warehouse = yield* getShopWarehouse();
+    yield* runDotyposRequest(
+      client.createWarehouseSale(config.cloudId, warehouse.id, {
+        payload: { currency: "CZK", items: normalizedItems },
+      }),
+      "createWarehouseSale"
+    ).pipe(catchUnexpectedDotyposError("createWarehouseSale"));
+    return warehouse.id;
   });
 
   return {
@@ -1439,6 +1558,8 @@ const makeDotyposService = Effect.gen(function* () {
     listActiveReservationsOverlapping,
     getProducts,
     getCategories,
+    getWarehouseProducts,
+    deductWarehouseStock,
   };
 }).pipe(
   Effect.annotateLogs("service", "DotyposService"),

@@ -26,6 +26,24 @@ const validateFeatureFlagOverrideEnvironment = (
     stdout: "pipe",
   });
 
+const validateInvalidNeonAuthSecret = () =>
+  Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--preload",
+      "./shared/testing/workspace-test-env.ts",
+      "-e",
+      'await import("./env.ts");',
+    ],
+    cwd: import.meta.dir,
+    env: {
+      ...process.env,
+      NEON_AUTH_COOKIE_SECRET: "synthetic-too-short",
+    },
+    stderr: "pipe",
+    stdout: "pipe",
+  });
+
 describe("workspace environment schemas", () => {
   test("decodes defaults and numeric environment values", () => {
     const decodeTimeout = Schema.decodeUnknownSync(
@@ -83,6 +101,28 @@ describe("workspace environment schemas", () => {
     expect(decodeHash("7".repeat(64))).toBe("7".repeat(64));
     expect(() => decodeHash("7".repeat(63))).toThrow();
     expect(() => decodeHash("G".repeat(64))).toThrow();
+  });
+
+  test("requires a secure Neon Auth cookie secret and valid service URL", () => {
+    const decodeBaseUrl = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_BASE_URL
+    );
+    const decodeCookieSecret = Schema.decodeUnknownSync(
+      workspaceServerEnvSchema.fields.NEON_AUTH_COOKIE_SECRET
+    );
+
+    expect(decodeBaseUrl("https://auth.example.test")).toBe(
+      "https://auth.example.test"
+    );
+    expect(() => decodeBaseUrl("not a URL")).toThrow();
+    expect(decodeCookieSecret("x".repeat(32))).toBe("x".repeat(32));
+    expect(() => decodeCookieSecret("x".repeat(31))).toThrow();
+
+    const invalidSecret = validateInvalidNeonAuthSecret();
+    const error = invalidSecret.stderr.toString();
+    expect(invalidSecret.exitCode).toBe(1);
+    expect(error).toContain("Invalid Neon Auth cookie secret.");
+    expect(error).not.toContain("synthetic-too-short");
   });
 
   test("accepts an optional hosted browser executable", () => {
