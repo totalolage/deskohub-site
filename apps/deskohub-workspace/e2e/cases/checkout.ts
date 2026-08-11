@@ -117,12 +117,12 @@ export const executeCheckoutFlow = ({
     }
     const providerSessionRow = yield* resources.withHostedPaymentSession(
       Effect.gen(function* () {
-        yield* runStep({
+        const hostedPaymentPage = yield* runStep({
           execute: submitPaymentAndWaitForHostedPage({
             run,
             session,
             timeouts: config.timeouts,
-          }).pipe(Effect.asVoid),
+          }),
           id: "start-checkout-payment",
           timeoutMs: config.timeouts.providerTransition,
         });
@@ -139,6 +139,7 @@ export const executeCheckoutFlow = ({
         yield* runStep({
           execute: completeNexiHostedPayment({
             data,
+            hostedPaymentPage,
             run,
             session,
             timeouts: config.timeouts,

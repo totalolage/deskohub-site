@@ -163,10 +163,16 @@ describe("CheckoutPayPage payment navigation", () => {
       events.push("execute");
     });
     const replace = mock((_href: string) => undefined);
+    let paymentPathname = "/";
     const paymentWindow = {
       close: mock(() => undefined),
       closed: false,
-      location: { replace },
+      location: {
+        replace,
+        get pathname() {
+          return paymentPathname;
+        },
+      },
       opener: window,
     };
     spyOn(window, "open").mockImplementation(() => {
@@ -239,6 +245,14 @@ describe("CheckoutPayPage payment navigation", () => {
       "/en-US/reservation/status/reservation-id"
     );
     expect(paymentWindow.close).not.toHaveBeenCalled();
+
+    paymentPathname = "/en-US/reservation/status/reservation-id";
+    const { CheckoutPaymentWindowCloser } = await import(
+      "./checkout-payment-window"
+    );
+    render(<CheckoutPaymentWindowCloser />);
+
+    expect(paymentWindow.close).toHaveBeenCalledTimes(1);
   });
 });
 

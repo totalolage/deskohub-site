@@ -9,6 +9,7 @@ import type {
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-summary";
 import { CheckoutDiscountCountdownBanner } from "@/features/checkout/components/checkout-discount-countdown-banner";
+import { trackCheckoutPaymentWindow } from "@/features/checkout/components/checkout-payment-window";
 import {
   CheckoutSummary,
   CheckoutSummarySection,
@@ -91,6 +92,7 @@ export function CheckoutPayPage({
       if (data.statusUrl && paymentWindow && !paymentWindow.closed) {
         try {
           paymentWindow.location.replace(data.redirectUrl);
+          trackCheckoutPaymentWindow(paymentWindow);
           paymentWindowRef.current = null;
           router.push(data.statusUrl);
           return;

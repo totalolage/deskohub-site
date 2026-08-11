@@ -9,6 +9,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
+import { CheckoutPaymentWindowCloser } from "@/features/checkout/components/checkout-payment-window";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import { CheckoutStatusPageSkeleton } from "@/features/checkout/components/checkout-status-page-skeleton";
@@ -124,6 +125,7 @@ async function CheckoutStatusContent({
 
     return (
       <>
+        <CheckoutPaymentWindowCloser />
         <CheckoutStatusAutoRefresh
           enabled={shouldAutoRefreshCheckoutStatus(status.status)}
         />

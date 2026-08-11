@@ -4,6 +4,7 @@ import {
   activateHydratedBrowserElement,
   findEnabledSnapshotRef,
   readActiveBrowserTabId,
+  readBrowserTabs,
   switchToBrowserTab,
   waitForBrowserCondition,
 } from "./browser";
@@ -83,13 +84,17 @@ test("reads and switches stable browser tabs", async () => {
     };
   };
 
-  const tabId = await Effect.runPromise(
-    readActiveBrowserTabId(run, "browser-test")
-  );
+  const tabs = await Effect.runPromise(readBrowserTabs(run, "browser-test"));
+  const tabId = await Effect.runPromise(readActiveBrowserTabId(run, "browser-test"));
   await Effect.runPromise(switchToBrowserTab(run, "browser-test", tabId));
 
+  expect(tabs).toEqual([
+    { active: true, tabId: "t1" },
+    { active: false, tabId: "t2" },
+  ]);
   expect(tabId).toBe("t1");
   expect(calls).toEqual([
+    ["--json", "tab", "list"],
     ["--json", "tab", "list"],
     ["tab", "t1"],
   ]);

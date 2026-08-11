@@ -47,14 +47,35 @@ export const readActiveBrowserTabId = (
   session: string
 ): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
+    const tabs = yield* readBrowserTabs(run, session);
+    const tabId = tabs.find((tab) => tab.active)?.tabId;
+    if (!tabId) {
+      return yield* toWorkspaceE2EError(
+        "read active browser tab",
+        new Error("active browser tab missing")
+      );
+    }
+    return tabId;
+  });
+
+export type BrowserTab = {
+  readonly active: boolean;
+  readonly tabId: string;
+};
+
+export const readBrowserTabs = (
+  run: Runner,
+  session: string
+): Effect.Effect<readonly BrowserTab[], WorkspaceE2EError> =>
+  Effect.gen(function* () {
     const result = yield* runBrowserCommand(
-      "read active browser tab",
+      "read browser tabs",
       run,
       session,
       ["--json", "tab", "list"],
       { logOutput: false }
     );
-    return yield* tryWorkspaceE2ESync("parse active browser tab", () => {
+    return yield* tryWorkspaceE2ESync("parse browser tabs", () => {
       const response = JSON.parse(result.stdout) as {
         readonly data?: {
           readonly tabs?: readonly {
@@ -63,9 +84,10 @@ export const readActiveBrowserTabId = (
           }[];
         };
       };
-      const tabId = response.data?.tabs?.find((tab) => tab.active)?.tabId;
-      if (!tabId) throw new Error("active browser tab missing");
-      return tabId;
+      return (response.data?.tabs ?? []).map((tab) => {
+        if (!tab.tabId) throw new Error("browser tab id missing");
+        return { active: tab.active === true, tabId: tab.tabId };
+      });
     });
   });
 
