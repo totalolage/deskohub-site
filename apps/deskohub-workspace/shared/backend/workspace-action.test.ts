@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, spyOn, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 let actionHeaderReads = 0;
@@ -83,6 +83,33 @@ describe("Workspace actions", () => {
         },
       },
     });
+  });
+
+  test("does not log validation paths when input logging is disabled", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const sensitiveKey = "person@example.test";
+    const action = defineWorkspaceAction(
+      {
+        logInput: false,
+        operation: "test.private-validation",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({ query: Schema.String }),
+          { parseOptions: { onExcessProperty: "error" } }
+        ),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+
+    try {
+      await expect(
+        action({ query: "safe", [sensitiveKey]: "private" })
+      ).resolves.toMatchObject({ validationErrors: expect.any(Object) });
+
+      expect(JSON.stringify(warn.mock.calls)).not.toContain(sensitiveKey);
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   test("preserves public failures", async () => {

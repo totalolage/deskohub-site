@@ -71,7 +71,8 @@ export const defineWorkspaceAction = <
       handleValidationErrorsShape: (validationErrors) =>
         handleWorkspaceActionValidationFailure(
           options.operation,
-          validationErrors
+          validationErrors,
+          options.logInput !== false
         ),
     })
     .action((args) =>
@@ -99,7 +100,8 @@ export const defineWorkspaceStateAction = <
       handleValidationErrorsShape: (validationErrors) =>
         handleWorkspaceActionValidationFailure(
           options.operation,
-          validationErrors
+          validationErrors,
+          options.logInput !== false
         ),
     })
     .stateAction<A, Error | PublicSafeActionError>((args, state) =>
@@ -171,17 +173,21 @@ const handleWorkspaceActionValidationFailure = async <
   S extends StandardSchemaV1,
 >(
   operation: string,
-  validationErrors: ValidationErrors<S>
+  validationErrors: ValidationErrors<S>,
+  logValidationPaths: boolean
 ): Promise<WorkspaceActionValidationErrors<S>> => {
   const issues = collectWorkspaceActionValidationIssues(validationErrors);
 
   await Effect.logWarning("Action input validation failed").pipe(
     Effect.annotateLogs({
-      validationPaths: [
-        ...new Set(
-          issues.map(({ path }) => formatWorkspaceActionValidationPath(path))
-        ),
-      ],
+      validationIssueCount: issues.length,
+      ...(logValidationPaths && {
+        validationPaths: [
+          ...new Set(
+            issues.map(({ path }) => formatWorkspaceActionValidationPath(path))
+          ),
+        ],
+      }),
     }),
     runWorkspaceEffect(operation, { boundary: "action" })
   );
