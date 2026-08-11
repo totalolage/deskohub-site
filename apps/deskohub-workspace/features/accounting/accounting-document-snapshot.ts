@@ -146,8 +146,25 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
 
-export const decodeStoredAccountingDocumentSnapshot =
-  Schema.decodeUnknownEffect(accountingDocumentSnapshotSchema);
+const decodeAccountingDocumentSnapshot = Schema.decodeUnknownEffect(
+  accountingDocumentSnapshotSchema,
+  { onExcessProperty: "error" }
+);
+
+export const decodeStoredAccountingDocumentSnapshot = (encoded: unknown) => {
+  if (
+    typeof encoded !== "object" ||
+    encoded === null ||
+    Array.isArray(encoded) ||
+    !("schemaVersion" in encoded) ||
+    encoded.schemaVersion !== 1
+  ) {
+    return decodeAccountingDocumentSnapshot(encoded);
+  }
+
+  const { schemaVersion: _obsoleteMetadata, ...snapshot } = encoded;
+  return decodeAccountingDocumentSnapshot(snapshot);
+};
 
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,

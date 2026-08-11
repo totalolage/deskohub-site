@@ -198,6 +198,22 @@ describe("accounting document snapshot", () => {
         })
       )
     ).resolves.toEqual(snapshot);
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          unexpected: true,
+        })
+      )
+    ).rejects.toBeDefined();
+    await expect(
+      Effect.runPromise(
+        decodeStoredAccountingDocumentSnapshot({
+          ...snapshot,
+          schemaVersion: 2,
+        })
+      )
+    ).rejects.toBeDefined();
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {
