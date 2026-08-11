@@ -90,7 +90,7 @@ describe("mobile shop purchase persistence", () => {
     );
   });
 
-  test("generated migration is additive and limited to mobile shop tables", async () => {
+  test("generated migration is additive and limited to account and mobile shop tables", async () => {
     const migration = await Bun.file(
       new URL(
         "../migrations/20260811230738_past_alex_power/migration.sql",
@@ -111,7 +111,7 @@ describe("mobile shop purchase persistence", () => {
     expect(migration).not.toContain(
       'CREATE TABLE "accounting_document_snapshots"'
     );
-    expect(migration).not.toContain('CREATE TABLE "customer_account_links"');
+    expect(migration).toContain('CREATE TABLE "customer_account_links"');
     expect(migration).not.toContain('CREATE TABLE "discount_targets"');
     expect(migration).not.toContain("DROP TABLE");
   });
