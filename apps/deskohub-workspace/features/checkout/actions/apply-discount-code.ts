@@ -3,12 +3,12 @@
 import { Effect, Layer } from "effect";
 import { RedirectType, redirect } from "next/navigation";
 import {
-  discountCodeErrorQueryParam,
+  buildCheckoutPayPathFromToken,
   PayableReservationService,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
-import { payStateTokenQueryParam } from "@/features/checkout/backend/checkout/pay-state";
 import type { Locale } from "@/features/i18n";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { applyDiscountCodeSchema } from "./apply-discount-code-input";
 import { applyDiscountCodeToPayState } from "./apply-discount-code-to-pay-state";
@@ -39,6 +39,7 @@ export const applyDiscountCode: typeof applyDiscountCodeAction = async (
 export async function applyDiscountCodeForm(
   locale: Locale,
   payStateToken: string,
+  reservationKind: ReservationOrderData["kind"],
   formData: FormData
 ) {
   const submittedCode = formData.get("submittedCode");
@@ -55,9 +56,10 @@ export async function applyDiscountCodeForm(
     redirect(result.data.freshPayUrl, RedirectType.replace);
   }
 
-  const searchParams = new URLSearchParams({
-    [payStateTokenQueryParam]: payStateToken,
-    [discountCodeErrorQueryParam]: "unavailable",
-  });
-  redirect(`/${locale}/checkout/pay?${searchParams}`, RedirectType.replace);
+  redirect(
+    buildCheckoutPayPathFromToken(locale, payStateToken, reservationKind, {
+      discountCodeError: "unavailable",
+    }),
+    RedirectType.replace
+  );
 }

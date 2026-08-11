@@ -5,7 +5,9 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import {
   buildCheckoutPayContinuationPath,
+  checkoutReservationKindQueryParam,
   discountCodeErrorQueryParam,
+  getCheckoutPayRestartPath,
   getSignedPayStateCheckoutSummary,
   getSignedPayStateSubmittedCodeApplication,
   openPayState,
@@ -21,10 +23,7 @@ import {
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import {
-  getCoworkReservationPath,
-  getReservationStartPath,
-} from "@/features/reservation/routes";
+import { getReservationStartPath } from "@/features/reservation/routes";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -113,9 +112,15 @@ async function CheckoutPayContent({
   const discountCodeError =
     getSearchParam(resolvedSearchParams, discountCodeErrorQueryParam) ===
     "unavailable";
+  const restartPath = getCheckoutPayRestartPath(
+    locale,
+    getSearchParam(resolvedSearchParams, checkoutReservationKindQueryParam)
+  );
 
   if (!payStateToken) {
-    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
+    return runWithRequestLocale(() => (
+      <InvalidPayState locale={locale} restartPath={restartPath} />
+    ));
   }
 
   const opened = await Effect.gen(function* () {
@@ -145,7 +150,9 @@ async function CheckoutPayContent({
   );
 
   if (!opened || opened.state.locale !== locale) {
-    return runWithRequestLocale(() => <InvalidPayState locale={locale} />);
+    return runWithRequestLocale(() => (
+      <InvalidPayState locale={locale} restartPath={restartPath} />
+    ));
   }
 
   const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
@@ -181,6 +188,7 @@ async function CheckoutPayContent({
             fieldError={discountCodeError}
             locale={locale}
             payStateToken={payStateToken}
+            reservationKind={state.reservation.kind}
           />
         }
         freshPayUrl={freshPayUrl}
@@ -193,7 +201,13 @@ async function CheckoutPayContent({
   ));
 }
 
-function InvalidPayState({ locale }: { readonly locale: Locale }) {
+function InvalidPayState({
+  locale,
+  restartPath,
+}: {
+  readonly locale: Locale;
+  readonly restartPath: string;
+}) {
   return (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
@@ -210,7 +224,7 @@ function InvalidPayState({ locale }: { readonly locale: Locale }) {
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={getCoworkReservationPath(locale)}>
+            <Link href={restartPath}>
               {m.checkoutPayRestartButton({}, { locale })}
             </Link>
           </Button>

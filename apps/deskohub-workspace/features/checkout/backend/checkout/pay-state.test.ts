@@ -24,7 +24,12 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const { buildCheckoutPayContinuationPath } = await import("./checkout-pay-url");
+const {
+  buildCheckoutPayContinuationPath,
+  buildCheckoutPayPath,
+  checkoutReservationKindQueryParam,
+  getCheckoutPayRestartPath,
+} = await import("./checkout-pay-url");
 
 const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
@@ -80,6 +85,34 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
   ),
   ...overrides,
 });
+
+const buildMeetingRoomState = () => {
+  const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+    kind: "meeting-room",
+    duration: { unit: "hour", amount: 4 },
+    reservationDate: "2099-06-10",
+    startsAt: "2099-06-10T08:00:00Z",
+    endsAt: "2099-06-10T12:00:00Z",
+    name: "Ada Lovelace",
+    email: "ada@example.com",
+    phone: "+420 777 777 777",
+  });
+  if (reservation.kind !== "meeting-room") {
+    throw new Error("Expected meeting-room reservation");
+  }
+
+  return runSync(
+    buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation,
+        quote: Effect.runSync(buildReservationQuote(reservation)),
+        orderId: "meeting-room-pay-state-test-order-id",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    )
+  );
+};
 
 const seal = (state = buildState()) =>
   runSync(
@@ -142,42 +175,41 @@ describe("Pay URL state", () => {
   });
 
   test("preserves discount and price-change metadata for meeting-room state", () => {
-    const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
-      kind: "meeting-room",
-      duration: { unit: "hour", amount: 4 },
-      reservationDate: "2099-06-10",
-      startsAt: "2099-06-10T08:00:00Z",
-      endsAt: "2099-06-10T12:00:00Z",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420 777 777 777",
-    });
-    if (reservation.kind !== "meeting-room") {
-      throw new Error("Expected meeting-room reservation");
-    }
-    const quote = Effect.runSync(buildReservationQuote(reservation));
     const changedKeys = {
       sectionKeys: ["total"],
       itemKeys: ["meeting-room"],
     };
 
-    const state = runSync(
-      buildSignedPayState(
-        {
-          locale: "en-US",
-          reservation,
-          quote,
-          orderId: "meeting-room-pay-state-test-order-id",
-          submittedCode: canonicalCode,
-          submittedCodeDiscountId,
-          changedKeys,
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
-    );
+    const state = {
+      ...buildMeetingRoomState(),
+      submittedCode: canonicalCode,
+      submittedCodeDiscountId,
+      changedKeys,
+    };
 
     expect(state.submittedCode).toBe(canonicalCode);
     expect(state.changedKeys).toEqual(changedKeys);
+  });
+
+  test("preserves a meeting-room restart hint outside unreadable Pay state", () => {
+    const sealedState = runSync(
+      sealPayStateForUrl(buildMeetingRoomState(), {
+        keys: [fixedKey],
+        randomBytes: fixedRandomBytes,
+      })
+    );
+    const url = new URL(
+      buildCheckoutPayPath("en-US", sealedState),
+      "https://deskohub.test"
+    );
+
+    const reservationKind =
+      url.searchParams.get(checkoutReservationKindQueryParam) ?? undefined;
+
+    expect(reservationKind).toBe("meeting-room");
+    expect(getCheckoutPayRestartPath("en-US", reservationKind)).toBe(
+      "/en-US/reservation/meeting-room"
+    );
   });
 
   test("omits redundant payload markers from signed Pay state", () => {
