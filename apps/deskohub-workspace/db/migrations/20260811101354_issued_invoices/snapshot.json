@@ -1,10 +1,9 @@
 {
   "version": "8",
   "dialect": "postgres",
-  "id": "1745ad33-e3d5-41e2-bd7c-682961da20ec",
+  "id": "6c838c5e-6987-455c-878d-185054f4b348",
   "prevIds": [
-    "73cae526-26a0-40ec-8b4d-0a47440533b0",
-    "ae6e0505-d552-4c6f-a7f2-2f82ecdd484c"
+    "047c9902-947f-44fe-a3bc-4ce8803ebee3"
   ],
   "ddl": [
     {
@@ -3899,13 +3898,6 @@
     {
       "value": "\"numbering_year\" = extract(year from \"issued_at\" at time zone 'Europe/Prague')::integer",
       "name": "invoices_issued_at_year_check",
-      "entityType": "checks",
-      "schema": "public",
-      "table": "invoices"
-    },
-    {
-      "value": "\"invoice_number\" = 'WS-FV-' || \"numbering_year\"::text || '-' || lpad(\"numbering_sequence\"::text, 6, '0')",
-      "name": "invoices_number_format_check",
       "entityType": "checks",
       "schema": "public",
       "table": "invoices"

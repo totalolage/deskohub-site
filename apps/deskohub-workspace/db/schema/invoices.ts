@@ -49,10 +49,6 @@ export const invoices = pgTable(
       "invoices_issued_at_year_check",
       sql`${t.numberingYear} = extract(year from ${t.issuedAt} at time zone 'Europe/Prague')::integer`
     ),
-    check(
-      "invoices_number_format_check",
-      sql`${t.invoiceNumber} = 'WS-FV-' || ${t.numberingYear}::text || '-' || lpad(${t.numberingSequence}::text, 6, '0')`
-    ),
     uniqueIndex("invoices_reservation_unique_idx").on(t.workspaceReservationId),
     uniqueIndex("invoices_payment_attempt_unique_idx").on(t.paymentAttemptId),
     uniqueIndex("invoices_number_unique_idx").on(t.invoiceNumber),

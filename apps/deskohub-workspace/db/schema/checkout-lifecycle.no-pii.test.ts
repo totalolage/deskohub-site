@@ -61,7 +61,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("issued invoices remain ciphertext-only, immutable, and source-bound", async () => {
     const schema = await readAppFile("db/schema/invoices.ts");
     const migration = await readAppFile(
-      "db/migrations/20260810201728_issued_invoices/migration.sql"
+      "db/migrations/20260811101354_issued_invoices/migration.sql"
     );
 
     expect(schema).toContain('bytea("encrypted_document")');
@@ -80,12 +80,19 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).toContain(
       'CREATE TABLE IF NOT EXISTS "invoice_number_counters"'
     );
+    expect(schema).not.toContain("invoices_number_format_check");
+    expect(migration).not.toContain(
+      'CONSTRAINT "invoices_number_format_check" CHECK'
+    );
+    expect(migration).toContain(
+      'DROP CONSTRAINT IF EXISTS "invoices_number_format_check"'
+    );
     expect(migration).not.toContain("nextval(");
   });
 
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
-      "db/migrations/20260810201728_issued_invoices/migration.sql"
+      "db/migrations/20260811101354_issued_invoices/migration.sql"
     );
 
     expect(migration).toContain(

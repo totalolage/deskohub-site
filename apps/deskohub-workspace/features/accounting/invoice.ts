@@ -14,14 +14,12 @@ import {
 
 const maximumAnnualInvoiceSequence = 999_999;
 
-export const invoiceNumberSchema = Schema.String.check(
-  Schema.isPattern(/^WS-FV-\d{4}-\d{6}$/)
-)
-  .pipe(Schema.brand("InvoiceNumber"))
-  .annotate({
-    identifier: "InvoiceNumber",
-    description: "Annual sequential Deskohub invoice number.",
-  });
+export const invoiceNumberSchema = Schema.String.pipe(
+  Schema.brand("InvoiceNumber")
+).annotate({
+  identifier: "InvoiceNumber",
+  description: "Deskohub invoice number.",
+});
 
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 

@@ -12,6 +12,7 @@ import {
   formatInvoiceNumber,
   getInvoiceNumberingYear,
   invoiceDocumentSchema,
+  invoiceNumberSchema,
   makeInvoiceDocument,
 } from "./invoice";
 
@@ -52,6 +53,12 @@ describe("invoice", () => {
     expect(() =>
       formatInvoiceNumber({ year: 2026, sequence: 1_000_000 })
     ).toThrow(RangeError);
+  });
+
+  test("accepts invoice numbers independently of the current generated format", () => {
+    expect(Schema.decodeUnknownSync(invoiceNumberSchema)("2026/42")).toBe(
+      "2026/42"
+    );
   });
 
   test("uses the Prague calendar year at the UTC New Year boundary", () => {
