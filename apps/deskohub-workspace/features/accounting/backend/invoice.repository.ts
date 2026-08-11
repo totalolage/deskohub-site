@@ -22,6 +22,7 @@ import {
   invoiceDocumentSchema,
   makeInvoiceDocument,
 } from "@/features/accounting/invoice";
+import { censorLogValue } from "@/shared/backend/logging/censorship";
 import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import {
   AccountingDocumentSnapshotRepository,
@@ -123,7 +124,7 @@ export class InvoiceRepository extends Context.Service<
                 operation: "decrypt",
                 paymentAttemptId,
                 message: "Invoice decryption key is unavailable.",
-                cause,
+                cause: censorLogValue(cause),
               })
           )
         );
@@ -152,7 +153,7 @@ export class InvoiceRepository extends Context.Service<
                   operation: "decrypt",
                   paymentAttemptId,
                   message: "Invoice could not be decrypted.",
-                  cause,
+                  cause: censorLogValue(cause),
                 })
             )
           );
@@ -313,7 +314,7 @@ export class InvoiceRepository extends Context.Service<
                     operation: "encrypt",
                     paymentAttemptId: input.paymentAttemptId,
                     message: "Invoice encryption key is unavailable.",
-                    cause,
+                    cause: censorLogValue(cause),
                   })
               )
             );
@@ -390,7 +391,7 @@ export class InvoiceRepository extends Context.Service<
                       operation: "encrypt",
                       paymentAttemptId: input.paymentAttemptId,
                       message: "Invoice could not be encrypted.",
-                      cause,
+                      cause: censorLogValue(cause),
                     })
                 )
               );
