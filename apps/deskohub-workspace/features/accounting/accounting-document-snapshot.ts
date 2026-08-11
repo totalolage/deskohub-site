@@ -127,7 +127,7 @@ export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   quote: meetingRoomReservationQuoteSchema,
 });
 
-const officeAccountingDocumentSnapshotSchema = Schema.Struct({
+export const officeAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
   reservation: officeReservationDetailsSchema,
   quote: officeReservationQuoteSchema,

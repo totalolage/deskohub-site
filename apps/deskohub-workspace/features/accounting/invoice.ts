@@ -10,6 +10,7 @@ import {
   accountingDocumentIdentitySchema,
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
+  officeAccountingDocumentSnapshotSchema,
 } from "./accounting-document-snapshot";
 
 const maximumAnnualInvoiceSequence = 999_999;
@@ -42,9 +43,16 @@ const meetingRoomInvoiceDocumentSchema = Schema.Struct({
   quote: meetingRoomAccountingDocumentSnapshotSchema.fields.quote,
 });
 
+const officeInvoiceDocumentSchema = Schema.Struct({
+  ...invoiceIdentitySchema.fields,
+  reservation: officeAccountingDocumentSnapshotSchema.fields.reservation,
+  quote: officeAccountingDocumentSnapshotSchema.fields.quote,
+});
+
 export const invoiceDocumentSchema = Schema.Union([
   coworkInvoiceDocumentSchema,
   meetingRoomInvoiceDocumentSchema,
+  officeInvoiceDocumentSchema,
 ]).annotate({
   identifier: "InvoiceDocument",
   description:

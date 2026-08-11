@@ -7,6 +7,8 @@ import {
   buildCoworkReservationQuote,
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
+import { buildOfficeReservationQuote } from "@/features/checkout/reservation-quote-office";
+import { normalizedOfficeReservationOrderSchema } from "@/features/reservation/office-reservation";
 import { makeAccountingDocumentSnapshot } from "./accounting-document-snapshot";
 import {
   formatInvoiceNumber,
@@ -128,5 +130,52 @@ describe("invoice", () => {
     await expect(
       Effect.runPromise(decode({ ...document, unexpected: true }))
     ).rejects.toBeDefined();
+  });
+
+  test("issues from an office reservation snapshot", async () => {
+    const reservation = normalizedOfficeReservationOrderSchema.make({
+      kind: "office",
+      startsOn: "2099-06-20",
+      endsOn: "2099-06-21",
+      seats: 3,
+      name: "Office Buyer",
+      email: "office-buyer@example.test",
+      phone: "+420 700 000 000",
+    });
+    const officeSource = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "office-reservation-id",
+      dotyposReservationId: "dotypos-office-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "en-US",
+      prepared: {
+        kind: "office",
+        reservation,
+        quote: Effect.runSync(buildOfficeReservationQuote(reservation)),
+      },
+    });
+    const document = makeInvoiceDocument({
+      source: officeSource,
+      buyer: officeSource.buyer,
+      paymentAttemptId: "office-payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 2 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+    });
+
+    expect(document).toMatchObject({
+      reservation: {
+        kind: "office",
+        startsOn: "2099-06-20",
+        endsOn: "2099-06-21",
+        seats: 3,
+      },
+      quote: officeSource.quote,
+    });
+    await expect(
+      Effect.runPromise(
+        Schema.decodeUnknownEffect(invoiceDocumentSchema, {
+          onExcessProperty: "error",
+        })(document)
+      )
+    ).resolves.toEqual(document);
   });
 });
