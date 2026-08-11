@@ -52,6 +52,39 @@ describe("Workspace actions", () => {
     expect(actionHeaderReads).toBe(3);
   });
 
+  test("preserves nested validation errors for the client", async () => {
+    const { defineWorkspaceAction } = await import("./workspace-action");
+    const action = defineWorkspaceAction(
+      {
+        operation: "test.nested-validation",
+        schema: Schema.toStandardSchemaV1(
+          Schema.Struct({
+            discount: Schema.Struct({
+              products: Schema.Array(
+                Schema.Struct({ kind: Schema.Literal("cowork") })
+              ),
+            }),
+          }),
+          { parseOptions: { onExcessProperty: "error" } }
+        ),
+      },
+      () => Effect.succeed("unreachable")
+    );
+    const staleInput = {
+      discount: {
+        products: [{ kind: "cowork" as const, tier: "basic" }],
+      },
+    };
+
+    await expect(action(staleInput)).resolves.toMatchObject({
+      validationErrors: {
+        fieldErrors: {
+          discount: ['products[0].tier: Unexpected key with value "basic"'],
+        },
+      },
+    });
+  });
+
   test("preserves public failures", async () => {
     const { defineWorkspaceAction } = await import("./workspace-action");
     const { PublicSafeActionError } = await import(

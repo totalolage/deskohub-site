@@ -32,6 +32,11 @@ type WorkspaceActionArgs<S extends StandardSchemaV1> = EffectActionArgs<
 type WorkspaceActionValidationErrors<S extends StandardSchemaV1> =
   FlattenedValidationErrors<ValidationErrors<S>>;
 
+type WorkspaceActionValidationIssue = {
+  readonly message: string;
+  readonly path: readonly string[];
+};
+
 export interface WorkspaceActionOptions<S extends StandardSchemaV1> {
   /**
    * Set to false for inputs containing data that must not be persisted in
@@ -62,7 +67,13 @@ export const defineWorkspaceAction = <
   EffectAction.fromClient(actionClient, {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
-    .inputSchema(options.schema)
+    .inputSchema(options.schema, {
+      handleValidationErrorsShape: (validationErrors) =>
+        handleWorkspaceActionValidationFailure(
+          options.operation,
+          validationErrors
+        ),
+    })
     .action((args) =>
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args))
@@ -84,7 +95,13 @@ export const defineWorkspaceStateAction = <
   EffectAction.fromClient(actionClient, {
     run: runWorkspaceEffect(options.operation, { boundary: "action" }),
   })
-    .inputSchema(options.schema)
+    .inputSchema(options.schema, {
+      handleValidationErrorsShape: (validationErrors) =>
+        handleWorkspaceActionValidationFailure(
+          options.operation,
+          validationErrors
+        ),
+    })
     .stateAction<A, Error | PublicSafeActionError>((args, state) =>
       prepareWorkspaceAction(args, options, () =>
         handler(args.parsedInput, getWorkspaceActionContext(args), state)
@@ -149,6 +166,83 @@ const readActionHeaders = Effect.tryPromise({
   try: () => headers(),
   catch: (cause) => cause,
 }).pipe(Effect.orDie);
+
+const handleWorkspaceActionValidationFailure = async <
+  S extends StandardSchemaV1,
+>(
+  operation: string,
+  validationErrors: ValidationErrors<S>
+): Promise<WorkspaceActionValidationErrors<S>> => {
+  const issues = collectWorkspaceActionValidationIssues(validationErrors);
+
+  await Effect.logWarning("Action input validation failed").pipe(
+    Effect.annotateLogs({
+      validationPaths: [
+        ...new Set(
+          issues.map(({ path }) => formatWorkspaceActionValidationPath(path))
+        ),
+      ],
+    }),
+    runWorkspaceEffect(operation, { boundary: "action" })
+  );
+
+  const fieldErrors = Object.groupBy(
+    issues.filter(({ path }) => path.length > 0),
+    ({ path }) => path[0] ?? ""
+  );
+
+  return {
+    formErrors: issues
+      .filter(({ path }) => path.length === 0)
+      .map(({ message }) => message),
+    fieldErrors: Object.fromEntries(
+      Object.entries(fieldErrors).map(([field, fieldIssues]) => [
+        field,
+        (fieldIssues ?? []).map(({ message, path }) => {
+          const nestedPath = formatWorkspaceActionValidationPath(
+            path.slice(1),
+            ""
+          );
+          return nestedPath ? `${nestedPath}: ${message}` : message;
+        }),
+      ])
+    ),
+  } as WorkspaceActionValidationErrors<S>;
+};
+
+const collectWorkspaceActionValidationIssues = (
+  value: unknown,
+  path: readonly string[] = []
+): readonly WorkspaceActionValidationIssue[] => {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) =>
+      typeof item === "string" ? [{ message: item, path }] : []
+    );
+  }
+  if (!(value && typeof value === "object")) return [];
+
+  return Object.entries(value).flatMap(([key, item]) =>
+    collectWorkspaceActionValidationIssues(
+      item,
+      key === "_errors" ? path : [...path, key]
+    )
+  );
+};
+
+const formatWorkspaceActionValidationPath = (
+  path: readonly string[],
+  root = "$"
+) => {
+  let formatted = root;
+  for (const segment of path) {
+    if (/^\d+$/.test(segment)) {
+      formatted = `${formatted}[${segment}]`;
+      continue;
+    }
+    formatted = formatted ? `${formatted}.${segment}` : segment;
+  }
+  return formatted;
+};
 
 const mapSafeActionFailure = (error: SafeActionFailure) => {
   if (error instanceof PublicSafeActionError) {

@@ -805,6 +805,59 @@ describe("discount administration pages", () => {
     expect(view.queryByRole("combobox", { name: "Discount" })).toBeNull();
   });
 
+  test("shows nested customer code validation errors", async () => {
+    let onError:
+      | ((result: {
+          error: {
+            validationErrors?: unknown;
+          };
+        }) => void)
+      | undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      const candidate = options as {
+        actionName?: string;
+        onError?: typeof onError;
+      };
+      if (candidate.actionName === "createCustomerDiscountCode") {
+        onError = candidate.onError;
+      }
+      return {
+        execute: mock(),
+        isExecuting: false,
+        result: {},
+      };
+    });
+    const { CustomerDiscountCodeCreationForm } = await import(
+      "./customer-code-creation"
+    );
+    const view = render(
+      <CustomerDiscountCodeCreationForm
+        completion="back"
+        customerId="dotypos-customer"
+        customerName="Test Customer"
+        discounts={dashboard.discounts}
+      />
+    );
+
+    act(() =>
+      onError?.({
+        error: {
+          validationErrors: {
+            fieldErrors: {
+              discount: [
+                'discount.products[0].tier: Unexpected key with value "basic"',
+              ],
+            },
+          },
+        },
+      })
+    );
+
+    expect(view.getByRole("alert").textContent).toContain(
+      'discount.products[0].tier: Unexpected key with value "basic"'
+    );
+  });
+
   test("describes adding a customer to an existing restricted code audience", async () => {
     const { CustomerCodeAction } = await import("./customer-admin-client");
     const view = render(
