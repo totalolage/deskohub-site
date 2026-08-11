@@ -48,6 +48,7 @@ export class InvoiceStorageError extends Data.TaggedError(
   readonly operation: "decrypt" | "encrypt" | "load" | "parse" | "validate";
   readonly paymentAttemptId: string;
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export class InvoiceNumberExhaustedError extends Data.TaggedError(
@@ -117,11 +118,12 @@ export class InvoiceRepository extends Context.Service<
 
         const key = yield* keys.getById(metadata.keyId).pipe(
           Effect.mapError(
-            () =>
+            (cause) =>
               new InvoiceStorageError({
                 operation: "decrypt",
                 paymentAttemptId,
                 message: "Invoice decryption key is unavailable.",
+                cause,
               })
           )
         );
@@ -145,11 +147,12 @@ export class InvoiceRepository extends Context.Service<
           .pipe(
             Effect.withTracerEnabled(false),
             Effect.mapError(
-              () =>
+              (cause) =>
                 new InvoiceStorageError({
                   operation: "decrypt",
                   paymentAttemptId,
                   message: "Invoice could not be decrypted.",
+                  cause,
                 })
             )
           );
@@ -305,11 +308,12 @@ export class InvoiceRepository extends Context.Service<
 
             const key = yield* keys.getActive.pipe(
               Effect.mapError(
-                () =>
+                (cause) =>
                   new InvoiceStorageError({
                     operation: "encrypt",
                     paymentAttemptId: input.paymentAttemptId,
                     message: "Invoice encryption key is unavailable.",
+                    cause,
                   })
               )
             );
@@ -381,11 +385,12 @@ export class InvoiceRepository extends Context.Service<
               .pipe(
                 Effect.withTracerEnabled(false),
                 Effect.mapError(
-                  () =>
+                  (cause) =>
                     new InvoiceStorageError({
                       operation: "encrypt",
                       paymentAttemptId: input.paymentAttemptId,
                       message: "Invoice could not be encrypted.",
+                      cause,
                     })
                 )
               );

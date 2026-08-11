@@ -249,6 +249,7 @@ describe("invoice repository PostgreSQL integration", () => {
     ).rejects.toMatchObject({
       _tag: "InvoiceStorageError",
       operation: "encrypt",
+      cause: { _tag: "EffectDrizzleQueryError" },
     });
     expect(await readCounters(db)).toEqual(before);
 
@@ -263,6 +264,23 @@ describe("invoice repository PostgreSQL integration", () => {
         )
       )
     ).toBe((before.get(numberingYear) ?? 0) + 1);
+
+    const wrongKeyRepository = await makeInvoiceRepository({
+      db,
+      keys: makeKeyService({
+        ...testKey,
+        secret: "different synthetic accounting snapshot secret!",
+      }),
+    });
+    await expect(
+      Effect.runPromise(
+        wrongKeyRepository.findByPaymentAttemptId(fixture.paymentAttemptId)
+      )
+    ).rejects.toMatchObject({
+      _tag: "InvoiceStorageError",
+      operation: "decrypt",
+      cause: { _tag: "EffectDrizzleQueryError" },
+    });
   });
 });
 
@@ -271,8 +289,8 @@ const makeKeyService = (
 ): IAccountingSnapshotKeyService => ({
   getActive: Effect.succeed(activeKey),
   getById: (keyId) =>
-    keyId === testKey.id
-      ? Effect.succeed(testKey)
+    keyId === activeKey.id
+      ? Effect.succeed(activeKey)
       : Effect.fail(
           new AccountingSnapshotKeyError({
             keyId,
