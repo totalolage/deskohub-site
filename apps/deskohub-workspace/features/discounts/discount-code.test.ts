@@ -5,6 +5,7 @@ import type { DiscountCode } from "@/db/schema";
 import {
   decodeDiscountCodeAvailability,
   decodeDiscountCodeConfiguration,
+  generateDiscountCode,
   normalizeSubmittedDiscountCode,
 } from "./discount-code";
 import {
@@ -86,6 +87,19 @@ describe("discount code normalization", () => {
       failure: { reason: "invalid_syntax" },
     });
     expect(JSON.stringify(result)).not.toContain(submittedCode);
+  });
+});
+
+describe("discount code generation", () => {
+  test("generates readable codes accepted by the canonical schema", () => {
+    const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
+
+    for (let index = 0; index < 20; index += 1) {
+      const code = generateDiscountCode();
+
+      expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}-[A-HJ-NP-Z2-9]{6}$/);
+      expect(decodeCode(code)).toBe(code);
+    }
   });
 });
 

@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
+import { AdministrationAlert } from "@/features/administration/notice";
 import type { StoredDiscountId } from "@/features/discounts/persistence-contracts";
 import { Button } from "@/shared/components/ui/button";
 import { Label } from "@/shared/components/ui/label";
@@ -193,12 +194,13 @@ export function DiscountCodeCreationForm({
       </div>
 
       {error && (
-        <p
-          className="mt-5 rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+        <AdministrationAlert
+          className="mt-5 font-semibold"
           role="alert"
+          status="error"
         >
           {error}
-        </p>
+        </AdministrationAlert>
       )}
 
       <div className="mt-6 flex flex-wrap justify-end gap-3 border-t border-navy-blue/10 pt-5">

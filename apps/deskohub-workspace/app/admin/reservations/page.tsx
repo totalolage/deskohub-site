@@ -1,5 +1,10 @@
 import Link from "next/link";
 import {
+  AdministrationAlert,
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
+  AdministrationFilterSelect,
   AdministrationPage,
   AdministrationTableToolbar,
   Pagination,
@@ -11,9 +16,6 @@ import {
 } from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
-
-const selectClassName =
-  "h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15";
 
 export default async function ReservationsAdministrationPage({
   searchParams,
@@ -40,44 +42,48 @@ export default async function ReservationsAdministrationPage({
       <h1 className="sr-only">Reservations</h1>
       <AdministrationTableToolbar
         count={result.total}
-        itemLabel="reservation"
-        primaryControls={<ReservationLookup variant="toolbar" />}
-        secondaryControls={
-          <form className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-[11rem_13rem_12rem_auto_auto] 2xl:items-end 2xl:justify-end">
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Deskohub status
-              <select
-                className={selectClassName}
+        filters={
+          <AdministrationFilterForm className="2xl:grid-cols-[11rem_13rem_12rem_auto_auto]">
+            <AdministrationFilterField
+              htmlFor="reservation-status"
+              label="Deskohub status"
+            >
+              <AdministrationFilterSelect
                 defaultValue={input.status ?? ""}
+                id="reservation-status"
                 name="status"
               >
                 <option value="">All statuses</option>
                 <option value="in_progress">In progress</option>
                 <option value="complete">Complete</option>
                 <option value="cancelled">Cancelled</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Reservation type
-              <select
-                className={selectClassName}
+              </AdministrationFilterSelect>
+            </AdministrationFilterField>
+            <AdministrationFilterField
+              htmlFor="reservation-type"
+              label="Reservation type"
+            >
+              <AdministrationFilterSelect
                 defaultValue={input.type ?? ""}
+                id="reservation-type"
                 name="type"
               >
                 <option value="">All reservation types</option>
                 <option value="cowork">Coworking</option>
                 <option value="meeting-room">Meeting room</option>
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-xs font-semibold text-navy-blue/65">
-              Start date
-              <input
-                className={selectClassName}
+              </AdministrationFilterSelect>
+            </AdministrationFilterField>
+            <AdministrationFilterField
+              htmlFor="reservation-date"
+              label="Start date"
+            >
+              <AdministrationFilterInput
                 defaultValue={input.date ?? ""}
+                id="reservation-date"
                 name="date"
                 type="date"
               />
-            </label>
+            </AdministrationFilterField>
             {input.customerId && (
               <input name="customerId" type="hidden" value={input.customerId} />
             )}
@@ -91,8 +97,10 @@ export default async function ReservationsAdministrationPage({
                 <Link href="/admin/reservations">Clear</Link>
               </Button>
             )}
-          </form>
+          </AdministrationFilterForm>
         }
+        itemLabel="reservation"
+        search={<ReservationLookup variant="toolbar" />}
       />
 
       {input.customerId && (
@@ -107,16 +115,16 @@ export default async function ReservationsAdministrationPage({
         </div>
       )}
       {result.dateFilterUnavailable && (
-        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-4" status="warning">
           Booking dates are temporarily unavailable. Try this date again
           shortly.
-        </output>
+        </AdministrationAlert>
       )}
       {result.dateSortUnavailable && (
-        <output className="mb-4 block rounded-lg bg-sunset-yellow/15 px-4 py-3 text-sm">
+        <AdministrationAlert className="mb-4" status="warning">
           Reservation dates are temporarily unavailable for sorting. Showing
           newest records instead.
-        </output>
+        </AdministrationAlert>
       )}
       <ReservationTable
         reservations={result.items}

@@ -145,14 +145,28 @@ describe("discount administration pages", () => {
     expect(view.queryByRole("combobox", { name: "Search by" })).toBeNull();
   });
 
-  test("uses a sortable table and a percentage editor with a dirty save state", async () => {
-    const { DiscountsAdministrationPage } = await import("./components");
-    const view = render(<DiscountsAdministrationPage dashboard={dashboard} />);
+  test("uses the shared compact list count on codes and sales", async () => {
+    const { CodesAdministrationPage, SalesAdministrationPage } = await import(
+      "./components"
+    );
+    const codes = render(<CodesAdministrationPage dashboard={dashboard} />);
 
-    expect(view.getByRole("table", { name: "Discounts" })).toBeDefined();
+    expect(codes.getByLabelText("1 discount code").textContent).toBe("1");
+    cleanup();
+
+    const sales = render(<SalesAdministrationPage dashboard={dashboard} />);
+
+    expect(sales.getByLabelText("1 sale").textContent).toBe("1");
+  });
+
+  test("uses a sortable table and a percentage editor with a dirty save state", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+
+    expect(view.getByRole("table", { name: "Discount codes" })).toBeDefined();
     fireEvent.click(
       view.getByRole("button", {
-        name: "Edit Summer discount",
+        name: "Edit SUMMER10",
       })
     );
 
@@ -184,23 +198,19 @@ describe("discount administration pages", () => {
     expect(save).toHaveProperty("disabled", false);
   });
 
-  test("sorts discount rows without entering a render loop", async () => {
+  test("sorts code rows without entering a render loop", async () => {
     const sortableDashboard: DiscountAdminDashboard = {
       ...dashboard,
-      discounts: [
-        ...dashboard.discounts,
+      codes: [
+        ...dashboard.codes,
         {
-          ...dashboard.discounts[0],
+          ...dashboard.codes[0],
           id: "019c91dd-c560-7e55-b9d8-c95065efd53d",
-          labels: {
-            "cs-CZ": "Podzimní sleva",
-            "en-US": "Autumn discount",
-          },
-          codeCount: 0,
+          code: "AUTUMN10",
         },
       ],
     };
-    const { DiscountsAdministrationPage } = await import("./components");
+    const { CodesAdministrationPage } = await import("./components");
     let renderCount = 0;
     const view = render(
       <StrictMode>
@@ -213,13 +223,13 @@ describe("discount administration pages", () => {
             }
           }}
         >
-          <DiscountsAdministrationPage dashboard={sortableDashboard} />
+          <CodesAdministrationPage dashboard={sortableDashboard} />
         </Profiler>
       </StrictMode>
     );
-    const table = view.getByRole("table", { name: "Discounts" });
+    const table = view.getByRole("table", { name: "Discount codes" });
     const labelHeader = within(table).getByRole("button", {
-      name: "English label",
+      name: "Code",
     });
 
     await act(() => new Promise<void>((resolve) => queueMicrotask(resolve)));
@@ -231,7 +241,7 @@ describe("discount administration pages", () => {
         "ascending"
       );
       expect(within(table).getAllByRole("row")[1]?.textContent).toContain(
-        "Autumn discount"
+        "AUTUMN10"
       );
       expect(renderCount).toBeLessThan(20);
     });
@@ -378,6 +388,34 @@ describe("discount administration pages", () => {
     expect(
       view.getByRole("textbox", { name: "English (en-US)" })
     ).toBeDefined();
+  });
+
+  test("generates a valid code only while creating a discount code", async () => {
+    const { CodesAdministrationPage } = await import("./components");
+    const view = render(<CodesAdministrationPage dashboard={dashboard} />);
+
+    fireEvent.click(view.getByText("Create a discount code"));
+    const creationForm = view.getByRole("form", {
+      name: "Create discount code",
+    });
+    const codeInput = within(creationForm).getByRole("textbox", {
+      name: "Code",
+    }) as HTMLInputElement;
+
+    expect(codeInput.value).toBe("");
+    fireEvent.click(
+      within(creationForm).getByRole("button", { name: "Generate code" })
+    );
+    expect(codeInput.value).toMatch(/^[A-HJ-NP-Z2-9]{6}-[A-HJ-NP-Z2-9]{6}$/);
+
+    cleanup();
+    const editorView = render(
+      <CodesAdministrationPage dashboard={dashboard} />
+    );
+    fireEvent.click(editorView.getByText("2 customers"));
+    expect(
+      editorView.queryByRole("button", { name: "Generate code" })
+    ).toBeNull();
   });
 
   test("confirms a general code creation before allowing another submission", async () => {
@@ -708,7 +746,9 @@ describe("discount administration pages", () => {
       />
     );
 
-    expect(view.getByText("Withdrawn").className).toContain("text-red-600");
+    expect(view.getByText("Withdrawn").className).toContain(
+      "text-burned-orange-ink"
+    );
     expect(view.getByText(/Granted 9 Aug 2026/)).toBeDefined();
     expect(view.queryByText("Declined")).toBeNull();
   });
@@ -819,9 +859,10 @@ describe("discount administration pages", () => {
     const salesMainColumn = calendarSalesTable.closest("section");
     expect(salesMainColumn).not.toBeNull();
     expect(
-      salesMainColumn?.contains(
-        view.getByRole("button", { name: "Create a sale discount" })
-      )
+      view
+        .getByLabelText("1 sale")
+        .closest("section")
+        ?.contains(view.getByRole("button", { name: "Create a sale discount" }))
     ).toBe(true);
     const linkSalePanel = view
       .getByRole("heading", { name: "Link a sale" })
@@ -834,7 +875,9 @@ describe("discount administration pages", () => {
         .getByRole("link", { name: "Open calendar" })
         .getAttribute("href")
     ).toBe("https://calendar.google.com/");
-    expect(view.getByText("Associated").className).toContain("text-white");
+    expect(view.getByText("Associated").className).toContain(
+      "text-aquamarine-ink"
+    );
     expect(view.getByText("tentative").className).toContain("text-navy-blue");
     const saleRow = view.getByText("Summer sale").closest("tr");
     expect(saleRow?.getAttribute("tabindex")).toBe("0");

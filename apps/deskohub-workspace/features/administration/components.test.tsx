@@ -19,6 +19,8 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
+  AdministrationStatusBadge,
+  AdministrationTableToolbar,
   BookingTable,
   getBookingTableLabel,
   PaymentAttemptList,
@@ -53,6 +55,42 @@ describe("administration reservation components", () => {
   afterEach(() => cleanup());
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
+  test("composes collection counts, search, filters, and actions consistently", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        actions={<button type="button">Create</button>}
+        count={2}
+        filters={<button type="button">Filter</button>}
+        itemLabel="reservation"
+        search={<input aria-label="Lookup" />}
+      />
+    );
+
+    const toolbar = view.getByRole("region", {
+      name: "reservation table controls",
+    });
+    expect(within(toolbar).getByLabelText("2 reservations")).toBeDefined();
+    expect(within(toolbar).getByLabelText("Lookup")).toBeDefined();
+    expect(
+      within(toolbar).getByRole("button", { name: "Filter" })
+    ).toBeDefined();
+    expect(
+      within(toolbar).getByRole("button", { name: "Create" })
+    ).toBeDefined();
+  });
+
+  test("uses one status badge foundation for domain-specific states", () => {
+    const view = render(
+      <AdministrationStatusBadge tone="positive">
+        Active
+      </AdministrationStatusBadge>
+    );
+
+    expect(view.getByText("Active").className).toContain(
+      "bg-aquamarine-green/12"
+    );
+  });
+
   test("renders a semantic reservation table with friendly status labels", () => {
     const { items } = loadFixtureReservations({});
     const view = render(
@@ -69,6 +107,9 @@ describe("administration reservation components", () => {
       />
     );
     const table = view.getByRole("table", { name: "Reservations" });
+    expect(table.parentElement?.parentElement?.className).toContain(
+      "overflow-x-auto"
+    );
     expect(within(table).getAllByText("Confirmation issue")).not.toHaveLength(
       0
     );

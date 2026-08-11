@@ -9,12 +9,10 @@ import {
   useReactTable,
 } from "@tanstack/react-table";
 import {
-  ArrowDown,
-  ArrowUp,
-  ArrowUpDown,
   ArrowUpRight,
   Pencil,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -28,13 +26,17 @@ import {
   useRef,
   useState,
 } from "react";
+import { AdministrationAlert } from "@/features/administration/notice";
+import { AdministrationSortHead } from "@/features/administration/sort-head";
+import { AdministrationStatusBadge } from "@/features/administration/status-badge";
+import { AdministrationTableFrame } from "@/features/administration/table-frame";
 import type { DiscountAdjustment } from "@/features/discounts/contracts";
+import { generateDiscountCode } from "@/features/discounts/discount-code";
 import type {
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import type { WorkspaceProductTarget } from "@/features/discounts/product-target";
-import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
@@ -92,75 +94,6 @@ const isTableRowControl = (target: EventTarget | null) =>
   target instanceof Element &&
   Boolean(target.closest("a, button, input, select, textarea, label, summary"));
 
-export function DiscountsAdminTable({
-  discounts,
-}: {
-  readonly discounts: readonly DiscountTableItem[];
-}) {
-  const [expandedId, setExpandedId] = useState<StoredDiscountId | null>(null);
-  const columns = useMemo<ColumnDef<DiscountTableItem>[]>(
-    () => [
-      {
-        accessorFn: (discount) => discount.labels["en-US"],
-        id: "englishLabel",
-        header: "English label",
-      },
-      {
-        accessorFn: (discount) => discount.labels["cs-CZ"],
-        id: "czechLabel",
-        header: "Czech label",
-      },
-      {
-        accessorFn: formatAdjustment,
-        id: "adjustment",
-        header: "Adjustment",
-        cell: ({ row }) => (
-          <Badge variant="subtle">{formatAdjustment(row.original)}</Badge>
-        ),
-      },
-      {
-        accessorFn: (discount) => discount.products.length,
-        id: "products",
-        header: "Products",
-      },
-      {
-        accessorKey: "codeCount",
-        header: "Codes",
-      },
-    ],
-    []
-  );
-
-  return (
-    <AdminDataTable
-      ariaLabel="Discounts"
-      columns={columns}
-      data={discounts}
-      expandedId={expandedId}
-      getId={(discount) => discount.id}
-      renderActions={(discount, expanded) => (
-        <RowActions
-          deleteLabel={`Delete ${discount.labels["en-US"]}`}
-          editLabel={`Edit ${discount.labels["en-US"]}`}
-          expanded={expanded}
-          onDelete={() => ({
-            kind: "delete-discount",
-            id: discount.id,
-          })}
-          onEdit={() => setExpandedId(expanded ? null : discount.id)}
-          confirmation={`Delete the discount “${discount.labels["en-US"]}”? Referenced discounts cannot be deleted. This cannot be undone.`}
-        />
-      )}
-      renderEditor={(discount) => (
-        <DiscountEditor
-          discount={discount}
-          onDeleted={() => setExpandedId(null)}
-        />
-      )}
-    />
-  );
-}
-
 export function DiscountCodesAdminTable({
   codes,
   discounts,
@@ -201,9 +134,11 @@ export function DiscountCodesAdminTable({
         id: "status",
         header: "Status",
         cell: ({ row }) => (
-          <Badge variant={row.original.enabled ? "default" : "subtle"}>
+          <AdministrationStatusBadge
+            tone={row.original.enabled ? "positive" : "neutral"}
+          >
             {row.original.enabled ? "Enabled" : "Disabled"}
-          </Badge>
+          </AdministrationStatusBadge>
         ),
       },
       {
@@ -312,7 +247,7 @@ export function CalendarSalesAdminTable({
   );
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame className="overflow-x-auto">
       <Table aria-label="Calendar sales" className="min-w-[760px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -373,7 +308,9 @@ export function CalendarSalesAdminTable({
                     {event.start} → {event.end}
                   </TableCell>
                   <TableCell>
-                    <Badge variant="subtle">{event.status}</Badge>
+                    <AdministrationStatusBadge tone="neutral">
+                      {event.status}
+                    </AdministrationStatusBadge>
                   </TableCell>
                   <TableCell>
                     <CalendarAssociationBadge association={event.association} />
@@ -425,7 +362,7 @@ export function CalendarSalesAdminTable({
           })}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
 }
 
@@ -437,9 +374,9 @@ function CalendarAssociationBadge({
   if (association.kind === "associated") {
     return (
       <div>
-        <Badge className="border-burned-orange-ink bg-burned-orange-ink text-white">
+        <AdministrationStatusBadge tone="positive">
           Associated
-        </Badge>
+        </AdministrationStatusBadge>
         <p className="mt-1 max-w-48 truncate text-xs text-navy-blue/70">
           {association.discountLabel}
         </p>
@@ -447,12 +384,24 @@ function CalendarAssociationBadge({
     );
   }
   if (association.kind === "missing-discount") {
-    return <Badge variant="emphasis">Discount not found</Badge>;
+    return (
+      <AdministrationStatusBadge tone="attention">
+        Discount not found
+      </AdministrationStatusBadge>
+    );
   }
   if (association.kind === "invalid-description") {
-    return <Badge variant="emphasis">Invalid description</Badge>;
+    return (
+      <AdministrationStatusBadge tone="attention">
+        Invalid description
+      </AdministrationStatusBadge>
+    );
   }
-  return <Badge variant="subtle">No discount ID</Badge>;
+  return (
+    <AdministrationStatusBadge tone="neutral">
+      No discount ID
+    </AdministrationStatusBadge>
+  );
 }
 
 export function CreateDiscountForm({
@@ -512,30 +461,24 @@ function AdminDataTable<T>({
   });
 
   return (
-    <div className="overflow-hidden rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame>
       <Table aria-label={ariaLabel} className="min-w-[760px]">
         <TableHeader>
           {table.getHeaderGroups().map((headerGroup) => (
             <TableRow className="hover:bg-transparent" key={headerGroup.id}>
               {headerGroup.headers.map((header) => {
                 const sorted = header.column.getIsSorted();
-                let ariaSort: "ascending" | "descending" | "none" = "none";
-                if (sorted === "asc") ariaSort = "ascending";
-                else if (sorted === "desc") ariaSort = "descending";
                 return (
-                  <TableHead aria-sort={ariaSort} key={header.id}>
-                    <button
-                      className="-ml-2 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 text-left hover:bg-navy-blue/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
-                      onClick={header.column.getToggleSortingHandler()}
-                      type="button"
-                    >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
-                      <SortIcon sorted={sorted} />
-                    </button>
-                  </TableHead>
+                  <AdministrationSortHead
+                    direction={sorted}
+                    key={header.id}
+                    onToggle={header.column.getToggleSortingHandler()}
+                  >
+                    {flexRender(
+                      header.column.columnDef.header,
+                      header.getContext()
+                    )}
+                  </AdministrationSortHead>
                 );
               })}
               <TableHead className="w-24 text-right">Actions</TableHead>
@@ -599,18 +542,8 @@ function AdminDataTable<T>({
           })}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
-}
-
-function SortIcon({ sorted }: { readonly sorted: false | "asc" | "desc" }) {
-  if (sorted === "asc") {
-    return <ArrowUp aria-hidden className="size-3.5" />;
-  }
-  if (sorted === "desc") {
-    return <ArrowDown aria-hidden className="size-3.5" />;
-  }
-  return <ArrowUpDown aria-hidden className="size-3.5 opacity-55" />;
 }
 
 function RowActions({
@@ -817,16 +750,13 @@ function MutationForm({
     >
       {children}
       {feedback && (
-        <p
-          className={
-            feedback.kind === "error"
-              ? "mt-5 rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
-              : "mt-5 rounded-xl bg-aquamarine-green/15 px-4 py-3 text-sm font-semibold text-aquamarine-ink"
-          }
+        <AdministrationAlert
+          className="mt-5 font-semibold"
           role={feedback.kind === "error" ? "alert" : "status"}
+          status={feedback.kind}
         >
           {feedback.message}
-        </p>
+        </AdministrationAlert>
       )}
       <div className="mt-6 flex items-center justify-between border-t border-navy-blue/10 pt-5">
         <div>{deleteControl}</div>
@@ -1090,20 +1020,44 @@ export function DiscountCodeConfigurationFields({
 }: {
   readonly code?: DiscountCodeTableItem;
 }) {
+  const [codeValue, setCodeValue] = useState(code?.code ?? "");
+  const codeInputId = fieldId("code", code?.id);
+
   return (
     <div className="grid gap-5">
       <div className="grid gap-4 md:grid-cols-2">
-        <FormField label="Code">
-          <Input
-            autoCapitalize="characters"
-            defaultValue={code?.code}
-            id={fieldId("code", code?.id)}
-            maxLength={64}
-            minLength={3}
-            name="code"
-            required
-          />
-        </FormField>
+        <div className="grid gap-2">
+          <Label htmlFor={codeInputId}>Code</Label>
+          <div
+            className={
+              code ? undefined : "grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
+            }
+          >
+            <Input
+              autoCapitalize="characters"
+              className="font-mono uppercase"
+              id={codeInputId}
+              maxLength={64}
+              minLength={3}
+              name="code"
+              onChange={(event) => setCodeValue(event.currentTarget.value)}
+              required
+              spellCheck={false}
+              value={codeValue}
+            />
+            {!code && (
+              <Button
+                className="h-12 rounded-[1.1rem] px-5"
+                onClick={() => setCodeValue(generateDiscountCode())}
+                type="button"
+                variant="secondary"
+              >
+                <RefreshCw aria-hidden className="size-4" />
+                Generate code
+              </Button>
+            )}
+          </div>
+        </div>
         <label className="flex min-h-12 cursor-pointer items-center gap-3 self-end rounded-[1.1rem] bg-navy-blue/[0.045] px-4 py-3 text-sm font-semibold">
           <input
             className="size-4 accent-[var(--brand-burned-orange)]"
@@ -1183,11 +1137,6 @@ const toDateTimeInputValue = (value: string | null | undefined) =>
     : "";
 
 const fieldId = (name: string, id?: string) => (id ? `${name}-${id}` : name);
-
-const formatAdjustment = (discount: DiscountTableItem) =>
-  discount.adjustment.kind === "percentage"
-    ? `${discount.adjustment.basisPoints / 100}%`
-    : `${discount.adjustment.amount.value / 10 ** discount.adjustment.amount.exponent} ${discount.adjustment.amount.currency}`;
 
 const selectClassName =
   "min-h-12 w-full rounded-[1.1rem] border border-navy-blue/12 bg-white px-4 py-3 text-base outline-none focus-visible:border-burned-orange focus-visible:ring-4 focus-visible:ring-burned-orange/10";

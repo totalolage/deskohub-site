@@ -4,6 +4,7 @@ import { Minus, Plus, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, type ReactNode, useId, useRef, useState } from "react";
+import { AdministrationAlert } from "@/features/administration/notice";
 import type { DiscountCodeId } from "@/features/discounts/persistence-contracts";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { Button } from "@/shared/components/ui/button";
@@ -65,9 +66,11 @@ export function CustomerSearch({
     <div className="space-y-4">
       <form
         className={
-          variant === "card"
-            ? "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
-            : "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end"
+          {
+            card: "grid gap-3 rounded-xl border border-navy-blue/10 bg-white p-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+            toolbar:
+              "grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end",
+          }[variant]
         }
         onSubmit={(event) => {
           event.preventDefault();
@@ -100,12 +103,13 @@ export function CustomerSearch({
       </form>
 
       {error && (
-        <p
-          className="rounded-xl bg-burned-orange/10 px-4 py-3 text-sm font-semibold text-burned-orange-ink"
+        <AdministrationAlert
+          className="font-semibold"
           role="alert"
+          status="error"
         >
           {error}
-        </p>
+        </AdministrationAlert>
       )}
       {result && (
         <div

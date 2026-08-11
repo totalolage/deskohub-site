@@ -7,13 +7,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/shared/components/ui/table";
-import { cn } from "@/shared/utils";
-import { EmptyState, formatAdministrationDateTime } from "./components";
+import { EmptyState } from "./empty-state";
+import { formatAdministrationDateTime } from "./formatters";
+import { NexiOrderLink } from "./nexi-order-link";
+import { AdministrationAlert } from "./notice";
 import type {
   AdministrationOperation,
   AdministrationOrder,
 } from "./payment-administration.service";
 import { getProviderValueLabel } from "./payment-presentation";
+import {
+  AdministrationStatusBadge,
+  type AdministrationStatusTone,
+} from "./status-badge";
+import { AdministrationTableFrame } from "./table-frame";
 
 export const formatProviderMoney = (
   amount: string | undefined,
@@ -76,20 +83,13 @@ export function ProviderStatusBadge({ value }: { readonly value: string }) {
     "THREEDS_FAILED",
     "VOIDED",
   ].includes(normalized);
+  let tone: AdministrationStatusTone = "neutral";
+  if (positive) tone = "positive";
+  else if (warning) tone = "attention";
   return (
-    <span
-      className={cn(
-        "inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold",
-        positive &&
-          "border-aquamarine-green/35 bg-aquamarine-green/12 text-aquamarine-ink",
-        warning &&
-          "border-burned-orange/30 bg-burned-orange/10 text-burned-orange-ink",
-        !(positive || warning) &&
-          "border-navy-blue/12 bg-navy-blue/5 text-navy-blue/65"
-      )}
-    >
+    <AdministrationStatusBadge tone={tone}>
       {getProviderValueLabel(value)}
-    </span>
+    </AdministrationStatusBadge>
   );
 }
 
@@ -116,16 +116,10 @@ export function ReservationOrderList({
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
                 Nexi order
               </p>
-              <a
-                aria-label={`Nexi order ${order.orderId} (opens in XPay)`}
+              <NexiOrderLink
                 className="mt-1 inline-flex max-w-full items-baseline gap-1.5 break-all font-mono text-sm font-semibold text-burned-orange-ink underline decoration-burned-orange/30 underline-offset-4"
-                href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(order.orderId)}`}
-                rel="noreferrer"
-                target="_blank"
-              >
-                {order.orderId}
-                <span aria-hidden>↗</span>
-              </a>
+                orderId={order.orderId}
+              />
             </div>
             <div className="sm:text-right">
               <p className="font-semibold">{formatOrderMoney(order)}</p>
@@ -136,15 +130,15 @@ export function ReservationOrderList({
           </div>
 
           {order.providerStatus === "not_found" && (
-            <p className="m-4 rounded-lg bg-burned-orange/10 px-3 py-2 text-sm text-burned-orange-ink sm:m-5">
+            <AdministrationAlert className="m-4 sm:m-5" status="warning">
               Nexi did not return this locally linked order. The order ID and
               local payment facts remain available above.
-            </p>
+            </AdministrationAlert>
           )}
           {order.providerStatus === "unavailable" && (
-            <p className="m-4 rounded-lg bg-sunset-yellow/15 px-3 py-2 text-sm sm:m-5">
+            <AdministrationAlert className="m-4 sm:m-5" status="warning">
               Live order operations are temporarily unavailable from Nexi.
-            </p>
+            </AdministrationAlert>
           )}
 
           {order.provider?.operations &&
@@ -221,7 +215,7 @@ export function OrderTable({
     return <EmptyState message="No Nexi orders match this period." />;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame className="overflow-x-auto">
       <Table aria-label="Nexi orders" className="min-w-[780px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -292,7 +286,7 @@ export function OrderTable({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
 }
 
@@ -305,7 +299,7 @@ export function OperationTable({
     return <EmptyState message="No Nexi operations match these filters." />;
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-navy-blue/10 bg-white">
+    <AdministrationTableFrame className="overflow-x-auto">
       <Table aria-label="Nexi operations" className="min-w-[880px]">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -397,6 +391,6 @@ export function OperationTable({
           ))}
         </TableBody>
       </Table>
-    </div>
+    </AdministrationTableFrame>
   );
 }

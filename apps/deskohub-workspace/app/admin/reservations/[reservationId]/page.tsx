@@ -1,5 +1,7 @@
 import Link from "next/link";
 import {
+  AdministrationDetailSection,
+  AdministrationFact,
   AdministrationPage,
   EmptyState,
   formatAdministrationDateTime,
@@ -7,6 +9,7 @@ import {
   formatAdministrationPlainDate,
   formatAdministrationReservationDate,
   getBookingTableLabel,
+  NexiOrderLink,
   PaymentAttemptList,
   RelatedReservationLink,
   ReservationReferences,
@@ -50,7 +53,7 @@ export default async function ReservationAdministrationDetailPage({
             </div>
             <dl className="mt-5 grid gap-5 text-sm sm:grid-cols-2 lg:grid-cols-3">
               {reservation.type === "cowork" ? (
-                <ReservationFact
+                <AdministrationFact
                   label="Date"
                   value={
                     formatAdministrationReservationDate(reservation) ??
@@ -59,7 +62,7 @@ export default async function ReservationAdministrationDetailPage({
                 />
               ) : (
                 <>
-                  <ReservationFact
+                  <AdministrationFact
                     label="Starts"
                     value={
                       reservation.startsAt
@@ -67,7 +70,7 @@ export default async function ReservationAdministrationDetailPage({
                         : "Unavailable"
                     }
                   />
-                  <ReservationFact
+                  <AdministrationFact
                     label="Ends"
                     value={
                       reservation.endsAt
@@ -77,16 +80,19 @@ export default async function ReservationAdministrationDetailPage({
                   />
                 </>
               )}
-              <ReservationFact label="Product" value={reservation.typeLabel} />
-              <ReservationFact
+              <AdministrationFact
+                label="Product"
+                value={reservation.typeLabel}
+              />
+              <AdministrationFact
                 label="Table"
                 value={getBookingTableLabel(booking)}
               />
-              <ReservationFact
+              <AdministrationFact
                 label="Guests"
                 value={booking?.seats ?? "Unavailable"}
               />
-              <ReservationFact
+              <AdministrationFact
                 label="Created"
                 value={formatAdministrationDateTime(reservation.createdAt)}
               />
@@ -127,15 +133,11 @@ export default async function ReservationAdministrationDetailPage({
                     )}
                   </p>
                   {reservation.latestPayment.providerOrderId && (
-                    <a
-                      aria-label={`Payment ${reservation.latestPayment.providerOrderId} (opens in XPay)`}
+                    <NexiOrderLink
+                      accessibleLabel={`Payment ${reservation.latestPayment.providerOrderId}`}
                       className="mt-2 block break-all font-mono text-xs font-semibold text-burned-orange-ink underline underline-offset-4"
-                      href={`https://xpaydashboard.nexigroup.com/nexi/ordermanagement/order/${encodeURIComponent(reservation.latestPayment.providerOrderId)}`}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {reservation.latestPayment.providerOrderId} ↗
-                    </a>
+                      orderId={reservation.latestPayment.providerOrderId}
+                    />
                   )}
                 </>
               ) : (
@@ -241,23 +243,6 @@ export default async function ReservationAdministrationDetailPage({
   );
 }
 
-function ReservationFact({
-  label,
-  value,
-}: {
-  readonly label: string;
-  readonly value: string;
-}) {
-  return (
-    <div>
-      <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-        {label}
-      </dt>
-      <dd className="mt-1.5 font-medium">{value}</dd>
-    </div>
-  );
-}
-
 function SummarySection({
   children,
   title,
@@ -266,12 +251,9 @@ function SummarySection({
   readonly title: string;
 }) {
   return (
-    <section className="rounded-xl border border-navy-blue/10 bg-white p-5">
-      <h2 className="mb-4 text-xs font-semibold uppercase tracking-[0.1em] text-navy-blue/65">
-        {title}
-      </h2>
+    <AdministrationDetailSection title={title}>
       {children}
-    </section>
+    </AdministrationDetailSection>
   );
 }
 
@@ -283,11 +265,8 @@ function RelatedSection({
   readonly title: string;
 }) {
   return (
-    <section className="rounded-xl border border-navy-blue/10 bg-white p-3">
-      <h2 className="px-3 pb-2 pt-1 text-xs font-semibold uppercase tracking-[0.12em] text-navy-blue/65">
-        {title}
-      </h2>
+    <AdministrationDetailSection density="compact" title={title}>
       {children}
-    </section>
+    </AdministrationDetailSection>
   );
 }

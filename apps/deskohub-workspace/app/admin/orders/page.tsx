@@ -1,6 +1,10 @@
 import {
+  AdministrationAlert,
+  AdministrationFilterField,
+  AdministrationFilterForm,
+  AdministrationFilterInput,
   AdministrationPage,
-  AdministrationPageHeader,
+  AdministrationTableToolbar,
 } from "@/features/administration/components";
 import type { AdministrationSearchParams } from "@/features/administration/page-data.server";
 import { loadAdministrationOrders } from "@/features/administration/page-data.server";
@@ -15,25 +19,25 @@ export default async function OrdersAdministrationPage({
   const { range, result } = await loadAdministrationOrders(searchParams);
   return (
     <AdministrationPage>
-      <AdministrationPageHeader
+      <h1 className="sr-only">Orders</h1>
+      <AdministrationTableToolbar
         count={result.items.length}
-        description="Nexi orders reconciled with local payment attempts and their Workspace reservations."
-        eyebrow="Payments"
-        title="Orders"
+        filters={
+          <AdministrationFilterForm variant="standalone">
+            <DateField defaultValue={range.from} label="From" name="from" />
+            <DateField defaultValue={range.to} label="To" name="to" />
+            <Button className="min-h-10" size="sm" type="submit">
+              Show orders
+            </Button>
+          </AdministrationFilterForm>
+        }
+        itemLabel="order"
       />
-      <form className="mb-5 flex flex-wrap items-end gap-3 rounded-xl border border-navy-blue/10 bg-white p-4">
-        <DateField defaultValue={range.from} label="From" name="from" />
-        <DateField defaultValue={range.to} label="To" name="to" />
-        <Button
-          className="bg-burned-orange-ink hover:bg-burned-orange-ink/90"
-          size="sm"
-          type="submit"
-        >
-          Show orders
-        </Button>
-      </form>
       {!result.providerAvailable && (
-        <ProviderUnavailable message="Nexi is temporarily unavailable. Local orders are still shown, but provider-only orders and current status may be missing." />
+        <AdministrationAlert className="mb-5" status="warning">
+          Nexi is temporarily unavailable. Local orders are still shown, but
+          provider-only orders and current status may be missing.
+        </AdministrationAlert>
       )}
       {result.truncated && (
         <p className="mb-4 text-sm text-navy-blue/65">
@@ -56,22 +60,13 @@ function DateField({
   readonly name: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      {label}
-      <input
-        className="h-10 rounded-lg border border-navy-blue/15 bg-white px-3 text-sm outline-none focus:border-burned-orange focus:ring-2 focus:ring-burned-orange/15"
+    <AdministrationFilterField htmlFor={`order-${name}`} label={label}>
+      <AdministrationFilterInput
         defaultValue={defaultValue}
+        id={`order-${name}`}
         name={name}
         type="date"
       />
-    </label>
-  );
-}
-
-function ProviderUnavailable({ message }: { readonly message: string }) {
-  return (
-    <p className="mb-5 rounded-xl border border-sunset-yellow/35 bg-sunset-yellow/10 px-4 py-3 text-sm">
-      {message}
-    </p>
+    </AdministrationFilterField>
   );
 }
