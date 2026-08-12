@@ -7,11 +7,17 @@ file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   $body <: contains bubble {
     or {
-      `$value as $inner_type as $outer_type` as $outer_assertion,
-      `($value as $inner_type) as $outer_type` as $outer_assertion,
-      `<$outer_type><$inner_type>$value` as $outer_assertion,
-      `<$outer_type>($value as $inner_type)` as $outer_assertion
-    } where {
+      TsAsExpression(),
+      TsTypeAssertionExpression()
+    } as $outer_assertion where {
+      $outer_assertion <: or {
+        `$value as $inner_type as $outer_type`,
+        `($value as $inner_type) as $outer_type`,
+        `<$outer_type><$inner_type>$value`,
+        `<$outer_type>($value as $inner_type)`,
+        r"(?s)^\s*\({2,}\s*[^()]+\s+as\s+[^()]+\s*\){2,}\s+as\s+.+$",
+        r"(?s)^\s*<[^>]+>\s*\({2,}\s*<[^>]+>[^()]+\){2,}\s*$"
+      },
       not $filename <: r"(?s).*(?:\.test(?:-utils)?\.(?:ts|tsx)|e2e/playwright-checkout/run-plan\.ts|features/checkout/reservation-quote-office\.ts)$",
       register_diagnostic(
         span = $outer_assertion,

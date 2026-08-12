@@ -49,8 +49,10 @@ test("anti-slop allows independent assertions and parsed unknown values", () => 
 declare const input: unknown;
 declare function parse(value: string): number;
 const result = parse(input as string) as number;
+const parenthesizedResult = (parse(input as string)) as number;
 const payload: unknown = JSON.parse("{}");
 void result;
+void parenthesizedResult;
 void payload;
 `);
 
@@ -130,6 +132,17 @@ test("chained assertion rule preserves test utility debt", () => {
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
   expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
+});
+
+test("chained assertion rule unwraps nested parentheses", () => {
+  const result = lint(`
+declare const value: unknown;
+const asserted = ((value as unknown)) as string;
+void asserted;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
 
 test("conditional spread rule reports objects with sibling properties", () => {
@@ -242,13 +255,27 @@ void reconstruct;
 test("unsafe dictionary allows concrete values containing unknown", () => {
   const result = lint(`
 type AsyncValues = Record<string, Promise<unknown>>;
+type AsyncUnionValues = Record<string, Promise<unknown | null>>;
 type StructuredValues = Record<string, { value: unknown; source: string }>;
 type NestedValues = { [key: string]: Promise<unknown> };
 void (0 as unknown as AsyncValues);
+void (0 as unknown as AsyncUnionValues);
 void (0 as unknown as StructuredValues);
 void (0 as unknown as NestedValues);
 `);
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
   expect(output).not.toContain("[anti-slop/no-unsafe-dictionary-type]");
+});
+
+test("unsafe dictionary reports direct unsafe union members", () => {
+  const result = lint(`
+type RecordValues = Record<string, unknown | undefined>;
+type IndexedValues = { [key: string]: null | object };
+void (0 as unknown as RecordValues);
+void (0 as unknown as IndexedValues);
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-unsafe-dictionary-type]");
 });
