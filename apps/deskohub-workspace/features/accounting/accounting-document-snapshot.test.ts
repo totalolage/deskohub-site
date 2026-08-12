@@ -22,7 +22,6 @@ import {
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import { AccountingSnapshotKeyService } from "./backend/accounting-snapshot-key.service";
-import { AccountingSnapshotKeyServiceLive } from "./backend/accounting-snapshot-key-live.server";
 import {
   decryptAccountingSnapshot,
   encryptAccountingSnapshot,
@@ -267,6 +266,9 @@ describe("accounting document snapshot", () => {
   });
 
   test("resolves a nonempty environment passphrase by key ID", async () => {
+    const { AccountingSnapshotKeyServiceLive } = await import(
+      "./backend/accounting-snapshot-key-live.server"
+    );
     const key = await Effect.gen(function* () {
       const keys = yield* AccountingSnapshotKeyService;
       return yield* keys.getActive;
