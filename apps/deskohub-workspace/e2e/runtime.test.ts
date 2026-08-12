@@ -65,3 +65,43 @@ test("targets the visible match for selector-based browser actions", async () =>
 
   expect(filteredForVisibility).toBe(true);
 });
+
+test("types provider-controlled fields with user-like key timing", async () => {
+  let typeOptions: { readonly delay?: number; readonly timeout?: number } = {};
+  const visibleLocator = {
+    pressSequentially: async (
+      _value: string,
+      options: { readonly delay?: number; readonly timeout?: number }
+    ) => {
+      typeOptions = options;
+    },
+  };
+  const frame = {
+    locator: () => ({ filter: () => visibleLocator }),
+  };
+  const page = {
+    mainFrame: () => frame,
+    on: () => undefined,
+  };
+  const context = {
+    close: async () => undefined,
+    newPage: async () => page,
+    on: () => undefined,
+  };
+  const browser = {
+    newContext: async () => context,
+  } as unknown as Browser;
+  const run = makePlaywrightBrowserRunner(browser);
+
+  try {
+    await run(
+      "playwright",
+      ["--session", "provider-field-test", "type", "input", "123"],
+      { timeoutMs: 5000 }
+    );
+  } finally {
+    await run.close?.();
+  }
+
+  expect(typeOptions).toEqual({ delay: 50, timeout: 5000 });
+});

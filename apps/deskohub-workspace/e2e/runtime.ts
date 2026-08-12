@@ -184,6 +184,7 @@ class PlaywrightRuntime {
         await actionLocator(
           requireArgument(commandArgs[0], "type target")
         ).pressSequentially(requireArgument(commandArgs[1], "type value"), {
+          delay: 50,
           timeout: timeoutMs,
         });
         return "";
