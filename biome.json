@@ -16,7 +16,6 @@
       "!**/.vercel",
       "!**/.turbo",
       "!.taskmaster",
-      "!lint/anti-slop",
       "!**/generated",
       "!**/db/migrations/**/snapshot.json"
     ]
@@ -28,7 +27,7 @@
     "./lint/no-direct-effect-runs.grit",
     "./lint/no-direct-next-effect-imports.grit",
     "./lint/no-direct-process-env.grit",
-    "./lint/no-double-type-assertions.grit",
+    "./lint/anti-slop.grit",
     "./lint/no-throw-in-workspace-effect-modules.grit"
   ],
   "linter": {
