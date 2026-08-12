@@ -1,9 +1,12 @@
 import { getCurrentWorkspaceDate } from "@/features/reservation/reservation-date";
 
 export type AdministrationReservationDateRange = {
-  readonly from: string;
-  readonly to: string;
+  readonly from?: string;
+  readonly to?: string;
 };
+
+export type AdministrationReservationClosedDateRange =
+  Required<AdministrationReservationDateRange>;
 
 export const getAdministrationReservationDateRange = ({
   date,
@@ -17,18 +20,28 @@ export const getAdministrationReservationDateRange = ({
   const legacyDate = parseCalendarDate(date);
   const fromDate = parseCalendarDate(from);
   const toDate = parseCalendarDate(to);
-  const startDate = fromDate ?? toDate ?? legacyDate;
-  const endDate = toDate ?? fromDate ?? legacyDate;
-  if (!startDate || !endDate) return undefined;
+  if (!fromDate && !toDate) {
+    return legacyDate
+      ? { from: legacyDate.toString(), to: legacyDate.toString() }
+      : undefined;
+  }
 
-  return Temporal.PlainDate.compare(startDate, endDate) <= 0
-    ? { from: startDate.toString(), to: endDate.toString() }
-    : { from: endDate.toString(), to: startDate.toString() };
+  if (fromDate && toDate) {
+    return Temporal.PlainDate.compare(fromDate, toDate) <= 0
+      ? { from: fromDate.toString(), to: toDate.toString() }
+      : { from: toDate.toString(), to: fromDate.toString() };
+  }
+
+  return fromDate ? { from: fromDate.toString() } : { to: toDate?.toString() };
 };
 
 export const getAdministrationOverviewDateRanges = (
   currentDate = getCurrentWorkspaceDate()
-) => ({
+): {
+  readonly today: AdministrationReservationClosedDateRange;
+  readonly upcoming: AdministrationReservationClosedDateRange;
+  readonly lastSevenDays: AdministrationReservationClosedDateRange;
+} => ({
   today: {
     from: currentDate.toString(),
     to: currentDate.toString(),

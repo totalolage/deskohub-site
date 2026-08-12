@@ -579,6 +579,30 @@ const getDateRangeBounds = (startDate: string, endDate: string) => {
   };
 };
 
+const getInclusiveDateRangeBounds = (
+  range: AdministrationReservationDateRange
+) => ({
+  ...(range.from && {
+    startsAtOrAfter: Temporal.PlainDate.from(range.from)
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+  ...(range.to && {
+    startsBefore: Temporal.PlainDate.from(range.to)
+      .add({ days: 1 })
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+});
+
 const getDateBounds = (date: string) => {
   const plainDate = Temporal.PlainDate.from(date);
   return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
@@ -857,6 +881,7 @@ export class AdministrationService extends Context.Service<
   {
     readonly loadOverview: () => Effect.Effect<
       {
+        readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
         readonly today: AdministrationOverviewMetric;
         readonly upcoming: AdministrationOverviewMetric;
         readonly lastSevenDays: AdministrationOverviewMetric;
@@ -1011,12 +1036,9 @@ export class AdministrationService extends Context.Service<
         range: AdministrationReservationDateRange | undefined
       ) => {
         if (!range) return Effect.succeed(undefined);
-        const exclusiveEndDate = Temporal.PlainDate.from(range.to)
-          .add({ days: 1 })
-          .toString();
         return dotypos
           .listReservations({
-            ...getDateRangeBounds(range.from, exclusiveEndDate),
+            ...getInclusiveDateRangeBounds(range),
             order: "startDateAscending",
           })
           .pipe(
@@ -1087,15 +1109,14 @@ export class AdministrationService extends Context.Service<
       const loadReservationPeriodCount = Effect.fn(
         "AdministrationService.loadReservationPeriodCount"
       )(function* (input: {
-        readonly range: AdministrationReservationDateRange;
+        readonly range: ReturnType<
+          typeof getAdministrationOverviewDateRanges
+        >["today"];
         readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
       }) {
-        const exclusiveEndDate = Temporal.PlainDate.from(input.range.to)
-          .add({ days: 1 })
-          .toString();
         const reservations = yield* dotypos
           .listReservations({
-            ...getDateRangeBounds(input.range.from, exclusiveEndDate),
+            ...getInclusiveDateRangeBounds(input.range),
             order: "startDateAscending",
           })
           .pipe(
@@ -2031,7 +2052,7 @@ export class AdministrationService extends Context.Service<
             },
             { concurrency: 3 }
           );
-          return { today, upcoming, lastSevenDays };
+          return { ranges, today, upcoming, lastSevenDays };
         }
       );
 

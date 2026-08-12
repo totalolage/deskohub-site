@@ -265,8 +265,8 @@ export const loadFixtureReservations = (
       (!input.type || reservation.type === input.type) &&
       (!dateRange ||
         (reservation.date !== null &&
-          reservation.date >= dateRange.from &&
-          reservation.date <= dateRange.to))
+          (!dateRange.from || reservation.date >= dateRange.from) &&
+          (!dateRange.to || reservation.date <= dateRange.to)))
   );
   return {
     items,

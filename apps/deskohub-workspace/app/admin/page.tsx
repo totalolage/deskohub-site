@@ -3,14 +3,13 @@ import { connection } from "next/server";
 import type { AdministrationOverviewMetric } from "@/features/administration/administration.service";
 import { AdministrationPage } from "@/features/administration/components";
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
-import { getAdministrationOverviewDateRanges } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
 export default async function AdminPage() {
   await connection();
   const overview = await loadAdministrationOverview();
-  const ranges = getAdministrationOverviewDateRanges();
+  const { ranges } = overview;
   return (
     <AdministrationPage>
       <section aria-labelledby="reservation-activity-heading">

@@ -14,7 +14,10 @@ describe("administration reservation date ranges", () => {
     ).toEqual({ from: "2026-08-06", to: "2026-08-12" });
     expect(
       getAdministrationReservationDateRange({ from: "2026-08-12" })
-    ).toEqual({ from: "2026-08-12", to: "2026-08-12" });
+    ).toEqual({ from: "2026-08-12" });
+    expect(getAdministrationReservationDateRange({ to: "2026-08-12" })).toEqual(
+      { to: "2026-08-12" }
+    );
   });
 
   test("keeps exact-date deep links working", () => {

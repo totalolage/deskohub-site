@@ -18,6 +18,11 @@ mock.module("server-only", () => ({}));
 mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
 
 let overview = {
+  ranges: {
+    today: { from: "2026-08-11", to: "2026-08-11" },
+    upcoming: { from: "2026-08-12", to: "2026-09-10" },
+    lastSevenDays: { from: "2026-08-05", to: "2026-08-11" },
+  },
   today: { unavailable: false, value: 1 },
   upcoming: { unavailable: false, value: 2 },
   lastSevenDays: { unavailable: false, value: 3 },
@@ -46,6 +51,11 @@ describe("AdminPage", () => {
     cleanup();
     Temporal.Now.instant = originalNow;
     overview = {
+      ranges: {
+        today: { from: "2026-08-11", to: "2026-08-11" },
+        upcoming: { from: "2026-08-12", to: "2026-09-10" },
+        lastSevenDays: { from: "2026-08-05", to: "2026-08-11" },
+      },
       today: { unavailable: false, value: 1 },
       upcoming: { unavailable: false, value: 2 },
       lastSevenDays: { unavailable: false, value: 3 },
@@ -58,14 +68,14 @@ describe("AdminPage", () => {
     const view = render(await AdminPage());
 
     expect(view.getByRole("link", { name: /Today/ }).getAttribute("href")).toBe(
-      "/admin/reservations?from=2026-08-12&to=2026-08-12"
+      "/admin/reservations?from=2026-08-11&to=2026-08-11"
     );
     expect(
       view.getByRole("link", { name: /Upcoming/ }).getAttribute("href")
-    ).toBe("/admin/reservations?from=2026-08-13&to=2026-09-11");
+    ).toBe("/admin/reservations?from=2026-08-12&to=2026-09-10");
     expect(
       view.getByRole("link", { name: /Last 7 days/ }).getAttribute("href")
-    ).toBe("/admin/reservations?from=2026-08-06&to=2026-08-12");
+    ).toBe("/admin/reservations?from=2026-08-05&to=2026-08-11");
   });
 
   test("keeps an unavailable reservation activity range linked", async () => {
@@ -78,7 +88,7 @@ describe("AdminPage", () => {
 
     expect(
       view.getByRole("link", { name: /Upcoming/ }).getAttribute("href")
-    ).toBe("/admin/reservations?from=2026-08-13&to=2026-09-11");
+    ).toBe("/admin/reservations?from=2026-08-12&to=2026-09-10");
     expect(view.getByText("Live booking dates unavailable")).toBeDefined();
   });
 });

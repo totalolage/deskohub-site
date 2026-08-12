@@ -103,7 +103,11 @@ export default async function ReservationsAdministrationPage({
             )}
             <input name="sort" type="hidden" value={input.sort} />
             <input name="direction" type="hidden" value={input.direction} />
-            <Button className="min-h-10" size="sm" type="submit">
+            <Button
+              className="min-h-10 2xl:col-start-1"
+              size="sm"
+              type="submit"
+            >
               Apply filters
             </Button>
             {(input.customerId ||
@@ -111,7 +115,12 @@ export default async function ReservationsAdministrationPage({
               input.status ||
               input.to ||
               input.type) && (
-              <Button asChild className="min-h-10" size="sm" variant="ghost">
+              <Button
+                asChild
+                className="min-h-10 2xl:col-start-2"
+                size="sm"
+                variant="ghost"
+              >
                 <Link href="/admin/reservations">Clear</Link>
               </Button>
             )}
