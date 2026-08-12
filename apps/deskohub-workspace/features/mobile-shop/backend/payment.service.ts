@@ -299,7 +299,7 @@ export class MobileShopPaymentService extends Context.Service<
               })
               .pipe(
                 Effect.tapError((cause) =>
-                  markDefinitiveCreationFailure({
+                  markHostedPaymentCreationFailed({
                     cause,
                     paymentAttemptId: prepared.payment.attempt.id,
                     purchases,
@@ -433,32 +433,32 @@ const isDefinitiveHostedPaymentPageFailure = (
   cause.statusCode < 500 &&
   ![408, 409, 425, 429].includes(cause.statusCode);
 
-const markDefinitiveCreationFailure = (input: {
+const markHostedPaymentCreationFailed = (input: {
   readonly cause: NexiExternalApiError | NexiNetworkError;
   readonly paymentAttemptId: Parameters<
     IMobileShopPurchaseLifecycleRepository["markProviderCreationFailed"]
   >[0]["paymentAttemptId"];
   readonly purchases: IMobileShopPurchaseLifecycleRepository;
 }) =>
-  isDefinitiveHostedPaymentPageFailure(input.cause)
-    ? input.purchases
-        .markProviderCreationFailed({
+  input.purchases
+    .markProviderCreationFailed({
+      paymentAttemptId: input.paymentAttemptId,
+      // The hosted URL has not reached the customer when this server-to-server
+      // call fails, so abandoning the local attempt is safe even if Nexi
+      // created an unreachable provider order before the response was lost.
+      failureCode: isDefinitiveHostedPaymentPageFailure(input.cause)
+        ? "nexi_hpp_create_failed"
+        : "nexi_hpp_create_ambiguous",
+    })
+    .pipe(
+      Effect.tapError((cause) =>
+        Effect.logFatal("Mobile shop payment failure marker failed", {
           paymentAttemptId: input.paymentAttemptId,
-          failureCode: "nexi_hpp_create_failed",
+          cause,
         })
-        .pipe(
-          Effect.tapError((cause) =>
-            Effect.logFatal(
-              "Mobile shop definitive payment failure marker failed",
-              { paymentAttemptId: input.paymentAttemptId, cause }
-            )
-          ),
-          Effect.ignore
-        )
-    : Effect.logError(
-        "Ambiguous mobile shop hosted payment creation failure retained the active attempt",
-        { paymentAttemptId: input.paymentAttemptId }
-      );
+      ),
+      Effect.ignore
+    );
 
 const markPreProviderCreationFailed = (input: {
   readonly paymentAttemptId: Parameters<

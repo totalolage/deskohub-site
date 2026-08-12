@@ -156,7 +156,7 @@ describe("mobile shop payment creation", () => {
     expect(harness.capture).toHaveBeenCalledTimes(1);
   });
 
-  test("leaves an ambiguous provider creation active and does not auto-retry", async () => {
+  test("releases an ambiguous provider creation so the order can be retried", async () => {
     const createHostedPaymentPage = mock(() =>
       Effect.fail(new NetworkError({ message: "response lost" }))
     );
@@ -170,7 +170,10 @@ describe("mobile shop payment creation", () => {
       reason: "provider_unavailable",
     });
     expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
-    expect(harness.markProviderCreationFailed).not.toHaveBeenCalled();
+    expect(harness.markProviderCreationFailed).toHaveBeenCalledWith({
+      paymentAttemptId: attemptId,
+      failureCode: "nexi_hpp_create_ambiguous",
+    });
     expect(harness.attachProviderSession).not.toHaveBeenCalled();
   });
 
