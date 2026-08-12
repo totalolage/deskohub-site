@@ -8,9 +8,9 @@
 - [Logging and tracing requirements](#logging-and-tracing-requirements)
 - [Preview validation gate](#preview-validation-gate)
 
-This is the first implementation stage for reservation invoices. It freezes the accepted price, supplier identity, buyer identity, and reservation facts alongside the payment attempt. PostgreSQL encrypts the serialized JSON with `pgcrypto`; the database stores only a `bytea` ciphertext plus non-PII lookup metadata.
+Workspace freezes the accepted price, supplier identity, buyer identity, reservation facts, and delivery target alongside each payment attempt. PostgreSQL encrypts the serialized JSON with `pgcrypto`; the database stores only a `bytea` ciphertext plus non-PII lookup metadata. Issued invoices are separately encrypted and rendered dynamically as PDFs. Delivery state is stored separately without recipient or document PII.
 
-PDF generation, email attachments, invoice issuance/numbering, and administration views are intentionally later stages. Issuance must derive transaction facts from this snapshot rather than mutable Dotypos customer or product data; rendering must then read the immutable issued-document snapshot described below.
+Reservation-purpose UI, automatic issuance orchestration, post-order requests, and administration views remain later stages. Issuance must derive transaction facts from the payment snapshot rather than mutable Dotypos customer or product data; rendering must then read the immutable issued-document snapshot described below.
 
 ## Current boundary
 
@@ -29,7 +29,7 @@ normalized through a compatibility path.
 
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
-The snapshot deliberately excludes email, phone, free-form messages, access codes, provider payloads, and payment tokens. A business buyer contract is supported, but the current reservation UI does not yet collect a reservation-specific business name, company ID, VAT ID, and address. Until that input is added and signed into the checkout state, checkout creates a personal buyer snapshot from the submitted customer name. Do not enable automatic business-invoice issuance on the assumption that the currently blank Dotypos company fields are complete.
+The snapshot deliberately excludes phone, free-form messages, access codes, provider payloads, and payment tokens. New snapshots freeze the reservation email only as the encrypted delivery target; historical snapshots without it remain valid but cannot be delivered automatically. A business buyer contract is supported, but the current reservation UI does not yet collect a reservation-specific business name, company ID, VAT ID, and address. Until that input is added and signed into the checkout state, checkout creates a personal buyer snapshot from the submitted customer name. Do not enable automatic business-invoice issuance on the assumption that the currently blank Dotypos company fields are complete.
 
 The presence of this payment-time source snapshot does not mean that the
 customer requested an invoice or that an invoice was issued. Later stages must
@@ -43,9 +43,9 @@ Each stage has its own validation gate. Do not enable the next customer-facing
 stage until the preceding gate passes in an isolated preview with synthetic
 customer data.
 
-### 1. Payment-time source snapshot
+### 1. Payment-time source snapshot (implemented)
 
-This stage is the current implementation. Continue creating one encrypted,
+Continue creating one encrypted,
 immutable source snapshot for every payment attempt, whether or not the
 customer currently wants an invoice. It preserves the accepted price and
 reservation facts needed for a later request. Unsuccessful terminal attempts
@@ -54,9 +54,9 @@ continue to remove their snapshots transactionally.
 Validate this stage with the preview gate below before beginning document
 issuance.
 
-### 2. Issued invoice and dynamic PDF
+### 2. Issued invoice and dynamic PDF (implemented)
 
-Add an issued-document record that is distinct from the payment-time source
+The issued-document record is distinct from the payment-time source
 snapshot. An invoice exists only when this record exists; the source snapshot
 alone is not an invoice. The issued record owns the invoice number, issue time,
 reservation, successful payment attempt, Dotypos customer ID, and an encrypted
@@ -95,45 +95,57 @@ Dotypos customer data has changed. Visually inspect representative PDFs and
 verify that neither plaintext billing data nor rendered documents appear in
 Postgres, application logs, traces, or analytics.
 
-### 3. Invoice email delivery
+### 3. Invoice email delivery (current milestone)
 
-Teach the reservation email boundary to render the PDF from the issued
-document JSON and attach it to the customer confirmation and the matching
-internal reservation notification. An attachment is present only when an
-issued invoice exists; never attach a personal source snapshot by default.
+The access-code email establishes fulfilment, while invoice issuance requires
+that completed fulfilment timestamp. Do not predict fulfilment or attach a new
+invoice to that same initial message. After fulfilment completes, render the
+PDF from the issued document JSON and send a dedicated invoice follow-up to the
+customer plus a matching internal copy. Send nothing when no issued invoice
+exists; never attach a personal source snapshot by default.
 
 Keep issuance and delivery idempotent. A delivery failure retains the issued
 document and its number, then retries delivery of that same document instead
 of issuing another invoice. Do not accept a client-provided recipient: resolve
-the encrypted delivery target frozen for the reservation and issued document.
+the encrypted delivery target frozen in the payment-time source snapshot.
 Persist delivery attempts separately so customer and internal deliveries can
-succeed, fail, and retry independently.
+succeed, fail, and retry independently. Historical snapshots without a frozen
+recipient remain unavailable for automatic delivery.
 
 Validate attachment filename, MIME type, content, both email templates, retry
 behavior, and the no-invoice path before enabling invoice requests in the UI.
 
-### 4. Optional invoice request during reservation
+### 4. Reservation purpose and invoice request during reservation
 
-Add an unchecked checkbox to every reservation form with the label “Send me an
-invoice (add billing details)”. Checking it reveals a shared billing-details
-form. Address line 1, city, postal code, and country are required; address line
-2, company name, company ID, and VAT ID are optional. When the checkbox is
-unchecked, omit the billing fields and invoice-request intent from submission
-rather than sending hidden or stale values.
+Add an explicit personal-use/business-use control to every reservation form.
+The selected purpose belongs to the reservation rather than the mutable
+Dotypos customer. Persist it as non-PII reservation metadata so consumer and
+business transactions remain distinguishable without decrypting accounting
+documents, and freeze it into the encrypted checkout state and source snapshot.
+Do not infer a purpose for historical reservations that predate the control.
 
-Add an explicit optional invoice-request discriminant and billing identity to
-the encrypted payment-time source snapshot. Never infer invoice
-intent from its existing required `buyer`: the current snapshot always creates
-a personal buyer from the reservation name even when no invoice was requested.
-The issued-document row remains the sole signal that an invoice actually
-exists.
+A business reservation always requests an invoice and reveals a shared
+billing-details form. Require business legal name, company ID, address line 1,
+city, postal code, and country; keep address line 2 and VAT ID optional. A
+personal reservation separately offers an unchecked “Send me an invoice”
+option. Checking it reveals the same address fields with the person's legal
+name; address line 2 remains optional. When the personal option is unchecked,
+omit its invoice request and billing fields rather than sending hidden or stale
+values.
+
+Model the valid combinations as a discriminated reservation-purpose contract,
+not independent booleans that can represent a business reservation without an
+invoice. Never infer invoice intent from the source snapshot's existing
+required `buyer`: the current snapshot always creates a personal buyer from the
+reservation name even when no invoice was requested. The issued-document row
+remains the sole signal that an invoice actually exists.
 
 Because post-order delivery must go to the email submitted for that specific
 reservation rather than whatever email a mutable Dotypos customer has later,
-the extended source snapshot must also retain that reservation delivery email
-inside the encrypted blob. Existing snapshots deliberately exclude email
-and are not automatically eligible for self-service post-order issuance unless
-the original recipient can be established through a separately verified flow.
+new source snapshots retain that reservation delivery email inside the
+encrypted blob. Existing snapshots without it are not automatically eligible
+for self-service post-order issuance unless the original recipient can be
+established through a separately verified flow.
 
 Within Workspace, carry the request and billing details only through the
 encrypted checkout state and accounting snapshots. Dotypos intentionally
@@ -142,13 +154,14 @@ database columns, logs, traces, analytics properties, or email-template props
 containing these values. Extend the accounting buyer schema so a personal buyer
 can have a billing address and the company fields remain genuinely optional.
 
-Billing details do not affect advertised price, so keep them out of advertised
-price requests and quote fingerprints. They do affect what is submitted and
-eventually issued: bind the invoice intent and normalized billing details to the
-checkout-attempt HMAC/submission fingerprint, preserve them in every sealed
-pay-state and discount refresh, and restore them when the customer navigates
-back to edit a reservation. A billing-only change must not reuse stale checkout
-state or a source snapshot created for different details.
+Purpose and billing details do not affect advertised price, so keep them out of
+advertised price requests and quote fingerprints. They do affect what is
+submitted and eventually issued: bind the purpose, invoice intent, and
+normalized billing details to the checkout-attempt HMAC/submission fingerprint,
+preserve them in every sealed pay-state and discount refresh, and restore them
+when the customer navigates back to edit a reservation. A purpose or
+billing-only change must not reuse stale checkout state or a source snapshot
+created for different details.
 
 After resolving the Dotypos customer, persist the explicitly submitted billing
 identity to its existing customer record using the provider fields
@@ -176,11 +189,12 @@ regression tests for nested request/error shapes. Continue explicitly marking
 snapshot plaintext and cryptographic parameters at the SQL boundary; do not
 blanket-redact unrelated Drizzle parameters.
 
-Once payment succeeds, issue the invoice from the frozen request and attach it
-through the delivery path from stage 3. With the checkbox unchecked, payment
-and reservation confirmation continue without issuing or attaching an invoice.
-Treat a zero-total internal attempt that reaches the successful paid lifecycle
-as eligible in the same way as a provider-paid attempt.
+Once payment and access-code delivery succeed, always issue a business invoice
+and issue a personal invoice only when the frozen personal request exists. Send
+it through the delivery path from stage 3. A personal reservation without a
+request continues without an invoice. Treat a zero-total internal attempt that
+reaches the successful paid lifecycle as eligible in the same way as a
+provider-paid attempt.
 
 Validate conditional accessibility and stale-value removal, both locales, all
 reservation families, Dotypos create and update paths, payment retries,

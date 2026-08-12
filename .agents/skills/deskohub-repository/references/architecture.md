@@ -32,5 +32,6 @@ Generated clients are contract boundaries. Wrap them with domain-named applicati
 - Name code for the concept callers use, not its hidden implementation.
 - Use an application's configured path aliases within that application.
 - Import a feature through its public API when one exists.
+- Keep public index modules explicit: use named exports, never `export *`.
 - Keep shared utilities independent of feature internals.
 - Preserve the server/client boundary in imports; browser modules must not pull in server-only capabilities.

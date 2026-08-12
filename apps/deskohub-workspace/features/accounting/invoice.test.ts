@@ -126,6 +126,7 @@ describe("invoice", () => {
       },
     });
     expect(document).not.toHaveProperty("schemaVersion");
+    expect(document).not.toHaveProperty("delivery");
     expect(source.buyer).toEqual({
       kind: "person",
       legalName: "Original Buyer",

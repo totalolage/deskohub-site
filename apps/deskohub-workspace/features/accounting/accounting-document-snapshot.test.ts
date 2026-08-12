@@ -86,6 +86,9 @@ describe("accounting document snapshot", () => {
         kind: "person",
         legalName: "Ada Lovelace",
       },
+      delivery: {
+        email: "ada@example.com",
+      },
       reservation: {
         kind: "cowork",
         date: "2099-01-01",
@@ -94,10 +97,10 @@ describe("accounting document snapshot", () => {
     });
   });
 
-  test("does not copy contact or free-form customer data", () => {
+  test("freezes only the reservation email needed for invoice delivery", () => {
     const serialized = JSON.stringify(makeSnapshot());
 
-    expect(serialized).not.toContain("ada@example.com");
+    expect(serialized).toContain("ada@example.com");
     expect(serialized).not.toContain("+420 777 777 777");
     expect(serialized).not.toContain('"message"');
   });
@@ -129,7 +132,7 @@ describe("accounting document snapshot", () => {
     ).resolves.toEqual(snapshot);
 
     const serialized = JSON.stringify(snapshot);
-    expect(serialized).not.toContain("ada@example.com");
+    expect(serialized).toContain("ada@example.com");
     expect(serialized).not.toContain("+420 777 777 777");
   });
 

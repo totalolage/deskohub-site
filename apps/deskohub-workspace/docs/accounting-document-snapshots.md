@@ -23,21 +23,21 @@ An issued invoice is a separate immutable business record. It owns a unique invo
 - Rendering the same issued record always produces the same document even after customer, catalog, or reservation data changes.
 - A rendered file is a presentation of the immutable record, not the record itself.
 
-## Customer invoice request
+## Reservation purpose and invoice request
 
-Invoice request is optional and separate from payment consent. When requested during reservation, the customer supplies:
+Every new reservation is explicitly made for either personal or business use. This purpose belongs to the reservation, not the mutable customer profile, and remains fixed so consumer and business transactions can be distinguished later. Historical reservations whose purpose was not collected remain unknown rather than being inferred.
 
-- address line 1, city, postal code, and country;
-- optional address line 2; and
-- optional company name, company ID, and VAT ID.
+A business reservation always requires an invoice and a complete business billing identity: legal name, company ID, address line 1, city, postal code, and country. Address line 2 and VAT ID are optional.
 
-Unchecking the option removes the request and hidden billing values from the submission. Billing details do not affect price, but a change to them must not reuse a checkout snapshot created for different details.
+A personal reservation may optionally request an invoice. When requested, it requires the person's legal name, address line 1, city, postal code, and country; address line 2 is optional. Without a request, no invoice is issued and no billing fields are retained.
+
+Switching purpose or disabling a personal invoice request removes billing values that are no longer applicable from the submission. Billing details do not affect price, but a change to the purpose, invoice request, or billing identity must not reuse checkout state or an accounting snapshot created for different values.
 
 The newest explicitly submitted billing identity may update the customer's current operational profile. Earlier issued invoices remain unchanged.
 
 ## Delivery and later requests
 
-When an invoice exists, it accompanies the matching customer confirmation and internal reservation notification. Delivery failure retains the same invoice and number and retries that document rather than issuing another one. Customer and internal deliveries may recover independently.
+The access-code email establishes fulfilment, so an invoice cannot be issued early enough to accompany that same message. After access delivery is confirmed, the issued invoice is sent in a dedicated follow-up to the reservation email address and as a matching internal copy. Delivery failure retains the same invoice and number and retries that document rather than issuing another one. Customer and internal deliveries may recover independently.
 
 A post-order invoice request is available only for an eligible paid reservation with trustworthy source evidence, a verified right to manage that reservation, and no existing invoice. Knowing a public order reference alone is not authorization. The recipient is fixed to the verified reservation contact and is not editable during the request.
 
