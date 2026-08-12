@@ -27,7 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     process.env.DW_APP_SCHEME?.trim() ||
     (buildChannel === "production"
       ? "deskohub-workspace"
-      : "deskohub-workspace-preview");
+      : "deskohub-workspace-preview-p0-s00000000");
   const configuredReleaseManifestUrl =
     process.env.EXPO_PUBLIC_RELEASE_MANIFEST_URL?.trim();
   const releaseManifestUrl =
