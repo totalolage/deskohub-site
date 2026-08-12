@@ -47,6 +47,7 @@
     "VERCEL_URL"
   ],
   "tasks": {
+    "//#lint": {},
     "@deskohub/dotypos#generate": {
       "passThroughEnv": [
         "CLOUDINARY_API_KEY",
@@ -118,7 +119,7 @@
       ]
     },
     "lint": {
-      "dependsOn": ["^lint"],
+      "dependsOn": ["//#lint", "^lint"],
       "outputs": []
     },
     "test": {

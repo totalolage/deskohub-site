@@ -16,6 +16,7 @@
       "!**/.vercel",
       "!**/.turbo",
       "!.taskmaster",
+      "!lint/anti-slop",
       "!**/generated",
       "!**/db/migrations/**/snapshot.json"
     ]
