@@ -2,6 +2,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
 import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
@@ -67,7 +68,11 @@ export default function PaymentScreen() {
       >
         <View style={styles.paidHero}>
           <View style={styles.paidMark}>
-            <Text style={styles.paidMarkText}>✓</Text>
+            <AppIcon
+              color={palette.white}
+              name={{ ios: "checkmark", android: "check", web: "check" }}
+              size={52}
+            />
           </View>
           <Text accessibilityRole="header" style={styles.paidTitle}>
             {t("paymentPaidTitle")}
@@ -190,7 +195,6 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     width: 104,
   },
-  paidMarkText: { color: palette.white, fontSize: 52, fontWeight: "700" },
   paidTitle: { ...type.display, color: palette.navy, textAlign: "center" },
   paidAmount: {
     ...type.headline,

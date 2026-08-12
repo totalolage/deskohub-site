@@ -41,6 +41,11 @@ html, body, #root {
 }
 body {
   background-color: #F5F4EF;
+}
+input[role="switch"] {
+  -webkit-appearance: none !important;
+  appearance: none !important;
+  opacity: 0;
 }`;
 
 const registerServiceWorker = `

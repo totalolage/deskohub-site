@@ -7,7 +7,6 @@ FORM: An established-brand Operate surface using a compact Android navigation ba
 */
 
 import { router } from "expo-router";
-import { SymbolView } from "expo-symbols";
 import { useMemo, useState } from "react";
 import {
   Pressable,
@@ -18,7 +17,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-
+import { AppIcon } from "@/components/AppIcon";
 import { AppScreen } from "@/components/AppScreen";
 import { Brand } from "@/components/Brand";
 import { CartDock } from "@/components/CartDock";
@@ -54,14 +53,14 @@ function SignInState() {
     <AppScreen>
       <View style={styles.signInShell}>
         <View style={styles.signInMark}>
-          <SymbolView
+          <AppIcon
+            color={palette.navy}
             name={{
               ios: "basket",
               android: "shopping_basket",
               web: "shopping_basket",
             }}
             size={34}
-            tintColor={palette.navy}
           />
         </View>
         <View style={styles.signInHero}>
@@ -167,10 +166,10 @@ function CatalogState() {
     >
       {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
       <View style={styles.searchWrap}>
-        <SymbolView
+        <AppIcon
+          color={palette.navyMuted}
           name={{ ios: "magnifyingglass", android: "search", web: "search" }}
           size={22}
-          tintColor={palette.navyMuted}
         />
         <TextInput
           accessibilityLabel={t("searchLabel")}
@@ -355,8 +354,10 @@ const styles = StyleSheet.create({
     ...type.body,
     color: palette.navy,
     flex: 1,
-    minHeight: 54,
+    height: 54,
     paddingHorizontal: spacing.sm,
+    paddingVertical: 0,
+    textAlignVertical: "center",
   },
   categories: { gap: spacing.xs, paddingVertical: spacing.md },
   categoriesScroller: { flexGrow: 0 },

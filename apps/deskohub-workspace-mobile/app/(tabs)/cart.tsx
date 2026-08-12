@@ -12,7 +12,6 @@ import {
   StatusBanner,
 } from "@/components/Controls";
 import { ProductThumbnail } from "@/components/ProductCard";
-import { SellerDetails } from "@/components/PurchaseComponents";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
@@ -137,11 +136,6 @@ export default function CartScreen() {
           <LoadingSkeleton label={t("loadingTitle")} rows={1} />
         </View>
       )}
-      {quote && (
-        <View style={styles.confirmed}>
-          <SellerDetails seller={quote.seller} />
-        </View>
-      )}
     </AppScreen>
   );
 }
@@ -180,7 +174,6 @@ const styles = StyleSheet.create({
   estimateValue: { ...type.headline, color: palette.navy },
   quoteLoading: { gap: spacing.sm, marginTop: spacing.md },
   quoteLoadingText: { ...type.caption, color: palette.navyMuted },
-  confirmed: { gap: spacing.md, marginTop: spacing.md },
   checkoutSafeArea: { backgroundColor: palette.paper },
   checkoutDock: {
     backgroundColor: palette.paper,

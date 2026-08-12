@@ -12,19 +12,24 @@ import { useShop } from "@/src/state/shop-provider";
 function SettingsSection({
   title,
   body,
+  accessory,
   children,
 }: {
   title: string;
   body?: string;
-  children: ReactNode;
+  accessory?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <View style={styles.section}>
-      <Text aria-level={2} role="heading" style={styles.sectionTitle}>
-        {title}
-      </Text>
+      <View style={styles.sectionHeading}>
+        <Text aria-level={2} role="heading" style={styles.sectionTitle}>
+          {title}
+        </Text>
+        {accessory}
+      </View>
       {body && <Text style={styles.sectionBody}>{body}</Text>}
-      <View style={styles.sectionActions}>{children}</View>
+      {children && <View style={styles.sectionActions}>{children}</View>}
     </View>
   );
 }
@@ -87,21 +92,23 @@ export default function AccountScreen() {
           ))}
         </View>
       </SettingsSection>
-      <SettingsSection title={t("analyticsTitle")} body={t("analyticsBody")}>
-        <View style={styles.toggleRow}>
+      <SettingsSection
+        accessory={
           <Switch
-            accessibilityLabel={
-              analyticsAllowed ? t("disableAnalytics") : t("allowAnalytics")
-            }
+            accessibilityHint={t("analyticsBody")}
+            accessibilityLabel={t("analyticsTitle")}
             onValueChange={(enabled) =>
               setAnalyticsConsent(enabled ? "allowed" : "denied")
             }
+            style={styles.analyticsSwitch}
             thumbColor={palette.white}
             trackColor={{ false: palette.silver, true: palette.success }}
             value={analyticsAllowed}
           />
-        </View>
-      </SettingsSection>
+        }
+        body={t("analyticsBody")}
+        title={t("analyticsTitle")}
+      />
       <SettingsSection
         title={t("updatesTitle")}
         body={updateMessages[updateState.kind]}
@@ -145,6 +152,12 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   sectionTitle: { ...type.title, color: palette.navy },
+  sectionHeading: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+  },
   sectionBody: { ...type.body, color: palette.navyMuted },
   sectionActions: { gap: spacing.sm, marginTop: spacing.sm },
   segmented: {
@@ -165,10 +178,8 @@ const styles = StyleSheet.create({
   segmentText: { ...type.label, color: palette.navyMuted },
   segmentTextSelected: { color: palette.white },
   pressed: { opacity: 0.75 },
-  toggleRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "flex-end",
-    minHeight: 52,
+  analyticsSwitch: {
+    height: 30,
+    width: 52,
   },
 });

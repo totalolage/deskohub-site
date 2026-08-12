@@ -1,6 +1,6 @@
-import { SymbolView } from "expo-symbols";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
 import { formatMoney } from "@/src/domain/format";
@@ -20,14 +20,14 @@ export function CartDock({ onPress }: { onPress: () => void }) {
         style={({ pressed }) => [styles.dock, pressed && styles.pressed]}
       >
         <View style={styles.cartIcon}>
-          <SymbolView
+          <AppIcon
+            color={palette.white}
             name={{
               ios: "basket",
               android: "shopping_basket",
               web: "shopping_basket",
             }}
             size={27}
-            tintColor={palette.white}
           />
           <View style={styles.count}>
             <Text style={styles.countText}>{cartQuantity}</Text>
@@ -39,9 +39,15 @@ export function CartDock({ onPress }: { onPress: () => void }) {
         <Text style={styles.total}>
           {formatMoney({ currency: "CZK", minorUnits: total }, locale)}
         </Text>
-        <Text aria-hidden style={styles.chevron}>
-          ›
-        </Text>
+        <AppIcon
+          color={palette.white}
+          name={{
+            ios: "chevron.right",
+            android: "chevron_right",
+            web: "chevron_right",
+          }}
+          size={24}
+        />
       </Pressable>
     </View>
   );
@@ -86,6 +92,5 @@ const styles = StyleSheet.create({
   copy: { flex: 1 },
   title: { ...type.label, color: palette.white },
   total: { ...type.bodyStrong, color: palette.white },
-  chevron: { color: palette.white, fontSize: 28, marginLeft: spacing.xxs },
   pressed: { opacity: 0.82 },
 });

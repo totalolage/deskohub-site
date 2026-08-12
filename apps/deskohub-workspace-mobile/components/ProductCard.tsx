@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { formatMoney, localizeText } from "@/src/domain/format";
 import type { Product } from "@/src/domain/shop";
@@ -38,7 +39,11 @@ export function ProductCard({
           onPress={() => setProductQuantity(product.id, 1)}
           style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
-          <Text style={styles.addIcon}>+</Text>
+          <AppIcon
+            color={palette.navy}
+            name={{ ios: "plus", android: "add", web: "add" }}
+            size={28}
+          />
         </Pressable>
       )}
       {quantity > 0 && (
@@ -139,6 +144,5 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     width: 48,
   },
-  addIcon: { color: palette.navy, fontSize: 28, fontWeight: "500" },
   pressed: { opacity: 0.72 },
 });

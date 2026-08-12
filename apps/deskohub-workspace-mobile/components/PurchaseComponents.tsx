@@ -6,6 +6,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import {
   formatMoney,
@@ -76,13 +77,10 @@ export function PurchaseRow({
 }) {
   const { locale, t } = useShop();
   let statusMarkStyle: ViewStyle = styles.statusNeutral;
-  let statusMark = "×";
   if (purchase.status === "paid") {
     statusMarkStyle = styles.statusPaid;
-    statusMark = "✓";
   } else if (purchase.status === "payment_pending") {
     statusMarkStyle = styles.statusPending;
-    statusMark = "◷";
   } else if (purchase.status === "failed") {
     statusMarkStyle = styles.statusFailed;
   }
@@ -93,7 +91,26 @@ export function PurchaseRow({
       style={({ pressed }) => [styles.purchaseRow, pressed && styles.pressed]}
     >
       <View style={[styles.statusIcon, statusMarkStyle]}>
-        <Text style={styles.statusIconText}>{statusMark}</Text>
+        <AppIcon
+          color={palette.navy}
+          name={
+            (
+              {
+                paid: { ios: "checkmark", android: "check", web: "check" },
+                payment_pending: {
+                  ios: "clock",
+                  android: "schedule",
+                  web: "schedule",
+                },
+                not_started: { ios: "xmark", android: "close", web: "close" },
+                failed: { ios: "xmark", android: "close", web: "close" },
+                cancelled: { ios: "xmark", android: "close", web: "close" },
+                expired: { ios: "xmark", android: "close", web: "close" },
+              } as const
+            )[purchase.status]
+          }
+          size={22}
+        />
       </View>
       <View style={styles.purchaseCopy}>
         <View style={styles.purchaseTopline}>
@@ -120,9 +137,15 @@ export function PurchaseRow({
           <PurchaseStatusBadge status={purchase.status} />
         </View>
       </View>
-      <Text aria-hidden style={styles.rowChevron}>
-        ›
-      </Text>
+      <AppIcon
+        color={palette.navyMuted}
+        name={{
+          ios: "chevron.right",
+          android: "chevron_right",
+          web: "chevron_right",
+        }}
+        size={24}
+      />
     </Pressable>
   );
 }
@@ -218,8 +241,6 @@ const styles = StyleSheet.create({
   statusPending: { backgroundColor: palette.warningSurface },
   statusFailed: { backgroundColor: palette.dangerSurface },
   statusNeutral: { backgroundColor: palette.surfaceMuted },
-  statusIconText: { color: palette.navy, fontSize: 22, fontWeight: "800" },
-  rowChevron: { color: palette.navyMuted, fontSize: 28 },
   pressed: { opacity: 0.75 },
   lines: {
     backgroundColor: palette.surface,

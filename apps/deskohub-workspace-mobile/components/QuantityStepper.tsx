@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { useShop } from "@/src/state/shop-provider";
 
@@ -35,7 +36,11 @@ export function QuantityStepper({
           quantity === 0 && styles.disabled,
         ]}
       >
-        <Text style={styles.buttonText}>−</Text>
+        <AppIcon
+          color={palette.navy}
+          name={{ ios: "minus", android: "remove", web: "remove" }}
+          size={24}
+        />
       </Pressable>
       <Text accessibilityLiveRegion="polite" style={styles.quantity}>
         {quantity}
@@ -52,7 +57,11 @@ export function QuantityStepper({
           quantity >= 10 && styles.disabled,
         ]}
       >
-        <Text style={styles.buttonText}>+</Text>
+        <AppIcon
+          color={palette.navy}
+          name={{ ios: "plus", android: "add", web: "add" }}
+          size={24}
+        />
       </Pressable>
     </View>
   );
@@ -75,12 +84,6 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: "center",
     width: 48,
-  },
-  buttonText: {
-    color: palette.navy,
-    fontSize: 24,
-    fontWeight: "600",
-    lineHeight: 28,
   },
   quantity: {
     ...type.bodyStrong,

@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { useShop } from "@/src/state/shop-provider";
 
@@ -15,7 +16,15 @@ export function BackHeader({ title }: { title?: string }) {
         onPress={() => router.back()}
         style={({ pressed }) => [styles.back, pressed && styles.pressed]}
       >
-        <Text style={styles.backText}>‹</Text>
+        <AppIcon
+          color={palette.white}
+          name={{
+            ios: "chevron.left",
+            android: "arrow_back",
+            web: "arrow_back",
+          }}
+          size={24}
+        />
       </Pressable>
       {title && (
         <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>
@@ -42,12 +51,6 @@ const styles = StyleSheet.create({
     height: 48,
     justifyContent: "center",
     width: 48,
-  },
-  backText: {
-    ...type.headline,
-    color: palette.white,
-    lineHeight: 30,
-    marginTop: -2,
   },
   title: {
     ...type.title,

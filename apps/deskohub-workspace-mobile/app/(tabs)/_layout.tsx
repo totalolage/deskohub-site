@@ -1,9 +1,28 @@
 import { Tabs } from "expo-router";
-import { SymbolView } from "expo-symbols";
-import { useWindowDimensions } from "react-native";
+import {
+  type ColorValue,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { palette } from "@/constants/Theme";
 import { useShop } from "@/src/state/shop-provider";
+
+function TabIcon({
+  color,
+  name,
+}: {
+  color: ColorValue;
+  name: React.ComponentProps<typeof AppIcon>["name"];
+}) {
+  return (
+    <View style={styles.tabIcon}>
+      <AppIcon color={color} name={name} size={24} />
+    </View>
+  );
+}
 
 export default function TabLayout() {
   const { width } = useWindowDimensions();
@@ -40,14 +59,13 @@ export default function TabLayout() {
         options={{
           title: t("shopTab"),
           tabBarIcon: ({ color }) => (
-            <SymbolView
+            <TabIcon
+              color={color}
               name={{
                 ios: "basket",
                 android: "shopping_basket",
                 web: "shopping_basket",
               }}
-              size={24}
-              tintColor={color}
             />
           ),
         }}
@@ -57,14 +75,13 @@ export default function TabLayout() {
         options={{
           title: t("historyTab"),
           tabBarIcon: ({ color }) => (
-            <SymbolView
+            <TabIcon
+              color={color}
               name={{
                 ios: "receipt",
                 android: "receipt_long",
                 web: "receipt_long",
               }}
-              size={24}
-              tintColor={color}
             />
           ),
         }}
@@ -74,14 +91,13 @@ export default function TabLayout() {
         options={{
           title: t("accountTab"),
           tabBarIcon: ({ color }) => (
-            <SymbolView
+            <TabIcon
+              color={color}
               name={{
                 ios: "person.crop.circle",
                 android: "account_circle",
                 web: "account_circle",
               }}
-              size={24}
-              tintColor={color}
             />
           ),
         }}
@@ -92,3 +108,12 @@ export default function TabLayout() {
     </Tabs>
   );
 }
+
+const styles = StyleSheet.create({
+  tabIcon: {
+    alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+});
