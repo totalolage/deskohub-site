@@ -1,5 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "cd ../.. && bun install --frozen-lockfile --filter './' --filter deskohub-workspace",
   "git": {
     "deploymentEnabled": {
       "main": false
