@@ -121,6 +121,17 @@ test("chained assertion rule baselines the existing E2E run plan", () => {
   expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
 });
 
+test("chained assertion rule preserves test utility debt", () => {
+  const result = lint(
+    "declare const value: object; value as unknown as { id: string };",
+    "shared/testing",
+    "fixture.test-utils.ts"
+  );
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
+});
+
 test("conditional spread rule reports objects with sibling properties", () => {
   const result = lint(`
 declare const condition: boolean;

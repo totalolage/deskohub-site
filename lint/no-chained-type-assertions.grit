@@ -12,7 +12,7 @@ file($name, $body) where {
       `<$outer_type><$inner_type>$value` as $outer_assertion,
       `<$outer_type>($value as $inner_type)` as $outer_assertion
     } where {
-      not $filename <: r"(?s).*(?:\.test\.(?:ts|tsx)|e2e/playwright-checkout/run-plan\.ts|features/checkout/reservation-quote-office\.ts)$",
+      not $filename <: r"(?s).*(?:\.test(?:-utils)?\.(?:ts|tsx)|e2e/playwright-checkout/run-plan\.ts|features/checkout/reservation-quote-office\.ts)$",
       register_diagnostic(
         span = $outer_assertion,
         message = "[anti-slop/no-chained-type-assertions] Preserve the value's type evidence instead of chaining type assertions.",
