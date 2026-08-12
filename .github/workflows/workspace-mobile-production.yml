@@ -88,7 +88,33 @@ jobs:
             echo "updates_private_key=$updates_private_key"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build production APK
+      - name: Reuse immutable APK when available
+        id: reuse-release
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMMUTABLE_TAG: deskohub-workspace-android-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          echo "reused=false" >> "$GITHUB_OUTPUT"
+          if ! gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
+          fi
+          target="$(gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
+          if [[ "$target" != "$TARGET_SHA" ]]; then
+            echo "Existing immutable release points at a different commit" >&2
+            exit 1
+          fi
+          mkdir -p dist/android
+          gh release download "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern deskohub-workspace.apk \
+            --pattern deskohub-workspace.apk.sha256 \
+            --dir dist/android
+          sha256sum --check dist/android/deskohub-workspace.apk.sha256
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build Android release
+        if: steps.reuse-release.outputs.reused != 'true'
         working-directory: apps/deskohub-workspace-mobile
         env:
           DW_ANDROID_APPLICATION_ID: cz.deskohub.workspace
@@ -138,43 +164,26 @@ jobs:
           echo "immutable_tag=deskohub-workspace-android-$TARGET_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Attest production APK provenance
+        if: steps.reuse-release.outputs.reused != 'true'
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: apps/deskohub-workspace-mobile/dist/android/deskohub-workspace.apk
 
       - name: Publish immutable release
+        if: steps.reuse-release.outputs.reused != 'true'
         working-directory: apps/deskohub-workspace-mobile
         env:
           GH_TOKEN: ${{ github.token }}
           IMMUTABLE_TAG: ${{ steps.release.outputs.immutable_tag }}
         run: |
           set -euo pipefail
-          if gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            target="$(gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
-            if [[ "$target" != "$TARGET_SHA" ]]; then
-              echo "Existing immutable release points at a different commit" >&2
-              exit 1
-            fi
-            existing="$RUNNER_TEMP/existing-workspace-release"
-            mkdir "$existing"
-            if gh release download "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --pattern deskohub-workspace.apk --dir "$existing" 2>/dev/null; then
-              cmp "$existing/deskohub-workspace.apk" dist/android/deskohub-workspace.apk
-            fi
-            gh release upload "$IMMUTABLE_TAG" \
-              dist/android/deskohub-workspace.apk \
-              dist/android/deskohub-workspace.apk.sha256 \
-              dist/android/production.json \
-              --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$IMMUTABLE_TAG" \
-              dist/android/deskohub-workspace.apk \
-              dist/android/deskohub-workspace.apk.sha256 \
-              dist/android/production.json \
-              --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --latest=false \
-              --title "Deskohub Workspace Android $TARGET_SHA" \
-              --notes "Production APK built from the Workspace deployment at $TARGET_SHA."
-          fi
+          gh release create "$IMMUTABLE_TAG" \
+            dist/android/deskohub-workspace.apk \
+            dist/android/deskohub-workspace.apk.sha256 \
+            dist/android/production.json \
+            --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --latest=false \
+            --title "Deskohub Workspace Android $TARGET_SHA" \
+            --notes "Production APK built from the Workspace deployment at $TARGET_SHA."
 
       - name: Publish signed small update
         working-directory: apps/deskohub-workspace-mobile
