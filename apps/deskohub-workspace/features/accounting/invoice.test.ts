@@ -45,6 +45,8 @@ const source = makeAccountingDocumentSnapshot({
   prepared,
 });
 
+const paidAt = Temporal.Instant.from("2026-08-10T12:30:00Z");
+
 describe("invoice", () => {
   test("formats positive annual sequences without arbitrary upper bounds", () => {
     expect(formatInvoiceNumber({ year: 2026, sequence: 1 })).toBe(
@@ -91,6 +93,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     expect(document).toMatchObject({
@@ -98,6 +101,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: "WS-FV-2026-000042",
       issuedAt: "2026-08-10T12:34:56.789Z",
+      paidAt: "2026-08-10T12:30:00.000Z",
       supplier: source.supplier,
       reservation: source.reservation,
       quote: source.quote,
@@ -120,6 +124,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
     const decode = Schema.decodeUnknownEffect(invoiceDocumentSchema, {
       onExcessProperty: "error",
@@ -140,6 +145,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     for (const schemaVersion of [1, 2]) {
@@ -176,6 +182,7 @@ describe("invoice", () => {
       paymentAttemptId: "office-payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 2 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     expect(document).toMatchObject({

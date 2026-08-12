@@ -27,6 +27,11 @@ export const workspaceSiteConstants = {
     identificationNumber: "24531596",
     establishmentId: "1016069146",
     vatStatus: "not-vat-payer",
+    commercialRegister: {
+      court: "Městský soud v Praze",
+      section: "C",
+      file: "442830",
+    },
   },
   social: {
     instagram: "https://www.instagram.com/deskohub/",

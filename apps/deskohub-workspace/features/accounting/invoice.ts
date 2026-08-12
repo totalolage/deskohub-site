@@ -24,9 +24,18 @@ export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 
 const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  supplier: Schema.Struct({
+    ...accountingDocumentIdentitySchema.fields.supplier.fields,
+    commercialRegister: Schema.Struct({
+      court: Schema.NonEmptyString,
+      section: Schema.NonEmptyString,
+      file: Schema.NonEmptyString,
+    }),
+  }),
   paymentAttemptId: Schema.NonEmptyString,
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
+  paidAt: instantStringSchema,
 });
 
 const coworkInvoiceDocumentSchema = Schema.Struct({
@@ -91,14 +100,20 @@ export const makeInvoiceDocument = (input: {
   readonly paymentAttemptId: string;
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
+  readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
   return invoiceDocumentSchema.make({
     ...input.source,
+    supplier: {
+      ...input.source.supplier,
+      commercialRegister: workspaceSiteConstants.company.commercialRegister,
+    },
     buyer: input.buyer,
     paymentAttemptId: input.paymentAttemptId,
     invoiceNumber: input.invoiceNumber,
     issuedAt: instantStringSchema.make(
       temporalInstantToIsoString(input.issuedAt)
     ),
+    paidAt: instantStringSchema.make(temporalInstantToIsoString(input.paidAt)),
   });
 };

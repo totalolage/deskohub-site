@@ -237,6 +237,7 @@ export class InvoiceRepository extends Context.Service<
                 dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                 dotyposReservationId:
                   workspaceReservations.dotyposReservationId,
+                paidAt: workspaceReservations.paidAt,
                 paymentAttemptState: paymentAttempts.state,
               })
               .from(paymentAttempts)
@@ -281,7 +282,8 @@ export class InvoiceRepository extends Context.Service<
             if (
               locked.paymentAttemptState !== "paid" ||
               locked.reservationPaymentState !== "paid" ||
-              locked.activePaymentAttemptId !== paymentAttemptId
+              locked.activePaymentAttemptId !== paymentAttemptId ||
+              locked.paidAt === null
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
@@ -348,6 +350,7 @@ export class InvoiceRepository extends Context.Service<
                 paymentAttemptId,
                 invoiceNumber,
                 issuedAt,
+                paidAt: locked.paidAt,
               })
             ).pipe(
               Effect.mapError(
