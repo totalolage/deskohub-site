@@ -179,6 +179,28 @@ describe("mobile shop API boundary", () => {
     });
   });
 
+  test("decodes a stable purchase-history cursor", async () => {
+    let receivedCursor: unknown;
+    const cursor = JSON.stringify(["2026-08-11T10:00:00Z", "purchase-2"]);
+    const response = await runRequest(
+      new Request(
+        `https://workspace.deskohub.cz/api/v1/mobile/orders?cursor=${encodeURIComponent(cursor)}`
+      ),
+      makeService({
+        history: (input) => {
+          receivedCursor = Reflect.get(input, "cursor");
+          return Effect.succeed({ orders: [] });
+        },
+      })
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedCursor).toMatchObject({ id: "purchase-2" });
+    expect(Reflect.get(receivedCursor as object, "createdAt").toString()).toBe(
+      "2026-08-11T10:00:00Z"
+    );
+  });
+
   test("authenticates before honoring catalog ETags and marks them private", async () => {
     const response = await runRequest(
       new Request(

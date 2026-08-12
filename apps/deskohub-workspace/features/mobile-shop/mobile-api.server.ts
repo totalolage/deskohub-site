@@ -1,6 +1,7 @@
 import "server-only";
 
 import { Effect, Schema } from "effect";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   type MobileShopApiEnvelope,
   type MobileShopApiFailure,
@@ -97,13 +98,13 @@ const routeMobileShopRequest = Effect.fn("mobileShop.routeApiRequest")(
 
     if (segments[0] === "orders" && segments.length === 1) {
       if (request.method === "GET") {
-        const before = yield* decodeOptionalInstant(
-          url.searchParams.get("before")
+        const cursor = yield* decodeOptionalHistoryCursor(
+          url.searchParams.get("cursor")
         );
         const limit = decodeHistoryLimit(url.searchParams.get("limit"));
         return apiSuccess(
           request,
-          yield* service.history({ request, before, limit })
+          yield* service.history({ request, cursor, limit })
         );
       }
       if (request.method === "POST") {
@@ -159,12 +160,23 @@ const decodeBoundary = <A>(schema: Schema.Decoder<A>, input: unknown) =>
     )
   );
 
-const decodeOptionalInstant = (value: string | null) => {
+const historyCursorSchema = Schema.Tuple([
+  instantStringSchema,
+  mobileShopPurchaseIdSchema,
+]);
+
+const decodeOptionalHistoryCursor = (value: string | null) => {
   if (!value) return Effect.succeed(undefined);
   return Effect.try({
-    try: () => Temporal.Instant.from(value),
+    try: () => JSON.parse(value) as unknown,
     catch: (cause) => new MobileShopFailure({ code: "invalid_cart", cause }),
-  });
+  }).pipe(
+    Effect.flatMap((input) => decodeBoundary(historyCursorSchema, input)),
+    Effect.map(([createdAt, id]) => ({
+      createdAt: Temporal.Instant.from(createdAt),
+      id,
+    }))
+  );
 };
 
 const decodeHistoryLimit = (value: string | null) => {

@@ -23,6 +23,7 @@ import { mapDotyposMobileShopCatalog } from "./catalog";
 import {
   type MobileShopAccount,
   type MobileShopCreateOrderRequest,
+  type MobileShopHistoryCursor,
   type MobileShopLocale,
   type MobileShopOrderHistory,
   type MobileShopOrderSummary,
@@ -56,7 +57,7 @@ export interface IMobileShopService {
   }) => Effect.Effect<MobileShopOrderSummary, MobileShopFailure>;
   readonly history: (input: {
     readonly request: Request;
-    readonly before?: Temporal.Instant;
+    readonly cursor?: MobileShopHistoryCursor;
     readonly limit?: number;
   }) => Effect.Effect<MobileShopOrderHistory, MobileShopFailure>;
   readonly order: (input: {
@@ -70,7 +71,7 @@ export interface IMobileShopService {
 }
 
 export const createMobileShopHistoryPage = <
-  const Order extends { readonly createdAt: string },
+  const Order extends { readonly createdAt: string; readonly id: string },
 >(
   orders: readonly Order[],
   limit: number
@@ -78,7 +79,7 @@ export const createMobileShopHistoryPage = <
   const page = orders.slice(0, limit);
   const last = page.at(-1);
   return orders.length > limit && last
-    ? { orders: page, nextCursor: last.createdAt }
+    ? { orders: page, nextCursor: JSON.stringify([last.createdAt, last.id]) }
     : { orders: page };
 };
 
@@ -278,7 +279,7 @@ export class MobileShopService extends Context.Service<
 
       const history = Effect.fn("MobileShopService.history")(function* (input: {
         readonly request: Request;
-        readonly before?: Temporal.Instant;
+        readonly cursor?: MobileShopHistoryCursor;
         readonly limit?: number;
       }) {
         const customer = yield* requireLinkedAccount(input.request);
@@ -286,7 +287,7 @@ export class MobileShopService extends Context.Service<
         const orders = yield* purchases
           .listOwned({
             dotyposCustomerId: customer.customerId,
-            before: input.before,
+            cursor: input.cursor,
             limit: limit + 1,
           })
           .pipe(Effect.mapError(mapPersistenceFailure));

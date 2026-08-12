@@ -25,6 +25,11 @@ export const mobileShopPurchaseIdSchema = opaqueId(
 );
 export type MobileShopPurchaseId = typeof mobileShopPurchaseIdSchema.Type;
 
+export interface MobileShopHistoryCursor {
+  readonly createdAt: Temporal.Instant;
+  readonly id: MobileShopPurchaseId;
+}
+
 export const mobileShopPaymentAttemptIdSchema = opaqueId(
   "MobileShopPaymentAttemptId",
   "Opaque identifier for a self-service purchase payment attempt."

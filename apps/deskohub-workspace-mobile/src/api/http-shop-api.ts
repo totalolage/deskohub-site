@@ -462,7 +462,7 @@ export function createHttpShopApi(baseUrl: string): ShopApi {
       let cursor: string | undefined;
       do {
         const path = cursor
-          ? `/api/v1/mobile/orders?before=${encodeURIComponent(cursor)}`
+          ? `/api/v1/mobile/orders?cursor=${encodeURIComponent(cursor)}`
           : "/api/v1/mobile/orders";
         const history = await requestEnvelope<{
           orders: readonly ApiOrder[];

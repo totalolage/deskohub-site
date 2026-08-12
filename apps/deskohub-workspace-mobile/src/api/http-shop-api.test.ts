@@ -170,11 +170,11 @@ describe("mobile purchase history", () => {
     const requestedCursors: (string | null)[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = new URL(String(input));
-      const before = url.searchParams.get("before");
-      requestedCursors.push(before);
+      const cursorParameter = url.searchParams.get("cursor");
+      requestedCursors.push(cursorParameter);
       return Response.json({
         ok: true,
-        data: before
+        data: cursorParameter
           ? { orders: [apiOrder("older", "2026-08-12T09:00:00Z")] }
           : {
               orders: [apiOrder("newer", "2026-08-12T11:00:00Z")],

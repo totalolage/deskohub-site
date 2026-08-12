@@ -4,7 +4,7 @@ import type {
   DotyposCustomerId,
   DotyposReservationId,
 } from "@deskohub/dotypos";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, or } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
 import type { SqlError } from "effect/unstable/sql/SqlError";
@@ -21,6 +21,7 @@ import {
 import { instantStringSchema } from "@/shared/utils/temporal";
 import type {
   MobileShopCheckoutAttemptKey,
+  MobileShopHistoryCursor,
   MobileShopOrderSummary,
   MobileShopPublicReference,
   MobileShopPurchaseId,
@@ -61,7 +62,7 @@ export interface IMobileShopPurchaseRepository {
   }) => Effect.Effect<MobileShopOrderSummary | null, EffectDrizzleQueryError>;
   readonly listOwned: (input: {
     readonly dotyposCustomerId: DotyposCustomerId;
-    readonly before?: Temporal.Instant;
+    readonly cursor?: MobileShopHistoryCursor;
     readonly limit: number;
   }) => Effect.Effect<
     readonly MobileShopOrderSummary[],
@@ -197,7 +198,7 @@ export class MobileShopPurchaseRepository extends Context.Service<
       const listOwned = Effect.fn("MobileShopPurchaseRepository.listOwned")(
         function* (input: {
           readonly dotyposCustomerId: DotyposCustomerId;
-          readonly before?: Temporal.Instant;
+          readonly cursor?: MobileShopHistoryCursor;
           readonly limit: number;
         }) {
           const limit = Math.max(1, Math.min(51, Math.trunc(input.limit)));
@@ -210,12 +211,27 @@ export class MobileShopPurchaseRepository extends Context.Service<
                   mobileShopPurchaseOrders.dotyposCustomerId,
                   input.dotyposCustomerId
                 ),
-                input.before
-                  ? lt(mobileShopPurchaseOrders.createdAt, input.before)
+                input.cursor
+                  ? or(
+                      lt(
+                        mobileShopPurchaseOrders.createdAt,
+                        input.cursor.createdAt
+                      ),
+                      and(
+                        eq(
+                          mobileShopPurchaseOrders.createdAt,
+                          input.cursor.createdAt
+                        ),
+                        lt(mobileShopPurchaseOrders.id, input.cursor.id)
+                      )
+                    )
                   : undefined
               )
             )
-            .orderBy(desc(mobileShopPurchaseOrders.createdAt))
+            .orderBy(
+              desc(mobileShopPurchaseOrders.createdAt),
+              desc(mobileShopPurchaseOrders.id)
+            )
             .limit(limit);
           const items = yield* loadItems(
             db,
