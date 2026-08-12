@@ -165,6 +165,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setLoadState("loading");
     setLoadErrorKind(null);
     let cachedCatalog: Catalog | null = null;
+    let hasSignedInSession = false;
     try {
       if (Platform.OS !== "web") {
         const initialUrl = await Linking.getInitialURL();
@@ -187,11 +188,12 @@ export function ShopProvider({ children }: PropsWithChildren) {
       const nextSession = await shopApi.getSession();
       setSession(nextSession);
       if (nextSession.kind === "signed_in") {
+        hasSignedInSession = true;
         await loadSignedInContent(targetLocale);
       }
       setLoadState("ready");
     } catch (error) {
-      if (cachedCatalog) {
+      if (cachedCatalog && hasSignedInSession) {
         setCatalog(cachedCatalog);
         retainAvailableCartLines(cachedCatalog);
         setCatalogIsStale(true);
