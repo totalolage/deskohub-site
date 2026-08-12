@@ -50,6 +50,7 @@ import {
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "./database.service";
 
@@ -408,7 +409,9 @@ const createPaidFixture = (
     const dotyposReservationId = DotyposReservationIdSchema.make(
       `synthetic-reservation-${randomUUID()}`
     );
-    const now = Temporal.Now.instant();
+    const now = Temporal.Instant.from(
+      temporalInstantToIsoString(Temporal.Now.instant())
+    );
     const source = makeAccountingDocumentSnapshot({
       workspaceReservationId: reservationId,
       dotyposReservationId,
