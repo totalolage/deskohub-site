@@ -4,7 +4,7 @@ language js(typescript, jsx)
 // Existing debt is excluded per file; remove exclusions as files are fixed.
 // ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
-  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
   $body <: contains bubble {
     or {
       `$value as $inner_type as $outer_type` as $outer_assertion,

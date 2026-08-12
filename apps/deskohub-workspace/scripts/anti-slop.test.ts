@@ -1,13 +1,20 @@
 import { expect, test } from "bun:test";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const decoder = new TextDecoder();
 
-const lint = (source: string) => {
-  const directory = mkdtempSync(join(import.meta.dir, ".anti-slop-"));
+const lint = (source: string, workspaceDirectory = "scripts") => {
+  const temporaryRoot = mkdtempSync(join(tmpdir(), "deskohub-anti-slop-"));
+  const directory = join(
+    temporaryRoot,
+    "apps/deskohub-workspace",
+    workspaceDirectory
+  );
+  mkdirSync(directory, { recursive: true });
   const path = join(directory, "probe.ts");
   writeFileSync(path, source);
 
@@ -29,7 +36,7 @@ const lint = (source: string) => {
       stderr: "pipe",
     });
   } finally {
-    rmSync(directory, { recursive: true, force: true });
+    rmSync(temporaryRoot, { recursive: true, force: true });
   }
 };
 
@@ -85,4 +92,14 @@ void reconstructed;
   ]) {
     expect(output).toContain(`[anti-slop/${rule}]`);
   }
+});
+
+test("chained assertion rule retains Workspace e2e coverage", () => {
+  const result = lint(
+    "declare const value: unknown; value as unknown as string;",
+    "e2e"
+  );
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
