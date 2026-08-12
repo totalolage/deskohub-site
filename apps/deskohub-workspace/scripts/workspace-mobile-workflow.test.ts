@@ -20,6 +20,10 @@ test("reuses a verified immutable APK when a production release is rerun", async
     workflow.indexOf("- name: Publish immutable release"),
     workflow.indexOf("- name: Publish signed small update")
   );
+  const promotionGuardStep = workflow.slice(
+    workflow.indexOf("- name: Confirm this is the latest successful production deployment"),
+    workflow.indexOf("- name: Attest production APK provenance")
+  );
 
   expect(reuseStep).toContain("id: reuse-release");
   expect(reuseStep).toContain("--pattern deskohub-workspace.apk");
@@ -41,4 +45,13 @@ test("reuses a verified immutable APK when a production release is rerun", async
   );
   expect(publishStep).not.toContain("cmp ");
   expect(publishStep).not.toContain("--clobber");
+  expect(workflow).toContain("actions: read");
+  expect(promotionGuardStep).toContain(
+    "actions/workflows/deploy-workspace-production.yml/runs"
+  );
+  expect(promotionGuardStep).toContain("max_by(.run_number)");
+  expect(promotionGuardStep).toContain("github.event.workflow_run.id");
+  expect(workflow.indexOf("latest successful production deployment")).toBeLessThan(
+    workflow.indexOf("Publish signed small update")
+  );
 });

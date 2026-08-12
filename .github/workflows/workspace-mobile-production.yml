@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 60
     environment: workspace-mobile-production
     permissions:
+      actions: read
       attestations: write
       contents: write
       id-token: write
@@ -178,6 +179,20 @@ jobs:
           bun scripts/create-release-manifest.ts "$apk" dist/android/production.json
           sha256sum "$apk" > "$apk.sha256"
           echo "immutable_tag=deskohub-workspace-android-$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm this is the latest successful production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          latest_run_id="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-workspace-production.yml/runs?branch=main&status=completed&per_page=100" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | max_by(.run_number).id // empty')"
+          if [[ -z "$latest_run_id" || "$latest_run_id" != "$TRIGGERING_DEPLOYMENT_RUN_ID" ]]; then
+            echo "A newer successful Workspace production deployment superseded this release" >&2
+            exit 1
+          fi
 
       - name: Attest production APK provenance
         if: steps.reuse-release.outputs.reused != 'true'
