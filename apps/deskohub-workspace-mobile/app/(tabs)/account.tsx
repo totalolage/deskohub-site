@@ -134,6 +134,7 @@ export default function AccountScreen() {
           label={t("signOut")}
           loading={isActionPending}
           onPress={() => void signOut().then(() => router.replace("/"))}
+          style={styles.signOutButton}
           variant="danger"
         />
       )}
@@ -182,4 +183,5 @@ const styles = StyleSheet.create({
     height: 30,
     width: 52,
   },
+  signOutButton: { marginTop: spacing.md },
 });
