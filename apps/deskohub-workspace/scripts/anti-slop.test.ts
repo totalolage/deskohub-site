@@ -117,6 +117,20 @@ void payload;
   expect(output).toContain("[anti-slop/no-conditional-empty-object-spread]");
 });
 
+test("conditional spread rule ignores conditionals inside spread calls", () => {
+  const result = lint(`
+declare const condition: boolean;
+declare function normalize(value: { value?: number }): object;
+const payload = { ...normalize(condition ? { value: 1 } : {}) };
+void payload;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain(
+    "[anti-slop/no-conditional-empty-object-spread]"
+  );
+});
+
 test("widen-then-assert does not connect unrelated scopes", () => {
   const result = lint(`
 function first() {
