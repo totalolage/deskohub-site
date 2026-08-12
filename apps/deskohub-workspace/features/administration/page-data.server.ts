@@ -74,7 +74,7 @@ const runAdministration =
       runWorkspaceEffect(operation, { boundary: "route" })
     );
 
-export const authorizeAdministrationPage = async () => {
+export const authorizeAdministrationPage = cache(async () => {
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),
     Effect.catchTag("DiscountAdminUnauthorizedError", () =>
@@ -83,7 +83,7 @@ export const authorizeAdministrationPage = async () => {
     runWorkspaceEffect("administration.authorize", { boundary: "route" })
   );
   if (!authorized) notFound();
-};
+});
 
 export const loadAdministrationOverview = async () => {
   await authorizeAdministrationPage();
@@ -93,10 +93,9 @@ export const loadAdministrationOverview = async () => {
   }).pipe(runAdministration("administration.overview"));
 };
 
-export const loadAdministrationReservations = async (
+const getAdministrationReservationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
   const dateRange = getAdministrationReservationDateRange({
@@ -104,7 +103,7 @@ export const loadAdministrationReservations = async (
     from: firstParam(params.from),
     to: firstParam(params.to),
   });
-  const input: AdministrationReservationListInput = {
+  return {
     customerId: getDotyposCustomerRouteId(firstParam(params.customerId)),
     ...dateRange,
     direction: parseSortDirection(firstParam(params.direction)),
@@ -117,11 +116,34 @@ export const loadAdministrationReservations = async (
       typeValue === "office"
         ? typeValue
         : undefined,
-  };
-  const result = await Effect.gen(function* () {
+  } satisfies AdministrationReservationListInput;
+};
+
+const loadAdministrationReservationList = async (
+  input: Promise<AdministrationReservationListInput>
+) => {
+  const [, resolvedInput] = await Promise.all([
+    authorizeAdministrationPage(),
+    input,
+  ]);
+  return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.listReservations(input);
+    return yield* administration.listReservations(resolvedInput);
   }).pipe(runAdministration("administration.reservations"));
+};
+
+export const loadAdministrationReservationsPage = (
+  searchParams: AdministrationSearchParams
+) => {
+  const input = getAdministrationReservationListInput(searchParams);
+  return { input, result: loadAdministrationReservationList(input) };
+};
+
+export const loadAdministrationReservations = async (
+  searchParams: AdministrationSearchParams
+) => {
+  const page = loadAdministrationReservationsPage(searchParams);
+  const [input, result] = await Promise.all([page.input, page.result]);
   return { input, result };
 };
 
@@ -136,19 +158,41 @@ export const loadAdministrationReservation = cache(async (id: string) => {
   return detail;
 });
 
-export const loadAdministrationBookings = async (
+const getAdministrationBookingListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
   const params = await searchParams;
-  const input = {
+  return {
     date: parseDate(firstParam(params.date)),
     page: parsePage(firstParam(params.page)),
   };
-  const result = await Effect.gen(function* () {
+};
+
+const loadAdministrationBookingList = async (
+  input: ReturnType<typeof getAdministrationBookingListInput>
+) => {
+  const [, resolvedInput] = await Promise.all([
+    authorizeAdministrationPage(),
+    input,
+  ]);
+  return Effect.gen(function* () {
     const administration = yield* AdministrationService;
-    return yield* administration.listBookings(input);
+    return yield* administration.listBookings(resolvedInput);
   }).pipe(runAdministration("administration.bookings"));
+};
+
+export const loadAdministrationBookingsPage = (
+  searchParams: AdministrationSearchParams
+) => {
+  const input = getAdministrationBookingListInput(searchParams);
+  return { input, result: loadAdministrationBookingList(input) };
+};
+
+export const loadAdministrationBookings = async (
+  searchParams: AdministrationSearchParams
+) => {
+  const page = loadAdministrationBookingsPage(searchParams);
+  const [input, result] = await Promise.all([page.input, page.result]);
   return { input, result };
 };
 
@@ -204,23 +248,45 @@ export const loadAdministrationCustomerActivity = cache(
   }
 );
 
-export const loadAdministrationOrders = async (
+const getAdministrationOrderRange = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
   const params = await searchParams;
-  const range = getAdministrationOrderDateTimeBounds(
+  return getAdministrationOrderDateTimeBounds(
     firstParam(params.from),
     firstParam(params.to)
   );
-  const result = await Effect.gen(function* () {
+};
+
+const loadAdministrationOrderList = async (
+  range: ReturnType<typeof getAdministrationOrderRange>
+) => {
+  const [, resolvedRange] = await Promise.all([
+    authorizeAdministrationPage(),
+    range,
+  ]);
+  return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listOrders({
-      fromTime: range.fromTime,
-      toTime: range.toTime,
+      fromTime: resolvedRange.fromTime,
+      toTime: resolvedRange.toTime,
       maxRecords: 50,
     });
   }).pipe(runAdministration("administration.orders"));
+};
+
+export const loadAdministrationOrdersPage = (
+  searchParams: AdministrationSearchParams
+) => {
+  const range = getAdministrationOrderRange(searchParams);
+  return { range, result: loadAdministrationOrderList(range) };
+};
+
+export const loadAdministrationOrders = async (
+  searchParams: AdministrationSearchParams
+) => {
+  const page = loadAdministrationOrdersPage(searchParams);
+  const [range, result] = await Promise.all([page.range, page.result]);
   return { range, result };
 };
 
@@ -233,10 +299,9 @@ export const loadAdministrationOrder = cache(async (orderId: string) => {
   }).pipe(runAdministration("administration.order"));
 });
 
-export const loadAdministrationOperations = async (
+const getAdministrationOperationListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
-  await authorizeAdministrationPage();
   const params = await searchParams;
   const range = getAdministrationPaymentDateTimeBounds(
     firstParam(params.from),
@@ -246,17 +311,45 @@ export const loadAdministrationOperations = async (
     channel: firstParam(params.channel),
     operationType: firstParam(params.operationType),
   });
-  const result = await Effect.gen(function* () {
+  return { input: { channel, operationType }, range };
+};
+
+const loadAdministrationOperationList = async (
+  criteria: ReturnType<typeof getAdministrationOperationListInput>
+) => {
+  const [, resolvedCriteria] = await Promise.all([
+    authorizeAdministrationPage(),
+    criteria,
+  ]);
+  const { input, range } = resolvedCriteria;
+  return Effect.gen(function* () {
     const administration = yield* AdministrationService;
     return yield* administration.listOperations({
       fromTime: range.fromTime,
       toTime: range.toTime,
       maxRecords: 100,
-      channel,
-      operationType,
+      channel: input.channel,
+      operationType: input.operationType,
     });
   }).pipe(runAdministration("administration.operations"));
-  return { input: { channel, operationType }, range, result };
+};
+
+export const loadAdministrationOperationsPage = (
+  searchParams: AdministrationSearchParams
+) => {
+  const criteria = getAdministrationOperationListInput(searchParams);
+  return { criteria, result: loadAdministrationOperationList(criteria) };
+};
+
+export const loadAdministrationOperations = async (
+  searchParams: AdministrationSearchParams
+) => {
+  const page = loadAdministrationOperationsPage(searchParams);
+  const [{ input, range }, result] = await Promise.all([
+    page.criteria,
+    page.result,
+  ]);
+  return { input, range, result };
 };
 
 export const loadAdministrationOperation = cache(

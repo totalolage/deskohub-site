@@ -9,7 +9,7 @@ export function AdministrationTableToolbar({
   search,
 }: {
   readonly actions?: ReactNode;
-  readonly count: number;
+  readonly count: number | ReactNode;
   readonly filters?: ReactNode;
   readonly itemLabel: string;
   readonly search?: ReactNode;
@@ -20,13 +20,17 @@ export function AdministrationTableToolbar({
       className="mb-5 grid gap-4 rounded-xl border border-navy-blue/10 bg-white p-4 2xl:grid-cols-[minmax(0,1fr)_auto] 2xl:items-center"
     >
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
-        <Badge
-          aria-label={`${count} ${itemLabel}${count === 1 ? "" : "s"}`}
-          className="w-fit"
-          variant="subtle"
-        >
-          {count}
-        </Badge>
+        {typeof count === "number" ? (
+          <Badge
+            aria-label={`${count} ${itemLabel}${count === 1 ? "" : "s"}`}
+            className="w-fit"
+            variant="subtle"
+          >
+            {count}
+          </Badge>
+        ) : (
+          count
+        )}
         {search && <div className="w-full sm:max-w-[32rem]">{search}</div>}
       </div>
       {(filters || actions) && (

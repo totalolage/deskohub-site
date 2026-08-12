@@ -44,6 +44,10 @@ let reservationPage: LoadedReservationPage = defaultReservationPage;
 
 mock.module("@/features/administration/page-data.server", () => ({
   loadAdministrationReservations: () => Promise.resolve(reservationPage),
+  loadAdministrationReservationsPage: () => ({
+    input: Promise.resolve(reservationPage.input),
+    result: Promise.resolve(reservationPage.result),
+  }),
 }));
 
 mock.module("@/features/administration/reservation-lookup", () => ({
@@ -61,9 +65,9 @@ describe("ReservationsAdministrationPage", () => {
   });
 
   test("shows the reservation count as a compact accessible badge", async () => {
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({}),
       })
     );
@@ -104,9 +108,9 @@ describe("ReservationsAdministrationPage", () => {
         dateSortUnavailable: false,
       },
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({
           direction: "asc",
           page: "2",
@@ -143,9 +147,9 @@ describe("ReservationsAdministrationPage", () => {
       },
       result: defaultReservationPage.result,
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({
           customerId: "customer-one",
           direction: "asc",
@@ -179,9 +183,9 @@ describe("ReservationsAdministrationPage", () => {
         pageCount: 3,
       },
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({
           direction: "asc",
           from: "2026-08-04",
@@ -210,9 +214,9 @@ describe("ReservationsAdministrationPage", () => {
         dateSortUnavailable: true,
       },
     };
-    const { default: ReservationsAdministrationPage } = await import("./page");
+    const { ReservationsAdministrationContent } = await import("./page");
     const view = render(
-      await ReservationsAdministrationPage({
+      await ReservationsAdministrationContent({
         searchParams: Promise.resolve({ direction: "asc", sort: "date" }),
       })
     );

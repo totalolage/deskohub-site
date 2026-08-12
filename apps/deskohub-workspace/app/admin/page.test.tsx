@@ -64,8 +64,8 @@ describe("AdminPage", () => {
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("links reservation activity to its inclusive start-date range", async () => {
-    const { default: AdminPage } = await import("./page");
-    const view = render(await AdminPage());
+    const { ReservationActivity } = await import("./page");
+    const view = render(await ReservationActivity());
 
     expect(view.getByRole("link", { name: /Today/ }).getAttribute("href")).toBe(
       "/admin/reservations?from=2026-08-11&to=2026-08-11"
@@ -83,8 +83,8 @@ describe("AdminPage", () => {
       ...overview,
       upcoming: { unavailable: true, value: 0 },
     };
-    const { default: AdminPage } = await import("./page");
-    const view = render(await AdminPage());
+    const { ReservationActivity } = await import("./page");
+    const view = render(await ReservationActivity());
 
     expect(
       view.getByRole("link", { name: /Upcoming/ }).getAttribute("href")

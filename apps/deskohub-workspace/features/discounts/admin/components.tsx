@@ -16,10 +16,14 @@ import {
   DiscountCodeCreationDialog,
   SaleDiscountCreationDialog,
 } from "./creation-dialogs";
-import type { DiscountAdminDashboard } from "./discount-administration.service";
+import type {
+  DiscountAdminCodesPage,
+  DiscountAdminDashboard,
+  DiscountAdminSalesPage,
+} from "./discount-administration.service";
 
-type DiscountAdministrationProps = {
-  readonly dashboard: DiscountAdminDashboard;
+type DiscountAdministrationProps<Dashboard> = {
+  readonly dashboard: Dashboard;
   readonly notice?: {
     readonly message: string;
     readonly status: "error" | "success";
@@ -29,7 +33,7 @@ type DiscountAdministrationProps = {
 export function CodesAdministrationPage({
   dashboard,
   notice,
-}: DiscountAdministrationProps) {
+}: DiscountAdministrationProps<DiscountAdminCodesPage>) {
   const discounts = toDiscountTableItems(dashboard);
   const codes = dashboard.codes.map((code) => ({
     code: code.code,
@@ -71,7 +75,7 @@ export function CodesAdministrationPage({
 export function SalesAdministrationPage({
   dashboard,
   notice,
-}: DiscountAdministrationProps) {
+}: DiscountAdministrationProps<DiscountAdminSalesPage>) {
   const discounts = toDiscountTableItems(dashboard);
   return (
     <AdministrationPage>
@@ -138,7 +142,7 @@ function CalendarSection({
 
 const toDiscountTableItems = ({
   discounts,
-}: DiscountAdminDashboard): readonly DiscountTableItem[] =>
+}: Pick<DiscountAdminDashboard, "discounts">): readonly DiscountTableItem[] =>
   discounts.map(({ codeCount, id, labels, adjustment, products }) => ({
     adjustment,
     codeCount,

@@ -20,7 +20,7 @@ export const loadDiscountAdminPageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const dashboard = await Effect.gen(function* () {
+  const dashboard = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadDashboard();
   }).pipe(
@@ -29,9 +29,52 @@ export const loadDiscountAdminPageData = async (
       boundary: "route",
     })
   );
-  const notice = await loadNotice(searchParams);
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
 
-  return { dashboard, notice };
+  return { dashboard: resolvedDashboard, notice };
+};
+
+export const loadDiscountAdminCodesPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCodesPage();
+  }).pipe(
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-codes", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
+};
+
+export const loadDiscountAdminSalesPageData = async (
+  searchParams: DiscountAdminSearchParams
+) => {
+  await authorizeDiscountAdminPage();
+  const dashboard = Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadSalesPage();
+  }).pipe(
+    Effect.provide(DiscountAdministrationLive),
+    runWorkspaceEffect("discount-administration.load-sales", {
+      boundary: "route",
+    })
+  );
+  const [resolvedDashboard, notice] = await Promise.all([
+    dashboard,
+    loadNotice(searchParams),
+  ]);
+  return { dashboard: resolvedDashboard, notice };
 };
 
 export const loadDiscountAdminShellPageData = async (
@@ -47,7 +90,7 @@ export const loadDiscountAdminCodePageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const detail = await Effect.gen(function* () {
+  const detail = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCodeDetail({ codeId });
   }).pipe(
@@ -57,11 +100,15 @@ export const loadDiscountAdminCodePageData = async (
       boundary: "route",
     })
   );
-  if (!detail) notFound();
+  const [resolvedDetail, notice] = await Promise.all([
+    detail,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedDetail) notFound();
 
   return {
-    detail,
-    notice: await loadNotice(searchParams),
+    detail: resolvedDetail,
+    notice,
   };
 };
 
@@ -71,7 +118,7 @@ export const loadDiscountAdminCustomerPageData = async (
 ) => {
   await authorizeDiscountAdminPage();
 
-  const profile = await Effect.gen(function* () {
+  const profile = Effect.gen(function* () {
     const administration = yield* DiscountAdministration;
     return yield* administration.loadCustomerProfile({ customerId });
   }).pipe(
@@ -81,11 +128,15 @@ export const loadDiscountAdminCustomerPageData = async (
       boundary: "route",
     })
   );
-  if (!profile) notFound();
+  const [resolvedProfile, notice] = await Promise.all([
+    profile,
+    loadNotice(searchParams),
+  ]);
+  if (!resolvedProfile) notFound();
 
   return {
-    profile,
-    notice: await loadNotice(searchParams),
+    profile: resolvedProfile,
+    notice,
   };
 };
 
@@ -133,11 +184,14 @@ export const loadOptionalDiscountAdminCustomerPageData = async (
   searchParams: DiscountAdminSearchParams
 ) => {
   await authorizeDiscountAdminPage();
-  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
+  const [profile, notice] = await Promise.all([
+    loadOptionalDiscountAdminCustomerProfile(customerId),
+    loadNotice(searchParams),
+  ]);
 
   return {
     profile,
-    notice: await loadNotice(searchParams),
+    notice,
   };
 };
 
@@ -149,7 +203,7 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
   return profile?.customer.displayName;
 };
 
-export const authorizeDiscountAdminPage = async () => {
+export const authorizeDiscountAdminPage = cache(async () => {
   const authorized = await requireDiscountAdminAuthorization().pipe(
     Effect.as(true),
     Effect.catchTag("DiscountAdminUnauthorizedError", () =>
@@ -163,7 +217,7 @@ export const authorizeDiscountAdminPage = async () => {
   if (!authorized) {
     notFound();
   }
-};
+});
 
 const loadNotice = async (searchParams: DiscountAdminSearchParams) => {
   const params = await searchParams;

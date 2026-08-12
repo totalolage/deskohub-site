@@ -182,9 +182,27 @@ export type DiscountAdminDashboard = {
   };
 };
 
+export type DiscountAdminCodesPage = Pick<
+  DiscountAdminDashboard,
+  "codes" | "discounts"
+>;
+
+export type DiscountAdminSalesPage = Pick<
+  DiscountAdminDashboard,
+  "calendar" | "discounts"
+>;
+
 export interface IDiscountAdministration {
   readonly loadDashboard: () => Effect.Effect<
     DiscountAdminDashboard,
+    EffectDrizzleQueryError | SqlError
+  >;
+  readonly loadCodesPage: () => Effect.Effect<
+    DiscountAdminCodesPage,
+    EffectDrizzleQueryError | SqlError
+  >;
+  readonly loadSalesPage: () => Effect.Effect<
+    DiscountAdminSalesPage,
     EffectDrizzleQueryError | SqlError
   >;
   readonly createDiscount: (
@@ -386,23 +404,50 @@ export class DiscountAdministration extends Context.Service<
             )
       );
 
-      const loadDashboard = Effect.fn("DiscountAdministration.loadDashboard")(
-        () =>
-          Effect.Do.pipe(
-            Effect.bind("discounts", loadDiscounts),
-            Effect.bind("codeRows", () =>
-              db.query.discountCodes.findMany({
-                with: {
-                  customers: {},
-                  redemptions: {},
-                },
-              })
-            ),
-            Effect.let("codes", ({ codeRows }) =>
-              codeRows
+      const loadCodes = Effect.fn("DiscountAdministration.loadCodes")(() =>
+        db.query.discountCodes
+          .findMany({
+            with: {
+              customers: {},
+              redemptions: {},
+            },
+          })
+          .pipe(
+            Effect.map((rows) =>
+              rows
                 .map(toAdminDiscountCode)
                 .toSorted((left, right) => left.code.localeCompare(right.code))
-            ),
+            )
+          )
+      );
+
+      const loadCodesPage = Effect.fn("DiscountAdministration.loadCodesPage")(
+        () =>
+          Effect.all(
+            {
+              codes: loadCodes(),
+              discounts: loadDiscounts(),
+            },
+            { concurrency: 2 }
+          )
+      );
+
+      const loadSalesPage = Effect.fn("DiscountAdministration.loadSalesPage")(
+        () =>
+          loadDiscounts().pipe(
+            Effect.flatMap((discounts) =>
+              loadCalendarDashboard({
+                calendar,
+                discounts,
+                salesCalendarId,
+              }).pipe(Effect.map((calendar) => ({ calendar, discounts })))
+            )
+          )
+      );
+
+      const loadDashboard = Effect.fn("DiscountAdministration.loadDashboard")(
+        () =>
+          loadCodesPage().pipe(
             Effect.bind("calendar", ({ discounts }) =>
               loadCalendarDashboard({
                 calendar,
@@ -932,9 +977,11 @@ export class DiscountAdministration extends Context.Service<
         deleteCode: withDiscountAdminConflict(deleteCode),
         deleteDiscount: withDiscountAdminConflict(deleteDiscount),
         loadCodeDetail,
+        loadCodesPage,
         loadCustomerCodeCreation,
         loadCustomerProfile,
         loadDashboard,
+        loadSalesPage,
         makeCodeUnrestricted,
         removeCodeCustomer,
         searchCustomers,
