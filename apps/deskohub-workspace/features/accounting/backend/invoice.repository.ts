@@ -252,7 +252,7 @@ export class InvoiceRepository extends Context.Service<
               .for("update");
 
             if (!locked) {
-              return yield* invoiceEligibilityError(
+              return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "The payment attempt does not exist."
               );
@@ -266,7 +266,7 @@ export class InvoiceRepository extends Context.Service<
 
             if (existing) {
               if (existing.paymentAttemptId !== paymentAttemptId) {
-                return yield* invoiceEligibilityError(
+                return yield* wrapInvoiceEligibilityError(
                   paymentAttemptId,
                   "The reservation was invoiced from a different payment attempt."
                 );
@@ -283,7 +283,7 @@ export class InvoiceRepository extends Context.Service<
               locked.reservationPaymentState !== "paid" ||
               locked.activePaymentAttemptId !== paymentAttemptId
             ) {
-              return yield* invoiceEligibilityError(
+              return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "Only the active paid attempt of a paid reservation can be invoiced."
               );
@@ -294,7 +294,7 @@ export class InvoiceRepository extends Context.Service<
               source.dotyposCustomerId !== locked.dotyposCustomerId ||
               source.dotyposReservationId !== locked.dotyposReservationId
             ) {
-              return yield* invoiceEligibilityError(
+              return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "The accounting snapshot does not match the paid reservation."
               );
@@ -410,8 +410,10 @@ export class InvoiceRepository extends Context.Service<
   );
 }
 
-const invoiceEligibilityError = (paymentAttemptId: string, message: string) =>
-  new InvoiceEligibilityError({ paymentAttemptId, message });
+const wrapInvoiceEligibilityError = (
+  paymentAttemptId: string,
+  message: string
+) => new InvoiceEligibilityError({ paymentAttemptId, message });
 
 const validateStoredInvoice = Effect.fn(
   "InvoiceRepository.validateStoredInvoice"

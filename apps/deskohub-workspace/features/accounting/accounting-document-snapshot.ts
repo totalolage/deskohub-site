@@ -4,7 +4,7 @@ import {
   type DotyposReservationId,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
-import { Match, Schema } from "effect";
+import { Match, Schema, SchemaGetter } from "effect";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
 import { coworkReservationQuoteSchema } from "@/features/checkout/reservation-quote-cowork";
 import { meetingRoomReservationQuoteSchema } from "@/features/checkout/reservation-quote-meeting-room";
@@ -146,25 +146,66 @@ export const accountingDocumentSnapshotSchema = Schema.Union([
 export type AccountingDocumentSnapshot =
   typeof accountingDocumentSnapshotSchema.Type;
 
-const decodeAccountingDocumentSnapshot = Schema.decodeUnknownEffect(
-  accountingDocumentSnapshotSchema,
-  { onExcessProperty: "error" }
+const legacyCoworkAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...coworkAccountingDocumentSnapshotSchema.fields,
+  schemaVersion: Schema.Literal(1),
+}).pipe(
+  Schema.decodeTo(Schema.toType(coworkAccountingDocumentSnapshotSchema), {
+    decode: SchemaGetter.transform(
+      ({ schemaVersion: _obsoleteMetadata, ...snapshot }) => snapshot
+    ),
+    encode: SchemaGetter.transform((snapshot) => ({
+      ...snapshot,
+      schemaVersion: 1 as const,
+    })),
+  })
 );
 
-export const decodeStoredAccountingDocumentSnapshot = (encoded: unknown) => {
-  if (
-    typeof encoded !== "object" ||
-    encoded === null ||
-    Array.isArray(encoded) ||
-    !("schemaVersion" in encoded) ||
-    encoded.schemaVersion !== 1
-  ) {
-    return decodeAccountingDocumentSnapshot(encoded);
-  }
+const legacyMeetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...meetingRoomAccountingDocumentSnapshotSchema.fields,
+  schemaVersion: Schema.Literal(1),
+}).pipe(
+  Schema.decodeTo(Schema.toType(meetingRoomAccountingDocumentSnapshotSchema), {
+    decode: SchemaGetter.transform(
+      ({ schemaVersion: _obsoleteMetadata, ...snapshot }) => snapshot
+    ),
+    encode: SchemaGetter.transform((snapshot) => ({
+      ...snapshot,
+      schemaVersion: 1 as const,
+    })),
+  })
+);
 
-  const { schemaVersion: _obsoleteMetadata, ...snapshot } = encoded;
-  return decodeAccountingDocumentSnapshot(snapshot);
-};
+const legacyOfficeAccountingDocumentSnapshotSchema = Schema.Struct({
+  ...officeAccountingDocumentSnapshotSchema.fields,
+  schemaVersion: Schema.Literal(1),
+}).pipe(
+  Schema.decodeTo(Schema.toType(officeAccountingDocumentSnapshotSchema), {
+    decode: SchemaGetter.transform(
+      ({ schemaVersion: _obsoleteMetadata, ...snapshot }) => snapshot
+    ),
+    encode: SchemaGetter.transform((snapshot) => ({
+      ...snapshot,
+      schemaVersion: 1 as const,
+    })),
+  })
+);
+
+const legacyAccountingDocumentSnapshotSchema = Schema.Union([
+  legacyCoworkAccountingDocumentSnapshotSchema,
+  legacyMeetingRoomAccountingDocumentSnapshotSchema,
+  legacyOfficeAccountingDocumentSnapshotSchema,
+]);
+
+const storedAccountingDocumentSnapshotSchema = Schema.Union([
+  accountingDocumentSnapshotSchema,
+  legacyAccountingDocumentSnapshotSchema,
+]);
+
+export const decodeStoredAccountingDocumentSnapshot =
+  Schema.decodeUnknownEffect(storedAccountingDocumentSnapshotSchema, {
+    onExcessProperty: "error",
+  });
 
 const supplier: typeof accountingSupplierSchema.Type = {
   legalName: workspaceSiteConstants.brand.legalName,

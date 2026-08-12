@@ -129,39 +129,31 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
 });
 
-test("runs invoice persistence from the exact-SHA E2E command", async () => {
+test("runs invoice persistence inside the normal exact-SHA E2E runner", async () => {
   const packageJson = await Bun.file(
     resolve(import.meta.dir, "../package.json")
   ).json();
   const testUnit = packageJson.scripts.test as string;
   const testE2E = packageJson.scripts["test:e2e"] as string;
-  const testAccountingPersistence = packageJson.scripts[
-    "test:accounting-persistence"
-  ] as string;
   const turbo = await Bun.file(
     resolve(import.meta.dir, "../turbo.json")
   ).json();
+  const runner = await Bun.file(
+    resolve(import.meta.dir, "../e2e/services/runner.ts")
+  ).text();
+  const invoicePersistence = await Bun.file(
+    resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
+  ).text();
 
   expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
-  expect(testAccountingPersistence).not.toContain("bun run");
-  expect(testAccountingPersistence).toContain(
-    "invoice.repository.persistence.e2e.test.ts"
-  );
-  expect(testUnit).toContain("--path-ignore-patterns='**/*.e2e.test.ts'");
-  expect(turbo.tasks["test:e2e"].dependsOn).toContain(
-    "test:accounting-persistence"
-  );
-  expect(turbo.tasks["test:accounting-persistence"].dependsOn).toContain(
-    "i18n:compile"
-  );
-  expect(turbo.tasks["test:accounting-persistence"].cache).toBe(false);
-  expect(turbo.tasks["test:accounting-persistence"].passThroughEnv).toEqual(
-    expect.arrayContaining([
-      "WORKSPACE_E2E_BASE_URL",
-      "WORKSPACE_E2E_DATABASE_ALLOWLIST",
-      "WORKSPACE_E2E_DATABASE_URL_UNPOOLED",
-    ])
-  );
+  expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
+  expect(testUnit).not.toContain("e2e.test.ts");
+  expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
+  expect(turbo.tasks["test:e2e"]).toBeUndefined();
+  expect(runner).toContain("assertInvoicePersistence");
+  expect(runner).toContain('phaseId: "invoice-persistence"');
+  expect(invoicePersistence).toContain("yield* E2EDatabase");
+  expect(invoicePersistence).not.toContain("WORKSPACE_E2E_DATABASE_ALLOWLIST");
 });
 
 test("uses the hosted runner browser without downloading another browser", async () => {
