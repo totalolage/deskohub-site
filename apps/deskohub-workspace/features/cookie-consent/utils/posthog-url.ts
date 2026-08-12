@@ -5,6 +5,7 @@ const SENSITIVE_QUERY_PARAMS = new Set([
   "token",
   "state",
   "secret",
+  "statustoken",
   "x-vercel-protection-bypass",
 ]);
 

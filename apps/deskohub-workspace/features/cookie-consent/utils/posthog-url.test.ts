@@ -18,6 +18,14 @@ describe("createPostHogPageUrl", () => {
     ).toBe("https://deskohub.test/reservation/status/order-id?step=done");
   });
 
+  test("strips reservation status capability tokens", () => {
+    expect(
+      createPostHogPageUrl(
+        "https://deskohub.test/reservation/status/order-id?statusToken=signed-capability&outcome=success"
+      )
+    ).toBe("https://deskohub.test/reservation/status/order-id?outcome=success");
+  });
+
   test("preserves sale-banner attribution on PostHog pageviews", () => {
     expect(
       createPostHogPageUrl(
