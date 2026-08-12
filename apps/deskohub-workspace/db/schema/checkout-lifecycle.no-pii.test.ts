@@ -68,9 +68,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       'ALTER TABLE "accounting_document_snapshots" DROP CONSTRAINT IF EXISTS "accounting_document_snapshots_schema_version_check"'
     );
     expect(invoiceMigration).toContain(
-      'ALTER TABLE "accounting_document_snapshots" ALTER COLUMN "schema_version" DROP NOT NULL'
-    );
-    expect(invoiceMigration).not.toContain(
       'DROP COLUMN IF EXISTS "schema_version"'
     );
   });

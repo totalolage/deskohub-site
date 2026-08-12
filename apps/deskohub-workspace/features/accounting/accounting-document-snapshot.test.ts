@@ -189,7 +189,7 @@ describe("accounting document snapshot", () => {
     ).rejects.toBeDefined();
   });
 
-  test("reads previously stored snapshots without retaining obsolete metadata", async () => {
+  test("rejects schema-version metadata from stored snapshots", async () => {
     const snapshot = makeSnapshot();
 
     await expect(
@@ -199,7 +199,7 @@ describe("accounting document snapshot", () => {
           schemaVersion: 1,
         })
       )
-    ).resolves.toEqual(snapshot);
+    ).rejects.toBeDefined();
     await expect(
       Effect.runPromise(
         decodeStoredAccountingDocumentSnapshot({
@@ -218,13 +218,10 @@ describe("accounting document snapshot", () => {
     ).rejects.toBeDefined();
   });
 
-  test("keeps new writes readable by overlapping legacy instances", () => {
+  test("writes versionless snapshots", () => {
     const snapshot = makeSnapshot();
 
-    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual({
-      ...snapshot,
-      schemaVersion: 1,
-    });
+    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual(snapshot);
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {

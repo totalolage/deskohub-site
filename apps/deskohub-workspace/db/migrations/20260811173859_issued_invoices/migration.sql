@@ -1,5 +1,5 @@
 ALTER TABLE "accounting_document_snapshots" DROP CONSTRAINT IF EXISTS "accounting_document_snapshots_schema_version_check";--> statement-breakpoint
-ALTER TABLE "accounting_document_snapshots" ALTER COLUMN "schema_version" DROP NOT NULL;--> statement-breakpoint
+ALTER TABLE "accounting_document_snapshots" DROP COLUMN IF EXISTS "schema_version";--> statement-breakpoint
 CREATE TABLE IF NOT EXISTS "invoice_number_counters" (
 	"numbering_year" integer PRIMARY KEY,
 	"last_sequence" integer NOT NULL,
