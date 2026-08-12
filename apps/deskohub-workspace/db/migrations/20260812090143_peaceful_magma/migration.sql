@@ -5,6 +5,14 @@ CREATE TABLE "customer_account_links" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "mobile_session_handoff_codes" (
+	"code_hash" text PRIMARY KEY,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"expires_at" timestamp with time zone NOT NULL,
+	CONSTRAINT "mobile_session_handoff_codes_hash_check" CHECK ("code_hash" ~ '^[A-Za-z0-9_-]{43}$'),
+	CONSTRAINT "mobile_session_handoff_codes_expiry_check" CHECK ("expires_at" > "created_at")
+);
+--> statement-breakpoint
 CREATE TABLE "mobile_shop_purchase_order_items" (
 	"id" text PRIMARY KEY DEFAULT uuid_generate_v7(),
 	"purchase_order_id" text NOT NULL,
@@ -136,6 +144,7 @@ CREATE TABLE "mobile_shop_purchase_webhook_events" (
 	CONSTRAINT "mobile_shop_purchase_webhook_events_state_check" CHECK ("state" in ('received', 'processing', 'processed', 'failed'))
 );
 --> statement-breakpoint
+CREATE INDEX "mobile_session_handoff_codes_expires_at_idx" ON "mobile_session_handoff_codes" ("expires_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "mobile_shop_purchase_order_items_product_unique_idx" ON "mobile_shop_purchase_order_items" ("purchase_order_id","dotypos_product_id");--> statement-breakpoint
 CREATE INDEX "mobile_shop_purchase_order_items_order_idx" ON "mobile_shop_purchase_order_items" ("purchase_order_id");--> statement-breakpoint
 CREATE INDEX "mobile_shop_purchase_orders_customer_created_idx" ON "mobile_shop_purchase_orders" ("dotypos_customer_id","created_at");--> statement-breakpoint

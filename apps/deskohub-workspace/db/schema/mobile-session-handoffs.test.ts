@@ -28,7 +28,7 @@ describe("mobile session handoff persistence", () => {
   test("generated migration is additive and contains no session material", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260812083629_glossy_mastermind/migration.sql",
+        "../migrations/20260812090143_peaceful_magma/migration.sql",
         import.meta.url
       )
     ).text();

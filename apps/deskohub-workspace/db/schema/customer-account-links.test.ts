@@ -27,7 +27,7 @@ describe("customer account link persistence", () => {
   test("generated migration is additive and contains no customer PII", async () => {
     const migration = await Bun.file(
       new URL(
-        "../migrations/20260811230738_past_alex_power/migration.sql",
+        "../migrations/20260812090143_peaceful_magma/migration.sql",
         import.meta.url
       )
     ).text();
