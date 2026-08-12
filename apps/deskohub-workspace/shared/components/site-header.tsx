@@ -79,6 +79,7 @@ export function SiteHeader({
 
           <nav
             aria-label={languageSwitcherLabel}
+            data-locale-switcher
             className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
           >
             <Suspense fallback={null}>
@@ -135,7 +136,10 @@ export function SiteHeader({
             ))}
           </nav>
 
-          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72">
+          <div
+            data-locale-switcher
+            className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72"
+          >
             <Suspense fallback={null}>
               <LocaleSwitcherLinks
                 currentLocale={currentLocale}

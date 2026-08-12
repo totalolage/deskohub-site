@@ -29,6 +29,7 @@ export function MinimalSiteHeader({
 
         <nav
           aria-label={languageSwitcherLabel}
+          data-locale-switcher
           className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
         >
           <Suspense fallback={null}>
