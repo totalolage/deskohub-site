@@ -285,20 +285,25 @@ test("types into a hosted payment field when fill does not stick", async () => {
   let cardFillAttempts = 0;
   let cardSnapshotReads = 0;
   let cardTypeAttempts = 0;
+  let currentFrame = "main";
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
   const run = mock(async (_command, args) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "snapshot") {
-      if (phase === "continue") {
+      if (currentFrame === "card") {
         cardSnapshotReads += 1;
-        if (cardSnapshotReads === 1) {
-          return success('- textbox "Card number" [disabled, ref=e0]');
-        }
+        return success(
+          cardSnapshotReads === 1
+            ? '- textbox "Card number" [disabled, ref=e0]'
+            : '- textbox "Card number" [ref=e1]'
+        );
+      }
+      if (phase === "continue") {
         return success(
           [
-            '- textbox "Card number" [ref=e1]',
+            '- iframe "CARD_NUMBER" [ref=e0]',
             '- textbox "Expiration date" [ref=e2]',
             '- textbox "CVV" [ref=e3]',
             '- textbox "First Name" [ref=e4]',
@@ -316,10 +321,11 @@ test("types into a hosted payment field when fill does not stick", async () => {
     if (commandArgs[0] === "fill") {
       const ref = commandArgs[1] ?? "";
       const value = commandArgs[2] ?? "";
-      if (ref === "@e1") {
+      if (ref === "input") {
         cardFillAttempts += 1;
         return success();
       }
+      if (ref === "@e1") return success();
       values.set(ref, value);
       return success();
     }
@@ -327,8 +333,12 @@ test("types into a hosted payment field when fill does not stick", async () => {
     if (commandArgs[0] === "type") {
       const ref = commandArgs[1] ?? "";
       const value = commandArgs[2] ?? "";
-      if (ref === "@e1") cardTypeAttempts += 1;
-      values.set(ref, value);
+      if (ref === "input") {
+        cardTypeAttempts += 1;
+        values.set(ref, value);
+      } else if (ref !== "@e1") {
+        values.set(ref, value);
+      }
       return success();
     }
 
@@ -363,7 +373,10 @@ test("types into a hosted payment field when fill does not stick", async () => {
       );
     }
 
-    if (commandArgs[0] === "frame") return success();
+    if (commandArgs[0] === "frame") {
+      currentFrame = commandArgs[1] === "main" ? "main" : "card";
+      return success();
+    }
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
   }) as unknown as Runner;
 
