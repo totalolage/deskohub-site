@@ -4,7 +4,7 @@ import {
   EmailServiceError,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { InvoiceDeliveryEmail } from "@/emails/invoice-delivery";
 import { env } from "@/env";
 import { paymentAttemptIdSchema } from "@/features/checkout/checkout-identifiers";
@@ -75,39 +75,45 @@ export class InvoiceEmailDeliveryService extends Context.Service<
         readonly recipient: EmailRecipient;
         readonly pdf: Buffer;
       }) {
-        const locale =
-          input.audience === "customer"
-            ? input.invoice.document.locale
-            : internalInvoiceLocale;
-        const title = m.invoiceTitle({}, { locale });
-        const subject = `${title} ${input.invoice.invoiceNumber}`;
-        const internal = input.audience === "internal";
+        const messageInput = {
+          invoiceNumber: input.invoice.invoiceNumber,
+          orderId: input.invoice.workspaceReservationId,
+        };
+        const content = Match.value(input.audience).pipe(
+          Match.when("customer", () => {
+            const locale = input.invoice.document.locale;
+            return {
+              body: m.invoiceEmailBody(messageInput, { locale }),
+              category: invoiceCustomerEmailCategory,
+              heading: m.invoiceEmailHeading({}, { locale }),
+              locale,
+              subjectPrefix: "",
+            };
+          }),
+          Match.when("internal", () => {
+            const locale = internalInvoiceLocale;
+            let subjectPrefix = "";
+            if (env.VERCEL_ENV !== "production") {
+              subjectPrefix = `${internalTestingSubjectPrefix} `;
+            }
+            return {
+              body: m.invoiceEmailInternalBody(messageInput, { locale }),
+              category: invoiceInternalEmailCategory,
+              heading: m.invoiceEmailInternalHeading({}, { locale }),
+              locale,
+              subjectPrefix,
+            };
+          }),
+          Match.exhaustive
+        );
+        const title = m.invoiceTitle({}, { locale: content.locale });
+        const preview = `${title} ${input.invoice.invoiceNumber}`;
         const rendered = yield* renderWorkspaceEmail(
           <InvoiceDeliveryEmail
-            body={
-              internal
-                ? m.invoiceEmailInternalBody(
-                    {
-                      invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId,
-                    },
-                    { locale }
-                  )
-                : m.invoiceEmailBody(
-                    {
-                      invoiceNumber: input.invoice.invoiceNumber,
-                      orderId: input.invoice.workspaceReservationId,
-                    },
-                    { locale }
-                  )
-            }
-            heading={
-              internal
-                ? m.invoiceEmailInternalHeading({}, { locale })
-                : m.invoiceEmailHeading({}, { locale })
-            }
-            locale={locale}
-            preview={subject}
+            body={content.body}
+            heading={content.heading}
+            locale={content.locale}
+            preview={preview}
           />
         ).pipe(
           Effect.mapError((cause) =>
@@ -123,10 +129,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
           from: emailConfig.defaultFrom,
           to: input.recipient,
           replyTo: workspaceEmailRecipient,
-          subject:
-            internal && env.VERCEL_ENV !== "production"
-              ? `${internalTestingSubjectPrefix} ${subject}`
-              : subject,
+          subject: `${content.subjectPrefix}${preview}`,
           html: rendered.html,
           text: rendered.text,
           attachments: [
@@ -136,11 +139,7 @@ export class InvoiceEmailDeliveryService extends Context.Service<
               contentType: "application/pdf",
             },
           ],
-          tags: [
-            internal
-              ? invoiceInternalEmailCategory
-              : invoiceCustomerEmailCategory,
-          ],
+          tags: [content.category],
           metadata: {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-invoice-delivery",
