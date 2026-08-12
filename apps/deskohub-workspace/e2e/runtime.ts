@@ -147,6 +147,8 @@ class PlaywrightRuntime {
     const frame = () => session.currentFrame;
     const locator = (selector: string) =>
       frame().locator(toPlaywrightSelector(selector));
+    const actionLocator = (selector: string) =>
+      locator(selector).filter({ visible: true });
 
     switch (command) {
       case "open": {
@@ -173,27 +175,27 @@ class PlaywrightRuntime {
         return serializeBrowserValue(value);
       }
       case "fill":
-        await locator(requireArgument(commandArgs[0], "fill target")).fill(
+        await actionLocator(requireArgument(commandArgs[0], "fill target")).fill(
           requireArgument(commandArgs[1], "fill value"),
           { timeout: timeoutMs }
         );
         return "";
       case "type":
-        await locator(
+        await actionLocator(
           requireArgument(commandArgs[0], "type target")
         ).pressSequentially(requireArgument(commandArgs[1], "type value"), {
           timeout: timeoutMs,
         });
         return "";
       case "click":
-        await locator(requireArgument(commandArgs[0], "click target")).click({
-          timeout: timeoutMs,
-        });
+        await actionLocator(
+          requireArgument(commandArgs[0], "click target")
+        ).click({ timeout: timeoutMs });
         return "";
       case "focus":
-        await locator(requireArgument(commandArgs[0], "focus target")).focus({
-          timeout: timeoutMs,
-        });
+        await actionLocator(
+          requireArgument(commandArgs[0], "focus target")
+        ).focus({ timeout: timeoutMs });
         return "";
       case "press":
         await page().keyboard.press(
@@ -208,7 +210,7 @@ class PlaywrightRuntime {
       case "get":
         if (commandArgs[0] === "url") return page().url();
         if (commandArgs[0] === "value")
-          return locator(
+          return actionLocator(
             requireArgument(commandArgs[1], "value target")
           ).inputValue({ timeout: timeoutMs });
         throw new Error(
@@ -240,7 +242,7 @@ class PlaywrightRuntime {
           session.currentFrame = page().mainFrame();
           return "";
         }
-        const handle = await locator(target).elementHandle({
+        const handle = await actionLocator(target).elementHandle({
           timeout: timeoutMs,
         });
         const contentFrame = await handle?.contentFrame();
