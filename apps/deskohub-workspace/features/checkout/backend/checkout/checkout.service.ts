@@ -771,25 +771,6 @@ export const CheckoutServiceLive = Layer.effect(
             reservationKind: state.reservation.kind,
           });
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
-          const contractAt = Temporal.Now.instant();
-          const earlyPerformanceRequired = isEarlyPerformanceRequestRequired({
-            reservation: state.reservation,
-            contractAt,
-          });
-
-          if (
-            earlyPerformanceRequired &&
-            input.earlyPerformanceConsent !== true
-          ) {
-            yield* Effect.logInfo(
-              "Hosted payment checkout rejected: missing early performance consent"
-            );
-
-            return yield* new CheckoutError({
-              code: "checkout_failed",
-              message: "Early performance consent is required before checkout.",
-            });
-          }
 
           const data = state.reservation;
           const reservation = yield* payableReservations
@@ -1003,6 +984,26 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.logDebug(
             "Hosted payment checkout quote comparison passed"
           );
+
+          const contractAt = Temporal.Now.instant();
+          const earlyPerformanceRequired = isEarlyPerformanceRequestRequired({
+            reservation: state.reservation,
+            contractAt,
+          });
+
+          if (
+            earlyPerformanceRequired &&
+            input.earlyPerformanceConsent !== true
+          ) {
+            yield* Effect.logInfo(
+              "Hosted payment checkout rejected: missing early performance consent"
+            );
+
+            return yield* new CheckoutError({
+              code: "checkout_failed",
+              message: "Early performance consent is required before checkout.",
+            });
+          }
 
           yield* reservations.updateReservationDetails({
             id: reservation.id,

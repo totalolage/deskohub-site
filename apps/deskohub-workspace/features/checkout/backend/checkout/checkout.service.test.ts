@@ -695,8 +695,11 @@ describe("CheckoutService", () => {
       code: "checkout_failed",
       message: "Early performance consent is required before checkout.",
     });
-    expect(harness.requireCurrent).not.toHaveBeenCalled();
-    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.requireCurrent).toHaveBeenCalled();
+    expect(harness.affirm).toHaveBeenCalled();
+    expect(harness.recordLegalEvidence).not.toHaveBeenCalled();
+    expect(harness.createPendingNexiAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   test("records the accepted documents and separate withdrawal acknowledgements", async () => {
@@ -1123,6 +1126,41 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("recovers an already-paid checkout after early-performance consent becomes required", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
+    const orderId = "reservation-paid-after-consent-cutoff";
+    const harness = await createCheckoutHarness({
+      orderId,
+      earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId,
+        reservation: nearTermReservation,
+      }),
+      reservationOverrides: {
+        paymentState: "paid",
+        paidAt: testInstant(),
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: `/en-US/reservation/status/${orderId}?outcome=success`,
+    });
+    expect(harness.fulfillPaidOrder).toHaveBeenCalledWith({ orderId });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
   test("recovers an already-paid checkout after payable revalidation loses the race", async () => {
     const { PayableReservationUnavailableError } = await import(
       "./payable-reservation.service"
@@ -1363,6 +1401,7 @@ describe("CheckoutService", () => {
     };
     const harness = await createCheckoutHarness({
       orderId,
+      earlyPerformanceConsent: false,
       payStateToken: buildMeetingRoomPayStateToken({
         orderId,
         reservation: endedReservation,
