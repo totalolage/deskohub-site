@@ -15,7 +15,7 @@ const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
   "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/cowork";
 
-test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
+test("retries a transient reservation preparation failure without requiring non-applicable consent", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
   let activeTabId = "t1";
@@ -115,8 +115,6 @@ test("retries a transient reservation preparation failure with the same checkout
         [
           '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
           '  - checkbox "I agree to the terms" [checked=false, ref=e2]',
-          '- LabelText "I expressly request early performance" [ref=e3] clickable [cursor:pointer]',
-          '  - checkbox "I expressly request early performance" [checked=false, ref=e4]',
           '- button "ORDER AND PAY" [ref=e5]',
         ].join("\n")
       );
@@ -166,7 +164,6 @@ test("retries a transient reservation preparation failure with the same checkout
     "#reservation-submit",
     "#reservation-submit",
     "@e2",
-    "@e4",
     "@e5",
   ]);
   expect(switchedTabs).toEqual(["t1", "t2"]);

@@ -618,7 +618,7 @@ export const submitCheckoutPayment = (run: Runner, session: string) =>
   Effect.gen(function* () {
     const checkoutTabId = yield* readActiveBrowserTabId(run, session);
     yield* clickCheckoutPayConsent(run, session);
-    yield* clickCheckoutEarlyPerformanceConsent(run, session);
+    yield* clickCheckoutEarlyPerformanceConsentIfPresent(run, session);
     yield* activateCheckoutPayButton(run, session);
     return checkoutTabId;
   });
@@ -641,20 +641,21 @@ const clickCheckoutPayConsent = (run: Runner, session: string) =>
     yield* pressBrowserKey(run, session, "Space", { timeoutMs: 30_000 });
   });
 
-const clickCheckoutEarlyPerformanceConsent = (run: Runner, session: string) =>
+const clickCheckoutEarlyPerformanceConsentIfPresent = (
+  run: Runner,
+  session: string
+) =>
   Effect.gen(function* () {
+    const labels = ["I expressly request", "Výslovně žádám"];
+    const snapshot = yield* readInteractiveSnapshot(run, session);
+    const ref = findSnapshotRef(snapshot, labels, "checkbox");
+    if (!ref) return;
+
     yield* waitForBrowserReactHydration(
       run,
       session,
       "#checkout-pay-early-performance-consent"
     );
-    const ref = yield* requireSnapshotRef({
-      description: "payment early performance consent",
-      labels: ["I expressly request", "Výslovně žádám"],
-      role: "checkbox",
-      run,
-      session,
-    });
     yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
     yield* pressBrowserKey(run, session, "Space", { timeoutMs: 30_000 });
   });
