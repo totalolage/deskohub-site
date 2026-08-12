@@ -148,23 +148,31 @@ describe("ResendEmailProvider", () => {
     }
   });
 
-  test("uses reservation and category metadata as the idempotency key", async () => {
+  test("uses stable access and invoice delivery idempotency keys", async () => {
     await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
-        return yield* provider.send({
-          ...message,
-          tags: ["workspace-paid-reservation-access"],
-          metadata: {
-            workspaceReservationId: "reservation-id",
-          },
-        });
+        for (const category of [
+          "workspace-paid-reservation-access",
+          "workspace-invoice-customer",
+          "workspace-invoice-internal",
+        ]) {
+          yield* provider.send({
+            ...message,
+            tags: [category],
+            metadata: { workspaceReservationId: "reservation-id" },
+          });
+        }
       })
     );
 
-    expect(send).toHaveBeenCalledWith(expect.any(Object), {
-      idempotencyKey: "workspace-paid-reservation-access-reservation-id",
-    });
+    expect(send.mock.calls.map(([, options]) => options)).toEqual([
+      {
+        idempotencyKey: "workspace-paid-reservation-access-reservation-id",
+      },
+      { idempotencyKey: "workspace-invoice-customer-reservation-id" },
+      { idempotencyKey: "workspace-invoice-internal-reservation-id" },
+    ]);
   });
 
   test("verify fails when Resend returns an error", async () => {

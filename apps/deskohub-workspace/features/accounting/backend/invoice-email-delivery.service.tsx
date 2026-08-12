@@ -148,6 +148,8 @@ export class InvoiceEmailDeliveryService extends Context.Service<
             audience: input.audience,
           },
         };
+        // Reclaims keep the same category + reservation ID, which is the
+        // production Resend idempotency key for any overlapping provider call.
         const staleProcessingBefore = Temporal.Now.instant().subtract({
           milliseconds: INVOICE_EMAIL_PROCESSING_RETRY_AFTER_MS,
         });
