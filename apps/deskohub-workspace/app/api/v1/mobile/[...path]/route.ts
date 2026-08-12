@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { CustomerAccountService } from "@/features/account/backend/customer-account.service";
 import {
+  MobileShopBrowseCatalogSource,
   MobileShopCatalogPolicy,
   MobileShopCatalogSource,
 } from "@/features/mobile-shop/backend/catalog-source.service";
@@ -47,6 +48,9 @@ const entitlementLive = MobileShopEntitlementService.Live.pipe(
 const catalogSourceLive = MobileShopCatalogSource.Dotypos.pipe(
   Layer.provide(DotyposServiceLive)
 );
+const browseCatalogSourceLive = MobileShopBrowseCatalogSource.Live.pipe(
+  Layer.provide(catalogSourceLive)
+);
 const purchaseRepositoryLive = MobileShopPurchaseRepository.Live.pipe(
   Layer.provide(WorkspaceDatabaseLive)
 );
@@ -88,6 +92,7 @@ const mobileShopLive = MobileShopService.Live.pipe(
       customerAccessLive,
       entitlementLive,
       catalogSourceLive,
+      browseCatalogSourceLive,
       MobileShopCatalogPolicy.DesktechubNonVat,
       purchaseRepositoryLive,
       paymentLive,

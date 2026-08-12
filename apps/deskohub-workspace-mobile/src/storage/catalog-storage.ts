@@ -1,7 +1,7 @@
 import type { Catalog, Locale } from "@/src/domain/shop";
 import type { DeviceStorage } from "./device-storage";
 
-const CATALOG_KEY_PREFIX = "deskohub-workspace:shop-catalog:v1";
+const CATALOG_KEY_PREFIX = "deskohub-workspace:shop-catalog:v2";
 const maximumSerializedCatalogLength = 1_000_000;
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);

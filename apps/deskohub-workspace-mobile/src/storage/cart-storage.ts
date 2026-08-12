@@ -2,7 +2,7 @@ import { normalizeCart } from "@/src/domain/cart";
 import type { CartLine } from "@/src/domain/shop";
 import type { DeviceStorage } from "./device-storage";
 
-const CART_KEY = "deskohub-workspace:shop-cart:v1";
+const CART_KEY = "deskohub-workspace:shop-cart:v2";
 
 function isPersistedCartLine(value: unknown): value is CartLine {
   if (typeof value !== "object" || value === null) return false;

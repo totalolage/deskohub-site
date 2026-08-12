@@ -13,7 +13,11 @@ import {
 import { Platform } from "react-native";
 import { shopAnalytics } from "@/src/analytics/shop-analytics";
 import { ShopApiError, selectShopApi } from "@/src/api";
-import { getCartQuantity, setCartQuantity } from "@/src/domain/cart";
+import {
+  getCartQuantity,
+  retainCatalogProducts,
+  setCartQuantity,
+} from "@/src/domain/cart";
 import { getDefaultLocale } from "@/src/domain/format";
 import type {
   AppUpdateState,
@@ -116,30 +120,44 @@ export function ShopProvider({ children }: PropsWithChildren) {
   const [signInState, setSignInState] = useState<SignInState>("idle");
   const [actionError, setActionError] = useState<string | null>(null);
   const [isActionPending, setIsActionPending] = useState(false);
-  const loadSignedInContent = useCallback(async (targetLocale: Locale) => {
-    const [nextEntitlement, nextPurchases] = await Promise.all([
-      shopApi.getEntitlement(),
-      shopApi.listPurchases(),
-    ]);
-    setEntitlement(nextEntitlement);
-    setPurchases(nextPurchases);
-    if (nextEntitlement.kind === "eligible") {
-      try {
-        const nextCatalog = await shopApi.getCatalog(targetLocale);
-        setCatalog(nextCatalog);
-        setCatalogIsStale(false);
-        await catalogStorage.save(targetLocale, nextCatalog);
-      } catch (error) {
-        const cachedCatalog = await catalogStorage.load(targetLocale);
-        if (!cachedCatalog) throw error;
-        setCatalog(cachedCatalog);
-        setCatalogIsStale(true);
+  const retainAvailableCartLines = useCallback((nextCatalog: Catalog) => {
+    setCart((currentCart) => {
+      const nextCart = retainCatalogProducts(currentCart, nextCatalog.products);
+      if (nextCart.length !== currentCart.length) {
+        void cartStorage.save(nextCart);
       }
-    } else {
-      setCatalog(null);
-      setCatalogIsStale(false);
-    }
+      return nextCart;
+    });
   }, []);
+  const loadSignedInContent = useCallback(
+    async (targetLocale: Locale) => {
+      const [nextEntitlement, nextPurchases] = await Promise.all([
+        shopApi.getEntitlement(),
+        shopApi.listPurchases(),
+      ]);
+      setEntitlement(nextEntitlement);
+      setPurchases(nextPurchases);
+      if (nextEntitlement.kind === "eligible") {
+        try {
+          const nextCatalog = await shopApi.getCatalog(targetLocale);
+          setCatalog(nextCatalog);
+          retainAvailableCartLines(nextCatalog);
+          setCatalogIsStale(false);
+          await catalogStorage.save(targetLocale, nextCatalog);
+        } catch (error) {
+          const cachedCatalog = await catalogStorage.load(targetLocale);
+          if (!cachedCatalog) throw error;
+          setCatalog(cachedCatalog);
+          retainAvailableCartLines(cachedCatalog);
+          setCatalogIsStale(true);
+        }
+      } else {
+        setCatalog(null);
+        setCatalogIsStale(false);
+      }
+    },
+    [retainAvailableCartLines]
+  );
 
   const bootstrap = useCallback(async () => {
     setLoadState("loading");
@@ -173,6 +191,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     } catch (error) {
       if (cachedCatalog) {
         setCatalog(cachedCatalog);
+        retainAvailableCartLines(cachedCatalog);
         setCatalogIsStale(true);
         setLoadState("ready");
         return;
@@ -180,7 +199,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
       setLoadErrorKind(errorKind(error));
       setLoadState("error");
     }
-  }, [loadSignedInContent]);
+  }, [loadSignedInContent, retainAvailableCartLines]);
 
   useEffect(() => {
     void bootstrap();
@@ -394,19 +413,21 @@ export function ShopProvider({ children }: PropsWithChildren) {
             if (!isOnline) throw new ShopApiError("Offline", "offline");
             const nextCatalog = await shopApi.getCatalog(nextLocale);
             setCatalog(nextCatalog);
+            retainAvailableCartLines(nextCatalog);
             setCatalogIsStale(false);
             await catalogStorage.save(nextLocale, nextCatalog);
           } catch {
             const cachedCatalog = await catalogStorage.load(nextLocale);
             if (cachedCatalog) {
               setCatalog(cachedCatalog);
+              retainAvailableCartLines(cachedCatalog);
               setCatalogIsStale(true);
             }
           }
         })();
       }
     },
-    [catalogIsStale, entitlement?.kind, isOnline]
+    [catalogIsStale, entitlement?.kind, isOnline, retainAvailableCartLines]
   );
 
   const setAnalyticsConsent = useCallback((consent: AnalyticsConsent) => {

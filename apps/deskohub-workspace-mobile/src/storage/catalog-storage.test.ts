@@ -32,11 +32,21 @@ describe("catalog storage", () => {
   test("rejects malformed or non-HTTPS cached catalog data", async () => {
     const storage = memoryStorage();
     await storage.setItem(
-      "deskohub-workspace:shop-catalog:v1:en",
+      "deskohub-workspace:shop-catalog:v2:en",
       JSON.stringify({
         ...catalog,
         products: [{ ...catalog.products[0], imageUrl: "http://bad.test/x" }],
       })
+    );
+
+    expect(await createCatalogStorage(storage).load("en")).toBeNull();
+  });
+
+  test("does not restore catalogs written by the removed demo implementation", async () => {
+    const storage = memoryStorage();
+    await storage.setItem(
+      "deskohub-workspace:shop-catalog:v1:en",
+      JSON.stringify(catalog)
     );
 
     expect(await createCatalogStorage(storage).load("en")).toBeNull();

@@ -31,6 +31,16 @@ export function normalizeCart(lines: readonly CartLine[]): CartLine[] {
   }));
 }
 
+export function retainCatalogProducts(
+  lines: readonly CartLine[],
+  products: readonly { id: string }[]
+): CartLine[] {
+  const productIds = new Set(products.map(({ id }) => id));
+  return normalizeCart(
+    lines.filter(({ productId }) => productIds.has(productId))
+  );
+}
+
 export function setCartQuantity(
   lines: readonly CartLine[],
   productId: string,

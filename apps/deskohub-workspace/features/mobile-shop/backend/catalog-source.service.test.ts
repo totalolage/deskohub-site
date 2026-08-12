@@ -1,7 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import { DotyposService } from "@deskohub/dotypos";
+import { type DotyposCategory, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import {
+  createMobileShopBrowseCatalogSource,
   MobileShopCatalogPolicy,
   MobileShopCatalogSource,
 } from "./catalog-source.service";
@@ -29,6 +30,82 @@ describe("mobile shop catalog source", () => {
     expect(getCategories).toHaveBeenCalledTimes(1);
     expect(getProducts).toHaveBeenCalledTimes(1);
     expect(getProducts).toHaveBeenCalledWith({ includeDeleted: true });
+  });
+
+  test("shares a fresh catalog snapshot without repeating Dotypos reads", async () => {
+    let reads = 0;
+    const values = new Map<string, unknown>();
+    const browse = createMobileShopBrowseCatalogSource({
+      source: {
+        loadAll: Effect.sync(() => {
+          reads += 1;
+          return {
+            categories: [{ name: `Catalog ${reads}` } as DotyposCategory],
+            products: [],
+          };
+        }),
+      },
+      cache: {
+        delete: async (key) => {
+          values.delete(key);
+        },
+        expireTag: async () => {
+          values.clear();
+        },
+        get: async (key) => values.get(key) ?? null,
+        set: async (key, value) => {
+          values.set(key, value);
+        },
+      },
+      now: () => 1_000,
+      schedule: () => undefined,
+    });
+
+    await Effect.runPromise(browse.loadAll);
+    await Effect.runPromise(browse.loadAll);
+
+    expect(reads).toBe(1);
+  });
+
+  test("serves stale catalog data while scheduling a Dotypos refresh", async () => {
+    let reads = 0;
+    let now = 1_000;
+    const scheduled: Promise<unknown>[] = [];
+    const values = new Map<string, unknown>();
+    const browse = createMobileShopBrowseCatalogSource({
+      source: {
+        loadAll: Effect.sync(() => {
+          reads += 1;
+          return {
+            categories: [{ name: `Catalog ${reads}` } as DotyposCategory],
+            products: [],
+          };
+        }),
+      },
+      cache: {
+        delete: async (key) => {
+          values.delete(key);
+        },
+        expireTag: async () => {
+          values.clear();
+        },
+        get: async (key) => values.get(key) ?? null,
+        set: async (key, value) => {
+          values.set(key, value);
+        },
+      },
+      now: () => now,
+      schedule: (task) => scheduled.push(task),
+    });
+
+    await Effect.runPromise(browse.loadAll);
+    now += 15 * 60 * 1_000 + 1;
+    const stale = await Effect.runPromise(browse.loadAll);
+
+    expect(stale.categories[0]?.name).toBe("Catalog 1");
+    expect(scheduled).toHaveLength(1);
+    await Promise.all(scheduled);
+    expect(reads).toBe(2);
   });
 });
 

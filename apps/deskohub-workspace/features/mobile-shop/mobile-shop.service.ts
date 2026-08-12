@@ -3,6 +3,8 @@ import "server-only";
 import { Context, Effect, Layer } from "effect";
 import { instantStringSchema } from "@/shared/utils/temporal";
 import {
+  type IMobileShopCatalogSource,
+  MobileShopBrowseCatalogSource,
   MobileShopCatalogPolicy,
   MobileShopCatalogSource,
 } from "./backend/catalog-source.service";
@@ -93,23 +95,25 @@ export class MobileShopService extends Context.Service<
       const access = yield* MobileShopCustomerAccess;
       const entitlement = yield* MobileShopEntitlementService;
       const catalogSource = yield* MobileShopCatalogSource;
+      const browseCatalogSource = yield* MobileShopBrowseCatalogSource;
       const catalogPolicy = yield* MobileShopCatalogPolicy;
       const purchases = yield* MobileShopPurchaseRepository;
       const payments = yield* MobileShopPaymentService;
       const fulfillment = yield* MobileShopPaidFulfillmentService;
 
       const loadCatalog = Effect.fn("MobileShopService.loadCatalog")(function* (
-        locale: MobileShopLocale
+        locale: MobileShopLocale,
+        source: IMobileShopCatalogSource
       ) {
-        const [source, policy] = yield* Effect.all(
-          [catalogSource.loadAll, catalogPolicy.current],
+        const [snapshot, policy] = yield* Effect.all(
+          [source.loadAll, catalogPolicy.current],
           { concurrency: "inherit" }
         );
         return {
           catalog: mapDotyposMobileShopCatalog({
-            ...source,
+            ...snapshot,
             locale,
-            generatedAt: Temporal.Now.instant(),
+            generatedAt: snapshot.generatedAt ?? Temporal.Now.instant(),
             policy,
           }).catalog,
           policy,
@@ -118,7 +122,7 @@ export class MobileShopService extends Context.Service<
 
       const quoteCurrentCart = Effect.fn("MobileShopService.quoteCurrentCart")(
         function* (input: MobileShopQuoteRequest) {
-          const current = yield* loadCatalog(input.locale);
+          const current = yield* loadCatalog(input.locale, catalogSource);
           return yield* quoteMobileShopCart({
             cart: input.cart,
             catalog: current.catalog,
@@ -216,7 +220,7 @@ export class MobileShopService extends Context.Service<
         readonly locale: MobileShopLocale;
       }) {
         yield* requireCommerce(input.request);
-        return (yield* loadCatalog(input.locale)).catalog;
+        return (yield* loadCatalog(input.locale, browseCatalogSource)).catalog;
       });
 
       const quote = Effect.fn("MobileShopService.quote")(function* (input: {

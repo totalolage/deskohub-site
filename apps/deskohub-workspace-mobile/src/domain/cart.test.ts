@@ -5,6 +5,7 @@ import {
   getLocalCartTotal,
   MAX_CART_QUANTITY,
   normalizeCart,
+  retainCatalogProducts,
   setCartQuantity,
 } from "./cart";
 
@@ -42,5 +43,17 @@ describe("cart state", () => {
         [{ id: "water", price: { minorUnits: 3900 } }]
       )
     ).toBe(7800);
+  });
+
+  test("removes cart lines that are absent from a live catalog", () => {
+    expect(
+      retainCatalogProducts(
+        [
+          { productId: "water", quantity: 2 },
+          { productId: "removed", quantity: 1 },
+        ],
+        [{ id: "water" }]
+      )
+    ).toEqual([{ productId: "water", quantity: 2 }]);
   });
 });
