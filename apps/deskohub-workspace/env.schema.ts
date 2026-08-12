@@ -45,6 +45,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_SALES_ID: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
+  GITHUB_STEP_SUMMARY: optionalStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(

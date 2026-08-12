@@ -92,7 +92,16 @@ export default defineConfig({
       testMatch: "cleanup.pw.ts",
     },
   ],
-  reporter: "line",
+  reporter: [
+    ["line"],
+    [
+      "./e2e/playwright-github-summary.ts",
+      {
+        outputFile: env.GITHUB_STEP_SUMMARY,
+        title: "Workspace checkout E2E",
+      },
+    ],
+  ],
   retries: 0,
   testDir: "./e2e/playwright-checkout",
   timeout: workspaceE2EPlaywrightCheckoutTimeout,

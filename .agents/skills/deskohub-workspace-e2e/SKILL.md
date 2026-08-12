@@ -219,6 +219,9 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   Never annotate interrupted siblings, unknown diagnostic values, raw errors,
   provider data, customer data, URLs, or identifiers that fail the checked
   low-cardinality format.
+- Let the shared Playwright reporter write each job's complete test summary in
+  the Playwright step. Do not assemble Markdown across steps because GitHub
+  gives every step an isolated `GITHUB_STEP_SUMMARY` file.
 - Configure the public PostHog project ingest token and ingest host as
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.

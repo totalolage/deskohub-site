@@ -126,6 +126,7 @@ test("passes allocated shard and provider coordination through Turborepo", async
   const environment = turbo.tasks["test:e2e"].passThroughEnv as string[];
 
   expect(environment).toContain("WORKSPACE_E2E_ALLOCATION_SHARD");
+  expect(environment).toContain("GITHUB_STEP_SUMMARY");
   expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
@@ -190,7 +191,7 @@ test("uses Playwright with the hosted runner browser without downloading another
   expect(workflow).not.toContain("playwright install --with-deps");
   expect(workflow).toContain("command -v google-chrome");
   expect(workflow).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
-  expect(workflow).toContain("Hosted browser verification");
+  expect(workflow).toContain("Verify hosted browser runtime");
 });
 
 test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
@@ -276,25 +277,18 @@ test("runs read-only Playwright navigation beside the checkout suite", async () 
   expect(config).toContain('workers: "100%"');
 });
 
-test("reports the complete test job setup critical path", async () => {
+test("lets Playwright write complete GitHub job summaries", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
-  const testJob = workflow.slice(
-    workflow.indexOf("  test-e2e:"),
-    workflow.indexOf("  publish-final-status:")
-  );
-  const setupClockIndex = testJob.indexOf("Start test job setup timing");
-  const checkoutIndex = testJob.indexOf("Checkout exact target");
-  const postAllocationClockIndex = testJob.indexOf(
-    "Start post-allocation setup timing"
-  );
-  const runIndex = testJob.indexOf("Run checkout E2E");
+  const checkoutConfig = await Bun.file(
+    resolve(import.meta.dir, "../playwright.checkout.config.ts")
+  ).text();
+  const instantConfig = await Bun.file(
+    resolve(import.meta.dir, "../playwright.instant.config.ts")
+  ).text();
 
-  expect(setupClockIndex).toBeGreaterThan(-1);
-  expect(setupClockIndex).toBeLessThan(checkoutIndex);
-  expect(checkoutIndex).toBeLessThan(postAllocationClockIndex);
-  expect(postAllocationClockIndex).toBeLessThan(runIndex);
-  expect(testJob).toContain("Post-allocation setup critical path");
-  expect(testJob).toContain("Total test job setup critical path");
+  expect(workflow).not.toContain("GITHUB_STEP_SUMMARY");
+  expect(checkoutConfig).toContain("playwright-github-summary.ts");
+  expect(instantConfig).toContain("playwright-github-summary.ts");
 });

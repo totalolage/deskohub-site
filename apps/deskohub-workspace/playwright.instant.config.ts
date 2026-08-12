@@ -20,7 +20,16 @@ export default defineConfig({
   forbidOnly: true,
   fullyParallel: true,
   outputDir: "./e2e-artifacts/instant-navigation",
-  reporter: "line",
+  reporter: [
+    ["line"],
+    [
+      "./e2e/playwright-github-summary.ts",
+      {
+        outputFile: env.GITHUB_STEP_SUMMARY,
+        title: "Workspace instant navigation E2E",
+      },
+    ],
+  ],
   retries: 0,
   testDir: "./e2e/instant-navigation",
   testMatch: "**/*.pw.ts",

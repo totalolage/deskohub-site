@@ -66,6 +66,7 @@ export const e2eEnvironmentSchema = Schema.Struct({
   GITHUB_RUN_ID: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[1-9][0-9]*$/)))
   ),
+  GITHUB_STEP_SUMMARY: optionalNonEmptyString,
   HOME: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
@@ -117,6 +118,7 @@ export const makeE2EEnvironment = (
       GITHUB_EVENT_NAME: runtimeEnvironment.GITHUB_EVENT_NAME,
       GITHUB_RUN_ATTEMPT: runtimeEnvironment.GITHUB_RUN_ATTEMPT,
       GITHUB_RUN_ID: runtimeEnvironment.GITHUB_RUN_ID,
+      GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
       HOME: runtimeEnvironment.HOME,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
