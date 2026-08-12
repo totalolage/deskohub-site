@@ -324,6 +324,9 @@ const apiLocale = (locale: Locale) => (locale === "cs" ? "cs-CZ" : "en-US");
 export function createHttpShopApi(baseUrl: string): ShopApi {
   const normalizedBaseUrl = baseUrl.trim();
   let account: ApiAccount | null = null;
+  let checkoutAttempt:
+    | { readonly requestKey: string; readonly id: string }
+    | undefined;
 
   const loadAccount = async () => {
     const nextAccount = await requestEnvelope<ApiAccount>(
@@ -408,6 +411,15 @@ export function createHttpShopApi(baseUrl: string): ShopApi {
     },
     async createHostedPayment(quote, lines, locale) {
       const header = await mutationHeader();
+      const requestKey = JSON.stringify([
+        quote.id,
+        quote.expiresAt,
+        locale,
+        lines,
+      ]);
+      if (checkoutAttempt?.requestKey !== requestKey) {
+        checkoutAttempt = { requestKey, id: Crypto.randomUUID() };
+      }
       const order = await requestEnvelope<ApiOrder>(
         normalizedBaseUrl,
         "/api/v1/mobile/orders",
@@ -415,7 +427,7 @@ export function createHttpShopApi(baseUrl: string): ShopApi {
           method: "POST",
           mutationHeader: header,
           body: {
-            checkoutAttemptId: Crypto.randomUUID(),
+            checkoutAttemptId: checkoutAttempt.id,
             quoteFingerprint: quote.id,
             quoteExpiresAt: quote.expiresAt,
             locale: apiLocale(locale),

@@ -1,6 +1,21 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 
+import type { CheckoutQuote } from "../domain/shop";
 import { buildMobileApiUrl } from "./mobile-api-url";
+
+let uuidSequence = 0;
+mock.module("expo-constants", () => ({ default: { expoConfig: {} } }));
+mock.module("expo-crypto", () => ({
+  randomUUID: () => `attempt-${++uuidSequence}`,
+}));
+mock.module("expo-secure-store", () => ({
+  deleteItemAsync: async () => undefined,
+  getItemAsync: async () => null,
+  setItemAsync: async () => undefined,
+}));
+mock.module("react-native", () => ({ Platform: { OS: "web" } }));
+
+const { createHttpShopApi } = await import("./http-shop-api");
 
 describe("mobile API URL building", () => {
   test("preserves deployment-scoped preview query parameters", () => {
@@ -21,5 +36,90 @@ describe("mobile API URL building", () => {
     );
 
     expect(url.searchParams.getAll("flag")).toEqual(["one", "two"]);
+  });
+});
+
+describe("mobile checkout retries", () => {
+  test("reuses the checkout attempt ID after an ambiguous order response", async () => {
+    const originalFetch = globalThis.fetch;
+    const attemptIds: string[] = [];
+    let requestNumber = 0;
+    globalThis.fetch = (async (_input, init) => {
+      requestNumber += 1;
+      if (requestNumber === 1) {
+        return Response.json({
+          ok: true,
+          data: {
+            authenticated: true,
+            webMutation: { headerName: "x-shop-csrf", headerValue: "proof" },
+            entitlement: {
+              kind: "eligible",
+              day: "2026-08-12",
+              validUntil: "2026-08-12T22:00:00.000Z",
+            },
+          },
+        });
+      }
+
+      const body = (init?.body ? JSON.parse(String(init.body)) : {}) as {
+        checkoutAttemptId?: string;
+      };
+      if (body.checkoutAttemptId) attemptIds.push(body.checkoutAttemptId);
+      if (requestNumber === 2) throw new Error("response lost");
+      if (requestNumber === 3) {
+        return Response.json({
+          ok: true,
+          data: {
+            id: "order-1",
+            publicReference: "DW-1",
+            createdAt: "2026-08-12T12:00:00.000Z",
+            paymentState: "not_started",
+            receiptState: "not_started",
+            total: { value: 39, exponent: 0, currency: "CZK" },
+            items: [],
+          },
+        });
+      }
+      return Response.json({
+        ok: true,
+        data: {
+          orderId: "order-1",
+          hostedPageUrl: "https://payments.example.test/order-1",
+        },
+      });
+    }) as typeof fetch;
+
+    const quote: CheckoutQuote = {
+      id: "quote-1",
+      expiresAt: "2026-08-12T12:05:00.000Z",
+      lines: [],
+      total: { currency: "CZK", minorUnits: 3900 },
+      seller: {
+        legalName: "Desktechub s.r.o.",
+        identificationNumber: "24531596",
+        taxTreatment: { kind: "not_vat_payer" },
+      },
+    };
+    const api = createHttpShopApi("https://preview.example.test");
+
+    try {
+      await expect(
+        api.createHostedPayment(
+          quote,
+          [{ productId: "product-1", quantity: 1 }],
+          "en"
+        )
+      ).rejects.toThrow("Network request failed");
+      await api.createHostedPayment(
+        quote,
+        [{ productId: "product-1", quantity: 1 }],
+        "en"
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(attemptIds).toHaveLength(2);
+    expect(attemptIds[1]).toBe(attemptIds[0]);
   });
 });
