@@ -7,9 +7,41 @@ file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
   $body <: contains bubble {
     `$binding as $target` as $widen_then_assert where {
-      $program <: contains or {
-        `const $binding: $broad = $known`,
-        `const $binding = $known as $broad`
+      or {
+        and {
+          $widen_then_assert <: within (or {
+            JsFunctionBody(),
+            JsBlockStatement()
+          } as $boundary),
+          $boundary <: contains or {
+            `const $binding: $broad = $known`,
+            `const $binding = $known as $broad`
+          },
+          not $boundary <: contains (or {
+            JsFunctionBody(),
+            JsBlockStatement()
+          } as $nested_boundary) where {
+            $nested_boundary <: not $boundary,
+            $nested_boundary <: contains or {
+              `const $binding: $_ = $_`,
+              `const $binding = $_ as $_`
+            }
+          }
+        },
+        and {
+          $widen_then_assert <: not within or {
+            JsFunctionBody(),
+            JsBlockStatement()
+          },
+          $program <: contains (or {
+            `const $binding: $broad = $known`,
+            `const $binding = $known as $broad`
+          } as $declaration),
+          $declaration <: not within or {
+            JsFunctionBody(),
+            JsBlockStatement()
+          }
+        }
       },
       $broad <: or {
         TsUnknownType(),

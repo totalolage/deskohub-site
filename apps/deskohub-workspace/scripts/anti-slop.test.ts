@@ -65,8 +65,10 @@ const payloadShape = 1;
 const unknownParameter = (_value: unknown) => undefined;
 type HiddenUnknown = unknown;
 type UnsafeDictionary = Record<string, unknown>;
-const evidence: unknown = { value: 1 };
-const reconstructed = evidence as { value: number };
+const reconstruct = () => {
+  const evidence: unknown = { value: 1 };
+  return evidence as { value: number };
+};
 void chained;
 void conditionalSpread;
 void widened;
@@ -74,7 +76,7 @@ void objectParameter;
 void runtimeType;
 void payloadShape;
 void unknownParameter;
-void reconstructed;
+void reconstruct;
 `);
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
@@ -113,4 +115,49 @@ void payload;
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
   expect(output).toContain("[anti-slop/no-conditional-empty-object-spread]");
+});
+
+test("widen-then-assert does not connect unrelated scopes", () => {
+  const result = lint(`
+function first() {
+  const value: unknown = { ok: true };
+  return value;
+}
+function second(value: string | number) {
+  return value as string;
+}
+function third() {
+  const value: unknown = { ok: true };
+  {
+    const value: string | number = "known";
+    return value as string;
+  }
+}
+function fourth(value: string | number) {
+  function inner() {
+    const value: unknown = { ok: true };
+    return value;
+  }
+  void inner;
+  return value as string;
+}
+void first;
+void second;
+void third;
+void fourth;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-widen-then-assert]");
+});
+
+test("widen-then-assert reports a direct top-level binding", () => {
+  const result = lint(`
+const evidence: unknown = { value: 1 };
+const reconstructed = evidence as { value: number };
+void reconstructed;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-widen-then-assert]");
 });
