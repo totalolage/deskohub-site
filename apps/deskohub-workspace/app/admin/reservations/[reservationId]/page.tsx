@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   AdministrationDetailSection,
   AdministrationFact,
@@ -15,11 +16,28 @@ import {
   ReservationReferences,
   ReservationTimeline,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationReservation } from "@/features/administration/page-data.server";
 import { ReservationOrderList } from "@/features/administration/payment-components";
 import { ReservationLifecycleMap } from "@/features/administration/reservation-lifecycle-map";
 
-export default async function ReservationAdministrationDetailPage({
+export default function ReservationAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly reservationId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="reservation details" />}
+      >
+        <ReservationAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function ReservationAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly reservationId: string }>;
@@ -28,7 +46,7 @@ export default async function ReservationAdministrationDetailPage({
   const detail = await loadAdministrationReservation(reservationId);
   const { booking, reservation } = detail;
   return (
-    <AdministrationPage>
+    <>
       <h1 className="sr-only">{reservation.typeLabel}</h1>
 
       <section aria-labelledby="lifecycle-heading">
@@ -239,7 +257,7 @@ export default async function ReservationAdministrationDetailPage({
           )}
         </aside>
       </div>
-    </AdministrationPage>
+    </>
   );
 }
 

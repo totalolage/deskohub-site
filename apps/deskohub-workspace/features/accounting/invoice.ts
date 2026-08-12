@@ -5,12 +5,13 @@ import {
   temporalInstantToIsoString,
 } from "@/shared/utils/temporal";
 import {
-  type AccountingBuyer,
   type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
+  companyRegistrationIdSchema,
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
+  vatRegistrationIdSchema,
 } from "./accounting-document-snapshot";
 
 export const invoiceNumberSchema = Schema.String.pipe(
@@ -22,11 +23,54 @@ export const invoiceNumberSchema = Schema.String.pipe(
 
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
 
+const invoiceBillingTextSchema = Schema.Trim.check(Schema.isNonEmpty());
+
+const invoiceBuyerAddressSchema = Schema.Struct({
+  line1: invoiceBillingTextSchema,
+  line2: Schema.optionalKey(invoiceBillingTextSchema),
+  city: invoiceBillingTextSchema,
+  postalCode: invoiceBillingTextSchema,
+  country: invoiceBillingTextSchema,
+});
+
+export const invoiceBuyerSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("person"),
+    legalName: invoiceBillingTextSchema,
+    address: invoiceBuyerAddressSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("business"),
+    legalName: invoiceBillingTextSchema,
+    companyId: companyRegistrationIdSchema,
+    vatId: Schema.optionalKey(vatRegistrationIdSchema),
+    address: invoiceBuyerAddressSchema,
+  }),
+]).annotate({
+  identifier: "InvoiceBuyer",
+  description: "Complete immutable billing identity of an issued invoice.",
+});
+
+export type InvoiceBuyer = typeof invoiceBuyerSchema.Type;
+
 const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  buyer: invoiceBuyerSchema,
+  supplier: Schema.Struct({
+    ...accountingDocumentIdentitySchema.fields.supplier.fields,
+    commercialRegister: Schema.optional(
+      Schema.Struct({
+        court: Schema.NonEmptyString,
+        section: Schema.NonEmptyString,
+        file: Schema.NonEmptyString,
+      })
+    ),
+  }),
   paymentAttemptId: Schema.NonEmptyString,
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
+  fulfilledAt: Schema.optional(instantStringSchema),
+  paidAt: Schema.optional(instantStringSchema),
 });
 
 const coworkInvoiceDocumentSchema = Schema.Struct({
@@ -87,18 +131,28 @@ export const formatInvoiceNumber = (input: {
 
 export const makeInvoiceDocument = (input: {
   readonly source: AccountingDocumentSnapshot;
-  readonly buyer: AccountingBuyer;
+  readonly buyer: InvoiceBuyer;
   readonly paymentAttemptId: string;
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
+  readonly fulfilledAt: Temporal.Instant;
+  readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
   return invoiceDocumentSchema.make({
     ...input.source,
+    supplier: {
+      ...input.source.supplier,
+      commercialRegister: workspaceSiteConstants.company.commercialRegister,
+    },
     buyer: input.buyer,
     paymentAttemptId: input.paymentAttemptId,
     invoiceNumber: input.invoiceNumber,
     issuedAt: instantStringSchema.make(
       temporalInstantToIsoString(input.issuedAt)
     ),
+    fulfilledAt: instantStringSchema.make(
+      temporalInstantToIsoString(input.fulfilledAt)
+    ),
+    paidAt: instantStringSchema.make(temporalInstantToIsoString(input.paidAt)),
   });
 };

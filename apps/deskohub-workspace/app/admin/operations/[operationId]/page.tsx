@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   AdministrationAlert,
   AdministrationDetailSection,
@@ -6,6 +7,7 @@ import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOperation } from "@/features/administration/page-data.server";
 import {
   formatProviderDateTime,
@@ -14,7 +16,23 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 
-export default async function OperationAdministrationDetailPage({
+export default function OperationAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly operationId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="operation details" />}
+      >
+        <OperationAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function OperationAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly operationId: string }>;
@@ -23,7 +41,7 @@ export default async function OperationAdministrationDetailPage({
   const detail = await loadAdministrationOperation(operationId);
   const operation = detail.operation;
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={
           operation?.operationResult ? (
@@ -112,7 +130,7 @@ export default async function OperationAdministrationDetailPage({
           </aside>
         </div>
       )}
-    </AdministrationPage>
+    </>
   );
 }
 

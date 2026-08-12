@@ -20,6 +20,7 @@ import {
 import { AdministrationBreadcrumbs } from "./admin-shell";
 import {
   AdministrationStatusBadge,
+  AdministrationTableCount,
   AdministrationTableToolbar,
   BookingTable,
   getBookingTableLabel,
@@ -77,6 +78,17 @@ describe("administration reservation components", () => {
     expect(
       within(toolbar).getByRole("button", { name: "Create" })
     ).toBeDefined();
+  });
+
+  test("keeps streamed collection counts styled and accessible", () => {
+    const view = render(
+      <AdministrationTableToolbar
+        count={<AdministrationTableCount count={24} itemLabel="reservation" />}
+        itemLabel="reservation"
+      />
+    );
+
+    expect(view.getByLabelText("24 reservations").textContent).toBe("24");
   });
 
   test("uses one status badge foundation for domain-specific states", () => {

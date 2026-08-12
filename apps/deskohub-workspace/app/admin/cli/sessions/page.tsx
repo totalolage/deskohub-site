@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { CliSessionsTable } from "@/features/admin-cli/cli-sessions-table";
 import { loadCliSessions } from "@/features/admin-cli/page-data.server";
 import {
@@ -5,8 +6,28 @@ import {
   AdministrationPage,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
+import { AdministrationCollectionLoading } from "@/features/administration/loading";
 
-export default async function CliSessionsPage({
+export default function CliSessionsPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly result?: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">CLI sessions</h1>
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="CLI sessions" columns={6} />
+        }
+      >
+        <CliSessionsContent searchParams={searchParams} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+async function CliSessionsContent({
   searchParams,
 }: {
   readonly searchParams: Promise<{ readonly result?: string }>;
@@ -18,8 +39,7 @@ export default async function CliSessionsPage({
   const notice = getSessionsNotice(params.result);
 
   return (
-    <AdministrationPage>
-      <h1 className="sr-only">CLI sessions</h1>
+    <>
       <AdministrationTableToolbar
         count={sessions.length}
         itemLabel="CLI session"
@@ -27,7 +47,7 @@ export default async function CliSessionsPage({
       <AdministrationNoticeBanner notice={notice} />
 
       <CliSessionsTable sessions={sessions} />
-    </AdministrationPage>
+    </>
   );
 }
 

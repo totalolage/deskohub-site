@@ -65,11 +65,24 @@ separately from the accounting document.
 
 At issuance, build the document JSON once by copying transaction facts from the
 payment-time source snapshot and combining them with the billing identity from
-the invoice request. Never update the source snapshot or rebuild historical
-buyer facts from the mutable Dotypos customer. Enforce one invoice per
-successful reservation payment and make concurrent/repeated issuance return
-the existing document. Allocate `WS-FV-YYYY-NNNNNN` and insert the issued
+the invoice request. Issuance requires that identity explicitly; never fall
+back to the source snapshot's default name-only buyer. Every issued personal
+invoice must include a legal name, address line 1, city, postal code, and
+country. Every issued business invoice must additionally satisfy the business
+identity contract, including its company ID; address line 2 and VAT ID remain
+optional. Enforce this in the issued-document schema and repository boundary,
+not only in the PDF renderer or customer-facing form. Never update the source
+snapshot or rebuild historical buyer facts from the mutable Dotypos customer.
+Enforce one invoice per successful reservation payment and make
+concurrent/repeated issuance return the existing document. Allocate
+`WS-FV-YYYY-NNNNNN` and insert the issued
 record in one PostgreSQL transaction.
+
+Do not issue before access-code delivery completes. Freeze
+`workspace_reservations.fulfilled_at` into the issued document and use its
+Prague calendar date as the invoice fulfilment date. In production this is the
+timestamp recorded after the Resend delivery webhook confirms the customer
+access email; it is not the cowork, meeting-room, or office reservation date.
 
 Generate the PDF dynamically from the issued document JSON. Do not persist the
 rendered PDF. Keep rendering free of current catalog, supplier, customer, or

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   AdministrationAlert,
   AdministrationFact,
@@ -6,6 +7,7 @@ import {
   AdministrationPageHeader,
   NexiOrderLink,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { loadAdministrationOrder } from "@/features/administration/page-data.server";
 import {
   formatOrderMoney,
@@ -16,7 +18,23 @@ import {
 } from "@/features/administration/payment-components";
 import { getProviderValueLabel } from "@/features/administration/payment-presentation";
 
-export default async function OrderAdministrationDetailPage({
+export default function OrderAdministrationDetailPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly orderId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="order details" />}
+      >
+        <OrderAdministrationDetail params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+export async function OrderAdministrationDetail({
   params,
 }: {
   readonly params: Promise<{ readonly orderId: string }>;
@@ -28,7 +46,7 @@ export default async function OrderAdministrationDetailPage({
     linkedReservationId: order.link?.reservationId ?? null,
   }));
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         actions={
           <NexiOrderLink
@@ -149,6 +167,6 @@ export default async function OrderAdministrationDetailPage({
           )}
         </aside>
       </div>
-    </AdministrationPage>
+    </>
   );
 }

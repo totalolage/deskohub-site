@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   AdministrationAlert,
   AdministrationFilterField,
@@ -6,29 +7,209 @@ import {
   AdministrationFilterInput,
   AdministrationFilterSelect,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
 } from "@/features/administration/components";
 import {
+  AdministrationCollectionLoading,
+  AdministrationCountLoading,
+  AdministrationFiltersLoading,
+} from "@/features/administration/loading";
+import {
   type AdministrationSearchParams,
   loadAdministrationReservations,
+  loadAdministrationReservationsPage,
 } from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function ReservationsAdministrationPage({
+export default function ReservationsAdministrationPage({
+  searchParams,
+}: {
+  readonly searchParams: AdministrationSearchParams;
+}) {
+  const { input, result } = loadAdministrationReservationsPage(searchParams);
+
+  return (
+    <AdministrationPage>
+      <h1 className="sr-only">Reservations</h1>
+      <AdministrationTableToolbar
+        count={
+          <Suspense
+            fallback={<AdministrationCountLoading label="reservation" />}
+          >
+            <ReservationCount result={result} />
+          </Suspense>
+        }
+        filters={
+          <Suspense fallback={<AdministrationFiltersLoading fields={4} />}>
+            <ReservationFiltersContent input={input} />
+          </Suspense>
+        }
+        itemLabel="reservation"
+        search={<ReservationLookup variant="toolbar" />}
+      />
+      <Suspense
+        fallback={
+          <AdministrationCollectionLoading label="reservations" columns={6} />
+        }
+      >
+        <ReservationResultsContent input={input} result={result} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+type ReservationsData = Awaited<
+  ReturnType<typeof loadAdministrationReservations>
+>;
+
+async function ReservationCount({
+  result,
+}: {
+  readonly result: Promise<ReservationsData["result"]>;
+}) {
+  return (
+    <AdministrationTableCount
+      count={(await result).total}
+      itemLabel="reservation"
+    />
+  );
+}
+
+async function ReservationFiltersContent({
+  input,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+}) {
+  return <ReservationFilters input={await input} />;
+}
+
+async function ReservationResultsContent({
+  input,
+  result,
+}: {
+  readonly input: Promise<ReservationsData["input"]>;
+  readonly result: Promise<ReservationsData["result"]>;
+}) {
+  const [resolvedInput, resolvedResult] = await Promise.all([input, result]);
+  return <ReservationResults input={resolvedInput} result={resolvedResult} />;
+}
+
+export async function ReservationsAdministrationContent({
   searchParams,
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
   const { input, result } = await loadAdministrationReservations(searchParams);
+  return (
+    <>
+      <h1 className="sr-only">Reservations</h1>
+      <AdministrationTableToolbar
+        count={result.total}
+        filters={<ReservationFilters input={input} />}
+        itemLabel="reservation"
+        search={<ReservationLookup variant="toolbar" />}
+      />
+      <ReservationResults input={input} result={result} />
+    </>
+  );
+}
+
+function ReservationFilters({
+  input,
+}: {
+  readonly input: ReservationsData["input"];
+}) {
+  return (
+    <AdministrationFilterForm className="2xl:grid-cols-[10rem_12rem_10rem_10rem]">
+      <AdministrationFilterField
+        htmlFor="reservation-status"
+        label="Deskohub status"
+      >
+        <AdministrationFilterSelect
+          defaultValue={input.status ?? ""}
+          id="reservation-status"
+          name="status"
+        >
+          <option value="">All statuses</option>
+          <option value="in_progress">In progress</option>
+          <option value="complete">Complete</option>
+          <option value="cancelled">Cancelled</option>
+        </AdministrationFilterSelect>
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-type"
+        label="Reservation type"
+      >
+        <AdministrationFilterSelect
+          defaultValue={input.type ?? ""}
+          id="reservation-type"
+          name="type"
+        >
+          <option value="">All reservation types</option>
+          <option value="cowork">Coworking</option>
+          <option value="meeting-room">Meeting room</option>
+        </AdministrationFilterSelect>
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-date-from"
+        label="Start date from"
+      >
+        <AdministrationFilterInput
+          defaultValue={input.from ?? ""}
+          id="reservation-date-from"
+          name="from"
+          type="date"
+        />
+      </AdministrationFilterField>
+      <AdministrationFilterField
+        htmlFor="reservation-date-to"
+        label="Start date to"
+      >
+        <AdministrationFilterInput
+          defaultValue={input.to ?? ""}
+          id="reservation-date-to"
+          name="to"
+          type="date"
+        />
+      </AdministrationFilterField>
+      {input.customerId && (
+        <input name="customerId" type="hidden" value={input.customerId} />
+      )}
+      <input name="sort" type="hidden" value={input.sort} />
+      <input name="direction" type="hidden" value={input.direction} />
+      <Button className="min-h-10 2xl:col-start-1" size="sm" type="submit">
+        Apply filters
+      </Button>
+      {(input.customerId ||
+        input.from ||
+        input.status ||
+        input.to ||
+        input.type) && (
+        <Button
+          asChild
+          className="min-h-10 2xl:col-start-2"
+          size="sm"
+          variant="ghost"
+        >
+          <Link href="/admin/reservations">Clear</Link>
+        </Button>
+      )}
+    </AdministrationFilterForm>
+  );
+}
+
+function ReservationResults({ input, result }: ReservationsData) {
   const clearCustomerSearch = new URLSearchParams();
   for (const [key, value] of Object.entries({
-    date: input.date,
     direction: input.direction,
+    from: input.from,
     sort: input.sort,
     status: input.status,
+    to: input.to,
     type: input.type,
   })) {
     if (value) clearCustomerSearch.set(key, value);
@@ -38,71 +219,7 @@ export default async function ReservationsAdministrationPage({
     ? `/admin/reservations?${clearCustomerQuery}`
     : "/admin/reservations";
   return (
-    <AdministrationPage>
-      <h1 className="sr-only">Reservations</h1>
-      <AdministrationTableToolbar
-        count={result.total}
-        filters={
-          <AdministrationFilterForm className="2xl:grid-cols-[11rem_13rem_12rem_auto_auto]">
-            <AdministrationFilterField
-              htmlFor="reservation-status"
-              label="Deskohub status"
-            >
-              <AdministrationFilterSelect
-                defaultValue={input.status ?? ""}
-                id="reservation-status"
-                name="status"
-              >
-                <option value="">All statuses</option>
-                <option value="in_progress">In progress</option>
-                <option value="complete">Complete</option>
-                <option value="cancelled">Cancelled</option>
-              </AdministrationFilterSelect>
-            </AdministrationFilterField>
-            <AdministrationFilterField
-              htmlFor="reservation-type"
-              label="Reservation type"
-            >
-              <AdministrationFilterSelect
-                defaultValue={input.type ?? ""}
-                id="reservation-type"
-                name="type"
-              >
-                <option value="">All reservation types</option>
-                <option value="cowork">Coworking</option>
-                <option value="meeting-room">Meeting room</option>
-              </AdministrationFilterSelect>
-            </AdministrationFilterField>
-            <AdministrationFilterField
-              htmlFor="reservation-date"
-              label="Start date"
-            >
-              <AdministrationFilterInput
-                defaultValue={input.date ?? ""}
-                id="reservation-date"
-                name="date"
-                type="date"
-              />
-            </AdministrationFilterField>
-            {input.customerId && (
-              <input name="customerId" type="hidden" value={input.customerId} />
-            )}
-            <input name="sort" type="hidden" value={input.sort} />
-            <input name="direction" type="hidden" value={input.direction} />
-            <Button className="min-h-10" size="sm" type="submit">
-              Apply filters
-            </Button>
-            {(input.customerId || input.date || input.status || input.type) && (
-              <Button asChild className="min-h-10" size="sm" variant="ghost">
-                <Link href="/admin/reservations">Clear</Link>
-              </Button>
-            )}
-          </AdministrationFilterForm>
-        }
-        itemLabel="reservation"
-        search={<ReservationLookup variant="toolbar" />}
-      />
-
+    <>
       {input.customerId && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-navy-blue/10 bg-white px-4 py-3 text-sm">
           <p>Showing reservations for the selected customer.</p>
@@ -133,7 +250,8 @@ export default async function ReservationsAdministrationPage({
           direction: input.direction ?? "desc",
           field: input.sort ?? "created",
           params: {
-            date: input.date,
+            from: input.from,
+            to: input.to,
             customerId: input.customerId,
             status: input.status,
             type: input.type,
@@ -145,14 +263,15 @@ export default async function ReservationsAdministrationPage({
         page={result.page}
         pageCount={result.pageCount}
         params={{
-          date: input.date,
           customerId: input.customerId,
           direction: input.direction,
+          from: input.from,
           sort: input.sort,
           status: input.status,
+          to: input.to,
           type: input.type,
         }}
       />
-    </AdministrationPage>
+    </>
   );
 }

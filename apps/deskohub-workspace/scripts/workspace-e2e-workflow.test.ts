@@ -163,6 +163,9 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   expect(runner).toContain("assertInvoicePersistence");
   expect(runner).toContain('phaseId: "invoice-persistence"');
   expect(invoicePersistence).toContain("yield* E2EDatabase");
+  expect(invoicePersistence).toContain(
+    "temporalInstantToIsoString(Temporal.Now.instant())"
+  );
   expect(invoicePersistence).not.toContain("WORKSPACE_E2E_DATABASE_ALLOWLIST");
   expect(databaseContract).not.toContain('from "@/env"');
   expect(accountingKeyContract).not.toContain('from "@/env"');

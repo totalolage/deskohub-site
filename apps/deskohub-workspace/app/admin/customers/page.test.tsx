@@ -35,9 +35,11 @@ describe("DiscountCustomersAdminPage", () => {
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("uses the shared compact accessible table count", async () => {
-    const { default: DiscountCustomersAdminPage } = await import("./page");
+    const { CustomersAdministrationContent } = await import("./page");
     const view = render(
-      await DiscountCustomersAdminPage({ searchParams: Promise.resolve({}) })
+      await CustomersAdministrationContent({
+        searchParams: Promise.resolve({}),
+      })
     );
 
     expect(view.getByLabelText("24 customers").textContent).toBe("24");

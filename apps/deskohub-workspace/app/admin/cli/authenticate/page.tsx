@@ -1,4 +1,5 @@
 import { CheckCircle2, ShieldAlert } from "lucide-react";
+import { Suspense } from "react";
 import { approveCliAuthentication } from "@/features/admin-cli/actions";
 import { loadCliAuthenticationApproval } from "@/features/admin-cli/page-data.server";
 import {
@@ -7,9 +8,36 @@ import {
   AdministrationPageHeader,
   formatAdministrationDateTime,
 } from "@/features/administration/components";
+import { AdministrationPanelLoading } from "@/features/administration/loading";
 import { Button } from "@/shared/components/ui/button";
 
-export default async function CliAuthenticationApprovalPage({
+export default function CliAuthenticationApprovalPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{
+    readonly code?: string;
+    readonly result?: string;
+  }>;
+}) {
+  return (
+    <AdministrationPage className="max-w-4xl">
+      <AdministrationPageHeader
+        description="Confirm that this command-line client may access the Workspace administration API."
+        eyebrow="CLI security"
+        title="Approve CLI authentication"
+      />
+      <Suspense
+        fallback={
+          <AdministrationPanelLoading label="CLI authentication request" />
+        }
+      >
+        <CliAuthenticationRequest searchParams={searchParams} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+async function CliAuthenticationRequest({
   searchParams,
 }: {
   readonly searchParams: Promise<{
@@ -21,13 +49,7 @@ export default async function CliAuthenticationApprovalPage({
   const request = await loadCliAuthenticationApproval(params.code);
 
   return (
-    <AdministrationPage className="max-w-4xl">
-      <AdministrationPageHeader
-        description="Confirm that this command-line client may access the Workspace administration API."
-        eyebrow="CLI security"
-        title="Approve CLI authentication"
-      />
-
+    <>
       {!request ? (
         <AuthenticationMessage
           description="Return to the CLI and run dhw auth again to create a fresh request."
@@ -48,7 +70,7 @@ export default async function CliAuthenticationApprovalPage({
           </div>
         </div>
       )}
-    </AdministrationPage>
+    </>
   );
 }
 

@@ -36,6 +36,7 @@ import {
 } from "@/features/accounting/backend/invoice.repository";
 import {
   getInvoiceNumberingYear,
+  type InvoiceBuyer,
   invoiceNumberSchema,
 } from "@/features/accounting/invoice";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
@@ -49,6 +50,7 @@ import {
   type CoworkReservationQuoteOrder,
 } from "@/features/checkout/checkout-quote.test-utils";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
+import { temporalInstantToIsoString } from "@/shared/utils/temporal";
 import { toWorkspaceE2EError } from "../errors";
 import { E2EDatabase } from "./database.service";
 
@@ -72,6 +74,16 @@ const prepared = {
   },
   quote: buildCoworkReservationQuote(coworkOrder),
 } as PreparedCustomerQuote;
+const personalInvoiceBuyer = {
+  kind: "person",
+  legalName: "Synthetic Invoice Customer",
+  address: {
+    line1: "Synthetic 1",
+    city: "Praha",
+    postalCode: "100 00",
+    country: "CZ",
+  },
+} satisfies InvoiceBuyer;
 
 export const assertInvoicePersistence = Effect.gen(function* () {
   const { db } = yield* E2EDatabase;
@@ -83,6 +95,7 @@ export const assertInvoicePersistence = Effect.gen(function* () {
   yield* assertIdempotentIssuance(db, repository);
   yield* assertUniqueNumbering(db, repository);
   yield* assertIneligiblePayment(db, repository);
+  yield* assertUnfulfilledReservation(db, repository);
   yield* assertDifferentAttemptRejected(db, repository);
   yield* assertFailedInsertionRollsBackNumber(db, repository);
 }).pipe(
@@ -129,6 +142,15 @@ const assertIdempotentIssuance = (
 
     const issued = results[0]?.invoice;
     ok(issued);
+    ok(issued.document.fulfilledAt);
+    ok(fixture.fulfilledAt);
+    equal(
+      Temporal.Instant.compare(
+        Temporal.Instant.from(issued.document.fulfilledAt),
+        fixture.fulfilledAt
+      ),
+      0
+    );
     const numberingYear = getInvoiceNumberingYear(issued.issuedAt);
     const countersAfter = yield* readCounters(db);
     equal(
@@ -147,7 +169,10 @@ const assertIdempotentIssuance = (
 
     const retry = yield* repository.issue({
       paymentAttemptId: fixture.paymentAttemptId,
-      buyer: { kind: "person", legalName: "Different Synthetic Buyer" },
+      buyer: {
+        ...personalInvoiceBuyer,
+        legalName: "Different Synthetic Buyer",
+      },
     });
     equal(retry.changed, false);
     equal(retry.invoice.id, issued.id);
@@ -177,7 +202,7 @@ const assertUniqueNumbering = (
     const countersBefore = yield* readCounters(db);
     const results = yield* Effect.all(
       fixtures.map(({ paymentAttemptId }) =>
-        repository.issue({ paymentAttemptId })
+        repository.issue({ paymentAttemptId, buyer: personalInvoiceBuyer })
       ),
       { concurrency: "unbounded" }
     );
@@ -215,7 +240,28 @@ const assertIneligiblePayment = (
     const fixture = yield* createPaidFixture(db, { paid: false });
     const before = yield* readCounters(db);
     const error = yield* Effect.flip(
-      repository.issue({ paymentAttemptId: fixture.paymentAttemptId })
+      repository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
+    );
+
+    ok(isTaggedError("InvoiceEligibilityError")(error));
+    deepStrictEqual(yield* readCounters(db), before);
+  });
+
+const assertUnfulfilledReservation = (
+  db: DatabaseClient,
+  repository: IInvoiceRepository
+) =>
+  Effect.gen(function* () {
+    const fixture = yield* createPaidFixture(db, { fulfilled: false });
+    const before = yield* readCounters(db);
+    const error = yield* Effect.flip(
+      repository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(isTaggedError("InvoiceEligibilityError")(error));
@@ -228,13 +274,19 @@ const assertDifferentAttemptRejected = (
 ) =>
   Effect.gen(function* () {
     const fixture = yield* createPaidFixture(db);
-    yield* repository.issue({ paymentAttemptId: fixture.paymentAttemptId });
+    yield* repository.issue({
+      paymentAttemptId: fixture.paymentAttemptId,
+      buyer: personalInvoiceBuyer,
+    });
     const otherPaymentAttemptId = yield* createAdditionalFailedAttempt(
       db,
       fixture
     );
     const error = yield* Effect.flip(
-      repository.issue({ paymentAttemptId: otherPaymentAttemptId })
+      repository.issue({
+        paymentAttemptId: otherPaymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(
@@ -261,7 +313,10 @@ const assertFailedInsertionRollsBackNumber = (
     });
     const before = yield* readCounters(db);
     const insertError = yield* Effect.flip(
-      badRepository.issue({ paymentAttemptId: fixture.paymentAttemptId })
+      badRepository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(
@@ -271,6 +326,7 @@ const assertFailedInsertionRollsBackNumber = (
 
     const successful = yield* repository.issue({
       paymentAttemptId: fixture.paymentAttemptId,
+      buyer: personalInvoiceBuyer,
     });
     const numberingYear = getInvoiceNumberingYear(successful.invoice.issuedAt);
     equal(
@@ -340,10 +396,11 @@ const makeInvoiceRepository = (input: {
 
 const createPaidFixture = (
   db: DatabaseClient,
-  options: { readonly paid?: boolean } = {}
+  options: { readonly fulfilled?: boolean; readonly paid?: boolean } = {}
 ) =>
   Effect.gen(function* () {
     const paid = options.paid ?? true;
+    const fulfilled = options.fulfilled ?? paid;
     const reservationId = workspaceReservationIdSchema.make(randomUUID());
     const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
     const dotyposCustomerId = DotyposCustomerIdSchema.make(
@@ -352,7 +409,9 @@ const createPaidFixture = (
     const dotyposReservationId = DotyposReservationIdSchema.make(
       `synthetic-reservation-${randomUUID()}`
     );
-    const now = Temporal.Now.instant();
+    const now = Temporal.Instant.from(
+      temporalInstantToIsoString(Temporal.Now.instant())
+    );
     const source = makeAccountingDocumentSnapshot({
       workspaceReservationId: reservationId,
       dotyposReservationId,
@@ -373,7 +432,11 @@ const createPaidFixture = (
           customerAccessCode: randomUUID(),
           reservationState: paid ? "confirmed" : "held",
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: "not_started",
+          fulfillmentState: fulfilled
+            ? "fulfilled"
+            : paid
+              ? "processing"
+              : "not_started",
           activePaymentAttemptId: paymentAttemptId,
           reservationDetails: {
             kind: "cowork",
@@ -384,6 +447,7 @@ const createPaidFixture = (
           reservationCreatedAt: now,
           reservationConfirmedAt: paid ? now : null,
           paidAt: paid ? now : null,
+          fulfilledAt: fulfilled ? now : null,
         });
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
@@ -414,6 +478,7 @@ const createPaidFixture = (
       reservationId,
       dotyposCustomerId,
       dotyposReservationId,
+      fulfilledAt: fulfilled ? now : null,
     };
   });
 

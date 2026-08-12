@@ -1,12 +1,30 @@
+import { Suspense } from "react";
 import {
   AdministrationPage,
   AdministrationPageHeader,
 } from "@/features/administration/components";
+import { AdministrationDetailLoading } from "@/features/administration/loading";
 import { requireDotyposCustomerRouteId } from "@/features/administration/route-identifiers.server";
 import { CustomerDiscountCodeCreationForm } from "@/features/discounts/admin/customer-code-creation";
 import { loadDiscountAdminCustomerCodeCreationPageData } from "@/features/discounts/admin/page-data.server";
 
-export default async function CustomerDiscountCodeCreationPage({
+export default function CustomerDiscountCodeCreationPage({
+  params,
+}: {
+  readonly params: Promise<{ readonly customerId: string }>;
+}) {
+  return (
+    <AdministrationPage>
+      <Suspense
+        fallback={<AdministrationDetailLoading label="discount code form" />}
+      >
+        <CustomerDiscountCodeCreationContent params={params} />
+      </Suspense>
+    </AdministrationPage>
+  );
+}
+
+async function CustomerDiscountCodeCreationContent({
   params,
 }: {
   readonly params: Promise<{ readonly customerId: string }>;
@@ -18,7 +36,7 @@ export default async function CustomerDiscountCodeCreationPage({
     );
 
   return (
-    <AdministrationPage>
+    <>
       <AdministrationPageHeader
         description="Create a code restricted to this customer and choose the discount it applies."
         eyebrow="Discount code"
@@ -32,6 +50,6 @@ export default async function CustomerDiscountCodeCreationPage({
           discounts={discounts}
         />
       </div>
-    </AdministrationPage>
+    </>
   );
 }
