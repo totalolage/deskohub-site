@@ -5,6 +5,7 @@ import { Schema } from "effect";
 import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import {
   getConsumerWithdrawalPeriodCutoff,
+  getEarlyPerformanceRequestRequiredAt,
   isEarlyPerformanceRequestRequired,
 } from "./early-performance";
 
@@ -38,6 +39,14 @@ describe("early-performance request", () => {
         reservation: coworkReservation("2026-08-27"),
       })
     ).toBe(false);
+  });
+
+  test("identifies the exact instant when the request becomes applicable", () => {
+    expect(
+      getEarlyPerformanceRequestRequiredAt(
+        coworkReservation("2026-08-27")
+      ).toString()
+    ).toBe("2026-08-12T22:00:00Z");
   });
 
   test("keeps the cutoff on the Workspace calendar across daylight saving", () => {

@@ -20,6 +20,16 @@ export const getReservationServiceStart = (
     })
   );
 
+export const getEarlyPerformanceRequestRequiredAt = (
+  reservation: ReservationOrderData
+): Temporal.Instant =>
+  getReservationServiceStart(reservation)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate()
+    .subtract({ days: consumerWithdrawalPeriodDays })
+    .toZonedDateTime(workspaceSiteConstants.location.timeZone)
+    .toInstant();
+
 /**
  * The contract day is not counted. The 14-day period therefore runs through
  * the end of the fourteenth following Workspace-local calendar day.

@@ -21,7 +21,10 @@ import {
 import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
+import {
+  getEarlyPerformanceRequestRequiredAt,
+  isEarlyPerformanceRequestRequired,
+} from "@/features/legal/early-performance";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
@@ -235,6 +238,9 @@ async function CheckoutPayContent({
           />
         }
         freshPayUrl={freshPayUrl}
+        earlyPerformanceRequestRequiredAt={getEarlyPerformanceRequestRequiredAt(
+          state.reservation
+        ).toString()}
         earlyPerformanceRequestRequired={isEarlyPerformanceRequestRequired({
           reservation: state.reservation,
           contractAt: Temporal.Now.instant(),

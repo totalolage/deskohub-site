@@ -276,6 +276,30 @@ describe("CheckoutPayPage payment navigation", () => {
     ).toBeNull();
   });
 
+  test("reveals the early-performance choice when it becomes applicable", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-08-12T21:59:59Z"));
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        earlyPerformanceRequestRequiredAt="2026-08-12T22:00:00Z"
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    await act(async () => jest.advanceTimersByTime(1000));
+    expect(view.getAllByRole("checkbox")).toHaveLength(2);
+  });
+
   test("closes the pre-opened payment tab when checkout unmounts", async () => {
     const paymentWindow = {
       close: mock(() => undefined),

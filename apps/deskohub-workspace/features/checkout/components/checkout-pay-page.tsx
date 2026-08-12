@@ -36,6 +36,7 @@ type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly discountCodeForm?: ReactNode;
   readonly earlyPerformanceRequestRequired?: boolean;
+  readonly earlyPerformanceRequestRequiredAt?: string;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -45,11 +46,13 @@ type CheckoutPayPageProps = {
 };
 
 type CheckoutPayActionVariant = "pay" | "retry";
+const MAX_BROWSER_TIMEOUT_MS = 2_147_483_647;
 
 export function CheckoutPayPage({
   changedKeys,
   discountCodeForm,
-  earlyPerformanceRequestRequired = true,
+  earlyPerformanceRequestRequired: initiallyEarlyPerformanceRequired = true,
+  earlyPerformanceRequestRequiredAt,
   freshPayUrl,
   locale,
   payStateToken,
@@ -60,6 +63,8 @@ export function CheckoutPayPage({
   const router = useRouter();
   const paymentWindowRef = useRef<Window | null>(null);
   const [legalConsent, setLegalConsent] = useState(false);
+  const [earlyPerformanceRequestRequired, setEarlyPerformanceRequestRequired] =
+    useState(initiallyEarlyPerformanceRequired);
   const [earlyPerformanceConsent, setEarlyPerformanceConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closePaymentWindow = () => {
@@ -73,6 +78,25 @@ export function CheckoutPayPage({
     },
     []
   );
+  useEffect(() => {
+    if (initiallyEarlyPerformanceRequired) {
+      const timeoutId = globalThis.setTimeout(
+        () => setEarlyPerformanceRequestRequired(true),
+        0
+      );
+      return () => globalThis.clearTimeout(timeoutId);
+    }
+    if (!earlyPerformanceRequestRequiredAt) return;
+
+    const remainingMs =
+      Date.parse(earlyPerformanceRequestRequiredAt) - Date.now();
+    if (remainingMs > MAX_BROWSER_TIMEOUT_MS) return;
+    const timeoutId = globalThis.setTimeout(
+      () => setEarlyPerformanceRequestRequired(true),
+      Math.max(0, remainingMs)
+    );
+    return () => globalThis.clearTimeout(timeoutId);
+  }, [initiallyEarlyPerformanceRequired, earlyPerformanceRequestRequiredAt]);
   const {
     execute,
     isExecuting,
