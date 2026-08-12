@@ -58,6 +58,7 @@ export function CheckoutPayPage({
   const router = useRouter();
   const paymentWindowRef = useRef<Window | null>(null);
   const [legalConsent, setLegalConsent] = useState(false);
+  const [earlyPerformanceConsent, setEarlyPerformanceConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const closePaymentWindow = () => {
     paymentWindowRef.current?.close();
@@ -194,8 +195,17 @@ export function CheckoutPayPage({
             variant={actionVariant}
           />
 
+          <CheckoutEarlyPerformanceConsent
+            checked={earlyPerformanceConsent}
+            id="checkout-pay-early-performance-consent"
+            locale={locale}
+            onCheckedChange={setEarlyPerformanceConsent}
+          />
+
           <CheckoutPaySubmitButton
-            disabled={!legalConsent || isSubmitPending}
+            disabled={
+              !legalConsent || !earlyPerformanceConsent || isSubmitPending
+            }
             locale={locale}
             onClick={() => {
               if (isSubmitPending) return;
@@ -216,6 +226,7 @@ export function CheckoutPayPage({
                 locale,
                 payStateToken,
                 legalConsent,
+                earlyPerformanceConsent,
               });
             }}
             pending={isSubmitPending}
@@ -248,6 +259,11 @@ export function CheckoutPayPageSkeleton({
         id="checkout-pay-skeleton-legal-consent"
         locale={locale}
         variant="pay"
+      />
+      <CheckoutEarlyPerformanceConsent
+        disabled
+        id="checkout-pay-skeleton-early-performance-consent"
+        locale={locale}
       />
       <CheckoutPaySubmitButton disabled locale={locale} variant="pay" />
     </CheckoutPayCard>
@@ -355,8 +371,47 @@ function CheckoutPayConsent({
             href={`/${locale}/operating-rules`}
             label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
           />
-          {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
+          {"."}
         </span>
+      </span>
+    </label>
+  );
+}
+
+function CheckoutEarlyPerformanceConsent({
+  checked,
+  disabled,
+  id,
+  locale,
+  onCheckedChange,
+}: {
+  readonly checked?: boolean;
+  readonly disabled?: boolean;
+  readonly id: string;
+  readonly locale: Locale;
+  readonly onCheckedChange?: (checked: boolean) => void;
+}) {
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4",
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+      )}
+    >
+      <Checkbox
+        id={id}
+        className="mt-1"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={
+          onCheckedChange
+            ? (nextChecked) => onCheckedChange(Boolean(nextChecked))
+            : undefined
+        }
+      />
+      <span className="text-sm leading-6 text-navy-blue/66">
+        {m.checkoutPayEarlyPerformanceConsent({}, { locale })}
       </span>
     </label>
   );

@@ -25,6 +25,7 @@ const buildCoworkReservationQuote = (
 
 const document = {
   path: "/en-US/terms-and-conditions",
+  content: "Terms test content",
   hash: "abc123",
   hashAlgorithm: "sha256",
 } as const;

@@ -168,6 +168,7 @@ export interface CheckoutService {
     input: {
       readonly payStateToken: string;
       readonly legalConsent?: boolean;
+      readonly earlyPerformanceConsent?: boolean;
     },
     locale: Locale
   ) => Effect.Effect<
@@ -276,11 +277,13 @@ const toCheckoutLegalDocuments = (
 ) => ({
   termsAndConditions: {
     path: documents.termsAndConditions.path,
+    content: documents.termsAndConditions.content,
     hash: documents.termsAndConditions.hash,
     hashAlgorithm: documents.termsAndConditions.hashAlgorithm,
   },
   operatingRules: {
     path: documents.operatingRules.path,
+    content: documents.operatingRules.content,
     hash: documents.operatingRules.hash,
     hashAlgorithm: documents.operatingRules.hashAlgorithm,
   },
@@ -302,7 +305,10 @@ const getCheckoutLegalEvidence = (input: {
       locale: input.locale,
       source: paymentSubmitLegalEvidenceSource,
       document: documents.termsAndConditions,
-      acknowledgements: { noRefundAfterPinDelivery: true },
+      acknowledgements: {
+        performanceBeforeWithdrawalPeriodEndRequested: true,
+        withdrawalRightLossAfterFullPerformanceAcknowledged: true,
+      },
     },
     [documents.operatingRules.hash]: {
       documentKey: "operatingRules",
@@ -746,6 +752,17 @@ export const CheckoutServiceLive = Layer.effect(
             return yield* new CheckoutError({
               code: "checkout_failed",
               message: "Legal consent is required before checkout.",
+            });
+          }
+
+          if (input.earlyPerformanceConsent !== true) {
+            yield* Effect.logInfo(
+              "Hosted payment checkout rejected: missing early performance consent"
+            );
+
+            return yield* new CheckoutError({
+              code: "checkout_failed",
+              message: "Early performance consent is required before checkout.",
             });
           }
 

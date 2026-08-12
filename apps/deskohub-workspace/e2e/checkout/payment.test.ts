@@ -115,7 +115,9 @@ test("retries a transient reservation preparation failure with the same checkout
         [
           '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
           '  - checkbox "I agree to the terms" [checked=false, ref=e2]',
-          '- button "ORDER AND PAY" [ref=e3]',
+          '- LabelText "I expressly request early performance" [ref=e3] clickable [cursor:pointer]',
+          '  - checkbox "I expressly request early performance" [checked=false, ref=e4]',
+          '- button "ORDER AND PAY" [ref=e5]',
         ].join("\n")
       );
     }
@@ -123,7 +125,7 @@ test("retries a transient reservation preparation failure with the same checkout
     if (commandArgs[0] === "click") {
       clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
-      if (commandArgs[1] === "@e3") {
+      if (commandArgs[1] === "@e5") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -137,7 +139,7 @@ test("retries a transient reservation preparation failure with the same checkout
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
-      if (focusedRef === "@e3") {
+      if (focusedRef === "@e5") {
         hostedPaymentStarted = true;
         activeTabId = "t2";
       }
@@ -164,7 +166,8 @@ test("retries a transient reservation preparation failure with the same checkout
     "#reservation-submit",
     "#reservation-submit",
     "@e2",
-    "@e3",
+    "@e4",
+    "@e5",
   ]);
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });
@@ -404,9 +407,7 @@ test("returns through back to shop and restores the single original status tab",
           data: {
             tabs: [
               { active: tabListReads > 1, tabId: "t1" },
-              ...(tabListReads === 1
-                ? [{ active: true, tabId: "t2" }]
-                : []),
+              ...(tabListReads === 1 ? [{ active: true, tabId: "t2" }] : []),
             ],
           },
           success: true,

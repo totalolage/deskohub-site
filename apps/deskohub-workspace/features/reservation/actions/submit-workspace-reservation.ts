@@ -20,6 +20,7 @@ export const submitWorkspaceReservation = Effect.fn(
       {
         payStateToken: input.payStateToken,
         legalConsent: input.legalConsent,
+        earlyPerformanceConsent: input.earlyPerformanceConsent,
       },
       locale
     );

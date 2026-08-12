@@ -18,6 +18,7 @@ type CheckoutLegalDocumentSnapshot = {
   readonly url: string;
   readonly title: string;
   readonly updatedAt: string;
+  readonly content: string;
   readonly hash: string;
   readonly hashAlgorithm: "sha256";
 };
@@ -56,15 +57,15 @@ function reactNodeToCanonicalText(node: ReactNode): string {
 }
 
 function getCanonicalLegalDocument(document: LegalDocumentContent): string {
-  return JSON.stringify({
-    title: document.title,
-    lead: document.lead,
-    updatedAt: document.updatedAt,
-    sections: document.sections.map((section) => ({
-      heading: section.heading,
-      body: section.body.map(reactNodeToCanonicalText),
-    })),
-  });
+  return [
+    document.title,
+    document.lead,
+    document.updatedAt,
+    ...document.sections.flatMap((section) => [
+      section.heading,
+      ...section.body.map(reactNodeToCanonicalText),
+    ]),
+  ].join("\n\n");
 }
 
 const createLegalDocumentHash = Effect.fn("createLegalDocumentHash")(
@@ -95,11 +96,17 @@ const createLegalDocumentSnapshot = Effect.fn("createLegalDocumentSnapshot")(
         createLegalDocumentHash(canonicalDocument)
       ),
       Effect.map(
-        ({ document, hash, path }): CheckoutLegalDocumentSnapshot => ({
+        ({
+          canonicalDocument,
+          document,
+          hash,
+          path,
+        }): CheckoutLegalDocumentSnapshot => ({
           path,
           url: getWorkspaceCanonicalUrl(path),
           title: document.title,
           updatedAt: document.updatedAt,
+          content: canonicalDocument,
           hash,
           hashAlgorithm: "sha256",
         })

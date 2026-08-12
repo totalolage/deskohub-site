@@ -502,6 +502,7 @@ describe("ResendWebhookService", () => {
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
       return yield* service.sendPaidReservationEmails({
+        legalEvidence: [],
         reservation: {
           id: "reservation-id",
           locale: "en-US",
@@ -768,6 +769,9 @@ describe("ResendWebhookService", () => {
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
+    const { LegalEvidenceEventRepository } = await import(
+      "../repositories/legal-evidence-event.repository"
+    );
     const { WorkspaceReservationService } = await import(
       "@/features/reservation/backend/workspace-reservation.service"
     );
@@ -837,6 +841,9 @@ describe("ResendWebhookService", () => {
                 WorkspaceReservationEmailService,
                 reservationEmails
               ),
+              Layer.succeed(LegalEvidenceEventRepository, {
+                findByWorkspaceReservationId: mock(() => Effect.succeed([])),
+              } as never),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               })
@@ -852,6 +859,7 @@ describe("ResendWebhookService", () => {
     );
     expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
+      legalEvidence: [],
       reservation: emailReservation,
     });
     expect(markFulfilled).toHaveBeenCalledWith(

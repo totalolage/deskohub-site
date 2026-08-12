@@ -38,3 +38,7 @@ The office is exclusive for the complete selected date range. Any existing occup
 - Discount configuration may target a whole reservation family, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.
 - Adding a reservation family requires complete support at every issuing and consuming boundary before it becomes publicly selectable.
+
+## Customer cancellation policy
+
+A customer may request cancellation by email. Meeting-room and office reservations receive a full refund when the request arrives at least 24 hours before the reservation begins. A same-day meeting-room or office reservation also has a five-minute full-refund grace period after the contract is concluded, provided the reservation has not begun. A cowork reservation receives a full contractual refund until its access PIN is delivered. These contractual benefits do not replace any mandatory consumer withdrawal or defective-performance rights.

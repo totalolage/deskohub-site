@@ -19,6 +19,10 @@ import {
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
+import {
+  LegalEvidenceEventRepository,
+  LegalEvidenceEventRepositoryLive,
+} from "../repositories/legal-evidence-event.repository";
 import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
 import { WorkspaceReservationEmailService } from "./workspace-reservation-email.service";
 
@@ -61,6 +65,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
+    const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const workspaceReservations = yield* WorkspaceReservationService;
     const posthogEvents = yield* PostHogEventService;
 
@@ -286,9 +291,14 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
-          yield* workspaceReservations.getReservation(claimed.id).pipe(
-            Effect.flatMap((reservation) =>
-              reservationEmails.sendPaidReservationEmails({ reservation })
+          yield* Effect.all({
+            reservation: workspaceReservations.getReservation(claimed.id),
+            legalEvidence: legalEvidenceEvents.findByWorkspaceReservationId(
+              claimed.id
+            ),
+          }).pipe(
+            Effect.flatMap((emailInput) =>
+              reservationEmails.sendPaidReservationEmails(emailInput)
             ),
             Effect.tapError((cause) =>
               Effect.logError("Workspace paid reservation email flow failed", {
@@ -353,6 +363,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
       )
     ),
     Layer.provide(PostHogEventServiceLive),
+    Layer.provide(LegalEvidenceEventRepositoryLive),
     Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

@@ -11,6 +11,7 @@ import {
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
+import type { LegalEvidenceEvent } from "@/db/schema";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 mock.module("server-only", () => ({}));
@@ -59,6 +60,19 @@ const sentResult = (id: string): EmailSendResult => ({
   provider: "test",
   timestamp: new Date(),
 });
+
+const legalEvidence = [
+  {
+    documentKey: "termsAndConditions",
+    documentContent: "Accepted terms content",
+    accepted: true,
+  },
+  {
+    documentKey: "operatingRules",
+    documentContent: "Accepted rules content",
+    accepted: true,
+  },
+] as unknown as readonly LegalEvidenceEvent[];
 
 describe("workspace reservation email details", () => {
   test("renders Basic cowork details without meeting-room-only rows", async () => {
@@ -210,7 +224,7 @@ describe("workspace reservation email details", () => {
 
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
-      yield* service.sendPaidReservationEmails({ reservation });
+      yield* service.sendPaidReservationEmails({ legalEvidence, reservation });
     }).pipe(
       Effect.provide(
         WorkspaceReservationEmailService.Live.pipe(
@@ -234,6 +248,18 @@ describe("workspace reservation email details", () => {
     expect(customerMessage?.text).toContain("whole day");
     expect(customerMessage?.html).not.toContain("12:00 AM");
     expect(customerMessage?.text).not.toContain("12:00 AM");
+    expect(customerMessage?.attachments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          filename: "terms-and-conditions.txt",
+          content: "Accepted terms content",
+        }),
+        expect.objectContaining({
+          filename: "operating-rules.txt",
+          content: "Accepted rules content",
+        }),
+      ])
+    );
 
     const internalMessage = sentMessages[1];
     expect(internalMessage?.html).toContain("neděle 28. března 2027");

@@ -196,7 +196,9 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("checkbox"));
+    for (const checkbox of view.getAllByRole("checkbox")) {
+      fireEvent.click(checkbox);
+    }
     fireEvent.click(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
@@ -210,6 +212,7 @@ describe("CheckoutPayPage payment navigation", () => {
       locale: "en-US",
       payStateToken: "signed-summary",
       legalConsent: true,
+      earlyPerformanceConsent: true,
     });
 
     const actionOptions = workspaceUseAction.mock.calls.at(-1)?.[1] as
@@ -276,7 +279,9 @@ describe("CheckoutPayPage payment navigation", () => {
       />
     );
 
-    fireEvent.click(view.getByRole("checkbox"));
+    for (const checkbox of view.getAllByRole("checkbox")) {
+      fireEvent.click(checkbox);
+    }
     fireEvent.click(
       view.getByRole("button", {
         name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),

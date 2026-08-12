@@ -24,6 +24,7 @@ export const paymentSubmitLegalEvidenceSource = "payment_submit" as const;
 
 export const legalDocumentHashSchema = Schema.Struct({
   path: Schema.NonEmptyString,
+  content: Schema.NonEmptyString,
   hash: Schema.NonEmptyString,
   hashAlgorithm: Schema.Literal("sha256"),
 });

@@ -1,5 +1,12 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, index, pgTable, text } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+} from "drizzle-orm/pg-core";
 import type { LegalEvidenceEventId } from "@/features/checkout/legal-evidence";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
 import { instant } from "../instant";
@@ -18,12 +25,15 @@ export const legalEvidenceEvents = pgTable(
       .references(() => workspaceReservations.id, { onDelete: "set null" }),
     documentKey: text("document_key").notNull(),
     documentPath: text("document_path").notNull(),
+    documentContent: text("document_content"),
     documentHash: text("document_hash").notNull(),
     hashAlgorithm: text("hash_algorithm").notNull().$type<"sha256">(),
     accepted: boolean("accepted").notNull(),
     acceptedAt: instant("accepted_at").notNull(),
     locale: text("locale").notNull(),
     source: text("source").notNull(),
+    acknowledgements:
+      jsonb("acknowledgements").$type<Record<string, boolean>>(),
     createdAt: instant("created_at").notNull().default(sql`now()`),
   },
   (t) => [

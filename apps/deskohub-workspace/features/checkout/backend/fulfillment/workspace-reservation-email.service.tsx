@@ -12,6 +12,7 @@ import type {
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer, Match } from "effect";
+import type { LegalEvidenceEvent } from "@/db/schema";
 import { CustomerReservationEmail } from "@/emails/customer-reservation";
 import { ReservationNotificationEmail } from "@/emails/reservation-notification";
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
@@ -48,6 +49,7 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
+    readonly legalEvidence: readonly LegalEvidenceEvent[];
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
@@ -166,6 +168,50 @@ const createWorkspaceNetworkQrAttachment = (
         cause
       ),
   });
+
+const acceptedLegalDocumentFilenames = {
+  termsAndConditions: "terms-and-conditions.txt",
+  operatingRules: "operating-rules.txt",
+} as const;
+
+export const createAcceptedLegalDocumentAttachments = (
+  evidenceEvents: readonly LegalEvidenceEvent[]
+): EmailAttachment[] => {
+  const latestAcceptedByDocument = new Map<
+    keyof typeof acceptedLegalDocumentFilenames,
+    LegalEvidenceEvent
+  >();
+
+  for (const evidence of evidenceEvents) {
+    if (
+      evidence.accepted &&
+      evidence.documentContent &&
+      evidence.documentKey in acceptedLegalDocumentFilenames
+    ) {
+      latestAcceptedByDocument.set(
+        evidence.documentKey as keyof typeof acceptedLegalDocumentFilenames,
+        evidence
+      );
+    }
+  }
+
+  return Object.entries(acceptedLegalDocumentFilenames).flatMap(
+    ([documentKey, filename]) => {
+      const evidence = latestAcceptedByDocument.get(
+        documentKey as keyof typeof acceptedLegalDocumentFilenames
+      );
+      return evidence?.documentContent
+        ? [
+            {
+              filename,
+              content: evidence.documentContent,
+              contentType: "text/plain; charset=utf-8",
+            },
+          ]
+        : [];
+    }
+  );
+};
 
 const createCoworkReservationDetails = (
   reservation: WorkspaceReservationDetails,
@@ -454,7 +500,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
       return {
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
-        )(function* ({ reservation }) {
+        )(function* ({ legalEvidence, reservation }) {
           const locale = getReservationLocale(reservation.locale);
           const customer = reservation.customer;
           const customerName = getCustomerName(customer);
@@ -532,8 +578,12 @@ export class WorkspaceReservationEmailService extends Context.Service<
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: renderedCustomerEmail.html,
             text: renderedCustomerEmail.text,
-            attachments: [locationMapAttachment, networkQrAttachment].filter(
-              (attachment): attachment is EmailAttachment => Boolean(attachment)
+            attachments: [
+              locationMapAttachment,
+              networkQrAttachment,
+              ...createAcceptedLegalDocumentAttachments(legalEvidence),
+            ].filter((attachment): attachment is EmailAttachment =>
+              Boolean(attachment)
             ),
             tags: ["workspace-paid-reservation-access"],
             metadata,

@@ -53,11 +53,13 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
     Effect.succeed({
       termsAndConditions: {
         path: "/legal/terms.md",
+        content: "Terms test content",
         hash: "terms-test-hash",
         hashAlgorithm: "sha256",
       },
       operatingRules: {
         path: "/legal/rules.md",
+        content: "Rules test content",
         hash: "rules-test-hash",
         hashAlgorithm: "sha256",
       },
@@ -419,6 +421,8 @@ const makeReservation = (
 
 type CheckoutHarnessOptions = {
   readonly orderId: string;
+  readonly legalConsent?: boolean;
+  readonly earlyPerformanceConsent?: boolean;
   readonly payStateToken?: string;
   readonly locale?: Locale;
   readonly acceptedQuote?: CoworkReservationQuote;
@@ -494,6 +498,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     );
   const fulfillPaidOrder = options.fulfillPaidOrder ?? mock(() => Effect.void);
   const capture = options.capture ?? mock(() => Effect.void);
+  const recordLegalEvidence = mock((_input: readonly unknown[]) => Effect.void);
   const findAttempt = mock(() => Effect.succeed(options.activeAttempt ?? null));
   const attachHostedPaymentPage = mock(() => Effect.succeed(attachedAttempt));
   const markTerminalForReservation = mock(() =>
@@ -591,7 +596,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             submittedCode: options.submittedCode,
             changedKeys: options.changedKeys,
           }),
-        legalConsent: true,
+        legalConsent: options.legalConsent ?? true,
+        earlyPerformanceConsent: options.earlyPerformanceConsent ?? true,
       },
       locale
     );
@@ -618,8 +624,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
               capture,
             }),
             Layer.succeed(LegalEvidenceEventRepository, {
-              recordMany: mock((_input: readonly unknown[]) => Effect.void),
-            })
+              findByWorkspaceReservationId: mock(() => Effect.succeed([])),
+              recordMany: recordLegalEvidence,
+            } as never)
           )
         )
       )
@@ -639,11 +646,59 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     createHostedPaymentPage,
     fulfillPaidOrder,
     capture,
+    recordLegalEvidence,
     requireCurrent,
   };
 };
 
 describe("CheckoutService", () => {
+  test("rejects checkout when the separate early-performance request is missing", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-missing-early-performance-consent",
+      earlyPerformanceConsent: false,
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      code: "checkout_failed",
+      message: "Early performance consent is required before checkout.",
+    });
+    expect(harness.requireCurrent).not.toHaveBeenCalled();
+    expect(harness.affirm).not.toHaveBeenCalled();
+  });
+
+  test("records the accepted documents and separate withdrawal acknowledgements", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-records-legal-evidence",
+    });
+
+    await Effect.runPromise(harness.effect);
+
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "termsAndConditions",
+          document: expect.objectContaining({
+            content: "Terms test content",
+          }),
+          acknowledgements: {
+            performanceBeforeWithdrawalPeriodEndRequested: true,
+            withdrawalRightLossAfterFullPerformanceAcknowledged: true,
+          },
+        }),
+      }),
+      expect.objectContaining({
+        evidence: expect.objectContaining({
+          documentKey: "operatingRules",
+          document: expect.objectContaining({
+            content: "Rules test content",
+          }),
+        }),
+      }),
+    ]);
+  });
+
   test("prepares fallible local provider inputs before committing an attempt", async () => {
     const source = await Bun.file(
       new URL("./checkout.service.ts", import.meta.url)

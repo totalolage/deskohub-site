@@ -39,11 +39,13 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
     Effect.succeed({
       privacyPolicy: {
         path: "/legal/privacy.md",
+        content: "Privacy test content",
         hash: "privacy-hash",
         hashAlgorithm: "sha256",
       },
       marketingCommunications: {
         path: "/legal/marketing.md",
+        content: "Marketing test content",
         hash: "marketing-hash",
         hashAlgorithm: "sha256",
       },
