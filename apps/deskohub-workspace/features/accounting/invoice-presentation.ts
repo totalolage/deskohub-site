@@ -269,11 +269,7 @@ const formatServiceDate = (document: InvoiceDocument, locale: Locale) => {
     case "cowork":
       return formatPlainDate(document.reservation.date, locale);
     case "meeting-room":
-      return formatInstantRange(
-        document.reservation.startsAt,
-        document.reservation.endsAt,
-        locale
-      );
+      return formatInstantDate(document.reservation.startsAt, locale);
     case "office":
       return formatPlainDateRange(
         document.reservation.startsOn,
@@ -288,13 +284,6 @@ const formatInstantDate = (value: string, locale: Locale) =>
     dateStyle: "medium",
     timeZone: workspaceSiteConstants.location.timeZone,
   }).format(new Date(value));
-
-const formatInstantRange = (start: string, end: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeStyle: "short",
-    timeZone: workspaceSiteConstants.location.timeZone,
-  }).formatRange(new Date(start), new Date(end));
 
 const formatPlainDate = (value: string, locale: Locale) =>
   new Intl.DateTimeFormat(locale, {

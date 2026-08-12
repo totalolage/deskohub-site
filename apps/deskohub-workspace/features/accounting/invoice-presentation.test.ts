@@ -39,9 +39,9 @@ describe("invoice presentation", () => {
   });
 
   test.each([
-    ["cs-CZ", "Zasedací místnost · 4 hodiny", "9:00", "13:00"],
-    ["en-US", "Meeting room · 4 hours", "9:00", "1:00"],
-  ] as const)("projects a %s meeting-room invoice", (locale, description, startTime, endTime) => {
+    ["cs-CZ", "Zasedací místnost · 4 hodiny", "3. 2. 2099"],
+    ["en-US", "Meeting room · 4 hours", "Feb 3, 2099"],
+  ] as const)("projects a %s meeting-room invoice", (locale, description, expectedServiceDate) => {
     const presentation = getInvoicePresentation(
       makeMeetingRoomInvoiceDocument(locale)
     );
@@ -51,9 +51,8 @@ describe("invoice presentation", () => {
     )?.value;
 
     expect(presentation.lines[0]?.description).toBe(description);
-    expect(serviceDate).toContain(startTime);
-    expect(serviceDate).toContain(endTime);
-    expect(serviceDate).toContain("2099");
+    expect(serviceDate).toBe(expectedServiceDate);
+    expect(serviceDate).not.toContain(":");
     expect(presentation.lines).toHaveLength(1);
   });
 
