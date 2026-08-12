@@ -48,6 +48,7 @@
   ],
   "tasks": {
     "//#lint": {},
+    "//#test": {},
     "@deskohub/dotypos#generate": {
       "passThroughEnv": [
         "CLOUDINARY_API_KEY",
@@ -123,7 +124,7 @@
       "outputs": []
     },
     "test": {
-      "dependsOn": ["^test"],
+      "dependsOn": ["//#test", "^test"],
       "outputs": []
     },
     "start": {

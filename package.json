@@ -9,7 +9,8 @@
   "type": "module",
   "scripts": {
     "lint": "oxlint . --quiet",
-    "prepare": "effect-tsgo patch"
+    "prepare": "effect-tsgo patch",
+    "test": "node lint/anti-slop/rules/no-conditional-empty-object-spread.test.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
