@@ -31,15 +31,12 @@ export interface IMobileShopCatalogSource {
 }
 
 interface MobileShopCatalogCache {
-  readonly delete: (key: string) => Promise<void>;
-  readonly expireTag: (tags: string | string[]) => Promise<void>;
   readonly get: (key: string) => Promise<unknown | null>;
   readonly set: (
     key: string,
     value: unknown,
     options?: {
       readonly name?: string;
-      readonly tags?: string[];
       readonly ttl?: number;
     }
   ) => Promise<void>;
@@ -47,11 +44,6 @@ interface MobileShopCatalogCache {
 
 const browseCatalogCacheNamespace = "mobile-shop-browse-catalog-v1";
 const browseCatalogCacheKey = "dotypos-source";
-const browseCatalogCacheTags = [
-  "mobile-shop-catalog",
-  "dotypos-products",
-  "dotypos-categories",
-];
 const browseCatalogFreshMs = 15 * 60 * 1_000;
 const browseCatalogRetentionSeconds = 30 * 60;
 const cachedCatalogSnapshotSchema = Schema.Struct({
@@ -59,6 +51,30 @@ const cachedCatalogSnapshotSchema = Schema.Struct({
   categories: Schema.Array(DotyposCategorySchema),
   products: Schema.Array(DotyposProductSchema),
 });
+
+let activeBrowseCatalogRefresh:
+  | Promise<MobileShopCatalogSourceSnapshot>
+  | undefined;
+
+const beginBrowseCatalogRefresh = (
+  loadFresh: Effect.Effect<MobileShopCatalogSourceSnapshot, MobileShopFailure>
+) => {
+  if (activeBrowseCatalogRefresh) {
+    return { started: false, task: activeBrowseCatalogRefresh } as const;
+  }
+
+  const task = loadFresh.pipe(
+    runWorkspaceEffect("mobile-shop.catalog.refresh", { boundary: "task" })
+  );
+  activeBrowseCatalogRefresh = task;
+  const clear = () => {
+    if (activeBrowseCatalogRefresh === task) {
+      activeBrowseCatalogRefresh = undefined;
+    }
+  };
+  void task.then(clear, clear);
+  return { started: true, task } as const;
+};
 
 export const createMobileShopBrowseCatalogSource = (input: {
   readonly source: IMobileShopCatalogSource;
@@ -98,7 +114,6 @@ export const createMobileShopBrowseCatalogSource = (input: {
           { ...snapshot, generatedAt: snapshot.generatedAt.toString() },
           {
             name: "Dotypos mobile shop catalog",
-            tags: browseCatalogCacheTags,
             ttl: browseCatalogRetentionSeconds,
           }
         )
@@ -113,10 +128,18 @@ export const createMobileShopBrowseCatalogSource = (input: {
     )
   );
 
+  const awaitRefresh = Effect.tryPromise({
+    try: () => beginBrowseCatalogRefresh(loadFresh).task,
+    catch: (cause) =>
+      cause instanceof MobileShopFailure
+        ? cause
+        : new MobileShopFailure({ code: "catalog_unavailable", cause }),
+  });
+
   return {
     loadAll: Effect.gen(function* () {
       const cached = yield* readCached;
-      if (!cached) return yield* loadFresh;
+      if (!cached) return yield* awaitRefresh;
 
       const snapshot = {
         categories: cached.categories,
@@ -131,30 +154,13 @@ export const createMobileShopBrowseCatalogSource = (input: {
       }
 
       yield* Effect.sync(() => {
-        schedule(
-          loadFresh.pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning(
-                "Mobile shop background catalog refresh failed",
-                { cause }
-              )
-            ),
-            Effect.ignore,
-            runWorkspaceEffect("mobile-shop.catalog.refresh", {
-              boundary: "task",
-            })
-          )
-        );
+        const refresh = beginBrowseCatalogRefresh(loadFresh);
+        if (refresh.started) schedule(refresh.task.catch(() => undefined));
       });
       return snapshot;
     }),
   };
 };
-
-export const invalidateMobileShopBrowseCatalog = () =>
-  getCache({ namespace: browseCatalogCacheNamespace }).expireTag(
-    browseCatalogCacheTags
-  );
 
 export class MobileShopBrowseCatalogSource extends Context.Service<
   MobileShopBrowseCatalogSource,

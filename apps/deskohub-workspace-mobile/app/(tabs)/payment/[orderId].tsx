@@ -18,7 +18,6 @@ export default function PaymentScreen() {
     completePaymentHandoff,
     isActionPending,
     isOnline,
-    loadPurchase,
     locale,
     paymentHandoff,
     paymentPurchase,
@@ -34,8 +33,8 @@ export default function PaymentScreen() {
         null);
 
   useEffect(() => {
-    if (normalizedOrderId && !purchase) void loadPurchase(normalizedOrderId);
-  }, [loadPurchase, normalizedOrderId, purchase]);
+    if (normalizedOrderId) void refreshPurchase(normalizedOrderId);
+  }, [normalizedOrderId, refreshPurchase]);
 
   if (!normalizedOrderId) {
     return (

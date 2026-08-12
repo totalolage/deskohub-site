@@ -5,8 +5,12 @@ import type { Locale } from "@/src/domain/shop";
 type PublicPage = "account" | "privacy-policy" | "terms-and-conditions";
 
 const extra = (Constants.expoConfig?.extra ?? {}) as {
+  appOrigin?: string;
   siteOrigin?: string;
 };
+
+export const mobileAppOrigin =
+  extra.appOrigin?.trim() || "https://app.workspace.deskohub.cz";
 
 const siteOrigin = extra.siteOrigin?.trim() || "https://workspace.deskohub.cz";
 

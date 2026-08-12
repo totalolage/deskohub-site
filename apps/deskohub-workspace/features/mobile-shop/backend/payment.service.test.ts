@@ -32,6 +32,7 @@ const payment = {
   },
   attempt: {
     id: attemptId,
+    state: "pending",
     providerOrderId,
     providerRedirectUrl: hostedPageUrl,
     securityToken: "security-token",
@@ -254,5 +255,75 @@ describe("mobile shop payment creation", () => {
       })
     );
     expect(capture).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("mobile shop payment recovery", () => {
+  test("returns an owned active hosted page without creating another attempt", async () => {
+    const findPaymentForOwner = mock(() => Effect.succeed(pendingPayment));
+    const preparePayment = mock(() => Effect.die("must not create"));
+    const layer = MobileShopPaymentService.Live.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.mock(MobileShopPurchaseLifecycleRepository, {
+            findPaymentForOwner,
+            preparePayment,
+          }),
+          Layer.mock(DotyposService, {}),
+          Layer.mock(NexiService, {}),
+          Layer.mock(PostHogEventService, {})
+        )
+      )
+    );
+
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const payments = yield* MobileShopPaymentService;
+        return yield* payments.resumePayment({ purchaseId, customerId });
+      }).pipe(Effect.provide(layer))
+    );
+
+    expect(result).toEqual({ orderId: purchaseId, hostedPageUrl });
+    expect(findPaymentForOwner).toHaveBeenCalledTimes(1);
+    expect(preparePayment).not.toHaveBeenCalled();
+  });
+
+  test("does not resume an incomplete or inactive payment attempt", async () => {
+    for (const paymentRecord of [
+      {
+        ...pendingPayment,
+        attempt: { ...pendingPayment.attempt, state: "created" as const },
+      },
+      {
+        ...pendingPayment,
+        attempt: { ...pendingPayment.attempt, securityToken: null },
+      },
+      {
+        ...pendingPayment,
+        attempt: { ...pendingPayment.attempt, providerRedirectUrl: null },
+      },
+    ]) {
+      const layer = MobileShopPaymentService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.mock(MobileShopPurchaseLifecycleRepository, {
+              findPaymentForOwner: mock(() => Effect.succeed(paymentRecord)),
+            }),
+            Layer.mock(DotyposService, {}),
+            Layer.mock(NexiService, {}),
+            Layer.mock(PostHogEventService, {})
+          )
+        )
+      );
+
+      const result = await Effect.runPromise(
+        Effect.gen(function* () {
+          const payments = yield* MobileShopPaymentService;
+          return yield* payments.resumePayment({ purchaseId, customerId });
+        }).pipe(Effect.provide(layer))
+      );
+
+      expect(result).toBeNull();
+    }
   });
 });

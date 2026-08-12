@@ -55,6 +55,10 @@ export class MobileShopPaymentError extends Data.TaggedError(
 }> {}
 
 export interface IMobileShopPaymentService {
+  readonly resumePayment: (input: {
+    readonly purchaseId: MobileShopPurchaseId;
+    readonly customerId: DotyposCustomerId;
+  }) => Effect.Effect<MobileShopPaymentSession | null, MobileShopPaymentError>;
   readonly startPayment: (input: {
     readonly purchaseId: MobileShopPurchaseId;
     readonly customerId: DotyposCustomerId;
@@ -76,6 +80,24 @@ export class MobileShopPaymentService extends Context.Service<
       const dotypos = yield* DotyposService;
       const nexi = yield* NexiService;
       const posthog = yield* PostHogEventService;
+
+      const resumePayment = Effect.fn("MobileShopPaymentService.resumePayment")(
+        function* (input: {
+          readonly purchaseId: MobileShopPurchaseId;
+          readonly customerId: DotyposCustomerId;
+        }) {
+          const payment = yield* purchases
+            .findPaymentForOwner(input)
+            .pipe(Effect.mapError(mapStateError));
+          const hostedPageUrl = payment?.attempt.providerRedirectUrl;
+          return payment?.order.paymentState === "pending" &&
+            payment.attempt.state === "pending" &&
+            payment.attempt.securityToken &&
+            hostedPageUrl
+            ? { orderId: input.purchaseId, hostedPageUrl }
+            : null;
+        }
+      );
 
       const reconcilePayment = Effect.fn(
         "MobileShopPaymentService.reconcilePayment"
@@ -169,6 +191,7 @@ export class MobileShopPaymentService extends Context.Service<
       );
 
       return {
+        resumePayment,
         startPayment: Effect.fn("MobileShopPaymentService.startPayment")(
           function* (input) {
             const prepared = yield* purchases
@@ -312,6 +335,10 @@ export class MobileShopPaymentService extends Context.Service<
   );
 
   static Unavailable = Layer.succeed(this, {
+    resumePayment: () =>
+      Effect.fail(
+        new MobileShopPaymentError({ reason: "provider_unavailable" })
+      ),
     startPayment: () =>
       Effect.fail(
         new MobileShopPaymentError({ reason: "provider_unavailable" })

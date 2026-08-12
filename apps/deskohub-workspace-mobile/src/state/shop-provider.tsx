@@ -31,6 +31,8 @@ import type {
   ShopSession,
 } from "@/src/domain/shop";
 import { type MessageKey, translate } from "@/src/i18n/messages";
+import { mobileAppOrigin } from "@/src/platform/app-info";
+import { completeHostedPayment } from "@/src/platform/hosted-payment";
 import { useAppUpdates } from "@/src/platform/use-app-updates";
 import { createCartStorage } from "@/src/storage/cart-storage";
 import { createCatalogStorage } from "@/src/storage/catalog-storage";
@@ -373,8 +375,19 @@ export function ShopProvider({ children }: PropsWithChildren) {
 
   const completePaymentHandoff = useCallback(async () => {
     if (!paymentHandoff || !isOnline) return null;
-    await WebBrowser.openBrowserAsync(paymentHandoff.hostedPaymentUrl);
-    return reconcilePurchase(paymentHandoff.orderId);
+    return completeHostedPayment(
+      {
+        appOrigin: mobileAppOrigin,
+        hostedPaymentUrl: paymentHandoff.hostedPaymentUrl,
+        orderId: paymentHandoff.orderId,
+        platform: Platform.OS,
+      },
+      {
+        navigateWeb: (url) => window.location.assign(url),
+        openNativeSession: WebBrowser.openAuthSessionAsync,
+        reconcile: reconcilePurchase,
+      }
+    );
   }, [isOnline, paymentHandoff, reconcilePurchase]);
 
   const refreshPurchase = useCallback(

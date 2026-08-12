@@ -46,12 +46,6 @@ describe("mobile shop catalog source", () => {
         }),
       },
       cache: {
-        delete: async (key) => {
-          values.delete(key);
-        },
-        expireTag: async () => {
-          values.clear();
-        },
         get: async (key) => values.get(key) ?? null,
         set: async (key, value) => {
           values.set(key, value);
@@ -67,15 +61,23 @@ describe("mobile shop catalog source", () => {
     expect(reads).toBe(1);
   });
 
-  test("serves stale catalog data while scheduling a Dotypos refresh", async () => {
+  test("coalesces concurrent cold catalog reads", async () => {
     let reads = 0;
-    let now = 1_000;
-    const scheduled: Promise<unknown>[] = [];
+    let releaseLoad = () => undefined;
+    let markLoadStarted = () => undefined;
+    const loadStarted = new Promise<void>((resolve) => {
+      markLoadStarted = resolve;
+    });
+    const loadGate = new Promise<void>((resolve) => {
+      releaseLoad = resolve;
+    });
     const values = new Map<string, unknown>();
     const browse = createMobileShopBrowseCatalogSource({
       source: {
-        loadAll: Effect.sync(() => {
+        loadAll: Effect.promise(async () => {
           reads += 1;
+          markLoadStarted();
+          await loadGate;
           return {
             categories: [{ name: `Catalog ${reads}` } as DotyposCategory],
             products: [],
@@ -83,12 +85,51 @@ describe("mobile shop catalog source", () => {
         }),
       },
       cache: {
-        delete: async (key) => {
-          values.delete(key);
+        get: async (key) => values.get(key) ?? null,
+        set: async (key, value) => {
+          values.set(key, value);
         },
-        expireTag: async () => {
-          values.clear();
-        },
+      },
+      now: () => 1_000,
+      schedule: () => undefined,
+    });
+
+    const snapshots = Effect.runPromise(
+      Effect.all([browse.loadAll, browse.loadAll], {
+        concurrency: "unbounded",
+      })
+    );
+    await loadStarted;
+    await Effect.runPromise(Effect.sleep("10 millis"));
+    releaseLoad();
+
+    const [first, second] = await snapshots;
+    expect(reads).toBe(1);
+    expect(first.categories[0]?.name).toBe("Catalog 1");
+    expect(second.categories[0]?.name).toBe("Catalog 1");
+  });
+
+  test("coalesces concurrent stale catalog refreshes", async () => {
+    let reads = 0;
+    let now = 1_000;
+    let releaseRefresh = () => undefined;
+    const refreshGate = new Promise<void>((resolve) => {
+      releaseRefresh = resolve;
+    });
+    const scheduled: Promise<unknown>[] = [];
+    const values = new Map<string, unknown>();
+    const browse = createMobileShopBrowseCatalogSource({
+      source: {
+        loadAll: Effect.promise(async () => {
+          reads += 1;
+          if (reads > 1) await refreshGate;
+          return {
+            categories: [{ name: `Catalog ${reads}` } as DotyposCategory],
+            products: [],
+          };
+        }),
+      },
+      cache: {
         get: async (key) => values.get(key) ?? null,
         set: async (key, value) => {
           values.set(key, value);
@@ -100,10 +141,16 @@ describe("mobile shop catalog source", () => {
 
     await Effect.runPromise(browse.loadAll);
     now += 15 * 60 * 1_000 + 1;
-    const stale = await Effect.runPromise(browse.loadAll);
+    const [first, second] = await Effect.runPromise(
+      Effect.all([browse.loadAll, browse.loadAll], {
+        concurrency: "unbounded",
+      })
+    );
 
-    expect(stale.categories[0]?.name).toBe("Catalog 1");
+    expect(first.categories[0]?.name).toBe("Catalog 1");
+    expect(second.categories[0]?.name).toBe("Catalog 1");
     expect(scheduled).toHaveLength(1);
+    releaseRefresh();
     await Promise.all(scheduled);
     expect(reads).toBe(2);
   });

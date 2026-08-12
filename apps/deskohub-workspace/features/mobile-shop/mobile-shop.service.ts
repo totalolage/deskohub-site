@@ -353,7 +353,7 @@ export class MobileShopService extends Context.Service<
         readonly request: Request;
         readonly orderId: MobileShopPurchaseId;
       }) {
-        const customer = yield* requireCommerce(input.request);
+        const customer = yield* requireLinkedAccount(input.request);
         const owned = yield* purchases
           .findOwned({
             id: input.orderId,
@@ -362,6 +362,23 @@ export class MobileShopService extends Context.Service<
           .pipe(Effect.mapError(mapPersistenceFailure));
         if (!owned) {
           return yield* new MobileShopFailure({ code: "order_not_found" });
+        }
+        const resumed = yield* payments
+          .resumePayment({
+            purchaseId: owned.id,
+            customerId: customer.customerId,
+          })
+          .pipe(Effect.mapError(mapPaymentFailure));
+        if (resumed) return resumed;
+
+        const current = yield* entitlement.evaluate({
+          customerId: customer.customerId,
+          now: Temporal.Now.instant(),
+        });
+        if (current.kind !== "eligible") {
+          return yield* new MobileShopFailure({
+            code: "no_active_reservation",
+          });
         }
         return yield* payments
           .startPayment({
