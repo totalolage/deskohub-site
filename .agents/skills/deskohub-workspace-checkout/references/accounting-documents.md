@@ -22,10 +22,12 @@ PDF generation, email attachments, invoice issuance/numbering, and administratio
 - `encrypted_snapshot bytea`
 - `created_at`
 
-The first versionless-snapshot deployment deliberately leaves the former
-`schema_version` database column nullable and unmapped so old and new
-application instances can overlap safely during rollout. Remove that dormant
-column only in a later release after no old writer can remain active.
+The application-domain snapshot is versionless, but its storage encoder must
+continue emitting the legacy `schemaVersion: 1` JSON marker while old and new
+application instances can overlap. New readers accept both stored shapes and
+discard that obsolete marker. The former `schema_version` database column is
+nullable and unmapped; remove the stored marker and dormant column only in a
+later release after no old reader or writer can remain active.
 
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 

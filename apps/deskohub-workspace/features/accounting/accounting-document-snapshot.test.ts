@@ -18,6 +18,7 @@ import {
 import {
   accountingDocumentSnapshotSchema,
   decodeStoredAccountingDocumentSnapshot,
+  encodeStoredAccountingDocumentSnapshot,
   makeAccountingDocumentSnapshot,
 } from "./accounting-document-snapshot";
 import { AccountingSnapshotKeyService } from "./backend/accounting-snapshot-key.service";
@@ -214,6 +215,15 @@ describe("accounting document snapshot", () => {
         })
       )
     ).rejects.toBeDefined();
+  });
+
+  test("keeps new writes readable by overlapping legacy instances", () => {
+    const snapshot = makeSnapshot();
+
+    expect(encodeStoredAccountingDocumentSnapshot(snapshot)).toEqual({
+      ...snapshot,
+      schemaVersion: 1,
+    });
   });
 
   test("parameterizes both plaintext and key in pgcrypto SQL", () => {

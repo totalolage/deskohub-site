@@ -30,6 +30,7 @@ import { postgresUuidV7 } from "@/db/uuid-v7";
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentSnapshotSchema,
+  encodeStoredAccountingDocumentSnapshot,
 } from "@/features/accounting/accounting-document-snapshot";
 import {
   AccountingDocumentSnapshotStorageError,
@@ -1110,7 +1111,9 @@ const persistAccountingDocumentSnapshot = Effect.fn(
   readonly snapshot: AccountingDocumentSnapshot;
   readonly key: AccountingSnapshotKey;
 }) {
-  const snapshotJson = JSON.stringify(input.snapshot);
+  const snapshotJson = JSON.stringify(
+    encodeStoredAccountingDocumentSnapshot(input.snapshot)
+  );
 
   yield* input.tx
     .insert(accountingDocumentSnapshots)

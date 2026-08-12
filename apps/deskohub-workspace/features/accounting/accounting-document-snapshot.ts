@@ -197,6 +197,10 @@ const legacyAccountingDocumentSnapshotSchema = Schema.Union([
   legacyOfficeAccountingDocumentSnapshotSchema,
 ]);
 
+export const encodeStoredAccountingDocumentSnapshot = Schema.encodeSync(
+  legacyAccountingDocumentSnapshotSchema
+);
+
 const storedAccountingDocumentSnapshotSchema = Schema.Union([
   accountingDocumentSnapshotSchema,
   legacyAccountingDocumentSnapshotSchema,
