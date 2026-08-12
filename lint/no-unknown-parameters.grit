@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      JsFormalParameter() as $unknown_parameter,
+      JsRestParameter() as $unknown_parameter
+    } where {
+      $unknown_parameter <: r"(?s)^.*:\s*unknown(?:\s*=.*)?$",
+      $unknown_parameter <: not r"^\s*(?:\.\.\.)?cause\??\s*:",
+      not $filename <: r"(?s).*(?:app/api/(?:cron/workspace/reservation-holds|workspace/availability)/route\.ts|features/admin-cli/page-data\.server\.ts|features/administration/route-identifiers\.server\.ts|features/checkout/backend/(?:checkout/(?:advertised-price-state\.ts|checkout-session-key\.server\.test\.ts|checkout-state-token\.ts|checkout\.service\.ts|pay-state\.ts)|fulfillment/resend-webhook\.service\.ts|holds/(?:reservation-hold-cleanup-queue\.service(?:\.test)?\.ts|reservation-hold-cleanup\.service\.ts)|payment/(?:nexi-amount\.codec|nexi-webhook\.service)\.ts|repositories/payment-lifecycle\.repository\.ts)|features/contact/backend/contact\.service\.tsx|features/cowork/components/cowork-reservation-form\.test\.tsx|features/discounts/(?:admin/(?:basic-auth\.server\.test|discount-administration\.service|form-feedback)\.ts|contracts\.ts|discount-definition\.test\.ts|errors\.ts)|features/feature-flags/backend/node\.test\.ts|features/i18n/server/request-locale\.test\.ts|features/meeting-room/components/meeting-room-reservation-form\.test\.tsx|features/reservation/(?:actions/prepare-pay-state\.ts|reservation-interval-parser\.ts|reservation-interval\.ts|workspace-availability\.ts)|shared/backend/(?:logging/(?:censorship(?:\.test)?|database-query-logger)\.ts|workspace-action\.ts|workspace-route\.ts)|shared/testing/workspace-component-module-mocks\.ts|shared/utils/(?:consent-cookie|error-formatting|schema-parser|temporal|use-workspace-action)\.ts)$",
+      register_diagnostic(
+        span = $unknown_parameter,
+        message = "[anti-slop/no-unknown-parameters] Parse the input into its expected owner type at the I/O boundary.",
+        severity = "error"
+      )
+    }
+  }
+}
