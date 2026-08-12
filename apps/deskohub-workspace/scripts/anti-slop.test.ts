@@ -7,7 +7,11 @@ import { fileURLToPath } from "node:url";
 const repositoryRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const decoder = new TextDecoder();
 
-const lint = (source: string, workspaceDirectory = "scripts") => {
+const lint = (
+  source: string,
+  workspaceDirectory = "scripts",
+  filename = "probe.ts"
+) => {
   const temporaryRoot = mkdtempSync(join(tmpdir(), "deskohub-anti-slop-"));
   const directory = join(
     temporaryRoot,
@@ -15,7 +19,7 @@ const lint = (source: string, workspaceDirectory = "scripts") => {
     workspaceDirectory
   );
   mkdirSync(directory, { recursive: true });
-  const path = join(directory, "probe.ts");
+  const path = join(directory, filename);
   writeFileSync(path, source);
 
   try {
@@ -104,6 +108,17 @@ test("chained assertion rule retains Workspace e2e coverage", () => {
   const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
+});
+
+test("chained assertion rule baselines the existing E2E run plan", () => {
+  const result = lint(
+    "declare const value: object; value as unknown as { id: string };",
+    "e2e/playwright-checkout",
+    "run-plan.ts"
+  );
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-chained-type-assertions]");
 });
 
 test("conditional spread rule reports objects with sibling properties", () => {
