@@ -14,6 +14,25 @@ import { getInvoicePresentation } from "./invoice-presentation";
 const normalize = (value: string) => value.replaceAll(/\s/g, " ");
 
 describe("invoice presentation", () => {
+  test("lays out identifiers above issuance, fulfilment, and payment dates", () => {
+    const presentation = getInvoicePresentation(
+      makeMeetingRoomInvoiceDocument("en-US")
+    );
+
+    expect(presentation).toHaveProperty("factRows", [
+      [
+        { label: "Invoice number", value: "WS-FV-2026-000002" },
+        null,
+        { label: "Order number", value: "reservation-2" },
+      ],
+      [
+        { label: "Issuance date", value: "Aug 10, 2026" },
+        { label: "Fulfilment date", value: "Feb 3, 2099" },
+        { label: "Payment date", value: "Aug 10, 2026" },
+      ],
+    ]);
+  });
+
   test.each([
     ["cs-CZ", "Faktura", "Basic Day Pass", "1. 1. 2099"],
     ["en-US", "Invoice", "Basic Day Pass", "Jan 1, 2099"],
@@ -24,10 +43,9 @@ describe("invoice presentation", () => {
 
     expect(presentation.title).toBe(title);
     expect(presentation.status).toBe(locale === "cs-CZ" ? "Uhrazeno" : "Paid");
-    expect(presentation.facts).toContainEqual({
-      label: locale === "cs-CZ" ? "Datum plnění" : "Service date",
+    expect(presentation.factRows.flat()).toContainEqual({
+      label: locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date",
       value: serviceDate,
-      wide: true,
     });
     expect(presentation.lines.map(({ description }) => description)).toEqual([
       itemDescription,
@@ -45,10 +63,13 @@ describe("invoice presentation", () => {
     const presentation = getInvoicePresentation(
       makeMeetingRoomInvoiceDocument(locale)
     );
-    const serviceDate = presentation.facts.find(
-      ({ label }) =>
-        label === (locale === "cs-CZ" ? "Datum plnění" : "Service date")
-    )?.value;
+    const serviceDate = presentation.factRows
+      .flat()
+      .find(
+        (fact) =>
+          fact?.label ===
+          (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
+      )?.value;
 
     expect(presentation.lines[0]?.description).toBe(description);
     expect(serviceDate).toBe(expectedServiceDate);
@@ -63,10 +84,13 @@ describe("invoice presentation", () => {
     const presentation = getInvoicePresentation(
       makeOfficeInvoiceDocument(locale)
     );
-    const serviceDate = presentation.facts.find(
-      ({ label }) =>
-        label === (locale === "cs-CZ" ? "Datum plnění" : "Service date")
-    )?.value;
+    const serviceDate = presentation.factRows
+      .flat()
+      .find(
+        (fact) =>
+          fact?.label ===
+          (locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date")
+      )?.value;
 
     expect(presentation.lines[0]?.description).toBe(description);
     expect(serviceDate).toBe(expectedServiceDate);
@@ -172,9 +196,9 @@ describe("invoice presentation", () => {
       supplier: legacySupplier,
     });
 
-    expect(presentation.facts.map(({ label }) => label)).not.toContain(
-      "Payment date"
-    );
+    expect(
+      presentation.factRows.flat().map((fact) => fact?.label)
+    ).not.toContain("Payment date");
     expect(presentation.supplier.details).not.toContainEqual(
       expect.stringContaining("Commercial register")
     );

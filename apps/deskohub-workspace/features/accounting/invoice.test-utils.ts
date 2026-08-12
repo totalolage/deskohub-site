@@ -20,13 +20,13 @@ import {
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
 import {
-  type AccountingBuyer,
   companyRegistrationIdSchema,
   makeAccountingDocumentSnapshot,
   vatRegistrationIdSchema,
 } from "./accounting-document-snapshot";
 import {
   formatInvoiceNumber,
+  type InvoiceBuyer,
   type InvoiceDocument,
   makeInvoiceDocument,
 } from "./invoice";
@@ -46,7 +46,7 @@ const businessBuyer = {
     postalCode: "110 00",
     country: "CZ",
   },
-} satisfies AccountingBuyer;
+} satisfies InvoiceBuyer;
 
 export const makeCoworkInvoiceDocument = (
   locale: Locale,
@@ -131,7 +131,7 @@ const issueTestInvoice = (input: {
   readonly locale: Locale;
   readonly prepared: PreparedCustomerQuote;
   readonly sequence: number;
-  readonly buyer?: typeof businessBuyer;
+  readonly buyer?: InvoiceBuyer;
 }): InvoiceDocument => {
   const source = makeAccountingDocumentSnapshot({
     workspaceReservationId: workspaceReservationIdSchema.make(
@@ -147,10 +147,22 @@ const issueTestInvoice = (input: {
     prepared: input.prepared,
     ...(input.buyer ? { buyer: input.buyer } : {}),
   });
+  const buyer =
+    input.buyer ??
+    ({
+      kind: "person",
+      legalName: input.prepared.reservation.name,
+      address: {
+        line1: "Synthetic 1",
+        city: "Praha",
+        postalCode: "100 00",
+        country: "CZ",
+      },
+    } satisfies InvoiceBuyer);
 
   return makeInvoiceDocument({
     source,
-    buyer: source.buyer,
+    buyer,
     paymentAttemptId: `payment-attempt-${input.sequence}`,
     invoiceNumber: formatInvoiceNumber({
       year: 2026,

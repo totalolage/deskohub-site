@@ -22,16 +22,24 @@ export interface InvoicePresentationLine {
   readonly kind: "discount" | "item";
 }
 
+interface InvoicePresentationFact {
+  readonly label: string;
+  readonly value: string;
+}
+
 export interface InvoicePresentation {
   readonly locale: Locale;
   readonly title: string;
   readonly invoiceNumber: string;
   readonly status: string;
-  readonly facts: readonly {
-    readonly label: string;
-    readonly value: string;
-    readonly wide?: boolean;
-  }[];
+  readonly factRows: readonly [
+    readonly [InvoicePresentationFact, null, InvoicePresentationFact],
+    readonly [
+      InvoicePresentationFact,
+      InvoicePresentationFact,
+      InvoicePresentationFact | null,
+    ],
+  ];
   readonly supplier: InvoicePresentationParty;
   readonly buyer: InvoicePresentationParty;
   readonly lineDescriptionHeading: string;
@@ -113,29 +121,31 @@ export const getInvoicePresentation = (
     title: copy.title,
     invoiceNumber: document.invoiceNumber,
     status: copy.paid,
-    facts: [
-      { label: copy.invoiceNumber, value: document.invoiceNumber },
-      {
-        label: copy.issueDate,
-        value: formatWorkspaceInstantDate(document.issuedAt, locale),
-      },
-      ...(document.paidAt
-        ? [
-            {
+    factRows: [
+      [
+        { label: copy.invoiceNumber, value: document.invoiceNumber },
+        null,
+        {
+          label: copy.reservationReference,
+          value: document.workspaceReservationId,
+        },
+      ],
+      [
+        {
+          label: copy.issueDate,
+          value: formatWorkspaceInstantDate(document.issuedAt, locale),
+        },
+        {
+          label: copy.serviceDate,
+          value: formatServiceDate(document, locale),
+        },
+        document.paidAt
+          ? {
               label: copy.paymentDate,
               value: formatWorkspaceInstantDate(document.paidAt, locale),
-            },
-          ]
-        : []),
-      {
-        label: copy.serviceDate,
-        value: formatServiceDate(document, locale),
-        wide: true,
-      },
-      {
-        label: copy.reservationReference,
-        value: document.workspaceReservationId,
-      },
+            }
+          : null,
+      ],
     ],
     supplier: {
       heading: copy.supplier,
@@ -180,14 +190,12 @@ const getBuyerPresentation = (
 ): InvoicePresentationParty => {
   const { buyer, locale } = document;
   const address = buyer.address;
-  const details = address
-    ? [
-        address.line1,
-        address.line2,
-        `${address.postalCode ?? ""} ${address.city ?? ""}`.trim(),
-        address.country ? formatCountry(address.country, locale) : undefined,
-      ].filter((line): line is string => Boolean(line))
-    : [];
+  const details = [
+    address.line1,
+    address.line2,
+    `${address.postalCode} ${address.city}`,
+    formatCountry(address.country, locale),
+  ].filter((line): line is string => Boolean(line));
 
   if (buyer.kind === "business") {
     details.push(`${copy.companyId}: ${buyer.companyId}`);
