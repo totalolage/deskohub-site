@@ -103,3 +103,14 @@ test("chained assertion rule retains Workspace e2e coverage", () => {
 
   expect(output).toContain("[anti-slop/no-chained-type-assertions]");
 });
+
+test("conditional spread rule reports objects with sibling properties", () => {
+  const result = lint(`
+declare const condition: boolean;
+const payload = { fixed: 1, ...(condition ? { value: 1 } : {}) };
+void payload;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-conditional-empty-object-spread]");
+});

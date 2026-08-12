@@ -6,11 +6,12 @@ language js(typescript, jsx)
 file($name, $body) where {
   $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
   $body <: contains bubble {
-    or {
-      `{ ...($condition ? {} : $value) }` as $conditional_spread,
-      `{ ...($condition ? $value : {}) }` as $conditional_spread
-    } where {
-      not $filename <: r".*features/checkout/backend/fulfillment/workspace-reservation-email\.service\.tsx$",
+    JsSpread() as $conditional_spread where {
+      $conditional_spread <: contains or {
+        `$condition ? {} : $value`,
+        `$condition ? $value : {}`
+      },
+      not $filename <: r"(?s).*(?:features/accounting/(?:backend/invoice-email-delivery\.service\.tsx|invoice\.test-utils\.ts)|features/checkout/(?:backend/(?:analytics/posthog-lifecycle-events\.ts|checkout/checkout-status\.service\.ts|fulfillment/workspace-reservation-email\.service\.tsx)|workspace-table-map\.ts)|features/discounts/admin/discount-administration\.service\.ts|features/meeting-room/components/meeting-room-page\.test\.tsx|shared/backend/(?:analytics/(?:posthog-event\.service|posthog-request-context)\.ts|logging/(?:posthog-log-annotations|posthog-otel)\.ts|observability/(?:otel-tracing|posthog-tracing|workspace-tracing)\.ts|workspace-action\.ts))$",
       register_diagnostic(
         span = $conditional_spread,
         message = "[anti-slop/no-conditional-empty-object-spread] Use a direct property or build the object in separate statements.",
