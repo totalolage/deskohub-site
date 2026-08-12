@@ -225,12 +225,12 @@ const getItemLines = (
       Match.value(item).pipe(
         Match.discriminatorsExhaustive("type")({
           cowork: ({ amount, tier }) => ({
-            kind: "item",
+            kind: "item" as const,
             description: copy.coworkProducts[tier],
             amount: formatWorkspaceMoney(amount, document.locale),
           }),
           coffee: ({ amount }) => ({
-            kind: "item",
+            kind: "item" as const,
             description: copy.coffee,
             amount: formatWorkspaceMoney(amount, document.locale),
           }),
@@ -240,13 +240,13 @@ const getItemLines = (
                 ? copy.day(duration.amount)
                 : copy.hour(duration.amount);
             return {
-              kind: "item",
+              kind: "item" as const,
               description: `${copy.meetingRoom} · ${durationLabel}`,
               amount: formatWorkspaceMoney(amount, document.locale),
             };
           },
           office: ({ amount, dayCount, seats }) => ({
-            kind: "item",
+            kind: "item" as const,
             description: `${copy.office} · ${copy.day(dayCount)} · ${copy.seat(seats)}`,
             amount: formatWorkspaceMoney(amount, document.locale),
           }),
