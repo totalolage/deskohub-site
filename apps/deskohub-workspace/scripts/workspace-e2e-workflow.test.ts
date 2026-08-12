@@ -61,7 +61,7 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   );
   const capacityStep = workflow.slice(
     workflow.indexOf("Validate aggregate Dotypos capacity"),
-    workflow.indexOf("Migrate preview database")
+    workflow.indexOf("Verify hosted browser runtime")
   );
   expect(capacityStep).not.toContain(
     "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
@@ -239,6 +239,10 @@ test("runs read-only Playwright navigation beside the checkout suite", async () 
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
+  const migrationJob = workflow.slice(
+    workflow.indexOf("  migrate-preview:"),
+    workflow.indexOf("  test-instant-navigation:")
+  );
   const instantJob = workflow.slice(
     workflow.indexOf("  test-instant-navigation:"),
     workflow.indexOf("  test-e2e:")
@@ -254,10 +258,13 @@ test("runs read-only Playwright navigation beside the checkout suite", async () 
     resolve(import.meta.dir, "../playwright.instant.config.ts")
   ).text();
 
-  expect(instantJob).toContain("needs: resolve-target");
+  expect(migrationJob).toContain("Migrate preview database");
+  expect(instantJob).toContain("needs: [resolve-target, migrate-preview]");
   expect(instantJob).toContain("Run instant navigation E2E");
   expect(instantJob).not.toContain("Lease an available date shard");
   expect(instantJob).not.toContain("WORKSPACE_E2E_DATABASE_URL_UNPOOLED");
+  expect(checkoutJob).toContain("needs: [resolve-target, migrate-preview]");
+  expect(checkoutJob).not.toContain("Migrate preview database");
   expect(checkoutJob).not.toContain("Run instant navigation E2E");
   expect(finalStatusJob).toContain(
     "needs: [resolve-target, test-instant-navigation, test-e2e]"
