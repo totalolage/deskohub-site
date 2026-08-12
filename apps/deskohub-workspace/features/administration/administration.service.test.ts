@@ -27,6 +27,114 @@ const makeQuery = <A>(rows: readonly A[]) => {
 };
 
 describe("AdministrationService", () => {
+  test("filters reservations by an inclusive provider date range", async () => {
+    const listInputs: unknown[] = [];
+    const rows = [[{ value: 0 }], []] as const;
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(rows[selectCall++] ?? []),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.listReservations({
+        from: "2026-08-06",
+        to: "2026-08-12",
+      });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return [];
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(listInputs).toEqual([
+      {
+        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        startsBefore: "2026-08-12T22:00:00Z",
+        order: "startDateAscending",
+      },
+    ]);
+    expect(result.total).toBe(0);
+  });
+
+  test("keeps single-sided provider date ranges open", async () => {
+    const listInputs: unknown[] = [];
+    const rows = [[{ value: 0 }], [], [{ value: 0 }], []] as const;
+    let selectCall = 0;
+    const database = {
+      select: () => makeQuery(rows[selectCall++] ?? []),
+    };
+
+    await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      yield* administration.listReservations({ from: "2026-08-06" });
+      yield* administration.listReservations({ to: "2026-08-12" });
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({
+                listReservations: (input) =>
+                  Effect.sync(() => {
+                    listInputs.push(input);
+                    return [];
+                  }),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(listInputs).toEqual([
+      {
+        startsAtOrAfter: "2026-08-05T22:00:00Z",
+        order: "startDateAscending",
+      },
+      {
+        startsBefore: "2026-08-12T22:00:00Z",
+        order: "startDateAscending",
+      },
+    ]);
+  });
+
   test("keeps reservations available when provider date sorting fails", async () => {
     const instant = Temporal.Instant.from("2026-08-10T08:00:00Z");
     const row = {

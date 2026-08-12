@@ -18,6 +18,7 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 
 mock.module("server-only", () => ({}));
+mock.module("next/server", () => ({ connection: () => Promise.resolve() }));
 
 type LoadedReservationPage = {
   readonly input: AdministrationReservationListInput;
@@ -133,10 +134,11 @@ describe("ReservationsAdministrationPage", () => {
     reservationPage = {
       input: {
         customerId: "customer-one",
-        date: "2026-08-10",
         direction: "asc",
+        from: "2026-08-04",
         sort: "status",
         status: "complete",
+        to: "2026-08-10",
         type: "cowork",
       },
       result: defaultReservationPage.result,
@@ -146,10 +148,11 @@ describe("ReservationsAdministrationPage", () => {
       await ReservationsAdministrationPage({
         searchParams: Promise.resolve({
           customerId: "customer-one",
-          date: "2026-08-10",
           direction: "asc",
+          from: "2026-08-04",
           sort: "status",
           status: "complete",
+          to: "2026-08-10",
           type: "cowork",
         }),
       })
@@ -158,7 +161,44 @@ describe("ReservationsAdministrationPage", () => {
     expect(
       view.getByRole("link", { name: "Clear customer" }).getAttribute("href")
     ).toBe(
-      "/admin/reservations?date=2026-08-10&direction=asc&sort=status&status=complete&type=cowork"
+      "/admin/reservations?direction=asc&from=2026-08-04&sort=status&status=complete&to=2026-08-10&type=cowork"
+    );
+  });
+
+  test("shows the selected inclusive start-date range", async () => {
+    reservationPage = {
+      input: {
+        direction: "asc",
+        from: "2026-08-04",
+        sort: "date",
+        to: "2026-08-10",
+      },
+      result: {
+        ...defaultReservationPage.result,
+        page: 2,
+        pageCount: 3,
+      },
+    };
+    const { default: ReservationsAdministrationPage } = await import("./page");
+    const view = render(
+      await ReservationsAdministrationPage({
+        searchParams: Promise.resolve({
+          direction: "asc",
+          from: "2026-08-04",
+          sort: "date",
+          to: "2026-08-10",
+        }),
+      })
+    );
+
+    expect(view.getByLabelText("Start date from").getAttribute("value")).toBe(
+      "2026-08-04"
+    );
+    expect(view.getByLabelText("Start date to").getAttribute("value")).toBe(
+      "2026-08-10"
+    );
+    expect(view.getByRole("link", { name: "Next" }).getAttribute("href")).toBe(
+      "/admin/reservations?direction=asc&from=2026-08-04&sort=date&to=2026-08-10&page=3"
     );
   });
 

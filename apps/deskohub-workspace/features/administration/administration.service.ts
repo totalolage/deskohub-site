@@ -82,6 +82,11 @@ import {
   mergeReservationHistory,
   PostHogReservationHistory,
 } from "./posthog-reservation-history";
+import {
+  type AdministrationReservationDateRange,
+  getAdministrationOverviewDateRanges,
+  getAdministrationReservationDateRange,
+} from "./reservation-date-range";
 import { getUniqueReservationId } from "./reservation-lookup.server";
 import type { AdministrationStatusGroup } from "./reservation-status";
 import {
@@ -109,9 +114,11 @@ export type AdministrationReservationListInput = {
   readonly customerId?: DotyposCustomerId;
   readonly date?: string;
   readonly direction?: AdministrationReservationSortDirection;
+  readonly from?: string;
   readonly page?: number;
   readonly sort?: AdministrationReservationSort;
   readonly status?: Exclude<AdministrationStatusGroup, "attention">;
+  readonly to?: string;
   readonly type?: "cowork" | "meeting-room" | "office";
 };
 
@@ -572,6 +579,30 @@ const getDateRangeBounds = (startDate: string, endDate: string) => {
   };
 };
 
+const getInclusiveDateRangeBounds = (
+  range: AdministrationReservationDateRange
+) => ({
+  ...(range.from && {
+    startsAtOrAfter: Temporal.PlainDate.from(range.from)
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+  ...(range.to && {
+    startsBefore: Temporal.PlainDate.from(range.to)
+      .add({ days: 1 })
+      .toZonedDateTime({
+        plainTime: Temporal.PlainTime.from("00:00"),
+        timeZone: workspaceSiteConstants.location.timeZone,
+      })
+      .toInstant()
+      .toString(),
+  }),
+});
+
 const getDateBounds = (date: string) => {
   const plainDate = Temporal.PlainDate.from(date);
   return getDateRangeBounds(date, plainDate.add({ days: 1 }).toString());
@@ -850,6 +881,7 @@ export class AdministrationService extends Context.Service<
   {
     readonly loadOverview: () => Effect.Effect<
       {
+        readonly ranges: ReturnType<typeof getAdministrationOverviewDateRanges>;
         readonly today: AdministrationOverviewMetric;
         readonly upcoming: AdministrationOverviewMetric;
         readonly lastSevenDays: AdministrationOverviewMetric;
@@ -1000,55 +1032,49 @@ export class AdministrationService extends Context.Service<
           )
         );
 
-      const loadDateReservationMap = (date?: string) => {
-        if (!date) return Effect.succeed(undefined);
-        return Effect.try({
-          try: () => getDateBounds(date),
-          catch: () => undefined,
-        }).pipe(
-          Effect.flatMap((bounds) =>
-            bounds
-              ? dotypos
-                  .listReservations({
-                    ...bounds,
-                    order: "startDateAscending",
+      const loadReservationRangeMap = (
+        range: AdministrationReservationDateRange | undefined
+      ) => {
+        if (!range) return Effect.succeed(undefined);
+        return dotypos
+          .listReservations({
+            ...getInclusiveDateRangeBounds(range),
+            order: "startDateAscending",
+          })
+          .pipe(
+            Effect.map(
+              (reservations) =>
+                new Map(
+                  reservations.flatMap((reservation) => {
+                    const reservationId = Option.getOrUndefined(
+                      decodeDotyposReservationId(reservation.id)
+                    );
+                    return reservationId
+                      ? [[reservationId, reservation] as const]
+                      : [];
                   })
-                  .pipe(
-                    Effect.map(
-                      (reservations) =>
-                        new Map(
-                          reservations.flatMap((reservation) => {
-                            const reservationId = Option.getOrUndefined(
-                              decodeDotyposReservationId(reservation.id)
-                            );
-                            return reservationId
-                              ? [[reservationId, reservation] as const]
-                              : [];
-                          })
-                        )
-                    ),
-                    Effect.catch((cause) =>
-                      Effect.logWarning("Reservation date filter unavailable", {
-                        cause,
-                        date,
-                      }).pipe(Effect.as(null))
-                    )
-                  )
-              : Effect.succeed(null)
-          )
-        );
+                )
+            ),
+            Effect.catch((cause) =>
+              Effect.logWarning("Reservation date filter unavailable", {
+                cause,
+                ...range,
+              }).pipe(Effect.as(null))
+            )
+          );
       };
 
       const loadReservationDateOrder = Effect.fn(
         "AdministrationService.loadReservationDateOrder"
       )(function* (
         input: AdministrationReservationListInput,
+        hasDateRange: boolean,
         dateReservations:
           | ReadonlyMap<DotyposReservationId, DotyposReservation>
           | null
           | undefined
       ) {
-        if (input.date) {
+        if (hasDateRange) {
           if (!dateReservations) return null;
           const providerIds = [...dateReservations.keys()];
           return input.direction === "asc"
@@ -1083,13 +1109,14 @@ export class AdministrationService extends Context.Service<
       const loadReservationPeriodCount = Effect.fn(
         "AdministrationService.loadReservationPeriodCount"
       )(function* (input: {
-        readonly startDate: string;
-        readonly endDate: string;
+        readonly range: ReturnType<
+          typeof getAdministrationOverviewDateRanges
+        >["today"];
         readonly linkedReservationIds: ReadonlySet<DotyposReservationId>;
       }) {
         const reservations = yield* dotypos
           .listReservations({
-            ...getDateRangeBounds(input.startDate, input.endDate),
+            ...getInclusiveDateRangeBounds(input.range),
             order: "startDateAscending",
           })
           .pipe(
@@ -1097,8 +1124,7 @@ export class AdministrationService extends Context.Service<
             Effect.catch((cause) =>
               Effect.logWarning("Reservation overview period unavailable", {
                 cause,
-                endDate: input.endDate,
-                startDate: input.startDate,
+                ...input.range,
               }).pipe(Effect.as({ kind: "unavailable" as const }))
             )
           );
@@ -1125,7 +1151,8 @@ export class AdministrationService extends Context.Service<
         "AdministrationService.listReservations"
       )(function* (input: ReservationListInput) {
         const pageSize = input.pageSize ?? reservationPageSize;
-        const dateReservations = yield* loadDateReservationMap(input.date);
+        const dateRange = getAdministrationReservationDateRange(input);
+        const dateReservations = yield* loadReservationRangeMap(dateRange);
         const conditions: SQL[] = [];
         if (input.customerId) {
           conditions.push(
@@ -1138,7 +1165,7 @@ export class AdministrationService extends Context.Service<
             sql`${workspaceReservations.reservationDetails}->>'kind' = ${input.type}`
           );
         }
-        if (input.date) {
+        if (dateRange) {
           const ids = dateReservations ? [...dateReservations.keys()] : [];
           conditions.push(
             ids.length > 0
@@ -1160,7 +1187,11 @@ export class AdministrationService extends Context.Service<
         });
         const orderedProviderIds =
           input.sort === "date"
-            ? yield* loadReservationDateOrder(input, dateReservations)
+            ? yield* loadReservationDateOrder(
+                input,
+                Boolean(dateRange),
+                dateReservations
+              )
             : undefined;
         let rows: readonly SafeReservationRow[];
         if (orderedProviderIds) {
@@ -1209,7 +1240,7 @@ export class AdministrationService extends Context.Service<
           pageCount: pagination.pageCount,
           total,
           dateFilterUnavailable: Boolean(
-            input.date && dateReservations === null
+            dateRange && dateReservations === null
           ),
           dateSortUnavailable:
             input.sort === "date" && orderedProviderIds === null,
@@ -1279,7 +1310,10 @@ export class AdministrationService extends Context.Service<
         let sameDateRows: readonly SafeReservationRow[] = [];
         if (live.reservation) {
           const date = getReservationDate(live.reservation.startDate);
-          const dateReservations = yield* loadDateReservationMap(date);
+          const dateReservations = yield* loadReservationRangeMap({
+            from: date,
+            to: date,
+          });
           const reservationIds = dateReservations
             ? [...dateReservations.keys()].filter(
                 (reservationId) => reservationId !== row.dotyposReservationId
@@ -1993,7 +2027,7 @@ export class AdministrationService extends Context.Service<
       const loadOverview = Effect.fn("AdministrationService.loadOverview")(
         function* () {
           const currentDate = getCurrentWorkspaceDate();
-          const tomorrow = currentDate.add({ days: 1 });
+          const ranges = getAdministrationOverviewDateRanges(currentDate);
           const linkedRows = yield* db
             .select({ id: workspaceReservations.dotyposReservationId })
             .from(workspaceReservations)
@@ -2004,24 +2038,21 @@ export class AdministrationService extends Context.Service<
           const { lastSevenDays, today, upcoming } = yield* Effect.all(
             {
               today: loadReservationPeriodCount({
-                startDate: currentDate.toString(),
-                endDate: tomorrow.toString(),
+                range: ranges.today,
                 linkedReservationIds,
               }),
               upcoming: loadReservationPeriodCount({
-                startDate: tomorrow.toString(),
-                endDate: currentDate.add({ days: 31 }).toString(),
+                range: ranges.upcoming,
                 linkedReservationIds,
               }),
               lastSevenDays: loadReservationPeriodCount({
-                startDate: currentDate.subtract({ days: 6 }).toString(),
-                endDate: tomorrow.toString(),
+                range: ranges.lastSevenDays,
                 linkedReservationIds,
               }),
             },
             { concurrency: 3 }
           );
-          return { today, upcoming, lastSevenDays };
+          return { ranges, today, upcoming, lastSevenDays };
         }
       );
 
