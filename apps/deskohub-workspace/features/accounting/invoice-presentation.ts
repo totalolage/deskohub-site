@@ -3,11 +3,7 @@ import type { InvoiceDocument } from "@/features/accounting/invoice";
 import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import {
-  formatInstantDate,
-  formatPlainDate,
-  formatPlainDateRange,
-} from "@/shared/utils/date-time-format";
+import { formatInstantDate } from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 export interface InvoicePresentationParty {
@@ -32,11 +28,11 @@ export interface InvoicePresentation {
   readonly title: string;
   readonly invoiceNumber: string;
   readonly status: string;
-  readonly factRows: readonly [
-    readonly [InvoicePresentationFact, null, InvoicePresentationFact],
+  readonly factColumns: readonly [
+    readonly [InvoicePresentationFact, InvoicePresentationFact],
     readonly [
       InvoicePresentationFact,
-      InvoicePresentationFact,
+      InvoicePresentationFact | null,
       InvoicePresentationFact | null,
     ],
   ];
@@ -121,10 +117,9 @@ export const getInvoicePresentation = (
     title: copy.title,
     invoiceNumber: document.invoiceNumber,
     status: copy.paid,
-    factRows: [
+    factColumns: [
       [
         { label: copy.invoiceNumber, value: document.invoiceNumber },
-        null,
         {
           label: copy.reservationReference,
           value: document.workspaceReservationId,
@@ -135,10 +130,12 @@ export const getInvoicePresentation = (
           label: copy.issueDate,
           value: formatWorkspaceInstantDate(document.issuedAt, locale),
         },
-        {
-          label: copy.serviceDate,
-          value: formatServiceDate(document, locale),
-        },
+        document.fulfilledAt
+          ? {
+              label: copy.serviceDate,
+              value: formatWorkspaceInstantDate(document.fulfilledAt, locale),
+            }
+          : null,
         document.paidAt
           ? {
               label: copy.paymentDate,
@@ -246,24 +243,6 @@ const getItemLines = (
         })
       )
   );
-
-const formatServiceDate = (document: InvoiceDocument, locale: Locale) => {
-  switch (document.reservation.kind) {
-    case "cowork":
-      return formatPlainDate({
-        date: Temporal.PlainDate.from(document.reservation.date),
-        locale,
-      });
-    case "meeting-room":
-      return formatWorkspaceInstantDate(document.reservation.startsAt, locale);
-    case "office":
-      return formatPlainDateRange({
-        start: Temporal.PlainDate.from(document.reservation.startsOn),
-        end: Temporal.PlainDate.from(document.reservation.endsOn),
-        locale,
-      });
-  }
-};
 
 const formatWorkspaceInstantDate = (value: string, locale: Locale) =>
   formatInstantDate({

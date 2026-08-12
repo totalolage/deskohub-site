@@ -14,28 +14,27 @@ import { getInvoicePresentation } from "./invoice-presentation";
 const normalize = (value: string) => value.replaceAll(/\s/g, " ");
 
 describe("invoice presentation", () => {
-  test("lays out identifiers above issuance, fulfilment, and payment dates", () => {
+  test("lays out identifiers beside issuance, fulfilment, and payment dates", () => {
     const presentation = getInvoicePresentation(
       makeMeetingRoomInvoiceDocument("en-US")
     );
 
-    expect(presentation).toHaveProperty("factRows", [
+    expect(presentation).toHaveProperty("factColumns", [
       [
         { label: "Invoice number", value: "WS-FV-2026-000002" },
-        null,
         { label: "Order number", value: "reservation-2" },
       ],
       [
-        { label: "Issuance date", value: "Aug 10, 2026" },
-        { label: "Fulfilment date", value: "Feb 3, 2099" },
+        { label: "Issuance date", value: "Aug 12, 2026" },
+        { label: "Fulfilment date", value: "Aug 11, 2026" },
         { label: "Payment date", value: "Aug 10, 2026" },
       ],
     ]);
   });
 
   test.each([
-    ["cs-CZ", "Faktura", "Basic Day Pass", "1. 1. 2099"],
-    ["en-US", "Invoice", "Basic Day Pass", "Jan 1, 2099"],
+    ["cs-CZ", "Faktura", "Basic Day Pass", "11. 8. 2026"],
+    ["en-US", "Invoice", "Basic Day Pass", "Aug 11, 2026"],
   ] as const)("projects a %s cowork invoice", (locale, title, itemDescription, serviceDate) => {
     const presentation = getInvoicePresentation(
       makeCoworkInvoiceDocument(locale)
@@ -43,7 +42,7 @@ describe("invoice presentation", () => {
 
     expect(presentation.title).toBe(title);
     expect(presentation.status).toBe(locale === "cs-CZ" ? "Uhrazeno" : "Paid");
-    expect(presentation.factRows.flat()).toContainEqual({
+    expect(presentation.factColumns.flat()).toContainEqual({
       label: locale === "cs-CZ" ? "Datum plnění" : "Fulfilment date",
       value: serviceDate,
     });
@@ -57,13 +56,13 @@ describe("invoice presentation", () => {
   });
 
   test.each([
-    ["cs-CZ", "Zasedací místnost · 4 hodiny", "3. 2. 2099"],
-    ["en-US", "Meeting room · 4 hours", "Feb 3, 2099"],
+    ["cs-CZ", "Zasedací místnost · 4 hodiny", "11. 8. 2026"],
+    ["en-US", "Meeting room · 4 hours", "Aug 11, 2026"],
   ] as const)("projects a %s meeting-room invoice", (locale, description, expectedServiceDate) => {
     const presentation = getInvoicePresentation(
       makeMeetingRoomInvoiceDocument(locale)
     );
-    const serviceDate = presentation.factRows
+    const serviceDate = presentation.factColumns
       .flat()
       .find(
         (fact) =>
@@ -78,13 +77,13 @@ describe("invoice presentation", () => {
   });
 
   test.each([
-    ["cs-CZ", "Soukromá kancelář · 2 dny · 3 místa", "20.06.2099 – 21.06.2099"],
-    ["en-US", "Private office · 2 days · 3 seats", "Jun 20 – 21, 2099"],
+    ["cs-CZ", "Soukromá kancelář · 2 dny · 3 místa", "11. 8. 2026"],
+    ["en-US", "Private office · 2 days · 3 seats", "Aug 11, 2026"],
   ] as const)("projects a %s office invoice", (locale, description, expectedServiceDate) => {
     const presentation = getInvoicePresentation(
       makeOfficeInvoiceDocument(locale)
     );
-    const serviceDate = presentation.factRows
+    const serviceDate = presentation.factColumns
       .flat()
       .find(
         (fact) =>
@@ -188,7 +187,12 @@ describe("invoice presentation", () => {
 
   test("does not fabricate facts absent from a legacy issued invoice", () => {
     const current = makeCoworkInvoiceDocument("en-US");
-    const { paidAt: _paidAt, supplier, ...identity } = current;
+    const {
+      fulfilledAt: _fulfilledAt,
+      paidAt: _paidAt,
+      supplier,
+      ...identity
+    } = current;
     const { commercialRegister: _commercialRegister, ...legacySupplier } =
       supplier;
     const presentation = getInvoicePresentation({
@@ -196,9 +200,11 @@ describe("invoice presentation", () => {
       supplier: legacySupplier,
     });
 
-    expect(
-      presentation.factRows.flat().map((fact) => fact?.label)
-    ).not.toContain("Payment date");
+    const factLabels = presentation.factColumns
+      .flat()
+      .map((fact) => fact?.label);
+    expect(factLabels).not.toContain("Fulfilment date");
+    expect(factLabels).not.toContain("Payment date");
     expect(presentation.supplier.details).not.toContainEqual(
       expect.stringContaining("Commercial register")
     );

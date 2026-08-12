@@ -14,9 +14,10 @@ The current reservation experience does not yet collect a complete reservation-s
 
 ## Invoice requirements
 
-An issued invoice is a separate immutable business record. It owns a unique invoice number, issue time, successful payment, customer, reservation, and the exact document facts used for rendering.
+An issued invoice is a separate immutable business record. It owns a unique invoice number, issue time, successful payment, completed access-code delivery, customer, reservation, and the exact document facts used for rendering.
 
 - A successful reservation payment may have at most one invoice.
+- An invoice may be issued only after the customer access code has been delivered. Its fulfilment date is the date of that recorded delivery, not the date for which the workspace was reserved.
 - Repeated or concurrent issuance returns the same invoice rather than consuming another number.
 - Invoice numbers use the annual `WS-FV-YYYY-NNNNNN` sequence in Prague time. Committed numbers are never reused and failed issuance does not consume a number.
 - Rendering the same issued record always produces the same document even after customer, catalog, or reservation data changes.

@@ -94,6 +94,7 @@ export const assertInvoicePersistence = Effect.gen(function* () {
   yield* assertIdempotentIssuance(db, repository);
   yield* assertUniqueNumbering(db, repository);
   yield* assertIneligiblePayment(db, repository);
+  yield* assertUnfulfilledReservation(db, repository);
   yield* assertDifferentAttemptRejected(db, repository);
   yield* assertFailedInsertionRollsBackNumber(db, repository);
 }).pipe(
@@ -140,6 +141,15 @@ const assertIdempotentIssuance = (
 
     const issued = results[0]?.invoice;
     ok(issued);
+    ok(issued.document.fulfilledAt);
+    ok(fixture.fulfilledAt);
+    equal(
+      Temporal.Instant.compare(
+        Temporal.Instant.from(issued.document.fulfilledAt),
+        fixture.fulfilledAt
+      ),
+      0
+    );
     const numberingYear = getInvoiceNumberingYear(issued.issuedAt);
     const countersAfter = yield* readCounters(db);
     equal(
@@ -227,6 +237,24 @@ const assertIneligiblePayment = (
 ) =>
   Effect.gen(function* () {
     const fixture = yield* createPaidFixture(db, { paid: false });
+    const before = yield* readCounters(db);
+    const error = yield* Effect.flip(
+      repository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
+    );
+
+    ok(isTaggedError("InvoiceEligibilityError")(error));
+    deepStrictEqual(yield* readCounters(db), before);
+  });
+
+const assertUnfulfilledReservation = (
+  db: DatabaseClient,
+  repository: IInvoiceRepository
+) =>
+  Effect.gen(function* () {
+    const fixture = yield* createPaidFixture(db, { fulfilled: false });
     const before = yield* readCounters(db);
     const error = yield* Effect.flip(
       repository.issue({
@@ -367,10 +395,11 @@ const makeInvoiceRepository = (input: {
 
 const createPaidFixture = (
   db: DatabaseClient,
-  options: { readonly paid?: boolean } = {}
+  options: { readonly fulfilled?: boolean; readonly paid?: boolean } = {}
 ) =>
   Effect.gen(function* () {
     const paid = options.paid ?? true;
+    const fulfilled = options.fulfilled ?? paid;
     const reservationId = workspaceReservationIdSchema.make(randomUUID());
     const paymentAttemptId = paymentAttemptIdSchema.make(randomUUID());
     const dotyposCustomerId = DotyposCustomerIdSchema.make(
@@ -400,7 +429,11 @@ const createPaidFixture = (
           customerAccessCode: randomUUID(),
           reservationState: paid ? "confirmed" : "held",
           paymentState: paid ? "paid" : "pending",
-          fulfillmentState: "not_started",
+          fulfillmentState: fulfilled
+            ? "fulfilled"
+            : paid
+              ? "processing"
+              : "not_started",
           activePaymentAttemptId: paymentAttemptId,
           reservationDetails: {
             kind: "cowork",
@@ -411,6 +444,7 @@ const createPaidFixture = (
           reservationCreatedAt: now,
           reservationConfirmedAt: paid ? now : null,
           paidAt: paid ? now : null,
+          fulfilledAt: fulfilled ? now : null,
         });
         yield* tx.insert(paymentAttempts).values({
           id: paymentAttemptId,
@@ -441,6 +475,7 @@ const createPaidFixture = (
       reservationId,
       dotyposCustomerId,
       dotyposReservationId,
+      fulfilledAt: fulfilled ? now : null,
     };
   });
 

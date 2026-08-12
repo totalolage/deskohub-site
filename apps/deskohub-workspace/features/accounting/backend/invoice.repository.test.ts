@@ -43,7 +43,10 @@ describe("invoice repository persistence contract", () => {
     expect(issue).toContain('locked.reservationPaymentState !== "paid"');
     expect(issue).toContain("locked.activePaymentAttemptId");
     expect(issue).toContain("locked.paidAt === null");
+    expect(issue).toContain('locked.fulfillmentState !== "fulfilled"');
+    expect(issue).toContain("locked.fulfilledAt === null");
     expect(issue).toContain("paidAt: locked.paidAt");
+    expect(issue).toContain("fulfilledAt: locked.fulfilledAt");
     expect(issue.indexOf("invoiceDocumentSchema")).toBeLessThan(
       issue.indexOf("encryptAccountingSnapshot(")
     );
