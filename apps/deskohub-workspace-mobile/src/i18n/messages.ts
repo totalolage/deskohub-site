@@ -19,7 +19,7 @@ const en = {
   offlineBody:
     "The shop service is unavailable. You can review the menu and cart, but payment needs a live connection.",
   signInKicker: "SELF-SERVICE FRIDGE",
-  signInTitle: "Take what you need. Settle up in seconds.",
+  signInTitle: "Everything you need, settled in seconds.",
   signInBody:
     "The shop is available on every day you have a Deskohub Workspace reservation. Sign in with the same email you used to book.",
   emailLabel: "Reservation email",
@@ -51,8 +51,8 @@ const en = {
     "Your previous purchases are still available in Purchase history.",
   signedInAs: "Signed in as {email}",
   shopGreeting: "Good to see you",
-  shopTitle: "What are you taking?",
-  shopSubtitle: "Choose the items you took from the fridge or shelf.",
+  shopTitle: "What would you like to add?",
+  shopSubtitle: "Choose the items for this purchase.",
   accessToday: "Shop open today",
   accessUntil: "Access lasts until midnight Prague time",
   searchLabel: "Search menu",
@@ -75,10 +75,10 @@ const en = {
   cartView: "Review cart",
   cartEmptyTitle: "Your cart is ready when you are",
   cartEmptyBody:
-    "Add each item you took. Nothing is charged until you confirm payment.",
+    "Add each item to this purchase. Nothing is charged until you confirm payment.",
   backToShop: "Browse the shop",
   reviewKicker: "REVIEW",
-  reviewTitle: "Check what you took",
+  reviewTitle: "Check your items",
   reviewBody:
     "We’ll confirm current prices with the server before opening secure payment.",
   localEstimate: "Estimated total",
@@ -105,7 +105,7 @@ const en = {
     "If you already paid, return here and check again. Confirmation can take a moment.",
   paymentPaidTitle: "Paid. You’re all set.",
   paymentPaidBody:
-    "A receipt email has been sent. Thanks for keeping the fridge honest.",
+    "Your payment was verified and the receipt was sent by email.",
   paymentFailedTitle: "Payment wasn’t completed",
   paymentFailedBody:
     "Nothing was marked as paid. Return to your cart when you’re ready to try again.",
@@ -186,7 +186,7 @@ const cs: Record<MessageKey, string> = {
   offlineBody:
     "Služba obchodu není dostupná. Nabídku a košík můžete procházet, ale k platbě je potřeba živé připojení.",
   signInKicker: "SAMOOBSLUŽNÁ LEDNICE",
-  signInTitle: "Vezměte si, co chcete. Zaplaťte za pár vteřin.",
+  signInTitle: "Vše, co potřebujete, zaplatíte za pár vteřin.",
   signInBody:
     "Obchod je dostupný každý den, kdy máte rezervaci v Deskohub Workspace. Přihlaste se e-mailem použitým při rezervaci.",
   emailLabel: "E-mail rezervace",
@@ -216,8 +216,8 @@ const cs: Record<MessageKey, string> = {
   lockedHistory: "Předchozí nákupy najdete i nadále v historii.",
   signedInAs: "Přihlášeno jako {email}",
   shopGreeting: "Rádi vás vidíme",
-  shopTitle: "Co jste si vzali?",
-  shopSubtitle: "Vyberte položky, které jste si vzali z lednice nebo police.",
+  shopTitle: "Co chcete přidat?",
+  shopSubtitle: "Vyberte položky pro tento nákup.",
   accessToday: "Obchod je dnes otevřený",
   accessUntil: "Přístup platí do půlnoci pražského času",
   searchLabel: "Hledat v nabídce",
@@ -240,10 +240,10 @@ const cs: Record<MessageKey, string> = {
   cartView: "Zkontrolovat košík",
   cartEmptyTitle: "Košík je připravený",
   cartEmptyBody:
-    "Přidejte každou věc, kterou jste si vzali. Nic neúčtujeme, dokud nepotvrdíte platbu.",
+    "Přidejte položky do tohoto nákupu. Nic neúčtujeme, dokud nepotvrdíte platbu.",
   backToShop: "Procházet obchod",
   reviewKicker: "KONTROLA",
-  reviewTitle: "Zkontrolujte, co jste si vzali",
+  reviewTitle: "Zkontrolujte položky",
   reviewBody:
     "Před otevřením bezpečné platby ověříme aktuální ceny na serveru.",
   localEstimate: "Odhad celkem",
@@ -269,8 +269,7 @@ const cs: Record<MessageKey, string> = {
   paymentPendingBody:
     "Pokud už jste zaplatili, vraťte se sem a zkontrolujte stav znovu. Potvrzení může chvíli trvat.",
   paymentPaidTitle: "Zaplaceno. Hotovo.",
-  paymentPaidBody:
-    "Účtenku jsme poslali e-mailem. Díky, že pomáháte udržovat lednici férovou.",
+  paymentPaidBody: "Platbu jsme ověřili a účtenku poslali e-mailem.",
   paymentFailedTitle: "Platba nebyla dokončena",
   paymentFailedBody:
     "Nic jsme neoznačili jako zaplacené. Až budete chtít, vraťte se do košíku a zkuste to znovu.",

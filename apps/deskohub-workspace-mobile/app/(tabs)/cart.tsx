@@ -1,8 +1,10 @@
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-import { AppScreen, ScreenIntro } from "@/components/AppScreen";
+import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
 import {
   ActionButton,
@@ -10,7 +12,8 @@ import {
   StatePanel,
   StatusBanner,
 } from "@/components/Controls";
-import { OrderLines, SellerDetails } from "@/components/PurchaseComponents";
+import { ProductThumbnail } from "@/components/ProductCard";
+import { SellerDetails } from "@/components/PurchaseComponents";
 import { QuantityStepper } from "@/components/QuantityStepper";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
@@ -38,8 +41,10 @@ export default function CartScreen() {
 
   if (cart.length === 0) {
     return (
-      <AppScreen header={false}>
-        <BackHeader />
+      <AppScreen
+        header={false}
+        navigationHeader={<BackHeader title={t("cartTitle")} />}
+      >
         <StatePanel
           action={
             <ActionButton
@@ -68,14 +73,30 @@ export default function CartScreen() {
     if (handoff) router.push(`/payment/${encodeURIComponent(handoff.orderId)}`);
   };
 
+  const displayedTotal = quote?.total ?? {
+    currency: "CZK" as const,
+    minorUnits: localTotal,
+  };
+
   return (
-    <AppScreen header={false}>
-      <BackHeader />
-      <ScreenIntro
-        kicker={t("reviewKicker")}
-        title={t("reviewTitle")}
-        body={t("reviewBody")}
-      />
+    <AppScreen
+      footer={
+        <SafeAreaView edges={["bottom"]} style={styles.checkoutSafeArea}>
+          <View style={styles.checkoutDock}>
+            <ActionButton
+              disabled={!quote || !isOnline}
+              label={isActionPending ? t("startingPayment") : t("startPayment")}
+              loading={isActionPending && Boolean(quote)}
+              onPress={() => void beginPayment()}
+              variant="payment"
+            />
+          </View>
+        </SafeAreaView>
+      }
+      header={false}
+      navigationHeader={<BackHeader title={t("cartTitle")} />}
+    >
+      <Text style={styles.reviewBody}>{t("reviewBody")}</Text>
       {actionError && (
         <StatusBanner
           body={t("errorBody")}
@@ -88,10 +109,15 @@ export default function CartScreen() {
           const name = localizeText(product.name, locale);
           return (
             <View key={product.id} style={styles.editLine}>
+              <ProductThumbnail product={product} size={54} />
               <View style={styles.editCopy}>
                 <Text style={styles.editName}>{name}</Text>
                 <Text style={styles.editPrice}>
-                  {formatMoney(product.price, locale)}
+                  {formatMoney(
+                    quote?.lines.find((line) => line.productId === product.id)
+                      ?.unitPrice ?? product.price,
+                    locale
+                  )}
                 </Text>
               </View>
               <QuantityStepper
@@ -106,12 +132,18 @@ export default function CartScreen() {
           );
         })}
       </View>
-      <View style={styles.estimate}>
-        <Text style={styles.estimateLabel}>{t("localEstimate")}</Text>
-        <Text style={styles.estimateValue}>
-          {formatMoney({ currency: "CZK", minorUnits: localTotal }, locale)}
+      <Animated.View
+        entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
+        key={displayedTotal.minorUnits}
+        style={styles.estimate}
+      >
+        <Text style={styles.estimateLabel}>
+          {quote ? t("confirmedTotal") : t("localEstimate")}
         </Text>
-      </View>
+        <Text style={styles.estimateValue}>
+          {formatMoney(displayedTotal, locale)}
+        </Text>
+      </Animated.View>
       {isActionPending && !quote && (
         <View style={styles.quoteLoading}>
           <Text style={styles.quoteLoadingText}>{t("quoteRefreshing")}</Text>
@@ -120,26 +152,12 @@ export default function CartScreen() {
       )}
       {quote && (
         <View style={styles.confirmed}>
-          <OrderLines lines={quote.lines} />
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>{t("confirmedTotal")}</Text>
-            <Text style={styles.totalValue}>
-              {formatMoney(quote.total, locale)}
-            </Text>
-          </View>
           <SellerDetails seller={quote.seller} />
         </View>
       )}
       {!isOnline && (
         <StatusBanner title={t("paymentOnlineOnly")} tone="warning" />
       )}
-      <ActionButton
-        disabled={!quote || !isOnline}
-        label={isActionPending ? t("startingPayment") : t("startPayment")}
-        loading={isActionPending && Boolean(quote)}
-        onPress={() => void beginPayment()}
-        style={styles.payButton}
-      />
     </AppScreen>
   );
 }
@@ -147,7 +165,9 @@ export default function CartScreen() {
 const styles = StyleSheet.create({
   editLines: {
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
   editLine: {
@@ -156,30 +176,39 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 80,
-    padding: spacing.md,
+    minHeight: 96,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   editCopy: { flex: 1 },
   editName: { ...type.bodyStrong, color: palette.navy },
   editPrice: { ...type.caption, color: palette.navyMuted },
   estimate: {
+    alignItems: "center",
+    borderBottomColor: palette.outline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.lg,
   },
   estimateLabel: { ...type.label, color: palette.navyMuted },
-  estimateValue: { ...type.bodyStrong, color: palette.navy },
+  estimateValue: { ...type.headline, color: palette.navy },
   quoteLoading: { gap: spacing.sm, marginTop: spacing.md },
   quoteLoadingText: { ...type.caption, color: palette.navyMuted },
   confirmed: { gap: spacing.md, marginTop: spacing.md },
-  totalRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.xs,
+  reviewBody: {
+    ...type.body,
+    color: palette.navyMuted,
+    marginBottom: spacing.md,
+    maxWidth: 680,
   },
-  totalLabel: { ...type.title, color: palette.navy },
-  totalValue: { ...type.headline, color: palette.navy },
-  payButton: { marginTop: spacing.lg },
+  checkoutSafeArea: { backgroundColor: palette.paper },
+  checkoutDock: {
+    backgroundColor: palette.paper,
+    borderTopColor: palette.outline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
 });

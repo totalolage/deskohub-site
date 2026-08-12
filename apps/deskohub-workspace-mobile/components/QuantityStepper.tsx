@@ -61,15 +61,17 @@ export function QuantityStepper({
 const styles = StyleSheet.create({
   container: {
     alignItems: "center",
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: radii.full,
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: 1,
     flexDirection: "row",
     gap: spacing.xxs,
   },
   containerCompact: { alignSelf: "flex-start" },
   button: {
     alignItems: "center",
-    borderRadius: radii.full,
+    borderRadius: radii.sm,
     height: 48,
     justifyContent: "center",
     width: 48,
@@ -86,6 +88,6 @@ const styles = StyleSheet.create({
     minWidth: 24,
     textAlign: "center",
   },
-  pressed: { backgroundColor: palette.silver },
+  pressed: { backgroundColor: palette.surfaceMuted },
   disabled: { opacity: 0.35 },
 });

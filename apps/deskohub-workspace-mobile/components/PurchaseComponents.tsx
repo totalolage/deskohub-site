@@ -1,6 +1,12 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
-import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
+import { palette, radii, spacing, type } from "@/constants/Theme";
 import {
   formatMoney,
   formatPragueDateTime,
@@ -69,35 +75,54 @@ export function PurchaseRow({
   onPress: () => void;
 }) {
   const { locale, t } = useShop();
+  let statusMarkStyle: ViewStyle = styles.statusNeutral;
+  let statusMark = "×";
+  if (purchase.status === "paid") {
+    statusMarkStyle = styles.statusPaid;
+    statusMark = "✓";
+  } else if (purchase.status === "payment_pending") {
+    statusMarkStyle = styles.statusPending;
+    statusMark = "◷";
+  } else if (purchase.status === "failed") {
+    statusMarkStyle = styles.statusFailed;
+  }
   return (
     <Pressable
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.purchaseRow, pressed && styles.pressed]}
     >
-      <View style={styles.purchaseTopline}>
-        <Text style={styles.purchaseId}>
-          {t("orderNumber", { id: purchase.publicReference })}
-        </Text>
-        <PurchaseStatusBadge status={purchase.status} />
+      <View style={[styles.statusIcon, statusMarkStyle]}>
+        <Text style={styles.statusIconText}>{statusMark}</Text>
       </View>
-      <Text style={styles.purchaseDate}>
-        {t("purchasedAt", {
-          date: formatPragueDateTime(purchase.createdAt, locale),
-        })}
+      <View style={styles.purchaseCopy}>
+        <View style={styles.purchaseTopline}>
+          <Text style={styles.purchaseId}>
+            {t("orderNumber", { id: purchase.publicReference })}
+          </Text>
+          <Text style={styles.purchaseTotal}>
+            {formatMoney(purchase.total, locale)}
+          </Text>
+        </View>
+        <Text style={styles.purchaseDate}>
+          {t("purchasedAt", {
+            date: formatPragueDateTime(purchase.createdAt, locale),
+          })}
+        </Text>
+        <View style={styles.purchaseBottomline}>
+          <Text numberOfLines={1} style={styles.purchaseItems}>
+            {purchase.lines
+              .map(
+                (line) => `${line.quantity}× ${localizeText(line.name, locale)}`
+              )
+              .join(" · ")}
+          </Text>
+          <PurchaseStatusBadge status={purchase.status} />
+        </View>
+      </View>
+      <Text aria-hidden style={styles.rowChevron}>
+        ›
       </Text>
-      <View style={styles.purchaseBottomline}>
-        <Text numberOfLines={1} style={styles.purchaseItems}>
-          {purchase.lines
-            .map(
-              (line) => `${line.quantity}× ${localizeText(line.name, locale)}`
-            )
-            .join(" · ")}
-        </Text>
-        <Text style={styles.purchaseTotal}>
-          {formatMoney(purchase.total, locale)}
-        </Text>
-      </View>
     </Pressable>
   );
 }
@@ -156,31 +181,51 @@ const styles = StyleSheet.create({
   },
   badgeText: { ...type.caption, fontWeight: "700" },
   purchaseRow: {
-    ...elevation.card,
+    alignItems: "center",
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
-    gap: spacing.xxs,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    gap: spacing.sm,
+    minHeight: 112,
     padding: spacing.md,
   },
+  purchaseCopy: { flex: 1, gap: spacing.xxs },
   purchaseTopline: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  purchaseId: { ...type.bodyStrong, color: palette.navy },
+  purchaseId: { ...type.bodyStrong, color: palette.navy, flex: 1 },
   purchaseDate: { ...type.caption, color: palette.navyMuted },
   purchaseBottomline: {
-    alignItems: "flex-end",
+    alignItems: "center",
     flexDirection: "row",
     gap: spacing.sm,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   purchaseItems: { ...type.caption, color: palette.navyMuted, flex: 1 },
   purchaseTotal: { ...type.bodyStrong, color: palette.navy },
+  statusIcon: {
+    alignItems: "center",
+    borderRadius: radii.full,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  statusPaid: { backgroundColor: palette.successSurface },
+  statusPending: { backgroundColor: palette.warningSurface },
+  statusFailed: { backgroundColor: palette.dangerSurface },
+  statusNeutral: { backgroundColor: palette.surfaceMuted },
+  statusIconText: { color: palette.navy, fontSize: 22, fontWeight: "800" },
+  rowChevron: { color: palette.navyMuted, fontSize: 28 },
   pressed: { opacity: 0.75 },
   lines: {
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     overflow: "hidden",
   },
   line: {
@@ -197,8 +242,10 @@ const styles = StyleSheet.create({
   lineMeta: { ...type.caption, color: palette.navyMuted },
   lineTotal: { ...type.bodyStrong, color: palette.navy },
   seller: {
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: 2,
     padding: spacing.md,
   },

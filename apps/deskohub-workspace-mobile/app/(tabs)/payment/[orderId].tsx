@@ -1,6 +1,11 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import Animated, {
+  FadeInUp,
+  ReduceMotion,
+  ZoomIn,
+} from "react-native-reanimated";
 
 import { AppScreen, ScreenIntro } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
@@ -40,8 +45,10 @@ export default function PaymentScreen() {
 
   if (!normalizedOrderId) {
     return (
-      <AppScreen header={false}>
-        <BackHeader />
+      <AppScreen
+        header={false}
+        navigationHeader={<BackHeader title={t("paymentKicker")} />}
+      >
         <StatePanel body={t("errorBody")} mark="!" title={t("errorTitle")} />
       </AppScreen>
     );
@@ -60,30 +67,49 @@ export default function PaymentScreen() {
 
   if (purchase?.status === "paid") {
     return (
-      <AppScreen header={false}>
-        <BackHeader />
-        <StatePanel
-          action={
-            <View style={styles.actions}>
-              <ActionButton
-                label={t("viewPurchase")}
-                onPress={() =>
-                  router.replace(
-                    `/purchase/${encodeURIComponent(normalizedOrderId)}`
-                  )
-                }
-              />
-              <ActionButton
-                label={t("returnToShop")}
-                onPress={() => router.replace("/")}
-                variant="secondary"
-              />
-            </View>
-          }
-          body={t("paymentPaidBody")}
-          mark="✓"
-          title={t("paymentPaidTitle")}
-        />
+      <AppScreen
+        header={false}
+        navigationHeader={<BackHeader title={t("paymentKicker")} />}
+      >
+        <Animated.View
+          entering={FadeInUp.duration(220).reduceMotion(ReduceMotion.System)}
+          style={styles.paidHero}
+        >
+          <Animated.View
+            entering={ZoomIn.duration(260).reduceMotion(ReduceMotion.System)}
+            style={styles.paidMark}
+          >
+            <Text style={styles.paidMarkText}>✓</Text>
+          </Animated.View>
+          <Text accessibilityRole="header" style={styles.paidTitle}>
+            {t("paymentPaidTitle")}
+          </Text>
+          <Text style={styles.paidAmount}>
+            {formatMoney(purchase.total, locale)}
+          </Text>
+          <Text style={styles.paidBody}>{t("paymentPaidBody")}</Text>
+        </Animated.View>
+        <View style={styles.paidSummary}>
+          <Text style={styles.summaryLabel}>
+            {t("orderNumber", { id: purchase.publicReference })}
+          </Text>
+          <Text style={styles.summarySeller}>{purchase.seller.legalName}</Text>
+        </View>
+        <View style={styles.actions}>
+          <ActionButton
+            label={t("viewPurchase")}
+            onPress={() =>
+              router.replace(
+                `/purchase/${encodeURIComponent(normalizedOrderId)}`
+              )
+            }
+          />
+          <ActionButton
+            label={t("returnToShop")}
+            onPress={() => router.replace("/")}
+            variant="secondary"
+          />
+        </View>
       </AppScreen>
     );
   }
@@ -94,8 +120,10 @@ export default function PaymentScreen() {
     purchase?.status === "expired"
   ) {
     return (
-      <AppScreen header={false}>
-        <BackHeader />
+      <AppScreen
+        header={false}
+        navigationHeader={<BackHeader title={t("paymentKicker")} />}
+      >
         <StatePanel
           action={
             <ActionButton
@@ -112,10 +140,11 @@ export default function PaymentScreen() {
   }
 
   return (
-    <AppScreen header={false}>
-      <BackHeader />
+    <AppScreen
+      header={false}
+      navigationHeader={<BackHeader title={t("paymentKicker")} />}
+    >
       <ScreenIntro
-        kicker={t("paymentKicker")}
         title={t("paymentReadyTitle")}
         body={t("paymentReadyBody")}
       />
@@ -151,6 +180,7 @@ export default function PaymentScreen() {
         loading={isActionPending}
         onPress={() => void check()}
         style={styles.primaryAction}
+        variant="payment"
       />
     </AppScreen>
   );
@@ -159,7 +189,9 @@ export default function PaymentScreen() {
 const styles = StyleSheet.create({
   paymentCard: {
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
     padding: spacing.lg,
   },
@@ -172,5 +204,52 @@ const styles = StyleSheet.create({
   amount: { ...type.display, color: palette.navy, marginTop: spacing.md },
   paymentHint: { ...type.body, color: palette.navyMuted },
   primaryAction: { marginTop: spacing.md },
-  actions: { gap: spacing.sm },
+  actions: {
+    alignSelf: "center",
+    gap: spacing.sm,
+    maxWidth: 560,
+    width: "100%",
+  },
+  paidHero: {
+    alignItems: "center",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xl,
+  },
+  paidMark: {
+    alignItems: "center",
+    backgroundColor: palette.success,
+    borderRadius: radii.full,
+    height: 104,
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+    width: 104,
+  },
+  paidMarkText: { color: palette.white, fontSize: 52, fontWeight: "700" },
+  paidTitle: { ...type.display, color: palette.navy, textAlign: "center" },
+  paidAmount: {
+    ...type.headline,
+    color: palette.navy,
+    marginTop: spacing.sm,
+  },
+  paidBody: {
+    ...type.body,
+    color: palette.navyMuted,
+    marginTop: spacing.sm,
+    maxWidth: 520,
+    textAlign: "center",
+  },
+  paidSummary: {
+    alignSelf: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    marginBottom: spacing.lg,
+    maxWidth: 560,
+    padding: spacing.md,
+    width: "100%",
+  },
+  summaryLabel: { ...type.label, color: palette.navy },
+  summarySeller: { ...type.caption, color: palette.navyMuted },
 });

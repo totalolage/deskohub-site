@@ -2,7 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { AppScreen, ScreenIntro } from "@/components/AppScreen";
+import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
 import { StatePanel, StatusBanner } from "@/components/Controls";
 import {
@@ -29,8 +29,10 @@ export default function PurchaseDetailScreen() {
 
   if (!purchase) {
     return (
-      <AppScreen header={false}>
-        <BackHeader />
+      <AppScreen
+        header={false}
+        navigationHeader={<BackHeader title={t("orderDetailTitle")} />}
+      >
         {actionError && (
           <StatePanel body={t("errorBody")} mark="!" title={t("errorTitle")} />
         )}
@@ -46,14 +48,15 @@ export default function PurchaseDetailScreen() {
   }
 
   return (
-    <AppScreen header={false}>
-      <BackHeader />
-      <ScreenIntro
-        title={t("orderDetailTitle")}
-        body={t("purchasedAt", {
+    <AppScreen
+      header={false}
+      navigationHeader={<BackHeader title={t("orderDetailTitle")} />}
+    >
+      <Text style={styles.purchaseDate}>
+        {t("purchasedAt", {
           date: formatPragueDateTime(purchase.createdAt, locale),
         })}
-      />
+      </Text>
       <View style={styles.summary}>
         <View style={styles.summaryTopline}>
           <Text style={styles.orderId}>
@@ -79,8 +82,10 @@ export default function PurchaseDetailScreen() {
 
 const styles = StyleSheet.create({
   summary: {
-    backgroundColor: palette.navy,
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.lg,
     marginBottom: spacing.md,
     padding: spacing.lg,
@@ -90,7 +95,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  orderId: { ...type.bodyStrong, color: palette.white },
-  total: { ...type.display, color: palette.aquamarine },
+  orderId: { ...type.bodyStrong, color: palette.navy },
+  total: { ...type.display, color: palette.navy },
+  purchaseDate: {
+    ...type.body,
+    color: palette.navyMuted,
+    marginBottom: spacing.md,
+  },
   gap: { height: spacing.md },
 });

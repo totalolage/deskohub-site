@@ -1,6 +1,8 @@
-import { StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View } from "react-native";
 
-import { palette, radii, spacing, type } from "@/constants/Theme";
+import { palette, spacing } from "@/constants/Theme";
+
+const logo = require("../assets/images/icon.png");
 
 export function Brand({
   inverse = false,
@@ -17,11 +19,12 @@ export function Brand({
       accessibilityRole="image"
       style={styles.row}
     >
-      <View style={[styles.mark, inverse && styles.markInverse]}>
-        <Text style={[styles.markText, inverse && styles.markTextInverse]}>
-          DW
-        </Text>
-      </View>
+      <Image
+        accessibilityIgnoresInvertColors
+        resizeMode="contain"
+        source={logo}
+        style={styles.mark}
+      />
       {!compact && (
         <View>
           <Text style={[styles.name, { color: foreground }]}>Deskohub</Text>
@@ -39,35 +42,20 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   mark: {
-    alignItems: "center",
-    backgroundColor: palette.navy,
-    borderRadius: radii.sm,
     height: 44,
-    justifyContent: "center",
     width: 44,
   },
-  markInverse: {
-    backgroundColor: palette.aquamarine,
-  },
-  markText: {
-    ...type.label,
-    color: palette.white,
-    letterSpacing: -0.2,
-  },
-  markTextInverse: {
-    color: palette.navy,
-  },
   name: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: "800",
-    letterSpacing: 0.1,
-    lineHeight: 19,
+    letterSpacing: -0.2,
+    lineHeight: 20,
   },
   subname: {
-    fontSize: 12,
-    fontWeight: "600",
-    letterSpacing: 0.9,
-    lineHeight: 16,
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1.35,
+    lineHeight: 14,
     textTransform: "uppercase",
   },
 });

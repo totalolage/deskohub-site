@@ -1,18 +1,18 @@
 import { useState } from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 
-import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
+import { palette, radii, spacing, type } from "@/constants/Theme";
 import { formatMoney, localizeText } from "@/src/domain/format";
 import type { Product } from "@/src/domain/shop";
 import { useShop } from "@/src/state/shop-provider";
-import { ActionButton } from "./Controls";
 import { QuantityStepper } from "./QuantityStepper";
 
 const swatches = {
-  aqua: { background: "#D8F8EA", foreground: palette.aquamarineInk },
-  orange: { background: "#FCE3D7", foreground: palette.orangeInk },
-  yellow: { background: "#FFF0D1", foreground: palette.orangeInk },
-  navy: { background: "#E8E8F2", foreground: palette.navy },
+  aqua: "#D8F8EA",
+  orange: "#FCE3D7",
+  yellow: "#FFF0D1",
+  navy: "#E8E8F2",
 } as const;
 
 export function ProductCard({
@@ -24,29 +24,10 @@ export function ProductCard({
 }) {
   const { locale, setProductQuantity, t } = useShop();
   const name = localizeText(product.name, locale);
-  const swatch = swatches[product.color];
-  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
 
   return (
     <View style={styles.card}>
-      <View
-        style={[styles.productMark, { backgroundColor: swatch.background }]}
-      >
-        {product.imageUrl && product.imageUrl !== failedImageUrl ? (
-          <Image
-            accessibilityIgnoresInvertColors
-            accessible={false}
-            onError={() => setFailedImageUrl(product.imageUrl ?? null)}
-            resizeMode="cover"
-            source={{ uri: product.imageUrl }}
-            style={styles.productImage}
-          />
-        ) : (
-          <Text style={[styles.productInitials, { color: swatch.foreground }]}>
-            {product.initials}
-          </Text>
-        )}
-      </View>
+      <ProductThumbnail product={product} />
       <View style={styles.copy}>
         <Text style={styles.name}>{name}</Text>
         <Text style={styles.description}>
@@ -55,21 +36,73 @@ export function ProductCard({
         <Text style={styles.price}>{formatMoney(product.price, locale)}</Text>
       </View>
       {quantity === 0 && (
-        <ActionButton
-          label={t("add")}
-          onPress={() => setProductQuantity(product.id, 1)}
-          style={styles.addButton}
-          variant="secondary"
-        />
+        <Animated.View
+          entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
+        >
+          <Pressable
+            accessibilityLabel={`${t("add")}: ${name}`}
+            accessibilityRole="button"
+            onPress={() => setProductQuantity(product.id, 1)}
+            style={({ pressed }) => [
+              styles.addButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.addIcon}>+</Text>
+          </Pressable>
+        </Animated.View>
       )}
       {quantity > 0 && (
-        <QuantityStepper
-          compact
-          productName={name}
-          quantity={quantity}
-          onChange={(nextQuantity) =>
-            setProductQuantity(product.id, nextQuantity)
-          }
+        <Animated.View
+          entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
+        >
+          <QuantityStepper
+            compact
+            productName={name}
+            quantity={quantity}
+            onChange={(nextQuantity) =>
+              setProductQuantity(product.id, nextQuantity)
+            }
+          />
+        </Animated.View>
+      )}
+    </View>
+  );
+}
+
+export function ProductThumbnail({
+  product,
+  size = 60,
+}: {
+  product: Product;
+  size?: number;
+}) {
+  const swatch = swatches[product.color];
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+
+  return (
+    <View
+      style={[
+        styles.productMark,
+        { backgroundColor: swatch, height: size + 16, width: size },
+      ]}
+    >
+      {product.imageUrl && product.imageUrl !== failedImageUrl ? (
+        <Image
+          accessibilityIgnoresInvertColors
+          accessible={false}
+          onError={() => setFailedImageUrl(product.imageUrl ?? null)}
+          resizeMode="contain"
+          source={{ uri: product.imageUrl }}
+          style={styles.productImage}
+        />
+      ) : (
+        <Image
+          accessibilityIgnoresInvertColors
+          accessible={false}
+          resizeMode="contain"
+          source={require("../assets/images/icon.png")}
+          style={styles.placeholderImage}
         />
       )}
     </View>
@@ -78,26 +111,25 @@ export function ProductCard({
 
 const styles = StyleSheet.create({
   card: {
-    ...elevation.card,
+    alignItems: "center",
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
     gap: spacing.md,
-    minHeight: 220,
-    padding: spacing.md,
+    minHeight: 100,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.sm,
   },
   productMark: {
     alignItems: "center",
-    alignSelf: "stretch",
     borderRadius: radii.sm,
-    height: 76,
+    flexShrink: 0,
     justifyContent: "center",
     overflow: "hidden",
   },
-  productInitials: {
-    fontSize: 28,
-    fontWeight: "900",
-    letterSpacing: -0.5,
-  },
+  placeholderImage: { height: "72%", width: "72%" },
   productImage: {
     height: "100%",
     width: "100%",
@@ -106,7 +138,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    ...type.title,
+    ...type.bodyStrong,
     color: palette.navy,
   },
   description: {
@@ -117,9 +149,16 @@ const styles = StyleSheet.create({
   price: {
     ...type.bodyStrong,
     color: palette.navy,
-    marginTop: spacing.sm,
+    marginTop: spacing.xs,
   },
   addButton: {
-    minHeight: 48,
+    alignItems: "center",
+    backgroundColor: palette.sunset,
+    borderRadius: radii.sm,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
   },
+  addIcon: { color: palette.navy, fontSize: 28, fontWeight: "500" },
+  pressed: { opacity: 0.72 },
 });

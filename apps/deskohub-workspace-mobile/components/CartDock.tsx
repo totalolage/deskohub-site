@@ -1,4 +1,6 @@
+import { SymbolView } from "expo-symbols";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 
 import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
@@ -11,15 +13,29 @@ export function CartDock({ onPress }: { onPress: () => void }) {
   const total = getLocalCartTotal(cart, catalog.products);
 
   return (
-    <View style={styles.wrap}>
+    <Animated.View
+      entering={FadeInDown.duration(180).reduceMotion(ReduceMotion.System)}
+      style={styles.wrap}
+    >
       <Pressable
         accessibilityLabel={`${t("cartView")}, ${cartQuantity === 1 ? t("cartItem") : t("cartItems", { count: cartQuantity })}`}
         accessibilityRole="button"
         onPress={onPress}
         style={({ pressed }) => [styles.dock, pressed && styles.pressed]}
       >
-        <View style={styles.count}>
-          <Text style={styles.countText}>{cartQuantity}</Text>
+        <View style={styles.cartIcon}>
+          <SymbolView
+            name={{
+              ios: "basket",
+              android: "shopping_basket",
+              web: "shopping_basket",
+            }}
+            size={27}
+            tintColor={palette.white}
+          />
+          <View style={styles.count}>
+            <Text style={styles.countText}>{cartQuantity}</Text>
+          </View>
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{t("cartView")}</Text>
@@ -32,8 +48,11 @@ export function CartDock({ onPress }: { onPress: () => void }) {
         <Text style={styles.total}>
           {formatMoney({ currency: "CZK", minorUnits: total }, locale)}
         </Text>
+        <Text aria-hidden style={styles.chevron}>
+          ›
+        </Text>
       </Pressable>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -44,27 +63,39 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   dock: {
-    ...elevation.card,
+    ...elevation.floating,
     alignItems: "center",
     backgroundColor: palette.navy,
     borderRadius: radii.md,
     flexDirection: "row",
     gap: spacing.sm,
-    minHeight: 64,
+    minHeight: 68,
     paddingHorizontal: spacing.md,
+  },
+  cartIcon: {
+    alignItems: "center",
+    height: 44,
+    justifyContent: "center",
+    position: "relative",
+    width: 44,
   },
   count: {
     alignItems: "center",
     backgroundColor: palette.aquamarine,
     borderRadius: radii.full,
-    height: 36,
+    height: 22,
     justifyContent: "center",
-    width: 36,
+    minWidth: 22,
+    paddingHorizontal: 5,
+    position: "absolute",
+    right: -2,
+    top: 0,
   },
-  countText: { ...type.label, color: palette.navy },
+  countText: { color: palette.navy, fontSize: 11, fontWeight: "800" },
   copy: { flex: 1 },
   title: { ...type.label, color: palette.white },
   subtitle: { ...type.caption, color: "#D7D7E5" },
   total: { ...type.bodyStrong, color: palette.white },
+  chevron: { color: palette.white, fontSize: 28, marginLeft: spacing.xxs },
   pressed: { opacity: 0.82 },
 });

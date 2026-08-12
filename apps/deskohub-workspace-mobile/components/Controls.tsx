@@ -9,7 +9,7 @@ import {
   type ViewStyle,
 } from "react-native";
 
-import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
+import { palette, radii, spacing, type } from "@/constants/Theme";
 
 export function ActionButton({
   label,
@@ -24,12 +24,13 @@ export function ActionButton({
   onPress: () => void;
   disabled?: boolean;
   loading?: boolean;
-  variant?: "primary" | "secondary" | "text" | "danger";
+  variant?: "primary" | "payment" | "secondary" | "text" | "danger";
   style?: StyleProp<ViewStyle>;
   accessibilityHint?: string;
 }) {
   const variants = {
     primary: { button: styles.buttonPrimary, text: styles.buttonTextPrimary },
+    payment: { button: styles.buttonPayment, text: styles.buttonTextPrimary },
     secondary: {
       button: styles.buttonSecondary,
       text: styles.buttonTextSecondary,
@@ -55,7 +56,11 @@ export function ActionButton({
     >
       {loading && (
         <ActivityIndicator
-          color={variant === "primary" ? palette.white : palette.navy}
+          color={
+            variant === "primary" || variant === "payment"
+              ? palette.white
+              : palette.navy
+          }
         />
       )}
       <Text style={[styles.buttonLabel, selected.text]}>{label}</Text>
@@ -73,7 +78,7 @@ export function StatusBanner({
   tone?: "info" | "warning" | "success" | "error";
 }) {
   const tones = {
-    info: { backgroundColor: "#E8E8F2", color: palette.navy },
+    info: { backgroundColor: palette.infoSurface, color: palette.navy },
     warning: {
       backgroundColor: palette.warningSurface,
       color: palette.orangeInk,
@@ -191,6 +196,9 @@ const styles = StyleSheet.create({
   buttonPrimary: {
     backgroundColor: palette.navy,
   },
+  buttonPayment: {
+    backgroundColor: palette.orange,
+  },
   buttonSecondary: {
     backgroundColor: palette.surfaceMuted,
   },
@@ -211,7 +219,8 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.42 },
   banner: {
     borderRadius: radii.md,
-    gap: 2,
+    gap: spacing.xxs,
+    minHeight: 56,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
@@ -221,23 +230,22 @@ const styles = StyleSheet.create({
     alignItems: "center",
     flex: 1,
     justifyContent: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.xxl,
   },
   stateMark: {
     alignItems: "center",
-    backgroundColor: palette.navy,
-    borderRadius: radii.lg,
-    height: 72,
+    backgroundColor: palette.infoSurface,
+    borderRadius: radii.full,
+    height: 88,
     justifyContent: "center",
     marginBottom: spacing.lg,
-    transform: [{ rotate: "-3deg" }],
-    width: 72,
+    width: 88,
   },
   stateMarkText: {
-    color: palette.aquamarine,
-    fontSize: 22,
-    fontWeight: "900",
+    color: palette.navy,
+    fontSize: 32,
+    fontWeight: "800",
   },
   stateTitle: {
     ...type.headline,
@@ -269,20 +277,23 @@ const styles = StyleSheet.create({
   },
   pill: {
     alignItems: "center",
-    backgroundColor: palette.surfaceMuted,
-    borderRadius: radii.full,
-    minHeight: 38,
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    minHeight: 44,
     justifyContent: "center",
     paddingHorizontal: spacing.md,
   },
-  pillSelected: { backgroundColor: palette.navy },
+  pillSelected: { backgroundColor: palette.navy, borderColor: palette.navy },
   pillText: { ...type.label, color: palette.navyMuted },
   pillTextSelected: { color: palette.white },
   skeletonList: { gap: spacing.sm },
   skeletonRow: {
-    ...elevation.card,
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
     gap: spacing.md,
     padding: spacing.md,

@@ -7,6 +7,7 @@ FORM: An established-brand Operate surface using a compact Android navigation ba
 */
 
 import { router } from "expo-router";
+import { SymbolView } from "expo-symbols";
 import { useMemo, useState } from "react";
 import {
   Pressable,
@@ -53,11 +54,20 @@ function SignInState() {
     useShop();
 
   return (
-    <AppScreen header={false}>
+    <AppScreen>
       <View style={styles.signInShell}>
-        <Brand />
+        <View style={styles.signInMark}>
+          <SymbolView
+            name={{
+              ios: "basket",
+              android: "shopping_basket",
+              web: "shopping_basket",
+            }}
+            size={34}
+            tintColor={palette.navy}
+          />
+        </View>
         <View style={styles.signInHero}>
-          <Text style={styles.signInKicker}>{t("signInKicker")}</Text>
           <Text accessibilityRole="header" style={styles.signInTitle}>
             {t("signInTitle")}
           </Text>
@@ -107,7 +117,9 @@ function LockedState() {
   return (
     <AppScreen>
       <View style={styles.lockedTicket}>
-        <Text style={styles.lockedKicker}>{t("lockedKicker")}</Text>
+        <View style={styles.lockedMark}>
+          <Text style={styles.lockedMarkText}>⌁</Text>
+        </View>
         <Text accessibilityRole="header" style={styles.lockedTitle}>
           {t("lockedTitle")}
         </Text>
@@ -145,6 +157,7 @@ function CatalogState() {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const columns = width >= 680 ? 2 : 1;
+  const compact = width < 480;
 
   const products = useMemo(() => {
     if (!catalog) return [];
@@ -175,13 +188,17 @@ function CatalogState() {
       refreshing={isActionPending}
     >
       {!catalogIsStale && (
-        <View style={styles.accessTicket}>
-          <View style={styles.accessDot} />
+        <View
+          style={[styles.accessTicket, compact && styles.accessTicketCompact]}
+        >
+          <View style={styles.accessDot}>
+            <Text style={styles.accessDotText}>✓</Text>
+          </View>
           <View style={styles.accessCopy}>
             <Text style={styles.accessTitle}>{t("accessToday")}</Text>
             <Text style={styles.accessBody}>{t("accessUntil")}</Text>
           </View>
-          <Text style={styles.accessMonogram}>DW</Text>
+          <Text style={styles.accessChevron}>›</Text>
         </View>
       )}
       <ScreenIntro
@@ -200,19 +217,27 @@ function CatalogState() {
           tone="error"
         />
       )}
-      <TextInput
-        accessibilityLabel={t("searchLabel")}
-        onChangeText={setSearch}
-        placeholder={t("searchPlaceholder")}
-        placeholderTextColor="#737493"
-        returnKeyType="search"
-        style={styles.search}
-        value={search}
-      />
+      <View style={styles.searchWrap}>
+        <SymbolView
+          name={{ ios: "magnifyingglass", android: "search", web: "search" }}
+          size={22}
+          tintColor={palette.navyMuted}
+        />
+        <TextInput
+          accessibilityLabel={t("searchLabel")}
+          onChangeText={setSearch}
+          placeholder={t("searchPlaceholder")}
+          placeholderTextColor="#737493"
+          returnKeyType="search"
+          style={styles.search}
+          value={search}
+        />
+      </View>
       <ScrollView
         contentContainerStyle={styles.categories}
         horizontal
         showsHorizontalScrollIndicator={false}
+        style={styles.categoriesScroller}
       >
         <Pressable
           accessibilityRole="button"
@@ -233,17 +258,11 @@ function CatalogState() {
           </Pressable>
         ))}
       </ScrollView>
-      {catalogIsStale ? (
+      {catalogIsStale && (
         <StatusBanner
           body={t("offlineBody")}
           title={t("offlineTitle")}
           tone="warning"
-        />
-      ) : (
-        <StatusBanner
-          body={t("menuInformation")}
-          title={t("accessToday")}
-          tone="info"
         />
       )}
       {catalog.products.length === 0 && (
@@ -339,24 +358,28 @@ const styles = StyleSheet.create({
   launchTitle: { ...type.display, color: palette.white },
   launchBody: { ...type.body, color: "#D7D7E5", marginTop: spacing.sm },
   signInShell: {
+    alignSelf: "center",
     flex: 1,
     justifyContent: "center",
+    maxWidth: 620,
     paddingVertical: spacing.xl,
+    width: "100%",
+  },
+  signInMark: {
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: palette.warningSurface,
+    borderRadius: radii.full,
+    height: 64,
+    justifyContent: "center",
+    marginBottom: spacing.lg,
+    width: 64,
   },
   signInHero: {
-    backgroundColor: palette.navy,
-    borderRadius: radii.lg,
     gap: spacing.sm,
-    marginTop: spacing.xl,
-    padding: spacing.lg,
   },
-  signInKicker: {
-    ...type.caption,
-    color: palette.aquamarine,
-    letterSpacing: 1.3,
-  },
-  signInTitle: { ...type.display, color: palette.white },
-  signInBody: { ...type.body, color: "#D7D7E5" },
+  signInTitle: { ...type.display, color: palette.navy },
+  signInBody: { ...type.body, color: palette.navyMuted },
   signInForm: { gap: spacing.sm, marginTop: spacing.lg },
   handoffBody: { ...type.body, color: palette.navyMuted },
   input: {
@@ -372,19 +395,32 @@ const styles = StyleSheet.create({
   stateActions: { gap: spacing.sm },
   helpText: { ...type.caption, color: palette.navyMuted, textAlign: "center" },
   lockedTicket: {
-    backgroundColor: palette.navy,
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.sm,
     marginBottom: spacing.md,
-    padding: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.xl,
   },
-  lockedKicker: { ...type.caption, color: palette.sunset, letterSpacing: 1.3 },
-  lockedTitle: { ...type.display, color: palette.white },
-  lockedBody: { ...type.body, color: "#D7D7E5" },
+  lockedMark: {
+    alignItems: "center",
+    backgroundColor: palette.warningSurface,
+    borderRadius: radii.full,
+    height: 72,
+    justifyContent: "center",
+    marginBottom: spacing.sm,
+    width: 72,
+  },
+  lockedMarkText: { color: palette.orangeInk, fontSize: 34, fontWeight: "700" },
+  lockedTitle: { ...type.display, color: palette.navy, textAlign: "center" },
+  lockedBody: { ...type.body, color: palette.navyMuted, textAlign: "center" },
   nextReservation: {
     alignSelf: "flex-start",
-    backgroundColor: palette.white,
-    borderRadius: radii.full,
+    backgroundColor: palette.warningSurface,
+    borderRadius: radii.sm,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -392,38 +428,48 @@ const styles = StyleSheet.create({
   nextReservationText: { ...type.label, color: palette.navy },
   accessTicket: {
     alignItems: "center",
-    backgroundColor: palette.navy,
+    backgroundColor: palette.successSurface,
     borderRadius: radii.md,
     flexDirection: "row",
     gap: spacing.sm,
     marginBottom: spacing.lg,
     padding: spacing.md,
   },
-  accessDot: {
-    backgroundColor: palette.aquamarine,
-    borderRadius: 8,
-    height: 16,
-    width: 16,
+  accessTicketCompact: {
+    marginBottom: spacing.sm,
+    padding: spacing.sm,
   },
+  accessDot: {
+    alignItems: "center",
+    backgroundColor: palette.success,
+    borderRadius: radii.full,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
+  accessDotText: { color: palette.white, fontSize: 18, fontWeight: "800" },
   accessCopy: { flex: 1 },
-  accessTitle: { ...type.label, color: palette.white },
-  accessBody: { ...type.caption, color: "#D7D7E5" },
-  accessMonogram: {
-    color: palette.aquamarine,
-    fontSize: 18,
-    fontWeight: "900",
+  accessTitle: { ...type.label, color: palette.aquamarineInk },
+  accessBody: { ...type.caption, color: palette.aquamarineInk },
+  accessChevron: { color: palette.aquamarineInk, fontSize: 26 },
+  searchWrap: {
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: "row",
+    paddingLeft: spacing.md,
   },
   search: {
     ...type.body,
-    backgroundColor: palette.surface,
-    borderColor: palette.silver,
-    borderRadius: radii.md,
-    borderWidth: 1,
     color: palette.navy,
+    flex: 1,
     minHeight: 54,
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.sm,
   },
   categories: { gap: spacing.xs, paddingVertical: spacing.md },
+  categoriesScroller: { flexGrow: 0 },
   products: {
     flexDirection: "row",
     flexWrap: "wrap",

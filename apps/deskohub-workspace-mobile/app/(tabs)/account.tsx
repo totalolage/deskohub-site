@@ -1,7 +1,7 @@
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import type { ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 
 import { AppScreen, ScreenIntro } from "@/components/AppScreen";
 import { ActionButton, StatusBanner } from "@/components/Controls";
@@ -99,19 +99,22 @@ export default function AccountScreen() {
         </View>
       </SettingsSection>
       <SettingsSection title={t("analyticsTitle")} body={t("analyticsBody")}>
-        <StatusBanner
-          title={
-            analyticsAllowed ? t("analyticsAllowed") : t("analyticsDenied")
-          }
-          tone={analyticsAllowed ? "success" : "info"}
-        />
-        <ActionButton
-          label={analyticsAllowed ? t("disableAnalytics") : t("allowAnalytics")}
-          onPress={() =>
-            setAnalyticsConsent(analyticsAllowed ? "denied" : "allowed")
-          }
-          variant="secondary"
-        />
+        <View style={styles.toggleRow}>
+          <Text style={styles.toggleLabel}>
+            {analyticsAllowed ? t("analyticsAllowed") : t("analyticsDenied")}
+          </Text>
+          <Switch
+            accessibilityLabel={
+              analyticsAllowed ? t("disableAnalytics") : t("allowAnalytics")
+            }
+            onValueChange={(enabled) =>
+              setAnalyticsConsent(enabled ? "allowed" : "denied")
+            }
+            thumbColor={palette.white}
+            trackColor={{ false: palette.silver, true: palette.success }}
+            value={analyticsAllowed}
+          />
+        </View>
       </SettingsSection>
       <SettingsSection
         title={t("updatesTitle")}
@@ -148,7 +151,9 @@ export default function AccountScreen() {
 const styles = StyleSheet.create({
   section: {
     backgroundColor: palette.surface,
+    borderColor: palette.outline,
     borderRadius: radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
     gap: spacing.xs,
     marginTop: spacing.md,
     padding: spacing.md,
@@ -174,4 +179,11 @@ const styles = StyleSheet.create({
   segmentText: { ...type.label, color: palette.navyMuted },
   segmentTextSelected: { color: palette.white },
   pressed: { opacity: 0.75 },
+  toggleRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    minHeight: 52,
+  },
+  toggleLabel: { ...type.label, color: palette.navy },
 });

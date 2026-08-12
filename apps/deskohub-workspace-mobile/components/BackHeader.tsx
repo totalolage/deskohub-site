@@ -3,9 +3,8 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { useShop } from "@/src/state/shop-provider";
-import { Brand } from "./Brand";
 
-export function BackHeader() {
+export function BackHeader({ title }: { title?: string }) {
   const { t } = useShop();
   return (
     <View style={styles.header}>
@@ -18,7 +17,11 @@ export function BackHeader() {
       >
         <Text style={styles.backText}>‹</Text>
       </Pressable>
-      <Brand compact />
+      {title && (
+        <Text accessibilityRole="header" numberOfLines={1} style={styles.title}>
+          {title}
+        </Text>
+      )}
     </View>
   );
 }
@@ -26,14 +29,15 @@ export function BackHeader() {
 const styles = StyleSheet.create({
   header: {
     alignItems: "center",
+    backgroundColor: palette.navy,
     flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: 68,
+    minHeight: 64,
     paddingHorizontal: spacing.md,
+    width: "100%",
   },
   back: {
     alignItems: "center",
-    backgroundColor: palette.surfaceMuted,
+    backgroundColor: "transparent",
     borderRadius: radii.full,
     height: 48,
     justifyContent: "center",
@@ -41,9 +45,17 @@ const styles = StyleSheet.create({
   },
   backText: {
     ...type.headline,
-    color: palette.navy,
+    color: palette.white,
     lineHeight: 30,
     marginTop: -2,
+  },
+  title: {
+    ...type.title,
+    color: palette.white,
+    flex: 1,
+    flexShrink: 1,
+    marginLeft: spacing.xs,
+    paddingRight: spacing.md,
   },
   pressed: { opacity: 0.7 },
 });

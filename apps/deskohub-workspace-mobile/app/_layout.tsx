@@ -1,4 +1,5 @@
-import { DarkTheme, Stack, ThemeProvider } from "expo-router";
+import { useFonts } from "expo-font";
+import { DefaultTheme, Stack, ThemeProvider } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -15,27 +16,33 @@ export const unstable_settings = {
 void SplashScreen.preventAutoHideAsync();
 
 const navigationTheme = {
-  ...DarkTheme,
+  ...DefaultTheme,
   colors: {
-    ...DarkTheme.colors,
-    primary: palette.aquamarine,
+    ...DefaultTheme.colors,
+    primary: palette.navy,
     background: palette.paper,
     card: palette.navy,
-    text: palette.white,
-    border: palette.navy,
+    text: palette.navy,
+    border: palette.outline,
     notification: palette.orange,
   },
 };
 
 export default function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    Sculpin: require("../assets/fonts/Sculpin-Regular.ttf"),
+  });
+
   useEffect(() => {
-    void SplashScreen.hideAsync();
-  }, []);
+    if (fontsLoaded || fontError) void SplashScreen.hideAsync();
+  }, [fontError, fontsLoaded]);
+
+  if (!(fontsLoaded || fontError)) return null;
 
   return (
     <ShopProvider>
       <ThemeProvider value={navigationTheme}>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
         <Stack
           screenOptions={{
             headerShown: false,
@@ -43,9 +50,6 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" />
-          <Stack.Screen name="cart" />
-          <Stack.Screen name="payment/[orderId]" />
-          <Stack.Screen name="purchase/[orderId]" />
         </Stack>
       </ThemeProvider>
     </ShopProvider>
