@@ -53,9 +53,9 @@ A positive payable amount uses the external payment flow. A total of exactly zer
 
 Payment notifications are triggers, not sole proof. Workspace confirms the current payment facts before changing a reservation to paid. A duplicate notification must not repeat payment, redemption, confirmation, or delivery work.
 
-After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the reservation status page. The email never contains the door PIN. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
+After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the dedicated reservation access page. The email never contains the door PIN. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
 
-The protected status page resolves the current PIN on each request. It discloses the PIN only for a paid reservation that is confirmed both locally and by the reservation provider, during the half-open interval from 30 minutes before the reserved start until 30 minutes after the reserved end. The display grace period does not extend the customer's right to use the space. Today the resolver returns a static PIN; a future provider may return a time-bound PIN without changing the email or status-page contract.
+The protected access page resolves the current PIN on each authorized request. It discloses the PIN only for a paid reservation that is confirmed both locally and by the reservation provider, during the half-open interval from 30 minutes before the reserved start until 30 minutes after the reserved end. The display grace period does not extend the customer's right to use the space. Today the resolver returns a static PIN; a future resolver implementation may return a time-bound PIN without changing the email or access-page contract. Payment redirects and fulfillment recovery remain on the separate reservation status page.
 
 ## Customer choices and legal evidence
 

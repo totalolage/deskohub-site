@@ -3,19 +3,19 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
   type CheckoutStateKey,
   checkoutStateKeyIdSchema,
-} from "./checkout-state-token";
+} from "@/features/checkout/backend/checkout/checkout-state-token";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
-  createReservationStatusAccessToken,
-  openReservationStatusAccessToken,
-} from "./reservation-status-access-token";
+  createReservationAccessToken,
+  openReservationAccessToken,
+} from "./reservation-access-token";
 
 const keys: readonly CheckoutStateKey[] = [
   {
-    kid: checkoutStateKeyIdSchema.make("status-test"),
+    kid: checkoutStateKeyIdSchema.make("access-test"),
     key: Buffer.alloc(32, 9),
   },
 ];
@@ -23,7 +23,7 @@ const orderId = workspaceReservationIdSchema.make("reservation-1");
 const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 
 const createToken = () =>
-  createReservationStatusAccessToken(
+  createReservationAccessToken(
     {
       orderId,
       locale: "en-US",
@@ -32,11 +32,11 @@ const createToken = () =>
     { keys, now: () => now.epochMilliseconds }
   );
 
-describe("reservation status access token", () => {
+describe("reservation access token", () => {
   test("opens a valid purpose-bound token", async () => {
     const token = await Effect.runPromise(createToken());
     const claims = await Effect.runPromise(
-      openReservationStatusAccessToken(
+      openReservationAccessToken(
         { token, orderId, locale: "en-US", now },
         { keys }
       )
@@ -60,7 +60,7 @@ describe("reservation status access token", () => {
 
     for (const input of inputs) {
       const error = await Effect.runPromise(
-        Effect.flip(openReservationStatusAccessToken(input, { keys }))
+        Effect.flip(openReservationAccessToken(input, { keys }))
       );
       expect(error.code).toBe("invalid-token");
     }
@@ -70,7 +70,7 @@ describe("reservation status access token", () => {
     const token = await Effect.runPromise(createToken());
     const error = await Effect.runPromise(
       Effect.flip(
-        openReservationStatusAccessToken(
+        openReservationAccessToken(
           {
             token,
             orderId,
@@ -89,19 +89,19 @@ describe("reservation status access token", () => {
     const token = await Effect.runPromise(createToken());
     const rotatedKeys: readonly CheckoutStateKey[] = [
       {
-        kid: checkoutStateKeyIdSchema.make("status-next"),
+        kid: checkoutStateKeyIdSchema.make("access-next"),
         key: Buffer.alloc(32, 10),
       },
       ...keys,
     ];
 
     const claims = await Effect.runPromise(
-      openReservationStatusAccessToken(
+      openReservationAccessToken(
         { token, orderId, locale: "en-US", now },
         { keys: rotatedKeys }
       )
     );
 
-    expect(claims.kid).toBe("status-test");
+    expect(claims.kid).toBe("access-test");
   });
 });

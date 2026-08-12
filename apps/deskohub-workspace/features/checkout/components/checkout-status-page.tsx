@@ -5,7 +5,6 @@ import {
   CheckCircle2,
   Clock3,
   HelpCircle,
-  KeyRound,
   MailCheck,
   XCircle,
 } from "lucide-react";
@@ -19,10 +18,7 @@ import { getCoworkCheckoutStatusSummary } from "@/features/cowork/components/cow
 import { type Locale, m } from "@/features/i18n";
 import { getMeetingRoomCheckoutStatusSummary } from "@/features/meeting-room/components/meeting-room-checkout-status-summary";
 import { getOfficeCheckoutStatusSummary } from "@/features/office/components/office-checkout-status-summary";
-import {
-  formatReservationDisplayDate,
-  formatReservationDisplayDateTime,
-} from "@/features/reservation/reservation-date";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   getCoworkReservationPath,
   getReservationStartPath,
@@ -172,76 +168,6 @@ const getReserveAgainPath = (
   return getReservationStartPath(locale, status.kind);
 };
 
-const ReservationAccessCodeCard = ({
-  locale,
-  status,
-}: CheckoutStatusPageProps) => {
-  if (status.status === "not_found" || !status.accessCode) return null;
-
-  const copy = Match.value(status.accessCode).pipe(
-    Match.discriminatorsExhaustive("state")({
-      upcoming: ({ availableAt }) => ({
-        title: m.checkoutStatusAccessUpcomingTitle({}, { locale }),
-        lead: m.checkoutStatusAccessUpcomingLead(
-          {
-            availableAt: formatReservationDisplayDateTime(availableAt, locale),
-          },
-          { locale }
-        ),
-      }),
-      available: ({ code, unavailableAt }) => ({
-        title: m.checkoutStatusAccessAvailableTitle({}, { locale }),
-        lead: m.checkoutStatusAccessAvailableLead(
-          {
-            unavailableAt: formatReservationDisplayDateTime(
-              unavailableAt,
-              locale
-            ),
-          },
-          { locale }
-        ),
-        code,
-      }),
-      ended: () => ({
-        title: m.checkoutStatusAccessEndedTitle({}, { locale }),
-        lead: m.checkoutStatusAccessEndedLead({}, { locale }),
-      }),
-      unavailable: () => ({
-        title: m.checkoutStatusAccessUnavailableTitle({}, { locale }),
-        lead: m.checkoutStatusAccessUnavailableLead({}, { locale }),
-      }),
-    })
-  );
-
-  return (
-    <section className="mt-8 overflow-hidden rounded-[1.6rem] border border-navy-blue/12 bg-navy-blue text-white shadow-[0_20px_60px_-35px_rgba(0,2,79,0.8)]">
-      <div className="flex items-start gap-4 px-5 py-5 sm:px-6">
-        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-aquamarine-green/15 text-aquamarine-green">
-          <KeyRound className="h-6 w-6" aria-hidden="true" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <h2 className="text-xl text-white">{copy.title}</h2>
-          <p className="mt-2 text-sm leading-6 text-white/72">{copy.lead}</p>
-        </div>
-      </div>
-      {"code" in copy && copy.code && (
-        <div className="border-t border-white/12 bg-white/6 px-5 py-6 text-center sm:px-6">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-aquamarine-green">
-            {m.checkoutStatusAccessPinLabel({}, { locale })}
-          </p>
-          <output
-            className="mt-2 block font-mono text-5xl font-bold tracking-[0.16em] text-white sm:text-6xl"
-            data-ph-mask=""
-            data-ph-no-capture=""
-          >
-            {copy.code}
-          </output>
-        </div>
-      )}
-    </section>
-  );
-};
-
 const getFulfillmentFailedContactHref = (
   status: CheckoutStatusViewModel,
   locale: Locale,
@@ -319,8 +245,6 @@ export function CheckoutStatusPage({
             </Link>
           </Button>
         )}
-
-        <ReservationAccessCodeCard locale={locale} status={status} />
 
         {showReservationDetails && (
           <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">

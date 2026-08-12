@@ -906,7 +906,7 @@ export const browserDiagnosticsScript = String.raw`
   const cleanUrl = (value) => {
     try {
       const url = new URL(value);
-      for (const key of ['payState', 'checkoutToken', '_vercel_share', 'x-vercel-protection-bypass']) {
+      for (const key of ['payState', 'checkoutToken', 'accessToken', '_vercel_share', 'x-vercel-protection-bypass']) {
         if (url.searchParams.has(key)) url.searchParams.set(key, '[redacted]');
       }
       return url.toString();
@@ -936,7 +936,10 @@ export const browserTextScript = `
 export const assertFulfilledStatusScript = String.raw`
 (() => {
   const text = document.body?.textContent ?? '';
-  if (/Your reservation is confirmed\./i.test(text) && /secure reservation link has been sent by email/i.test(text)) {
+  if (document.querySelector('[data-reservation-access]')) {
+    throw new Error('reservation access rendered on checkout status page');
+  }
+  if (/Your reservation is confirmed\./i.test(text) && /secure access link has been sent by email/i.test(text)) {
     return location.href;
   }
   throw new Error('fulfilled checkout status copy not visible');

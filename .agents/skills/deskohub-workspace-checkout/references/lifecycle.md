@@ -343,8 +343,8 @@ provider callbacks reliably. Recovery sends use deterministic
 reservation-and-category idempotency keys, and an abandoned `processing` claim
 becomes retryable after one minute.
 
-The customer confirmation contains a protected reservation-status link and
-never contains the door PIN. The status page resolves the current PIN on every
+The customer confirmation contains a protected reservation-access link and
+never contains the door PIN. The dedicated access page resolves the current PIN on every
 authorized request and returns it only while the reservation is paid, locally
 confirmed, live-confirmed in Dotypos, and inside `[reservedFrom - 30 minutes,
 reservedUntil + 30 minutes)`. Calculate this window from the Dotypos-projected

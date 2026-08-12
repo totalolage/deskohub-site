@@ -656,7 +656,7 @@ describe("ResendWebhookService", () => {
       expect(customerHtml).not.toContain("ACCESS-123");
       expect(customerText).not.toContain("ACCESS-123");
       expect(accessLink.getAttribute("href")).toContain(
-        "/en-US/reservation/status/reservation-id?statusToken="
+        "/en-US/reservation/access/reservation-id?accessToken="
       );
       expect(accessCodeTable?.getAttribute("bgcolor")).toBe("#00024f");
       expect(accessCodeTable?.contains(accessLink)).toBe(true);

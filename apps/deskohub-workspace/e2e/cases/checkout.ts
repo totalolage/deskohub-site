@@ -412,7 +412,7 @@ export const assertFulfilledStatusPage = ({
 
         return (
           /Your reservation is confirmed\./i.test(normalizedText) &&
-          /secure reservation link has been sent by email/i.test(
+          /secure access link has been sent by email/i.test(
             normalizedText
           ) &&
           expectedReservationText.every((expected) =>

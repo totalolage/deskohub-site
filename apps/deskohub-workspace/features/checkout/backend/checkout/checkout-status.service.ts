@@ -1,7 +1,7 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Clock, Context, Effect, Layer, Match, Option, Schema } from "effect";
+import { Context, Effect, Layer, Match, Option, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import type { FulfillmentState, PaymentState } from "@/db/schema";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
@@ -11,7 +11,6 @@ import {
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
-import { isLocale } from "@/features/i18n";
 import {
   type WorkspaceReservation,
   type WorkspaceReservationDetailsMalformedError,
@@ -23,7 +22,6 @@ import type { StoredCoworkReservationDetails } from "@/features/reservation/cowo
 import type { StoredMeetingRoomReservationDetails } from "@/features/reservation/meeting-room-reservation";
 import type { StoredOfficeReservationDetails } from "@/features/reservation/office-reservation";
 import type { WorkspaceReservationId } from "@/features/reservation/persistence-contracts";
-import { getReservationAccessCodeWindowState } from "@/features/reservation/reservation-access-code";
 import { dotyposReservationSeatsSchema } from "@/features/reservation/reservation-seats";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
@@ -36,11 +34,6 @@ import {
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
 import type { PaymentLifecycleRepositoryError } from "../repositories/payment-lifecycle.repository";
-import {
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
-} from "../reservation/access-code.service";
-import { openReservationStatusAccessToken } from "./reservation-status-access-token";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 
@@ -85,20 +78,6 @@ export type CheckoutStatusContactPrefill = {
 
 export type CheckoutStatusTableMap = WorkspaceTableMap;
 
-export type CheckoutStatusAccessCode =
-  | {
-      readonly state: "upcoming";
-      readonly availableAt: Temporal.Instant;
-      readonly unavailableAt: Temporal.Instant;
-    }
-  | {
-      readonly state: "available";
-      readonly code: string;
-      readonly unavailableAt: Temporal.Instant;
-    }
-  | { readonly state: "ended" }
-  | { readonly state: "unavailable" };
-
 type CheckoutStatusViewModelBase = {
   readonly orderId: WorkspaceReservationId;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
@@ -109,7 +88,6 @@ type CheckoutReservationStatusViewModelBase = CheckoutStatusViewModelBase & {
   readonly paymentStatus: PaymentState;
   readonly fulfillmentStatus: FulfillmentState;
   readonly tableMap?: CheckoutStatusTableMap;
-  readonly accessCode?: CheckoutStatusAccessCode;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
 
@@ -160,7 +138,6 @@ type CheckoutStatusReservationReconstruction =
 type CheckoutStatusReconstruction = {
   readonly reservation: CheckoutStatusReservationReconstruction;
   readonly tableMap?: CheckoutStatusTableMap;
-  readonly accessCode?: CheckoutStatusAccessCode;
   readonly supportContactPrefill?: CheckoutStatusContactPrefill;
 };
 
@@ -173,12 +150,10 @@ export interface ICheckoutStatusService {
   readonly getStatus: (input: {
     readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-    readonly statusToken?: string;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
   readonly refreshStatus: (input: {
     readonly orderId: WorkspaceReservationId;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-    readonly statusToken?: string;
   }) => Effect.Effect<CheckoutStatusViewModel, CheckoutStatusError>;
 }
 
@@ -266,79 +241,11 @@ const implementation = Effect.gen(function* () {
   const dotypos = yield* DotyposService;
   const finalization = yield* ProviderPaymentFinalizationService;
   const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
-  const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-
-  const getAccessCode = Effect.fn("CheckoutStatusService.getAccessCode")(
-    function* (input: {
-      readonly authorized: boolean;
-      readonly now: Temporal.Instant;
-      readonly reservation: WorkspaceReservation;
-      readonly providerStatus: string | undefined;
-      readonly timing: {
-        readonly reservedFrom: Temporal.Instant;
-        readonly reservedUntil: Temporal.Instant;
-      };
-    }) {
-      if (!input.authorized) return undefined;
-      if (
-        input.reservation.paymentState !== "paid" ||
-        input.reservation.reservationState !== "confirmed" ||
-        input.providerStatus !== "CONFIRMED"
-      ) {
-        return { state: "unavailable" } satisfies CheckoutStatusAccessCode;
-      }
-
-      const window = getReservationAccessCodeWindowState({
-        ...input.timing,
-        now: input.now,
-      });
-      if (window.state === "before-window") {
-        return {
-          state: "upcoming",
-          availableAt: window.opensAt,
-          unavailableAt: window.closesAt,
-        } satisfies CheckoutStatusAccessCode;
-      }
-      if (window.state === "after-window") {
-        return { state: "ended" } satisfies CheckoutStatusAccessCode;
-      }
-
-      const code = yield* accessCodes
-        .resolveCustomerAccessCode({
-          reservationId: input.reservation.id,
-          dotyposReservationId: input.reservation.dotyposReservationId!,
-          reservedFrom: input.timing.reservedFrom,
-          reservedUntil: input.timing.reservedUntil,
-        })
-        .pipe(
-          Effect.flatMap(Schema.decodeUnknownEffect(Schema.NonEmptyString)),
-          Effect.tapError((cause) =>
-            Effect.logError("Reservation access code resolution failed", {
-              cause,
-            })
-          ),
-          Effect.orElseSucceed(() => undefined)
-        );
-
-      return code
-        ? ({
-            state: "available",
-            code,
-            unavailableAt: window.closesAt,
-          } satisfies CheckoutStatusAccessCode)
-        : ({ state: "unavailable" } satisfies CheckoutStatusAccessCode);
-    }
-  );
 
   const reconstructSummary = Effect.fn(
     "CheckoutStatusService.reconstructSummary"
   )(
-    function* (input: {
-      readonly reservation: WorkspaceReservation;
-      readonly accessAuthorized: boolean;
-      readonly now: Temporal.Instant;
-    }) {
-      const { reservation } = input;
+    function* (reservation: WorkspaceReservation) {
       yield* Effect.logDebug("Checkout status summary reconstruction started");
       const emptyReconstruction: CheckoutStatusReconstruction = {
         reservation: getEmptyCheckoutStatusReservation(
@@ -362,27 +269,21 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary attempt lookup completed"
       );
 
-      if (attempt) {
-        yield* Effect.annotateLogsScoped({
-          paymentAttemptId: attempt.id,
-          paymentAttemptState: attempt.state,
-        });
-      } else {
+      if (!attempt) {
         yield* Effect.logWarning(
           "Checkout status summary missing payment attempt"
         );
+        return emptyReconstruction;
       }
+      yield* Effect.annotateLogsScoped({
+        paymentAttemptId: attempt.id,
+        paymentAttemptState: attempt.state,
+      });
 
-      const usableAttempt =
-        attempt && canUseAttemptForSummary(attempt, reservation)
-          ? attempt
-          : undefined;
-      if (attempt && !usableAttempt) {
+      if (!canUseAttemptForSummary(attempt, reservation)) {
         yield* Effect.logWarning(
           "Checkout status summary unusable payment attempt"
         );
-      }
-      if (!usableAttempt && !input.accessAuthorized) {
         return emptyReconstruction;
       }
 
@@ -408,27 +309,22 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const supportContactPrefill = input.accessAuthorized
-        ? getSupportContactPrefill(dotyposReservation.customer)
-        : undefined;
-      const tableMap = yield* usableAttempt
-        ? Effect.suspend(() => dotypos.getTables()).pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("Checkout status table map load failed", {
-                cause,
-              })
-            ),
-            Effect.option,
-            Effect.when(seatingMapFeatureFlag.isEnabled),
-            Effect.map(Option.flatten),
-            Effect.map(
-              Option.map((tables) =>
-                getWorkspaceTableMap(dotyposReservation.reservation, tables)
-              )
-            ),
-            Effect.map(Option.getOrUndefined)
+      const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning("Checkout status table map load failed", {
+            cause,
+          })
+        ),
+        Effect.option,
+        Effect.when(seatingMapFeatureFlag.isEnabled),
+        Effect.map(Option.flatten),
+        Effect.map(
+          Option.map((tables) =>
+            getWorkspaceTableMap(dotyposReservation.reservation, tables)
           )
-        : Effect.succeed(undefined);
+        ),
+        Effect.map(Option.getOrUndefined)
+      );
 
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
@@ -447,26 +343,12 @@ const implementation = Effect.gen(function* () {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
           ...(tableMap ? { tableMap } : {}),
-          ...(supportContactPrefill ? { supportContactPrefill } : {}),
+          supportContactPrefill: getSupportContactPrefill(
+            dotyposReservation.customer
+          ),
         };
 
         return reconstruction;
-      }
-
-      const accessCode = yield* getAccessCode({
-        authorized: input.accessAuthorized,
-        now: input.now,
-        reservation,
-        providerStatus: dotyposReservation.reservation.status,
-        timing,
-      });
-
-      if (!usableAttempt) {
-        return {
-          reservation: emptyReconstruction.reservation,
-          ...(accessCode ? { accessCode } : {}),
-          ...(supportContactPrefill ? { supportContactPrefill } : {}),
-        } satisfies CheckoutStatusReconstruction;
       }
 
       const statusReservation = Match.value(
@@ -478,7 +360,7 @@ const implementation = Effect.gen(function* () {
             summary: {
               ...details,
               ...timing,
-              price: usableAttempt.amount,
+              price: attempt.amount,
             },
           }),
           "meeting-room": (details) => ({
@@ -486,7 +368,7 @@ const implementation = Effect.gen(function* () {
             summary: {
               ...details,
               ...timing,
-              price: usableAttempt.amount,
+              price: attempt.amount,
             },
           }),
           office: (details) => {
@@ -502,7 +384,7 @@ const implementation = Effect.gen(function* () {
               summary: {
                 ...details,
                 ...timing,
-                price: usableAttempt.amount,
+                price: attempt.amount,
                 seats,
               },
             };
@@ -515,19 +397,20 @@ const implementation = Effect.gen(function* () {
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
         ...(tableMap ? { tableMap } : {}),
-        ...(accessCode ? { accessCode } : {}),
-        ...(supportContactPrefill ? { supportContactPrefill } : {}),
+        supportContactPrefill: getSupportContactPrefill(
+          dotyposReservation.customer
+        ),
       };
 
       return reconstruction;
     },
-    (effect, input) =>
+    (effect, reservation) =>
       effect.pipe(
         Effect.scoped,
         Effect.annotateLogs({
-          reservationId: input.reservation.id,
-          dotyposReservationId: input.reservation.dotyposReservationId,
-          reservationKind: input.reservation.reservationDetails.kind,
+          reservationId: reservation.id,
+          dotyposReservationId: reservation.dotyposReservationId,
+          reservationKind: reservation.reservationDetails.kind,
         })
       )
   );
@@ -536,7 +419,6 @@ const implementation = Effect.gen(function* () {
     function* (input: {
       readonly orderId: WorkspaceReservationId;
       readonly returnOutcome: CheckoutStatusReturnOutcome;
-      readonly statusToken?: string;
     }) {
       yield* Effect.logInfo("Checkout status lookup started");
 
@@ -565,32 +447,8 @@ const implementation = Effect.gen(function* () {
           reservation.reservationDetails
         ),
       };
-      const now = Temporal.Instant.fromEpochMilliseconds(
-        yield* Clock.currentTimeMillis
-      );
-      const accessAuthorized =
-        input.statusToken && isLocale(reservation.locale)
-          ? yield* openReservationStatusAccessToken({
-              token: input.statusToken,
-              orderId: reservation.id,
-              locale: reservation.locale,
-              now,
-            }).pipe(
-              Effect.as(true),
-              Effect.tapError((cause) =>
-                Effect.logWarning("Reservation status access token rejected", {
-                  code: cause.code,
-                })
-              ),
-              Effect.orElseSucceed(() => false)
-            )
-          : false;
       const reconstruction: CheckoutStatusReconstruction =
-        yield* reconstructSummary({
-          reservation,
-          accessAuthorized,
-          now,
-        }).pipe(
+        yield* reconstructSummary(reservation).pipe(
           Effect.timeoutOrElse({
             duration: "8 seconds",
             orElse: () =>
@@ -612,9 +470,6 @@ const implementation = Effect.gen(function* () {
         fulfillmentStatus: reservation.fulfillmentState,
         ...(reconstruction.tableMap
           ? { tableMap: reconstruction.tableMap }
-          : {}),
-        ...(reconstruction.accessCode
-          ? { accessCode: reconstruction.accessCode }
           : {}),
         ...(statusKind === "fulfillment_failed" &&
         reconstruction.supportContactPrefill
@@ -640,11 +495,7 @@ const implementation = Effect.gen(function* () {
         Effect.tapError((cause) =>
           Effect.logError("Checkout status lookup failed", { cause })
         ),
-        Effect.annotateLogs({
-          orderId: input.orderId,
-          returnOutcome: input.returnOutcome,
-          hasStatusToken: input.statusToken !== undefined,
-        })
+        Effect.annotateLogs({ ...input })
       )
   );
 
@@ -719,11 +570,7 @@ const implementation = Effect.gen(function* () {
           Effect.tapError((cause) =>
             Effect.logError("Checkout status refresh failed", { cause })
           ),
-          Effect.annotateLogs({
-            orderId: input.orderId,
-            returnOutcome: input.returnOutcome,
-            hasStatusToken: input.statusToken !== undefined,
-          })
+          Effect.annotateLogs({ ...input })
         )
     ),
   };
@@ -741,7 +588,6 @@ export class CheckoutStatusService extends Context.Service<
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),
-    Layer.provide(WorkspaceCheckoutAccessCodeServiceLive),
     Layer.provide(
       SeatingMapFeatureFlagService.Live.pipe(
         Layer.provide(WorkspaceFeatureFlagServiceLive)

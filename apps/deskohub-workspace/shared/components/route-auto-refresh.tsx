@@ -3,31 +3,31 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useEffectEvent } from "react";
 
-type CheckoutStatusAutoRefreshProps = {
+type RouteAutoRefreshProps = {
   readonly enabled: boolean;
   readonly intervalMs?: number;
   readonly refreshAt?: string;
   readonly refreshOnFocus?: boolean;
 };
 
-const DEFAULT_STATUS_REFRESH_INTERVAL_MS = 5000;
+const DEFAULT_REFRESH_INTERVAL_MS = 5000;
 const MAX_TIMEOUT_MS = 2_147_483_647;
 
-export function CheckoutStatusAutoRefresh({
+export function RouteAutoRefresh({
   enabled,
-  intervalMs = DEFAULT_STATUS_REFRESH_INTERVAL_MS,
+  intervalMs = DEFAULT_REFRESH_INTERVAL_MS,
   refreshAt,
   refreshOnFocus = false,
-}: CheckoutStatusAutoRefreshProps) {
+}: RouteAutoRefreshProps) {
   const router = useRouter();
-  const refreshStatus = useEffectEvent(() => {
+  const refreshRoute = useEffectEvent(() => {
     router.refresh();
   });
 
   useEffect(() => {
     if (!enabled) return;
 
-    const intervalId = globalThis.setInterval(refreshStatus, intervalMs);
+    const intervalId = globalThis.setInterval(refreshRoute, intervalMs);
 
     return () => globalThis.clearInterval(intervalId);
   }, [enabled, intervalMs]);
@@ -41,7 +41,7 @@ export function CheckoutStatusAutoRefresh({
       if (cancelled) return;
       const remainingMs = Date.parse(refreshAt) - Date.now();
       if (remainingMs <= 0) {
-        refreshStatus();
+        refreshRoute();
         return;
       }
       timeoutId = globalThis.setTimeout(
@@ -61,13 +61,13 @@ export function CheckoutStatusAutoRefresh({
     if (!refreshOnFocus) return;
 
     const refreshWhenVisible = () => {
-      if (document.visibilityState === "visible") refreshStatus();
+      if (document.visibilityState === "visible") refreshRoute();
     };
-    globalThis.addEventListener("focus", refreshStatus);
+    globalThis.addEventListener("focus", refreshRoute);
     document.addEventListener("visibilitychange", refreshWhenVisible);
 
     return () => {
-      globalThis.removeEventListener("focus", refreshStatus);
+      globalThis.removeEventListener("focus", refreshRoute);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [refreshOnFocus]);

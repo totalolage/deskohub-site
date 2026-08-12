@@ -15,14 +15,14 @@ import { CustomerReservationEmail } from "@/emails/customer-reservation";
 import { ReservationNotificationEmail } from "@/emails/reservation-notification";
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
-import { createReservationStatusAccessToken } from "@/features/checkout/backend/checkout/reservation-status-access-token";
-import { getReservationStatusPath } from "@/features/checkout/backend/checkout/reservation-status-url";
 import {
   getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import { createReservationAccessToken } from "@/features/reservation/backend/reservation-access-token";
+import { getReservationAccessPath } from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import { reservationAccessCodeGraceMinutes } from "@/features/reservation/reservation-access-code";
@@ -294,7 +294,7 @@ const createInternalReservationDetails = (
 const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
-  readonly statusUrl: string;
+  readonly accessUrl: string;
   readonly networkDetails: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly locationMapImageSrc?: string;
@@ -312,7 +312,7 @@ const createCustomerReservationEmail = (input: {
           {},
           { locale: input.locale }
         ),
-        url: input.statusUrl,
+        url: input.accessUrl,
       }}
       details={createReservationRows(input.reservation, input.locale)}
       followUp={m.reservationEmailCustomerFollowUp(
@@ -399,7 +399,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
         createCustomerReservationEmail({
           reservation: input.reservation,
           locale,
-          statusUrl: `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation/status/${input.reservation.id}?statusToken=preview-token`,
+          accessUrl: `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation/access/${input.reservation.id}?accessToken=preview-token`,
           networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
           networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
           locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
@@ -452,10 +452,10 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
 
-      const createCustomerStatusUrl = Effect.fn(
-        "WorkspaceReservationEmailService.createCustomerStatusUrl"
+      const createCustomerAccessUrl = Effect.fn(
+        "WorkspaceReservationEmailService.createCustomerAccessUrl"
       )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
-        const statusToken = yield* createReservationStatusAccessToken({
+        const accessToken = yield* createReservationAccessToken({
           orderId: reservation.id,
           locale,
           expiresAt: reservation.reservedUntil.add({
@@ -465,10 +465,10 @@ export class WorkspaceReservationEmailService extends Context.Service<
         const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
         return new URL(
-          getReservationStatusPath({
+          getReservationAccessPath({
             locale,
             orderId: reservation.id,
-            statusToken,
+            accessToken,
             setBypassCookie: true,
           }),
           origin
@@ -487,14 +487,14 @@ export class WorkspaceReservationEmailService extends Context.Service<
             yield* networkDetailsService.resolveCustomerNetworkDetails({
               reservation,
             });
-          const statusUrl = yield* createCustomerStatusUrl(
+          const accessUrl = yield* createCustomerAccessUrl(
             reservation,
             locale
           ).pipe(
             Effect.mapError(
               (cause) =>
                 new EmailServiceError(
-                  "Workspace reservation status URL could not be created.",
+                  "Workspace reservation access URL could not be created.",
                   cause
                 )
             )
@@ -550,7 +550,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             createCustomerReservationEmail({
               reservation,
               locale,
-              statusUrl,
+              accessUrl,
               networkDetails,
               ...(networkQrAttachment
                 ? { networkQrImageSrc: `cid:${networkQrAttachment.contentId}` }

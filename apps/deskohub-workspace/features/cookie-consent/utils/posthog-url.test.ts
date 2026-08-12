@@ -18,10 +18,18 @@ describe("createPostHogPageUrl", () => {
     ).toBe("https://deskohub.test/reservation/status/order-id?step=done");
   });
 
-  test("strips reservation status capability tokens", () => {
+  test("strips reservation access capability tokens", () => {
     expect(
       createPostHogPageUrl(
-        "https://deskohub.test/reservation/status/order-id?statusToken=signed-capability&outcome=success"
+        "https://deskohub.test/reservation/access/order-id?accessToken=signed-capability&step=access"
+      )
+    ).toBe("https://deskohub.test/reservation/access/order-id?step=access");
+  });
+
+  test("continues to strip the retired reservation status token name", () => {
+    expect(
+      createPostHogPageUrl(
+        "https://deskohub.test/reservation/status/order-id?statusToken=retired-capability&outcome=success"
       )
     ).toBe("https://deskohub.test/reservation/status/order-id?outcome=success");
   });

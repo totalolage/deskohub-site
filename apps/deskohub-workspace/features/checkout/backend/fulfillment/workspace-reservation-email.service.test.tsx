@@ -250,8 +250,12 @@ describe("workspace reservation email details", () => {
     expect(customerMessage?.text).toContain("whole day");
     expect(customerMessage?.html).not.toContain("12:00 AM");
     expect(customerMessage?.text).not.toContain("12:00 AM");
-    expect(customerMessage?.html).toContain("statusToken=");
-    expect(customerMessage?.text).toContain("statusToken=");
+    expect(customerMessage?.html).toContain("/reservation/access/");
+    expect(customerMessage?.text).toContain("/reservation/access/");
+    expect(customerMessage?.html).toContain("accessToken=");
+    expect(customerMessage?.text).toContain("accessToken=");
+    expect(customerMessage?.html).not.toContain("statusToken=");
+    expect(customerMessage?.text).not.toContain("statusToken=");
     expect(customerMessage?.html).toContain("x-vercel-protection-bypass=");
     expect(customerMessage?.text).toContain("x-vercel-protection-bypass=");
     expect(customerMessage?.html).toContain("x-vercel-set-bypass-cookie=true");

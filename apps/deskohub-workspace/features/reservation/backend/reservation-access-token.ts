@@ -1,21 +1,21 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { Data, Effect, Schema } from "effect";
+import {
+  type CheckoutStateKey,
+  checkoutStateKeyIdSchema,
+  getCheckoutStateKeys,
+} from "@/features/checkout/backend/checkout/checkout-state-token";
 import { type Locale, locales } from "@/features/i18n";
 import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
-import {
-  type CheckoutStateKey,
-  checkoutStateKeyIdSchema,
-  getCheckoutStateKeys,
-} from "./checkout-state-token";
 
-export const reservationStatusAccessTokenQueryParam = "statusToken" as const;
+export const reservationAccessTokenQueryParam = "accessToken" as const;
 
-const reservationStatusAccessTokenPurpose = "reservation-status-access";
-const reservationStatusAccessTokenClaimsSchema = Schema.Struct({
-  purpose: Schema.Literal(reservationStatusAccessTokenPurpose),
+const reservationAccessTokenPurpose = "reservation-access";
+const reservationAccessTokenClaimsSchema = Schema.Struct({
+  purpose: Schema.Literal(reservationAccessTokenPurpose),
   version: Schema.Literal(1),
   kid: checkoutStateKeyIdSchema,
   orderId: workspaceReservationIdSchema,
@@ -24,11 +24,11 @@ const reservationStatusAccessTokenClaimsSchema = Schema.Struct({
   expiresAtEpochMilliseconds: Schema.Int.check(Schema.isGreaterThan(0)),
 });
 
-type ReservationStatusAccessTokenClaims =
-  typeof reservationStatusAccessTokenClaimsSchema.Type;
+type ReservationAccessTokenClaims =
+  typeof reservationAccessTokenClaimsSchema.Type;
 
-export class ReservationStatusAccessTokenError extends Data.TaggedError(
-  "ReservationStatusAccessTokenError"
+export class ReservationAccessTokenError extends Data.TaggedError(
+  "ReservationAccessTokenError"
 )<{
   readonly code:
     | "missing-secret"
@@ -39,59 +39,59 @@ export class ReservationStatusAccessTokenError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-type ReservationStatusAccessTokenOptions = {
+type ReservationAccessTokenOptions = {
   readonly keys?: readonly CheckoutStateKey[];
   readonly now?: () => number;
 };
 
 const invalidToken = (message: string, cause?: unknown) =>
-  new ReservationStatusAccessTokenError({
+  new ReservationAccessTokenError({
     code: "invalid-token",
     message,
     cause,
   });
 
-const getKeys = Effect.fn("reservationStatusAccessToken.getKeys")(function* (
-  options: ReservationStatusAccessTokenOptions
+const getKeys = Effect.fn("reservationAccessToken.getKeys")(function* (
+  options: ReservationAccessTokenOptions
 ) {
   return yield* getCheckoutStateKeys({ keys: options.keys }).pipe(
     Effect.mapError(
       (cause) =>
-        new ReservationStatusAccessTokenError({
+        new ReservationAccessTokenError({
           code:
             cause.code === "missing-secret"
               ? "missing-secret"
               : "invalid-secret",
-          message: "Reservation status access token keys are unavailable.",
+          message: "Reservation access token keys are unavailable.",
           cause,
         })
     )
   );
 });
 
-const getNow = (options: ReservationStatusAccessTokenOptions) =>
+const getNow = (options: ReservationAccessTokenOptions) =>
   options.now?.() ?? Date.now();
 
 const signClaims = (encodedClaims: string, key: Buffer) =>
   createHmac("sha256", key)
-    .update(`${reservationStatusAccessTokenPurpose}.${encodedClaims}`)
+    .update(`${reservationAccessTokenPurpose}.${encodedClaims}`)
     .digest();
 
-export const createReservationStatusAccessToken = Effect.fn(
-  "reservationStatusAccessToken.create"
+export const createReservationAccessToken = Effect.fn(
+  "reservationAccessToken.create"
 )(function* (
   input: {
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
     readonly expiresAt: Temporal.Instant;
   },
-  options: ReservationStatusAccessTokenOptions = {}
+  options: ReservationAccessTokenOptions = {}
 ) {
   const [activeKey] = yield* getKeys(options);
   const claims = yield* Schema.decodeUnknownEffect(
-    reservationStatusAccessTokenClaimsSchema
+    reservationAccessTokenClaimsSchema
   )({
-    purpose: reservationStatusAccessTokenPurpose,
+    purpose: reservationAccessTokenPurpose,
     version: 1,
     kid: activeKey.kid,
     orderId: input.orderId,
@@ -100,7 +100,7 @@ export const createReservationStatusAccessToken = Effect.fn(
     expiresAtEpochMilliseconds: input.expiresAt.epochMilliseconds,
   }).pipe(
     Effect.mapError((cause) =>
-      invalidToken("Reservation status access token claims are invalid.", cause)
+      invalidToken("Reservation access token claims are invalid.", cause)
     )
   );
   const encodedClaims = Buffer.from(JSON.stringify(claims)).toString(
@@ -113,8 +113,8 @@ export const createReservationStatusAccessToken = Effect.fn(
   return `${encodedClaims}.${signature}`;
 });
 
-export const openReservationStatusAccessToken = Effect.fn(
-  "reservationStatusAccessToken.open"
+export const openReservationAccessToken = Effect.fn(
+  "reservationAccessToken.open"
 )(function* (
   input: {
     readonly token: string;
@@ -122,12 +122,12 @@ export const openReservationStatusAccessToken = Effect.fn(
     readonly locale: Locale;
     readonly now: Temporal.Instant;
   },
-  options: ReservationStatusAccessTokenOptions = {}
+  options: ReservationAccessTokenOptions = {}
 ) {
   const parts = input.token.split(".");
   const [encodedClaims, encodedSignature] = parts;
   if (parts.length !== 2 || !encodedClaims || !encodedSignature) {
-    return yield* invalidToken("Reservation status access token is invalid.");
+    return yield* invalidToken("Reservation access token is invalid.");
   }
 
   const claims = yield* Effect.try({
@@ -136,50 +136,48 @@ export const openReservationStatusAccessToken = Effect.fn(
         Buffer.from(encodedClaims, "base64url").toString("utf8")
       ) as unknown,
     catch: (cause) =>
-      invalidToken("Reservation status access token is invalid.", cause),
+      invalidToken("Reservation access token is invalid.", cause),
   }).pipe(
     Effect.flatMap(
-      Schema.decodeUnknownEffect(reservationStatusAccessTokenClaimsSchema, {
+      Schema.decodeUnknownEffect(reservationAccessTokenClaimsSchema, {
         onExcessProperty: "error",
       })
     ),
     Effect.mapError((cause) =>
-      cause instanceof ReservationStatusAccessTokenError
+      cause instanceof ReservationAccessTokenError
         ? cause
-        : invalidToken("Reservation status access token is invalid.", cause)
+        : invalidToken("Reservation access token is invalid.", cause)
     )
   );
   const keys = yield* getKeys(options);
   const verificationKey = keys.find((key) => key.kid === claims.kid);
   if (!verificationKey) {
-    return yield* invalidToken(
-      "Reservation status access token used an unknown key."
-    );
+    return yield* invalidToken("Reservation access token used an unknown key.");
   }
   const providedSignature = yield* Effect.try({
     try: () => Buffer.from(encodedSignature, "base64url"),
     catch: (cause) =>
-      invalidToken("Reservation status access token is invalid.", cause),
+      invalidToken("Reservation access token is invalid.", cause),
   });
   const expectedSignature = signClaims(encodedClaims, verificationKey.key);
   if (
     providedSignature.length !== expectedSignature.length ||
     !timingSafeEqual(providedSignature, expectedSignature)
   ) {
-    return yield* invalidToken("Reservation status access token is invalid.");
+    return yield* invalidToken("Reservation access token is invalid.");
   }
 
   if (claims.orderId !== input.orderId || claims.locale !== input.locale) {
     return yield* invalidToken(
-      "Reservation status access token does not match this reservation."
+      "Reservation access token does not match this reservation."
     );
   }
   if (claims.expiresAtEpochMilliseconds <= input.now.epochMilliseconds) {
-    return yield* new ReservationStatusAccessTokenError({
+    return yield* new ReservationAccessTokenError({
       code: "expired",
-      message: "Reservation status access token expired.",
+      message: "Reservation access token expired.",
     });
   }
 
-  return claims satisfies ReservationStatusAccessTokenClaims;
+  return claims satisfies ReservationAccessTokenClaims;
 });
