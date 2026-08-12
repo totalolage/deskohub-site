@@ -233,15 +233,10 @@ test("asserts office range, seats, and price on the fulfilled status page", asyn
   );
 });
 
-test("scopes reservation, hosted-payment, and verification capacity", async () => {
-  let insideHostedPaymentSession = false;
+test("preserves semantic reservation and verification capacities and payment step order", async () => {
   const observedSteps: Array<{
-    readonly capacity:
-      | "provider-verification"
-      | "reservation-start"
-      | undefined;
+    readonly capacity: "provider-verification" | undefined;
     readonly id: string;
-    readonly insideHostedPaymentSession: boolean;
     readonly timeoutMs: number;
   }> = [];
   const orderId = "019f70bd-0131-7f30-9f8a-48e768f00292";
@@ -250,7 +245,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
     observedSteps.push({
       capacity: step.capacity,
       id: step.id,
-      insideHostedPaymentSession,
       timeoutMs: step.timeoutMs,
     });
     if (step.id === "prepare-checkout-pay-page") {
@@ -299,19 +293,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
           timeoutMs: workspaceE2ETimeouts.browserAction,
         },
       ],
-      resources: {
-        withHostedPaymentSession: (effect) =>
-          Effect.acquireUseRelease(
-            Effect.sync(() => {
-              insideHostedPaymentSession = true;
-            }),
-            () => effect,
-            () =>
-              Effect.sync(() => {
-                insideHostedPaymentSession = false;
-              })
-          ),
-      },
       run: (() =>
         Promise.reject(new Error("runner must not execute"))) as Runner,
       runStep,
@@ -326,16 +307,8 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
     )
   ).toEqual([
     {
-      capacity: "reservation-start",
-      id: "prepare-checkout-pay-page",
-    },
-    {
       capacity: "provider-verification",
       id: "replay-payment-webhook",
-    },
-    {
-      capacity: "reservation-start",
-      id: "restart-reservation-after-fulfillment",
     },
   ]);
   expect(observedSteps.slice(0, 9).map(({ id }) => id)).toEqual([
@@ -348,16 +321,6 @@ test("scopes reservation, hosted-payment, and verification capacity", async () =
     "reach-checkout-status-page",
     "replay-payment-webhook",
     "complete-test-fulfillment",
-  ]);
-  expect(
-    observedSteps
-      .filter(({ insideHostedPaymentSession }) => insideHostedPaymentSession)
-      .map(({ id }) => id)
-  ).toEqual([
-    "start-checkout-payment",
-    "read-provider-session-row",
-    "complete-hosted-payment",
-    "reach-checkout-status-page",
   ]);
   expect(
     observedSteps.slice(-6).map(({ id, timeoutMs }) => ({ id, timeoutMs }))

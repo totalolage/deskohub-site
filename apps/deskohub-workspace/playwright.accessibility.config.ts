@@ -9,7 +9,7 @@ const localBaseUrl = process.env.WORKSPACE_ACCESSIBILITY_BASE_URL;
 let baseUrl = "http://localhost:3110";
 if (remoteBaseUrl) baseUrl = parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl;
 if (localBaseUrl) baseUrl = new URL(localBaseUrl).origin;
-const browserExecutablePath = process.env.AGENT_BROWSER_EXECUTABLE_PATH;
+const browserExecutablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 process.env.POSTHOG_FEATURE_FLAG_OVERRIDES ??= JSON.stringify({
   calendar_sales: true,

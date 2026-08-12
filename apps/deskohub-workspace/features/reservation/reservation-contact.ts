@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import isEmail from "validator/lib/isEmail";
+import isEmail from "validator/lib/isEmail.js";
 import { m } from "@/features/i18n";
 
 export const RESERVATION_VALIDATION = {

@@ -70,6 +70,7 @@ export const e2eEnvironmentSchema = Schema.Struct({
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
   PATH: optionalNonEmptyString,
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalNonEmptyString,
   TARGET_SHA: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)))
   ),
@@ -90,6 +91,8 @@ export const e2eEnvironmentSchema = Schema.Struct({
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
+  WORKSPACE_E2E_RUN_CONTEXT: optionalNonEmptyString,
+  WORKSPACE_E2E_TRACE_PARENT: optionalNonEmptyString,
 });
 
 export const makeE2EEnvironment = (
@@ -118,6 +121,8 @@ export const makeE2EEnvironment = (
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
       PATH: runtimeEnvironment.PATH,
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+        runtimeEnvironment.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       TARGET_SHA: runtimeEnvironment.TARGET_SHA,
       TMPDIR: runtimeEnvironment.TMPDIR,
       USER: runtimeEnvironment.USER,
@@ -140,6 +145,8 @@ export const makeE2EEnvironment = (
       WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN:
         runtimeEnvironment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
       WORKSPACE_E2E_PR_NUMBER: runtimeEnvironment.WORKSPACE_E2E_PR_NUMBER,
+      WORKSPACE_E2E_RUN_CONTEXT: runtimeEnvironment.WORKSPACE_E2E_RUN_CONTEXT,
+      WORKSPACE_E2E_TRACE_PARENT: runtimeEnvironment.WORKSPACE_E2E_TRACE_PARENT,
     },
     server: e2eEnvironmentSchema.fields,
   });

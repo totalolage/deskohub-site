@@ -1,9 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
-import {
-  formatWorkspaceE2EAllocation,
-  type WorkspaceE2EDateAllocation,
-} from "../allocation";
+import type { WorkspaceE2EDateAllocation } from "../allocation";
 import { getSubmitCoworkReservationScript } from "../browser-scripts";
 import { workspaceE2EMaximumSameDateCoworkReservations } from "../capacity";
 import {
@@ -15,12 +12,8 @@ import {
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
-import type { E2EDatabase } from "../integrations/database.service";
-import {
-  discountCodeFixtures,
-  seedDiscountE2EFixtures,
-} from "../integrations/discount-fixtures";
-import { resolveE2EDotyposDiscountGroup } from "../integrations/dotypos";
+import { discountCodeFixtures } from "../integrations/discount-fixtures";
+import type { E2EDotyposDiscountGroup } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
 import { E2ETelemetryService } from "../services/telemetry";
@@ -33,66 +26,52 @@ import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
 import {
+  type DiscountAvailabilityE2EPreparation,
   makeDiscountE2ECases,
-  prepareDiscountAvailabilityE2E,
 } from "./discounts";
 import { assertLocaleSwitcher } from "./locale";
-import { makeMeetingRoomE2ECases, prepareMeetingRoomE2E } from "./meeting-room";
-import { makeOfficeE2ECases, prepareOfficeE2E } from "./office";
+import {
+  type MeetingRoomE2EPreparation,
+  makeMeetingRoomE2ECases,
+} from "./meeting-room";
+import { makeOfficeE2ECases, type OfficeE2EPreparation } from "./office";
 import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
 import { assertReservationReplacement } from "./reservation-reuse";
 
+export type WorkspaceE2EPreparation = {
+  readonly customerDiscountGroup: E2EDotyposDiscountGroup;
+  readonly discounts: DiscountAvailabilityE2EPreparation;
+  readonly meetingRoom: MeetingRoomE2EPreparation;
+  readonly office: OfficeE2EPreparation;
+};
+
 export const makeWorkspaceE2ECases = ({
   allocation,
   config,
   datasourceConfig,
   flowStates,
+  preparation,
   run,
 }: {
   allocation: WorkspaceE2EDateAllocation;
   config: WorkspaceE2EConfig;
   datasourceConfig: DatasourceConfig;
   flowStates: CheckoutFlowState[];
+  preparation: WorkspaceE2EPreparation;
   run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
-  HttpClient.HttpClient | E2EDatabase | E2ETelemetryService
+  HttpClient.HttpClient | E2ETelemetryService
 > =>
   Effect.gen(function* () {
     const telemetry = yield* E2ETelemetryService;
-    log(`Using workspace e2e ${formatWorkspaceE2EAllocation(allocation)}`);
-    const [availability, customerDiscountGroup] =
-      yield* sequenceWorkspaceE2EPreparation({
-        availability: Effect.all(
-          {
-            discounts: telemetry.tracePhase({
-              effect: prepareDiscountAvailabilityE2E(config, allocation),
-              phaseId: "cowork-availability-preparation",
-            }),
-            meetingRoom: telemetry.tracePhase({
-              effect: prepareMeetingRoomE2E(config, allocation),
-              phaseId: "meeting-room-availability-preparation",
-            }),
-            office: telemetry.tracePhase({
-              effect: prepareOfficeE2E(config, allocation),
-              phaseId: "office-availability-preparation",
-            }),
-          },
-          { concurrency: "unbounded" }
-        ),
-        fixtures: telemetry.tracePhase({
-          effect: seedDiscountE2EFixtures,
-          phaseId: "fixture-seeding",
-        }),
-        independent: resolveE2EDotyposDiscountGroup(datasourceConfig),
-      });
     const discountPreparation = {
-      ...availability.discounts,
-      customerDiscountGroup,
+      ...preparation.discounts,
+      customerDiscountGroup: preparation.customerDiscountGroup,
     };
 
     return yield* telemetry.tracePhase({
@@ -146,12 +125,11 @@ export const makeWorkspaceE2ECases = ({
           const state = trackCheckoutState(flowStates, data);
           cases.push({
             checkoutStates: [state],
-            execute: ({ resources, runStep, session }) =>
+            execute: ({ runStep, session }) =>
               assertPaymentTerminalPath({
                 config,
                 data,
                 reservationPath: "/en-US/reservation/cowork",
-                resources,
                 run,
                 runStep,
                 scenario,
@@ -275,13 +253,12 @@ export const makeWorkspaceE2ECases = ({
           const state = trackCheckoutState(flowStates, data);
           cases.push({
             checkoutStates: [state],
-            execute: ({ resources, runStep, session }) =>
+            execute: ({ runStep, session }) =>
               executeCheckoutFlow({
                 config,
                 data,
                 datasourceConfig,
                 flow,
-                resources,
                 run,
                 runStep,
                 session,
@@ -302,7 +279,7 @@ export const makeWorkspaceE2ECases = ({
             config,
             datasourceConfig,
             flowStates,
-            preparation: availability.meetingRoom,
+            preparation: preparation.meetingRoom,
             run,
           }))
         );
@@ -312,7 +289,7 @@ export const makeWorkspaceE2ECases = ({
             config,
             datasourceConfig,
             flowStates,
-            preparation: availability.office,
+            preparation: preparation.office,
             run,
           }))
         );
@@ -333,40 +310,6 @@ export const makeWorkspaceE2ECases = ({
       }),
       phaseId: "case-construction",
     });
-  });
-
-export const sequenceWorkspaceE2EPreparation = <
-  A,
-  I,
-  FixtureError,
-  AvailabilityError,
-  IndependentError,
-  FixtureRequirements,
-  AvailabilityRequirements,
-  IndependentRequirements,
->({
-  availability,
-  fixtures,
-  independent,
-}: {
-  readonly availability: Effect.Effect<
-    A,
-    AvailabilityError,
-    AvailabilityRequirements
-  >;
-  readonly fixtures: Effect.Effect<void, FixtureError, FixtureRequirements>;
-  readonly independent: Effect.Effect<
-    I,
-    IndependentError,
-    IndependentRequirements
-  >;
-}): Effect.Effect<
-  readonly [A, I],
-  FixtureError | AvailabilityError | IndependentError,
-  FixtureRequirements | AvailabilityRequirements | IndependentRequirements
-> =>
-  Effect.all([fixtures.pipe(Effect.andThen(availability)), independent], {
-    concurrency: "unbounded",
   });
 
 const trackCheckoutState = (

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import {
   activateHydratedBrowserElement,
   findEnabledSnapshotRef,
+  getSnapshotRef,
   readActiveBrowserTabId,
   readBrowserTabs,
   switchToBrowserTab,
@@ -65,6 +66,11 @@ test("ignores disabled snapshot targets with additional state attributes", () =>
   expect(findEnabledSnapshotRef(snapshot, ["Card number"])).toBe("@e2");
 });
 
+test("accepts Playwright AI snapshot references from the main page and frames", () => {
+  expect(getSnapshotRef('- button "Save" [ref=e2]')).toBe("@e2");
+  expect(getSnapshotRef('- textbox "Card number" [ref=f1e4]')).toBe("@f1e4");
+});
+
 test("reads and switches stable browser tabs", async () => {
   const calls: string[][] = [];
   const run: Runner = async (_command, args) => {
@@ -85,7 +91,9 @@ test("reads and switches stable browser tabs", async () => {
   };
 
   const tabs = await Effect.runPromise(readBrowserTabs(run, "browser-test"));
-  const tabId = await Effect.runPromise(readActiveBrowserTabId(run, "browser-test"));
+  const tabId = await Effect.runPromise(
+    readActiveBrowserTabId(run, "browser-test")
+  );
   await Effect.runPromise(switchToBrowserTab(run, "browser-test", tabId));
 
   expect(tabs).toEqual([

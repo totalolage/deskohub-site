@@ -44,9 +44,7 @@ test("retries a safe operation after an Effect-wrapped connection failure", asyn
     attempts += 1;
     return attempts < 3
       ? Effect.fail({
-          cause: Cause.fail(
-            new Error("Connection terminated unexpectedly")
-          ),
+          cause: Cause.fail(new Error("Connection terminated unexpectedly")),
         })
       : Effect.succeed([{ value: 1 }]);
   });

@@ -9,12 +9,12 @@ const remoteBaseUrl = env.WORKSPACE_E2E_BASE_URL;
 const baseUrl = remoteBaseUrl
   ? parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl
   : "http://localhost:3000";
-const browserExecutablePath = env.AGENT_BROWSER_EXECUTABLE_PATH;
+const browserExecutablePath = env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
 
 export default defineConfig({
   expect: { timeout: workspaceE2ETimeouts.browserAction },
   forbidOnly: true,
-  fullyParallel: false,
+  fullyParallel: true,
   outputDir: "./e2e-artifacts/instant-navigation",
   reporter: "line",
   retries: 0,
@@ -39,5 +39,5 @@ export default defineConfig({
         timeout: workspaceE2ETimeouts.checkoutStart,
         url: `${baseUrl}/en-US`,
       },
-  workers: 1,
+  workers: "100%",
 });

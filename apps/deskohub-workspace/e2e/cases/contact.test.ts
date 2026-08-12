@@ -54,9 +54,9 @@ test("activates the hydrated contact form action through its stable selector", a
   expect(
     calls.find(({ args }) => args.includes("focus"))?.args.slice(2)
   ).toEqual(["focus", '#contact-form button[type="submit"]']);
-  expect(calls.find(({ args }) => args.includes("press"))?.args.slice(2)).toEqual(
-    ["press", "Enter"]
-  );
+  expect(
+    calls.find(({ args }) => args.includes("press"))?.args.slice(2)
+  ).toEqual(["press", "Enter"]);
 
   const waitIndex = calls.findIndex(({ args }) => args.includes("wait"));
   const focusIndex = calls.findIndex(({ args }) => args.includes("focus"));

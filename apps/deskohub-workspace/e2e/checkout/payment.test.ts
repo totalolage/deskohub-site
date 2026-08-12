@@ -169,7 +169,7 @@ test("retries a transient reservation preparation failure with the same checkout
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });
 
-test("detaches long reservation preparation from the CDP evaluation", async () => {
+test("detaches long reservation preparation from one Playwright evaluation", async () => {
   const submitReservationScript = "new Promise(() => undefined)";
   let focusedRef: string | undefined;
   let preparationKickoffs = 0;
@@ -181,7 +181,7 @@ test("detaches long reservation preparation from the CDP evaluation", async () =
 
     if (commandArgs[0] === "eval") {
       if (options.input === submitReservationScript) {
-        throw new Error("CDP command timed out: Runtime.evaluate");
+        throw new Error("Playwright evaluation timed out");
       }
       if (options.input?.includes(submitReservationScript)) {
         preparationKickoffs += 1;
@@ -190,7 +190,7 @@ test("detaches long reservation preparation from the CDP evaluation", async () =
       if (options.input?.includes("__deskohubWorkspaceE2EPreparation")) {
         preparationStateReads += 1;
         return success(
-          serializeAgentBrowserStateResult(options.input, { status: "ready" })
+          serializeBrowserStateResult(options.input, { status: "ready" })
         );
       }
     }
@@ -404,9 +404,7 @@ test("returns through back to shop and restores the single original status tab",
           data: {
             tabs: [
               { active: tabListReads > 1, tabId: "t1" },
-              ...(tabListReads === 1
-                ? [{ active: true, tabId: "t2" }]
-                : []),
+              ...(tabListReads === 1 ? [{ active: true, tabId: "t2" }] : []),
             ],
           },
           success: true,
@@ -488,7 +486,7 @@ test("returns through back to shop and restores the single original status tab",
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
 
-const serializeAgentBrowserStateResult = (
+const serializeBrowserStateResult = (
   script: string | undefined,
   state: unknown
 ) =>

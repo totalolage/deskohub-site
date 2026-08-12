@@ -23,7 +23,7 @@ const runBrowserCommand = (
   options?: Parameters<Runner>[2]
 ) =>
   tryWorkspaceE2EPromise(operation, (signal) =>
-    run("agent-browser", ["--session", session, ...args], {
+    run("playwright", ["--session", session, ...args], {
       ...options,
       signal,
     })
@@ -475,12 +475,21 @@ export const startBrowserDiagnostics = (
       ["network", "requests", "--clear"],
     ];
 
-    yield* Effect.forEach(commands, (args) =>
-      runBrowserCommand(`clear browser ${args.join(" ")}`, run, session, args, {
-        allowFailure: true,
-        logOutput: false,
-        timeoutMs: 30_000,
-      })
+    yield* Effect.forEach(
+      commands,
+      (args) =>
+        runBrowserCommand(
+          `clear browser ${args.join(" ")}`,
+          run,
+          session,
+          args,
+          {
+            allowFailure: true,
+            logOutput: false,
+            timeoutMs: 30_000,
+          }
+        ),
+      { concurrency: "unbounded", discard: true }
     );
 
     const result = yield* runBrowserCommand(
@@ -609,7 +618,7 @@ const writeCommandArtifact = (
     const result = yield* tryWorkspaceE2EPromise(
       `write ${fileName} artifact`,
       (signal) =>
-        run("agent-browser", args, {
+        run("playwright", args, {
           allowFailure: true,
           logOutput: false,
           signal,
@@ -919,8 +928,8 @@ export const requireEnabledSnapshotRef = ({
   );
 
 export const getSnapshotRef = (line: string) =>
-  line.match(/\bref=(e\d+)\b/)?.[1]?.replace(/^/, "@") ??
-  line.match(/@e\d+/)?.[0];
+  line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
+  line.match(/@(?:f\d+)?e\d+/)?.[0];
 
 export const waitForBrowserUrl = ({
   description,

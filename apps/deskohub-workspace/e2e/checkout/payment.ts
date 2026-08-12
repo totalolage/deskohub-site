@@ -69,7 +69,7 @@ const runBrowserCommand = (
   options?: Parameters<Runner>[2]
 ) =>
   tryWorkspaceE2EPromise(operation, (signal) =>
-    run("agent-browser", ["--session", session, ...args], {
+    run("playwright", ["--session", session, ...args], {
       ...options,
       signal,
     })
@@ -801,11 +801,7 @@ const waitForReturnedPaymentTabToClose = ({
         timeoutMs,
       }
     );
-    yield* switchToBrowserTab(
-      run,
-      session,
-      hostedPaymentPage.checkoutTabId
-    );
+    yield* switchToBrowserTab(run, session, hostedPaymentPage.checkoutTabId);
   });
 
 const fillHostedPaymentField = (
