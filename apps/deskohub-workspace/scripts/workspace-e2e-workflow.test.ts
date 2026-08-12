@@ -145,7 +145,10 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
     resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
   ).text();
 
-  expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
+  expect(testE2E).toBe(
+    "bun --conditions react-server scripts/workspace-e2e.ts"
+  );
+  expect(packageJson.dependencies["server-only"]).toBe("^0.0.1");
   expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
   expect(testUnit).not.toContain("e2e.test.ts");
   expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
