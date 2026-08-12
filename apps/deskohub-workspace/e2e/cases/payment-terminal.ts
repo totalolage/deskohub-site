@@ -227,7 +227,7 @@ export const activateStatusReserveAgain = (
   reservationPath: string,
   timeouts: WorkspaceE2ETimeouts
 ) => {
-  const selector = `a[href="${reservationPath}"]`;
+  const selector = `#checkout-status-reserve-again[href="${reservationPath}"]`;
 
   return activateHydratedBrowserElement(run, session, selector, {
     timeoutMs: timeouts.uiTransition,
