@@ -15,7 +15,6 @@ export default function PaymentScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
   const {
     actionError,
-    apiMode,
     completePaymentHandoff,
     isActionPending,
     isOnline,
@@ -51,10 +50,10 @@ export default function PaymentScreen() {
       return completePaymentHandoff();
     return refreshPurchase(normalizedOrderId);
   };
-  const paymentActionLabel = (() => {
-    if (paymentHandoff?.orderId !== normalizedOrderId) return t("checkPayment");
-    return apiMode === "demo" ? t("demoPayment") : t("openPayment");
-  })();
+  const paymentActionLabel =
+    paymentHandoff?.orderId === normalizedOrderId
+      ? t("openPayment")
+      : t("checkPayment");
   const reference = getPurchaseReference(purchase, normalizedOrderId);
 
   if (purchase?.status === "paid") {

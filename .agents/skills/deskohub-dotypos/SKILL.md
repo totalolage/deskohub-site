@@ -21,6 +21,8 @@ For a Dotypos resource or item operation:
 
 Do not add a parallel hand-written response decoder when the contract can be generated.
 
+Customer-facing Workspace app builds must load Dotypos-backed catalog data through the Workspace backend. Keep fixtures in test or screenshot tooling only; never ship an installable runtime switch that substitutes a mock menu, authentication, or payment flow.
+
 For production log inspection or provider diagnostics, also read `../deskohub-workspace-operations/references/diagnostics.md` before fetching data.
 
 Update this skill when developer feedback changes the integration workflow.

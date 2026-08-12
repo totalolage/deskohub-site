@@ -14,6 +14,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { palette, spacing, type } from "@/constants/Theme";
+import {
+  getScreenSafeAreaEdges,
+  isTabNavigationHidden,
+} from "@/src/platform/navigation-layout";
 import { useShop } from "@/src/state/shop-provider";
 import { Brand } from "./Brand";
 import { StatusBanner } from "./Controls";
@@ -37,16 +41,24 @@ export function AppScreen({
 }) {
   const { width } = useWindowDimensions();
   const pathname = usePathname();
-  const { isOnline, t } = useShop();
+  const { isOnline, loadState, session, t } = useShop();
   const wide = width >= 840;
   const compact = width < 480;
+  const navigationHidden = isTabNavigationHidden({
+    loadState,
+    pathname,
+    sessionKind: session.kind,
+  });
 
   return (
     <>
       <Head>
         <title>{t("appName")}</title>
       </Head>
-      <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
+      <SafeAreaView
+        edges={getScreenSafeAreaEdges({ navigationHidden, wide })}
+        style={styles.safeArea}
+      >
         <View style={styles.page}>
           {header && (
             <View

@@ -75,6 +75,58 @@ describe("mobile API URL building", () => {
   });
 });
 
+describe("mobile catalog", () => {
+  test("loads and maps products from the Workspace catalog endpoint", async () => {
+    const originalFetch = globalThis.fetch;
+    let requestedUrl: URL | undefined;
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      requestedUrl = new URL(String(input));
+      return Response.json({
+        ok: true,
+        data: {
+          generatedAt: "2026-08-12T12:00:00.000Z",
+          categories: [{ id: "drinks", name: "Cold drinks" }],
+          products: [
+            {
+              id: "water",
+              categoryId: "drinks",
+              name: "Sparkling water",
+              description: "Mineral water",
+              unitLabel: "500 ml",
+              imageUrl: "https://images.example.test/water.png",
+              price: { value: 39, exponent: 0, currency: "CZK" },
+            },
+          ],
+        },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const catalog = await createHttpShopApi(
+        "https://preview.example.test"
+      ).getCatalog("en");
+
+      expect(requestedUrl?.pathname).toBe("/api/v1/mobile/catalog");
+      expect(requestedUrl?.searchParams.get("locale")).toBe("en-US");
+      expect(catalog.products).toEqual([
+        {
+          id: "water",
+          categoryId: "drinks",
+          name: { cs: "Sparkling water", en: "Sparkling water" },
+          description: {
+            cs: "Mineral water · 500 ml",
+            en: "Mineral water · 500 ml",
+          },
+          imageUrl: "https://images.example.test/water.png",
+          price: { currency: "CZK", minorUnits: 3900 },
+        },
+      ]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe("mobile checkout retries", () => {
   test("reuses the checkout attempt ID after an ambiguous order response", async () => {
     const originalFetch = globalThis.fetch;

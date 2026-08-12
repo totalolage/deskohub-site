@@ -40,7 +40,6 @@ type LoadState = "loading" | "ready" | "error";
 type SignInState = "idle" | "opening" | "error";
 
 type ShopContextValue = Readonly<{
-  apiMode: "demo" | "live" | "unavailable";
   loadState: LoadState;
   errorKind: ShopApiError["kind"] | null;
   session: ShopSession;
@@ -83,7 +82,7 @@ type ShopContextValue = Readonly<{
 }>;
 
 const ShopContext = createContext<ShopContextValue | null>(null);
-const runtime = selectShopApi();
+const shopApi = selectShopApi();
 const cartStorage = createCartStorage(deviceStorage);
 const catalogStorage = createCatalogStorage(deviceStorage);
 const preferenceStorage = createPreferenceStorage(deviceStorage);
@@ -119,14 +118,14 @@ export function ShopProvider({ children }: PropsWithChildren) {
   const [isActionPending, setIsActionPending] = useState(false);
   const loadSignedInContent = useCallback(async (targetLocale: Locale) => {
     const [nextEntitlement, nextPurchases] = await Promise.all([
-      runtime.api.getEntitlement(),
-      runtime.api.listPurchases(),
+      shopApi.getEntitlement(),
+      shopApi.listPurchases(),
     ]);
     setEntitlement(nextEntitlement);
     setPurchases(nextPurchases);
     if (nextEntitlement.kind === "eligible") {
       try {
-        const nextCatalog = await runtime.api.getCatalog(targetLocale);
+        const nextCatalog = await shopApi.getCatalog(targetLocale);
         setCatalog(nextCatalog);
         setCatalogIsStale(false);
         await catalogStorage.save(targetLocale, nextCatalog);
@@ -150,7 +149,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
       if (Platform.OS !== "web") {
         const initialUrl = await Linking.getInitialURL();
         if (initialUrl?.includes("://auth/callback?")) {
-          await runtime.api.completeSignInHandoff(initialUrl);
+          await shopApi.completeSignInHandoff(initialUrl);
         }
       }
       const [persistedCart, persistedLocale, persistedConsent] =
@@ -165,7 +164,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
       if (persistedLocale) setLocaleState(persistedLocale);
       setAnalyticsConsentState(persistedConsent);
       await shopAnalytics.setConsent(persistedConsent === "allowed");
-      const nextSession = await runtime.api.getSession();
+      const nextSession = await shopApi.getSession();
       setSession(nextSession);
       if (nextSession.kind === "signed_in") {
         await loadSignedInContent(targetLocale);
@@ -207,33 +206,20 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      if (runtime.mode === "live") {
-        const handoff = await runtime.api.prepareSignInHandoff(locale);
-        if (Platform.OS === "web") {
-          window.location.assign(handoff.url);
-          return true;
-        }
-        const result = await WebBrowser.openAuthSessionAsync(
-          handoff.url,
-          handoff.callbackUrl
-        );
-        if (result.type !== "success") {
-          setSignInState("idle");
-          return false;
-        }
-        const nextSession = await runtime.api.completeSignInHandoff(result.url);
-        if (nextSession.kind === "signed_out") {
-          setActionError("native_auth_unavailable");
-          setSignInState("error");
-          return false;
-        }
-        setSession(nextSession);
-        await loadSignedInContent(locale);
-        shopAnalytics.capture("shop_signed_in");
-        setSignInState("idle");
+      const handoff = await shopApi.prepareSignInHandoff(locale);
+      if (Platform.OS === "web") {
+        window.location.assign(handoff.url);
         return true;
       }
-      const nextSession = await runtime.api.completeSignInHandoff();
+      const result = await WebBrowser.openAuthSessionAsync(
+        handoff.url,
+        handoff.callbackUrl
+      );
+      if (result.type !== "success") {
+        setSignInState("idle");
+        return false;
+      }
+      const nextSession = await shopApi.completeSignInHandoff(result.url);
       if (nextSession.kind === "signed_out") {
         setActionError("native_auth_unavailable");
         setSignInState("error");
@@ -271,7 +257,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      await runtime.api.signOut();
+      await shopApi.signOut();
     } catch (error) {
       setActionError(errorKind(error));
     } finally {
@@ -307,7 +293,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      const nextQuote = await runtime.api.quoteCart(cart, locale);
+      const nextQuote = await shopApi.quoteCart(cart, locale);
       setQuote(nextQuote);
       shopAnalytics.capture("shop_quote_confirmed", {
         item_count: getCartQuantity(cart),
@@ -326,11 +312,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      const handoff = await runtime.api.createHostedPayment(
-        quote,
-        cart,
-        locale
-      );
+      const handoff = await shopApi.createHostedPayment(quote, cart, locale);
       setPaymentHandoff(handoff);
       setPaymentPurchase(null);
       shopAnalytics.capture("shop_payment_started");
@@ -347,7 +329,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      const purchase = await runtime.api.reconcilePayment(orderId);
+      const purchase = await shopApi.reconcilePayment(orderId);
       setPaymentPurchase(purchase);
       setPurchases((currentPurchases) => [
         purchase,
@@ -372,9 +354,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
 
   const completePaymentHandoff = useCallback(async () => {
     if (!paymentHandoff || !isOnline) return null;
-    if (runtime.mode === "live") {
-      await WebBrowser.openBrowserAsync(paymentHandoff.hostedPaymentUrl);
-    }
+    await WebBrowser.openBrowserAsync(paymentHandoff.hostedPaymentUrl);
     return reconcilePurchase(paymentHandoff.orderId);
   }, [isOnline, paymentHandoff, reconcilePurchase]);
 
@@ -390,7 +370,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setIsActionPending(true);
     setActionError(null);
     try {
-      const purchase = await runtime.api.getPurchase(orderId);
+      const purchase = await shopApi.getPurchase(orderId);
       setPurchases((currentPurchases) => [
         purchase,
         ...currentPurchases.filter((candidate) => candidate.id !== purchase.id),
@@ -412,7 +392,7 @@ export function ShopProvider({ children }: PropsWithChildren) {
         void (async () => {
           try {
             if (!isOnline) throw new ShopApiError("Offline", "offline");
-            const nextCatalog = await runtime.api.getCatalog(nextLocale);
+            const nextCatalog = await shopApi.getCatalog(nextLocale);
             setCatalog(nextCatalog);
             setCatalogIsStale(false);
             await catalogStorage.save(nextLocale, nextCatalog);
@@ -445,7 +425,6 @@ export function ShopProvider({ children }: PropsWithChildren) {
 
   const value = useMemo<ShopContextValue>(
     () => ({
-      apiMode: runtime.mode,
       loadState,
       errorKind: loadErrorKind,
       session,

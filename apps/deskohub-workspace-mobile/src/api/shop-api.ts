@@ -45,8 +45,3 @@ export interface ShopApi {
   listPurchases(): Promise<readonly Purchase[]>;
   getPurchase(orderId: string): Promise<Purchase>;
 }
-
-export type ShopApiRuntime = Readonly<{
-  api: ShopApi;
-  mode: "demo" | "live" | "unavailable";
-}>;

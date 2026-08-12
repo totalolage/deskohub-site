@@ -5,9 +5,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppIcon } from "@/components/AppIcon";
 import { palette } from "@/constants/Theme";
+import {
+  getTabBarLayout,
+  isTabNavigationHidden,
+} from "@/src/platform/navigation-layout";
 import { useShop } from "@/src/state/shop-provider";
 
 function TabIcon({
@@ -28,12 +33,14 @@ function TabIcon({
 
 export default function TabLayout() {
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const pathname = usePathname();
   const { loadState, session, t } = useShop();
-  const hideNavigation =
-    loadState !== "ready" ||
-    session.kind === "signed_out" ||
-    pathname.includes("/payment/");
+  const hideNavigation = isTabNavigationHidden({
+    loadState,
+    pathname,
+    sessionKind: session.kind,
+  });
   const wide = width >= 840;
 
   return (
@@ -59,11 +66,7 @@ export default function TabLayout() {
           backgroundColor: palette.surfaceMuted,
           borderRightColor: wide ? palette.outline : undefined,
           borderTopColor: wide ? undefined : palette.outline,
-          display: hideNavigation ? "none" : "flex",
-          height: wide ? undefined : 64,
-          paddingBottom: wide ? undefined : 4,
-          paddingTop: wide ? 16 : 4,
-          width: wide ? 128 : undefined,
+          ...getTabBarLayout({ hidden: hideNavigation, insets, wide }),
         },
       }}
     >

@@ -27,14 +27,14 @@ import { useShop } from "@/src/state/shop-provider";
 function LaunchState() {
   const { t } = useShop();
   return (
-    <View style={styles.launch}>
+    <AppScreen contentStyle={styles.launch} header={false}>
       <Brand />
       <View style={styles.launchCopy}>
         <Text accessibilityRole="header" style={styles.launchTitle}>
           {t("loadingTitle")}
         </Text>
       </View>
-    </View>
+    </AppScreen>
   );
 }
 

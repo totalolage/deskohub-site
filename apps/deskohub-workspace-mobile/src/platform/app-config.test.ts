@@ -38,4 +38,10 @@ describe("mobile app configuration", () => {
       "deskohub-workspace-preview-p0-s00000000"
     );
   });
+
+  test("defaults to the hosted Workspace API", () => {
+    expect(configFor("development").extra).toMatchObject({
+      apiOrigin: "https://app.workspace.deskohub.cz",
+    });
+  });
 });

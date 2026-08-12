@@ -13,10 +13,6 @@ const readPositiveInteger = (value: string | undefined, fallback: number) => {
 
 export default ({ config }: ConfigContext): ExpoConfig => {
   const buildTag = process.env.DW_BUILD_TAG?.trim() || "development";
-  const shopApiMode =
-    process.env.EXPO_PUBLIC_SHOP_API_MODE?.trim().toLowerCase() === "demo"
-      ? "demo"
-      : "live";
   const buildChannel =
     process.env.DW_BUILD_CHANNEL === "production" ? "production" : "preview";
   const projectId = process.env.EXPO_PROJECT_ID?.trim();
@@ -150,7 +146,6 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       scheme,
       buildTag,
       buildChannel,
-      shopApiMode,
       apiOrigin: process.env.EXPO_PUBLIC_API_ORIGIN ?? appOrigin,
       androidCertificateSha256: process.env.DW_ANDROID_CERT_SHA256?.trim()
         .replaceAll(":", "")

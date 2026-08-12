@@ -1,6 +1,6 @@
-import { createFixtureShopApi } from "./fixture-shop-api";
+import Constants from "expo-constants";
 import { createHttpShopApi } from "./http-shop-api";
-import { type ShopApi, ShopApiError, type ShopApiRuntime } from "./shop-api";
+import { type ShopApi, ShopApiError } from "./shop-api";
 
 function createUnavailableShopApi(): ShopApi {
   const unavailable = async (): Promise<never> => {
@@ -21,21 +21,14 @@ function createUnavailableShopApi(): ShopApi {
   };
 }
 
-export function selectShopApi(): ShopApiRuntime {
+export function selectShopApi(): ShopApi {
   const extra = (Constants.expoConfig?.extra ?? {}) as {
     apiOrigin?: string;
-    shopApiMode?: "demo" | "live";
   };
-  if (extra.shopApiMode === "demo") {
-    return { api: createFixtureShopApi(), mode: "demo" };
-  }
 
   const baseUrl = extra.apiOrigin?.trim();
-  if (baseUrl) return { api: createHttpShopApi(baseUrl), mode: "live" };
-  return { api: createUnavailableShopApi(), mode: "unavailable" };
+  return baseUrl ? createHttpShopApi(baseUrl) : createUnavailableShopApi();
 }
 
-export type { ShopApi, ShopApiRuntime } from "./shop-api";
+export type { ShopApi } from "./shop-api";
 export { ShopApiError } from "./shop-api";
-
-import Constants from "expo-constants";
