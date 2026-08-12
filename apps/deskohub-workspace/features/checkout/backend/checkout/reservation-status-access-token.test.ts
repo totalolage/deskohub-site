@@ -5,11 +5,20 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import {
+  type CheckoutStateKey,
+  checkoutStateKeyIdSchema,
+} from "./checkout-state-token";
+import {
   createReservationStatusAccessToken,
   openReservationStatusAccessToken,
 } from "./reservation-status-access-token";
 
-const secret = "synthetic-reservation-status-secret";
+const keys: readonly CheckoutStateKey[] = [
+  {
+    kid: checkoutStateKeyIdSchema.make("status-test"),
+    key: Buffer.alloc(32, 9),
+  },
+];
 const orderId = workspaceReservationIdSchema.make("reservation-1");
 const now = Temporal.Instant.from("2026-06-20T08:00:00Z");
 
@@ -20,7 +29,7 @@ const createToken = () =>
       locale: "en-US",
       expiresAt: Temporal.Instant.from("2026-06-20T12:30:00Z"),
     },
-    { secret, now: () => now.epochMilliseconds }
+    { keys, now: () => now.epochMilliseconds }
   );
 
 describe("reservation status access token", () => {
@@ -29,7 +38,7 @@ describe("reservation status access token", () => {
     const claims = await Effect.runPromise(
       openReservationStatusAccessToken(
         { token, orderId, locale: "en-US", now },
-        { secret }
+        { keys }
       )
     );
 
@@ -51,7 +60,7 @@ describe("reservation status access token", () => {
 
     for (const input of inputs) {
       const error = await Effect.runPromise(
-        Effect.flip(openReservationStatusAccessToken(input, { secret }))
+        Effect.flip(openReservationStatusAccessToken(input, { keys }))
       );
       expect(error.code).toBe("invalid-token");
     }
@@ -68,11 +77,31 @@ describe("reservation status access token", () => {
             locale: "en-US",
             now: Temporal.Instant.from("2026-06-20T12:30:00Z"),
           },
-          { secret }
+          { keys }
         )
       )
     );
 
     expect(error.code).toBe("expired");
+  });
+
+  test("keeps links valid while their signing key remains in the rotated keyring", async () => {
+    const token = await Effect.runPromise(createToken());
+    const rotatedKeys: readonly CheckoutStateKey[] = [
+      {
+        kid: checkoutStateKeyIdSchema.make("status-next"),
+        key: Buffer.alloc(32, 10),
+      },
+      ...keys,
+    ];
+
+    const claims = await Effect.runPromise(
+      openReservationStatusAccessToken(
+        { token, orderId, locale: "en-US", now },
+        { keys: rotatedKeys }
+      )
+    );
+
+    expect(claims.kid).toBe("status-test");
   });
 });
