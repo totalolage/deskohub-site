@@ -45,7 +45,7 @@ export type WorkspaceE2EPreparation = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
   readonly discounts: DiscountAvailabilityE2EPreparation;
   readonly meetingRoom: MeetingRoomE2EPreparation;
-  readonly office: OfficeE2EPreparation;
+  readonly office: OfficeE2EPreparation | undefined;
 };
 
 export const makeWorkspaceE2ECases = ({
@@ -55,6 +55,7 @@ export const makeWorkspaceE2ECases = ({
   flowStates,
   preparation,
   run,
+  traceConstruction = true,
 }: {
   allocation: WorkspaceE2EDateAllocation;
   config: WorkspaceE2EConfig;
@@ -62,252 +63,253 @@ export const makeWorkspaceE2ECases = ({
   flowStates: CheckoutFlowState[];
   preparation: WorkspaceE2EPreparation;
   run: Runner;
+  traceConstruction?: boolean;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
   WorkspaceE2EError,
   HttpClient.HttpClient | E2ETelemetryService
 > =>
   Effect.gen(function* () {
-    const telemetry = yield* E2ETelemetryService;
     const discountPreparation = {
       ...preparation.discounts,
       customerDiscountGroup: preparation.customerDiscountGroup,
     };
 
-    return yield* telemetry.tracePhase({
-      effect: Effect.gen(function* () {
-        const httpClient = yield* HttpClient.HttpClient;
-        const terminalScenarios = getPaymentTerminalScenarios();
-        const checkoutDates = yield* selectCoworkDates(
-          discountPreparation.availableBasicDates,
-          checkoutFlows.length + terminalScenarios.length + 2,
-          {
-            allocation,
-            maximumReservationsPerDate:
-              workspaceE2EMaximumSameDateCoworkReservations.basic,
-            selectionLabel: "tier:basic",
-          }
-        );
-        const cases: WorkspaceE2ECase[] = [
-          {
-            checkoutStates: [],
-            execute: ({ runStep, session }) =>
-              assertLocaleSwitcher({ config, run, runStep, session }).pipe(
-                Effect.mapError((cause) =>
-                  toWorkspaceE2EError("run locale switch e2e case", cause)
-                )
-              ),
-            id: "locale-switch",
-            timeoutMs: config.timeouts.localeCase,
-          },
-          {
-            checkoutStates: [],
-            execute: ({ runStep, session }) =>
-              assertContactForm({ config, run, runStep, session }).pipe(
-                Effect.mapError((cause) =>
-                  toWorkspaceE2EError("run contact form e2e case", cause)
-                )
-              ),
-            id: "contact-form",
-            timeoutMs: config.timeouts.contactCase,
-          },
-        ];
-        let nextDateIndex = 0;
-
-        for (const scenario of terminalScenarios) {
-          const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
-          const data = makeCoworkCheckoutData(
-            config.baseUrl,
-            date,
-            `cowork-${scenario.state}`
-          );
-          nextDateIndex += 1;
-          const state = trackCheckoutState(flowStates, data);
-          cases.push({
-            checkoutStates: [state],
-            execute: ({ runStep, session }) =>
-              assertPaymentTerminalPath({
-                config,
-                data,
-                reservationPath: "/en-US/reservation/cowork",
-                run,
-                runStep,
-                scenario,
-                session,
-                state,
-                submitReservationScript: getSubmitCoworkReservationScript(data),
-              }).pipe(
-                Effect.mapError((cause) =>
-                  toWorkspaceE2EError(
-                    `run ${scenario.state} payment e2e case`,
-                    cause
-                  )
-                )
-              ),
-            id: `payment-${scenario.state}`,
-            timeoutMs: config.timeouts.paymentTerminalCase,
-          });
+    const construction = Effect.gen(function* () {
+      const httpClient = yield* HttpClient.HttpClient;
+      const terminalScenarios = getPaymentTerminalScenarios();
+      const checkoutDates = yield* selectCoworkDates(
+        discountPreparation.availableBasicDates,
+        checkoutFlows.length + terminalScenarios.length + 2,
+        {
+          allocation,
+          maximumReservationsPerDate:
+            workspaceE2EMaximumSameDateCoworkReservations.basic,
+          selectionLabel: "tier:basic",
         }
+      );
+      const cases: WorkspaceE2ECase[] = [
+        {
+          checkoutStates: [],
+          execute: ({ runStep, session }) =>
+            assertLocaleSwitcher({ config, run, runStep, session }).pipe(
+              Effect.mapError((cause) =>
+                toWorkspaceE2EError("run locale switch e2e case", cause)
+              )
+            ),
+          id: "locale-switch",
+          timeoutMs: config.timeouts.localeCase,
+        },
+        {
+          checkoutStates: [],
+          execute: ({ runStep, session }) =>
+            assertContactForm({ config, run, runStep, session }).pipe(
+              Effect.mapError((cause) =>
+                toWorkspaceE2EError("run contact form e2e case", cause)
+              )
+            ),
+          id: "contact-form",
+          timeoutMs: config.timeouts.contactCase,
+        },
+      ];
+      let nextDateIndex = 0;
 
-        const reservationReplacementDate = yield* requireCheckoutDate(
-          checkoutDates,
-          nextDateIndex
-        );
-        const reservationReplacementData = makeCoworkCheckoutData(
+      for (const scenario of terminalScenarios) {
+        const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
+        const data = makeCoworkCheckoutData(
           config.baseUrl,
-          reservationReplacementDate,
-          "cowork-reservation-replacement"
+          date,
+          `cowork-${scenario.state}`
         );
         nextDateIndex += 1;
-        const editedReservationReplacementDates = yield* selectCoworkDates(
-          discountPreparation.availableBasicDates,
-          1,
-          {
-            allocation,
-            excludedDates: new Set([reservationReplacementDate]),
-            selectionLabel: "reservation-replacement",
-          }
-        );
-        const editedReservationReplacementDate = yield* requireCheckoutDate(
-          editedReservationReplacementDates,
-          0
-        );
-        const editedReservationReplacementData = reuseCoworkCheckoutContact(
-          config.baseUrl,
-          editedReservationReplacementDate,
-          reservationReplacementData
-        );
-        const reservationReplacementState = trackCheckoutState(
-          flowStates,
-          reservationReplacementData
-        );
+        const state = trackCheckoutState(flowStates, data);
         cases.push({
-          checkoutStates: [reservationReplacementState],
+          checkoutStates: [state],
           execute: ({ runStep, session }) =>
-            assertReservationReplacement({
+            assertPaymentTerminalPath({
               config,
-              data: reservationReplacementData,
-              datasourceConfig,
-              replacementData: editedReservationReplacementData,
+              data,
               reservationPath: "/en-US/reservation/cowork",
               run,
               runStep,
+              scenario,
               session,
-              state: reservationReplacementState,
-              submitReservationScript: getSubmitCoworkReservationScript,
+              state,
+              submitReservationScript: getSubmitCoworkReservationScript(data),
             }).pipe(
               Effect.mapError((cause) =>
                 toWorkspaceE2EError(
-                  "run reservation replacement e2e case",
+                  `run ${scenario.state} payment e2e case`,
                   cause
                 )
               )
             ),
-          id: "reservation-replacement",
-          timeoutMs: config.timeouts.checkoutCase,
+          id: `payment-${scenario.state}`,
+          timeoutMs: config.timeouts.paymentTerminalCase,
         });
+      }
 
-        const zeroTotalDate = yield* requireCheckoutDate(
-          checkoutDates,
-          nextDateIndex
-        );
-        const zeroTotalData = makeCoworkCheckoutData(
-          config.baseUrl,
-          zeroTotalDate,
-          "cowork-zero-total"
-        );
+      const reservationReplacementDate = yield* requireCheckoutDate(
+        checkoutDates,
+        nextDateIndex
+      );
+      const reservationReplacementData = makeCoworkCheckoutData(
+        config.baseUrl,
+        reservationReplacementDate,
+        "cowork-reservation-replacement"
+      );
+      nextDateIndex += 1;
+      const editedReservationReplacementDates = yield* selectCoworkDates(
+        discountPreparation.availableBasicDates,
+        1,
+        {
+          allocation,
+          excludedDates: new Set([reservationReplacementDate]),
+          selectionLabel: "reservation-replacement",
+        }
+      );
+      const editedReservationReplacementDate = yield* requireCheckoutDate(
+        editedReservationReplacementDates,
+        0
+      );
+      const editedReservationReplacementData = reuseCoworkCheckoutContact(
+        config.baseUrl,
+        editedReservationReplacementDate,
+        reservationReplacementData
+      );
+      const reservationReplacementState = trackCheckoutState(
+        flowStates,
+        reservationReplacementData
+      );
+      cases.push({
+        checkoutStates: [reservationReplacementState],
+        execute: ({ runStep, session }) =>
+          assertReservationReplacement({
+            config,
+            data: reservationReplacementData,
+            datasourceConfig,
+            replacementData: editedReservationReplacementData,
+            reservationPath: "/en-US/reservation/cowork",
+            run,
+            runStep,
+            session,
+            state: reservationReplacementState,
+            submitReservationScript: getSubmitCoworkReservationScript,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run reservation replacement e2e case", cause)
+            )
+          ),
+        id: "reservation-replacement",
+        timeoutMs: config.timeouts.checkoutCase,
+      });
+
+      const zeroTotalDate = yield* requireCheckoutDate(
+        checkoutDates,
+        nextDateIndex
+      );
+      const zeroTotalData = makeCoworkCheckoutData(
+        config.baseUrl,
+        zeroTotalDate,
+        "cowork-zero-total"
+      );
+      nextDateIndex += 1;
+      const zeroTotalState = trackCheckoutState(flowStates, zeroTotalData);
+      cases.push({
+        checkoutStates: [zeroTotalState],
+        execute: ({ runStep, session }) =>
+          executeZeroTotalCheckout({
+            config,
+            data: zeroTotalData,
+            datasourceConfig,
+            run,
+            runStep,
+            session,
+            state: zeroTotalState,
+            submitReservationScript:
+              getSubmitCoworkReservationScript(zeroTotalData),
+            discountCode: discountCodeFixtures.zeroTotal.code,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run zero-total checkout e2e case", cause)
+            )
+          ),
+        id: "checkout-zero-total",
+        timeoutMs: config.timeouts.zeroTotalCheckoutCase,
+      });
+
+      for (const flow of checkoutFlows) {
+        const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
+        const data = yield* flow.makeData(config, datasourceConfig, date);
         nextDateIndex += 1;
-        const zeroTotalState = trackCheckoutState(flowStates, zeroTotalData);
+        if (!data) {
+          log(`${flow.id} checkout e2e skipped`);
+          continue;
+        }
+
+        const state = trackCheckoutState(flowStates, data);
         cases.push({
-          checkoutStates: [zeroTotalState],
+          checkoutStates: [state],
           execute: ({ runStep, session }) =>
-            executeZeroTotalCheckout({
+            executeCheckoutFlow({
               config,
-              data: zeroTotalData,
+              data,
               datasourceConfig,
+              flow,
               run,
               runStep,
               session,
-              state: zeroTotalState,
-              submitReservationScript:
-                getSubmitCoworkReservationScript(zeroTotalData),
-              discountCode: discountCodeFixtures.zeroTotal.code,
+              state,
             }).pipe(
+              Effect.provideService(HttpClient.HttpClient, httpClient),
               Effect.mapError((cause) =>
-                toWorkspaceE2EError("run zero-total checkout e2e case", cause)
+                toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
               )
             ),
-          id: "checkout-zero-total",
-          timeoutMs: config.timeouts.zeroTotalCheckoutCase,
+          id: `checkout-${flow.id}`,
+          timeoutMs: config.timeouts.checkoutCase,
         });
+      }
 
-        for (const flow of checkoutFlows) {
-          const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
-          const data = yield* flow.makeData(config, datasourceConfig, date);
-          nextDateIndex += 1;
-          if (!data) {
-            log(`${flow.id} checkout e2e skipped`);
-            continue;
-          }
+      cases.push(
+        ...(yield* makeMeetingRoomE2ECases({
+          config,
+          datasourceConfig,
+          flowStates,
+          preparation: preparation.meetingRoom,
+          run,
+        }))
+      );
 
-          const state = trackCheckoutState(flowStates, data);
-          cases.push({
-            checkoutStates: [state],
-            execute: ({ runStep, session }) =>
-              executeCheckoutFlow({
-                config,
-                data,
-                datasourceConfig,
-                flow,
-                run,
-                runStep,
-                session,
-                state,
-              }).pipe(
-                Effect.provideService(HttpClient.HttpClient, httpClient),
-                Effect.mapError((cause) =>
-                  toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
-                )
-              ),
-            id: `checkout-${flow.id}`,
-            timeoutMs: config.timeouts.checkoutCase,
-          });
-        }
+      cases.push(
+        ...(yield* makeOfficeE2ECases({
+          config,
+          datasourceConfig,
+          flowStates,
+          preparation: preparation.office,
+          run,
+        }))
+      );
 
-        cases.push(
-          ...(yield* makeMeetingRoomE2ECases({
-            config,
-            datasourceConfig,
-            flowStates,
-            preparation: preparation.meetingRoom,
-            run,
-          }))
-        );
+      cases.push(
+        ...(yield* makeDiscountE2ECases({
+          allocation,
+          config,
+          datasourceConfig,
+          excludedDates: new Set(checkoutDates),
+          flowStates,
+          preparation: discountPreparation,
+          run,
+        }))
+      );
 
-        cases.push(
-          ...(yield* makeOfficeE2ECases({
-            config,
-            datasourceConfig,
-            flowStates,
-            preparation: preparation.office,
-            run,
-          }))
-        );
+      return cases;
+    });
 
-        cases.push(
-          ...(yield* makeDiscountE2ECases({
-            allocation,
-            config,
-            datasourceConfig,
-            excludedDates: new Set(checkoutDates),
-            flowStates,
-            preparation: discountPreparation,
-            run,
-          }))
-        );
-
-        return cases;
-      }),
+    if (!traceConstruction) return yield* construction;
+    const telemetry = yield* E2ETelemetryService;
+    return yield* telemetry.tracePhase({
+      effect: construction,
       phaseId: "case-construction",
     });
   });

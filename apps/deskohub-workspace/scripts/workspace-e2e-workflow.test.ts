@@ -203,6 +203,15 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
   const suite = await Bun.file(
     resolve(import.meta.dir, "../e2e/suite.ts")
   ).text();
+  const cleanupProject = await Bun.file(
+    resolve(import.meta.dir, "../e2e/playwright-checkout/cleanup.pw.ts")
+  ).text();
+  const cleanupRuntime = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
+    )
+  ).text();
 
   expect(entry).toContain("playwright.checkout.config.ts");
   expect(config).toContain("fullyParallel: true");
@@ -212,9 +221,18 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
   expect(config).toContain('name: "checkout-availability"');
   expect(config).toContain('name: "checkout-plan"');
   expect(config).toContain("dependencies: [...independentProjects]");
+  expect(config).toContain("workspaceE2EPlaywrightCheckoutTimeout");
+  expect(config).toContain("resolvePlaywrightChromiumExecutable");
+  expect(entry).toContain("playwrightEnvironment");
+  expect(entry).not.toContain("...process.env");
   expect(suite).not.toContain("Effect.forEach");
   expect(suite).not.toContain("Semaphore");
   expect(suite).not.toContain("Deferred");
+  expect(cleanupProject).toContain('phaseId: "suite-cleanup"');
+  expect(cleanupRuntime).not.toContain(
+    "makeWorkspaceE2EProviderVerificationPermitLive"
+  );
+  expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
 });
 
 test("runs read-only Playwright navigation beside the checkout suite", async () => {

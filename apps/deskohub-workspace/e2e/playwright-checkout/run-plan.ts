@@ -14,7 +14,7 @@ const checkoutArtifactRoot = resolve(workspaceDir, "e2e-artifacts", "checkout");
 const runPlanPath = resolve(checkoutArtifactRoot, "run-plan.json");
 const runContextPath = resolve(checkoutArtifactRoot, "run-context.json");
 const journalRoot = resolve(checkoutArtifactRoot, "cleanup-journals");
-const formatVersion = 1;
+const formatVersion = 2;
 
 export type WorkspaceE2ERunPlan = {
   readonly preparation: WorkspaceE2EPreparation;
@@ -24,9 +24,16 @@ export type WorkspaceE2ERunPlan = {
 
 type WorkspaceE2ECleanupJournal = {
   readonly caseId: WorkspaceE2ECaseId;
-  readonly checkoutData: readonly CheckoutData[];
+  readonly checkoutStates: readonly SerializedCheckoutFlowState[];
   readonly startedAt: string;
   readonly version: typeof formatVersion;
+};
+
+type SerializedCheckoutFlowState = {
+  readonly completedDotyposReservationId?: string;
+  readonly data: CheckoutData;
+  readonly orderId?: string;
+  readonly startedAt?: string;
 };
 
 export const writeWorkspaceE2ERunPlan = async (plan: WorkspaceE2ERunPlan) =>
@@ -60,7 +67,7 @@ type WorkspaceE2EPreparationParts = {
   readonly customerDiscountGroup: E2EDotyposDiscountGroup;
   readonly discounts: DiscountAvailabilityE2EPreparation;
   readonly meetingRoom: MeetingRoomE2EPreparation;
-  readonly office: OfficeE2EPreparation;
+  readonly office: OfficeE2EPreparation | null;
 };
 
 export const writeWorkspaceE2EPreparationPart = async <
@@ -71,24 +78,54 @@ export const writeWorkspaceE2EPreparationPart = async <
 ) => writeJsonAtomically(preparationPaths[key], value);
 
 export const readWorkspaceE2EPreparation =
-  async (): Promise<WorkspaceE2EPreparation> =>
-    Object.fromEntries(
-      await Promise.all(
-        Object.entries(preparationPaths).map(async ([key, path]) => [
-          key,
-          parseObject(await readFile(path, "utf8"), key),
-        ])
-      )
-    ) as WorkspaceE2EPreparation;
+  async (): Promise<WorkspaceE2EPreparation> => {
+    const [customerDiscountGroup, discounts, meetingRoom, office] =
+      await Promise.all([
+        readPreparationObject("customerDiscountGroup"),
+        readPreparationObject("discounts"),
+        readPreparationObject("meetingRoom"),
+        readOptionalPreparationObject("office"),
+      ]);
+
+    return {
+      customerDiscountGroup:
+        customerDiscountGroup as unknown as E2EDotyposDiscountGroup,
+      discounts: discounts as DiscountAvailabilityE2EPreparation,
+      meetingRoom: meetingRoom as MeetingRoomE2EPreparation,
+      office: office as OfficeE2EPreparation | undefined,
+    };
+  };
+
+const readPreparationObject = async (key: keyof typeof preparationPaths) =>
+  parseObject(await readFile(preparationPaths[key], "utf8"), key);
+
+const readOptionalPreparationObject = async (
+  key: keyof typeof preparationPaths
+) => {
+  const value: unknown = JSON.parse(
+    await readFile(preparationPaths[key], "utf8")
+  );
+  return value === null ? undefined : parseObject(JSON.stringify(value), key);
+};
 
 export const writeWorkspaceE2ECaseJournal = async (
   caseId: WorkspaceE2ECaseId,
-  flowStates: readonly CheckoutFlowState[]
+  flowStates: readonly CheckoutFlowState[],
+  journalStartedAt = new Date()
 ) =>
   writeJsonAtomically(resolve(journalRoot, `${caseId}.json`), {
     caseId,
-    checkoutData: flowStates.map(({ data }) => data),
-    startedAt: new Date().toISOString(),
+    checkoutStates: flowStates.map(
+      ({ completedDotyposReservationId, data, orderId, startedAt }) => ({
+        ...(completedDotyposReservationId
+          ? { completedDotyposReservationId }
+          : {}),
+        data,
+        ...(orderId ? { orderId } : {}),
+        ...(startedAt ? { startedAt: startedAt.toISOString() } : {}),
+      })
+    ),
+    startedAt: journalStartedAt.toISOString(),
     version: formatVersion,
   } satisfies WorkspaceE2ECleanupJournal);
 
@@ -116,10 +153,18 @@ export const readWorkspaceE2ECaseJournals = async (
 
   return journals.flatMap((journal) =>
     journal
-      ? journal.checkoutData.map((data) => ({
-          data,
-          startedAt: new Date(journal.startedAt),
-        }))
+      ? journal.checkoutStates.map(
+          ({ completedDotyposReservationId, data, orderId, startedAt }) =>
+            ({
+              cleanupComplete: completedDotyposReservationId !== undefined,
+              ...(completedDotyposReservationId
+                ? { completedDotyposReservationId }
+                : {}),
+              data,
+              ...(orderId ? { orderId } : {}),
+              startedAt: new Date(startedAt ?? journal.startedAt),
+            }) as CheckoutFlowState
+        )
       : []
   );
 };
@@ -166,7 +211,15 @@ const parseCleanupJournal = (
     value.version !== formatVersion ||
     typeof value.caseId !== "string" ||
     !isWorkspaceE2ECaseId(value.caseId) ||
-    !Array.isArray(value.checkoutData) ||
+    !Array.isArray(value.checkoutStates) ||
+    !value.checkoutStates.every(
+      (state) =>
+        isRecord(state) &&
+        isRecord(state.data) &&
+        isOptionalString(state.completedDotyposReservationId) &&
+        isOptionalString(state.orderId) &&
+        isOptionalString(state.startedAt)
+    ) ||
     typeof value.startedAt !== "string"
   ) {
     throw new Error("Invalid workspace E2E cleanup journal");
@@ -186,3 +239,6 @@ const writeJsonAtomically = async (path: string, value: unknown) => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const isOptionalString = (value: unknown) =>
+  value === undefined || typeof value === "string";

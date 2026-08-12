@@ -40,34 +40,30 @@ export const makeWorkspaceE2ECaseRuntimeLive = (
 const makeWorkspaceE2EProviderVerificationPermitLive = (
   environment: WorkspaceE2EEnvironment
 ) => {
-  const database = environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-    ? PgClient.layer({
-        applicationName: "workspace-e2e-provider-verification",
-        connectTimeout: "10 seconds",
-        maxConnections: 2,
-        url: Redacted.make(
-          normalizePostgresConnectionUrl(
-            environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-          )
-        ),
-      }).pipe(
-        Layer.catch((cause) =>
-          Layer.effect(
-            PgClient.PgClient,
-            Effect.fail(
-              toWorkspaceE2EError(
-                "connect to provider permit coordination database",
-                cause
-              )
-            )
+  const database = PgClient.layer({
+    applicationName: "workspace-e2e-provider-verification",
+    connectTimeout: "10 seconds",
+    maxConnections: 2,
+    url: Redacted.make(
+      normalizePostgresConnectionUrl(
+        environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
+      )
+    ),
+  }).pipe(
+    Layer.catch((cause) =>
+      Layer.effect(
+        PgClient.PgClient,
+        Effect.fail(
+          toWorkspaceE2EError(
+            "connect to provider permit coordination database",
+            cause
           )
         )
       )
-    : undefined;
+    )
+  );
 
-  return database
-    ? WorkspaceE2EProviderVerificationPermitService.Live.pipe(
-        Layer.provide(database)
-      )
-    : WorkspaceE2EProviderVerificationPermitService.SuiteLocal;
+  return WorkspaceE2EProviderVerificationPermitService.Live.pipe(
+    Layer.provide(database)
+  );
 };

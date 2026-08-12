@@ -153,19 +153,16 @@ export const makeE2EEnvironment = (
 
 export type E2EEnvironment = ReturnType<typeof makeE2EEnvironment>;
 
-export const makeWorkspaceE2EEnvironment = (
-  runtimeEnvironment: RuntimeEnvironment = process.env
-) => {
-  const environment = makeE2EEnvironment(runtimeEnvironment);
-  if (
-    environment.WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED === "true" &&
-    !environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-  ) {
-    throw new Error("Invalid workspace E2E environment variables.");
-  }
-  return environment;
+export type WorkspaceE2EEnvironment = E2EEnvironment & {
+  readonly WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: string;
 };
 
-export type WorkspaceE2EEnvironment = ReturnType<
-  typeof makeWorkspaceE2EEnvironment
->;
+export const makeWorkspaceE2EEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+): WorkspaceE2EEnvironment => {
+  const environment = makeE2EEnvironment(runtimeEnvironment);
+  if (!environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL) {
+    throw new Error("Invalid workspace E2E environment variables.");
+  }
+  return environment as WorkspaceE2EEnvironment;
+};

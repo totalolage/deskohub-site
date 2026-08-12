@@ -25,6 +25,14 @@ interface IWorkspaceE2ECaseService {
     readonly preparation: WorkspaceE2EPreparation;
     readonly run: Runner;
   }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
+  readonly reconstructCases: (input: {
+    readonly allocation: WorkspaceE2EDateAllocation;
+    readonly config: WorkspaceE2EConfig;
+    readonly datasourceConfig: DatasourceConfig;
+    readonly flowStates: CheckoutFlowState[];
+    readonly preparation: WorkspaceE2EPreparation;
+    readonly run: Runner;
+  }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;
   readonly runCase: (input: {
     readonly artifactRoot: string;
     readonly datasourceConfig: DatasourceConfig;
@@ -51,6 +59,11 @@ export class WorkspaceE2ECaseService extends Context.Service<
       return {
         makeCases: (input) =>
           makeWorkspaceE2ECases(input).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
+            Effect.provideService(E2ETelemetryService, telemetry)
+          ),
+        reconstructCases: (input) =>
+          makeWorkspaceE2ECases({ ...input, traceConstruction: false }).pipe(
             Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.provideService(E2ETelemetryService, telemetry)
           ),

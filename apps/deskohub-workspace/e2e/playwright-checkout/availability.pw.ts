@@ -58,5 +58,5 @@ test("prepare office availability", async ({
       });
     })
   );
-  await writeWorkspaceE2EPreparationPart("office", preparation);
+  await writeWorkspaceE2EPreparationPart("office", preparation ?? null);
 });

@@ -108,6 +108,7 @@ export type CheckoutFlow = {
 export type CheckoutFlowState = {
   checkoutRow?: CheckoutRow;
   cleanupComplete?: boolean;
+  completedDotyposReservationId?: DotyposReservationId;
   data: CheckoutData;
   orderId?: WorkspaceReservationId;
   startedAt?: Date;

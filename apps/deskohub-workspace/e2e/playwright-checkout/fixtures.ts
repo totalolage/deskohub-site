@@ -51,11 +51,11 @@ export const registerWorkspaceE2ECases = (
           const config = getConfig(environment);
           const datasourceConfig = getDatasourceConfig(environment);
 
-          await runEffect(
+          const selected = await runEffect(
             Effect.gen(function* () {
               const caseService = yield* WorkspaceE2ECaseService;
               const flowStates: import("../types").CheckoutFlowState[] = [];
-              const cases = yield* caseService.makeCases({
+              const cases = yield* caseService.reconstructCases({
                 allocation: runPlan.runContext.allocation,
                 config,
                 datasourceConfig,
@@ -64,30 +64,47 @@ export const registerWorkspaceE2ECases = (
                 run: browserRunner,
               });
               const selected = cases.find((testCase) => testCase.id === caseId);
-              if (!selected) {
-                return yield* Effect.die(
-                  new Error(`Workspace E2E case ${caseId} was not constructed`)
-                );
-              }
-              yield* Effect.promise(() =>
-                writeWorkspaceE2ECaseJournal(
-                  selected.id as import("./case-catalog").WorkspaceE2ECaseId,
-                  selected.checkoutStates
-                )
-              );
-              yield* caseService.runCase({
-                artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
-                datasourceConfig,
-                ...(runPlan.runContext.githubRunId
-                  ? { reportFailure: writeWorkspaceE2EFailureAnnotation }
-                  : {}),
-                run: browserRunner,
-                sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
-                testCase: selected,
-                timeouts: config.timeouts,
-              });
+              return selected;
             })
           );
+          if (!selected) {
+            test.skip(
+              caseId === "checkout-office-paid-multi-day",
+              "Office checkout is disabled in this preview"
+            );
+            throw new Error(`Workspace E2E case ${caseId} was not constructed`);
+          }
+
+          const journalStartedAt = new Date();
+          await writeWorkspaceE2ECaseJournal(
+            selected.id as import("./case-catalog").WorkspaceE2ECaseId,
+            selected.checkoutStates,
+            journalStartedAt
+          );
+          try {
+            await runEffect(
+              Effect.gen(function* () {
+                const caseService = yield* WorkspaceE2ECaseService;
+                yield* caseService.runCase({
+                  artifactRoot: `${workspaceDir}/e2e-artifacts/checkout/cases`,
+                  datasourceConfig,
+                  ...(runPlan.runContext.githubRunId
+                    ? { reportFailure: writeWorkspaceE2EFailureAnnotation }
+                    : {}),
+                  run: browserRunner,
+                  sessionPrefix: `workspace-checkout-e2e-${runPlan.runContext.runId}`,
+                  testCase: selected,
+                  timeouts: config.timeouts,
+                });
+              })
+            );
+          } finally {
+            await writeWorkspaceE2ECaseJournal(
+              selected.id as import("./case-catalog").WorkspaceE2ECaseId,
+              selected.checkoutStates,
+              journalStartedAt
+            );
+          }
         }
       );
     }

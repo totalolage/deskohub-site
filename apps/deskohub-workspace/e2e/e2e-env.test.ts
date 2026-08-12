@@ -83,16 +83,14 @@ describe("Workspace E2E environment", () => {
     ).toBeUndefined();
   });
 
-  test("supports the globally locked default-branch workflow during rollout", () => {
-    const environment = makeWorkspaceE2EEnvironment({
-      ...validE2ERuntimeEnvironment,
-      WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
-      WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: undefined,
-    });
-
-    expect(
-      environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-    ).toBeUndefined();
+  test("requires cross-worker provider coordination for Playwright", () => {
+    expect(() =>
+      makeWorkspaceE2EEnvironment({
+        ...validE2ERuntimeEnvironment,
+        WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
+        WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: undefined,
+      })
+    ).toThrow("Invalid workspace E2E environment variables.");
   });
 
   test.each([

@@ -1,40 +1,29 @@
-import "../../shared/polyfills/temporal";
-
 import { test as base } from "@playwright/test";
 import { Effect, Layer, ManagedRuntime } from "effect";
-import type { HttpClient } from "effect/unstable/http";
+import { getDatasourceConfig } from "../config";
 import { makeWorkspaceE2EEnvironment } from "../e2e-env";
-import type { E2EDatabase } from "../integrations/database.service";
-import type { WorkspaceE2ECaseService } from "../services/cases";
-import { makeWorkspaceE2ECaseRuntimeLive } from "../services/runner";
-import type { E2ETelemetryService } from "../services/telemetry";
+import { E2EDatabase } from "../integrations/database.service";
+import { addDatabaseUrlRedactions } from "../runtime";
+import {
+  type E2ERunContext,
+  E2ERunContextService,
+  E2ETelemetryService,
+} from "../services/telemetry";
 import { makeE2ETelemetryRuntime, runE2EEffect } from "../telemetry-runtime";
 import { readWorkspaceE2ERunContext } from "./run-plan";
 import { readExternalParentSpan } from "./trace-parent";
 
-type WorkspaceE2ERuntimeServices =
-  | E2EDatabase
-  | E2ETelemetryService
-  | HttpClient.HttpClient
-  | WorkspaceE2ECaseService;
-
-export type WorkspaceE2EEffectRunner = <
-  A,
-  E,
-  R extends WorkspaceE2ERuntimeServices,
->(
-  effect: Effect.Effect<A, E, R>
-) => Promise<A>;
-
-type WorkspaceE2ERuntimeFixtures = {
+type CleanupRuntimeFixtures = {
   readonly environment: ReturnType<typeof makeWorkspaceE2EEnvironment>;
-  readonly runContext: Awaited<ReturnType<typeof readWorkspaceE2ERunContext>>;
-  readonly runEffect: WorkspaceE2EEffectRunner;
+  readonly runContext: E2ERunContext;
+  readonly runEffect: <A, E>(
+    effect: Effect.Effect<A, E, E2EDatabase | E2ETelemetryService>
+  ) => Promise<A>;
 };
 
-export const runtimeTest = base.extend<
+export const cleanupTest = base.extend<
   Record<never, never>,
-  WorkspaceE2ERuntimeFixtures
+  CleanupRuntimeFixtures
 >({
   environment: [
     async ({ browserName: _browserName }, use) =>
@@ -48,16 +37,22 @@ export const runtimeTest = base.extend<
   ],
   runEffect: [
     async ({ environment, runContext }, use) => {
+      const datasourceConfig = getDatasourceConfig(environment);
+      addDatabaseUrlRedactions(datasourceConfig.databaseUrlUnpooled);
       const telemetry = makeE2ETelemetryRuntime(environment);
-      const layer = makeWorkspaceE2ECaseRuntimeLive(
-        environment,
-        runContext
+      const layer = Layer.mergeAll(
+        E2EDatabase.layer(datasourceConfig),
+        E2ETelemetryService.Live.pipe(
+          Layer.provideMerge(E2ERunContextService.layerValue(runContext))
+        )
       ).pipe(Layer.provideMerge(telemetry.tracingLayer));
       const runtime = ManagedRuntime.make(layer);
       const parentSpan = readExternalParentSpan(
         environment.WORKSPACE_E2E_TRACE_PARENT
       );
-      const runEffect: WorkspaceE2EEffectRunner = (effect) =>
+      const runEffect = <A, E>(
+        effect: Effect.Effect<A, E, E2EDatabase | E2ETelemetryService>
+      ) =>
         runtime.runPromise(
           parentSpan ? effect.pipe(Effect.withParentSpan(parentSpan)) : effect
         );

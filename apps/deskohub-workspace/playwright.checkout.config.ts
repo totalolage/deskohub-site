@@ -2,11 +2,18 @@ import "./shared/testing/workspace-test-environment";
 
 import { defineConfig } from "@playwright/test";
 import { parseWorkspaceE2EBaseUrl } from "./e2e/config";
-import { workspaceE2ETimeouts } from "./e2e/timeouts";
+import {
+  workspaceE2EPlaywrightCheckoutTimeout,
+  workspaceE2ETimeouts,
+} from "./e2e/timeouts";
 import { env } from "./env";
+import { resolvePlaywrightChromiumExecutable } from "./shared/testing/playwright-browser";
 
 const baseUrl = parseWorkspaceE2EBaseUrl(env.WORKSPACE_E2E_BASE_URL).baseUrl;
-const browserExecutablePath = env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
+const browserExecutablePath = await resolvePlaywrightChromiumExecutable(
+  env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  process.env.PATH
+);
 const independentProjects = [
   "checkout-non-payment",
   "checkout-payment-1",
@@ -88,10 +95,7 @@ export default defineConfig({
   reporter: "line",
   retries: 0,
   testDir: "./e2e/playwright-checkout",
-  timeout:
-    workspaceE2ETimeouts.checkoutCase +
-    workspaceE2ETimeouts.artifactCapture +
-    workspaceE2ETimeouts.datasource,
+  timeout: workspaceE2EPlaywrightCheckoutTimeout,
   use: {
     baseURL: baseUrl,
     launchOptions: browserExecutablePath

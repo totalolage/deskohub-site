@@ -20,6 +20,11 @@ const telemetry = makeE2ETelemetryRuntime(environment);
 const telemetryServiceLayer = E2ETelemetryService.Live.pipe(
   Layer.provide(E2ERunContextService.layerValue(runContext))
 );
+const playwrightEnvironment = Object.fromEntries(
+  Object.entries(environment).flatMap(([key, value]) =>
+    value === undefined ? [] : [[key, String(value)]]
+  )
+);
 const runPlaywright = Effect.gen(function* () {
   const e2eTelemetry = yield* E2ETelemetryService;
   yield* e2eTelemetry.traceRun(
@@ -43,7 +48,7 @@ const runPlaywright = Effect.gen(function* () {
             {
               cwd: workspaceDir,
               env: {
-                ...process.env,
+                ...playwrightEnvironment,
                 WORKSPACE_E2E_RUN_CONTEXT: JSON.stringify(runContext),
                 WORKSPACE_E2E_TRACE_PARENT: `00-${span.traceId}-${span.spanId}-${span.sampled ? "01" : "00"}`,
               },

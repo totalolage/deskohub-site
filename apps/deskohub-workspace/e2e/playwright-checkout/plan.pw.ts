@@ -38,6 +38,11 @@ test("build the workspace checkout case plan", async ({
     })
   );
 
-  expect(actualCaseIds).toEqual([...workspaceE2ECaseIds].toSorted());
-  await writeWorkspaceE2ERunPlan({ preparation, runContext, version: 1 });
+  const expectedCaseIds = workspaceE2ECaseIds.filter(
+    (caseId) =>
+      preparation.office !== undefined ||
+      caseId !== "checkout-office-paid-multi-day"
+  );
+  expect(actualCaseIds).toEqual([...expectedCaseIds].toSorted());
+  await writeWorkspaceE2ERunPlan({ preparation, runContext, version: 2 });
 });

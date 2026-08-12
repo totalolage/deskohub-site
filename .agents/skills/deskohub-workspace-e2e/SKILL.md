@@ -87,15 +87,17 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   exact-SHA round failed all runs when a suite-local semaphore still allowed
   three aggregate Nexi replays, so admit one replay globally with a
   transaction-scoped PostgreSQL advisory lock in the dedicated coordination
-  database. Keep a worker-local Effect semaphore so each worker issues only one
+  database. Every parallel Playwright checkout run, including manual runs, must
+  fail closed without the direct coordination URL; a worker-local fallback
+  cannot enforce a suite-wide limit across Playwright processes. Keep a
+  worker-local Effect semaphore so each worker issues only one
   lock query at a time and a second SQL-pool connection remains available for
   interruption cancellation; the three payment lanes bound the run-wide queue.
   Use a separate direct URL whose SQL-created role
   has database connectivity only and no schema or table privileges;
   never expose the allocator URL or role to exact-SHA code. The five-round
-  three-way soak completed with the distributed permit required on every run,
-  so concurrent CI must set the permit-required flag and fail closed without
-  its URL. Sustained three-way replay queues later
+  three-way soak completed with the distributed permit required on every run.
+  Sustained three-way replay queues later
   produced sequential HTTP 500 responses even though the advisory lock proved
   there was no overlap. Keep a one-second quiet cooldown inside the permit after
   every replay exit so the synchronous fulfillment's two email sends cannot
@@ -119,8 +121,14 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   new cases after the first failure. Each already-running Playwright test owns
   its `CheckoutFlowState` values and may cancel only captured reservation IDs or
   an exact-order lookup in its finalizer. Write a private per-case cleanup
-  journal before execution, and reserve the broad locale/product/time fallback
-  for the Playwright teardown project after every dependent project has stopped.
+  journal before execution, then persist exact-finalizer completion before the
+  test settles. The teardown project must use a minimal runtime independent of
+  provider-permit connectivity, skip a second cancellation for journaled
+  completions, and still wait for their convergence. Reserve the broad
+  locale/product/time fallback for states whose exact finalizer did not finish,
+  after every dependent project has stopped. Keep Playwright's outer watchdog
+  longer than the longest semantic case plus artifact and cleanup budgets so
+  Effect finalizers win every timeout race.
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
 - Seed source-neutral discount definitions and codes only in the exact preview database before Playwright admits availability preparation or cases. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed project commits, let Playwright run cowork, meeting-room, and office availability tests in parallel while provider preparation runs in its sibling project. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, keep it in the Playwright project that depends on every independent-case project, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before
