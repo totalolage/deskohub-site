@@ -408,12 +408,19 @@ test.each([
   [
     "destroyed execution context",
     "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation",
+    "target-change",
   ],
   [
     "document without a body",
     'locator.ariaSnapshot: Selector "body" does not match any element',
+    "target-change",
   ],
-] as const)("returns through back to shop and restores the original status tab across %s", async (_name, transitionError) => {
+  [
+    "document without a body before the back-to-shop target appears",
+    'locator.ariaSnapshot: Selector "body" does not match any element',
+    "target-search",
+  ],
+] as const)("returns through back to shop and restores the original status tab across %s", async (_name, transitionError, errorStage) => {
   const calls: string[][] = [];
   const values = new Map<string, string>();
   const buttons = [
@@ -423,6 +430,7 @@ test.each([
     '- button "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
+  let backToShopUrlRead = false;
   let tabListReads = 0;
   let transitionSnapshotPending = true;
   const run: Runner = async (_command, args) => {
@@ -451,7 +459,13 @@ test.each([
     if (commandArgs[0] === "tab") return success();
 
     if (commandArgs[0] === "snapshot") {
-      if (buttonIndex === 3 && transitionSnapshotPending) {
+      const shouldFailSnapshot =
+        buttonIndex === 3 &&
+        transitionSnapshotPending &&
+        (errorStage === "target-change"
+          ? !backToShopUrlRead
+          : backToShopUrlRead);
+      if (shouldFailSnapshot) {
         transitionSnapshotPending = false;
         throw new Error(transitionError);
       }
@@ -470,6 +484,7 @@ test.each([
     }
 
     if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      if (buttonIndex === 3) backToShopUrlRead = true;
       return success(
         buttonIndex > 3
           ? `https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/reservation/status/${orderId}`

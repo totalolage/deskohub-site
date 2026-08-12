@@ -1160,7 +1160,13 @@ const waitForHostedPaymentClickTarget = (
   timeoutMs: number
 ) =>
   pollUntil(
-    findHostedPaymentRef(run, session, labels, [], { role: "button" }),
+    findHostedPaymentRef(run, session, labels, [], { role: "button" }).pipe(
+      Effect.catch((error) =>
+        isHostedPaymentNavigationSnapshotGap(error)
+          ? Effect.succeed(undefined)
+          : Effect.fail(error)
+      )
+    ),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,
       label: `Nexi target ${labels.join(" / ")}`,
@@ -1185,10 +1191,7 @@ const waitForHostedPaymentTargetToChange = (
         { role: "button" }
       ).pipe(
         Effect.catch((error) =>
-          error.message.includes("Execution context was destroyed") ||
-          error.message.includes(
-            'Selector "body" does not match any element'
-          )
+          isHostedPaymentNavigationSnapshotGap(error)
             ? Effect.succeed(undefined)
             : Effect.fail(error)
         )
@@ -1202,6 +1205,10 @@ const waitForHostedPaymentTargetToChange = (
       timeoutMs,
     }
   );
+
+const isHostedPaymentNavigationSnapshotGap = (error: WorkspaceE2EError) =>
+  error.message.includes("Execution context was destroyed") ||
+  error.message.includes('Selector "body" does not match any element');
 
 const extractOrderId = (stdout: string) => {
   const match = stdout.match(/\/checkout\/status\/([^\s/?#]+)/);
