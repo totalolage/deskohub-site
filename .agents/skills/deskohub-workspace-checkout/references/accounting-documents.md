@@ -117,8 +117,11 @@ behavior, and the no-invoice path before enabling invoice requests in the UI.
 
 ### 4. Reservation purpose and invoice request during reservation (implemented)
 
-Add an explicit personal-use/business-use control to every reservation form.
-The selected purpose belongs to the reservation rather than the mutable
+Add an explicit, off-by-default “Business use” switch to every reservation form,
+with an adjacent “Create invoice” checkbox. Business use always checks the
+invoice option; personal use leaves it optional. Explain the supplier's
+different applicable EU rules in a tooltip beside the business-use label. The
+selected purpose belongs to the reservation rather than the mutable
 Dotypos customer. Persist it as non-PII reservation metadata so consumer and
 business transactions remain distinguishable without decrypting accounting
 documents, and freeze it into the encrypted checkout state and source snapshot.
@@ -127,11 +130,11 @@ Do not infer a purpose for historical reservations that predate the control.
 A business reservation always requests an invoice and reveals a shared
 billing-details form. Require business legal name, company ID, address line 1,
 city, postal code, and country; keep address line 2 and VAT ID optional. A
-personal reservation separately offers an unchecked “Send me an invoice”
-option. Checking it reveals the same address fields with the person's legal
-name; address line 2 remains optional. When the personal option is unchecked,
-omit its invoice request and billing fields rather than sending hidden or stale
-values.
+personal reservation leaves “Create invoice” unchecked. Checking it reveals
+only address fields and uses the reservation name as the person's legal name;
+address line 2 remains optional. Do not show company name, company ID, or VAT ID
+for personal use. When the personal option is unchecked, omit its invoice
+request and billing fields rather than sending hidden or stale values.
 
 Model the valid combinations as a discriminated reservation-purpose contract,
 not independent booleans that can represent a business reservation without an

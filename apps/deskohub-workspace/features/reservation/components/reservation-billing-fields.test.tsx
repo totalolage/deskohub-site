@@ -41,13 +41,22 @@ describe("ReservationBillingFields", () => {
   test("models personal invoice choice and mandatory business invoicing", () => {
     const view = render(<Harness />);
 
+    const businessUse = view.getByRole("switch", { name: "Business use" });
+    const createInvoice = view.getByRole("checkbox", {
+      name: "Create invoice",
+    });
+
+    expect(businessUse.getAttribute("data-state")).toBe("unchecked");
+    expect(createInvoice.getAttribute("data-state")).toBe("unchecked");
+    expect((createInvoice as HTMLButtonElement).disabled).toBe(false);
     expect(
-      (view.getByRole("radio", { name: /Personal use/ }) as HTMLInputElement)
-        .checked
-    ).toBe(true);
+      view.getByRole("button", {
+        name: "Different EU regulations apply to us as the supplier for business use.",
+      })
+    ).toBeTruthy();
     expect(view.queryByLabelText("Address")).toBeNull();
 
-    fireEvent.click(view.getByRole("checkbox", { name: "Send me an invoice" }));
+    fireEvent.click(createInvoice);
     expect((view.getByLabelText("Address") as HTMLInputElement).required).toBe(
       true
     );
@@ -55,16 +64,12 @@ describe("ReservationBillingFields", () => {
       target: { value: "Private street 1" },
     });
 
-    fireEvent.click(view.getByRole("radio", { name: /Business use/ }));
-    expect(
-      view.getByText("A business reservation always includes an invoice.")
-    ).toBeTruthy();
+    fireEvent.click(businessUse);
     expect(
       (view.getByLabelText("Legal company name") as HTMLInputElement).required
     ).toBe(true);
-    expect(
-      view.queryByRole("checkbox", { name: "Send me an invoice" })
-    ).toBeNull();
+    expect(createInvoice.getAttribute("data-state")).toBe("checked");
+    expect((createInvoice as HTMLButtonElement).disabled).toBe(true);
     expect(view.getByTestId("billing-value").textContent).not.toContain(
       "Private street 1"
     );

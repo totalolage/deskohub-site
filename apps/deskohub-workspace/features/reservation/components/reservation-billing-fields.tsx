@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Info } from "lucide-react";
 import { useFormContext } from "react-hook-form";
 import { type Locale, m } from "@/features/i18n";
 import {
@@ -9,6 +9,7 @@ import {
   emptyRequestedPersonalBillingSelection,
   type ReservationBillingSelectionInput,
 } from "@/features/reservation/reservation-billing";
+import { Button } from "@/shared/components/ui/button";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   FormControl,
@@ -17,7 +18,13 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { cn } from "@/shared/utils";
+import { Switch } from "@/shared/components/ui/switch";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 import { ReservationFormLabel } from "./reservation-form-label";
 
 type ReservationBillingFormValues = {
@@ -58,50 +65,63 @@ export function ReservationBillingFields({
         return (
           <FormItem>
             <fieldset>
-              <legend className="mb-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+              <legend className="sr-only">
                 {m.reservationPurposeLabel({}, { locale })}
               </legend>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <PurposeOption
-                  checked={!isBusiness}
-                  description={m.reservationPurposePersonalDescription(
-                    {},
-                    { locale }
-                  )}
-                  label={m.reservationPurposePersonalLabel({}, { locale })}
-                  name="reservation-purpose"
-                  onChange={() =>
-                    field.onChange(defaultReservationBillingSelection)
-                  }
-                  value="personal"
-                />
-                <PurposeOption
-                  checked={isBusiness}
-                  description={m.reservationPurposeBusinessDescription(
-                    {},
-                    { locale }
-                  )}
-                  label={m.reservationPurposeBusinessLabel({}, { locale })}
-                  name="reservation-purpose"
-                  onChange={() => field.onChange(emptyBusinessBillingSelection)}
-                  value="business"
-                />
-              </div>
-            </fieldset>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    checked={isBusiness}
+                    id="reservation-business-use"
+                    onCheckedChange={(checked) =>
+                      field.onChange(
+                        checked
+                          ? emptyBusinessBillingSelection
+                          : defaultReservationBillingSelection
+                      )
+                    }
+                  />
+                  <label
+                    className="cursor-pointer text-sm font-semibold text-navy-blue/76"
+                    htmlFor="reservation-business-use"
+                  >
+                    {m.reservationPurposeBusinessLabel({}, { locale })}
+                  </label>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          aria-label={m.reservationBusinessUseTooltip(
+                            {},
+                            { locale }
+                          )}
+                          className="size-7 shrink-0 rounded-full p-0 text-navy-blue/55"
+                          size="icon"
+                          type="button"
+                          variant="ghost"
+                        >
+                          <Info aria-hidden="true" className="size-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        collisionPadding={16}
+                        className="w-[min(20rem,calc(100vw-2rem))]"
+                      >
+                        {m.reservationBusinessUseTooltip({}, { locale })}
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
 
-            <div className="mt-4">
-              {isBusiness ? (
-                <p className="rounded-[1.2rem] bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/72">
-                  {m.reservationBusinessInvoiceNotice({}, { locale })}
-                </p>
-              ) : (
                 <label
-                  className="flex cursor-pointer items-center gap-3 rounded-[1.2rem] border border-navy-blue/10 px-4 py-3"
-                  htmlFor="reservation-personal-invoice"
+                  className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-navy-blue/76 data-[disabled]:cursor-not-allowed"
+                  data-disabled={isBusiness ? "" : undefined}
+                  htmlFor="reservation-create-invoice"
                 >
                   <Checkbox
                     checked={invoiceRequested}
-                    id="reservation-personal-invoice"
+                    disabled={isBusiness}
+                    id="reservation-create-invoice"
                     onCheckedChange={(checked) =>
                       field.onChange(
                         checked
@@ -110,15 +130,13 @@ export function ReservationBillingFields({
                       )
                     }
                   />
-                  <span className="text-sm font-semibold text-navy-blue/76">
-                    {m.reservationPersonalInvoiceLabel({}, { locale })}
-                  </span>
+                  <span>{m.reservationCreateInvoiceLabel({}, { locale })}</span>
                 </label>
-              )}
-            </div>
+              </div>
+            </fieldset>
             <FormMessage />
 
-            {invoiceRequested ? (
+            {invoiceRequested && (
               <section
                 aria-labelledby="reservation-billing-details-heading"
                 className="mt-5 space-y-5 rounded-[1.4rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4 sm:p-5"
@@ -129,62 +147,14 @@ export function ReservationBillingFields({
                 >
                   {m.reservationBillingDetailsLabel({}, { locale })}
                 </h3>
-                {isBusiness ? <BusinessFields locale={locale} /> : null}
+                {isBusiness && <BusinessFields locale={locale} />}
                 <AddressFields business={isBusiness} locale={locale} />
               </section>
-            ) : null}
+            )}
           </FormItem>
         );
       }}
     />
-  );
-}
-
-function PurposeOption({
-  checked,
-  description,
-  label,
-  name,
-  onChange,
-  value,
-}: {
-  readonly checked: boolean;
-  readonly description: string;
-  readonly label: ReactNode;
-  readonly name: string;
-  readonly onChange: () => void;
-  readonly value: string;
-}) {
-  return (
-    <label
-      className={cn(
-        "cursor-pointer rounded-[1.2rem] border p-4 transition focus-within:ring-2 focus-within:ring-burned-orange focus-within:ring-offset-2",
-        checked
-          ? "border-burned-orange bg-burned-orange/8"
-          : "border-navy-blue/10 bg-white"
-      )}
-    >
-      <input
-        checked={checked}
-        className="sr-only"
-        name={name}
-        onChange={onChange}
-        type="radio"
-        value={value}
-      />
-      <span className="flex items-center justify-between gap-3 font-semibold text-navy-blue">
-        {label}
-        <span
-          aria-hidden
-          className="flex size-5 items-center justify-center rounded-full border border-current text-xs"
-        >
-          {checked ? "✓" : null}
-        </span>
-      </span>
-      <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
-        {description}
-      </span>
-    </label>
   );
 }
 
