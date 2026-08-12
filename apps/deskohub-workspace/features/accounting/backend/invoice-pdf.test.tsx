@@ -32,6 +32,20 @@ const cases = [
 ] as const;
 
 describe("invoice PDF", () => {
+  test("reserves the facts-row gap between equal flexible columns", async () => {
+    const source = await Bun.file(
+      new URL("./invoice-pdf.tsx", import.meta.url)
+    ).text();
+    const factColumnStyle = source.slice(
+      source.indexOf("factColumn: {"),
+      source.indexOf("fact: {")
+    );
+
+    expect(factColumnStyle).toContain("flexBasis: 0");
+    expect(factColumnStyle).toContain("flexGrow: 1");
+    expect(factColumnStyle).not.toContain('width: "50%"');
+  });
+
   test.each(
     cases
   )("renders %s from the issued document", async (_, document, expectedText) => {

@@ -69,6 +69,7 @@ const invoiceIdentitySchema = Schema.Struct({
   paymentAttemptId: Schema.NonEmptyString,
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
+  fulfilledAt: Schema.optional(instantStringSchema),
   paidAt: Schema.optional(instantStringSchema),
 });
 
@@ -134,6 +135,7 @@ export const makeInvoiceDocument = (input: {
   readonly paymentAttemptId: string;
   readonly invoiceNumber: InvoiceNumber;
   readonly issuedAt: Temporal.Instant;
+  readonly fulfilledAt: Temporal.Instant;
   readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
   return invoiceDocumentSchema.make({
@@ -147,6 +149,9 @@ export const makeInvoiceDocument = (input: {
     invoiceNumber: input.invoiceNumber,
     issuedAt: instantStringSchema.make(
       temporalInstantToIsoString(input.issuedAt)
+    ),
+    fulfilledAt: instantStringSchema.make(
+      temporalInstantToIsoString(input.fulfilledAt)
     ),
     paidAt: instantStringSchema.make(temporalInstantToIsoString(input.paidAt)),
   });

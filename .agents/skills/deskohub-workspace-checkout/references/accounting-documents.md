@@ -78,6 +78,12 @@ concurrent/repeated issuance return the existing document. Allocate
 `WS-FV-YYYY-NNNNNN` and insert the issued
 record in one PostgreSQL transaction.
 
+Do not issue before access-code delivery completes. Freeze
+`workspace_reservations.fulfilled_at` into the issued document and use its
+Prague calendar date as the invoice fulfilment date. In production this is the
+timestamp recorded after the Resend delivery webhook confirms the customer
+access email; it is not the cowork, meeting-room, or office reservation date.
+
 Generate the PDF dynamically from the issued document JSON. Do not persist the
 rendered PDF. Keep rendering free of current catalog, supplier, customer, or
 reservation reads so the same issued snapshot always produces the same invoice

@@ -84,19 +84,17 @@ const InvoicePdfDocument = ({
           <Text style={styles.status}>{presentation.status}</Text>
         </View>
 
-        <View style={styles.factGrid} wrap={false}>
-          {presentation.factRows.map((row) => (
-            <View key={row[0]?.label} style={styles.factRow}>
-              {row.map((fact, columnIndex) => (
-                <View key={fact?.label ?? columnIndex} style={styles.fact}>
-                  {fact && (
-                    <>
-                      <Text style={styles.label}>{fact.label}</Text>
-                      <Text style={styles.factValue}>{fact.value}</Text>
-                    </>
-                  )}
-                </View>
-              ))}
+        <View style={styles.factColumns} wrap={false}>
+          {presentation.factColumns.map((column) => (
+            <View key={column[0].label} style={styles.factColumn}>
+              {column.map((fact) =>
+                fact ? (
+                  <View key={fact.label} style={styles.fact}>
+                    <Text style={styles.label}>{fact.label}</Text>
+                    <Text style={styles.factValue}>{fact.value}</Text>
+                  </View>
+                ) : null
+              )}
             </View>
           ))}
         </View>
@@ -216,16 +214,18 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     textTransform: "uppercase",
   },
-  factGrid: {
-    gap: 13,
+  factColumns: {
+    flexDirection: "row",
+    gap: 24,
     marginBottom: 26,
   },
-  factRow: {
-    flexDirection: "row",
+  factColumn: {
+    flexBasis: 0,
+    flexGrow: 1,
+    gap: 13,
   },
   fact: {
     paddingRight: 18,
-    width: "33.333%",
   },
   label: {
     color: "#70818b",

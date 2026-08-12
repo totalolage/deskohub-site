@@ -31,8 +31,9 @@ import {
   makeInvoiceDocument,
 } from "./invoice";
 
-const issuedAt = Temporal.Instant.from("2026-08-10T12:34:56.789Z");
+const issuedAt = Temporal.Instant.from("2026-08-12T12:34:56.789Z");
 const paidAt = Temporal.Instant.from("2026-08-10T12:30:00Z");
+const fulfilledAt = Temporal.Instant.from("2026-08-11T08:00:00Z");
 
 const businessBuyer = {
   kind: "business" as const,
@@ -169,6 +170,7 @@ const issueTestInvoice = (input: {
       sequence: input.sequence,
     }),
     issuedAt,
+    fulfilledAt,
     paidAt,
   });
 };

@@ -46,6 +46,8 @@ const source = makeAccountingDocumentSnapshot({
 });
 
 const paidAt = Temporal.Instant.from("2026-08-10T12:30:00Z");
+const fulfilledAt = Temporal.Instant.from("2026-08-11T08:00:00Z");
+const issuedAt = Temporal.Instant.from("2026-08-12T12:34:56.789Z");
 
 const personalInvoiceBuyer = {
   kind: "person" as const,
@@ -103,16 +105,18 @@ describe("invoice", () => {
       },
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
       paidAt,
+      fulfilledAt,
     });
 
     expect(document).toMatchObject({
       workspaceReservationId: "reservation-id",
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: "WS-FV-2026-000042",
-      issuedAt: "2026-08-10T12:34:56.789Z",
+      issuedAt: "2026-08-12T12:34:56.789Z",
       paidAt: "2026-08-10T12:30:00.000Z",
+      fulfilledAt: "2026-08-11T08:00:00.000Z",
       supplier: source.supplier,
       reservation: source.reservation,
       quote: source.quote,
@@ -134,7 +138,8 @@ describe("invoice", () => {
       buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
+      fulfilledAt,
       paidAt,
     });
     const decode = Schema.decodeUnknownEffect(invoiceDocumentSchema, {
@@ -155,10 +160,16 @@ describe("invoice", () => {
       buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
+      fulfilledAt,
       paidAt,
     });
-    const { paidAt: _paidAt, supplier, ...identity } = document;
+    const {
+      fulfilledAt: _fulfilledAt,
+      paidAt: _paidAt,
+      supplier,
+      ...identity
+    } = document;
     const { commercialRegister: _commercialRegister, ...legacySupplier } =
       supplier;
     const legacyDocument = { ...identity, supplier: legacySupplier };
@@ -174,7 +185,8 @@ describe("invoice", () => {
       buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
+      fulfilledAt,
       paidAt,
     });
 
@@ -191,7 +203,8 @@ describe("invoice", () => {
       buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
+      fulfilledAt,
       paidAt,
     });
     const { address: _address, ...nameOnlyBuyer } = document.buyer;
@@ -207,7 +220,8 @@ describe("invoice", () => {
         buyer: nameOnlyBuyer as never,
         paymentAttemptId: "payment-attempt-id",
         invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
-        issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+        issuedAt,
+        fulfilledAt,
         paidAt,
       })
     ).toThrow();
@@ -250,7 +264,8 @@ describe("invoice", () => {
       buyer: personalInvoiceBuyer,
       paymentAttemptId: "office-payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 2 }),
-      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      issuedAt,
+      fulfilledAt,
       paidAt,
     });
 

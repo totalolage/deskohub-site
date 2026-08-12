@@ -235,6 +235,8 @@ export class InvoiceRepository extends Context.Service<
                 dotyposReservationId:
                   workspaceReservations.dotyposReservationId,
                 paidAt: workspaceReservations.paidAt,
+                fulfillmentState: workspaceReservations.fulfillmentState,
+                fulfilledAt: workspaceReservations.fulfilledAt,
                 paymentAttemptState: paymentAttempts.state,
               })
               .from(paymentAttempts)
@@ -285,6 +287,16 @@ export class InvoiceRepository extends Context.Service<
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
                 "Only the active paid attempt of a paid reservation can be invoiced."
+              );
+            }
+
+            if (
+              locked.fulfillmentState !== "fulfilled" ||
+              locked.fulfilledAt === null
+            ) {
+              return yield* wrapInvoiceEligibilityError(
+                paymentAttemptId,
+                "Only a reservation whose access code has been delivered can be invoiced."
               );
             }
 
@@ -347,6 +359,7 @@ export class InvoiceRepository extends Context.Service<
                 paymentAttemptId,
                 invoiceNumber,
                 issuedAt,
+                fulfilledAt: locked.fulfilledAt,
                 paidAt: locked.paidAt,
               })
             ).pipe(
