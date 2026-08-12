@@ -86,6 +86,11 @@ export type Purchase = Readonly<{
   receiptStatus: ReceiptStatus;
 }>;
 
+export const getPurchaseReference = (
+  purchase: Pick<Purchase, "publicReference"> | null,
+  fallback: string
+) => purchase?.publicReference ?? fallback;
+
 export type PaymentHandoff = Readonly<{
   orderId: string;
   hostedPaymentUrl: string;

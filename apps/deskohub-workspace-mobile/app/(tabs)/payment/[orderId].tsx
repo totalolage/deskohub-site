@@ -8,6 +8,7 @@ import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
 import { PurchaseStatusBadge } from "@/components/PurchaseComponents";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { formatMoney } from "@/src/domain/format";
+import { getPurchaseReference } from "@/src/domain/shop";
 import { useShop } from "@/src/state/shop-provider";
 
 export default function PaymentScreen() {
@@ -128,7 +129,9 @@ export default function PaymentScreen() {
       <View style={styles.paymentCard}>
         <View style={styles.paymentTopline}>
           <Text style={styles.orderId}>
-            {t("orderNumber", { id: normalizedOrderId })}
+            {t("orderNumber", {
+              id: getPurchaseReference(purchase, normalizedOrderId),
+            })}
           </Text>
           <PurchaseStatusBadge status={purchase?.status ?? "payment_pending"} />
         </View>
