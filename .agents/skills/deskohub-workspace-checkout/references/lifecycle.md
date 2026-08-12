@@ -351,6 +351,9 @@ reservedUntil + 30 minutes)`. Calculate this window from the Dotypos-projected
 instants for every reservation family. The grace period controls disclosure and
 does not extend booked use or imply that the current static PIN is revoked.
 Keep this boundary stateless; it does not require a new database field.
+The signed access capability is bound to the reservation and locale, not to a
+copied reservation interval; the live provider timing remains authoritative
+when a confirmed reservation is moved or extended.
 
 ## Checkout Session And Attempt HMACs
 

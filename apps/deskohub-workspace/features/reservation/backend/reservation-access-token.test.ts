@@ -27,7 +27,6 @@ const createToken = () =>
     {
       orderId,
       locale: "en-US",
-      expiresAt: Temporal.Instant.from("2026-06-20T12:30:00Z"),
     },
     { keys, now: () => now.epochMilliseconds }
   );
@@ -36,10 +35,7 @@ describe("reservation access token", () => {
   test("opens a valid purpose-bound token", async () => {
     const token = await Effect.runPromise(createToken());
     const claims = await Effect.runPromise(
-      openReservationAccessToken(
-        { token, orderId, locale: "en-US", now },
-        { keys }
-      )
+      openReservationAccessToken({ token, orderId, locale: "en-US" }, { keys })
     );
 
     expect(claims).toMatchObject({ orderId, locale: "en-US", version: 1 });
@@ -48,14 +44,13 @@ describe("reservation access token", () => {
   test("rejects tampering and reservation or locale mismatches", async () => {
     const token = await Effect.runPromise(createToken());
     const inputs = [
-      { token: `${token}x`, orderId, locale: "en-US" as const, now },
+      { token: `${token}x`, orderId, locale: "en-US" as const },
       {
         token,
         orderId: workspaceReservationIdSchema.make("reservation-2"),
         locale: "en-US" as const,
-        now,
       },
-      { token, orderId, locale: "cs-CZ" as const, now },
+      { token, orderId, locale: "cs-CZ" as const },
     ];
 
     for (const input of inputs) {
@@ -64,25 +59,6 @@ describe("reservation access token", () => {
       );
       expect(error.code).toBe("invalid-token");
     }
-  });
-
-  test("expires exactly at the trailing access-window boundary", async () => {
-    const token = await Effect.runPromise(createToken());
-    const error = await Effect.runPromise(
-      Effect.flip(
-        openReservationAccessToken(
-          {
-            token,
-            orderId,
-            locale: "en-US",
-            now: Temporal.Instant.from("2026-06-20T12:30:00Z"),
-          },
-          { keys }
-        )
-      )
-    );
-
-    expect(error.code).toBe("expired");
   });
 
   test("keeps links valid while their signing key remains in the rotated keyring", async () => {
@@ -97,7 +73,7 @@ describe("reservation access token", () => {
 
     const claims = await Effect.runPromise(
       openReservationAccessToken(
-        { token, orderId, locale: "en-US", now },
+        { token, orderId, locale: "en-US" },
         { keys: rotatedKeys }
       )
     );

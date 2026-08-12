@@ -21,7 +21,6 @@ const reservationAccessTokenClaimsSchema = Schema.Struct({
   orderId: workspaceReservationIdSchema,
   locale: Schema.Literals(locales),
   issuedAtEpochMilliseconds: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  expiresAtEpochMilliseconds: Schema.Int.check(Schema.isGreaterThan(0)),
 });
 
 type ReservationAccessTokenClaims =
@@ -30,11 +29,7 @@ type ReservationAccessTokenClaims =
 export class ReservationAccessTokenError extends Data.TaggedError(
   "ReservationAccessTokenError"
 )<{
-  readonly code:
-    | "missing-secret"
-    | "invalid-secret"
-    | "invalid-token"
-    | "expired";
+  readonly code: "missing-secret" | "invalid-secret" | "invalid-token";
   readonly message: string;
   readonly cause?: unknown;
 }> {}
@@ -83,7 +78,6 @@ export const createReservationAccessToken = Effect.fn(
   input: {
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
-    readonly expiresAt: Temporal.Instant;
   },
   options: ReservationAccessTokenOptions = {}
 ) {
@@ -97,7 +91,6 @@ export const createReservationAccessToken = Effect.fn(
     orderId: input.orderId,
     locale: input.locale,
     issuedAtEpochMilliseconds: getNow(options),
-    expiresAtEpochMilliseconds: input.expiresAt.epochMilliseconds,
   }).pipe(
     Effect.mapError((cause) =>
       invalidToken("Reservation access token claims are invalid.", cause)
@@ -120,7 +113,6 @@ export const openReservationAccessToken = Effect.fn(
     readonly token: string;
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
-    readonly now: Temporal.Instant;
   },
   options: ReservationAccessTokenOptions = {}
 ) {
@@ -172,12 +164,5 @@ export const openReservationAccessToken = Effect.fn(
       "Reservation access token does not match this reservation."
     );
   }
-  if (claims.expiresAtEpochMilliseconds <= input.now.epochMilliseconds) {
-    return yield* new ReservationAccessTokenError({
-      code: "expired",
-      message: "Reservation access token expired.",
-    });
-  }
-
   return claims satisfies ReservationAccessTokenClaims;
 });

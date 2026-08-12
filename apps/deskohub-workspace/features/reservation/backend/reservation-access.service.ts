@@ -38,8 +38,6 @@ export interface IReservationAccessService {
   }) => Effect.Effect<ReservationAccessViewModel>;
 }
 
-type AccessAuthorization = "valid" | "expired" | "invalid";
-
 const unavailableAccess: ReservationAccessViewModel = {
   state: "unavailable",
 };
@@ -59,8 +57,8 @@ const implementation = Effect.gen(function* () {
       const now = Temporal.Instant.fromEpochMilliseconds(
         yield* Clock.currentTimeMillis
       );
-      const authorization = yield* authorizeAccess({ ...input, now });
-      if (authorization === "invalid") return unavailableAccess;
+      const authorized = yield* authorizeAccess(input);
+      if (!authorized) return unavailableAccess;
 
       const reservation = yield* reservations.findById(input.orderId).pipe(
         Effect.tapError(() =>
@@ -71,8 +69,6 @@ const implementation = Effect.gen(function* () {
       if (!reservation || reservation.locale !== input.locale) {
         return unavailableAccess;
       }
-      if (authorization === "expired") return endedAccess;
-
       if (
         reservation.paymentState !== "paid" ||
         reservation.reservationState !== "confirmed" ||
@@ -170,25 +166,19 @@ const authorizeAccess = Effect.fn("ReservationAccessService.authorizeAccess")(
     readonly orderId: WorkspaceReservationId;
     readonly locale: Locale;
     readonly accessToken?: string;
-    readonly now: Temporal.Instant;
   }) {
-    if (!input.accessToken) return "invalid" as const;
+    if (!input.accessToken) return false;
 
     return yield* openReservationAccessToken({
       token: input.accessToken,
       orderId: input.orderId,
       locale: input.locale,
-      now: input.now,
     }).pipe(
-      Effect.as("valid" as const),
+      Effect.as(true),
       Effect.catch((cause) =>
         Effect.logWarning("Reservation access token rejected", {
           code: cause.code,
-        }).pipe(
-          Effect.as<AccessAuthorization>(
-            cause.code === "expired" ? "expired" : "invalid"
-          )
-        )
+        }).pipe(Effect.as(false))
       )
     );
   }

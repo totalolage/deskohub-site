@@ -25,7 +25,6 @@ import { createReservationAccessToken } from "@/features/reservation/backend/res
 import { getReservationAccessPath } from "@/features/reservation/backend/reservation-access-url";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
-import { reservationAccessCodeGraceMinutes } from "@/features/reservation/reservation-access-code";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayDateRange,
@@ -458,9 +457,6 @@ export class WorkspaceReservationEmailService extends Context.Service<
         const accessToken = yield* createReservationAccessToken({
           orderId: reservation.id,
           locale,
-          expiresAt: reservation.reservedUntil.add({
-            minutes: reservationAccessCodeGraceMinutes,
-          }),
         });
         const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 

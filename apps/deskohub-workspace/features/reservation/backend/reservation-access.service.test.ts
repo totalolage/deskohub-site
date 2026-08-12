@@ -140,29 +140,19 @@ const runAccess = async (options: HarnessOptions = {}) => {
   return { access, findById, getReservation, resolveCustomerAccessCode };
 };
 
-const createAccessToken = (
-  expiresAt = now.add({ hours: 2 }),
-  tokenOrderId = orderId,
-  locale: Locale = "en-US"
-) =>
+const createAccessToken = (tokenOrderId = orderId, locale: Locale = "en-US") =>
   createReservationAccessToken({
     orderId: tokenOrderId,
     locale,
-    expiresAt,
   }).pipe(Effect.runPromise);
 
 describe("ReservationAccessService", () => {
   test("rejects missing, tampered, reservation-mismatched, and locale-mismatched capabilities before provider lookup", async () => {
     const validToken = await createAccessToken();
     const otherOrderToken = await createAccessToken(
-      undefined,
       workspaceReservationIdSchema.make("another-reservation")
     );
-    const otherLocaleToken = await createAccessToken(
-      undefined,
-      orderId,
-      "cs-CZ"
-    );
+    const otherLocaleToken = await createAccessToken(orderId, "cs-CZ");
     const inputs = [
       undefined,
       `${validToken}tampered`,
@@ -207,13 +197,22 @@ describe("ReservationAccessService", () => {
     }
   });
 
-  test("maps an authentic expired capability to ended without provider or code lookup", async () => {
-    const accessToken = await createAccessToken(now);
-    const result = await runAccess({ accessToken });
+  test("uses live provider timing after a reservation moves beyond its emailed timing", async () => {
+    const accessToken = await createAccessToken();
+    const result = await runAccess({
+      accessToken,
+      providerReservation: makeProviderReservation({
+        startDate: "2026-06-20T09:00:00Z",
+        endDate: "2026-06-20T10:00:00Z",
+      }),
+    });
 
-    expect(result.access).toEqual({ state: "ended" });
-    expect(result.findById).toHaveBeenCalledTimes(1);
-    expect(result.getReservation).not.toHaveBeenCalled();
+    expect(result.access).toEqual({
+      state: "upcoming",
+      availableAt: Temporal.Instant.from("2026-06-20T08:30:00Z"),
+      unavailableAt: Temporal.Instant.from("2026-06-20T10:30:00Z"),
+    });
+    expect(result.getReservation).toHaveBeenCalledTimes(1);
     expect(result.resolveCustomerAccessCode).not.toHaveBeenCalled();
   });
 
@@ -293,7 +292,7 @@ describe("ReservationAccessService", () => {
   });
 
   test("returns ended after the display window without resolving a code", async () => {
-    const accessToken = await createAccessToken(now.add({ hours: 4 }));
+    const accessToken = await createAccessToken();
     const result = await runAccess({
       accessToken,
       providerReservation: makeProviderReservation({
