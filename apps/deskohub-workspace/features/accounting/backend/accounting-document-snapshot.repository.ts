@@ -145,8 +145,3 @@ export class AccountingDocumentSnapshotRepository extends Context.Service<
     })
   );
 }
-
-export const AccountingDocumentSnapshotRepositoryLive =
-  AccountingDocumentSnapshotRepository.Live.pipe(
-    Layer.provide(AccountingSnapshotKeyService.Live)
-  );

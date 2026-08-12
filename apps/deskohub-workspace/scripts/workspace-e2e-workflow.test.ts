@@ -144,10 +144,17 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   const invoicePersistence = await Bun.file(
     resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
   ).text();
+  const databaseContract = await Bun.file(
+    resolve(import.meta.dir, "../db/database.service.ts")
+  ).text();
+  const accountingKeyContract = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../features/accounting/backend/accounting-snapshot-key.service.ts"
+    )
+  ).text();
 
-  expect(testE2E).toBe(
-    "bun --conditions react-server scripts/workspace-e2e.ts"
-  );
+  expect(testE2E).toBe("bun scripts/workspace-e2e.ts");
   expect(packageJson.dependencies["server-only"]).toBe("^0.0.1");
   expect(packageJson.scripts["test:accounting-persistence"]).toBeUndefined();
   expect(testUnit).not.toContain("e2e.test.ts");
@@ -157,6 +164,9 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   expect(runner).toContain('phaseId: "invoice-persistence"');
   expect(invoicePersistence).toContain("yield* E2EDatabase");
   expect(invoicePersistence).not.toContain("WORKSPACE_E2E_DATABASE_ALLOWLIST");
+  expect(databaseContract).not.toContain('from "@/env"');
+  expect(accountingKeyContract).not.toContain('from "@/env"');
+  expect(accountingKeyContract).not.toContain('import "server-only"');
 });
 
 test("uses the hosted runner browser without downloading another browser", async () => {

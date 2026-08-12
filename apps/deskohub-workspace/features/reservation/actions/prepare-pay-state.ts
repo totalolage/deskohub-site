@@ -15,7 +15,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
   buildCheckoutPayPath,

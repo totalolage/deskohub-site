@@ -40,6 +40,7 @@ import {
   type AccountingSnapshotKey,
   AccountingSnapshotKeyService,
 } from "@/features/accounting/backend/accounting-snapshot-key.service";
+import { AccountingSnapshotKeyServiceLive } from "@/features/accounting/backend/accounting-snapshot-key-live.server";
 import { encryptAccountingSnapshot } from "@/features/accounting/backend/accounting-snapshot-sql";
 import type { PaymentAttemptId } from "@/features/checkout/checkout-identifiers";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
@@ -874,7 +875,7 @@ export class PaymentLifecycleRepository extends Context.Service<
         markPaid,
         markTerminal,
       } satisfies IPaymentLifecycleRepository;
-    }).pipe(Effect.provide(AccountingSnapshotKeyService.Live))
+    }).pipe(Effect.provide(AccountingSnapshotKeyServiceLive))
   );
 }
 

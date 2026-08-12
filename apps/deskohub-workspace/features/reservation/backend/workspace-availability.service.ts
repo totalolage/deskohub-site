@@ -10,7 +10,7 @@ import {
 } from "@deskohub/dotypos";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   excludeDotyposReservationsById,
   getWorkspaceTableOccupancyById,
