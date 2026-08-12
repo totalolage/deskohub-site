@@ -1,5 +1,9 @@
 import { Option, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import {
+  formatInstantDate,
+  formatInstantDateRange,
+} from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   plainDateStringSchema,
@@ -43,9 +47,12 @@ export const formatReservationDisplayDate = (
   date: Temporal.Instant,
   locale: Locale
 ) =>
-  new Intl.DateTimeFormat(locale, reservationDisplayDateFormatOptions).format(
-    temporalInstantToDate(date)
-  );
+  formatInstantDate({
+    instant: date,
+    locale,
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
 
 export const formatReservationDisplayDateRange = (
   start: Temporal.Instant,
@@ -55,15 +62,13 @@ export const formatReservationDisplayDateRange = (
   const inclusiveEnd = Temporal.Instant.fromEpochMilliseconds(
     exclusiveEnd.epochMilliseconds - 1
   );
-  const formatter = new Intl.DateTimeFormat(
+  return formatInstantDateRange({
+    start,
+    end: inclusiveEnd,
     locale,
-    reservationDisplayDateFormatOptions
-  );
-
-  return formatter.formatRange(
-    temporalInstantToDate(start),
-    temporalInstantToDate(inclusiveEnd)
-  );
+    dateStyle: reservationDisplayDateFormatOptions.dateStyle,
+    timeZone: workspaceSiteConstants.location.timeZone,
+  });
 };
 
 export const formatReservationInputDate = (

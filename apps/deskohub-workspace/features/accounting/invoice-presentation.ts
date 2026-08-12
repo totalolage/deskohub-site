@@ -1,7 +1,13 @@
 import { Match } from "effect";
 import type { InvoiceDocument } from "@/features/accounting/invoice";
+import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { Locale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
+import {
+  formatInstantDate,
+  formatPlainDate,
+  formatPlainDateRange,
+} from "@/shared/utils/date-time-format";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 export interface InvoicePresentationParty {
@@ -64,74 +70,43 @@ type InvoiceCopy = {
   readonly seat: (count: number) => string;
 };
 
-const invoiceCopy = {
-  "cs-CZ": {
-    title: "Faktura",
-    paid: "Uhrazeno",
-    invoiceNumber: "Číslo faktury",
-    issueDate: "Datum vystavení",
-    paymentDate: "Datum úhrady",
-    serviceDate: "Datum plnění",
-    reservationReference: "Číslo objednávky",
-    supplier: "Dodavatel",
-    buyer: "Odběratel",
-    companyId: "IČO",
-    vatId: "DIČ",
-    commercialRegister: "Obchodní rejstřík",
-    description: "Popis",
-    amount: "Částka",
-    totalPaid: "Celkem uhrazeno",
-    nonVatPayer: "Nejsme plátci DPH.",
-    coworkProducts: {
-      basic: "Basic Day Pass",
-      plus: "Cowork Plus",
-      profi: "Profi Workstation",
-    },
-    coffee: "Káva",
-    meetingRoom: "Zasedací místnost",
-    office: "Soukromá kancelář",
-    discount: "Sleva",
-    hour: (count) => `${count} ${count === 1 ? "hodina" : "hodiny"}`,
-    day: (count) => `${count} ${count === 1 ? "den" : "dny"}`,
-    seat: (count) => `${count} ${count === 1 ? "místo" : "místa"}`,
+const getInvoiceCopy = (locale: Locale): InvoiceCopy => ({
+  title: m.invoiceTitle({}, { locale }),
+  paid: m.invoicePaidStatus({}, { locale }),
+  invoiceNumber: m.invoiceNumberLabel({}, { locale }),
+  issueDate: m.invoiceIssueDateLabel({}, { locale }),
+  paymentDate: m.invoicePaymentDateLabel({}, { locale }),
+  serviceDate: m.invoiceServiceDateLabel({}, { locale }),
+  reservationReference: m.invoiceReservationReferenceLabel({}, { locale }),
+  supplier: m.invoiceSupplierLabel({}, { locale }),
+  buyer: m.invoiceBuyerLabel({}, { locale }),
+  companyId: m.invoiceCompanyIdLabel({}, { locale }),
+  vatId: m.invoiceVatIdLabel({}, { locale }),
+  commercialRegister: m.invoiceCommercialRegisterLabel({}, { locale }),
+  description: m.invoiceDescriptionLabel({}, { locale }),
+  amount: m.invoiceAmountLabel({}, { locale }),
+  totalPaid: m.invoiceTotalPaidLabel({}, { locale }),
+  nonVatPayer: m.invoiceNonVatPayerStatement({}, { locale }),
+  coworkProducts: {
+    basic: getWorkspaceProductTierTitle("basic", locale),
+    plus: getWorkspaceProductTierTitle("plus", locale),
+    profi: getWorkspaceProductTierTitle("profi", locale),
   },
-  "en-US": {
-    title: "Invoice",
-    paid: "Paid",
-    invoiceNumber: "Invoice number",
-    issueDate: "Issue date",
-    paymentDate: "Payment date",
-    serviceDate: "Service date",
-    reservationReference: "Order reference",
-    supplier: "Supplier",
-    buyer: "Customer",
-    companyId: "Company ID",
-    vatId: "VAT ID",
-    commercialRegister: "Commercial register",
-    description: "Description",
-    amount: "Amount",
-    totalPaid: "Total paid",
-    nonVatPayer: "The supplier is not registered for VAT.",
-    coworkProducts: {
-      basic: "Basic Day Pass",
-      plus: "Cowork Plus",
-      profi: "Profi Workstation",
-    },
-    coffee: "Coffee",
-    meetingRoom: "Meeting room",
-    office: "Private office",
-    discount: "Discount",
-    hour: (count) => `${count} ${count === 1 ? "hour" : "hours"}`,
-    day: (count) => `${count} ${count === 1 ? "day" : "days"}`,
-    seat: (count) => `${count} ${count === 1 ? "seat" : "seats"}`,
-  },
-} satisfies Record<Locale, InvoiceCopy>;
+  coffee: m.invoiceCoffeeLineLabel({}, { locale }),
+  meetingRoom: m.invoiceMeetingRoomLineLabel({}, { locale }),
+  office: m.invoiceOfficeLineLabel({}, { locale }),
+  discount: m.invoiceDiscountLabel({}, { locale }),
+  hour: (count) => m.reservationMeetingRoomDurationHours({ count }, { locale }),
+  day: (count) =>
+    m.checkoutSummaryItemOfficeDayCount({ dayCount: count }, { locale }),
+  seat: (count) => m.reservationOfficeSeatCountOption({ count }, { locale }),
+});
 
 export const getInvoicePresentation = (
   document: InvoiceDocument
 ): InvoicePresentation => {
   const { locale } = document;
-  const copy = invoiceCopy[locale];
+  const copy = getInvoiceCopy(locale);
 
   return {
     locale,
@@ -142,13 +117,13 @@ export const getInvoicePresentation = (
       { label: copy.invoiceNumber, value: document.invoiceNumber },
       {
         label: copy.issueDate,
-        value: formatInstantDate(document.issuedAt, locale),
+        value: formatWorkspaceInstantDate(document.issuedAt, locale),
       },
       ...(document.paidAt
         ? [
             {
               label: copy.paymentDate,
-              value: formatInstantDate(document.paidAt, locale),
+              value: formatWorkspaceInstantDate(document.paidAt, locale),
             },
           ]
         : []),
@@ -267,35 +242,27 @@ const getItemLines = (
 const formatServiceDate = (document: InvoiceDocument, locale: Locale) => {
   switch (document.reservation.kind) {
     case "cowork":
-      return formatPlainDate(document.reservation.date, locale);
+      return formatPlainDate({
+        date: Temporal.PlainDate.from(document.reservation.date),
+        locale,
+      });
     case "meeting-room":
-      return formatInstantDate(document.reservation.startsAt, locale);
+      return formatWorkspaceInstantDate(document.reservation.startsAt, locale);
     case "office":
-      return formatPlainDateRange(
-        document.reservation.startsOn,
-        document.reservation.endsOn,
-        locale
-      );
+      return formatPlainDateRange({
+        start: Temporal.PlainDate.from(document.reservation.startsOn),
+        end: Temporal.PlainDate.from(document.reservation.endsOn),
+        locale,
+      });
   }
 };
 
-const formatInstantDate = (value: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
+const formatWorkspaceInstantDate = (value: string, locale: Locale) =>
+  formatInstantDate({
+    instant: Temporal.Instant.from(value),
+    locale,
     timeZone: workspaceSiteConstants.location.timeZone,
-  }).format(new Date(value));
-
-const formatPlainDate = (value: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).format(new Date(`${value}T12:00:00Z`));
-
-const formatPlainDateRange = (start: string, end: string, locale: Locale) =>
-  new Intl.DateTimeFormat(locale, {
-    dateStyle: "medium",
-    timeZone: "UTC",
-  }).formatRange(new Date(`${start}T12:00:00Z`), new Date(`${end}T12:00:00Z`));
+  });
 
 const formatCountry = (country: string, locale: Locale) => {
   try {
