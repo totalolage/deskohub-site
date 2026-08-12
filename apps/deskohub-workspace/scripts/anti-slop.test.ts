@@ -162,6 +162,23 @@ void reconstructed;
   expect(output).toContain("[anti-slop/no-widen-then-assert]");
 });
 
+test("widen-then-assert reports an outer binding despite nested shadowing", () => {
+  const result = lint(`
+function reconstruct(condition: boolean) {
+  const value: unknown = { ok: true };
+  if (condition) {
+    const value = "shadow";
+    void value;
+  }
+  return value as { ok: boolean };
+}
+void reconstruct;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-widen-then-assert]");
+});
+
 test("unsafe dictionary allows concrete values containing unknown", () => {
   const result = lint(`
 type AsyncValues = Record<string, Promise<unknown>>;
