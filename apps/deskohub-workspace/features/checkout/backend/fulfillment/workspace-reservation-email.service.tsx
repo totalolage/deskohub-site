@@ -306,7 +306,6 @@ const createCustomerReservationEmail = (input: {
   return (
     <CustomerReservationEmail
       access={{
-        body: m.checkoutEmailCustomerAccessBody({}, { locale: input.locale }),
         button: m.checkoutEmailCustomerAccessButton(
           {},
           { locale: input.locale }
@@ -320,10 +319,6 @@ const createCustomerReservationEmail = (input: {
       )}
       heading={createCustomerAccessHeading(input.reservation, input.locale)}
       labels={{
-        accessCode: m.checkoutEmailAccessCodeLabel(
-          {},
-          { locale: input.locale }
-        ),
         location: m.checkoutEmailLocationHeading({}, { locale: input.locale }),
         directions: m.checkoutEmailLocationMapLink(
           {},

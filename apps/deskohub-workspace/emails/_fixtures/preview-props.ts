@@ -39,12 +39,10 @@ export const customerReservationPreviewProps = {
   preview: "Your Deskohub Workspace reservation is confirmed",
   heading: "Your workspace reservation is confirmed for Friday, June 12",
   access: {
-    body: "For security, the current access PIN is shown on your reservation access page from 30 minutes before the reservation until 30 minutes after it ends. This display window does not extend your booking.",
-    button: "Open access page and show PIN",
+    button: "Show access code",
     url: "https://workspace.deskohub.cz/en-US/reservation/access/workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C?accessToken=preview-token",
   },
   labels: {
-    accessCode: "Access PIN",
     location: "Where to go",
     directions: "Open route in Google Maps",
     table: "Table",

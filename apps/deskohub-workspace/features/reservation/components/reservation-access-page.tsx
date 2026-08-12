@@ -5,6 +5,7 @@ import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import type { ReservationAccessViewModel } from "@/features/reservation/backend/reservation-access.service";
 import { formatReservationDisplayDateTime } from "@/features/reservation/reservation-date";
+import { ReservationAccessCountdown } from "./reservation-access-countdown";
 
 type ReservationAccessPageProps = {
   readonly access: ReservationAccessViewModel;
@@ -67,6 +68,12 @@ export function ReservationAccessPage({
             <p className="mt-5 text-lg leading-8 text-navy-blue/70">
               {copy.lead}
             </p>
+            {access.state === "upcoming" && (
+              <ReservationAccessCountdown
+                availableAt={access.availableAt.toString()}
+                locale={locale}
+              />
+            )}
           </div>
         </div>
 

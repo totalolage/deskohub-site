@@ -6,9 +6,10 @@ import {
   beforeAll,
   describe,
   expect,
+  jest,
   test,
 } from "bun:test";
-import { cleanup, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -22,6 +23,7 @@ describe("ReservationAccessPage", () => {
 
   afterEach(() => {
     cleanup();
+    jest.useRealTimers();
   });
 
   afterAll(() => {
@@ -51,6 +53,9 @@ describe("ReservationAccessPage", () => {
   });
 
   test("shows the opening time without serializing a PIN before the window", () => {
+    jest.useFakeTimers({
+      now: new Date("2026-06-20T06:28:55Z"),
+    });
     const view = render(
       <ReservationAccessPage
         access={{
@@ -63,6 +68,17 @@ describe("ReservationAccessPage", () => {
     );
 
     expect(view.getByText("Your access PIN will appear here")).toBeDefined();
+    expect(view.getByRole("timer").textContent).toBe(
+      "Access code available in 1 minute and 5 seconds"
+    );
+
+    act(() => jest.advanceTimersByTime(1000));
+    expect(view.getByRole("timer").textContent).toBe(
+      "Access code available in 1 minute and 4 seconds"
+    );
+
+    act(() => jest.advanceTimersByTime(64_000));
+    expect(view.getByRole("timer").textContent).toBe("Checking access…");
     expect(
       view.container.querySelector("[data-reservation-access-code]")
     ).toBeNull();
