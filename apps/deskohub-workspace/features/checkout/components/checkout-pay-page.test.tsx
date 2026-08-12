@@ -252,6 +252,30 @@ describe("CheckoutPayPage payment navigation", () => {
     expect(paymentWindow.close).not.toHaveBeenCalled();
   });
 
+  test("omits the early-performance choice when the withdrawal period has elapsed", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      view.queryByText(
+        m.checkoutPayEarlyPerformanceConsent({}, { locale: "en-US" })
+      )
+    ).toBeNull();
+  });
+
   test("closes the pre-opened payment tab when checkout unmounts", async () => {
     const paymentWindow = {
       close: mock(() => undefined),

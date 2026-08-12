@@ -42,6 +42,7 @@ import {
   type CheckoutLegalAcceptanceSnapshot,
   getLegalAcceptanceSnapshot,
 } from "@/features/legal/acceptance-snapshot";
+import { isEarlyPerformanceRequestRequired } from "@/features/legal/early-performance";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
@@ -289,6 +290,7 @@ const toCheckoutLegalDocuments = (
 
 const getCheckoutLegalEvidence = (input: {
   readonly acceptedAt: string;
+  readonly earlyPerformanceRequested: boolean;
   readonly locale: Locale;
   readonly legalDocuments: CheckoutLegalAcceptanceSnapshot;
 }): LegalEvidenceMap => {
@@ -303,10 +305,14 @@ const getCheckoutLegalEvidence = (input: {
       locale: input.locale,
       source: paymentSubmitLegalEvidenceSource,
       document: documents.termsAndConditions,
-      acknowledgements: {
-        performanceBeforeWithdrawalPeriodEndRequested: true,
-        withdrawalRightLossAfterFullPerformanceAcknowledged: true,
-      },
+      ...(input.earlyPerformanceRequested
+        ? {
+            acknowledgements: {
+              performanceBeforeWithdrawalPeriodEndRequested: true,
+              withdrawalRightLossAfterFullPerformanceAcknowledged: true,
+            },
+          }
+        : {}),
     },
     [documents.operatingRules.hash]: {
       documentKey: "operatingRules",
@@ -739,7 +745,12 @@ export const CheckoutServiceLive = Layer.effect(
         "checkout.createHostedPaymentCheckout"
       )(
         function* (input, locale) {
-          yield* Effect.annotateLogsScoped({ input, locale });
+          yield* Effect.annotateLogsScoped({
+            locale,
+            hasPayStateToken: input.payStateToken.length > 0,
+            legalConsent: input.legalConsent === true,
+            earlyPerformanceConsent: input.earlyPerformanceConsent === true,
+          });
           yield* Effect.logInfo("Hosted payment checkout creation started");
 
           if (input.legalConsent !== true) {
@@ -753,7 +764,23 @@ export const CheckoutServiceLive = Layer.effect(
             });
           }
 
-          if (input.earlyPerformanceConsent !== true) {
+          const state = yield* openFinalPayState(input.payStateToken, locale);
+          yield* Effect.annotateLogsScoped({
+            orderId: state.orderId,
+            checkoutSessionId: state.checkoutSessionId,
+            reservationKind: state.reservation.kind,
+          });
+          yield* Effect.logInfo("Hosted payment checkout pay state opened");
+          const contractAt = Temporal.Now.instant();
+          const earlyPerformanceRequired = isEarlyPerformanceRequestRequired({
+            reservation: state.reservation,
+            contractAt,
+          });
+
+          if (
+            earlyPerformanceRequired &&
+            input.earlyPerformanceConsent !== true
+          ) {
             yield* Effect.logInfo(
               "Hosted payment checkout rejected: missing early performance consent"
             );
@@ -763,10 +790,6 @@ export const CheckoutServiceLive = Layer.effect(
               message: "Early performance consent is required before checkout.",
             });
           }
-
-          const state = yield* openFinalPayState(input.payStateToken, locale);
-          yield* Effect.annotateLogsScoped({ payState: state });
-          yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
           const data = state.reservation;
           const reservation = yield* payableReservations
@@ -784,7 +807,12 @@ export const CheckoutServiceLive = Layer.effect(
                   ).pipe(Effect.as(null))
               )
             );
-          yield* Effect.annotateLogsScoped({ reservation });
+          yield* Effect.annotateLogsScoped({
+            reservationId: reservation?.id,
+            reservationState: reservation?.reservationState,
+            paymentState: reservation?.paymentState,
+            fulfillmentState: reservation?.fulfillmentState,
+          });
 
           if (!reservation) {
             const completedReservation = yield* reservations.findById(
@@ -982,11 +1010,12 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
           });
 
-          const acceptedAt = Temporal.Now.instant().toString();
+          const acceptedAt = contractAt.toString();
           const legalDocuments =
             yield* getCheckoutLegalAcceptanceSnapshot(locale);
           const legalEvidence = getCheckoutLegalEvidence({
             acceptedAt,
+            earlyPerformanceRequested: earlyPerformanceRequired,
             locale,
             legalDocuments,
           });
@@ -995,7 +1024,10 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalEvidence
           );
-          yield* Effect.annotateLogsScoped({ legalEvidence, checkoutDetails });
+          yield* Effect.annotateLogsScoped({
+            acceptedDocumentCount: Object.keys(legalEvidence).length,
+            earlyPerformanceRequested: earlyPerformanceRequired,
+          });
           yield* Effect.logInfo(
             "Hosted payment checkout legal evidence recording started"
           );

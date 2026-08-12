@@ -35,6 +35,7 @@ import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly discountCodeForm?: ReactNode;
+  readonly earlyPerformanceRequestRequired?: boolean;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
   readonly payStateToken?: string;
@@ -48,6 +49,7 @@ type CheckoutPayActionVariant = "pay" | "retry";
 export function CheckoutPayPage({
   changedKeys,
   discountCodeForm,
+  earlyPerformanceRequestRequired = true,
   freshPayUrl,
   locale,
   payStateToken,
@@ -195,16 +197,20 @@ export function CheckoutPayPage({
             variant={actionVariant}
           />
 
-          <CheckoutEarlyPerformanceConsent
-            checked={earlyPerformanceConsent}
-            id="checkout-pay-early-performance-consent"
-            locale={locale}
-            onCheckedChange={setEarlyPerformanceConsent}
-          />
+          {earlyPerformanceRequestRequired && (
+            <CheckoutEarlyPerformanceConsent
+              checked={earlyPerformanceConsent}
+              id="checkout-pay-early-performance-consent"
+              locale={locale}
+              onCheckedChange={setEarlyPerformanceConsent}
+            />
+          )}
 
           <CheckoutPaySubmitButton
             disabled={
-              !legalConsent || !earlyPerformanceConsent || isSubmitPending
+              !legalConsent ||
+              (earlyPerformanceRequestRequired && !earlyPerformanceConsent) ||
+              isSubmitPending
             }
             locale={locale}
             onClick={() => {
@@ -226,7 +232,9 @@ export function CheckoutPayPage({
                 locale,
                 payStateToken,
                 legalConsent,
-                earlyPerformanceConsent,
+                ...(earlyPerformanceRequestRequired
+                  ? { earlyPerformanceConsent }
+                  : {}),
               });
             }}
             pending={isSubmitPending}

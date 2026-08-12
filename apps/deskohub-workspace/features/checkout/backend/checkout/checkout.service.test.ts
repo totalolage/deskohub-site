@@ -190,6 +190,7 @@ const fullyDiscountedCommitment = makeDiscountCommitment({
 const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
+  readonly reservation?: typeof reservationData;
   readonly quote?: CoworkReservationQuote;
   readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
@@ -197,10 +198,11 @@ const buildPayStateToken = (input: {
 }) =>
   Effect.runSync(
     Effect.gen(function* () {
+      const reservation = input.reservation ?? reservationData;
       const state = yield* buildSignedPayState({
         locale: input.locale ?? "en-US",
-        reservation: reservationData,
-        quote: input.quote ?? buildCoworkReservationQuote(reservationData),
+        reservation,
+        quote: input.quote ?? buildCoworkReservationQuote(reservation),
         orderId: input.orderId,
         checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         ...(input.submittedCode !== undefined && {
@@ -649,10 +651,42 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 };
 
 describe("CheckoutService", () => {
+  test("does not require an early-performance request after the withdrawal period", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-after-withdrawal-period",
+      earlyPerformanceConsent: false,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result.status).toBe("redirect");
+    expect(harness.recordLegalEvidence).toHaveBeenCalledWith([
+      expect.objectContaining({
+        evidence: expect.not.objectContaining({
+          acknowledgements: expect.anything(),
+        }),
+      }),
+      expect.anything(),
+    ]);
+  });
+
   test("rejects checkout when the separate early-performance request is missing", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
     const harness = await createCheckoutHarness({
       orderId: "reservation-missing-early-performance-consent",
       earlyPerformanceConsent: false,
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-missing-early-performance-consent",
+        reservation: nearTermReservation,
+      }),
     });
 
     const error = await Effect.runPromise(Effect.flip(harness.effect));
@@ -666,8 +700,21 @@ describe("CheckoutService", () => {
   });
 
   test("records the accepted documents and separate withdrawal acknowledgements", async () => {
+    const nearTermReservation = normalizedCoworkReservationOrderSchema.make({
+      ...reservationData,
+      date: Temporal.Now.zonedDateTimeISO(
+        workspaceSiteConstants.location.timeZone
+      )
+        .toPlainDate()
+        .add({ days: 1 })
+        .toString(),
+    });
     const harness = await createCheckoutHarness({
       orderId: "reservation-records-legal-evidence",
+      payStateToken: buildPayStateToken({
+        orderId: "reservation-records-legal-evidence",
+        reservation: nearTermReservation,
+      }),
     });
 
     await Effect.runPromise(harness.effect);
