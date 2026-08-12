@@ -314,8 +314,14 @@ test("types into a hosted payment field when fill does not stick", async () => {
         );
       }
       if (phase === "pay") return success('- button "PAY" [ref=e7]');
-      if (phase === "three-d-secure")
-        return success('- button "Authentication successful" [ref=e8]');
+      if (phase === "three-d-secure") {
+        return success(
+          [
+            "- paragraph [ref=e9]: NEXI XPAY DEV PORTAL TEST MERCHANT C2P",
+            '- button "Authentication successful" [ref=e8]',
+          ].join("\n")
+        );
+      }
       return success();
     }
 
@@ -389,7 +395,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
       data: makeCheckoutData(),
       run,
       session: "hosted-payment-test",
-      timeouts: workspaceE2ETimeouts,
+      timeouts: { ...workspaceE2ETimeouts, providerTransition: 2500 },
     })
   );
 
@@ -402,10 +408,10 @@ test("returns through back to shop and restores the single original status tab",
   const calls: string[][] = [];
   const values = new Map<string, string>();
   const buttons = [
-    'button "CONTINUE" [ref=e6]',
-    'button "PAY" [ref=e7]',
-    'button "Authentication successful" [ref=e8]',
-    'button "BACK TO THE SHOP" [ref=e9]',
+    '- button "CONTINUE" [ref=e6]',
+    '- button "PAY" [ref=e7]',
+    '- button "Authentication successful" [ref=e8]',
+    '- button "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
   let tabListReads = 0;

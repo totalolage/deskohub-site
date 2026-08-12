@@ -983,13 +983,16 @@ const findHostedPaymentRef = (
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
-  options: { readonly enabledOnly?: boolean } = {}
+  options: {
+    readonly enabledOnly?: boolean;
+    readonly role?: string;
+  } = {}
 ): Effect.Effect<HostedPaymentRef | undefined, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const snapshot = yield* readInteractiveSnapshot(run, session);
     const directRef = options.enabledOnly
-      ? findEnabledSnapshotRef(snapshot, labels)
-      : findSnapshotRef(snapshot, labels);
+      ? findEnabledSnapshotRef(snapshot, labels, options.role)
+      : findSnapshotRef(snapshot, labels, options.role);
     if (directRef && !isFrameSnapshotRef(directRef)) {
       return { framed: false, ref: directRef };
     }
@@ -1008,11 +1011,11 @@ const findHostedPaymentRef = (
       const frameResult = yield* Effect.gen(function* () {
         const frameSnapshot = yield* readInteractiveSnapshot(run, session);
         const frameFieldRef = options.enabledOnly
-          ? (findEnabledSnapshotRef(frameSnapshot, labels) ??
+          ? (findEnabledSnapshotRef(frameSnapshot, labels, options.role) ??
             (frame.exact
               ? findFirstEnabledTextFieldRef(frameSnapshot)
               : undefined))
-          : (findSnapshotRef(frameSnapshot, labels) ??
+          : (findSnapshotRef(frameSnapshot, labels, options.role) ??
             (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined));
         if (!frameFieldRef) return undefined;
 
@@ -1136,11 +1139,14 @@ const waitForHostedPaymentClickTarget = (
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  pollUntil(findHostedPaymentRef(run, session, labels, []), {
-    intervalMs: workspaceE2EPollIntervalMs.browser,
-    label: `Nexi target ${labels.join(" / ")}`,
-    timeoutMs,
-  });
+  pollUntil(
+    findHostedPaymentRef(run, session, labels, [], { role: "button" }),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: `Nexi target ${labels.join(" / ")}`,
+      timeoutMs,
+    }
+  );
 
 const waitForHostedPaymentTargetToChange = (
   run: Runner,
@@ -1155,7 +1161,8 @@ const waitForHostedPaymentTargetToChange = (
         run,
         session,
         labels,
-        []
+        [],
+        { role: "button" }
       );
       if (stillPresent?.framed) yield* switchToMainFrame(run, session);
       return stillPresent ? undefined : true;

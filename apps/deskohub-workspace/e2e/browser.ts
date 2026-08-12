@@ -822,9 +822,11 @@ const hasSnapshotRole = (line: string, role: string | undefined) =>
 
 export const findEnabledSnapshotRef = (
   snapshot: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  role?: string
 ) => {
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
@@ -838,6 +840,7 @@ export const findEnabledSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
