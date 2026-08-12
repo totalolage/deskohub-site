@@ -34,13 +34,13 @@ export default async function AuthPage({
   return runWithRequestLocale((locale) => {
     const redirectTo = getSafeAuthRedirect(requestedRedirect, locale);
     return (
-      <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f4f3ef] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
+      <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f7f5ee] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(236,164,35,0.22),transparent_34%),radial-gradient(circle_at_85%_75%,rgba(0,223,153,0.12),transparent_30%)]" />
         <div className="relative mx-auto flex max-w-lg justify-center">
           <AuthView
             path={path}
             redirectTo={redirectTo}
-            className="border-white/70 bg-white/94 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]"
+            className="border-[#cbc8bf] bg-[#fffefa]/96 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]"
             cardHeader={
               path === "sign-in" ? (
                 <AuthCardHeader locale={locale} />
