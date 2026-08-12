@@ -1,0 +1,23 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      `$value as $inner_type as $outer_type` as $outer_assertion,
+      `($value as $inner_type) as $outer_type` as $outer_assertion,
+      `<$outer_type><$inner_type>$value` as $outer_assertion,
+      `<$outer_type>($value as $inner_type)` as $outer_assertion
+    } where {
+      not $filename <: r"(?s).*(?:\.test\.(?:ts|tsx)|features/checkout/reservation-quote-office\.ts)$",
+      register_diagnostic(
+        span = $outer_assertion,
+        message = "[anti-slop/no-chained-type-assertions] Preserve the value's type evidence instead of chaining type assertions.",
+        severity = "error"
+      )
+    }
+  }
+}

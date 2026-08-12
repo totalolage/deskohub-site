@@ -1,0 +1,27 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      TsReferenceType() as $unsafe_dictionary,
+      TsIndexSignatureTypeMember() as $unsafe_dictionary,
+      TsIndexSignatureClassMember() as $unsafe_dictionary,
+      TsMappedType() as $unsafe_dictionary
+    } where {
+      $unsafe_dictionary <: or {
+        r"(?s)^Record\s*<.*,\s*.*(?:unknown|any|object|\{\}).*>$",
+        r"(?s).*\]\s*:\s*.*(?:unknown|any|object|\{\}).*"
+      },
+      not $filename <: r"(?s).*(?:features/checkout/backend/checkout/(?:checkout-status\.service\.test|checkout\.service\.test|pay-state\.test)\.ts|features/cookie-consent/utils/(?:posthog-event\.test|posthog-url)\.ts|features/discounts/(?:discount-release-gate\.service\.test|discount\.service\.test|provider)\.ts|features/i18n/server/route-params\.ts|features/landing-page/landing-page-sale-banner\.server\.test\.ts|shared/backend/(?:analytics/posthog-event\.service\.ts|logging/censorship(?:\.test)?\.ts))$",
+      register_diagnostic(
+        span = $unsafe_dictionary,
+        message = "[anti-slop/no-unsafe-dictionary-type] Use a concrete owner/schema-derived dictionary value type.",
+        severity = "error"
+      )
+    }
+  }
+}

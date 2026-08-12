@@ -1,0 +1,19 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    JsUnaryExpression() as $runtime_typeof where {
+      $runtime_typeof <: r"^typeof\b.*",
+      not $filename <: r"(?s).*(?:app/api/workspace/availability/route\.ts|env\.ts|features/admin-cli/actions\.ts|features/administration/(?:page-data\.server\.ts|table-toolbar\.tsx)|features/checkout/(?:actions/apply-discount-code\.ts|backend/checkout/(?:pay-state|replacement-pay-state)\.test\.ts|backend/repositories/payment-lifecycle\.repository\.ts)|features/contact/actions/submit-contact\.ts|features/cookie-consent/(?:hooks/use-cookie-consent\.ts|utils/(?:consent-event|consent-mode|posthog-url)\.ts)|features/discounts/admin/(?:discount-administration\.service|form-feedback|form-input)\.ts|features/feature-flags/backend/node\.test\.ts|features/i18n/routing\.ts|features/legal/acceptance-snapshot\.ts|features/office/components/office-reservation-form\.tsx|features/reservation/(?:backend/workspace-availability-replacement\.test\.ts|components/(?:reservation-date-picker|reservation-date-time-picker)\.tsx)|shared/backend/(?:logging/(?:censorship\.ts|posthog-otel\.test\.ts)|observability/posthog-tracing\.test\.ts|workspace-action\.ts)|shared/utils/(?:consent-cookie|error-formatting|use-workspace-action)\.ts)$",
+      register_diagnostic(
+        span = $runtime_typeof,
+        message = "[anti-slop/no-runtime-typeof] Parse external input at its I/O boundary instead of narrowing it with typeof.",
+        severity = "error"
+      )
+    }
+  }
+}

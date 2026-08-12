@@ -1,0 +1,47 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    `$binding as $target` as $widen_then_assert where {
+      $program <: contains or {
+        `const $binding: $broad = $known`,
+        `const $binding = $known as $broad`
+      },
+      $broad <: or {
+        TsUnknownType(),
+        TsAnyType(),
+        TsNonPrimitiveType(),
+        r"^Record\s*<.*,\s*(?:unknown|any)>$"
+      },
+      $known <: or {
+        JsObjectExpression(),
+        JsArrayExpression(),
+        JsArrowFunctionExpression(),
+        JsClassExpression(),
+        JsFunctionExpression(),
+        JsNewExpression(),
+        JsStringLiteralExpression(),
+        JsNumberLiteralExpression(),
+        JsBooleanLiteralExpression(),
+        JsNullLiteralExpression(),
+        JsTemplateExpression(),
+        JsUnaryExpression()
+      },
+      $target <: not or {
+        TsUnknownType(),
+        TsAnyType(),
+        TsNonPrimitiveType(),
+        r"^Record\s*<.*,\s*(?:unknown|any)>$"
+      },
+      register_diagnostic(
+        span = $widen_then_assert,
+        message = "[anti-slop/no-widen-then-assert] Preserve the precise type instead of widening and reconstructing it with an assertion.",
+        severity = "error"
+      )
+    }
+  }
+}

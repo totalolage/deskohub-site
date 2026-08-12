@@ -1,0 +1,21 @@
+engine biome(1.0)
+language js(typescript, jsx)
+
+// Existing debt is excluded per file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
+file($name, $body) where {
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
+  $body <: contains bubble {
+    or {
+      `{ ...($condition ? {} : $value) }` as $conditional_spread,
+      `{ ...($condition ? $value : {}) }` as $conditional_spread
+    } where {
+      not $filename <: r".*features/checkout/backend/fulfillment/workspace-reservation-email\.service\.tsx$",
+      register_diagnostic(
+        span = $conditional_spread,
+        message = "[anti-slop/no-conditional-empty-object-spread] Use a direct property or build the object in separate statements.",
+        severity = "error"
+      )
+    }
+  }
+}
