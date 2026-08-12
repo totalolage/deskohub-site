@@ -24,6 +24,8 @@ PDF generation, email attachments, invoice issuance/numbering, and administratio
 
 The encrypted JSON is versionless and decoded strictly. Do not add schema-version
 metadata to the document or a schema-version column to the relational metadata.
+Previously written versioned ciphertext is intentionally rejected rather than
+normalized through a compatibility path.
 
 The snapshot is inserted inside the same transaction that creates either a Nexi attempt or a zero-total internal attempt. PostgreSQL rejects every update. Deletion is permitted only after the owning payment attempt has reached `failed`, `cancelled`, or `expired`, and the terminal payment transaction removes that no-longer-needed snapshot. Paid snapshots cannot be deleted. Existing historical payment attempts are intentionally not backfilled from current customer or catalog data.
 
