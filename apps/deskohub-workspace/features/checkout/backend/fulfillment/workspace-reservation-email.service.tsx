@@ -8,7 +8,6 @@ import {
 import type {
   EmailAttachment,
   EmailMessage,
-  EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer, Match } from "effect";
@@ -29,6 +28,10 @@ import {
   formatReservationDisplayDateRange,
 } from "@/features/reservation/reservation-date";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
+import {
+  internalWorkspaceEmailRecipient,
+  workspaceEmailRecipient,
+} from "@/shared/backend/email/workspace-email-recipients";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
   workspaceFormattedAddress,
@@ -50,21 +53,6 @@ export interface IWorkspaceReservationEmailService {
     readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
-
-const workspaceRecipient: EmailRecipient = {
-  email: workspaceSiteConstants.contact.infoEmail,
-  name: workspaceSiteConstants.brand.name,
-};
-
-const nonProductionInternalRecipient: EmailRecipient = {
-  email: "delivered+workspace-internal@resend.dev",
-  name: workspaceSiteConstants.brand.name,
-};
-
-const internalReservationRecipient =
-  env.VERCEL_ENV === "production"
-    ? workspaceRecipient
-    : nonProductionInternalRecipient;
 
 const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
@@ -528,7 +516,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
           const customerMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
             to: { email: customerEmail },
-            replyTo: workspaceRecipient,
+            replyTo: workspaceEmailRecipient,
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: renderedCustomerEmail.html,
             text: renderedCustomerEmail.text,
@@ -555,7 +543,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             );
             const internalMessage: EmailMessage = {
               from: emailConfig.defaultFrom,
-              to: internalReservationRecipient,
+              to: internalWorkspaceEmailRecipient,
               replyTo: { email: customerEmail, name: customerName },
               subject: createInternalReservationSubject(reservation),
               html: renderedInternalEmail.html,

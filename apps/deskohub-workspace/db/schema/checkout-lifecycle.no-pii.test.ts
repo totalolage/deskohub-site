@@ -40,6 +40,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./discount-applications");
     expect(schemaIndex).toContain("./accounting-document-snapshots");
     expect(schemaIndex).toContain("./invoice-number-counters");
+    expect(schemaIndex).toContain("./invoice-email-deliveries");
     expect(schemaIndex).toContain("./invoices");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
@@ -105,6 +106,28 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(migration).not.toContain("999999");
   });
 
+  test("invoice email delivery state stores no recipient or document payload", async () => {
+    const [schema, migration] = await Promise.all([
+      readAppFile("db/schema/invoice-email-deliveries.ts"),
+      readAppFile(
+        "db/migrations/20260812144849_married_may_parker/migration.sql"
+      ),
+    ]);
+
+    expect(schema).toContain('"invoice_email_deliveries"');
+    expect(schema).toContain('text("provider_delivery_id")');
+    expect(schema).toContain('integer("attempt_count")');
+    expect(schema).not.toContain("bytea(");
+    expect(schema).not.toContain("jsonb(");
+    expect(migration).toContain('CREATE TABLE "invoice_email_deliveries"');
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "invoice_email_deliveries_invoice_audience_unique_idx"'
+    );
+    for (const fragment of piiColumnFragments) {
+      expect(schema.toLowerCase()).not.toContain(`"${fragment}"`);
+    }
+  });
+
   test("reconciles the previously deployed preview invoice schema", async () => {
     const migration = await readAppFile(
       "db/migrations/20260811173859_issued_invoices/migration.sql"
@@ -134,14 +157,19 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("follows the corrected migration head before issuing invoices", async () => {
-    const [discountJson, invoiceJson] = await Promise.all([
+    const [discountJson, invoiceJson, deliveryJson] = await Promise.all([
       readAppFile("db/migrations/20260810143301_late_morbius/snapshot.json"),
       readAppFile("db/migrations/20260811173859_issued_invoices/snapshot.json"),
+      readAppFile(
+        "db/migrations/20260812144849_married_may_parker/snapshot.json"
+      ),
     ]);
     const discountSnapshot = parseMigrationSnapshot(discountJson);
     const invoiceSnapshot = parseMigrationSnapshot(invoiceJson);
+    const deliverySnapshot = parseMigrationSnapshot(deliveryJson);
 
     expect(invoiceSnapshot.prevIds).toEqual([discountSnapshot.id]);
+    expect(deliverySnapshot.prevIds).toEqual([invoiceSnapshot.id]);
     expect(invoiceJson).not.toContain('"schema_version"');
   });
 
