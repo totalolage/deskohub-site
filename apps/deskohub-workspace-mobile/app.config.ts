@@ -47,7 +47,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     icon: "./assets/images/icon.png",
     scheme,
     userInterfaceStyle: "light",
-    runtimeVersion: { policy: "fingerprint" },
+    runtimeVersion: baseVersion,
     updates: {
       enabled: updatesEnabled,
       checkAutomatically: "ON_LOAD",
