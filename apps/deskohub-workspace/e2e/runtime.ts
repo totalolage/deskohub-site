@@ -175,10 +175,11 @@ class PlaywrightRuntime {
         return serializeBrowserValue(value);
       }
       case "fill":
-        await actionLocator(requireArgument(commandArgs[0], "fill target")).fill(
-          requireArgument(commandArgs[1], "fill value"),
-          { timeout: timeoutMs }
-        );
+        await actionLocator(
+          requireArgument(commandArgs[0], "fill target")
+        ).fill(requireArgument(commandArgs[1], "fill value"), {
+          timeout: timeoutMs,
+        });
         return "";
       case "type":
         await actionLocator(
@@ -448,6 +449,15 @@ const registerPage = (
   page.on("pageerror", (error) =>
     pushDiagnostic(session.errors, error.stack ?? error.message)
   );
+  page.on("close", () => {
+    if (session.currentPage !== page) return;
+    const replacement = session.context
+      .pages()
+      .findLast((candidate) => !candidate.isClosed());
+    if (!replacement) return;
+    session.currentPage = replacement;
+    session.currentFrame = replacement.mainFrame();
+  });
   page.on("request", (request) =>
     pushDiagnostic(session.networkRequests, formatRequest(request))
   );

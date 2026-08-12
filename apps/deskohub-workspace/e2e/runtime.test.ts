@@ -105,3 +105,50 @@ test("types provider-controlled fields with user-like key timing", async () => {
 
   expect(typeOptions).toEqual({ delay: 50, timeout: 5000 });
 });
+
+test("restores the remaining page when the current popup closes", async () => {
+  let registerPopup: ((page: unknown) => void) | undefined;
+  let closePopup: (() => void) | undefined;
+  const checkoutPage = {
+    isClosed: () => false,
+    mainFrame: () => ({}),
+    on: () => undefined,
+    url: () => "https://workspace.test/checkout/status/order-id",
+  };
+  const popupPage = {
+    mainFrame: () => ({}),
+    on: (event: string, listener: () => void) => {
+      if (event === "close") closePopup = listener;
+    },
+    url: () => "https://provider.test/hosted-payment",
+  };
+  const context = {
+    close: async () => undefined,
+    newPage: async () => checkoutPage,
+    on: (event: string, listener: (page: unknown) => void) => {
+      if (event === "page") registerPopup = listener;
+    },
+    pages: () => [checkoutPage],
+  };
+  const browser = {
+    newContext: async () => context,
+  } as unknown as Browser;
+  const run = makePlaywrightBrowserRunner(browser);
+
+  try {
+    await run("playwright", ["--session", "popup-test", "get", "url"]);
+    registerPopup?.(popupPage);
+    expect(
+      (await run("playwright", ["--session", "popup-test", "get", "url"]))
+        .stdout
+    ).toBe("https://provider.test/hosted-payment");
+
+    closePopup?.();
+    expect(
+      (await run("playwright", ["--session", "popup-test", "get", "url"]))
+        .stdout
+    ).toBe("https://workspace.test/checkout/status/order-id");
+  } finally {
+    await run.close?.();
+  }
+});
