@@ -69,6 +69,19 @@ export interface IMobileShopService {
   }) => Effect.Effect<MobileShopPaymentSession, MobileShopFailure>;
 }
 
+export const createMobileShopHistoryPage = <
+  const Order extends { readonly createdAt: string },
+>(
+  orders: readonly Order[],
+  limit: number
+) => {
+  const page = orders.slice(0, limit);
+  const last = page.at(-1);
+  return orders.length > limit && last
+    ? { orders: page, nextCursor: last.createdAt }
+    : { orders: page };
+};
+
 export class MobileShopService extends Context.Service<
   MobileShopService,
   IMobileShopService
@@ -269,14 +282,15 @@ export class MobileShopService extends Context.Service<
         readonly limit?: number;
       }) {
         const customer = yield* requireLinkedAccount(input.request);
+        const limit = Math.max(1, Math.min(50, Math.trunc(input.limit ?? 20)));
         const orders = yield* purchases
           .listOwned({
             dotyposCustomerId: customer.customerId,
             before: input.before,
-            limit: input.limit ?? 20,
+            limit: limit + 1,
           })
           .pipe(Effect.mapError(mapPersistenceFailure));
-        return { orders };
+        return createMobileShopHistoryPage(orders, limit);
       });
 
       const order = Effect.fn("MobileShopService.order")(function* (input: {

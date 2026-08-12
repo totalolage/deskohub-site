@@ -200,7 +200,7 @@ export class MobileShopPurchaseRepository extends Context.Service<
           readonly before?: Temporal.Instant;
           readonly limit: number;
         }) {
-          const limit = Math.max(1, Math.min(50, Math.trunc(input.limit)));
+          const limit = Math.max(1, Math.min(51, Math.trunc(input.limit)));
           const orders = yield* db
             .select()
             .from(mobileShopPurchaseOrders)

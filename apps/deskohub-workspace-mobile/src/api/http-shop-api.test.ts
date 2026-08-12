@@ -20,6 +20,39 @@ mock.module("react-native", () => ({ Platform: { OS: "android" } }));
 
 const { createHttpShopApi } = await import("./http-shop-api");
 
+const apiOrder = (
+  id: string,
+  createdAt: string,
+  taxRegime:
+    | { kind: "not-vat-payer" }
+    | { kind: "vat-payer"; vatId: string } = { kind: "not-vat-payer" }
+) => ({
+  id,
+  publicReference: `DW-${id}`,
+  createdAt,
+  paymentState: "paid",
+  receiptState: "sent",
+  taxRegime,
+  total: { value: 2500, exponent: 2, currency: "CZK" },
+  items:
+    taxRegime.kind === "vat-payer"
+      ? [
+          {
+            productId: "water",
+            displayName: "Water",
+            quantity: 1,
+            unitPrice: { value: 2500, exponent: 2, currency: "CZK" },
+            lineTotal: { value: 2500, exponent: 2, currency: "CZK" },
+            tax: {
+              kind: "vat",
+              rateBasisPoints: 2100,
+              taxAmount: { value: 434, exponent: 2, currency: "CZK" },
+            },
+          },
+        ]
+      : [],
+});
+
 describe("mobile API URL building", () => {
   test("preserves deployment-scoped preview query parameters", () => {
     const url = buildMobileApiUrl(
@@ -127,6 +160,66 @@ describe("mobile checkout retries", () => {
 
     expect(attemptIds).toHaveLength(2);
     expect(attemptIds[1]).toBe(attemptIds[0]);
+  });
+});
+
+describe("mobile purchase history", () => {
+  test("loads every server page", async () => {
+    const originalFetch = globalThis.fetch;
+    const cursor = "2026-08-12T10:00:00Z";
+    const requestedCursors: (string | null)[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const before = url.searchParams.get("before");
+      requestedCursors.push(before);
+      return Response.json({
+        ok: true,
+        data: before
+          ? { orders: [apiOrder("older", "2026-08-12T09:00:00Z")] }
+          : {
+              orders: [apiOrder("newer", "2026-08-12T11:00:00Z")],
+              nextCursor: cursor,
+            },
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const purchases = await createHttpShopApi(
+        "https://preview.example.test"
+      ).listPurchases();
+      expect(purchases.map(({ id }) => id)).toEqual(["newer", "older"]);
+      expect(requestedCursors).toEqual([null, cursor]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  test("preserves the recorded VAT treatment", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () =>
+      Response.json({
+        ok: true,
+        data: apiOrder("vat", "2026-08-12T11:00:00Z", {
+          kind: "vat-payer",
+          vatId: "CZ24531596",
+        }),
+      })) as unknown as typeof fetch;
+
+    try {
+      const purchase = await createHttpShopApi(
+        "https://preview.example.test"
+      ).getPurchase("vat");
+      expect(purchase.seller).toMatchObject({
+        vatId: "CZ24531596",
+        taxTreatment: {
+          kind: "vat_included",
+          rateBasisPoints: 2100,
+          taxMinorUnits: 434,
+        },
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 

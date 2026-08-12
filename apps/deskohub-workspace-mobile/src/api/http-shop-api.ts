@@ -40,6 +40,9 @@ type ApiTax =
       rateBasisPoints: number;
       taxAmount: ApiMoney;
     }>;
+type ApiTaxRegime =
+  | Readonly<{ kind: "not-vat-payer" }>
+  | Readonly<{ kind: "vat-payer"; vatId: string }>;
 
 type ApiAccount = Readonly<{
   authenticated: true;
@@ -66,7 +69,7 @@ type ApiCatalog = Readonly<{
 type ApiQuote = Readonly<{
   fingerprint: string;
   expiresAt: string;
-  taxRegime: { kind: "not-vat-payer" } | { kind: "vat-payer"; vatId: string };
+  taxRegime: ApiTaxRegime;
   items: readonly {
     productId: string;
     displayName: string;
@@ -90,6 +93,7 @@ type ApiOrder = Readonly<{
     | "cancelled"
     | "expired";
   receiptState: "not_started" | "processing" | "sent" | "failed";
+  taxRegime: ApiTaxRegime;
   total: ApiMoney;
   items: readonly {
     productId: string;
@@ -133,7 +137,7 @@ function mapMoney(value: ApiMoney): Money {
 }
 
 function mapTaxTreatment(
-  taxRegime: ApiQuote["taxRegime"] | null,
+  taxRegime: ApiTaxRegime | null,
   taxes: readonly ApiTax[]
 ): TaxTreatment {
   if (!taxRegime || taxRegime.kind === "not-vat-payer")
@@ -152,7 +156,7 @@ function mapTaxTreatment(
 }
 
 function mapSeller(
-  taxRegime: ApiQuote["taxRegime"] | null,
+  taxRegime: ApiTaxRegime | null,
   taxes: readonly ApiTax[]
 ): Seller {
   return {
@@ -233,7 +237,7 @@ function mapOrder(value: ApiOrder): Purchase {
       lineTotal: mapMoney(item.lineTotal),
     })),
     seller: mapSeller(
-      null,
+      value.taxRegime,
       value.items.map((item) => item.tax)
     ),
   };
@@ -453,12 +457,32 @@ export function createHttpShopApi(baseUrl: string): ShopApi {
       return mapOrder(order);
     },
     async listPurchases() {
-      const history = await requestEnvelope<{ orders: readonly ApiOrder[] }>(
-        normalizedBaseUrl,
-        "/api/v1/mobile/orders"
-      );
-      if (!Array.isArray(history.orders)) return invalidResponse();
-      return history.orders.map(mapOrder);
+      const purchases: Purchase[] = [];
+      const seenCursors = new Set<string>();
+      let cursor: string | undefined;
+      do {
+        const path = cursor
+          ? `/api/v1/mobile/orders?before=${encodeURIComponent(cursor)}`
+          : "/api/v1/mobile/orders";
+        const history = await requestEnvelope<{
+          orders: readonly ApiOrder[];
+          nextCursor?: string;
+        }>(normalizedBaseUrl, path);
+        if (!Array.isArray(history.orders)) return invalidResponse();
+        purchases.push(...history.orders.map(mapOrder));
+        const nextCursor = history.nextCursor;
+        if (nextCursor === undefined) break;
+        if (
+          typeof nextCursor !== "string" ||
+          nextCursor.length === 0 ||
+          seenCursors.has(nextCursor)
+        ) {
+          return invalidResponse();
+        }
+        seenCursors.add(nextCursor);
+        cursor = nextCursor;
+      } while (cursor);
+      return purchases;
     },
     async getPurchase(orderId) {
       const order = await requestEnvelope<ApiOrder>(
