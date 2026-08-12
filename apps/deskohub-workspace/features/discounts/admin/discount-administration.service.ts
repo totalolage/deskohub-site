@@ -285,6 +285,15 @@ export interface IDiscountAdministration {
     | ValidationError
     | DiscountAdminNotFoundError
   >;
+  readonly loadCustomerBreadcrumbLabel: (input: {
+    readonly customerId: DotyposCustomerId;
+  }) => Effect.Effect<
+    string,
+    | ExternalAPIError
+    | NetworkError
+    | ValidationError
+    | DiscountAdminNotFoundError
+  >;
   readonly loadCustomerCodeCreation: (input: {
     readonly customerId: DotyposCustomerId;
   }) => Effect.Effect<
@@ -803,6 +812,14 @@ export class DiscountAdministration extends Context.Service<
         )
       );
 
+      const loadCustomerBreadcrumbLabel = Effect.fn(
+        "DiscountAdministration.loadCustomerBreadcrumbLabel"
+      )((input: { readonly customerId: DotyposCustomerId }) =>
+        loadActiveCustomer(input.customerId).pipe(
+          Effect.map((customer) => toAdminDotyposCustomer(customer).displayName)
+        )
+      );
+
       const loadCustomerCodeCreation = Effect.fn(
         "DiscountAdministration.loadCustomerCodeCreation"
       )((input: { readonly customerId: DotyposCustomerId }) =>
@@ -979,6 +996,7 @@ export class DiscountAdministration extends Context.Service<
         loadCodeDetail,
         loadCodesPage,
         loadCustomerCodeCreation,
+        loadCustomerBreadcrumbLabel,
         loadCustomerProfile,
         loadDashboard,
         loadSalesPage,

@@ -34,41 +34,49 @@ export function CodesAdministrationPage({
   dashboard,
   notice,
 }: DiscountAdministrationProps<DiscountAdminCodesPage>) {
-  const discounts = toDiscountTableItems(dashboard);
-  const codes = dashboard.codes.map((code) => ({
-    code: code.code,
-    discountId: code.discountId,
-    enabled: code.enabled,
-    id: code.id,
-    maxUses: code.maxUses,
-    audienceSize: code.audienceSize,
-    reservedUses: code.reservedUses,
-    redeemedUses: code.redeemedUses,
-    remainingUses: code.remainingUses,
-    validFrom: code.validFrom?.toString() ?? null,
-    validUntil: code.validUntil?.toString() ?? null,
-  }));
-
   return (
     <AdministrationPage>
       <h1 className="sr-only">Codes</h1>
       <AdministrationNoticeBanner notice={notice} />
       <AdministrationTableToolbar
-        actions={<DiscountCodeCreationDialog discounts={discounts} />}
-        count={codes.length}
+        actions={<CodesAdministrationActions dashboard={dashboard} />}
+        count={dashboard.codes.length}
         itemLabel="discount code"
       />
-      <section aria-labelledby="discount-codes-heading">
-        <h2 className="sr-only" id="discount-codes-heading">
-          Codes
-        </h2>
-        {codes.length === 0 ? (
-          <EmptyState message="No discount codes yet." />
-        ) : (
-          <DiscountCodesAdminTable codes={codes} discounts={discounts} />
-        )}
-      </section>
+      <CodesAdministrationCollection dashboard={dashboard} />
     </AdministrationPage>
+  );
+}
+
+export function CodesAdministrationActions({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminCodesPage;
+}) {
+  return (
+    <DiscountCodeCreationDialog discounts={toDiscountTableItems(dashboard)} />
+  );
+}
+
+export function CodesAdministrationCollection({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminCodesPage;
+}) {
+  const discounts = toDiscountTableItems(dashboard);
+  const codes = toDiscountCodeTableItems(dashboard);
+
+  return (
+    <section aria-labelledby="discount-codes-heading">
+      <h2 className="sr-only" id="discount-codes-heading">
+        Codes
+      </h2>
+      {codes.length === 0 ? (
+        <EmptyState message="No discount codes yet." />
+      ) : (
+        <DiscountCodesAdminTable codes={codes} discounts={discounts} />
+      )}
+    </section>
   );
 }
 
@@ -76,18 +84,34 @@ export function SalesAdministrationPage({
   dashboard,
   notice,
 }: DiscountAdministrationProps<DiscountAdminSalesPage>) {
-  const discounts = toDiscountTableItems(dashboard);
   return (
     <AdministrationPage>
       <h1 className="sr-only">Sales</h1>
       <AdministrationNoticeBanner notice={notice} />
       <AdministrationTableToolbar
-        actions={<SaleDiscountCreationDialog />}
+        actions={<SalesAdministrationActions />}
         count={dashboard.calendar.events.length}
         itemLabel="sale"
       />
-      <CalendarSection calendar={dashboard.calendar} discounts={discounts} />
+      <SalesAdministrationCollection dashboard={dashboard} />
     </AdministrationPage>
+  );
+}
+
+export function SalesAdministrationActions() {
+  return <SaleDiscountCreationDialog />;
+}
+
+export function SalesAdministrationCollection({
+  dashboard,
+}: {
+  readonly dashboard: DiscountAdminSalesPage;
+}) {
+  return (
+    <CalendarSection
+      calendar={dashboard.calendar}
+      discounts={toDiscountTableItems(dashboard)}
+    />
   );
 }
 
@@ -149,4 +173,21 @@ const toDiscountTableItems = ({
     id,
     labels,
     products,
+  }));
+
+const toDiscountCodeTableItems = ({
+  codes,
+}: Pick<DiscountAdminCodesPage, "codes">) =>
+  codes.map((code) => ({
+    code: code.code,
+    discountId: code.discountId,
+    enabled: code.enabled,
+    id: code.id,
+    maxUses: code.maxUses,
+    audienceSize: code.audienceSize,
+    reservedUses: code.reservedUses,
+    redeemedUses: code.redeemedUses,
+    remainingUses: code.remainingUses,
+    validFrom: code.validFrom?.toString() ?? null,
+    validUntil: code.validUntil?.toString() ?? null,
   }));

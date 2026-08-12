@@ -5,6 +5,7 @@ import {
   AdministrationFilterForm,
   AdministrationFilterInput,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
 import {
@@ -61,7 +62,12 @@ async function OrderCount({
 }: {
   readonly result: Promise<OrdersData["result"]>;
 }) {
-  return (await result).items.length;
+  return (
+    <AdministrationTableCount
+      count={(await result).items.length}
+      itemLabel="order"
+    />
+  );
 }
 
 async function OrderFiltersContent({

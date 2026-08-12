@@ -199,8 +199,21 @@ export const loadDiscountAdminCustomerBreadcrumbLabel = async (
   customerId: DotyposCustomerId
 ) => {
   await authorizeDiscountAdminPage();
-  const profile = await loadOptionalDiscountAdminCustomerProfile(customerId);
-  return profile?.customer.displayName;
+  return Effect.gen(function* () {
+    const administration = yield* DiscountAdministration;
+    return yield* administration.loadCustomerBreadcrumbLabel({ customerId });
+  }).pipe(
+    Effect.provide(DiscountAdministrationLive),
+    Effect.catch((cause) =>
+      Effect.logWarning("Customer breadcrumb label unavailable", {
+        cause,
+        customerId,
+      }).pipe(Effect.as(undefined))
+    ),
+    runWorkspaceEffect("discount-administration.customer-breadcrumb", {
+      boundary: "route",
+    })
+  );
 };
 
 export const authorizeDiscountAdminPage = cache(async () => {

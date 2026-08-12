@@ -6,6 +6,7 @@ import {
   AdministrationFilterInput,
   AdministrationFilterSelect,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
 } from "@/features/administration/components";
 import {
@@ -67,7 +68,12 @@ async function OperationCount({
 }: {
   readonly result: Promise<OperationsData["result"]>;
 }) {
-  return (await result).items.length;
+  return (
+    <AdministrationTableCount
+      count={(await result).items.length}
+      itemLabel="operation"
+    />
+  );
 }
 
 async function OperationFiltersContent({

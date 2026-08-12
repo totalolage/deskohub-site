@@ -21,13 +21,7 @@ export function AdministrationTableToolbar({
     >
       <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
         {typeof count === "number" ? (
-          <Badge
-            aria-label={`${count} ${itemLabel}${count === 1 ? "" : "s"}`}
-            className="w-fit"
-            variant="subtle"
-          >
-            {count}
-          </Badge>
+          <AdministrationTableCount count={count} itemLabel={itemLabel} />
         ) : (
           count
         )}
@@ -40,5 +34,23 @@ export function AdministrationTableToolbar({
         </div>
       )}
     </section>
+  );
+}
+
+export function AdministrationTableCount({
+  count,
+  itemLabel,
+}: {
+  readonly count: number;
+  readonly itemLabel: string;
+}) {
+  return (
+    <Badge
+      aria-label={`${count} ${itemLabel}${count === 1 ? "" : "s"}`}
+      className="w-fit"
+      variant="subtle"
+    >
+      {count}
+    </Badge>
   );
 }

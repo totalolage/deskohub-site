@@ -45,6 +45,18 @@ export function AdministrationCountLoading({
   );
 }
 
+export function AdministrationActionLoading({
+  label,
+}: {
+  readonly label: string;
+}) {
+  return (
+    <LoadingRegion label={`Loading ${label}`}>
+      <Skeleton className="h-10 w-36" />
+    </LoadingRegion>
+  );
+}
+
 export function AdministrationFiltersLoading({
   fields = 3,
 }: {

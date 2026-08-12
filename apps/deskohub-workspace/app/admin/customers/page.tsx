@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import {
   AdministrationCustomerTable,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
   Pagination,
 } from "@/features/administration/components";
@@ -50,7 +51,12 @@ async function CustomerCount({
 }: {
   readonly customers: ReturnType<typeof loadAdministrationCustomers>;
 }) {
-  return (await customers).total;
+  return (
+    <AdministrationTableCount
+      count={(await customers).total}
+      itemLabel="customer"
+    />
+  );
 }
 
 export async function CustomersTable({

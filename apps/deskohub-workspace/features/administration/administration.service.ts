@@ -900,6 +900,9 @@ export class AdministrationService extends Context.Service<
     readonly loadReservation: (
       id: WorkspaceReservationId
     ) => Effect.Effect<AdministrationReservationDetail | null, unknown>;
+    readonly loadReservationBreadcrumbLabel: (
+      id: WorkspaceReservationId
+    ) => Effect.Effect<string | null, unknown>;
     readonly findReservationId: (
       identifier: string
     ) => Effect.Effect<WorkspaceReservationId | null, unknown>;
@@ -910,6 +913,12 @@ export class AdministrationService extends Context.Service<
     readonly loadBooking: (
       id: DotyposReservationId
     ) => Effect.Effect<AdministrationBookingDetail | null, unknown>;
+    readonly loadBookingBreadcrumb: (
+      id: DotyposReservationId
+    ) => Effect.Effect<
+      { readonly startsAt: string; readonly tableName: string | null } | null,
+      unknown
+    >;
     readonly listCustomers: (
       input: AdministrationCustomerListInput
     ) => Effect.Effect<
@@ -1688,6 +1697,19 @@ export class AdministrationService extends Context.Service<
         }
       );
 
+      const loadReservationBreadcrumbLabel = Effect.fn(
+        "AdministrationService.loadReservationBreadcrumbLabel"
+      )(function* (id: WorkspaceReservationId) {
+        const [row] = yield* db
+          .select({
+            reservationDetails: workspaceReservations.reservationDetails,
+          })
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id))
+          .limit(1);
+        return row ? getReservationTypeLabel(row) : null;
+      });
+
       const loadBooking = Effect.fn("AdministrationService.loadBooking")(
         function* (id: DotyposReservationId) {
           const { details, rows, tables } = yield* Effect.all(
@@ -1740,6 +1762,38 @@ export class AdministrationService extends Context.Service<
           } satisfies AdministrationBookingDetail;
         }
       );
+
+      const loadBookingBreadcrumb = Effect.fn(
+        "AdministrationService.loadBookingBreadcrumb"
+      )(function* (id: DotyposReservationId) {
+        const { details, tables } = yield* Effect.all(
+          {
+            details: dotypos
+              .getReservation(id)
+              .pipe(
+                Effect.catchTag("ExternalAPIError", (error) =>
+                  error.statusCode === 404
+                    ? Effect.succeed(null)
+                    : Effect.fail(error)
+                )
+              ),
+            tables: loadBookingTables(),
+          },
+          { concurrency: 2 }
+        );
+        if (!details) return null;
+        const tableId = Option.getOrUndefined(
+          decodeDotyposTableId(details.reservation._tableId)
+        );
+        const tableName = tableId
+          ? (tables.find(
+              ({ id: candidateId }) =>
+                Option.getOrUndefined(decodeDotyposTableId(candidateId)) ===
+                tableId
+            )?.name ?? null)
+          : null;
+        return { startsAt: details.reservation.startDate, tableName };
+      });
 
       const listCustomers = Effect.fn("AdministrationService.listCustomers")(
         function* (input: AdministrationCustomerListInput) {
@@ -2066,9 +2120,11 @@ export class AdministrationService extends Context.Service<
         loadOverview,
         listReservations,
         loadReservation,
+        loadReservationBreadcrumbLabel,
         findReservationId,
         listBookings,
         loadBooking,
+        loadBookingBreadcrumb,
         listCustomers,
         loadCustomerReservations,
         loadCustomerActivity,

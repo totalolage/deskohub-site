@@ -11,6 +11,7 @@ import {
   type AdministrationReservationListInput,
   AdministrationService,
 } from "./administration.service";
+import { formatAdministrationDateTime } from "./formatters";
 import {
   getAdministrationOperationFilters,
   getAdministrationOrderDateTimeBounds,
@@ -158,6 +159,19 @@ export const loadAdministrationReservation = cache(async (id: string) => {
   return detail;
 });
 
+export const loadAdministrationReservationBreadcrumbLabel = cache(
+  async (id: string) => {
+    await authorizeAdministrationPage();
+    const reservationId = requireWorkspaceReservationRouteId(id);
+    return Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationBreadcrumbLabel(
+        reservationId
+      );
+    }).pipe(runAdministration("administration.reservation-breadcrumb"));
+  }
+);
+
 const getAdministrationBookingListInput = async (
   searchParams: AdministrationSearchParams
 ) => {
@@ -206,6 +220,21 @@ export const loadAdministrationBooking = cache(async (id: string) => {
   if (!detail) notFound();
   return detail;
 });
+
+export const loadAdministrationBookingBreadcrumbLabel = cache(
+  async (id: string) => {
+    await authorizeAdministrationPage();
+    const bookingId = requireDotyposReservationRouteId(id);
+    const breadcrumb = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadBookingBreadcrumb(bookingId);
+    }).pipe(runAdministration("administration.booking-breadcrumb"));
+    return breadcrumb
+      ? (breadcrumb.tableName ??
+          formatAdministrationDateTime(breadcrumb.startsAt))
+      : undefined;
+  }
+);
 
 export const loadAdministrationCustomers = async (
   searchParams: AdministrationSearchParams

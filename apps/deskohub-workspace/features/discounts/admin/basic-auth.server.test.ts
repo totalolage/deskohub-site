@@ -92,9 +92,15 @@ describe("discount administration server authorization", () => {
       () =>
         administration.loadAdministrationReservationsPage(searchParams).result,
       () => administration.loadAdministrationReservation("reservation-id"),
+      () =>
+        administration.loadAdministrationReservationBreadcrumbLabel(
+          "reservation-id"
+        ),
       () => administration.loadAdministrationBookings(searchParams),
       () => administration.loadAdministrationBookingsPage(searchParams).result,
       () => administration.loadAdministrationBooking("booking-id"),
+      () =>
+        administration.loadAdministrationBookingBreadcrumbLabel("booking-id"),
       () => administration.loadAdministrationCustomers(searchParams),
       () =>
         administration.loadAdministrationCustomerReservations(

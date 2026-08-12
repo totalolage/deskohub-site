@@ -230,7 +230,9 @@ describe("AdministrationService", () => {
             Layer.mergeAll(
               Layer.succeed(
                 WorkspaceDatabase,
-                WorkspaceDatabase.of({ db: {} as never })
+                WorkspaceDatabase.of({
+                  db: { select: () => makeQuery([]) } as never,
+                })
               ),
               DotyposServiceMock({
                 getReservation: () =>
@@ -258,6 +260,101 @@ describe("AdministrationService", () => {
     );
 
     expect(result).toBeNull();
+  });
+
+  test("loads a reservation breadcrumb from only its product projection", async () => {
+    const database = {
+      select: () =>
+        makeQuery([{ reservationDetails: { kind: "meeting-room" } }] as const),
+    };
+
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadReservationBreadcrumbLabel(
+        "workspace-reservation"
+      );
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: database as never })
+              ),
+              DotyposServiceMock({}),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toBe("Meeting Room");
+  });
+
+  test("loads a booking breadcrumb without the full booking detail", async () => {
+    const result = await Effect.gen(function* () {
+      const administration = yield* AdministrationService;
+      return yield* administration.loadBookingBreadcrumb("dotypos-booking");
+    }).pipe(
+      Effect.provide(
+        AdministrationService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(
+                WorkspaceDatabase,
+                WorkspaceDatabase.of({ db: {} as never })
+              ),
+              DotyposServiceMock({
+                getReservation: () =>
+                  Effect.succeed({
+                    customer: { id: "dotypos-customer" },
+                    reservation: {
+                      _branchId: "branch",
+                      _cloudId: "cloud",
+                      _customerId: "dotypos-customer",
+                      _tableId: "table-one",
+                      id: "dotypos-booking",
+                      startDate: "2026-08-10T10:00:00Z",
+                      endDate: "2026-08-10T11:00:00Z",
+                      seats: "1",
+                      status: "CONFIRMED",
+                    },
+                  }),
+                getTables: () =>
+                  Effect.succeed([
+                    {
+                      id: "table-one",
+                      name: "Meeting Room",
+                    },
+                  ]),
+              }),
+              Layer.succeed(
+                PostHogReservationHistory,
+                PostHogReservationHistory.of({
+                  load: () => Effect.succeed({ kind: "unavailable" } as const),
+                })
+              ),
+              PaymentAdministrationServiceMock({})
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toEqual({
+      startsAt: "2026-08-10T10:00:00Z",
+      tableName: "Meeting Room",
+    });
   });
 
   test("loads customer marketing consent without a reservation", async () => {

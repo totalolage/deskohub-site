@@ -7,6 +7,7 @@ import {
   AdministrationFilterInput,
   AdministrationFilterSelect,
   AdministrationPage,
+  AdministrationTableCount,
   AdministrationTableToolbar,
   Pagination,
   ReservationTable,
@@ -70,7 +71,12 @@ async function ReservationCount({
 }: {
   readonly result: Promise<ReservationsData["result"]>;
 }) {
-  return (await result).total;
+  return (
+    <AdministrationTableCount
+      count={(await result).total}
+      itemLabel="reservation"
+    />
+  );
 }
 
 async function ReservationFiltersContent({

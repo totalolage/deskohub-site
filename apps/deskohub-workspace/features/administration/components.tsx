@@ -69,7 +69,10 @@ export {
   AdministrationResponsiveTable,
   AdministrationTableFrame,
 } from "./table-frame";
-export { AdministrationTableToolbar } from "./table-toolbar";
+export {
+  AdministrationTableCount,
+  AdministrationTableToolbar,
+} from "./table-toolbar";
 
 export const getBookingTableLabel = (
   booking: Pick<AdministrationBookingSummary, "tableId" | "tableName"> | null
