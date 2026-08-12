@@ -4,30 +4,47 @@ import {
   contactBusinessPreviewProps,
   contactConfirmationPreviewProps,
   customerReservationPreviewProps,
+  invoiceDeliveryPreviewProps,
   reservationNotificationPreviewProps,
 } from "./_fixtures/preview-props";
 import { ContactBusinessEmail } from "./contact-business";
 import { ContactConfirmationEmail } from "./contact-confirmation";
 import { CustomerReservationEmail } from "./customer-reservation";
+import { InvoiceDeliveryEmail } from "./invoice-delivery";
 import { ReservationNotificationEmail } from "./reservation-notification";
 
 describe("Workspace React Email templates", () => {
-  test("renders all four previews with their channel-specific data boundaries", async () => {
-    const [business, confirmation, customerReservation, staffNotification] =
-      await Promise.all([
-        render(<ContactBusinessEmail {...contactBusinessPreviewProps} />),
-        render(
-          <ContactConfirmationEmail {...contactConfirmationPreviewProps} />
-        ),
-        render(
-          <CustomerReservationEmail {...customerReservationPreviewProps} />
-        ),
-        render(
-          <ReservationNotificationEmail
-            {...reservationNotificationPreviewProps}
-          />
-        ),
-      ]);
+  test("renders every preview with the shared design and channel-specific data boundaries", async () => {
+    const [
+      business,
+      confirmation,
+      customerReservation,
+      staffNotification,
+      invoiceDelivery,
+    ] = await Promise.all([
+      render(<ContactBusinessEmail {...contactBusinessPreviewProps} />),
+      render(<ContactConfirmationEmail {...contactConfirmationPreviewProps} />),
+      render(<CustomerReservationEmail {...customerReservationPreviewProps} />),
+      render(
+        <ReservationNotificationEmail
+          {...reservationNotificationPreviewProps}
+        />
+      ),
+      render(<InvoiceDeliveryEmail {...invoiceDeliveryPreviewProps} />),
+    ]);
+
+    for (const email of [
+      business,
+      confirmation,
+      customerReservation,
+      staffNotification,
+      invoiceDelivery,
+    ]) {
+      expect(email).toContain("Deskohub");
+      expect(email).toContain("Turnovská 430/10");
+      expect(email).toContain("font-size:26px");
+      expect(email).toContain("line-height:34px");
+    }
 
     expect(business).toContain(contactBusinessPreviewProps.heading);
     expect(confirmation).toContain(contactConfirmationPreviewProps.heading);
@@ -46,5 +63,6 @@ describe("Workspace React Email templates", () => {
     expect(customerReservation).not.toContain("customer@example.com");
     expect(staffNotification).toContain("customer@example.com");
     expect(staffNotification).not.toContain("4829");
+    expect(invoiceDelivery).toContain(invoiceDeliveryPreviewProps.body);
   });
 });

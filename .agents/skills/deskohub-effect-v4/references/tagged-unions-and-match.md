@@ -1,6 +1,7 @@
 # Tagged unions and Match
 
 - Match discriminated unions with explicit cases and an exhaustive terminator. Do not use a fallback branch that silently accepts a newly added variant.
+- Do not use a ternary as a two-case union match. Use explicit `Match` cases and an exhaustive terminator.
 - Use `Option` operations for `Option` values instead of matching their
   `Some`/`None` implementation tags with `Match`.
 - When the `Some` branch maps a value and the `None` branch supplies a fallback,

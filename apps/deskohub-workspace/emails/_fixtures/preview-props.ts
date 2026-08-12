@@ -1,6 +1,7 @@
 import type { ContactBusinessEmailProps } from "../contact-business";
 import type { ContactConfirmationEmailProps } from "../contact-confirmation";
 import type { CustomerReservationEmailProps } from "../customer-reservation";
+import type { InvoiceDeliveryEmailProps } from "../invoice-delivery";
 import type { ReservationNotificationEmailProps } from "../reservation-notification";
 
 const customerMessage =
@@ -100,3 +101,10 @@ export const reservationNotificationPreviewProps = {
     },
   ],
 } satisfies ReservationNotificationEmailProps;
+
+export const invoiceDeliveryPreviewProps = {
+  locale: "en-US",
+  preview: "Invoice WS-FV-2026-000003",
+  heading: "Your invoice is attached",
+  body: "Invoice WS-FV-2026-000003 for order reservation-3 is attached as a PDF.",
+} satisfies InvoiceDeliveryEmailProps;

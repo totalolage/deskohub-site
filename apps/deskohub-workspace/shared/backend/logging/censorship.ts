@@ -43,11 +43,14 @@ const sensitiveLogKeyFragments = [
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
+  "attachments",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",
+  "recipient",
   "server.address",
   "submittedcode",
+  "subject",
   "x-vercel-sc-headers",
 ]);
 

@@ -1,5 +1,9 @@
-import { Heading, Section, Text } from "react-email";
+import { Heading } from "react-email";
 import { MultilineEmailText } from "./_components/multiline-email-text";
+import {
+  WorkspaceEmailHeading,
+  WorkspaceEmailPanel,
+} from "./_components/workspace-email-content";
 import { WorkspaceEmailDetails } from "./_components/workspace-email-details";
 import {
   WorkspaceEmailLayout,
@@ -27,9 +31,7 @@ export function ContactBusinessEmail({
 }: ContactBusinessEmailProps) {
   return (
     <WorkspaceEmailLayout locale={locale} preview={preview}>
-      <Heading className="m-0 text-[30px] font-bold leading-[38px] text-navy">
-        {heading}
-      </Heading>
+      <WorkspaceEmailHeading>{heading}</WorkspaceEmailHeading>
       <WorkspaceEmailDetails details={details} />
       <Heading
         as="h2"
@@ -37,11 +39,9 @@ export function ContactBusinessEmail({
       >
         {messageHeading}
       </Heading>
-      <Section className="mt-3 rounded-2xl bg-cream px-5 py-4">
-        <Text className="m-0 text-[15px] leading-[24px] text-navy">
-          <MultilineEmailText value={message} />
-        </Text>
-      </Section>
+      <WorkspaceEmailPanel>
+        <MultilineEmailText value={message} />
+      </WorkspaceEmailPanel>
     </WorkspaceEmailLayout>
   );
 }

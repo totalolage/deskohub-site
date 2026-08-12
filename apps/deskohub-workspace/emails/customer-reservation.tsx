@@ -1,4 +1,9 @@
-import { Column, Heading, Img, Link, Row, Section, Text } from "react-email";
+import { Column, Img, Link, Row, Section, Text } from "react-email";
+import {
+  WorkspaceEmailHeading,
+  WorkspaceEmailLabel,
+  WorkspaceEmailNote,
+} from "./_components/workspace-email-content";
 import { WorkspaceEmailDetails } from "./_components/workspace-email-details";
 import {
   WorkspaceEmailLayout,
@@ -59,9 +64,7 @@ export function CustomerReservationEmail({
 }: CustomerReservationEmailProps) {
   return (
     <WorkspaceEmailLayout locale={locale} preview={preview}>
-      <Heading className="m-0 text-[26px] font-bold leading-[34px] text-navy sm:text-[30px] sm:leading-[38px]">
-        {heading}
-      </Heading>
+      <WorkspaceEmailHeading>{heading}</WorkspaceEmailHeading>
 
       <Section className="mt-6 overflow-hidden rounded-[22px] border border-[#d8d9e4]">
         <Section
@@ -69,12 +72,7 @@ export function CustomerReservationEmail({
           className="bg-navy px-4 py-6 text-center sm:px-6"
           style={{ backgroundColor: "#00024f" }}
         >
-          <Text
-            className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.4px] text-aquamarine uppercase"
-            style={{ color: "#00df99" }}
-          >
-            {labels.accessCode}
-          </Text>
+          <WorkspaceEmailLabel inverse>{labels.accessCode}</WorkspaceEmailLabel>
           <Text className="m-0 mt-3 text-[16px] leading-[25px] text-white">
             {access.body}
           </Text>
@@ -88,9 +86,7 @@ export function CustomerReservationEmail({
         </Section>
         {table && (
           <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">
-            <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2.2px] text-green uppercase">
-              {labels.table}
-            </Text>
+            <WorkspaceEmailLabel>{labels.table}</WorkspaceEmailLabel>
             <Text className="m-0 mt-1 text-[48px] font-bold leading-[54px] text-navy">
               {table.name}
             </Text>
@@ -100,9 +96,7 @@ export function CustomerReservationEmail({
 
       <Section className="mt-6 overflow-hidden rounded-2xl border border-[#e6ded2] bg-cream">
         <Section className="px-5 py-4">
-          <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2px] text-green uppercase">
-            {labels.location}
-          </Text>
+          <WorkspaceEmailLabel>{labels.location}</WorkspaceEmailLabel>
           <Link
             className="mt-2 inline-block text-[17px] font-bold leading-[25px] text-navy no-underline"
             href={location.directionsUrl}
@@ -132,9 +126,7 @@ export function CustomerReservationEmail({
         <Section className="mt-6 rounded-2xl border border-[#cfe6f8] bg-sky px-5 py-5">
           <Row>
             <Column className="block w-full align-middle sm:table-cell">
-              <Text className="m-0 text-[12px] font-bold leading-[16px] tracking-[2px] text-green uppercase">
-                {labels.network}
-              </Text>
+              <WorkspaceEmailLabel>{labels.network}</WorkspaceEmailLabel>
               <Text className="m-0 mt-3 text-[14px] leading-[22px] text-navy">
                 <strong>{labels.networkName}:</strong>
                 <br />
@@ -161,9 +153,7 @@ export function CustomerReservationEmail({
       )}
 
       <WorkspaceEmailDetails details={details} />
-      <Text className="m-0 mt-5 text-[14px] leading-[23px] text-[#565975]">
-        {followUp}
-      </Text>
+      <WorkspaceEmailNote>{followUp}</WorkspaceEmailNote>
     </WorkspaceEmailLayout>
   );
 }
