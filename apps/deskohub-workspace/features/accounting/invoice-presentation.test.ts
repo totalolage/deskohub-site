@@ -27,6 +27,7 @@ describe("invoice presentation", () => {
     expect(presentation.facts).toContainEqual({
       label: locale === "cs-CZ" ? "Datum plnění" : "Service date",
       value: serviceDate,
+      wide: true,
     });
     expect(presentation.lines.map(({ description }) => description)).toEqual([
       itemDescription,
@@ -143,5 +144,23 @@ describe("invoice presentation", () => {
       amount: "−CZK 175",
     });
     expect(normalize(presentation.total)).toBe("CZK 225");
+  });
+
+  test("does not fabricate facts absent from a legacy issued invoice", () => {
+    const current = makeCoworkInvoiceDocument("en-US");
+    const { paidAt: _paidAt, supplier, ...identity } = current;
+    const { commercialRegister: _commercialRegister, ...legacySupplier } =
+      supplier;
+    const presentation = getInvoicePresentation({
+      ...identity,
+      supplier: legacySupplier,
+    });
+
+    expect(presentation.facts.map(({ label }) => label)).not.toContain(
+      "Payment date"
+    );
+    expect(presentation.supplier.details).not.toContainEqual(
+      expect.stringContaining("Commercial register")
+    );
   });
 });

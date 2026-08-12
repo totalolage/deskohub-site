@@ -26,16 +26,18 @@ const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
   supplier: Schema.Struct({
     ...accountingDocumentIdentitySchema.fields.supplier.fields,
-    commercialRegister: Schema.Struct({
-      court: Schema.NonEmptyString,
-      section: Schema.NonEmptyString,
-      file: Schema.NonEmptyString,
-    }),
+    commercialRegister: Schema.optional(
+      Schema.Struct({
+        court: Schema.NonEmptyString,
+        section: Schema.NonEmptyString,
+        file: Schema.NonEmptyString,
+      })
+    ),
   }),
   paymentAttemptId: Schema.NonEmptyString,
   invoiceNumber: invoiceNumberSchema,
   issuedAt: instantStringSchema,
-  paidAt: instantStringSchema,
+  paidAt: Schema.optional(instantStringSchema),
 });
 
 const coworkInvoiceDocumentSchema = Schema.Struct({

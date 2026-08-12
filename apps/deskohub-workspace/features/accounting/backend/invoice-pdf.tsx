@@ -85,10 +85,10 @@ const InvoicePdfDocument = ({
         </View>
 
         <View style={styles.factGrid} wrap={false}>
-          {presentation.facts.map((fact, index) => (
+          {presentation.facts.map((fact) => (
             <View
               key={fact.label}
-              style={index === 3 ? styles.factWide : styles.fact}
+              style={fact.wide ? styles.factWide : styles.fact}
             >
               <Text style={styles.label}>{fact.label}</Text>
               <Text style={styles.factValue}>{fact.value}</Text>

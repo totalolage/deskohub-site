@@ -138,6 +138,25 @@ describe("invoice", () => {
     ).rejects.toBeDefined();
   });
 
+  test("decodes invoices issued before rendering facts were added", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: source.buyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
+    });
+    const { paidAt: _paidAt, supplier, ...identity } = document;
+    const { commercialRegister: _commercialRegister, ...legacySupplier } =
+      supplier;
+    const legacyDocument = { ...identity, supplier: legacySupplier };
+
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(legacyDocument))
+    ).resolves.toEqual(legacyDocument);
+  });
+
   test("rejects schema-version fields", async () => {
     const document = makeInvoiceDocument({
       source,

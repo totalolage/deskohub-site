@@ -24,6 +24,7 @@ export interface InvoicePresentation {
   readonly facts: readonly {
     readonly label: string;
     readonly value: string;
+    readonly wide?: boolean;
   }[];
   readonly supplier: InvoicePresentationParty;
   readonly buyer: InvoicePresentationParty;
@@ -143,13 +144,18 @@ export const getInvoicePresentation = (
         label: copy.issueDate,
         value: formatInstantDate(document.issuedAt, locale),
       },
-      {
-        label: copy.paymentDate,
-        value: formatInstantDate(document.paidAt, locale),
-      },
+      ...(document.paidAt
+        ? [
+            {
+              label: copy.paymentDate,
+              value: formatInstantDate(document.paidAt, locale),
+            },
+          ]
+        : []),
       {
         label: copy.serviceDate,
         value: formatServiceDate(document, locale),
+        wide: true,
       },
       {
         label: copy.reservationReference,
@@ -165,7 +171,11 @@ export const getInvoicePresentation = (
         `${document.supplier.address.postalCode} ${document.supplier.address.city}`,
         formatCountry(document.supplier.address.country, locale),
         `${copy.companyId}: ${document.supplier.companyId}`,
-        `${copy.commercialRegister}: ${document.supplier.commercialRegister.section} ${document.supplier.commercialRegister.file}, ${document.supplier.commercialRegister.court}`,
+        ...(document.supplier.commercialRegister
+          ? [
+              `${copy.commercialRegister}: ${document.supplier.commercialRegister.section} ${document.supplier.commercialRegister.file}, ${document.supplier.commercialRegister.court}`,
+            ]
+          : []),
         document.supplier.contactEmail,
       ],
     },
