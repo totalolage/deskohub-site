@@ -304,6 +304,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
         return success(
           [
             '- iframe "CARD_NUMBER" [ref=e0]',
+            '  - textbox "Card number" [ref=f1e1]',
             '- textbox "Expiration date" [ref=e2]',
             '- textbox "CVV" [ref=e3]',
             '- textbox "First Name" [ref=e4]',
@@ -325,6 +326,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
         cardFillAttempts += 1;
         return success();
       }
+      if (currentFrame === "main" && ref.startsWith("@f")) return success();
       if (ref === "@e1") return success();
       values.set(ref, value);
       return success();
@@ -336,6 +338,8 @@ test("types into a hosted payment field when fill does not stick", async () => {
       if (ref === "input") {
         cardTypeAttempts += 1;
         values.set(ref, value);
+      } else if (currentFrame === "main" && ref.startsWith("@f")) {
+        return success();
       } else if (ref !== "@e1") {
         values.set(ref, value);
       }

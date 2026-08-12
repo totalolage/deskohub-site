@@ -12,6 +12,7 @@ import {
   findSnapshotRef,
   focusBrowserElement,
   getSnapshotRef,
+  isFrameSnapshotRef,
   openBrowserPage,
   pressBrowserKey,
   readActiveBrowserTabId,
@@ -989,7 +990,9 @@ const findHostedPaymentRef = (
     const directRef = options.enabledOnly
       ? findEnabledSnapshotRef(snapshot, labels)
       : findSnapshotRef(snapshot, labels);
-    if (directRef) return { framed: false, ref: directRef };
+    if (directRef && !isFrameSnapshotRef(directRef)) {
+      return { framed: false, ref: directRef };
+    }
 
     for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
       const switched = yield* runBrowserCommand(
@@ -1082,16 +1085,17 @@ const clickHostedPaymentTarget = (
 
     if (!target) return;
 
-    yield* (options.activation === "pointer"
-      ? clickBrowserElement(run, session, target.ref, { timeoutMs: 30_000 })
-      : Effect.gen(function* () {
-          yield* focusBrowserElement(run, session, target.ref, {
-            timeoutMs: 30_000,
-          });
-          yield* pressBrowserKey(run, session, "Enter", {
-            timeoutMs: 30_000,
-          });
-        })
+    yield* (
+      options.activation === "pointer"
+        ? clickBrowserElement(run, session, target.ref, { timeoutMs: 30_000 })
+        : Effect.gen(function* () {
+            yield* focusBrowserElement(run, session, target.ref, {
+              timeoutMs: 30_000,
+            });
+            yield* pressBrowserKey(run, session, "Enter", {
+              timeoutMs: 30_000,
+            });
+          })
     ).pipe(
       Effect.ensuring(
         target.framed

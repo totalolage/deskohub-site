@@ -931,6 +931,8 @@ export const getSnapshotRef = (line: string) =>
   line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
   line.match(/@(?:f\d+)?e\d+/)?.[0];
 
+export const isFrameSnapshotRef = (ref: string) => /^@f\d+e\d+$/.test(ref);
+
 export const waitForBrowserUrl = ({
   description,
   matches,
