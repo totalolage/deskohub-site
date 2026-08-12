@@ -51,7 +51,6 @@ export const executeZeroTotalCheckout = ({
   Effect.gen(function* () {
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,

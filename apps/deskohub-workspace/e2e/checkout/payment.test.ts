@@ -169,7 +169,7 @@ test("retries a transient reservation preparation failure without requiring non-
   expect(switchedTabs).toEqual(["t1", "t2"]);
 });
 
-test("detaches long reservation preparation from the CDP evaluation", async () => {
+test("detaches long reservation preparation from one Playwright evaluation", async () => {
   const submitReservationScript = "new Promise(() => undefined)";
   let focusedRef: string | undefined;
   let preparationKickoffs = 0;
@@ -181,7 +181,7 @@ test("detaches long reservation preparation from the CDP evaluation", async () =
 
     if (commandArgs[0] === "eval") {
       if (options.input === submitReservationScript) {
-        throw new Error("CDP command timed out: Runtime.evaluate");
+        throw new Error("Playwright evaluation timed out");
       }
       if (options.input?.includes(submitReservationScript)) {
         preparationKickoffs += 1;
@@ -190,7 +190,7 @@ test("detaches long reservation preparation from the CDP evaluation", async () =
       if (options.input?.includes("__deskohubWorkspaceE2EPreparation")) {
         preparationStateReads += 1;
         return success(
-          serializeAgentBrowserStateResult(options.input, { status: "ready" })
+          serializeBrowserStateResult(options.input, { status: "ready" })
         );
       }
     }
@@ -285,20 +285,26 @@ test("types into a hosted payment field when fill does not stick", async () => {
   let cardFillAttempts = 0;
   let cardSnapshotReads = 0;
   let cardTypeAttempts = 0;
+  let currentFrame = "main";
   let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
   const run = mock(async (_command, args) => {
     const commandArgs = args.slice(2);
 
     if (commandArgs[0] === "snapshot") {
-      if (phase === "continue") {
+      if (currentFrame === "card") {
         cardSnapshotReads += 1;
-        if (cardSnapshotReads === 1) {
-          return success('- textbox "Card number" [disabled, ref=e0]');
-        }
+        return success(
+          cardSnapshotReads === 1
+            ? '- textbox "Card number" [disabled, ref=e0]'
+            : '- textbox "Card number" [ref=e1]'
+        );
+      }
+      if (phase === "continue") {
         return success(
           [
-            '- textbox "Card number" [ref=e1]',
+            "- iframe [ref=e0]",
+            '  - textbox "Card number" [ref=f1e1]',
             '- textbox "Expiration date" [ref=e2]',
             '- textbox "CVV" [ref=e3]',
             '- textbox "First Name" [ref=e4]',
@@ -308,18 +314,26 @@ test("types into a hosted payment field when fill does not stick", async () => {
         );
       }
       if (phase === "pay") return success('- button "PAY" [ref=e7]');
-      if (phase === "three-d-secure")
-        return success('- button "Authentication successful" [ref=e8]');
+      if (phase === "three-d-secure") {
+        return success(
+          [
+            "- paragraph [ref=e9]: NEXI XPAY DEV PORTAL TEST MERCHANT C2P",
+            '- button "Authentication successful" [ref=e8]',
+          ].join("\n")
+        );
+      }
       return success();
     }
 
     if (commandArgs[0] === "fill") {
       const ref = commandArgs[1] ?? "";
       const value = commandArgs[2] ?? "";
-      if (ref === "@e1") {
+      if (ref === "input") {
         cardFillAttempts += 1;
         return success();
       }
+      if (currentFrame === "main" && ref.startsWith("@f")) return success();
+      if (ref === "@e1") return success();
       values.set(ref, value);
       return success();
     }
@@ -327,8 +341,14 @@ test("types into a hosted payment field when fill does not stick", async () => {
     if (commandArgs[0] === "type") {
       const ref = commandArgs[1] ?? "";
       const value = commandArgs[2] ?? "";
-      if (ref === "@e1") cardTypeAttempts += 1;
-      values.set(ref, value);
+      if (ref === "input") {
+        cardTypeAttempts += 1;
+        values.set(ref, value);
+      } else if (currentFrame === "main" && ref.startsWith("@f")) {
+        return success();
+      } else if (ref !== "@e1") {
+        values.set(ref, value);
+      }
       return success();
     }
 
@@ -346,9 +366,12 @@ test("types into a hosted payment field when fill does not stick", async () => {
         phase = "pay";
       } else if (focusedRef === "@e7") {
         phase = "three-d-secure";
-      } else if (focusedRef === "@e8") {
-        phase = "status";
       }
+      return success();
+    }
+
+    if (commandArgs[0] === "click" && commandArgs[1] === "@e8") {
+      phase = "status";
       return success();
     }
 
@@ -360,7 +383,10 @@ test("types into a hosted payment field when fill does not stick", async () => {
       );
     }
 
-    if (commandArgs[0] === "frame") return success();
+    if (commandArgs[0] === "frame") {
+      currentFrame = commandArgs[1] === "main" ? "main" : "card";
+      return success();
+    }
     throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
   }) as unknown as Runner;
 
@@ -369,7 +395,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
       data: makeCheckoutData(),
       run,
       session: "hosted-payment-test",
-      timeouts: workspaceE2ETimeouts,
+      timeouts: { ...workspaceE2ETimeouts, providerTransition: 2500 },
     })
   );
 
@@ -382,13 +408,14 @@ test("returns through back to shop and restores the single original status tab",
   const calls: string[][] = [];
   const values = new Map<string, string>();
   const buttons = [
-    'button "CONTINUE" [ref=e6]',
-    'button "PAY" [ref=e7]',
-    'button "Authentication successful" [ref=e8]',
-    'button "BACK TO THE SHOP" [ref=e9]',
+    '- button "CONTINUE" [ref=e6]',
+    '- button "PAY" [ref=e7]',
+    '- button "Authentication successful" [ref=e8]',
+    '- button "BACK TO THE SHOP" [ref=e9]',
   ];
   let buttonIndex = 0;
   let tabListReads = 0;
+  let transitionSnapshotPending = true;
   const run: Runner = async (_command, args) => {
     const commandArgs = args.slice(2);
     calls.push(commandArgs);
@@ -415,6 +442,12 @@ test("returns through back to shop and restores the single original status tab",
     if (commandArgs[0] === "tab") return success();
 
     if (commandArgs[0] === "snapshot") {
+      if (buttonIndex === 3 && transitionSnapshotPending) {
+        transitionSnapshotPending = false;
+        throw new Error(
+          "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation"
+        );
+      }
       return success(
         [
           '- textbox "Card number" [ref=e1]',
@@ -467,15 +500,15 @@ test("returns through back to shop and restores the single original status tab",
     })
   );
 
-  expect(calls.filter(([command]) => command === "click")).toEqual([]);
+  expect(calls.filter(([command]) => command === "click")).toEqual([
+    ["click", "@e8"],
+  ]);
   expect(calls.filter(([command]) => command === "focus")).toEqual([
     ["focus", "@e6"],
     ["focus", "@e7"],
-    ["focus", "@e8"],
     ["focus", "@e9"],
   ]);
   expect(calls.filter(([command]) => command === "press")).toEqual([
-    ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
@@ -486,7 +519,7 @@ test("returns through back to shop and restores the single original status tab",
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
 
-const serializeAgentBrowserStateResult = (
+const serializeBrowserStateResult = (
   script: string | undefined,
   state: unknown
 ) =>

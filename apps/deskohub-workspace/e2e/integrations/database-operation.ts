@@ -1,8 +1,5 @@
 import { Cause, Effect, Schedule } from "effect";
-import {
-  toWorkspaceE2EError,
-  type WorkspaceE2EError,
-} from "../errors";
+import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 
 export const runDatabaseOperation = <A, E, R>(
   operation: string,

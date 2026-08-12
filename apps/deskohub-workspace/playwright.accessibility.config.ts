@@ -3,13 +3,17 @@ import "./shared/testing/workspace-test-environment";
 import { defineConfig, devices } from "@playwright/test";
 import { parseWorkspaceE2EBaseUrl } from "./e2e/config";
 import { workspaceE2ETimeouts } from "./e2e/timeouts";
+import { resolvePlaywrightChromiumExecutable } from "./shared/testing/playwright-browser";
 
 const remoteBaseUrl = process.env.WORKSPACE_E2E_BASE_URL;
 const localBaseUrl = process.env.WORKSPACE_ACCESSIBILITY_BASE_URL;
 let baseUrl = "http://localhost:3110";
 if (remoteBaseUrl) baseUrl = parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl;
 if (localBaseUrl) baseUrl = new URL(localBaseUrl).origin;
-const browserExecutablePath = process.env.AGENT_BROWSER_EXECUTABLE_PATH;
+const browserExecutablePath = await resolvePlaywrightChromiumExecutable(
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+  process.env.PATH
+);
 
 process.env.POSTHOG_FEATURE_FLAG_OVERRIDES ??= JSON.stringify({
   calendar_sales: true,

@@ -23,7 +23,7 @@ const runBrowserCommand = (
   options?: Parameters<Runner>[2]
 ) =>
   tryWorkspaceE2EPromise(operation, (signal) =>
-    run("agent-browser", ["--session", session, ...args], {
+    run("playwright", ["--session", session, ...args], {
       ...options,
       signal,
     })
@@ -475,12 +475,21 @@ export const startBrowserDiagnostics = (
       ["network", "requests", "--clear"],
     ];
 
-    yield* Effect.forEach(commands, (args) =>
-      runBrowserCommand(`clear browser ${args.join(" ")}`, run, session, args, {
-        allowFailure: true,
-        logOutput: false,
-        timeoutMs: 30_000,
-      })
+    yield* Effect.forEach(
+      commands,
+      (args) =>
+        runBrowserCommand(
+          `clear browser ${args.join(" ")}`,
+          run,
+          session,
+          args,
+          {
+            allowFailure: true,
+            logOutput: false,
+            timeoutMs: 30_000,
+          }
+        ),
+      { concurrency: "unbounded", discard: true }
     );
 
     const result = yield* runBrowserCommand(
@@ -609,7 +618,7 @@ const writeCommandArtifact = (
     const result = yield* tryWorkspaceE2EPromise(
       `write ${fileName} artifact`,
       (signal) =>
-        run("agent-browser", args, {
+        run("playwright", args, {
           allowFailure: true,
           logOutput: false,
           signal,
@@ -813,9 +822,11 @@ const hasSnapshotRole = (line: string, role: string | undefined) =>
 
 export const findEnabledSnapshotRef = (
   snapshot: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  role?: string
 ) => {
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
@@ -829,6 +840,7 @@ export const findEnabledSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     if (hasDisabledSnapshotState(line)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
@@ -919,8 +931,10 @@ export const requireEnabledSnapshotRef = ({
   );
 
 export const getSnapshotRef = (line: string) =>
-  line.match(/\bref=(e\d+)\b/)?.[1]?.replace(/^/, "@") ??
-  line.match(/@e\d+/)?.[0];
+  line.match(/\bref=((?:f\d+)?e\d+)\b/)?.[1]?.replace(/^/, "@") ??
+  line.match(/@(?:f\d+)?e\d+/)?.[0];
+
+export const isFrameSnapshotRef = (ref: string) => /^@f\d+e\d+$/.test(ref);
 
 export const waitForBrowserUrl = ({
   description,

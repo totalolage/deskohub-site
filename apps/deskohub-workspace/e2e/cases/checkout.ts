@@ -53,7 +53,6 @@ import type {
   CheckoutFlow,
   CheckoutFlowState,
   CheckoutRow,
-  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "../types";
@@ -69,7 +68,6 @@ export const executeCheckoutFlow = ({
   data,
   datasourceConfig,
   flow,
-  resources,
   run,
   runStep,
   session,
@@ -81,7 +79,6 @@ export const executeCheckoutFlow = ({
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
   flow: Pick<CheckoutFlow, "id" | "submitReservationScript">;
-  resources: WorkspaceE2ECaseResources;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
@@ -99,7 +96,6 @@ export const executeCheckoutFlow = ({
     const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
-      capacity: "reservation-start",
       execute: Effect.gen(function* () {
         yield* openBrowserPage(config, run, session, data.checkoutUrl, {
           timeoutMs: config.timeouts.browserNavigation,
@@ -120,46 +116,44 @@ export const executeCheckoutFlow = ({
     if (payPageSteps) {
       for (const step of payPageSteps(orderId)) yield* runStep(step);
     }
-    const providerSessionRow = yield* resources.withHostedPaymentSession(
-      Effect.gen(function* () {
-        const hostedPaymentPage = yield* runStep({
-          execute: submitPaymentAndWaitForHostedPage({
-            run,
-            session,
-            timeouts: config.timeouts,
-          }),
-          id: "start-checkout-payment",
-          timeoutMs: config.timeouts.providerTransition,
-        });
-        const row = yield* runStep({
-          execute: requireProviderSessionRowAfterRedirect(orderId, {
-            onRow: (value) => {
-              state.checkoutRow = value;
-            },
-            timeoutMs: config.timeouts.browserAction,
-          }),
-          id: "read-provider-session-row",
-          timeoutMs: config.timeouts.datasource,
-        });
-        yield* runStep({
-          execute: completeNexiHostedPayment({
-            data,
-            hostedPaymentPage,
-            run,
-            session,
-            timeouts: config.timeouts,
-          }),
-          id: "complete-hosted-payment",
-          timeoutMs: config.timeouts.hostedPayment,
-        });
-        yield* runStep({
-          execute: waitForCheckoutStatusPage(config, run, session),
-          id: "reach-checkout-status-page",
-          timeoutMs: config.timeouts.providerTransition,
-        });
-        return row;
-      })
-    );
+    const providerSessionRow = yield* Effect.gen(function* () {
+      const hostedPaymentPage = yield* runStep({
+        execute: submitPaymentAndWaitForHostedPage({
+          run,
+          session,
+          timeouts: config.timeouts,
+        }),
+        id: "start-checkout-payment",
+        timeoutMs: config.timeouts.providerTransition,
+      });
+      const row = yield* runStep({
+        execute: requireProviderSessionRowAfterRedirect(orderId, {
+          onRow: (value) => {
+            state.checkoutRow = value;
+          },
+          timeoutMs: config.timeouts.browserAction,
+        }),
+        id: "read-provider-session-row",
+        timeoutMs: config.timeouts.datasource,
+      });
+      yield* runStep({
+        execute: completeNexiHostedPayment({
+          data,
+          hostedPaymentPage,
+          run,
+          session,
+          timeouts: config.timeouts,
+        }),
+        id: "complete-hosted-payment",
+        timeoutMs: config.timeouts.hostedPayment,
+      });
+      yield* runStep({
+        execute: waitForCheckoutStatusPage(config, run, session),
+        id: "reach-checkout-status-page",
+        timeoutMs: config.timeouts.providerTransition,
+      });
+      return row;
+    });
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner
@@ -215,7 +209,6 @@ export const executeCheckoutFlow = ({
       timeoutMs: config.timeouts.uiTransition,
     });
     yield* runStep({
-      capacity: "reservation-start",
       execute: restartReservationAfterFulfillment({
         config,
         data,

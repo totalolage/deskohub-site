@@ -294,6 +294,28 @@ describe("censorLogValue", () => {
     });
   });
 
+  test("projects errors when the runtime does not provide Error.isError", () => {
+    const nativeIsError = Error.isError;
+    Object.defineProperty(Error, "isError", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    try {
+      expect(censorLogValue(new Error("private value"))).toEqual({
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+      });
+    } finally {
+      Object.defineProperty(Error, "isError", {
+        configurable: true,
+        value: nativeIsError,
+        writable: true,
+      });
+    }
+  });
+
   test("redacts Map entries by sensitive string keys without mutating input", () => {
     const objectKey = { secret: "key-secret" };
     const input = new Map<unknown, unknown>([
