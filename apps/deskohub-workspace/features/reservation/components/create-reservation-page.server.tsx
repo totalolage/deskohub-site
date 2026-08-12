@@ -127,7 +127,11 @@ export function createReservationPage<const Kind extends ReservationKind>(
       if (definition.isEnabled && !(await definition.isEnabled())) notFound();
 
       return (
-        <ReservationPage fallback={definition.fallback(locale)} locale={locale}>
+        <ReservationPage
+          fallback={definition.fallback(locale)}
+          locale={locale}
+          title={definition.metadata(locale).title}
+        >
           <ReservationPageContent
             definition={definition}
             searchParams={searchParams}

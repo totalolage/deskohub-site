@@ -42,6 +42,14 @@ export const getSiteHeaderLanguageLabels = (
   "en-US": m.languageEnglish({}, { locale }),
 });
 
+export const getSiteHeaderAccessibilityLabels = (locale: Locale) => ({
+  closeNavigationMenuLabel: m.closeNavigationMenuLabel({}, { locale }),
+  languageSwitcherLabel: m.languageSwitcherLabel({}, { locale }),
+  mobilePrimaryNavigationLabel: m.mobilePrimaryNavigationLabel({}, { locale }),
+  openNavigationMenuLabel: m.openNavigationMenuLabel({}, { locale }),
+  primaryNavigationLabel: m.primaryNavigationLabel({}, { locale }),
+});
+
 export async function getSiteHeaderConfig(locale: Locale) {
   const [meetingRoomPageEnabled, officePageEnabled] = await Promise.all([
     isMeetingRoomPageEnabled(),
@@ -99,6 +107,7 @@ const createSiteHeaderConfig = (
   ] satisfies SiteHeaderMenuItem[];
 
   return {
+    ...getSiteHeaderAccessibilityLabels(locale),
     languageLabels: getSiteHeaderLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
     contactLabel: m.reservationNavCta({}, { locale }),

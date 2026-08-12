@@ -30,7 +30,7 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
 import {
   ReservationCustomerFieldsFallback,
   ReservationSkeletonBlock,
@@ -367,6 +367,7 @@ export function CoworkReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
+                aria-required="true"
                 idPrefix="reservation-entry-tier"
                 inputRef={field.ref}
                 name={field.name}
@@ -612,7 +613,11 @@ function CoworkMonitorField({
             {m.reservationMonitorLabel({}, { locale })}
           </FormLabel>
           <FormControl>
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div
+              role="radiogroup"
+              aria-required="true"
+              className="grid gap-3 sm:grid-cols-3"
+            >
               {monitorOptions
                 .filter((option) =>
                   allowedMonitorOptions.includes(option.value)
@@ -688,7 +693,7 @@ function CoworkReservationDateField({
           <ReservationFormLabel required>
             {m.reservationDateLabel({}, { locale })}
           </ReservationFormLabel>
-          <ReservationDatePicker
+          <ReservationFormDatePicker
             ariaLabel={m.reservationDateLabel({}, { locale })}
             displayValue={formatDisplayDate(field.value, locale)}
             isDateDisabled={(date) => unavailableDates.has(date.toString())}

@@ -18,7 +18,7 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationDatePicker } from "@/features/reservation/components/reservation-date-picker";
+import { ReservationFormDatePicker } from "@/features/reservation/components/reservation-date-picker";
 import {
   ReservationCustomerFieldsFallback,
   ReservationFormFallback,
@@ -249,10 +249,10 @@ export function OfficeReservationForm({
             name="startsOn"
             render={({ field, fieldState }) => (
               <FormItem>
-                <p className="text-xs font-semibold text-navy-blue/55">
+                <ReservationFormLabel required>
                   {m.reservationOfficeStartDateLabel({}, { locale })}
-                </p>
-                <ReservationDatePicker
+                </ReservationFormLabel>
+                <ReservationFormDatePicker
                   ariaLabel={m.reservationOfficeStartDateLabel({}, { locale })}
                   isDateDisabled={(date) =>
                     unavailableDates.has(date.toString())
@@ -301,6 +301,7 @@ export function OfficeReservationForm({
                     type="number"
                     value={field.value}
                     variant={fieldState.error ? "error" : "default"}
+                    required
                   />
                 </FormControl>
                 <FormMessage />
@@ -338,6 +339,7 @@ export function OfficeReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
+                aria-required="true"
                 className="flex flex-wrap gap-3 space-y-0"
                 idPrefix="office-seats"
                 inputRef={field.ref}

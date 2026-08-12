@@ -254,7 +254,7 @@ function InvalidPayState({
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
         <CardHeader className="space-y-3 pb-6">
-          <CardTitle className="text-3xl sm:text-[2.35rem]">
+          <CardTitle as="h1" className="text-3xl sm:text-[2.35rem]">
             {m.checkoutPayInvalidStateTitle({}, { locale })}
           </CardTitle>
           <CardDescription className="max-w-2xl font-mono text-9xl text-center leading-96 text-navy-blue/50 sm:text-8xl">

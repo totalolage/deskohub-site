@@ -112,6 +112,7 @@ function ReservationTextField({
               type={type}
               value={field.value || ""}
               variant={fieldState.error ? "error" : "default"}
+              required
             />
           </FormControl>
           <FormMessage />

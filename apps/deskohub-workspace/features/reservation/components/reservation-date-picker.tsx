@@ -2,8 +2,10 @@
 
 import { CalendarIcon } from "lucide-react";
 import { useMemo, useState } from "react";
+import { isLocale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
+import { useFormField } from "@/shared/components/ui/form";
 import {
   Popover,
   PopoverContent,
@@ -11,12 +13,16 @@ import {
 } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
 
-type ReservationDatePickerProps = {
+export type ReservationDatePickerProps = {
+  readonly ariaDescribedBy?: string;
+  readonly ariaInvalid?: boolean;
   readonly ariaLabel: string;
+  readonly ariaRequired?: boolean;
   readonly className?: string;
   readonly displayValue?: string;
   readonly isDateDisabled?: (date: Temporal.PlainDate) => boolean;
   readonly locale?: string;
+  readonly id?: string;
   readonly maximum?: string | (() => string);
   readonly minimum?: string | (() => string);
   readonly name?: string;
@@ -50,11 +56,15 @@ const getPlainDateFromCalendar = (date: Date) =>
   });
 
 export function ReservationDatePicker({
+  ariaDescribedBy,
+  ariaInvalid,
   ariaLabel,
+  ariaRequired,
   className,
   displayValue,
   isDateDisabled,
   locale,
+  id,
   maximum,
   minimum,
   name,
@@ -64,6 +74,12 @@ export function ReservationDatePicker({
   variant = "default",
 }: ReservationDatePickerProps) {
   const [open, setOpen] = useState(false);
+  const accessibleLabel = ariaRequired
+    ? `${ariaLabel}, ${m.requiredFieldLabel(
+        {},
+        isLocale(locale) ? { locale } : undefined
+      )}`
+    : ariaLabel;
   const selectedDate = parsePlainDate(value);
   const maximumDate = parsePlainDate(
     typeof maximum === "function" ? maximum() : maximum
@@ -88,10 +104,13 @@ export function ReservationDatePicker({
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <Button
-            aria-label={ariaLabel}
+            id={id}
+            aria-describedby={ariaDescribedBy}
+            aria-invalid={ariaInvalid}
+            aria-label={accessibleLabel}
             className={cn(
-              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-              !selectedDate && "text-navy-blue/44",
+              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/45 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange",
+              !selectedDate && "text-navy-blue/55",
               variant === "error" && "border-burned-orange",
               className
             )}
@@ -105,7 +124,11 @@ export function ReservationDatePicker({
               : placeholder}
           </Button>
         </PopoverTrigger>
-        <PopoverContent align="start" className="w-auto p-3">
+        <PopoverContent
+          align="start"
+          aria-label={ariaLabel}
+          className="w-auto p-3"
+        >
           <Calendar
             disabled={(date) => {
               const plainDate = getPlainDateFromCalendar(date);
@@ -140,5 +163,19 @@ export function ReservationDatePicker({
         </PopoverContent>
       </Popover>
     </>
+  );
+}
+
+export function ReservationFormDatePicker(props: ReservationDatePickerProps) {
+  const { error, formItemId, formMessageId } = useFormField();
+
+  return (
+    <ReservationDatePicker
+      {...props}
+      id={formItemId}
+      ariaDescribedBy={error ? formMessageId : undefined}
+      ariaInvalid={Boolean(error)}
+      ariaRequired
+    />
   );
 }

@@ -3,16 +3,22 @@
 import { Option, Schema } from "effect";
 import { Clock } from "lucide-react";
 import { type FormEvent, useMemo, useState } from "react";
+import { isLocale, m } from "@/features/i18n";
+import { useFormField } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { localDateTimeSchema, localTimeSchema } from "@/shared/utils/temporal";
 import { ReservationDatePicker } from "./reservation-date-picker";
 
-type ReservationDateTimePickerProps = {
+export type ReservationDateTimePickerProps = {
+  readonly ariaDescribedBy?: string;
+  readonly ariaInvalid?: boolean;
+  readonly ariaRequired?: boolean;
   readonly dateLabel: string;
   readonly className?: string;
   readonly locale?: string;
+  readonly id?: string;
   readonly minimum?: string | (() => string);
   readonly name?: string;
   readonly onBlur?: () => void;
@@ -79,9 +85,13 @@ const getAcceptedTime = ({
   );
 
 export function ReservationDateTimePicker({
+  ariaDescribedBy,
+  ariaInvalid,
+  ariaRequired,
   className,
   dateLabel,
   locale,
+  id,
   minimum,
   name,
   onBlur,
@@ -94,6 +104,12 @@ export function ReservationDateTimePicker({
   variant = "default",
 }: ReservationDateTimePickerProps) {
   const dateTime = useMemo(() => parsePlainDateTime(value), [value]);
+  const accessibleTimeLabel = ariaRequired
+    ? `${timeLabel}, ${m.requiredFieldLabel(
+        {},
+        isLocale(locale) ? { locale } : undefined
+      )}`
+    : timeLabel;
   const [pendingTime, setPendingTime] = useState(
     () =>
       dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ??
@@ -159,7 +175,11 @@ export function ReservationDateTimePicker({
   return (
     <div className={cn("grid gap-3", className)}>
       <ReservationDatePicker
+        id={id}
+        ariaDescribedBy={ariaDescribedBy}
+        ariaInvalid={ariaInvalid}
         ariaLabel={dateLabel}
+        ariaRequired={ariaRequired}
         displayValue={displayValue}
         locale={locale}
         minimum={minimumDateTime?.toPlainDate().toString()}
@@ -173,18 +193,38 @@ export function ReservationDateTimePicker({
         <div className="relative">
           <Clock className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-burned-orange" />
           <Input
-            aria-label={timeLabel}
+            id={id ? `${id}-time` : undefined}
+            aria-describedby={ariaDescribedBy}
+            aria-invalid={ariaInvalid}
+            aria-label={accessibleTimeLabel}
             className="pl-11"
             min={selectedDateMinimumTime}
             onBlur={onBlur}
             onInput={handleTimeInput}
             step={resolvedTimeStepMinutes * 60}
             type="time"
+            required={ariaRequired}
             value={selectedTime}
             variant={variant}
           />
         </div>
       )}
     </div>
+  );
+}
+
+export function ReservationFormDateTimePicker(
+  props: ReservationDateTimePickerProps
+) {
+  const { error, formItemId, formMessageId } = useFormField();
+
+  return (
+    <ReservationDateTimePicker
+      {...props}
+      id={formItemId}
+      ariaDescribedBy={error ? formMessageId : undefined}
+      ariaInvalid={Boolean(error)}
+      ariaRequired
+    />
   );
 }

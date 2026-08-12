@@ -207,6 +207,9 @@ export function CheckoutStatusPage({
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>
       <div className="rounded-[2.25rem] border border-white/55 bg-white/94 p-6 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10">
+        <output className="sr-only" aria-live="polite" aria-atomic>
+          {m.checkoutStatusEyebrow({}, { locale })}: {copy.title}
+        </output>
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
           <div className={statusIconWrapperVariants({ tone: copy.tone })}>
             <Icon className="h-9 w-9" aria-hidden="true" />

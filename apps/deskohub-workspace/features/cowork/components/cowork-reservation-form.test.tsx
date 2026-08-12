@@ -380,7 +380,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-type-price="plus"]'
+          "#reservation-entry-tier-plus"
         ) as HTMLElement
       );
     });
@@ -553,7 +553,7 @@ describe("CoworkReservationForm advertised pricing", () => {
     await act(async () => {
       fireEvent.click(
         view.container.querySelector(
-          '[data-reservation-type-price="profi"]'
+          "#reservation-entry-tier-profi"
         ) as HTMLElement
       );
     });

@@ -84,7 +84,7 @@ describe("OfficeReservationForm", () => {
       view.getByRole("group", { name: "Reservation dates" })
     ).toBeDefined();
     expect(
-      view.getByRole("button", { name: "Office reservation start date" })
+      view.getByRole("button", { name: /^Office reservation start date/ })
     ).toBeDefined();
     expect(
       view.queryByRole("button", { name: "Office reservation end date" })

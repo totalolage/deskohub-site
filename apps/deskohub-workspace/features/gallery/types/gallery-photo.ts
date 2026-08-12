@@ -17,19 +17,18 @@ export type GalleryPhoto = {
 };
 
 export function toGalleryPhotos(
-  assets: readonly CloudinaryAsset[]
+  assets: readonly CloudinaryAsset[],
+  getFallbackAlt: (index: number) => string = (index) =>
+    `Deskohub Workspace gallery photo ${index + 1}`
 ): readonly GalleryPhoto[] {
-  return assets.flatMap((asset) => {
+  return assets.flatMap((asset, index) => {
     if (asset.width <= 0 || asset.height <= 0) {
       return [];
     }
 
     const caption = asset.context?.custom?.caption?.trim();
     const alt =
-      asset.context?.custom?.alt?.trim() ||
-      caption ||
-      asset.public_id.split("/").at(-1)?.replaceAll("-", " ") ||
-      "Deskohub Workspace gallery photo";
+      asset.context?.custom?.alt?.trim() || caption || getFallbackAlt(index);
 
     return [
       {
