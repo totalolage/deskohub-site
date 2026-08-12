@@ -404,7 +404,16 @@ test("types into a hosted payment field when fill does not stick", async () => {
   expect(cardTypeAttempts).toBe(1);
 });
 
-test("returns through back to shop and restores the single original status tab", async () => {
+test.each([
+  [
+    "destroyed execution context",
+    "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation",
+  ],
+  [
+    "document without a body",
+    'locator.ariaSnapshot: Selector "body" does not match any element',
+  ],
+] as const)("returns through back to shop and restores the original status tab across %s", async (_name, transitionError) => {
   const calls: string[][] = [];
   const values = new Map<string, string>();
   const buttons = [
@@ -444,9 +453,7 @@ test("returns through back to shop and restores the single original status tab",
     if (commandArgs[0] === "snapshot") {
       if (buttonIndex === 3 && transitionSnapshotPending) {
         transitionSnapshotPending = false;
-        throw new Error(
-          "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation"
-        );
+        throw new Error(transitionError);
       }
       return success(
         [
