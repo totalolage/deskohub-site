@@ -34,12 +34,18 @@ function CardHeader({ className, ref, ...props }: CardHeaderProps) {
 
 export interface CardTitleProps
   extends React.HTMLAttributes<HTMLHeadingElement> {
+  as?: "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
   ref?: React.Ref<HTMLHeadingElement>;
 }
 
-function CardTitle({ className, ref, ...props }: CardTitleProps) {
+function CardTitle({
+  as: Comp = "h3",
+  className,
+  ref,
+  ...props
+}: CardTitleProps) {
   return (
-    <h3
+    <Comp
       ref={ref}
       className={cn("text-xl leading-tight text-navy-blue", className)}
       {...props}

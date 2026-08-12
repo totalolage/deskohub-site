@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ComponentType, ReactNode, SVGProps } from "react";
+import { SkipLink } from "@/shared/components/skip-link";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,
@@ -209,6 +210,7 @@ export function AdminShell({
 }) {
   return (
     <div className="min-h-screen bg-[#f6f6f3] text-navy-blue lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+      <SkipLink label="Skip to main content" />
       <aside className="hidden border-r border-navy-blue/10 bg-white px-4 py-5 lg:sticky lg:top-0 lg:block lg:h-screen">
         <Brand />
         <div className="mt-9">

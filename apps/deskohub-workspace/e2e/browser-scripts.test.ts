@@ -313,9 +313,9 @@ test("drives meeting-room date, time, and duration controls", () => {
   const prepare = getPrepareMeetingRoomAdvertisedPriceScript(data);
   const combined = getSubmitMeetingRoomReservationScript(data);
 
-  expect(prepare).toContain('button[aria-label="Meeting room start date"]');
+  expect(prepare).toContain('button[aria-label^="Meeting room start date"]');
   expect(prepare).toContain("'[data-day=\"' + expected.date");
-  expect(prepare).toContain('input[aria-label="Meeting room start time"]');
+  expect(prepare).toContain('input[aria-label^="Meeting room start time"]');
   expect(prepare).toContain("meeting-room-duration-");
   expect(prepare).toContain(
     `Date.now() + ${workspaceE2ETimeouts.uiTransition}`

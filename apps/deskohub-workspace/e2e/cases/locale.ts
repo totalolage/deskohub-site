@@ -59,7 +59,7 @@ const activateLocaleSwitchLink = (
 ) =>
   Effect.gen(function* () {
     const timeoutMs = timeouts.browserNavigation;
-    const selector = `nav[aria-label="Language switcher"] a[href^="/${locale}"]`;
+    const selector = `[data-locale-switcher] a[href^="/${locale}"]`;
     yield* activateHydratedBrowserElement(run, session, selector, {
       timeoutMs,
     });

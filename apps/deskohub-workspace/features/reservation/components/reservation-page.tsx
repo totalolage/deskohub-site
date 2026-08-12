@@ -7,15 +7,18 @@ type ReservationPageProps = {
   readonly children: ReactNode;
   readonly fallback: ReactNode;
   readonly locale: Locale;
+  readonly title: string;
 };
 
 export function ReservationPage({
   children,
   fallback,
   locale,
+  title,
 }: ReservationPageProps) {
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
+      <h1 className="sr-only">{title}</h1>
       <Suspense fallback={fallback}>
         <QueryProvider>{children}</QueryProvider>
       </Suspense>

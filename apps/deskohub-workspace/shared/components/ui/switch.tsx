@@ -14,7 +14,7 @@ function Switch({ className, ref, ...props }: SwitchProps) {
     <SwitchPrimitive.Root
       ref={ref}
       className={cn(
-        "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-navy-blue/12 bg-navy-blue/18 p-0.5 shadow-sm transition focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-burned-orange/10 disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-burned-orange data-[state=checked]:bg-burned-orange",
+        "peer inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border border-navy-blue/45 bg-navy-blue/18 p-0.5 shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-burned-orange data-[state=checked]:bg-burned-orange",
         className
       )}
       {...props}

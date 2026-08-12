@@ -13,6 +13,9 @@ import { cn } from "@/shared/utils";
 type ReservationTypeValue = string;
 
 type ReservationTypeInputContextValue = {
+  readonly ariaDescribedBy?: string;
+  readonly ariaInvalid?: boolean;
+  readonly ariaRequired?: boolean;
   readonly idPrefix: string;
   readonly name?: string;
   readonly onBlur?: () => void;
@@ -59,17 +62,32 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
   onChange,
   ref,
   value,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
+  "aria-required": ariaRequired,
   ...props
 }: ReservationTypeInputProps<Value>) {
   const context = useMemo<ReservationTypeInputContextValue>(
     () => ({
       idPrefix,
+      ariaDescribedBy,
+      ariaInvalid: ariaInvalid === true || ariaInvalid === "true",
+      ariaRequired: ariaRequired === true || ariaRequired === "true",
       name,
       onBlur,
       onChange: (nextValue) => onChange(nextValue as Value),
       value,
     }),
-    [idPrefix, name, onBlur, onChange, value]
+    [
+      ariaDescribedBy,
+      ariaInvalid,
+      ariaRequired,
+      idPrefix,
+      name,
+      onBlur,
+      onChange,
+      value,
+    ]
   );
 
   return (
@@ -77,6 +95,10 @@ export function ReservationTypeInput<Value extends ReservationTypeValue>({
       <ReservationTypeInputContext.Provider value={context}>
         <div
           ref={ref}
+          role="radiogroup"
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
+          aria-required={ariaRequired}
           className={cn(
             "grid space-y-3 lg:grid-cols-3 lg:grid-rows-[repeat(4,auto)] lg:space-y-0 lg:gap-x-3",
             className
@@ -109,6 +131,8 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
   }
 
   const inputId = `${input.idPrefix}-${value}`;
+  const priceId = `${inputId}-price`;
+  const titleId = `${inputId}-title`;
   const isSelected = input.value === value;
   return (
     <div
@@ -125,8 +149,8 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
         className
       )}
     >
-      <label
-        htmlFor={inputId}
+      <span
+        id={titleId}
         className={cn(
           "relative z-10 mt-4 mb-3 flex cursor-pointer items-start justify-between gap-2",
           disabled && "cursor-not-allowed"
@@ -143,22 +167,22 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
               : "border-navy-blue/25"
           )}
         />
-      </label>
+      </span>
       <div
         className="relative z-20 mb-3 flex items-start gap-2 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue"
         data-reservation-type-price-row={value}
       >
-        <label
+        <span
+          id={priceId}
           className={cn(
             "flex cursor-pointer flex-col items-start gap-0.5",
             disabled && "cursor-not-allowed"
           )}
           data-reservation-type-price={value}
           data-reservation-type-price-ready={priceReady}
-          htmlFor={inputId}
         >
           {price}
-        </label>
+        </span>
       </div>
       {children}
       <label
@@ -170,6 +194,9 @@ export function ReservationTypeOption<Value extends ReservationTypeValue>({
       >
         <input
           id={inputId}
+          aria-describedby={input.ariaDescribedBy}
+          aria-invalid={input.ariaInvalid}
+          aria-labelledby={`${titleId} ${priceId}`}
           name={input.name}
           type="radio"
           className="sr-only"

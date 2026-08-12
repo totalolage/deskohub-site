@@ -1,3 +1,4 @@
+import { m } from "@/features/i18n";
 import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 export const instant = false;
@@ -6,7 +7,8 @@ const SIZE = 64;
 
 export default function LogoPage() {
   return (
-    <div className="flex min-h-screen flex-col gap-8 bg-gray-500 pt-[calc(var(--site-header-height)+2rem)]">
+    <main className="flex min-h-screen flex-col gap-8 bg-gray-500 pt-[calc(var(--site-header-height)+2rem)]">
+      <h1 className="sr-only">{m.logoVariantsTitle()}</h1>
       <div className="flex gap-4 items-center justify-center">
         <Logo styling={{ color: "dark", variant: "small" }} width={SIZE} />
         <Logo styling={{ color: "dark", variant: "color" }} width={SIZE} />
@@ -54,6 +56,6 @@ export default function LogoPage() {
           className="rounded-lg bg-silver"
         />
       </div>
-    </div>
+    </main>
   );
 }

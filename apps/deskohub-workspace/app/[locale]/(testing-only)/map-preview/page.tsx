@@ -28,6 +28,9 @@ async function WorkspaceMapPreviewContent() {
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] px-4 py-10 text-[#00024f]">
+      <h1 className="sr-only">
+        {m.checkoutEmailLocationHeading({}, { locale })}
+      </h1>
       <div className="mx-auto max-w-[600px] rounded-[20px] border border-[#e6ded2] bg-[#f4f1ea] shadow-2xl shadow-navy-blue/12">
         <div className="px-5 py-[18px]">
           <div className="mb-[7px] font-extrabold text-[#006b55] text-xs uppercase tracking-[0.16em]">

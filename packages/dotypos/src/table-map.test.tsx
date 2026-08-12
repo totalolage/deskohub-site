@@ -4,6 +4,7 @@ import { TableMap } from "./table-map";
 
 type ReactElementLike = {
   readonly props: {
+    readonly "aria-label"?: string;
     readonly children: ReactElementLike | readonly ReactElementLike[];
     readonly className?: string;
     readonly color?: string;
@@ -75,7 +76,9 @@ test("renders positioned tables with classes and click handlers", () => {
   expect(circle.props.style).toEqual({ fill: "navy" });
   expect(label.props.className).toBe("label-selected");
   expect(label.props.style).toEqual({ fill: "white" });
+  expect(svg.props.role).toBe("group");
   expect(group.props.role).toBe("button");
+  expect(group.props["aria-label"]).toBe("T1");
   expect(group.props.tabIndex).toBe(0);
 
   group.props.onClick?.();
@@ -96,6 +99,7 @@ test("renders read-only tables without interactive group props", () => {
   }) as ReactElementLike;
   const group = firstChild(svg);
 
+  expect(svg.props.role).toBe("img");
   expect(group.props.role).toBeUndefined();
   expect(group.props.tabIndex).toBeUndefined();
   expect(group.props.onClick).toBeUndefined();

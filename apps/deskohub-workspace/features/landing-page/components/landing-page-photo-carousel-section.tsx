@@ -1,13 +1,12 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
 import noiseTexture from "../images/noise-texture.png";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarousel } from "./landing-page-photo-carousel";
-
-const landingPagePhotoCarouselLabel = "Deskohub workspace photo carousel";
 
 export const LandingPagePhotoCarouselBackgroundNoise = ({
   className,
@@ -27,7 +26,13 @@ export const LandingPagePhotoCarouselBackgroundNoise = ({
   />
 );
 
-export function LandingPagePhotoCarouselSection() {
+export function LandingPagePhotoCarouselSection({
+  locale,
+}: {
+  locale: Locale;
+}) {
+  const ariaLabel = m.landingCarouselAriaLabel({}, { locale });
+
   return (
     <section
       id="hero-gallery"
@@ -53,15 +58,17 @@ export function LandingPagePhotoCarouselSection() {
       </div>
 
       <Container className="relative z-10">
-        <Suspense fallback={<LandingPagePhotoCarouselFallback />}>
-          <LandingPagePhotoCarouselContent />
+        <Suspense
+          fallback={<LandingPagePhotoCarouselFallback ariaLabel={ariaLabel} />}
+        >
+          <LandingPagePhotoCarouselContent locale={locale} />
         </Suspense>
       </Container>
     </section>
   );
 }
 
-async function LandingPagePhotoCarouselContent() {
+async function LandingPagePhotoCarouselContent({ locale }: { locale: Locale }) {
   await connection();
   const images = await getCloudinaryImages({
     tags: ["landing-carousel"],
@@ -70,17 +77,22 @@ async function LandingPagePhotoCarouselContent() {
 
   return (
     <LandingPagePhotoCarousel
-      ariaLabel={landingPagePhotoCarouselLabel}
+      ariaLabel={m.landingCarouselAriaLabel({}, { locale })}
+      locale={locale}
       images={images}
     />
   );
 }
 
-function LandingPagePhotoCarouselFallback() {
+function LandingPagePhotoCarouselFallback({
+  ariaLabel,
+}: {
+  ariaLabel: string;
+}) {
   return (
     <section
       aria-busy="true"
-      aria-label={landingPagePhotoCarouselLabel}
+      aria-label={ariaLabel}
       className="overflow-visible space-y-8"
     >
       <div className="relative mx-auto h-72 max-w-6xl sm:h-112 lg:h-136">

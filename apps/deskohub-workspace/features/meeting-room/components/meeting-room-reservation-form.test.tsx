@@ -460,7 +460,7 @@ describe("MeetingRoomReservationForm", () => {
       },
     });
 
-    expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+    expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
     expect(view.getByText("Reservation date")).toBeDefined();
     expect(view.getByText("whole day")).toBeDefined();
     await waitFor(() => {
@@ -506,7 +506,7 @@ describe("MeetingRoomReservationForm", () => {
       });
 
       expect(
-        (view.getByLabelText("Meeting room start time") as HTMLInputElement)
+        (view.getByLabelText(/^Meeting room start time/) as HTMLInputElement)
           .value
       ).toBe("16:00");
 
@@ -516,7 +516,7 @@ describe("MeetingRoomReservationForm", () => {
         ) as HTMLInputElement
       );
       await waitFor(() => {
-        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+        expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
         expect(getAdvertisedPrices).toHaveBeenCalledWith(
           expect.arrayContaining([
             {
@@ -540,11 +540,11 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(
-          (view.getByLabelText("Meeting room start time") as HTMLInputElement)
+          (view.getByLabelText(/^Meeting room start time/) as HTMLInputElement)
             .value
         ).toBe("16:00");
         expect(
-          view.getByRole("button", { name: "Meeting room start date" })
+          view.getByRole("button", { name: /^Meeting room start date/ })
             .textContent
         ).toContain("July 30, 2099");
       });
@@ -589,7 +589,7 @@ describe("MeetingRoomReservationForm", () => {
         initialReservation: restoredWholeDayReservation,
       });
       expect(
-        view.getByRole("button", { name: "Meeting room start date" })
+        view.getByRole("button", { name: /^Meeting room start date/ })
           .textContent
       ).toContain("July 31, 2099");
 
@@ -598,7 +598,7 @@ describe("MeetingRoomReservationForm", () => {
 
       await waitFor(() => {
         expect(
-          view.getByRole("button", { name: "Meeting room start date" })
+          view.getByRole("button", { name: /^Meeting room start date/ })
             .textContent
         ).toContain("July 31, 2099");
       });
@@ -730,7 +730,7 @@ describe("MeetingRoomReservationForm", () => {
 
       await waitFor(() => {
         expect(
-          view.getByLabelText("Meeting room start time").getAttribute("value")
+          view.getByLabelText(/^Meeting room start time/).getAttribute("value")
         ).toBe("15:00");
       });
 
@@ -740,7 +740,7 @@ describe("MeetingRoomReservationForm", () => {
         ) as HTMLInputElement
       );
       await waitFor(() => {
-        expect(view.queryByLabelText("Meeting room start time")).toBeNull();
+        expect(view.queryByLabelText(/^Meeting room start time/)).toBeNull();
       });
 
       fireEvent.click(
@@ -750,7 +750,7 @@ describe("MeetingRoomReservationForm", () => {
       );
       await waitFor(() => {
         expect(
-          view.getByLabelText("Meeting room start time").getAttribute("value")
+          view.getByLabelText(/^Meeting room start time/).getAttribute("value")
         ).toBe("15:00");
       });
     } finally {
@@ -769,7 +769,7 @@ describe("MeetingRoomReservationForm", () => {
 
     fireEvent.input(
       view.container.querySelector(
-        'input[aria-label="Meeting room start time"]'
+        'input[aria-label^="Meeting room start time"]'
       ) as HTMLInputElement,
       { target: { value: "11:00" } }
     );

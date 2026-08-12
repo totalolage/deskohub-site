@@ -52,10 +52,12 @@ async function GalleryContent() {
     tags: ["gallery"],
     maxResults: 80,
   });
-  const photos = toGalleryPhotos(assets);
+  const photos = toGalleryPhotos(assets, (index) =>
+    m.galleryImageFallbackAlt({ number: index + 1 })
+  );
 
   return photos.length > 0 ? (
-    <WorkspaceGalleryAlbum photos={photos} />
+    <WorkspaceGalleryAlbum photos={photos} openLabel={m.galleryOpenImage()} />
   ) : (
     <EmptyGallery assetsCount={assets.length} />
   );

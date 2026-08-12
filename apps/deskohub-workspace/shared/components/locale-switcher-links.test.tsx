@@ -116,9 +116,11 @@ test("renders only the configured full-header items without reserved slots", asy
   const galleryHref = "/en-US/gallery";
   const view = render(
     <SiteHeader
+      closeNavigationMenuLabel="Close navigation menu"
       contactHref="/en-US/reservation/cowork"
       contactLabel="Book"
       currentLocale="en-US"
+      languageSwitcherLabel="Language switcher"
       languageLabels={{ "cs-CZ": "Czech", "en-US": "English" }}
       links={[
         {
@@ -127,11 +129,14 @@ test("renders only the configured full-header items without reserved slots", asy
           label: "Gallery",
         },
       ]}
+      mobilePrimaryNavigationLabel="Mobile primary navigation"
+      openNavigationMenuLabel="Open navigation menu"
+      primaryNavigationLabel="Primary navigation"
     />
   );
 
   const desktopNavigation = view.container.querySelector(
-    'nav[aria-label="Primary"]'
+    'nav[aria-label="Primary navigation"]'
   );
   expect(desktopNavigation?.getAttribute("class")).toContain("gap-6");
   expect(desktopNavigation?.getAttribute("class")).toContain("xl:flex");

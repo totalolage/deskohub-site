@@ -18,7 +18,7 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { ReservationAdvertisedPrice } from "@/features/reservation/components/reservation-advertised-price";
 import { ReservationCheckoutForm } from "@/features/reservation/components/reservation-checkout-form";
-import { ReservationDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
+import { ReservationFormDateTimePicker } from "@/features/reservation/components/reservation-date-time-picker";
 import {
   ReservationCustomerFieldsFallback,
   ReservationFormFallback,
@@ -235,7 +235,7 @@ export function MeetingRoomReservationForm({
                 ? m.reservationDateLabel({}, { locale })
                 : m.reservationMeetingRoomStartLabel({}, { locale })}
             </ReservationFormLabel>
-            <ReservationDateTimePicker
+            <ReservationFormDateTimePicker
               className={
                 isWholeDaySelected
                   ? "grid-cols-1"
@@ -271,6 +271,7 @@ export function MeetingRoomReservationForm({
             </ReservationFormLabel>
             <FormControl>
               <ReservationTypeInput
+                aria-required="true"
                 className="sm:grid-cols-3 sm:space-y-0 sm:gap-x-3"
                 idPrefix="meeting-room-duration"
                 inputRef={field.ref}
