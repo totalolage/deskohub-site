@@ -2,17 +2,16 @@ engine biome(1.0)
 language js(typescript, jsx)
 
 // Existing debt is excluded per rule and file; remove exclusions as files are fixed.
+// ponytail: direct syntax only; use Biome JS plugins when they expose scope/type APIs.
 file($name, $body) where {
-  $name <: r".*apps/deskohub-workspace/.*\.(?:ts|tsx)$",
+  $name <: r".*apps/deskohub-workspace/(?:(?:app|db|emails|features|scripts|shared)/.*|[^/]+)\.(?:ts|tsx)$",
   $body <: contains bubble {
     or {
       or {
-        TsAsExpression() as $outer_assertion where {
-          $outer_assertion <: r"(?s).*\bas\s+.+\bas\s+.*"
-        },
-        TsTypeAssertionExpression() as $outer_assertion where {
-          $outer_assertion <: r"(?s)^<[^>]+>.*(?:\bas\s+|<[^>]+>).*$"
-        }
+        `$value as $inner_type as $outer_type` as $outer_assertion,
+        `($value as $inner_type) as $outer_type` as $outer_assertion,
+        `<$outer_type><$inner_type>$value` as $outer_assertion,
+        `<$outer_type>($value as $inner_type)` as $outer_assertion
       } where {
         not $filename <: r"(?s).*(?:\.test\.(?:ts|tsx)|features/checkout/reservation-quote-office\.ts)$",
         register_diagnostic(
@@ -33,27 +32,16 @@ file($name, $body) where {
         )
       },
       or {
-        TsAsExpression() as $widening where {
-          $widening <: r"(?s).*\bas\s+(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*$"
-        },
-        TsTypeAssertionExpression() as $widening where {
-          $widening <: r"(?s)^<\s*(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*>.*"
-        },
-        JsVariableDeclarator() as $widening where {
-          $widening <: r"(?s)^[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*=.*"
-        },
-        JsPropertyClassMember() as $widening where {
-          $widening <: r"(?s)^(?:.*\s)?[A-Za-z_$][A-Za-z0-9_$]*\s*:\s*(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*=.*"
-        },
-        TsInitializedPropertySignatureClassMember() as $widening where {
-          $widening <: r"(?s)^(?:.*\s)?[A-Za-z_$][A-Za-z0-9_$]*\??\s*:\s*(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*=.*"
-        },
-        JsArrowFunctionExpression() as $widening where {
-          $widening <: r"(?s)^.*\)\s*:\s*(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})\s*=>.*"
-        }
+        `$known as $broad` as $widening,
+        `<$broad>$known` as $widening,
+        `const $binding: $broad = $known` as $widening,
+        `let $binding: $broad = $known` as $widening,
+        `var $binding: $broad = $known` as $widening,
+        `($parameters): $broad => $known` as $widening
       } where {
         not $filename <: r"(?s).*(?:\.test\.(?:ts|tsx)|features/administration/(?:admin-shell\.tsx|payment-administration\.service\.ts|reservation-date-range\.ts|reservation-lifecycle-map\.tsx)|features/checkout/(?:product-catalog\.i18n\.ts|product-catalog\.ts|workspace-room-layouts\.ts)|features/cookie-consent/(?:components/cookie-settings-page\.tsx|utils/posthog-url\.ts)|shared/backend/(?:analytics/posthog-event\.service\.ts|logging/censorship\.ts)|shared/(?:components/site-header-config\.ts|testing/workspace-component-module-mocks\.ts|utils/error-formatting\.ts))$",
-        $widening <: contains or {
+        $broad <: r"(?s)^(?:unknown|object|Record\s*<[^>]+>|\{[^}]+\})$",
+        $known <: or {
           JsObjectExpression(),
           JsArrayExpression(),
           JsArrowFunctionExpression(),
