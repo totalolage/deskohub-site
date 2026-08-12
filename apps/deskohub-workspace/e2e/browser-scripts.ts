@@ -936,7 +936,7 @@ export const browserTextScript = `
 export const assertFulfilledStatusScript = String.raw`
 (() => {
   const text = document.body?.textContent ?? '';
-  if (/Your workspace access is ready\./i.test(text) && /sent by email/i.test(text)) {
+  if (/Your reservation is confirmed\./i.test(text) && /secure reservation link has been sent by email/i.test(text)) {
     return location.href;
   }
   throw new Error('fulfilled checkout status copy not visible');

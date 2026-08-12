@@ -411,8 +411,10 @@ export const assertFulfilledStatusPage = ({
         );
 
         return (
-          /Your workspace access is ready\./i.test(normalizedText) &&
-          /sent by email/i.test(normalizedText) &&
+          /Your reservation is confirmed\./i.test(normalizedText) &&
+          /secure reservation link has been sent by email/i.test(
+            normalizedText
+          ) &&
           expectedReservationText.every((expected) =>
             normalizedText.includes(
               normalizeBrowserText(expected).toLocaleLowerCase(data.locale)
