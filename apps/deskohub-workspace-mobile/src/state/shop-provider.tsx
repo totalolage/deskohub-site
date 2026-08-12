@@ -272,6 +272,11 @@ export function ShopProvider({ children }: PropsWithChildren) {
     setActionError(null);
     try {
       await runtime.api.signOut();
+    } catch (error) {
+      setActionError(errorKind(error));
+    } finally {
+      // Signing out locally is authoritative even if remote session revocation
+      // cannot complete while the device is offline.
       setSession({ kind: "signed_out" });
       setEntitlement(null);
       setCatalog(null);
@@ -281,9 +286,6 @@ export function ShopProvider({ children }: PropsWithChildren) {
       setPaymentHandoff(null);
       setPaymentPurchase(null);
       setSignInState("idle");
-    } catch (error) {
-      setActionError(errorKind(error));
-    } finally {
       setIsActionPending(false);
     }
   }, []);

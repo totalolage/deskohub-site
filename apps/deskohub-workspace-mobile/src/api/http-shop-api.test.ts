@@ -4,16 +4,19 @@ import type { CheckoutQuote } from "../domain/shop";
 import { buildMobileApiUrl } from "./mobile-api-url";
 
 let uuidSequence = 0;
+let clearedNativeSessions = 0;
 mock.module("expo-constants", () => ({ default: { expoConfig: {} } }));
 mock.module("expo-crypto", () => ({
   randomUUID: () => `attempt-${++uuidSequence}`,
 }));
 mock.module("expo-secure-store", () => ({
-  deleteItemAsync: async () => undefined,
+  deleteItemAsync: async () => {
+    clearedNativeSessions += 1;
+  },
   getItemAsync: async () => null,
   setItemAsync: async () => undefined,
 }));
-mock.module("react-native", () => ({ Platform: { OS: "web" } }));
+mock.module("react-native", () => ({ Platform: { OS: "android" } }));
 
 const { createHttpShopApi } = await import("./http-shop-api");
 
@@ -44,7 +47,10 @@ describe("mobile checkout retries", () => {
     const originalFetch = globalThis.fetch;
     const attemptIds: string[] = [];
     let requestNumber = 0;
-    globalThis.fetch = (async (_input, init) => {
+    globalThis.fetch = (async (
+      _input: RequestInfo | URL,
+      init?: RequestInit
+    ) => {
       requestNumber += 1;
       if (requestNumber === 1) {
         return Response.json({
@@ -87,7 +93,7 @@ describe("mobile checkout retries", () => {
           hostedPageUrl: "https://payments.example.test/order-1",
         },
       });
-    }) as typeof fetch;
+    }) as unknown as typeof fetch;
 
     const quote: CheckoutQuote = {
       id: "quote-1",
@@ -121,5 +127,43 @@ describe("mobile checkout retries", () => {
 
     expect(attemptIds).toHaveLength(2);
     expect(attemptIds[1]).toBe(attemptIds[0]);
+  });
+});
+
+describe("mobile sign out", () => {
+  test("clears native state when the server cannot be reached", async () => {
+    const originalFetch = globalThis.fetch;
+    clearedNativeSessions = 0;
+    let requestNumber = 0;
+    globalThis.fetch = (async () => {
+      requestNumber += 1;
+      if (requestNumber === 1) {
+        return Response.json({
+          ok: true,
+          data: {
+            authenticated: true,
+            webMutation: { headerName: "x-shop-csrf", headerValue: "proof" },
+            entitlement: { kind: "locked", reason: "no_active_reservation" },
+          },
+        });
+      }
+      if (requestNumber === 2) throw new Error("offline");
+      return Response.json(
+        { ok: false, error: { code: "unauthorized" } },
+        { status: 401 }
+      );
+    }) as unknown as typeof fetch;
+
+    const api = createHttpShopApi("https://preview.example.test");
+
+    try {
+      expect((await api.getSession()).kind).toBe("signed_in");
+      await expect(api.signOut()).rejects.toThrow("Network request failed");
+      expect((await api.getSession()).kind).toBe("signed_out");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(clearedNativeSessions).toBe(1);
   });
 });

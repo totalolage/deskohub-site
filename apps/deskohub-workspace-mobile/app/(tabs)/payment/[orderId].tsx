@@ -39,9 +39,8 @@ export default function PaymentScreen() {
         null);
 
   useEffect(() => {
-    if (normalizedOrderId && !purchase && !isActionPending && !actionError)
-      void loadPurchase(normalizedOrderId);
-  }, [actionError, isActionPending, loadPurchase, normalizedOrderId, purchase]);
+    if (normalizedOrderId && !purchase) void loadPurchase(normalizedOrderId);
+  }, [loadPurchase, normalizedOrderId, purchase]);
 
   if (!normalizedOrderId) {
     return (

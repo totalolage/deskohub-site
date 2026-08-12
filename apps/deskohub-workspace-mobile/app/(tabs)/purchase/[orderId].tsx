@@ -16,16 +16,14 @@ import { useShop } from "@/src/state/shop-provider";
 
 export default function PurchaseDetailScreen() {
   const { orderId } = useLocalSearchParams<{ orderId: string }>();
-  const { actionError, isActionPending, loadPurchase, locale, purchases, t } =
-    useShop();
+  const { actionError, loadPurchase, locale, purchases, t } = useShop();
   const normalizedOrderId = Array.isArray(orderId) ? orderId[0] : orderId;
   const purchase =
     purchases.find((candidate) => candidate.id === normalizedOrderId) ?? null;
 
   useEffect(() => {
-    if (normalizedOrderId && !purchase && !isActionPending && !actionError)
-      void loadPurchase(normalizedOrderId);
-  }, [actionError, isActionPending, loadPurchase, normalizedOrderId, purchase]);
+    if (normalizedOrderId && !purchase) void loadPurchase(normalizedOrderId);
+  }, [loadPurchase, normalizedOrderId, purchase]);
 
   if (!purchase) {
     return (
