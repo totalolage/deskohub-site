@@ -1,6 +1,7 @@
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database-live.server";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { AccountingDocumentSnapshotRepository } from "./accounting-document-snapshot.repository";
 import { AccountingSnapshotKeyServiceLive } from "./accounting-snapshot-key-live.server";
@@ -42,6 +43,7 @@ export const ReservationInvoiceServiceLiveWithDependencies =
     Layer.provide(
       Layer.mergeAll(
         accountingSnapshotsLive,
+        DotyposServiceLive,
         invoicesLive,
         invoiceEmailDeliveryLive
       )

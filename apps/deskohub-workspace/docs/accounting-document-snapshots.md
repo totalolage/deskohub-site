@@ -33,7 +33,7 @@ A personal reservation may optionally request an invoice. When requested, it req
 
 Switching purpose or disabling a personal invoice request removes billing values that are no longer applicable from the submission. Billing details do not affect price, but a change to the purpose, invoice request, or billing identity must not reuse checkout state or an accounting snapshot created for different values.
 
-The newest explicitly submitted billing identity may update the customer's current operational profile. Earlier issued invoices remain unchanged.
+After payment and access-code fulfilment, the frozen billing identity may update the customer's current operational profile. An abandoned checkout never updates it, and earlier issued invoices remain unchanged.
 
 ## Delivery and later requests
 

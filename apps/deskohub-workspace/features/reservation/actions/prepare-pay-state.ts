@@ -67,10 +67,7 @@ import {
   getStoredWorkspaceReservationDetails,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
-import {
-  defaultReservationBillingSelection,
-  getDotyposCustomerBillingDetails,
-} from "@/features/reservation/reservation-billing";
+import { defaultReservationBillingSelection } from "@/features/reservation/reservation-billing";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -691,14 +688,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
     const billing = reservation.billing ?? defaultReservationBillingSelection;
-    const billingDetails = getDotyposCustomerBillingDetails(billing);
-    if (billingDetails) {
-      yield* dotypos.updateCustomerBillingDetails(
-        dotyposCustomerId,
-        billingDetails
-      );
-    }
-
     if (input.marketingConsent === true) {
       yield* Effect.gen(function* () {
         const documents = yield* getLegalAcceptanceSnapshot(input.locale);

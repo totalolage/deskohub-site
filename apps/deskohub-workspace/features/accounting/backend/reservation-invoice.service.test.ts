@@ -1,6 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { DotyposService, ExternalAPIError } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import {
   type AccountingDocumentSnapshot,
@@ -30,6 +31,7 @@ describe("reservation invoice processing", () => {
 
     await runProcessing(harness);
 
+    expect(harness.updateBilling).not.toHaveBeenCalled();
     expect(harness.issue).not.toHaveBeenCalled();
     expect(harness.deliver).not.toHaveBeenCalled();
   });
@@ -45,6 +47,16 @@ describe("reservation invoice processing", () => {
 
     await runProcessing(harness);
 
+    expect(harness.updateBilling).toHaveBeenCalledWith("dotypos-customer-1", {
+      addressLine1: "Synthetic 1",
+      addressLine2: "",
+      city: "Praha",
+      zip: "100 00",
+      country: "CZ",
+      companyName: "",
+      companyId: "",
+      vatId: "",
+    });
     expect(harness.issue).toHaveBeenCalledWith({
       paymentAttemptId,
       buyer: {
@@ -71,6 +83,16 @@ describe("reservation invoice processing", () => {
 
     await runProcessing(harness);
 
+    expect(harness.updateBilling).toHaveBeenCalledWith("dotypos-customer-1", {
+      addressLine1: "Synthetic 1",
+      addressLine2: "",
+      city: "Praha",
+      zip: "100 00",
+      country: "CZ",
+      companyName: "Synthetic Company s.r.o.",
+      companyId: "12345678",
+      vatId: "",
+    });
     expect(harness.issue).toHaveBeenCalledWith({
       paymentAttemptId,
       buyer: source.billing?.purpose === "business" ? source.billing.buyer : {},
@@ -90,6 +112,44 @@ describe("reservation invoice processing", () => {
 
     await runProcessing(harness);
 
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).not.toHaveBeenCalled();
+    expect(harness.deliver).not.toHaveBeenCalled();
+  });
+
+  test("does not overwrite billing after the invoice has been issued", async () => {
+    const harness = makeHarness(
+      makeSource({
+        purpose: "personal",
+        invoice: "requested",
+        address: personalAddress,
+      }),
+      { existingInvoice: {} }
+    );
+
+    await runProcessing(harness);
+
+    expect(harness.updateBilling).not.toHaveBeenCalled();
+    expect(harness.issue).toHaveBeenCalledTimes(1);
+    expect(harness.deliver).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not issue when committed billing persistence fails", async () => {
+    const billingFailure = new ExternalAPIError({
+      service: "Dotypos",
+      operation: "patchCustomer",
+      statusCode: 412,
+    });
+    const harness = makeHarness(
+      makeSource({
+        purpose: "personal",
+        invoice: "requested",
+        address: personalAddress,
+      }),
+      { billingFailure }
+    );
+
+    await expect(runProcessing(harness)).rejects.toBe(billingFailure);
     expect(harness.issue).not.toHaveBeenCalled();
     expect(harness.deliver).not.toHaveBeenCalled();
   });
@@ -108,6 +168,7 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
               AccountingDocumentSnapshotRepository,
               harness.accountingSnapshots
             ),
+            Layer.succeed(DotyposService, harness.dotypos),
             Layer.succeed(InvoiceRepository, harness.invoices),
             Layer.succeed(InvoiceEmailDeliveryService, harness.deliveries)
           )
@@ -117,12 +178,21 @@ const runProcessing = (harness: ReturnType<typeof makeHarness>) =>
     Effect.runPromise
   );
 
-const makeHarness = (source: AccountingDocumentSnapshot | null) => {
+const makeHarness = (
+  source: AccountingDocumentSnapshot | null,
+  options: {
+    readonly billingFailure?: ExternalAPIError;
+    readonly existingInvoice?: object;
+  } = {}
+) => {
   const issue = mock(() =>
     Effect.succeed({ invoice: {} as never, changed: true })
   );
   const deliver = mock(() =>
     Effect.succeed({ status: "delivered" as const, changed: true })
+  );
+  const updateBilling = mock(() =>
+    options.billingFailure ? Effect.fail(options.billingFailure) : Effect.void
   );
 
   return {
@@ -130,10 +200,16 @@ const makeHarness = (source: AccountingDocumentSnapshot | null) => {
       findByPaymentAttemptId: mock(() => Effect.succeed(source)),
     },
     invoices: {
-      findByPaymentAttemptId: mock(() => Effect.succeed(null)),
+      findByPaymentAttemptId: mock(() =>
+        Effect.succeed((options.existingInvoice ?? null) as never)
+      ),
       issue,
     },
+    dotypos: {
+      updateCustomerBillingDetails: updateBilling,
+    } as unknown as typeof DotyposService.Service,
     deliveries: { deliverByPaymentAttemptId: deliver },
+    updateBilling,
     issue,
     deliver,
   };

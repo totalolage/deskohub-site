@@ -995,7 +995,7 @@ describe("prepareWorkspacePayState", () => {
     );
   });
 
-  test("updates Dotypos billing only when an invoice is requested", async () => {
+  test("does not mutate reusable Dotypos billing before payment", async () => {
     const updateCustomerBillingDetails = mock(() => Effect.void);
     const address = {
       line1: "Synthetic street 1",
@@ -1013,57 +1013,13 @@ describe("prepareWorkspacePayState", () => {
       updateCustomerBillingDetails,
     });
 
-    expect(updateCustomerBillingDetails).toHaveBeenCalledWith("customer-id", {
-      addressLine1: "Synthetic street 1",
-      addressLine2: "Unit 2",
-      city: "Prague",
-      zip: "100 00",
-      country: "CZ",
-      companyName: "",
-      companyId: "",
-      vatId: "",
-    });
+    expect(updateCustomerBillingDetails).not.toHaveBeenCalled();
     expect(result.updateReservationDetails).toHaveBeenCalled();
 
     const personalResult = await runReusableReservationScenario({
       findByAttemptKey: mock(() => Effect.succeed(makeReusableReservation())),
     });
     expect(personalResult.updateCustomerBillingDetails).not.toHaveBeenCalled();
-  });
-
-  test("stops before drafting when the Dotypos billing update fails", async () => {
-    const billingFailure = new Error("Dotypos billing update failed");
-    const createDraft = mock(() => Effect.die("must not draft"));
-
-    await expect(
-      runReusableReservationScenario({
-        findByAttemptKey: mock(() => Effect.succeed(null)),
-        createDraft,
-        reservation: {
-          ...reservation,
-          billing: {
-            purpose: "business",
-            invoice: "required",
-            buyer: {
-              kind: "business",
-              legalName: "Synthetic Company s.r.o.",
-              companyId: "12345678",
-              address: {
-                line1: "Synthetic street 1",
-                city: "Prague",
-                postalCode: "100 00",
-                country: "CZ",
-              },
-            },
-          },
-        },
-        updateCustomerBillingDetails: mock(() => Effect.fail(billingFailure)),
-      })
-    ).rejects.toMatchObject({
-      _tag: "PublicSafeActionError",
-      cause: billingFailure,
-    });
-    expect(createDraft).not.toHaveBeenCalled();
   });
 
   test("records marketing opt-in against the resolved customer", async () => {

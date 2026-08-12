@@ -164,14 +164,16 @@ when the customer navigates back to edit a reservation. A purpose or
 billing-only change must not reuse stale checkout state or a source snapshot
 created for different details.
 
-After resolving the Dotypos customer, persist the explicitly submitted billing
-identity to its existing customer record using the provider fields
+Only after payment and access-code fulfilment are durable, persist the frozen
+billing identity to its existing Dotypos customer record using the provider fields
 `addressLine1`, `addressLine2`, `city`, `zip`, `country`, `companyName`,
 `companyId`, and `vatId`. Treat the submitted billing form as authoritative for
 those billing fields, including clearing omitted optional company fields, while
 leaving unrelated customer data unchanged. This deliberately lets the current
-Dotypos profile reflect the newest explicit billing identity; immutable issued
-snapshots preserve every older invoice.
+Dotypos profile reflect the newest successfully invoiced billing identity;
+immutable issued snapshots preserve every older invoice. Never mutate a reused
+customer during unauthenticated pay-state preparation: an abandoned or spoofed
+submission must not overwrite shared customer PII.
 
 Implement this as a dedicated hard-failing ETag-protected customer PATCH. Do
 not route it through the current find-or-create update behavior, which only
