@@ -1,0 +1,372 @@
+name: Workspace Mobile Preview
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
+  repository_dispatch:
+    types: [vercel.deployment.success]
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: Exact commit SHA to build
+        required: true
+      url:
+        description: Immutable Workspace Vercel preview URL
+        required: true
+      ref:
+        description: Internal PR branch name
+        required: true
+
+permissions:
+  contents: read
+  deployments: read
+  pull-requests: read
+
+concurrency:
+  group: workspace-mobile-preview-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-target:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       !startsWith(github.event.pull_request.head.ref, 'dependabot/')) ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.client_payload.project.id == 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' &&
+       github.event.client_payload.environment == 'preview')
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    outputs:
+      eligible: ${{ steps.target.outputs.eligible }}
+      head_ref: ${{ steps.target.outputs.head_ref }}
+      pr_number: ${{ steps.target.outputs.pr_number }}
+      sha: ${{ steps.target.outputs.sha }}
+      url: ${{ steps.target.outputs.url }}
+    steps:
+      - name: Wait for exact-head Workspace preview
+        id: pull-request-preview
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 100); do
+            deployments="$(gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/deployments?sha=$TARGET_SHA&environment=Preview%20%E2%80%93%20deskohub-workspace-site&per_page=100")"
+            while IFS= read -r deployment_id; do
+              [[ -z "$deployment_id" ]] && continue
+              statuses="$(gh api -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
+              while IFS= read -r candidate_url; do
+                [[ -z "$candidate_url" ]] && continue
+                normalized_url="$({ TARGET_URL="$candidate_url" node <<'NODE'
+          const url = new URL(process.env.TARGET_URL);
+          const host = url.hostname.toLowerCase();
+          if (
+            url.protocol !== "https:" || url.username || url.password || url.port ||
+            url.pathname !== "/" || url.search || url.hash ||
+            !/^[a-z0-9-]+\.vercel\.app$/.test(host) || host.includes("-git-")
+          ) process.exit(1);
+          process.stdout.write(`https://${host}`);
+          NODE
+                } 2>/dev/null)" || continue
+                echo "url=$normalized_url" >> "$GITHUB_OUTPUT"
+                exit 0
+              done < <(jq -r '.[] | select(.state == "success") | .environment_url // empty' <<<"$statuses")
+            done < <(jq -r '.[].id' <<<"$deployments")
+            echo "Exact-head Workspace preview is not ready; waiting ($attempt/100)"
+            sleep 30
+          done
+          echo "Timed out waiting for the exact-head Workspace preview" >&2
+          exit 1
+
+      - name: Resolve exact internal PR preview
+        id: target
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
+          TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
+          TARGET_URL: ${{ github.event_name == 'pull_request' && steps.pull-request-preview.outputs.url || github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Target SHA is not a full Git commit SHA" >&2
+            exit 1
+          fi
+          if ! git check-ref-format --branch "$TARGET_REF" >/dev/null; then
+            echo "Target ref is not a valid branch name" >&2
+            exit 1
+          fi
+
+          normalized_url="$({ TARGET_URL="$TARGET_URL" node <<'NODE'
+          const url = new URL(process.env.TARGET_URL);
+          const host = url.hostname.toLowerCase();
+          if (
+            url.protocol !== "https:" || url.username || url.password || url.port ||
+            url.pathname !== "/" || url.search || url.hash ||
+            !/^[a-z0-9-]+\.vercel\.app$/.test(host) || host.includes("-git-")
+          ) throw new Error("invalid immutable Vercel origin");
+          process.stdout.write(`https://${host}`);
+          NODE
+          } 2>/dev/null)" || {
+            echo "Target must be an immutable HTTPS Vercel deployment origin" >&2
+            exit 1
+          }
+
+          deployments="$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/deployments?sha=$TARGET_SHA&environment=Preview%20%E2%80%93%20deskohub-workspace-site&per_page=100")"
+          deployment_matches_target=false
+          while IFS= read -r deployment_id; do
+            [[ -z "$deployment_id" ]] && continue
+            statuses="$(gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
+            if jq -e --arg target "$normalized_url" \
+              'any(.[]; .state == "success" and (((.environment_url? // "") | rtrimstr("/")) == $target))' \
+              <<<"$statuses" >/dev/null; then
+              deployment_matches_target=true
+              break
+            fi
+          done < <(jq -r '.[].id' <<<"$deployments")
+          if [[ "$deployment_matches_target" != true ]]; then
+            echo "No successful exact-SHA Workspace deployment matches the target URL" >&2
+            exit 1
+          fi
+
+          pulls="$(gh api -H 'Accept: application/vnd.github+json' \
+            "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/pulls")"
+          eligible_pulls="$(jq --arg repo "$GITHUB_REPOSITORY" --arg ref "$TARGET_REF" --arg sha "$TARGET_SHA" \
+            '[.[] | select(
+              .state == "open" and .head.repo.full_name == $repo and
+              .draft == false and
+              .head.ref == $ref and .head.sha == $sha and
+              .user.login != "dependabot[bot]" and (.head.ref | startswith("dependabot/") | not)
+            )]' <<<"$pulls")"
+          if [[ "$(jq 'length' <<<"$eligible_pulls")" != 1 ]]; then
+            echo "No single eligible open internal PR matches the exact deployment SHA"
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          {
+            echo "eligible=true"
+            echo "head_ref=$TARGET_REF"
+            echo "pr_number=$(jq -r '.[0].number' <<<"$eligible_pulls")"
+            echo "sha=$TARGET_SHA"
+            echo "url=$normalized_url"
+          } >> "$GITHUB_OUTPUT"
+
+  await-preview-readiness:
+    needs: resolve-target
+    if: needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    permissions:
+      statuses: read
+    env:
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Wait for exact-SHA preview migration and E2E
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 100); do
+            combined="$(gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/status")"
+            state="$(jq -r '[.statuses[] | select(.context == "Workspace E2E")][0].state // "missing"' <<<"$combined")"
+            case "$state" in
+              success) exit 0 ;;
+              failure|error)
+                echo "Workspace E2E failed for the exact preview SHA" >&2
+                exit 1
+                ;;
+            esac
+            echo "Workspace E2E is $state; waiting for its preview migration and checks ($attempt/100)"
+            sleep 30
+          done
+          echo "Timed out waiting for Workspace E2E on the exact preview SHA" >&2
+          exit 1
+
+  create-preview-access:
+    needs: [resolve-target, await-preview-readiness]
+    if: needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      url: ${{ steps.preview-access.outputs.url }}
+    env:
+      TARGET_URL: ${{ needs.resolve-target.outputs.url }}
+      VERCEL_TEAM_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+    steps:
+      - name: Create deployment-scoped preview access
+        id: preview-access
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          target_host="${TARGET_URL#https://}"
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --output "$response_file" --write-out '%{http_code}' \
+            --request PATCH \
+            --header "Authorization: Bearer $VERCEL_TOKEN" \
+            --header 'Content-Type: application/json' \
+            --data '{"ttl":1209600}' \
+            "https://api.vercel.com/aliases/$target_host/protection-bypass?teamId=$VERCEL_TEAM_ID")"
+          if [[ "$status" != 200 ]]; then
+            echo "Vercel did not create the deployment-scoped Shareable Link (HTTP $status)" >&2
+            exit 1
+          fi
+          shareable_url="$(TARGET_URL="$TARGET_URL" node - "$response_file" <<'NODE'
+          const fs = require("node:fs");
+          const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          if (typeof body.protectionBypassUrl !== "string") process.exit(1);
+          const shareable = new URL(body.protectionBypassUrl);
+          const target = new URL(process.env.TARGET_URL);
+          if (
+            shareable.protocol !== "https:" || shareable.hostname !== target.hostname ||
+            shareable.username || shareable.password || shareable.port ||
+            shareable.pathname !== "/" || !shareable.search
+          ) process.exit(1);
+          process.stdout.write(shareable.toString());
+          NODE
+          )"
+          echo "::add-mask::$shareable_url"
+          echo "url=$shareable_url" >> "$GITHUB_OUTPUT"
+
+  build-apk:
+    needs: [resolve-target, await-preview-readiness, create-preview-access]
+    if: needs.resolve-target.outputs.eligible == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
+      TARGET_URL: ${{ needs.resolve-target.outputs.url }}
+      PR_NUMBER: ${{ needs.resolve-target.outputs.pr_number }}
+    steps:
+      - name: Checkout exact preview commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve-target.outputs.sha }}
+          persist-credentials: false
+
+      - name: Confirm checked-out commit
+        run: test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate mobile source
+        working-directory: apps/deskohub-workspace-mobile
+        run: |
+          bun run typecheck
+          bun test src plugins
+
+      - name: Derive isolated preview identity
+        id: identity
+        run: |
+          short_sha="${TARGET_SHA:0:8}"
+          echo "application_id=cz.deskohub.workspace.preview.p${PR_NUMBER}.s${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "scheme=deskohub-workspace-preview-p${PR_NUMBER}-s${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate ephemeral preview signing key
+        id: signing
+        working-directory: apps/deskohub-workspace-mobile
+        run: |
+          set -euo pipefail
+          password="preview-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          keystore="$RUNNER_TEMP/workspace-preview.jks"
+          keytool -genkeypair -noprompt -keystore "$keystore" -storetype JKS \
+            -alias workspace-preview -keyalg RSA -keysize 3072 -validity 30 \
+            -storepass "$password" -keypass "$password" \
+            -dname "CN=Deskohub Workspace Preview, O=Desktechub s.r.o., C=CZ"
+          {
+            echo "path=$keystore"
+            echo "password=$password"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build exact-SHA preview APK
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          DW_ANDROID_APPLICATION_ID: ${{ steps.identity.outputs.application_id }}
+          DW_ANDROID_KEYSTORE_PATH: ${{ steps.signing.outputs.path }}
+          DW_ANDROID_KEYSTORE_PASSWORD: ${{ steps.signing.outputs.password }}
+          DW_ANDROID_KEY_ALIAS: workspace-preview
+          DW_ANDROID_KEY_PASSWORD: ${{ steps.signing.outputs.password }}
+          DW_ANDROID_VERSION_CODE: ${{ github.run_number }}
+          DW_APP_SCHEME: ${{ steps.identity.outputs.scheme }}
+          DW_BUILD_CHANNEL: preview
+          DW_BUILD_TAG: ${{ needs.resolve-target.outputs.sha }}
+          EXPO_PROJECT_ID: ${{ vars.WORKSPACE_EXPO_PROJECT_ID }}
+          EXPO_PUBLIC_API_ORIGIN: ${{ needs.create-preview-access.outputs.url }}
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+        run: bun run build:android "deskohub-workspace-pr-$PR_NUMBER-$TARGET_SHA.apk"
+
+      - name: Verify APK identity and build hash
+        id: apk
+        working-directory: apps/deskohub-workspace-mobile
+        run: |
+          set -euo pipefail
+          apk="dist/android/deskohub-workspace-pr-$PR_NUMBER-$TARGET_SHA.apk"
+          badging="$(aapt dump badging "$apk" | head -n 1)"
+          grep -F "name='${{ steps.identity.outputs.application_id }}'" <<<"$badging" >/dev/null
+          grep -F "versionName='$TARGET_SHA'" <<<"$badging" >/dev/null
+          sha256sum "$apk" | tee "$apk.sha256"
+          echo "path=$apk" >> "$GITHUB_OUTPUT"
+
+      - name: Upload preview APK
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: deskohub-workspace-pr-${{ needs.resolve-target.outputs.pr_number }}-${{ needs.resolve-target.outputs.sha }}
+          path: |
+            ${{ steps.apk.outputs.path }}
+            ${{ steps.apk.outputs.path }}.sha256
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Link APK from the pull request
+        env:
+          ARTIFACT_URL: ${{ steps.upload.outputs.artifact-url }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          marker='<!-- deskohub-workspace-mobile-preview -->'
+          body="$marker
+          ### Deskohub Workspace Android preview
+
+          - [Download APK artifact]($ARTIFACT_URL) (GitHub sign-in required; retained for 14 days)
+          - Build/version tag: \`$TARGET_SHA\`
+          - Package: \`${{ steps.identity.outputs.application_id }}\`
+          - Backend: [exact Vercel preview]($TARGET_URL), backed by that PR's Neon preview database
+
+          The APK contains a deployment-scoped, 14-day Shareable Link. It never contains the project-wide Vercel automation bypass secret."
+          comments="$(gh api "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments?per_page=100")"
+          comment_id="$(jq -r --arg marker "$marker" '.[] | select(.body | contains($marker)) | .id' <<<"$comments" | head -n 1)"
+          if [[ -n "$comment_id" ]]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/issues/comments/$comment_id" -f body="$body" >/dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/issues/$PR_NUMBER/comments" -f body="$body" >/dev/null
+          fi

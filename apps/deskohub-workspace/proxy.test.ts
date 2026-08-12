@@ -114,6 +114,21 @@ test("continues to persist the locale for ordinary localized requests", () => {
   expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
 });
 
+test("redirects localized account requests to the matching magic-link page", async () => {
+  const request = new NextRequest(
+    "https://workspace.example/cs-CZ/account?section=reservations"
+  );
+  const response = await proxy(request);
+
+  expect(response.status).toBe(307);
+  const location = new URL(response.headers.get("location") ?? "");
+  expect(location.pathname).toBe("/cs-CZ/auth/sign-in");
+  expect(location.searchParams.get("redirectTo")).toBe(
+    "/cs-CZ/account?section=reservations"
+  );
+  expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
+});
+
 test("does not treat a GET with a spoofed action header as a Server Action", () => {
   const request = new NextRequest("https://workspace.example/", {
     headers: {

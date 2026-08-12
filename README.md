@@ -15,6 +15,8 @@ Workspace also provides authenticated administration tools for operators to mana
 - [Workspace reservation products](apps/deskohub-workspace/docs/reservation-products.md)
 - [Workspace discounts](apps/deskohub-workspace/docs/discount-codes.md)
 - [Workspace accounting documents](apps/deskohub-workspace/docs/accounting-document-snapshots.md)
+- [Deskohub Workspace mobile shop](docs/MOBILE_SHOP_APP_SPEC.md)
+- [Deskohub Workspace mobile release runbook](docs/MOBILE_SHOP_RELEASE.md)
 - [Workspace administration](apps/deskohub-workspace/docs/administration-dashboard.md)
 - [Workspace operator CLI](apps/dhw/README.md)
 - [Boardgame Bar reservations](apps/deskohub-boardgame-bar/docs/reservations.md)

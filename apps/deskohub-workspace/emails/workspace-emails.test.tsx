@@ -61,6 +61,11 @@ describe("Workspace React Email templates", () => {
     );
     expect(customerReservation).not.toContain("Where to sit");
     expect(customerReservation).not.toContain("customer@example.com");
+    expect(customerReservation).toContain("Open the self-service shop");
+    expect(customerReservation).toContain(
+      'href="https://app.workspace.deskohub.cz/"'
+    );
+    expect(customerReservation).not.toContain("app.workspace.deskohub.cz/?");
     expect(staffNotification).toContain("customer@example.com");
     expect(staffNotification).not.toContain(
       customerReservationPreviewProps.accessCode

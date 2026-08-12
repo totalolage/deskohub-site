@@ -29,6 +29,15 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(runE2EStep).toContain(
     `WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: "true"`
   );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_NEON_API_KEY: \${{ secrets.NEON_API_KEY }}`
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_NEON_BRANCH_ID: \${{ steps.preview-database.outputs.branch_id }}`
+  );
+  expect(runE2EStep).toContain(
+    `WORKSPACE_E2E_NEON_PROJECT_ID: \${{ env.NEON_PROJECT_ID }}`
+  );
   expect(workflow).not.toContain("workspace-e2e-dotypos-sandbox");
   const testJob = workflow.slice(
     workflow.indexOf("  test-e2e:"),
@@ -130,6 +139,22 @@ test("passes allocated shard and provider coordination through Turborepo", async
   expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
+  expect(environment).toContain("WORKSPACE_E2E_NEON_API_KEY");
+  expect(environment).toContain("WORKSPACE_E2E_NEON_BRANCH_ID");
+  expect(environment).toContain("WORKSPACE_E2E_NEON_PROJECT_ID");
+});
+
+test("pins and verifies the Auth webhook tunnel client", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+
+  expect(workflow).toContain("CLOUDFLARED_VERSION: 2026.7.2");
+  expect(workflow).toContain(
+    "CLOUDFLARED_SHA256: ec905ea7b7e327ff8abdde8cb64697a2152de74dbcdbf6aec9db8364eb3886cd"
+  );
+  expect(workflow).toContain("sha256sum --check");
+  expect(workflow).toContain("cloudflared --version");
 });
 
 test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {

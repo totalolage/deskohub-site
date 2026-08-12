@@ -1,4 +1,4 @@
-import { Column, Img, Link, Row, Section, Text } from "react-email";
+import { Column, Heading, Img, Link, Row, Section, Text } from "react-email";
 import {
   WorkspaceEmailHeading,
   WorkspaceEmailLabel,
@@ -43,6 +43,12 @@ export type CustomerReservationEmailProps = {
     readonly qrImageSrc?: string;
   };
   readonly details: readonly WorkspaceEmailDetail[];
+  readonly shop: {
+    readonly heading: string;
+    readonly body: string;
+    readonly action: string;
+    readonly url: string;
+  };
   readonly followUp: string;
 };
 
@@ -56,6 +62,7 @@ export function CustomerReservationEmail({
   table,
   network,
   details,
+  shop,
   followUp,
 }: CustomerReservationEmailProps) {
   return (
@@ -143,6 +150,24 @@ export function CustomerReservationEmail({
           </Row>
         </Section>
       )}
+
+      <Section className="mt-6 rounded-2xl border border-[#b8ead8] bg-[#e9fff6] px-5 py-5 text-center">
+        <Heading
+          as="h2"
+          className="m-0 text-[20px] font-bold leading-[28px] text-navy"
+        >
+          {shop.heading}
+        </Heading>
+        <Text className="m-0 mt-2 text-[14px] leading-[22px] text-[#565975]">
+          {shop.body}
+        </Text>
+        <Link
+          className="mt-4 inline-block rounded-full bg-navy px-7 py-3 text-[14px] font-bold leading-[20px] text-white no-underline"
+          href={shop.url}
+        >
+          {shop.action}
+        </Link>
+      </Section>
 
       <WorkspaceEmailDetails details={details} />
       <WorkspaceEmailNote>{followUp}</WorkspaceEmailNote>

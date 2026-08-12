@@ -3,6 +3,7 @@ export const workspaceE2ENonPaymentCaseIds = [
   "contact-form",
   "reservation-replacement",
   "checkout-zero-total",
+  "customer-account",
   "checkout-meeting-room-zero-total-four-hours",
   "meeting-room-reservation-replacement",
   "discount-code-expires-before-payment",

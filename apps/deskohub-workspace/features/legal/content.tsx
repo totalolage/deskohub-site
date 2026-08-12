@@ -445,8 +445,8 @@ const legalDocuments: Record<
   "en-US": {
     "privacy-policy": {
       title: "Privacy Policy",
-      lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the public Deskohub Workspace website, including contact and reservation forms.",
-      updatedAt: "5 August 2026",
+      lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the Deskohub Workspace website, including customer accounts, contact forms, and reservations.",
+      updatedAt: "11 August 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -480,6 +480,13 @@ const legalDocuments: Record<
               optional phone number, optional message, requested entry tier,
               reservation date, coffee preference, and monitor or workstation
               preference.
+            </>,
+            <>
+              If you create a customer account, we process an authentication
+              identifier, your name, verified email address, and the account,
+              session, and magic-link delivery data needed to sign you in and
+              operate the account securely. Customer accounts use email magic
+              links and do not require us to collect a password.
             </>,
             <>
               For website operation and abuse prevention, we may also process
@@ -518,6 +525,14 @@ const legalDocuments: Record<
               separately consent to receive marketing communication.
             </>,
             <>
+              We use customer account data to authenticate you, let you manage
+              your profile and active sessions, and connect your account with
+              reservations made using the same verified email address. The
+              connection stored by the Workspace application uses opaque account
+              and customer identifiers rather than another copy of your email
+              address.
+            </>,
+            <>
               When you give that optional consent, we use your email address to
               send occasional Deskohub Workspace news, event invitations, and
               offers. We do not share the marketing list with third parties for
@@ -545,6 +560,13 @@ const legalDocuments: Record<
               interests.
             </>,
             <>
+              Account authentication, profile management, and reservation
+              history are processed to provide the account service you request
+              and, where applicable, to perform or prepare the related
+              reservation contract. Account security, session integrity, and
+              abuse prevention are also based on our legitimate interests.
+            </>,
+            <>
               Optional non-essential cookies are processed only on the basis of
               your consent. Analytics and campaign measurement processing is
               based on consent, which you can withdraw or change at any time via
@@ -566,6 +588,16 @@ const legalDocuments: Record<
               legal obligations and protect our legitimate interests. Technical
               abuse-prevention signals are short-lived and used on a best-effort
               basis.
+            </>,
+            <>
+              We keep the customer account profile and authentication sessions
+              while the account is active, subject to the security retention
+              settings of the authentication service. Deleting the account
+              removes its login identity, profile, active sessions, and the
+              Workspace account-to-customer link. Reservation, payment,
+              accounting, fraud-prevention, and legal evidence records are not
+              automatically erased with the login account and remain only for
+              the applicable service, statutory, or legitimate retention period.
             </>,
             <>
               Analytics and campaign measurement data is retained according to
@@ -593,6 +625,13 @@ const legalDocuments: Record<
               access.
             </>,
             <>
+              Neon provides the managed authentication service and related
+              database infrastructure. Neon and the email delivery provider used
+              for magic links may process the limited account, session,
+              delivery, and technical data needed to authenticate you on our
+              behalf.
+            </>,
+            <>
               When you opt in to marketing emails, our email delivery provider
               may process the contact and delivery information needed to send
               them on our behalf.
@@ -618,6 +657,19 @@ const legalDocuments: Record<
                 {contactEmail}
               </a>
               . Withdrawal does not affect processing that took place before it.
+            </>,
+            <>
+              You can delete the customer account from its profile page. This
+              self-service action deletes the login account but does not replace
+              a broader data-protection request concerning reservation or
+              legally retained records; send those requests to{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
             </>,
           ],
         },
@@ -778,8 +830,8 @@ const legalDocuments: Record<
   "cs-CZ": {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
-      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
-      updatedAt: "5. srpna 2026",
+      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji na webu Deskohub Workspace, včetně zákaznických účtů, kontaktních formulářů a rezervací.",
+      updatedAt: "11. srpna 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -813,6 +865,13 @@ const legalDocuments: Record<
               údaje z rezervačního formuláře: jméno, e-mail, volitelný telefon,
               volitelnou zprávu, požadovaný typ vstupu, datum rezervace,
               preferenci kávy a preferenci monitorů nebo pracovní stanice.
+            </>,
+            <>
+              Pokud si vytvoříte zákaznický účet, zpracováváme autentizační
+              identifikátor, vaše jméno, ověřenou e-mailovou adresu a údaje o
+              účtu, relacích a doručení jednorázového odkazu nutné pro bezpečné
+              přihlášení a provoz účtu. Zákaznické účty používají e-mailové
+              přihlašovací odkazy, a proto od vás nevyžadujeme heslo.
             </>,
             <>
               Pro provoz webu a ochranu před zneužitím můžeme zpracovávat také
@@ -853,6 +912,13 @@ const legalDocuments: Record<
               tomu neudělíte samostatný souhlas.
             </>,
             <>
+              Údaje zákaznického účtu používáme k vašemu ověření, správě profilu
+              a aktivních relací a k propojení účtu s rezervacemi vytvořenými se
+              stejnou ověřenou e-mailovou adresou. Aplikace Workspace ukládá pro
+              toto propojení neprůhledné identifikátory účtu a zákazníka, nikoli
+              další kopii e-mailové adresy.
+            </>,
+            <>
               Pokud tento nepovinný souhlas udělíte, používáme váš e-mail k
               občasnému zasílání novinek, pozvánek na akce a nabídek Deskohub
               Workspace. Marketingový seznam neposkytujeme třetím stranám pro
@@ -880,6 +946,13 @@ const legalDocuments: Record<
               oprávněného zájmu.
             </>,
             <>
+              Přihlášení k účtu, správu profilu a historii rezervací
+              zpracováváme za účelem poskytnutí požadované služby účtu a podle
+              okolností také pro plnění nebo přípravu související rezervační
+              smlouvy. Zabezpečení účtu, integrita relací a ochrana před
+              zneužitím vycházejí také z našeho oprávněného zájmu.
+            </>,
+            <>
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
               Analytické a kampanové měření je založené na souhlasu, který
               můžete kdykoli odvolat nebo změnit v nastavení cookies.
@@ -900,6 +973,16 @@ const legalDocuments: Record<
               povinností a ochraně našich oprávněných zájmů. Technické signály
               pro ochranu před zneužitím jsou krátkodobé a používáme je v režimu
               best-effort.
+            </>,
+            <>
+              Profil zákaznického účtu a autentizační relace uchováváme po dobu
+              aktivního účtu s ohledem na bezpečnostní dobu uchování
+              autentizační služby. Smazáním účtu se odstraní přihlašovací
+              identita, profil, aktivní relace a propojení účtu se zákazníkem v
+              aplikaci Workspace. Rezervační, platební, účetní záznamy a záznamy
+              potřebné pro prevenci podvodů nebo splnění právních povinností se
+              spolu s přihlašovacím účtem automaticky nemažou a zůstávají pouze
+              po příslušnou smluvní, zákonnou nebo oprávněnou dobu uchování.
             </>,
             <>
               Analytické údaje a údaje pro kampanové měření uchováváme podle
@@ -924,6 +1007,13 @@ const legalDocuments: Record<
               vyřízení rezervace, doručení komunikace a odsouhlasené analytické
               nebo kampanové měření. Pro přístup poskytovatelů používáme
               přiměřené smluvní, organizační a technické záruky.
+            </>,
+            <>
+              Neon poskytuje spravovanou autentizační službu a související
+              databázovou infrastrukturu. Neon a poskytovatel e-mailových služeb
+              pro doručení přihlašovacích odkazů mohou naším jménem zpracovávat
+              omezené údaje o účtu, relaci, doručení a technické údaje nutné pro
+              vaše ověření.
             </>,
             <>
               Pokud se přihlásíte k marketingovým e-mailům, může náš
@@ -952,6 +1042,20 @@ const legalDocuments: Record<
               </a>
               . Odvolání nemá vliv na zpracování, které proběhlo před jeho
               odvoláním.
+            </>,
+            <>
+              Zákaznický účet můžete smazat na stránce svého profilu. Tato
+              samoobslužná akce smaže přihlašovací účet, ale nenahrazuje širší
+              žádost podle předpisů o ochraně osobních údajů týkající se
+              rezervací nebo zákonně uchovávaných záznamů; takovou žádost
+              pošlete na{" "}
+              <a
+                className="text-burned-orange underline underline-offset-4"
+                href={`mailto:${contactEmail}`}
+              >
+                {contactEmail}
+              </a>
+              .
             </>,
           ],
         },

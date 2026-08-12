@@ -865,6 +865,143 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
 
 
+  /clouds/{cloudId}/warehouses:
+    get:
+      tags:
+        - Warehouses
+      summary: List warehouses
+      operationId: listWarehouses
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: Filter expression
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Sort expression
+      responses:
+        '200':
+          description: Paginated list of warehouses
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedWarehouses'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/warehouses/{warehouseId}/products:
+    get:
+      tags:
+        - Warehouses
+      summary: List products with stock status for a warehouse
+      operationId: listWarehouseProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: warehouseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Warehouse ID
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: Filter expression
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Sort expression
+      responses:
+        '200':
+          description: Paginated products with warehouse stock status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedWarehouseProducts'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Warehouse not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/warehouses/{warehouseId}/sales:
+    post:
+      tags:
+        - Warehouses
+      summary: Deduct sold products from warehouse stock
+      operationId: createWarehouseSale
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: warehouseId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Warehouse ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WarehouseSaleRequest'
+      responses:
+        '200':
+          description: Stock deduction accepted
+        '400':
+          description: Invalid sale request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Warehouse or product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /clouds/{cloudId}/categories:
     get:
       summary: Get product categories
@@ -2132,6 +2269,124 @@ components:
               description: Array of products
               items:
                 $ref: '#/components/schemas/Product'
+
+    Warehouse:
+      type: object
+      required:
+        - id
+        - _cloudId
+        - name
+        - enabled
+        - deleted
+      properties:
+        id:
+          type: string
+          description: Warehouse ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        name:
+          type: string
+          description: Warehouse name
+        barcode:
+          type: string
+          nullable: true
+          description: Warehouse barcode
+        enabled:
+          type: boolean
+          description: Whether the warehouse is enabled
+        deleted:
+          type: boolean
+          description: Whether the warehouse is deleted
+        hexColor:
+          type: string
+          nullable: true
+          description: Warehouse color
+        versionDate:
+          type: string
+          nullable: true
+          description: Last modification timestamp
+
+    PaginatedWarehouses:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/Warehouse'
+
+    WarehouseProduct:
+      allOf:
+        - $ref: '#/components/schemas/Product'
+        - type: object
+          required:
+            - _warehouseId
+            - stockQuantityStatus
+          properties:
+            _warehouseId:
+              type: string
+              description: Warehouse ID (long as string)
+            stockQuantityStatus:
+              oneOf:
+                - type: string
+                - type: number
+              description: Informative quantity currently recorded in the warehouse
+            stockStatusVersionDate:
+              type: string
+              nullable: true
+              description: Last warehouse stock modification timestamp
+            purchasePriceWithoutVat:
+              oneOf:
+                - type: string
+                - type: number
+                - type: "null"
+              description: Most recent purchase price when known
+
+    PaginatedWarehouseProducts:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              items:
+                $ref: '#/components/schemas/WarehouseProduct'
+
+    WarehouseSaleItem:
+      type: object
+      required:
+        - _productId
+        - quantity
+      properties:
+        _productId:
+          type: string
+          description: Product ID (long as string)
+        quantity:
+          type: number
+          exclusiveMinimum: 0
+          description: Quantity sold
+        note:
+          type: string
+          nullable: true
+          description: Optional stock-log note
+
+    WarehouseSaleRequest:
+      type: object
+      required:
+        - currency
+        - items
+      properties:
+        currency:
+          type: string
+          enum: [CZK]
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/WarehouseSaleItem'
 
     Product:
       type: object

@@ -7,6 +7,8 @@ import {
   Product as GeneratedProductSchema,
   Reservation as GeneratedReservationSchema,
   Table as GeneratedTableSchema,
+  WarehouseProduct as GeneratedWarehouseProductSchema,
+  Warehouse as GeneratedWarehouseSchema,
 } from "./generated";
 
 const dotyposOpaqueId = <const BrandName extends string>(
@@ -84,6 +86,12 @@ export const DotyposCategoryIdSchema = dotyposOpaqueId(
 );
 export type DotyposCategoryId = typeof DotyposCategoryIdSchema.Type;
 
+export const DotyposWarehouseIdSchema = dotyposOpaqueId(
+  "DotyposWarehouseId",
+  "Opaque identifier assigned to a Dotypos warehouse."
+);
+export type DotyposWarehouseId = typeof DotyposWarehouseIdSchema.Type;
+
 export const DotyposDiscountGroupIdSchema = dotyposOpaqueId(
   "DotyposDiscountGroupId",
   "Opaque identifier assigned to a Dotypos discount group."
@@ -154,6 +162,28 @@ export const DotyposProductSchema = Schema.Struct({
 });
 export type DotyposProduct = typeof DotyposProductSchema.Type;
 
+export const DotyposWarehouseSchema = Schema.Struct({
+  ...GeneratedWarehouseSchema.fields,
+  id: DotyposWarehouseIdSchema,
+  _cloudId: DotyposCloudIdSchema,
+}).annotate({
+  identifier: "DotyposWarehouse",
+  description: "A Dotypos warehouse with provider identifiers decoded by role.",
+});
+export type DotyposWarehouse = typeof DotyposWarehouseSchema.Type;
+
+export const DotyposWarehouseProductSchema = Schema.Struct({
+  ...GeneratedWarehouseProductSchema.fields,
+  id: Schema.optionalKey(DotyposProductIdSchema),
+  _categoryId: DotyposCategoryIdSchema,
+  _cloudId: Schema.optionalKey(DotyposCloudIdSchema),
+  _warehouseId: DotyposWarehouseIdSchema,
+}).annotate({
+  identifier: "DotyposWarehouseProduct",
+  description: "A Dotypos product with backend-only warehouse stock status.",
+});
+export type DotyposWarehouseProduct = typeof DotyposWarehouseProductSchema.Type;
+
 export const DotyposCategorySchema = Schema.Struct({
   ...GeneratedCategorySchema.fields,
   id: Schema.optionalKey(DotyposCategoryIdSchema),
@@ -183,4 +213,10 @@ export interface CreateDotyposReservationInput
 export interface UpdateDotyposReservationInput {
   readonly reservationId: DotyposReservationId;
   readonly note: string;
+}
+
+export interface DeductDotyposWarehouseStockItem {
+  readonly productId: DotyposProductId;
+  readonly quantity: number;
+  readonly note?: string;
 }

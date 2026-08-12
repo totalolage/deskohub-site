@@ -15,6 +15,9 @@ export const validE2ERuntimeEnvironment = {
   WORKSPACE_E2E_DATABASE_ALLOWLIST: "ep-preview.eu.neon.tech/neondb",
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
     "postgresql://owner:test@ep-preview.eu.neon.tech/neondb",
+  WORKSPACE_E2E_NEON_API_KEY: "neon-api-key",
+  WORKSPACE_E2E_NEON_BRANCH_ID: "br-preview-123",
+  WORKSPACE_E2E_NEON_PROJECT_ID: "project-preview-123",
   WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL:
     "postgresql://provider-permit:test@ep-coordinator.eu.neon.tech/neondb",
 } satisfies Readonly<Record<string, string | undefined>>;

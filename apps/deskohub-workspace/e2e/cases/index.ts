@@ -22,6 +22,7 @@ import type {
   CheckoutFlowState,
   WorkspaceE2ECase,
 } from "../types";
+import { executeCustomerAccountLifecycle } from "./account";
 import { executeCheckoutFlow } from "./checkout";
 import { executeZeroTotalCheckout } from "./checkout-zero-total";
 import { assertContactForm } from "./contact";
@@ -80,7 +81,7 @@ export const makeWorkspaceE2ECases = ({
       const terminalScenarios = getPaymentTerminalScenarios();
       const checkoutDates = yield* selectCoworkDates(
         discountPreparation.availableBasicDates,
-        checkoutFlows.length + terminalScenarios.length + 2,
+        checkoutFlows.length + terminalScenarios.length + 3,
         {
           allocation,
           maximumReservationsPerDate:
@@ -236,6 +237,43 @@ export const makeWorkspaceE2ECases = ({
           ),
         id: "checkout-zero-total",
         timeoutMs: config.timeouts.zeroTotalCheckoutCase,
+      });
+
+      const customerAccountDate = yield* requireCheckoutDate(
+        checkoutDates,
+        nextDateIndex
+      );
+      const customerAccountData = makeCoworkCheckoutData(
+        config.baseUrl,
+        customerAccountDate,
+        "customer-account"
+      );
+      nextDateIndex += 1;
+      const customerAccountState = trackCheckoutState(
+        flowStates,
+        customerAccountData
+      );
+      cases.push({
+        checkoutStates: [customerAccountState],
+        execute: ({ runStep, session }) =>
+          executeCustomerAccountLifecycle({
+            config,
+            data: customerAccountData,
+            datasourceConfig,
+            discountCode: discountCodeFixtures.zeroTotal.code,
+            run,
+            runStep,
+            session,
+            state: customerAccountState,
+            submitReservationScript:
+              getSubmitCoworkReservationScript(customerAccountData),
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run customer account e2e case", cause)
+            )
+          ),
+        id: "customer-account",
+        timeoutMs: config.timeouts.accountCase,
       });
 
       for (const flow of checkoutFlows) {

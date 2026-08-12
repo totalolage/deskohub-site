@@ -44,6 +44,9 @@ const optionalDirectPostgresUrl = toEnvironmentSchema(
   )
 );
 const nonEmptyString = toEnvironmentSchema(Schema.NonEmptyString);
+const optionalNeonResourceId = toEnvironmentSchema(
+  Schema.optional(Schema.String.check(Schema.isPattern(/^[a-z0-9-]{1,60}$/)))
+);
 const optionalUrl = toEnvironmentSchema(Schema.optional(urlStringSchema));
 const url = toEnvironmentSchema(urlStringSchema);
 type RuntimeEnvironment = Readonly<Record<string, string | undefined>>;
@@ -89,6 +92,9 @@ export const e2eEnvironmentSchema = Schema.Struct({
   WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: optionalDirectPostgresUrl,
   WORKSPACE_E2E_DATABASE_ALLOWLIST: nonEmptyString,
   WORKSPACE_E2E_DATABASE_URL_UNPOOLED: nonEmptyString,
+  WORKSPACE_E2E_NEON_API_KEY: optionalNonEmptyString,
+  WORKSPACE_E2E_NEON_BRANCH_ID: optionalNeonResourceId,
+  WORKSPACE_E2E_NEON_PROJECT_ID: optionalNeonResourceId,
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
@@ -141,6 +147,11 @@ export const makeE2EEnvironment = (
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_ALLOWLIST,
       WORKSPACE_E2E_DATABASE_URL_UNPOOLED:
         runtimeEnvironment.WORKSPACE_E2E_DATABASE_URL_UNPOOLED,
+      WORKSPACE_E2E_NEON_API_KEY: runtimeEnvironment.WORKSPACE_E2E_NEON_API_KEY,
+      WORKSPACE_E2E_NEON_BRANCH_ID:
+        runtimeEnvironment.WORKSPACE_E2E_NEON_BRANCH_ID,
+      WORKSPACE_E2E_NEON_PROJECT_ID:
+        runtimeEnvironment.WORKSPACE_E2E_NEON_PROJECT_ID,
       WORKSPACE_E2E_EXECUTION_CONTEXT:
         runtimeEnvironment.WORKSPACE_E2E_EXECUTION_CONTEXT,
       WORKSPACE_E2E_POSTHOG_HOST: runtimeEnvironment.WORKSPACE_E2E_POSTHOG_HOST,
@@ -157,14 +168,33 @@ export type E2EEnvironment = ReturnType<typeof makeE2EEnvironment>;
 
 export type WorkspaceE2EEnvironment = E2EEnvironment & {
   readonly WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: string;
+  readonly WORKSPACE_E2E_NEON_API_KEY: string;
+  readonly WORKSPACE_E2E_NEON_BRANCH_ID: string;
+  readonly WORKSPACE_E2E_NEON_PROJECT_ID: string;
 };
 
 export const makeWorkspaceE2EEnvironment = (
   runtimeEnvironment: RuntimeEnvironment = process.env
 ): WorkspaceE2EEnvironment => {
   const environment = makeE2EEnvironment(runtimeEnvironment);
-  if (!environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL) {
+  const providerPermitDatabaseUrl =
+    environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL;
+  const neonApiKey = environment.WORKSPACE_E2E_NEON_API_KEY;
+  const neonBranchId = environment.WORKSPACE_E2E_NEON_BRANCH_ID;
+  const neonProjectId = environment.WORKSPACE_E2E_NEON_PROJECT_ID;
+  if (
+    !providerPermitDatabaseUrl ||
+    !neonApiKey ||
+    !neonBranchId ||
+    !neonProjectId
+  ) {
     throw new Error("Invalid workspace E2E environment variables.");
   }
-  return environment as WorkspaceE2EEnvironment;
+  return {
+    ...environment,
+    WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: providerPermitDatabaseUrl,
+    WORKSPACE_E2E_NEON_API_KEY: neonApiKey,
+    WORKSPACE_E2E_NEON_BRANCH_ID: neonBranchId,
+    WORKSPACE_E2E_NEON_PROJECT_ID: neonProjectId,
+  };
 };

@@ -10,6 +10,8 @@ on:
       - .vercelignore
       - .github/workflows/deploy-workspace-production.yml
       - apps/deskohub-workspace/**
+      - apps/deskohub-workspace-mobile/**
+      - .github/workflows/workspace-mobile-production.yml
       - packages/**
       - bun.lock
       - package.json

@@ -1,5 +1,6 @@
 export * from "./accounting-document-snapshots";
 export * from "./cli-authentication";
+export * from "./customer-account-links";
 export * from "./customer-marketing-consents";
 export * from "./discount-applications";
 export * from "./discounts";
@@ -7,6 +8,8 @@ export * from "./invoice-email-deliveries";
 export * from "./invoice-number-counters";
 export * from "./invoices";
 export * from "./legal-evidence-events";
+export * from "./mobile-session-handoffs";
+export * from "./mobile-shop-purchases";
 export * from "./payment-attempts";
 export * from "./webhook-events";
 export * from "./workspace-reservations";

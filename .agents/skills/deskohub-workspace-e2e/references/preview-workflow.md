@@ -461,6 +461,34 @@ and uses it for:
 `DATABASE_URL`, `WORKSPACE_E2E_DATABASE_URL_UNPOOLED`, and
 `WORKSPACE_E2E_DATABASE_ALLOWLIST` must identify the database backing that same
 preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
+
+Customer-account E2E also receives `WORKSPACE_E2E_NEON_PROJECT_ID`,
+`WORKSPACE_E2E_NEON_BRANCH_ID`, and `WORKSPACE_E2E_NEON_API_KEY`. The workflow
+sets the branch ID from the same integration-created preview branch it resolved
+for the database URLs; these values authorize temporary Auth webhook
+configuration and synthetic-user cleanup, not another Auth database. Keep the
+API key inside the typed E2E process boundary and out of child command
+environments.
+
+The account case creates a real zero-total Workspace reservation, then covers
+unauthenticated protection, invalid-email validation, first-time magic-link
+sign-up, current history, profile persistence, logout, returning-user login,
+cancelled/past history, confirmation-gated deletion, session removal, and link
+removal. It captures each one-time link with Neon's documented branch-scoped
+`send.magic_link` webhook. The in-process receiver is exposed through the
+pinned, checksum-verified `cloudflared` quick-tunnel binary, verifies Neon's
+detached Ed25519 JWS over the raw body, and holds the token in memory only.
+
+Subscribing to `send.magic_link` intentionally replaces built-in email delivery
+for the duration of the case. This proves real token issuance, normal
+`/api/auth/magic-link/verify` handling, session cookies, and product behavior;
+it does not prove production SMTP transport. Do not replace it with reads from
+`neon_auth.verification` or test-only application endpoints. The finalizer
+restores the exact prior webhook configuration, disables an interrupted stale
+`*.trycloudflare.com` configuration, and deletes only the captured synthetic
+Auth identity when product cleanup did not already do so. The workflow's
+per-branch concurrency cancellation prevents two active runs from intentionally
+configuring the same branch at once.
 The runner does not deploy, pull Vercel environment files, inspect deployments,
 or mutate aliases/domains.
 

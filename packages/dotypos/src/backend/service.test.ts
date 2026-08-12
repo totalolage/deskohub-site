@@ -10,16 +10,21 @@ import type {
   Customer,
   Reservation,
   Table,
+  Warehouse,
+  WarehouseProduct,
 } from "../generated/effect.gen";
 import {
   DotyposCategorySchema,
   DotyposCustomerIdSchema,
   DotyposCustomerSchema,
   DotyposDiscountGroupIdSchema,
+  DotyposProductIdSchema,
   DotyposReservationIdSchema,
   DotyposReservationSchema,
   DotyposTableIdSchema,
   DotyposTableSchema,
+  DotyposWarehouseProductSchema,
+  DotyposWarehouseSchema,
 } from "../types";
 import { DotyposService } from "./service";
 
@@ -42,6 +47,7 @@ const dotyposDiscountGroupId = Schema.decodeUnknownSync(
 const dotyposReservationId = Schema.decodeUnknownSync(
   DotyposReservationIdSchema
 );
+const dotyposProductId = Schema.decodeUnknownSync(DotyposProductIdSchema);
 const dotyposTableId = Schema.decodeUnknownSync(DotyposTableIdSchema);
 
 const omitUndefinedProperties = (value: Record<string, unknown>) =>
@@ -93,6 +99,30 @@ const category = (overrides: Partial<Category> = {}) =>
     _cloudId: config.cloudId,
     name: "Coffee",
     tags: null,
+    ...overrides,
+  });
+
+const warehouse = (overrides: Partial<Warehouse> = {}) =>
+  Schema.decodeUnknownSync(DotyposWarehouseSchema)({
+    id: "warehouse-id",
+    _cloudId: config.cloudId,
+    name: "Workspace warehouse",
+    enabled: true,
+    deleted: false,
+    ...overrides,
+  });
+
+const warehouseProduct = (overrides: Partial<WarehouseProduct> = {}) =>
+  Schema.decodeUnknownSync(DotyposWarehouseProductSchema)({
+    id: "product-id",
+    _categoryId: "category-id",
+    _cloudId: config.cloudId,
+    _warehouseId: "warehouse-id",
+    name: "Water",
+    priceWithoutVat: "25.00",
+    priceWithVat: "25.00",
+    vat: "0",
+    stockQuantityStatus: "3.00",
     ...overrides,
   });
 
@@ -1678,5 +1708,110 @@ describe("DotyposService table listing", () => {
 
     expect(result).toEqual([firstTable, secondTable]);
     expect(requestedPages).toEqual(["1", "2"]);
+  });
+});
+
+describe("DotyposService warehouse stock", () => {
+  test("loads every product page from the sole enabled warehouse", async () => {
+    const first = warehouseProduct({ id: "product-1" });
+    const second = warehouseProduct({ id: "product-2" });
+    const requestedPages: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/warehouses") {
+        return Response.json({ data: [warehouse()] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/warehouses/warehouse-id/products"
+      ) {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(page);
+        return Response.json(
+          page === "1"
+            ? { data: [first], nextPage: "2" }
+            : { data: [second], nextPage: null }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getWarehouseProducts();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([first, second]);
+    expect(requestedPages).toEqual(["1", "2"]);
+  });
+
+  test("records one warehouse sale with the generated request shape", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/warehouses") {
+        return Response.json({ data: [warehouse()] });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/warehouses/warehouse-id/sales" &&
+        request.method === "POST"
+      ) {
+        return new Response(null, { status: 200 });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const selectedWarehouse = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.deductWarehouseStock([
+          {
+            productId: dotyposProductId("product-id"),
+            quantity: 2,
+            note: "DW purchase",
+          },
+        ]);
+      }),
+      fetchMock
+    );
+
+    const saleCalls = fetchMock.mock.calls
+      .map((call) => call as FetchCall)
+      .filter((call) => getUrl(call).endsWith("/warehouse-id/sales"));
+    expect(String(selectedWarehouse)).toBe("warehouse-id");
+    expect(saleCalls).toHaveLength(1);
+    expect(await readJsonBody(saleCalls[0]!)).toEqual({
+      currency: "CZK",
+      items: [{ _productId: "product-id", quantity: 2, note: "DW purchase" }],
+    });
+  });
+
+  test("refuses to guess when more than one enabled warehouse exists", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/warehouses") {
+        return Response.json({
+          data: [warehouse(), warehouse({ id: "warehouse-2" })],
+        });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getWarehouseProducts().pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: { _tag: "ExternalAPIError", operation: "listWarehouses" },
+    });
   });
 });

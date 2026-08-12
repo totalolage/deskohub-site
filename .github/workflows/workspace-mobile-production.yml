@@ -1,0 +1,314 @@
+name: Build Workspace Mobile Production
+
+on:
+  workflow_run:
+    workflows: [Deploy Workspace Production]
+    types: [completed]
+
+permissions: {}
+
+concurrency:
+  group: workspace-mobile-production
+  cancel-in-progress: false
+
+jobs:
+  build-android:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: workspace-mobile-production
+    permissions:
+      actions: read
+      attestations: write
+      contents: write
+      id-token: write
+    env:
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      - name: Confirm the deployed commit is on main
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+          git merge-base --is-ancestor "$TARGET_SHA" origin/main
+
+      - name: Derive deterministic Android version
+        id: version
+        run: |
+          set -euo pipefail
+          version_code="$(git rev-list --count "$TARGET_SHA")"
+          if [[ ! "$version_code" =~ ^[1-9][0-9]*$ ]] || (( version_code > 2100000000 )); then
+            echo "Commit count is not a valid Android version code" >&2
+            exit 1
+          fi
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Validate mobile source
+        working-directory: apps/deskohub-workspace-mobile
+        run: |
+          bun run typecheck
+          bun test src plugins
+
+      - name: Restore permanent Android signing key
+        id: signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.WORKSPACE_ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.WORKSPACE_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.WORKSPACE_ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.WORKSPACE_ANDROID_KEY_PASSWORD }}
+          UPDATES_CERTIFICATE_BASE64: ${{ secrets.WORKSPACE_EXPO_UPDATES_CERTIFICATE_BASE64 }}
+          UPDATES_PRIVATE_KEY_BASE64: ${{ secrets.WORKSPACE_EXPO_UPDATES_PRIVATE_KEY_BASE64 }}
+        run: |
+          set -euo pipefail
+          for value in "$KEYSTORE_BASE64" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" "$UPDATES_CERTIFICATE_BASE64" "$UPDATES_PRIVATE_KEY_BASE64"; do
+            if [[ -z "$value" ]]; then
+              echo "Permanent Workspace Android and update-signing secrets are not configured" >&2
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/workspace-production.jks"
+          updates_certificate="$RUNNER_TEMP/workspace-updates-certificate.pem"
+          updates_private_key="$RUNNER_TEMP/workspace-updates-private-key.pem"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          printf '%s' "$UPDATES_CERTIFICATE_BASE64" | base64 --decode > "$updates_certificate"
+          printf '%s' "$UPDATES_PRIVATE_KEY_BASE64" | base64 --decode > "$updates_private_key"
+          keytool -list -keystore "$keystore" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" >/dev/null
+          {
+            echo "path=$keystore"
+            echo "updates_certificate=$updates_certificate"
+            echo "updates_private_key=$updates_private_key"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Reuse immutable APK when available
+        id: reuse-release
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          EXPECTED_VERSION_CODE: ${{ steps.version.outputs.code }}
+          GH_TOKEN: ${{ github.token }}
+          IMMUTABLE_TAG: deskohub-workspace-android-${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          echo "reused=false" >> "$GITHUB_OUTPUT"
+          if ! gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            exit 0
+          fi
+          target="$(gh release view "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" --json targetCommitish --jq .targetCommitish)"
+          if [[ "$target" != "$TARGET_SHA" ]]; then
+            echo "Existing immutable release points at a different commit" >&2
+            exit 1
+          fi
+          mkdir -p dist/android
+          gh release download "$IMMUTABLE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --pattern deskohub-workspace.apk \
+            --pattern deskohub-workspace.apk.sha256 \
+            --dir dist/android
+          sha256sum --check dist/android/deskohub-workspace.apk.sha256
+          badging="$(aapt dump badging dist/android/deskohub-workspace.apk | head -n 1)"
+          grep -F "name='cz.deskohub.workspace'" <<<"$badging" >/dev/null
+          grep -F "versionCode='$EXPECTED_VERSION_CODE'" <<<"$badging" >/dev/null
+          grep -F "versionName='$TARGET_SHA'" <<<"$badging" >/dev/null
+          echo "reused=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build Android release
+        if: steps.reuse-release.outputs.reused != 'true'
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          DW_ANDROID_APPLICATION_ID: cz.deskohub.workspace
+          DW_ANDROID_KEYSTORE_PATH: ${{ steps.signing.outputs.path }}
+          DW_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.WORKSPACE_ANDROID_KEYSTORE_PASSWORD }}
+          DW_ANDROID_KEY_ALIAS: ${{ secrets.WORKSPACE_ANDROID_KEY_ALIAS }}
+          DW_ANDROID_KEY_PASSWORD: ${{ secrets.WORKSPACE_ANDROID_KEY_PASSWORD }}
+          DW_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          DW_ANDROID_CERT_SHA256: ${{ vars.WORKSPACE_ANDROID_CERT_SHA256 }}
+          DW_APP_SCHEME: deskohub-workspace
+          DW_BUILD_CHANNEL: production
+          DW_BUILD_TAG: ${{ github.event.workflow_run.head_sha }}
+          DW_UPDATES_CODE_SIGNING_CERTIFICATE_PATH: ${{ steps.signing.outputs.updates_certificate }}
+          EXPO_PROJECT_ID: ${{ vars.WORKSPACE_EXPO_PROJECT_ID }}
+          EXPO_PUBLIC_API_ORIGIN: https://app.workspace.deskohub.cz
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+        run: bun run build:android deskohub-workspace.apk
+
+      - name: Verify production identity, signature, and release manifest
+        id: release
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          DW_ANDROID_APK_URL: https://github.com/${{ github.repository }}/releases/download/deskohub-workspace-android-${{ github.event.workflow_run.head_sha }}/deskohub-workspace.apk
+          DW_ANDROID_APPLICATION_ID: cz.deskohub.workspace
+          DW_ANDROID_CERT_SHA256: ${{ vars.WORKSPACE_ANDROID_CERT_SHA256 }}
+          DW_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          DW_ANDROID_VERSION_NAME: ${{ github.event.workflow_run.head_sha }}
+          DW_BUILD_CHANNEL: production
+          DW_BUILD_TAG: ${{ github.event.workflow_run.head_sha }}
+          DW_PUBLISHED_AT: ${{ github.event.workflow_run.updated_at }}
+        run: |
+          set -euo pipefail
+          apk=dist/android/deskohub-workspace.apk
+          badging="$(aapt dump badging "$apk" | head -n 1)"
+          grep -F "name='cz.deskohub.workspace'" <<<"$badging" >/dev/null
+          grep -F "versionCode='${{ steps.version.outputs.code }}'" <<<"$badging" >/dev/null
+          grep -F "versionName='$TARGET_SHA'" <<<"$badging" >/dev/null
+          certificate="$(apksigner verify --print-certs "$apk" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr '[:lower:]' '[:upper:]')"
+          expected_certificate="$(tr -d ':' <<<"$DW_ANDROID_CERT_SHA256" | tr '[:lower:]' '[:upper:]')"
+          if [[ -z "$expected_certificate" || "$certificate" != "$expected_certificate" ]]; then
+            echo "Production APK certificate does not match WORKSPACE_ANDROID_CERT_SHA256" >&2
+            exit 1
+          fi
+          bun scripts/create-release-manifest.ts "$apk" dist/android/production.json
+          sha256sum "$apk" > "$apk.sha256"
+          echo "immutable_tag=deskohub-workspace-android-$TARGET_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Confirm this is the latest successful production deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRIGGERING_DEPLOYMENT_RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -euo pipefail
+          latest_run_id="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-workspace-production.yml/runs?branch=main&status=completed&per_page=100" \
+            --jq '[.workflow_runs[] | select(.conclusion == "success")] | max_by(.run_number).id // empty')"
+          if [[ -z "$latest_run_id" || "$latest_run_id" != "$TRIGGERING_DEPLOYMENT_RUN_ID" ]]; then
+            echo "A newer successful Workspace production deployment superseded this release" >&2
+            exit 1
+          fi
+
+      - name: Attest production APK provenance
+        if: steps.reuse-release.outputs.reused != 'true'
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: apps/deskohub-workspace-mobile/dist/android/deskohub-workspace.apk
+
+      - name: Publish immutable release
+        if: steps.reuse-release.outputs.reused != 'true'
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          GH_TOKEN: ${{ github.token }}
+          IMMUTABLE_TAG: ${{ steps.release.outputs.immutable_tag }}
+        run: |
+          set -euo pipefail
+          gh release create "$IMMUTABLE_TAG" \
+            dist/android/deskohub-workspace.apk \
+            dist/android/deskohub-workspace.apk.sha256 \
+            dist/android/production.json \
+            --repo "$GITHUB_REPOSITORY" --target "$TARGET_SHA" --latest=false \
+            --title "Deskohub Workspace Android $TARGET_SHA" \
+            --notes "Production APK built from the Workspace deployment at $TARGET_SHA."
+
+      - name: Publish signed small update
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          DW_ANDROID_APPLICATION_ID: cz.deskohub.workspace
+          DW_ANDROID_CERT_SHA256: ${{ vars.WORKSPACE_ANDROID_CERT_SHA256 }}
+          DW_ANDROID_VERSION_CODE: ${{ steps.version.outputs.code }}
+          DW_APP_SCHEME: deskohub-workspace
+          DW_BUILD_CHANNEL: production
+          DW_BUILD_TAG: ${{ github.event.workflow_run.head_sha }}
+          DW_UPDATES_CODE_SIGNING_CERTIFICATE_PATH: ${{ steps.signing.outputs.updates_certificate }}
+          EXPO_PROJECT_ID: ${{ vars.WORKSPACE_EXPO_PROJECT_ID }}
+          EXPO_PUBLIC_API_ORIGIN: https://app.workspace.deskohub.cz
+          EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+          EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+          EXPO_TOKEN: ${{ secrets.WORKSPACE_EXPO_TOKEN }}
+        run: |
+          test -n "$EXPO_TOKEN"
+          bunx eas-cli@21.8.0 update --channel production --platform android \
+            --message "Production $TARGET_SHA" --non-interactive \
+            --private-key-path "${{ steps.signing.outputs.updates_private_key }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deskohub-workspace-production-${{ github.event.workflow_run.head_sha }}
+          path: apps/deskohub-workspace-mobile/dist/android/*
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+  deploy-pwa:
+    needs: build-android
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: Production – deskohub-workspace-app
+      url: https://app.workspace.deskohub.cz
+    permissions:
+      contents: read
+    env:
+      TARGET_SHA: ${{ github.event.workflow_run.head_sha }}
+      VERCEL_ORG_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+      VERCEL_PROJECT_ID: ${{ vars.WORKSPACE_MOBILE_VERCEL_PROJECT_ID }}
+      DW_BUILD_CHANNEL: production
+      DW_BUILD_TAG: ${{ github.event.workflow_run.head_sha }}
+      EXPO_PUBLIC_API_ORIGIN: https://app.workspace.deskohub.cz
+      EXPO_PUBLIC_ANDROID_CERT_SHA256: ${{ vars.WORKSPACE_ANDROID_CERT_SHA256 }}
+      EXPO_PUBLIC_POSTHOG_HOST: ${{ vars.NEXT_PUBLIC_POSTHOG_HOST }}
+      EXPO_PUBLIC_POSTHOG_PROJECT_TOKEN: ${{ vars.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Verify PWA deployment configuration
+        run: |
+          set -euo pipefail
+          test -n "$VERCEL_PROJECT_ID"
+
+      - run: bun install --frozen-lockfile
+
+      - name: Download exact production Android release
+        uses: actions/download-artifact@v4
+        with:
+          name: deskohub-workspace-production-${{ github.event.workflow_run.head_sha }}
+          path: apps/deskohub-workspace-mobile/release-input
+
+      - name: Stage stable first-party Android download routes
+        working-directory: apps/deskohub-workspace-mobile
+        run: |
+          expected_sha="$(jq -r '.apk.sha256' release-input/production.json)"
+          actual_sha="$(sha256sum release-input/deskohub-workspace.apk | cut -d' ' -f1)"
+          test "$actual_sha" = "$expected_sha"
+          test "$(jq -r '.buildSha' release-input/production.json)" = "$TARGET_SHA"
+          mkdir -p public/mobile/android/releases
+          cp release-input/deskohub-workspace.apk public/mobile/android/releases/latest.apk
+          cp release-input/production.json public/mobile/android/releases/latest.json
+
+      - name: Build and deploy production PWA
+        working-directory: apps/deskohub-workspace-mobile
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p .vercel
+          jq -n --arg orgId "$VERCEL_ORG_ID" --arg projectId "$VERCEL_PROJECT_ID" \
+            '{orgId: $orgId, projectId: $projectId}' > .vercel/project.json
+          bunx vercel@54.9.1 pull --yes --environment=production --token "$VERCEL_TOKEN"
+          bunx vercel@54.9.1 build --prod --token "$VERCEL_TOKEN"
+          bunx vercel@54.9.1 deploy --prebuilt --prod --yes --token "$VERCEL_TOKEN"

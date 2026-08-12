@@ -116,14 +116,20 @@ export const openBrowserPage = (
   run: Runner,
   session: string,
   url: string,
-  options: { readonly timeoutMs?: number } = {}
+  options: {
+    readonly sensitive?: boolean;
+    readonly timeoutMs?: number;
+  } = {}
 ) =>
   runBrowserCommand(
     "open browser page",
     run,
     session,
     [...getBrowserHeaderArgs(config), "open", url],
-    { timeoutMs: options.timeoutMs ?? 60_000 }
+    {
+      logCommand: options.sensitive !== true,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
   );
 
 export const waitForBrowserReactHydration = (

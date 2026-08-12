@@ -74,6 +74,12 @@ export const customerReservationPreviewProps = {
       value: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
     },
   ],
+  shop: {
+    heading: "Self-service shop",
+    body: "On your reservation day, use Deskohub Workspace to record and pay for drinks or snacks.",
+    action: "Open the self-service shop",
+    url: "https://app.workspace.deskohub.cz/",
+  },
   followUp:
     "If you want to add anything, reply or write to workspace@deskohub.cz.",
 } satisfies CustomerReservationEmailProps;

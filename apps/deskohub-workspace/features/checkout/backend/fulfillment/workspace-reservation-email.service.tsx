@@ -345,6 +345,12 @@ const createCustomerReservationEmail = (input: {
           : {}),
       }}
       preview={subject}
+      shop={{
+        heading: m.reservationEmailShopHeading({}, { locale: input.locale }),
+        body: m.reservationEmailShopBody({}, { locale: input.locale }),
+        action: m.reservationEmailShopAction({}, { locale: input.locale }),
+        url: "https://app.workspace.deskohub.cz/",
+      }}
       {...(input.reservation.tableName
         ? { table: { name: input.reservation.tableName } }
         : {})}

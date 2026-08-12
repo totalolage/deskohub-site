@@ -75,7 +75,7 @@ test("starts all preview readiness requests before any request completes", async
   });
   const fetchMock = mock(async (input: URL | RequestInfo) => {
     startedRequestCount += 1;
-    if (startedRequestCount === 3) releaseRequests();
+    if (startedRequestCount === 5) releaseRequests();
     await allRequestsStarted;
 
     return String(input).endsWith(".jpeg")
@@ -92,7 +92,7 @@ test("starts all preview readiness requests before any request completes", async
     )
   );
 
-  expect(startedRequestCount).toBe(3);
+  expect(startedRequestCount).toBe(5);
 });
 
 test("recognizes a rendered feature-gated preview page", async () => {

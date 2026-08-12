@@ -110,6 +110,8 @@ const createSiteHeaderConfig = (
     ...getSiteHeaderAccessibilityLabels(locale),
     languageLabels: getSiteHeaderLanguageLabels(locale),
     links: links.filter(({ id }) => disabledMenuItems[id] !== true),
+    accountLabel: m.accountNavLabel({}, { locale }),
+    accountHref: `${localePath}/account`,
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: getCoworkReservationPath(locale),
   };

@@ -39,6 +39,11 @@ const makeDatasourceConfig = (): DatasourceConfig => ({
     refreshToken: "refresh-token",
   },
   expectedCurrency: "EUR",
+  neonAuth: {
+    apiKey: "neon-api-key",
+    branchId: "br-preview-123",
+    projectId: "project-preview-123",
+  },
   nexiApiOrigin: "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp",
   timeouts: workspaceE2ETimeouts,
 });
