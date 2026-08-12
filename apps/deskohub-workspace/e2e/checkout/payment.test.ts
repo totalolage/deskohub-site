@@ -303,7 +303,7 @@ test("types into a hosted payment field when fill does not stick", async () => {
       if (phase === "continue") {
         return success(
           [
-            '- iframe "CARD_NUMBER" [ref=e0]',
+            "- iframe [ref=e0]",
             '  - textbox "Card number" [ref=f1e1]',
             '- textbox "Expiration date" [ref=e2]',
             '- textbox "CVV" [ref=e3]',

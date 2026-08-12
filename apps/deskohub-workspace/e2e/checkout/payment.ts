@@ -1020,7 +1020,7 @@ const findHostedPaymentRef = (
         if (!frameFieldRef) return undefined;
 
         shouldRestoreMainFrame = false;
-        return { framed: true, ref: frame.exact ? "input" : frameFieldRef };
+        return { framed: true, ref: "input" };
       }).pipe(
         Effect.ensuring(
           Effect.suspend(() =>
