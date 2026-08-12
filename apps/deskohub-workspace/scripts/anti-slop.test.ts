@@ -157,6 +157,26 @@ void payload;
   );
 });
 
+test("known value widening allows empty dictionary accumulators", () => {
+  const result = lint(`
+const handlers: Record<string, string> = {};
+handlers.start = "ready";
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-known-value-widening]");
+});
+
+test("known value widening reports nested Record value types", () => {
+  const result = lint(`
+const handlers: Record<string, () => void> = { start: () => undefined };
+void handlers;
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).toContain("[anti-slop/no-known-value-widening]");
+});
+
 test("widen-then-assert does not connect unrelated scopes", () => {
   const result = lint(`
 function first() {
