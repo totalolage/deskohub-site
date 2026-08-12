@@ -1,15 +1,13 @@
 import Link from "next/link";
-import { connection } from "next/server";
+import { Suspense } from "react";
 import type { AdministrationOverviewMetric } from "@/features/administration/administration.service";
 import { AdministrationPage } from "@/features/administration/components";
+import { AdministrationMetricsLoading } from "@/features/administration/loading";
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
-export default async function AdminPage() {
-  await connection();
-  const overview = await loadAdministrationOverview();
-  const { ranges } = overview;
+export default function AdminPage() {
   return (
     <AdministrationPage>
       <section aria-labelledby="reservation-activity-heading">
@@ -18,26 +16,9 @@ export default async function AdminPage() {
             Reservation activity
           </h1>
         </div>
-        <dl className="grid gap-3 lg:grid-cols-3">
-          <OverviewMetric
-            href={getReservationRangeHref(ranges.today)}
-            label="Today"
-            metric={overview.today}
-            note="Reservations starting today"
-          />
-          <OverviewMetric
-            href={getReservationRangeHref(ranges.upcoming)}
-            label="Upcoming"
-            metric={overview.upcoming}
-            note="Starting in the next 30 days"
-          />
-          <OverviewMetric
-            href={getReservationRangeHref(ranges.lastSevenDays)}
-            label="Last 7 days"
-            metric={overview.lastSevenDays}
-            note="Started during this period"
-          />
-        </dl>
+        <Suspense fallback={<AdministrationMetricsLoading />}>
+          <ReservationActivity />
+        </Suspense>
       </section>
 
       <section aria-labelledby="find-heading" className="mt-8">
@@ -52,6 +33,34 @@ export default async function AdminPage() {
         </div>
       </section>
     </AdministrationPage>
+  );
+}
+
+export async function ReservationActivity() {
+  const overview = await loadAdministrationOverview();
+  const { ranges } = overview;
+
+  return (
+    <dl className="grid gap-3 lg:grid-cols-3">
+      <OverviewMetric
+        href={getReservationRangeHref(ranges.today)}
+        label="Today"
+        metric={overview.today}
+        note="Reservations starting today"
+      />
+      <OverviewMetric
+        href={getReservationRangeHref(ranges.upcoming)}
+        label="Upcoming"
+        metric={overview.upcoming}
+        note="Starting in the next 30 days"
+      />
+      <OverviewMetric
+        href={getReservationRangeHref(ranges.lastSevenDays)}
+        label="Last 7 days"
+        metric={overview.lastSevenDays}
+        note="Started during this period"
+      />
+    </dl>
   );
 }
 

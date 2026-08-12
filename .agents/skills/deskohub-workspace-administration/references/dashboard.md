@@ -6,6 +6,14 @@ The visible navigation is intentionally limited to Overview, Reservations, Custo
 
 Discount definitions are managed through the code or Calendar sale that uses them instead of through a standalone definitions table. Code creation can create its discount atomically, and associated Calendar-sale rows expose their discount editor. `/admin/discounts` redirects to Codes for compatibility with existing links.
 
+## Rendering and navigation
+
+Keep the administration layout, brand, navigation, and page frame in the instant static shell. Do not call `connection()` or await request or provider data in the administration layout. Client hooks that depend on the current route, such as `usePathname()`, belong behind their own narrow Suspense boundary so they do not make the rest of the shell dynamic.
+
+Administration pages should start data promises without awaiting them, render stable page controls immediately, and pass each promise to the smallest async Server Component that needs it. Put a meaningful, layout-matched fallback directly around each delayed count, filter set, collection, detail panel, or modal. Route-level `loading.tsx` files remain the navigation safety net; they do not replace the smaller component boundaries.
+
+Authorize every protected data loader, and wrap the authorization operation in React `cache()` so independently streamed leaves deduplicate it within a request. Parallelize independent database and provider reads, but do not persistently cache live operator data. A page must load only the projection it displays: for example, Codes must not wait for Calendar sales, Sales must not load discount codes, and breadcrumbs must use static labels or narrow label projections rather than full entity-detail loaders.
+
 ## Data ownership
 
 The dashboard composes three sources without creating a second customer or reservation store:

@@ -89,17 +89,33 @@ describe("discount administration server authorization", () => {
       administration.authorizeAdministrationPage,
       administration.loadAdministrationOverview,
       () => administration.loadAdministrationReservations(searchParams),
+      () =>
+        administration.loadAdministrationReservationsPage(searchParams).result,
       () => administration.loadAdministrationReservation("reservation-id"),
+      () =>
+        administration.loadAdministrationReservationBreadcrumbLabel(
+          "reservation-id"
+        ),
       () => administration.loadAdministrationBookings(searchParams),
+      () => administration.loadAdministrationBookingsPage(searchParams).result,
       () => administration.loadAdministrationBooking("booking-id"),
+      () =>
+        administration.loadAdministrationBookingBreadcrumbLabel("booking-id"),
       () => administration.loadAdministrationCustomers(searchParams),
       () =>
         administration.loadAdministrationCustomerReservations(
           "customer-id",
           searchParams
         ),
+      () => administration.loadAdministrationOrders(searchParams),
+      () => administration.loadAdministrationOrdersPage(searchParams).result,
+      () => administration.loadAdministrationOperations(searchParams),
+      () =>
+        administration.loadAdministrationOperationsPage(searchParams).result,
       discounts.authorizeDiscountAdminPage,
       () => discounts.loadDiscountAdminPageData(searchParams),
+      () => discounts.loadDiscountAdminCodesPageData(searchParams),
+      () => discounts.loadDiscountAdminSalesPageData(searchParams),
       () => discounts.loadDiscountAdminShellPageData(searchParams),
       () =>
         discounts.loadDiscountAdminCodePageData(

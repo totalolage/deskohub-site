@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
-import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { AdminShell } from "@/features/administration/admin-shell";
 import "../globals.css";
@@ -26,9 +25,9 @@ export const metadata: Metadata = {
   },
 };
 
-export const instant = false;
+export const instant = true;
 
-export default async function AdminLayout({
+export default function AdminLayout({
   breadcrumb,
   children,
   modal,
@@ -37,8 +36,6 @@ export default async function AdminLayout({
   readonly children: ReactNode;
   readonly modal: ReactNode;
 }) {
-  await connection();
-
   return (
     <html lang="en" className={sculpin.variable} data-scroll-behavior="smooth">
       <body>

@@ -64,9 +64,9 @@ describe("DiscountCustomerAdminDetailPage", () => {
   afterAll(() => unregisterWorkspaceComponentTestEnv());
 
   test("links to all reservations when the unavailable profile fallback is truncated", async () => {
-    const { default: DiscountCustomerAdminDetailPage } = await import("./page");
+    const { DiscountCustomerAdminDetail } = await import("./page");
     const view = render(
-      await DiscountCustomerAdminDetailPage({
+      await DiscountCustomerAdminDetail({
         params: Promise.resolve({ customerId: "customer-one" }),
         searchParams: Promise.resolve({}),
       })
