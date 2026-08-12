@@ -12,7 +12,7 @@ description: Workspace protected-preview, checkout, Nexi, webhook, database, and
 
 ## Establish the workflow
 
-Treat [the Workspace E2E entry point](../../../apps/deskohub-workspace/scripts/workspace-e2e.ts), [Playwright configuration](../../../apps/deskohub-workspace/playwright.checkout.config.ts), and nearby `e2e/playwright-checkout/**` projects, cases, and services as the executable source of truth for automated runs. Inspect the relevant project, case, and service before running or changing the suite.
+Treat [the Workspace E2E entry point](../../../apps/deskohub-workspace/scripts/workspace-e2e.ts), [Playwright configuration](../../../apps/deskohub-workspace/playwright.e2e.config.ts), and nearby `e2e/playwright-checkout/**` projects, cases, and services as the executable source of truth for automated runs. Inspect the relevant project, case, and service before running or changing the suite.
 
 Read only the supporting documentation needed for the scenario:
 
@@ -181,7 +181,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   date so runs crossing midnight retain the same owner. Use round-robin weekday
   sequences rather than contiguous date bands so clustered unavailability does
   not starve a run that the full candidate range could support.
-- Let Playwright own one browser per worker. The compatibility runner may create one isolated context for the current Playwright test, but it must never launch or close the worker browser. Capture diagnostics for the genuine failure before closing its context. Playwright flushes HAR when the context closes, so use bounded finalizers to close every failed, completed, or interrupted context before sanitizing or discarding its raw HAR. Keep the read-only instant-navigation Playwright project fully parallel and run it in a separate exact-preview CI job alongside checkout; it does not lease a reservation date shard or require the preview database and provider setup. Within checkout case finalization, let owned-reservation cleanup overlap the browser branch while preserving HAR stop before context close.
+- Let Playwright own one browser per worker. The compatibility runner may create one isolated context for the current Playwright test, but it must never launch or close the worker browser. Capture diagnostics for the genuine failure before closing its context. Playwright flushes HAR when the context closes, so use bounded finalizers to close every failed, completed, or interrupted context before sanitizing or discarding its raw HAR. Keep read-only instant navigation as an independent fully parallel project in the same Playwright graph so it shares CI setup and runs alongside checkout preparation without depending on it. Within checkout case finalization, let owned-reservation cleanup overlap the browser branch while preserving HAR stop before context close.
 - Confirm Dotypos cancellation convergence through the same active-overlap read
   model used by capacity validation. Absence from the generic reservation list
   is not sufficient evidence that provider availability has released the seats.

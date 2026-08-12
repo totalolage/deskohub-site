@@ -43,7 +43,7 @@ const runPlaywright = Effect.gen(function* () {
               "playwright",
               "test",
               "--config",
-              "playwright.checkout.config.ts",
+              "playwright.e2e.config.ts",
             ],
             {
               cwd: workspaceDir,

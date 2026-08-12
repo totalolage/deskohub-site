@@ -248,65 +248,6 @@ jobs:
           DATABASE_URL_UNPOOLED: ${{ steps.preview-database.outputs.direct_url }}
         run: bun run db:migrate
 
-  test-instant-navigation:
-    needs: [resolve-target, migrate-preview]
-    if: needs.resolve-target.outputs.eligible == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: workspace-checkout-e2e
-    permissions:
-      contents: read
-    env:
-      TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
-      WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
-
-    steps:
-      - name: Checkout exact target
-        uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.resolve-target.outputs.sha }}
-          persist-credentials: false
-
-      - name: Confirm checked-out commit
-        run: |
-          set -euo pipefail
-          actual_sha="$(git rev-parse HEAD)"
-          if [[ "$actual_sha" != "$TARGET_SHA" ]]; then
-            echo "Checked-out commit does not match the deployment SHA" >&2
-            exit 1
-          fi
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.14
-
-      - name: Install repository dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Verify hosted browser runtime
-        run: |
-          set -euo pipefail
-          browser_path="$(command -v google-chrome || command -v chromium || true)"
-          if [[ -z "$browser_path" || ! -x "$browser_path" ]]; then
-            echo "The hosted runner does not provide a supported browser" >&2
-            exit 1
-          fi
-          "$browser_path" --version
-          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$browser_path" >> "$GITHUB_ENV"
-
-      - name: Run instant navigation E2E
-        env:
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-        run: bun --cwd apps/deskohub-workspace test:instant-navigation
-
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: workspace-instant-navigation-artifacts-${{ github.run_id }}-${{ github.run_attempt }}
-          path: apps/deskohub-workspace/e2e-artifacts/instant-navigation/**
-          if-no-files-found: ignore
-          retention-days: 7
-
   test-e2e:
     needs: [resolve-target, migrate-preview]
     if: needs.resolve-target.outputs.eligible == 'true'
@@ -553,7 +494,7 @@ jobs:
           database-url: ${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}
 
   publish-final-status:
-    needs: [resolve-target, test-instant-navigation, test-e2e]
+    needs: [resolve-target, test-e2e]
     if: always() && needs.resolve-target.outputs.eligible == 'true'
     runs-on: ubuntu-latest
     permissions:
@@ -566,7 +507,7 @@ jobs:
           ALLOCATION_SHARD: ${{ needs.test-e2e.outputs.shard }}
           ALLOCATION_DESCRIPTION: ${{ needs.test-e2e.outputs.shard == '' && 'Workspace E2E shard allocation failed' || needs.test-e2e.outputs.release_outcome == 'success' && 'Workspace E2E shard released' || 'Workspace E2E shard release failed' }}
           GH_TOKEN: ${{ github.token }}
-          STATUS_STATE: ${{ needs.test-instant-navigation.result == 'success' && needs.test-e2e.result == 'success' && 'success' || 'failure' }}
+          STATUS_STATE: ${{ needs.test-e2e.result == 'success' && 'success' || 'failure' }}
           TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
         run: |
           if [[ "$STATUS_STATE" == "success" ]]; then

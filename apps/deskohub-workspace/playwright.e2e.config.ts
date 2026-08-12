@@ -9,12 +9,15 @@ import {
 import { env } from "./env";
 import { resolvePlaywrightChromiumExecutable } from "./shared/testing/playwright-browser";
 
-const baseUrl = parseWorkspaceE2EBaseUrl(env.WORKSPACE_E2E_BASE_URL).baseUrl;
+const remoteBaseUrl = env.WORKSPACE_E2E_BASE_URL;
+const baseUrl = remoteBaseUrl
+  ? parseWorkspaceE2EBaseUrl(remoteBaseUrl).baseUrl
+  : "http://localhost:3000";
 const browserExecutablePath = await resolvePlaywrightChromiumExecutable(
   env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
   process.env.PATH
 );
-const independentProjects = [
+const checkoutCaseProjects = [
   "checkout-non-payment",
   "checkout-payment-1",
   "checkout-payment-2",
@@ -28,6 +31,12 @@ export default defineConfig({
   maxFailures: 1,
   outputDir: "./e2e-artifacts/checkout",
   projects: [
+    {
+      name: "instant-navigation",
+      testDir: "./e2e/instant-navigation",
+      testMatch: "**/*.pw.ts",
+      timeout: workspaceE2ETimeouts.browserNavigation,
+    },
     {
       name: "checkout-setup",
       teardown: "checkout-cleanup",
@@ -83,7 +92,7 @@ export default defineConfig({
       testMatch: "payment-lane-3.pw.ts",
     },
     {
-      dependencies: [...independentProjects],
+      dependencies: [...checkoutCaseProjects],
       name: "checkout-shared-fixture",
       testMatch: "shared-fixture.pw.ts",
     },
@@ -98,7 +107,7 @@ export default defineConfig({
       "./e2e/playwright-github-summary.ts",
       {
         outputFile: env.GITHUB_STEP_SUMMARY,
-        title: "Workspace checkout E2E",
+        title: "Workspace E2E",
       },
     ],
   ],
@@ -115,5 +124,13 @@ export default defineConfig({
     video: "off",
     viewport: { height: 900, width: 1440 },
   },
+  webServer: remoteBaseUrl
+    ? undefined
+    : {
+        command: "bun --cwd ../.. turbo dev --filter=deskohub-workspace",
+        reuseExistingServer: true,
+        timeout: workspaceE2ETimeouts.checkoutStart,
+        url: `${baseUrl}/en-US`,
+      },
   workers: 6,
 });

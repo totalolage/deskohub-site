@@ -142,7 +142,7 @@ test("runs invoice persistence inside the normal exact-SHA Playwright graph", as
     resolve(import.meta.dir, "../turbo.json")
   ).json();
   const playwrightConfig = await Bun.file(
-    resolve(import.meta.dir, "../playwright.checkout.config.ts")
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
   ).text();
   const invoicePersistenceProject = await Bun.file(
     resolve(
@@ -196,7 +196,7 @@ test("uses Playwright with the hosted runner browser without downloading another
 
 test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
   const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.checkout.config.ts")
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
   ).text();
   const entry = await Bun.file(
     resolve(import.meta.dir, "workspace-e2e.ts")
@@ -214,14 +214,14 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
     )
   ).text();
 
-  expect(entry).toContain("playwright.checkout.config.ts");
+  expect(entry).toContain("playwright.e2e.config.ts");
   expect(config).toContain("fullyParallel: true");
   expect(config).toContain("maxFailures: 1");
   expect(config).toContain("workers: 6");
   expect(config).toContain('teardown: "checkout-cleanup"');
   expect(config).toContain('name: "checkout-availability"');
   expect(config).toContain('name: "checkout-plan"');
-  expect(config).toContain("dependencies: [...independentProjects]");
+  expect(config).toContain("dependencies: [...checkoutCaseProjects]");
   expect(config).toContain("workspaceE2EPlaywrightCheckoutTimeout");
   expect(config).toContain("resolvePlaywrightChromiumExecutable");
   expect(entry).toContain("playwrightEnvironment");
@@ -236,18 +236,10 @@ test("lets Playwright own checkout preparation, scheduling, and parallelism", as
   expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
 });
 
-test("runs read-only Playwright navigation beside the checkout suite", async () => {
+test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
-  const migrationJob = workflow.slice(
-    workflow.indexOf("  migrate-preview:"),
-    workflow.indexOf("  test-instant-navigation:")
-  );
-  const instantJob = workflow.slice(
-    workflow.indexOf("  test-instant-navigation:"),
-    workflow.indexOf("  test-e2e:")
-  );
   const checkoutJob = workflow.slice(
     workflow.indexOf("  test-e2e:"),
     workflow.indexOf("  publish-final-status:")
@@ -255,40 +247,35 @@ test("runs read-only Playwright navigation beside the checkout suite", async () 
   const finalStatusJob = workflow.slice(
     workflow.indexOf("  publish-final-status:")
   );
+  const packageJson = await Bun.file(
+    resolve(import.meta.dir, "../package.json")
+  ).json();
   const config = await Bun.file(
-    resolve(import.meta.dir, "../playwright.instant.config.ts")
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
   ).text();
 
-  expect(migrationJob).toContain("Migrate preview database");
-  expect(instantJob).toContain("needs: [resolve-target, migrate-preview]");
-  expect(instantJob).toContain("Run instant navigation E2E");
-  expect(instantJob).not.toContain("Lease an available date shard");
-  expect(instantJob).not.toContain("WORKSPACE_E2E_DATABASE_URL_UNPOOLED");
+  expect(workflow).not.toContain("  test-instant-navigation:");
+  expect(workflow).not.toContain("Run instant navigation E2E");
   expect(checkoutJob).toContain("needs: [resolve-target, migrate-preview]");
   expect(checkoutJob).not.toContain("Migrate preview database");
-  expect(checkoutJob).not.toContain("Run instant navigation E2E");
-  expect(finalStatusJob).toContain(
-    "needs: [resolve-target, test-instant-navigation, test-e2e]"
-  );
-  expect(finalStatusJob).toContain(
-    "needs.test-instant-navigation.result == 'success'"
-  );
+  expect(finalStatusJob).toContain("needs: [resolve-target, test-e2e]");
+  expect(config).toContain('name: "instant-navigation"');
+  expect(config).toContain('testDir: "./e2e/instant-navigation"');
   expect(config).toContain("fullyParallel: true");
-  expect(config).toContain('workers: "100%"');
+  expect(config).toContain("workers: 6");
+  expect(packageJson.scripts["test:instant-navigation"]).toContain(
+    "--project=instant-navigation"
+  );
 });
 
 test("lets Playwright write complete GitHub job summaries", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
-  const checkoutConfig = await Bun.file(
-    resolve(import.meta.dir, "../playwright.checkout.config.ts")
-  ).text();
-  const instantConfig = await Bun.file(
-    resolve(import.meta.dir, "../playwright.instant.config.ts")
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
   ).text();
 
   expect(workflow).not.toContain("GITHUB_STEP_SUMMARY");
-  expect(checkoutConfig).toContain("playwright-github-summary.ts");
-  expect(instantConfig).toContain("playwright-github-summary.ts");
+  expect(config).toContain("playwright-github-summary.ts");
 });
