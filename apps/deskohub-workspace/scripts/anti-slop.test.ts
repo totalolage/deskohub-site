@@ -161,3 +161,17 @@ void reconstructed;
 
   expect(output).toContain("[anti-slop/no-widen-then-assert]");
 });
+
+test("unsafe dictionary allows concrete values containing unknown", () => {
+  const result = lint(`
+type AsyncValues = Record<string, Promise<unknown>>;
+type StructuredValues = Record<string, { value: unknown; source: string }>;
+type NestedValues = { [key: string]: Promise<unknown> };
+void (0 as unknown as AsyncValues);
+void (0 as unknown as StructuredValues);
+void (0 as unknown as NestedValues);
+`);
+  const output = `${decoder.decode(result.stdout)}${decoder.decode(result.stderr)}`;
+
+  expect(output).not.toContain("[anti-slop/no-unsafe-dictionary-type]");
+});
