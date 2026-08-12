@@ -114,7 +114,7 @@ export function StatePanel({
   mark = "DW",
 }: {
   title: string;
-  body: string;
+  body?: string;
   action?: ReactNode;
   mark?: string;
 }) {
@@ -126,7 +126,7 @@ export function StatePanel({
       <Text accessibilityRole="header" style={styles.stateTitle}>
         {title}
       </Text>
-      <Text style={styles.stateBody}>{body}</Text>
+      {body && <Text style={styles.stateBody}>{body}</Text>}
       {action && <View style={styles.stateAction}>{action}</View>}
     </View>
   );
@@ -167,9 +167,15 @@ export function Pill({
 
 const skeletonRowKeys = ["first", "second", "third"] as const;
 
-export function LoadingSkeleton({ rows = 3 }: { rows?: number }) {
+export function LoadingSkeleton({
+  label,
+  rows = 3,
+}: {
+  label: string;
+  rows?: number;
+}) {
   return (
-    <View accessibilityLabel="Loading" style={styles.skeletonList}>
+    <View accessibilityLabel={label} style={styles.skeletonList}>
       {skeletonRowKeys.slice(0, rows).map((key) => (
         <View key={key} style={styles.skeletonRow}>
           <View style={styles.skeletonBlock} />

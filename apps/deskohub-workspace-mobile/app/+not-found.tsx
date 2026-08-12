@@ -16,7 +16,6 @@ export default function NotFoundScreen() {
             onPress={() => router.replace("/")}
           />
         }
-        body={t("errorBody")}
         mark="?"
         title={t("errorTitle")}
       />

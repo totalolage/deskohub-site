@@ -19,7 +19,7 @@ import {
   View,
 } from "react-native";
 
-import { AppScreen, ScreenIntro } from "@/components/AppScreen";
+import { AppScreen } from "@/components/AppScreen";
 import { Brand } from "@/components/Brand";
 import { CartDock } from "@/components/CartDock";
 import {
@@ -39,19 +39,16 @@ function LaunchState() {
     <View style={styles.launch}>
       <Brand inverse />
       <View style={styles.launchCopy}>
-        <View style={styles.launchLine} />
         <Text accessibilityRole="header" style={styles.launchTitle}>
           {t("loadingTitle")}
         </Text>
-        <Text style={styles.launchBody}>{t("loadingBody")}</Text>
       </View>
     </View>
   );
 }
 
 function SignInState() {
-  const { actionError, beginSignIn, isActionPending, signInState, t } =
-    useShop();
+  const { actionError, beginSignIn, isActionPending, t } = useShop();
 
   return (
     <AppScreen>
@@ -74,7 +71,6 @@ function SignInState() {
           <Text style={styles.signInBody}>{t("signInBody")}</Text>
         </View>
         <View style={styles.signInForm}>
-          <Text style={styles.handoffBody}>{t("signInHandoffBody")}</Text>
           {actionError === "native_auth_unavailable" && (
             <StatusBanner
               body={t("nativeAuthUnavailableBody")}
@@ -83,18 +79,10 @@ function SignInState() {
             />
           )}
           {actionError && actionError !== "native_auth_unavailable" && (
-            <StatusBanner
-              body={t("errorBody")}
-              title={t("errorTitle")}
-              tone="error"
-            />
+            <StatusBanner title={t("errorTitle")} tone="error" />
           )}
           <ActionButton
-            label={
-              signInState === "opening"
-                ? t("openingSignIn")
-                : t("continueToSignIn")
-            }
+            label={t("continueToSignIn")}
             loading={isActionPending}
             onPress={() => void beginSignIn()}
           />
@@ -123,19 +111,10 @@ function LockedState() {
         <Text accessibilityRole="header" style={styles.lockedTitle}>
           {t("lockedTitle")}
         </Text>
-        <Text style={styles.lockedBody}>{t("lockedBody")}</Text>
         <View style={styles.nextReservation}>
           <Text style={styles.nextReservationText}>{nextReservation}</Text>
         </View>
       </View>
-      <StatusBanner
-        body={t("lockedHistory")}
-        title={
-          session.customer.email
-            ? t("signedInAs", { email: session.customer.email })
-            : t("appName")
-        }
-      />
     </AppScreen>
   );
 }
@@ -157,7 +136,6 @@ function CatalogState() {
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const columns = width >= 680 ? 2 : 1;
-  const compact = width < 480;
 
   const products = useMemo(() => {
     if (!catalog) return [];
@@ -187,36 +165,7 @@ function CatalogState() {
       refresh={() => void refreshShop()}
       refreshing={isActionPending}
     >
-      {!catalogIsStale && (
-        <View
-          style={[styles.accessTicket, compact && styles.accessTicketCompact]}
-        >
-          <View style={styles.accessDot}>
-            <Text style={styles.accessDotText}>✓</Text>
-          </View>
-          <View style={styles.accessCopy}>
-            <Text style={styles.accessTitle}>{t("accessToday")}</Text>
-            <Text style={styles.accessBody}>{t("accessUntil")}</Text>
-          </View>
-          <Text style={styles.accessChevron}>›</Text>
-        </View>
-      )}
-      <ScreenIntro
-        kicker={
-          session.kind === "signed_in" && session.customer.displayName
-            ? `${t("shopGreeting")}, ${session.customer.displayName}`
-            : t("shopGreeting")
-        }
-        title={t("shopTitle")}
-        body={t("shopSubtitle")}
-      />
-      {actionError && (
-        <StatusBanner
-          body={t("errorBody")}
-          title={t("errorTitle")}
-          tone="error"
-        />
-      )}
+      {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
       <View style={styles.searchWrap}>
         <SymbolView
           name={{ ios: "magnifyingglass", android: "search", web: "search" }}
@@ -258,13 +207,7 @@ function CatalogState() {
           </Pressable>
         ))}
       </ScrollView>
-      {catalogIsStale && (
-        <StatusBanner
-          body={t("offlineBody")}
-          title={t("offlineTitle")}
-          tone="warning"
-        />
-      )}
+      {catalogIsStale && <StatusBanner title={t("savedMenu")} tone="warning" />}
       {catalog.products.length === 0 && (
         <StatePanel
           action={
@@ -274,17 +217,12 @@ function CatalogState() {
               variant="secondary"
             />
           }
-          body={t("emptyCatalogBody")}
           mark="↻"
           title={t("emptyCatalogTitle")}
         />
       )}
       {catalog.products.length > 0 && products.length === 0 && (
-        <StatePanel
-          body={t("noSearchBody")}
-          mark="?"
-          title={t("noSearchTitle")}
-        />
+        <StatePanel mark="?" title={t("noSearchTitle")} />
       )}
       <View style={styles.products}>
         {products.map((product) => (
@@ -326,7 +264,6 @@ export default function ShopScreen() {
           action={
             <ActionButton label={t("retry")} onPress={() => void retryLoad()} />
           }
-          body={unavailable ? t("backendUnavailableBody") : t("errorBody")}
           mark="!"
           title={unavailable ? t("backendUnavailableTitle") : t("errorTitle")}
         />
@@ -349,14 +286,7 @@ const styles = StyleSheet.create({
     paddingTop: 64,
   },
   launchCopy: { maxWidth: 560 },
-  launchLine: {
-    backgroundColor: palette.aquamarine,
-    height: 6,
-    marginBottom: spacing.lg,
-    width: 72,
-  },
   launchTitle: { ...type.display, color: palette.white },
-  launchBody: { ...type.body, color: "#D7D7E5", marginTop: spacing.sm },
   signInShell: {
     alignSelf: "center",
     flex: 1,
@@ -381,19 +311,6 @@ const styles = StyleSheet.create({
   signInTitle: { ...type.display, color: palette.navy },
   signInBody: { ...type.body, color: palette.navyMuted },
   signInForm: { gap: spacing.sm, marginTop: spacing.lg },
-  handoffBody: { ...type.body, color: palette.navyMuted },
-  input: {
-    ...type.body,
-    backgroundColor: palette.surface,
-    borderColor: palette.silver,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    color: palette.navy,
-    minHeight: 54,
-    paddingHorizontal: spacing.md,
-  },
-  stateActions: { gap: spacing.sm },
-  helpText: { ...type.caption, color: palette.navyMuted, textAlign: "center" },
   lockedTicket: {
     alignItems: "center",
     backgroundColor: palette.surface,
@@ -416,7 +333,6 @@ const styles = StyleSheet.create({
   },
   lockedMarkText: { color: palette.orangeInk, fontSize: 34, fontWeight: "700" },
   lockedTitle: { ...type.display, color: palette.navy, textAlign: "center" },
-  lockedBody: { ...type.body, color: palette.navyMuted, textAlign: "center" },
   nextReservation: {
     alignSelf: "flex-start",
     backgroundColor: palette.warningSurface,
@@ -426,32 +342,6 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   nextReservationText: { ...type.label, color: palette.navy },
-  accessTicket: {
-    alignItems: "center",
-    backgroundColor: palette.successSurface,
-    borderRadius: radii.md,
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginBottom: spacing.lg,
-    padding: spacing.md,
-  },
-  accessTicketCompact: {
-    marginBottom: spacing.sm,
-    padding: spacing.sm,
-  },
-  accessDot: {
-    alignItems: "center",
-    backgroundColor: palette.success,
-    borderRadius: radii.full,
-    height: 34,
-    justifyContent: "center",
-    width: 34,
-  },
-  accessDotText: { color: palette.white, fontSize: 18, fontWeight: "800" },
-  accessCopy: { flex: 1 },
-  accessTitle: { ...type.label, color: palette.aquamarineInk },
-  accessBody: { ...type.caption, color: palette.aquamarineInk },
-  accessChevron: { color: palette.aquamarineInk, fontSize: 26 },
   searchWrap: {
     alignItems: "center",
     backgroundColor: palette.surface,

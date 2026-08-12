@@ -31,16 +31,8 @@ export default function PurchaseDetailScreen() {
         header={false}
         navigationHeader={<BackHeader title={t("orderDetailTitle")} />}
       >
-        {actionError && (
-          <StatePanel body={t("errorBody")} mark="!" title={t("errorTitle")} />
-        )}
-        {!actionError && (
-          <StatePanel
-            body={t("loadingBody")}
-            mark="…"
-            title={t("loadingTitle")}
-          />
-        )}
+        {actionError && <StatePanel mark="!" title={t("errorTitle")} />}
+        {!actionError && <StatePanel mark="…" title={t("loadingTitle")} />}
       </AppScreen>
     );
   }

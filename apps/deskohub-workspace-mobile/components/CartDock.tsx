@@ -1,6 +1,5 @@
 import { SymbolView } from "expo-symbols";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 
 import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
@@ -13,10 +12,7 @@ export function CartDock({ onPress }: { onPress: () => void }) {
   const total = getLocalCartTotal(cart, catalog.products);
 
   return (
-    <Animated.View
-      entering={FadeInDown.duration(180).reduceMotion(ReduceMotion.System)}
-      style={styles.wrap}
-    >
+    <View style={styles.wrap}>
       <Pressable
         accessibilityLabel={`${t("cartView")}, ${cartQuantity === 1 ? t("cartItem") : t("cartItems", { count: cartQuantity })}`}
         accessibilityRole="button"
@@ -39,11 +35,6 @@ export function CartDock({ onPress }: { onPress: () => void }) {
         </View>
         <View style={styles.copy}>
           <Text style={styles.title}>{t("cartView")}</Text>
-          <Text style={styles.subtitle}>
-            {cartQuantity === 1
-              ? t("cartItem")
-              : t("cartItems", { count: cartQuantity })}
-          </Text>
         </View>
         <Text style={styles.total}>
           {formatMoney({ currency: "CZK", minorUnits: total }, locale)}
@@ -52,7 +43,7 @@ export function CartDock({ onPress }: { onPress: () => void }) {
           ›
         </Text>
       </Pressable>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -94,7 +85,6 @@ const styles = StyleSheet.create({
   countText: { color: palette.navy, fontSize: 11, fontWeight: "800" },
   copy: { flex: 1 },
   title: { ...type.label, color: palette.white },
-  subtitle: { ...type.caption, color: "#D7D7E5" },
   total: { ...type.bodyStrong, color: palette.white },
   chevron: { color: palette.white, fontSize: 28, marginLeft: spacing.xxs },
   pressed: { opacity: 0.82 },

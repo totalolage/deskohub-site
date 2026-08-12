@@ -1,7 +1,6 @@
 import { router } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { AppScreen } from "@/components/AppScreen";
@@ -52,7 +51,6 @@ export default function CartScreen() {
               onPress={() => router.replace("/")}
             />
           }
-          body={t("cartEmptyBody")}
           mark="0"
           title={t("cartEmptyTitle")}
         />
@@ -85,7 +83,7 @@ export default function CartScreen() {
           <View style={styles.checkoutDock}>
             <ActionButton
               disabled={!quote || !isOnline}
-              label={isActionPending ? t("startingPayment") : t("startPayment")}
+              label={t("startPayment")}
               loading={isActionPending && Boolean(quote)}
               onPress={() => void beginPayment()}
               variant="payment"
@@ -96,14 +94,7 @@ export default function CartScreen() {
       header={false}
       navigationHeader={<BackHeader title={t("cartTitle")} />}
     >
-      <Text style={styles.reviewBody}>{t("reviewBody")}</Text>
-      {actionError && (
-        <StatusBanner
-          body={t("errorBody")}
-          title={t("errorTitle")}
-          tone="error"
-        />
-      )}
+      {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
       <View style={styles.editLines}>
         {cartProducts.map(({ product, quantity }) => {
           const name = localizeText(product.name, locale);
@@ -132,31 +123,24 @@ export default function CartScreen() {
           );
         })}
       </View>
-      <Animated.View
-        entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
-        key={displayedTotal.minorUnits}
-        style={styles.estimate}
-      >
+      <View key={displayedTotal.minorUnits} style={styles.estimate}>
         <Text style={styles.estimateLabel}>
           {quote ? t("confirmedTotal") : t("localEstimate")}
         </Text>
         <Text style={styles.estimateValue}>
           {formatMoney(displayedTotal, locale)}
         </Text>
-      </Animated.View>
+      </View>
       {isActionPending && !quote && (
         <View style={styles.quoteLoading}>
           <Text style={styles.quoteLoadingText}>{t("quoteRefreshing")}</Text>
-          <LoadingSkeleton rows={1} />
+          <LoadingSkeleton label={t("loadingTitle")} rows={1} />
         </View>
       )}
       {quote && (
         <View style={styles.confirmed}>
           <SellerDetails seller={quote.seller} />
         </View>
-      )}
-      {!isOnline && (
-        <StatusBanner title={t("paymentOnlineOnly")} tone="warning" />
       )}
     </AppScreen>
   );
@@ -197,12 +181,6 @@ const styles = StyleSheet.create({
   quoteLoading: { gap: spacing.sm, marginTop: spacing.md },
   quoteLoadingText: { ...type.caption, color: palette.navyMuted },
   confirmed: { gap: spacing.md, marginTop: spacing.md },
-  reviewBody: {
-    ...type.body,
-    color: palette.navyMuted,
-    marginBottom: spacing.md,
-    maxWidth: 680,
-  },
   checkoutSafeArea: { backgroundColor: palette.paper },
   checkoutDock: {
     backgroundColor: palette.paper,

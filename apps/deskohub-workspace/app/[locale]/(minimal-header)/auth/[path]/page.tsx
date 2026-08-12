@@ -41,11 +41,6 @@ export default async function AuthPage({
             path={path}
             redirectTo={redirectTo}
             className="border-[#cbc8bf] bg-[#fffefa]/96 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]"
-            cardHeader={
-              path === "sign-in" ? (
-                <AuthCardHeader locale={locale} />
-              ) : undefined
-            }
           />
         </div>
       </main>
@@ -77,19 +72,3 @@ const getSafeAuthRedirect = (value: string | undefined, locale: Locale) => {
   }
   return `/${locale}/account`;
 };
-
-function AuthCardHeader({ locale }: { readonly locale: Locale }) {
-  return (
-    <div className="space-y-3">
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-burned-orange">
-        {m.accountAuthEyebrow({}, { locale })}
-      </p>
-      <h1 className="text-3xl text-navy-blue">
-        {m.accountAuthTitle({}, { locale })}
-      </h1>
-      <p className="text-sm leading-6 text-navy-blue/68">
-        {m.accountAuthDescription({}, { locale })}
-      </p>
-    </div>
-  );
-}

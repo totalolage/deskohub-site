@@ -1,13 +1,8 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import Animated, {
-  FadeInUp,
-  ReduceMotion,
-  ZoomIn,
-} from "react-native-reanimated";
 
-import { AppScreen, ScreenIntro } from "@/components/AppScreen";
+import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
 import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
 import { PurchaseStatusBadge } from "@/components/PurchaseComponents";
@@ -48,7 +43,7 @@ export default function PaymentScreen() {
         header={false}
         navigationHeader={<BackHeader title={t("paymentKicker")} />}
       >
-        <StatePanel body={t("errorBody")} mark="!" title={t("errorTitle")} />
+        <StatePanel mark="!" title={t("errorTitle")} />
       </AppScreen>
     );
   }
@@ -59,7 +54,6 @@ export default function PaymentScreen() {
     return refreshPurchase(normalizedOrderId);
   };
   const paymentActionLabel = (() => {
-    if (isActionPending) return t("checkingPayment");
     if (paymentHandoff?.orderId !== normalizedOrderId) return t("checkPayment");
     return apiMode === "demo" ? t("demoPayment") : t("openPayment");
   })();
@@ -70,29 +64,17 @@ export default function PaymentScreen() {
         header={false}
         navigationHeader={<BackHeader title={t("paymentKicker")} />}
       >
-        <Animated.View
-          entering={FadeInUp.duration(220).reduceMotion(ReduceMotion.System)}
-          style={styles.paidHero}
-        >
-          <Animated.View
-            entering={ZoomIn.duration(260).reduceMotion(ReduceMotion.System)}
-            style={styles.paidMark}
-          >
+        <View style={styles.paidHero}>
+          <View style={styles.paidMark}>
             <Text style={styles.paidMarkText}>✓</Text>
-          </Animated.View>
+          </View>
           <Text accessibilityRole="header" style={styles.paidTitle}>
             {t("paymentPaidTitle")}
           </Text>
           <Text style={styles.paidAmount}>
             {formatMoney(purchase.total, locale)}
           </Text>
-          <Text style={styles.paidBody}>{t("paymentPaidBody")}</Text>
-        </Animated.View>
-        <View style={styles.paidSummary}>
-          <Text style={styles.summaryLabel}>
-            {t("orderNumber", { id: purchase.publicReference })}
-          </Text>
-          <Text style={styles.summarySeller}>{purchase.seller.legalName}</Text>
+          <Text style={styles.paidBody}>{t("receiptSentGeneric")}</Text>
         </View>
         <View style={styles.actions}>
           <ActionButton
@@ -126,11 +108,10 @@ export default function PaymentScreen() {
         <StatePanel
           action={
             <ActionButton
-              label={t("backToShop")}
+              label={t("returnToCart")}
               onPress={() => router.replace("/cart")}
             />
           }
-          body={t("paymentFailedBody")}
           mark="×"
           title={t("paymentFailedTitle")}
         />
@@ -143,17 +124,7 @@ export default function PaymentScreen() {
       header={false}
       navigationHeader={<BackHeader title={t("paymentKicker")} />}
     >
-      <ScreenIntro
-        title={t("paymentReadyTitle")}
-        body={t("paymentReadyBody")}
-      />
-      {actionError && (
-        <StatusBanner
-          body={t("errorBody")}
-          title={t("errorTitle")}
-          tone="error"
-        />
-      )}
+      {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
       <View style={styles.paymentCard}>
         <View style={styles.paymentTopline}>
           <Text style={styles.orderId}>
@@ -166,13 +137,7 @@ export default function PaymentScreen() {
             {formatMoney(purchase.total, locale)}
           </Text>
         )}
-        <Text style={styles.paymentHint}>
-          {purchase ? t("paymentPendingBody") : t("paymentReadyBody")}
-        </Text>
       </View>
-      {!isOnline && (
-        <StatusBanner title={t("paymentOnlineOnly")} tone="warning" />
-      )}
       <ActionButton
         disabled={!isOnline}
         label={paymentActionLabel}
@@ -201,7 +166,6 @@ const styles = StyleSheet.create({
   },
   orderId: { ...type.bodyStrong, color: palette.navy },
   amount: { ...type.display, color: palette.navy, marginTop: spacing.md },
-  paymentHint: { ...type.body, color: palette.navyMuted },
   primaryAction: { marginTop: spacing.md },
   actions: {
     alignSelf: "center",
@@ -231,24 +195,8 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   paidBody: {
-    ...type.body,
+    ...type.caption,
     color: palette.navyMuted,
-    marginTop: spacing.sm,
-    maxWidth: 520,
-    textAlign: "center",
+    marginTop: spacing.xs,
   },
-  paidSummary: {
-    alignSelf: "center",
-    backgroundColor: palette.surface,
-    borderColor: palette.outline,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
-    maxWidth: 560,
-    padding: spacing.md,
-    width: "100%",
-  },
-  summaryLabel: { ...type.label, color: palette.navy },
-  summarySeller: { ...type.caption, color: palette.navyMuted },
 });

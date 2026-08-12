@@ -15,7 +15,7 @@ function SettingsSection({
   children,
 }: {
   title: string;
-  body: string;
+  body?: string;
   children: ReactNode;
 }) {
   return (
@@ -23,7 +23,7 @@ function SettingsSection({
       <Text aria-level={2} role="heading" style={styles.sectionTitle}>
         {title}
       </Text>
-      <Text style={styles.sectionBody}>{body}</Text>
+      {body && <Text style={styles.sectionBody}>{body}</Text>}
       <View style={styles.sectionActions}>{children}</View>
     </View>
   );
@@ -60,19 +60,8 @@ export default function AccountScreen() {
 
   return (
     <AppScreen>
-      <ScreenIntro title={t("accountTitle")} body={t("accountBody")} />
-      {session.kind === "signed_in" && (
-        <StatusBanner
-          body={session.customer.displayName ?? t("appName")}
-          title={
-            session.customer.email
-              ? t("signedInAs", { email: session.customer.email })
-              : t("appName")
-          }
-          tone="success"
-        />
-      )}
-      <SettingsSection title={t("languageTitle")} body={t("languageBody")}>
+      <ScreenIntro title={t("accountTitle")} />
+      <SettingsSection title={t("languageTitle")}>
         <View role="radiogroup" style={styles.segmented}>
           {(["cs", "en"] as const).map((option) => (
             <Pressable
@@ -100,9 +89,6 @@ export default function AccountScreen() {
       </SettingsSection>
       <SettingsSection title={t("analyticsTitle")} body={t("analyticsBody")}>
         <View style={styles.toggleRow}>
-          <Text style={styles.toggleLabel}>
-            {analyticsAllowed ? t("analyticsAllowed") : t("analyticsDenied")}
-          </Text>
           <Switch
             accessibilityLabel={
               analyticsAllowed ? t("disableAnalytics") : t("allowAnalytics")
@@ -129,7 +115,7 @@ export default function AccountScreen() {
           variant="secondary"
         />
       </SettingsSection>
-      <SettingsSection title={t("supportTitle")} body={t("supportBody")}>
+      <SettingsSection title={t("supportTitle")}>
         <ActionButton
           label={t("emailSupport")}
           onPress={() => void Linking.openURL("mailto:workspace@deskohub.cz")}
@@ -182,8 +168,7 @@ const styles = StyleSheet.create({
   toggleRow: {
     alignItems: "center",
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     minHeight: 52,
   },
-  toggleLabel: { ...type.label, color: palette.navy },
 });

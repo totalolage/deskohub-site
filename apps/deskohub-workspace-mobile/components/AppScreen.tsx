@@ -60,11 +60,7 @@ export function AppScreen({
           {navigationHeader}
           {!isOnline && (
             <View style={styles.bannerWrap}>
-              <StatusBanner
-                title={t("offlineTitle")}
-                body={t("offlineBody")}
-                tone="warning"
-              />
+              <StatusBanner title={t("offlineTitle")} tone="warning" />
             </View>
           )}
           <ScrollView
@@ -93,28 +89,18 @@ export function AppScreen({
   );
 }
 
-export function ScreenIntro({
-  kicker,
-  title,
-  body,
-}: {
-  kicker?: string;
-  title: string;
-  body: string;
-}) {
+export function ScreenIntro({ title }: { title: string }) {
   const { width } = useWindowDimensions();
   const compact = width < 480;
 
   return (
     <View style={[styles.intro, compact && styles.introCompact]}>
-      {kicker && <Text style={styles.kicker}>{kicker}</Text>}
       <Text
         accessibilityRole="header"
         style={[styles.title, compact && styles.titleCompact]}
       >
         {title}
       </Text>
-      <Text style={styles.body}>{body}</Text>
     </View>
   );
 }
@@ -160,18 +146,9 @@ const styles = StyleSheet.create({
     maxWidth: 680,
   },
   introCompact: { gap: spacing.xxs, marginBottom: spacing.sm },
-  kicker: {
-    ...type.label,
-    color: palette.orangeInk,
-  },
   title: {
     ...type.display,
     color: palette.navy,
   },
   titleCompact: { ...type.headline },
-  body: {
-    ...type.body,
-    color: palette.navyMuted,
-    maxWidth: 640,
-  },
 });

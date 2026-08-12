@@ -28,7 +28,7 @@ const webManifest = {
   id: "/",
   name: "Deskohub Workspace",
   short_name: "DW",
-  description: "Self-service purchases for Deskohub Workspace guests.",
+  description: "Workspace shop",
   start_url: "/",
   scope: "/",
   display: "standalone",

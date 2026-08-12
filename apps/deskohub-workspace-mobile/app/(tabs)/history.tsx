@@ -13,7 +13,7 @@ export default function HistoryScreen() {
 
   return (
     <AppScreen refresh={() => void refreshShop()} refreshing={isActionPending}>
-      <ScreenIntro title={t("historyTitle")} body={t("historyBody")} />
+      <ScreenIntro title={t("historyTitle")} />
       {session.kind === "signed_out" && (
         <StatePanel
           action={
@@ -22,24 +22,15 @@ export default function HistoryScreen() {
               onPress={() => router.replace("/")}
             />
           }
-          body={t("signInBody")}
           mark="DW"
           title={t("signInTitle")}
         />
       )}
       {session.kind === "signed_in" && actionError && (
-        <StatusBanner
-          body={t("errorBody")}
-          title={t("errorTitle")}
-          tone="error"
-        />
+        <StatusBanner title={t("errorTitle")} tone="error" />
       )}
       {session.kind === "signed_in" && purchases.length === 0 && (
-        <StatePanel
-          body={t("historyEmptyBody")}
-          mark="✓"
-          title={t("historyEmptyTitle")}
-        />
+        <StatePanel mark="✓" title={t("historyEmptyTitle")} />
       )}
       {session.kind === "signed_in" && purchases.length > 0 && (
         <View style={styles.list}>

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
-import Animated, { FadeIn, ReduceMotion } from "react-native-reanimated";
 
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { formatMoney, localizeText } from "@/src/domain/format";
@@ -30,41 +29,27 @@ export function ProductCard({
       <ProductThumbnail product={product} />
       <View style={styles.copy}>
         <Text style={styles.name}>{name}</Text>
-        <Text style={styles.description}>
-          {localizeText(product.description, locale)}
-        </Text>
         <Text style={styles.price}>{formatMoney(product.price, locale)}</Text>
       </View>
       {quantity === 0 && (
-        <Animated.View
-          entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
+        <Pressable
+          accessibilityLabel={`${t("add")}: ${name}`}
+          accessibilityRole="button"
+          onPress={() => setProductQuantity(product.id, 1)}
+          style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
         >
-          <Pressable
-            accessibilityLabel={`${t("add")}: ${name}`}
-            accessibilityRole="button"
-            onPress={() => setProductQuantity(product.id, 1)}
-            style={({ pressed }) => [
-              styles.addButton,
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={styles.addIcon}>+</Text>
-          </Pressable>
-        </Animated.View>
+          <Text style={styles.addIcon}>+</Text>
+        </Pressable>
       )}
       {quantity > 0 && (
-        <Animated.View
-          entering={FadeIn.duration(150).reduceMotion(ReduceMotion.System)}
-        >
-          <QuantityStepper
-            compact
-            productName={name}
-            quantity={quantity}
-            onChange={(nextQuantity) =>
-              setProductQuantity(product.id, nextQuantity)
-            }
-          />
-        </Animated.View>
+        <QuantityStepper
+          compact
+          productName={name}
+          quantity={quantity}
+          onChange={(nextQuantity) =>
+            setProductQuantity(product.id, nextQuantity)
+          }
+        />
       )}
     </View>
   );
@@ -141,15 +126,10 @@ const styles = StyleSheet.create({
     ...type.bodyStrong,
     color: palette.navy,
   },
-  description: {
-    ...type.caption,
-    color: palette.navyMuted,
-    marginTop: spacing.xxs,
-  },
   price: {
     ...type.bodyStrong,
     color: palette.navy,
-    marginTop: spacing.xs,
+    marginTop: spacing.xxs,
   },
   addButton: {
     alignItems: "center",
