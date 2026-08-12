@@ -39,11 +39,11 @@ The permanent Android keystore and Expo update-signing private key must be backe
 
 ## Preview APK flow
 
-`.github/workflows/workspace-mobile-preview.yml` accepts only an eligible open internal PR and a successful immutable Vercel Workspace deployment for the exact head SHA. It then waits for that SHA's `Workspace E2E` status, which includes the isolated Neon preview database migration and integration suite.
+`.github/workflows/workspace-mobile-preview.yml` starts from eligible internal PR activity and waits for a successful immutable Vercel Workspace deployment for the exact head SHA. It retains deployment and manual dispatch triggers, then waits for that SHA's `Workspace E2E` status, which includes the isolated Neon preview database migration and integration suite.
 
 A privileged job creates a 14-day deployment-scoped Vercel Shareable Link without checking out PR code. The unprivileged build receives only that scoped URL, builds an APK with a PR/SHA-specific package and scheme, verifies the package and full-SHA version tag, and posts the 14-day GitHub artifact link on the PR. Neither a database URL nor the project-wide Vercel bypass secret enters the APK.
 
-The `repository_dispatch` trigger becomes active after this workflow exists on the default branch. `workflow_dispatch` is the controlled recovery path and still verifies the exact GitHub deployment, SHA, branch, and open PR.
+The `pull_request` trigger also covers the pull request that introduces the workflow before it exists on the default branch. `repository_dispatch` provides the direct deployment-driven path after merge; `workflow_dispatch` is the controlled recovery path. Every path verifies the exact GitHub deployment, SHA, branch, and open PR.
 
 ## Production flow
 

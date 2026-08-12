@@ -543,7 +543,7 @@ Do not use Expo Router’s experimental stack for production. Do not put Effect 
 
 #### Per-PR preview APK
 
-1. Start only after the existing Workspace `vercel.deployment.success` workflow has verified an eligible internal, non-draft pull request, exact 40-character head SHA, and matching immutable Vercel deployment URL.
+1. Start when an eligible internal, non-draft pull request is opened, updated, reopened, or marked ready. Wait for and verify its exact 40-character head SHA and matching successful immutable Workspace Vercel deployment; retain `vercel.deployment.success` and manual dispatch as idempotent and recovery triggers.
 2. Reuse the existing Neon/Vercel lifecycle: resolve the unique non-primary `preview/<internal-head-ref>` Neon branch, mask its direct and pooled URLs, migrate it with the direct URL, and never fall back to production or shared development. The APK receives no database credential; its API origin is the exact preview deployment already connected to that branch.
 3. Provision preview access in a privileged job that never checks out or executes PR code. The current project-wide Vercel automation-bypass secret must never be passed to the build job, embedded in an APK, written to an artifact, or accepted by the app.
 4. Before enabling downloadable previews, prove on a real Android build that a short-lived, deployment-scoped Vercel Shareable Link can establish and retain preview access for the native HTTP client, Neon Auth link return, and payment-return path. If that device spike fails, use a dedicated unprotected-but-application-authenticated mobile preview origin containing synthetic data; do not weaken the production project or embed the global bypass secret.

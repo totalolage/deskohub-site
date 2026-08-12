@@ -1,6 +1,9 @@
 name: Workspace Mobile Preview
 
 on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review]
   repository_dispatch:
     types: [vercel.deployment.success]
   workflow_dispatch:
@@ -21,16 +24,22 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: workspace-mobile-preview-${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
+  group: workspace-mobile-preview-${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
   cancel-in-progress: true
 
 jobs:
   resolve-target:
     if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.draft == false &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.user.login != 'dependabot[bot]' &&
+       !startsWith(github.event.pull_request.head.ref, 'dependabot/')) ||
       github.event_name == 'workflow_dispatch' ||
       (github.event.client_payload.project.id == 'prj_7FliQBcbBiBwGaO2JLrigicnXCRd' &&
        github.event.client_payload.environment == 'preview')
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     outputs:
       eligible: ${{ steps.target.outputs.eligible }}
       head_ref: ${{ steps.target.outputs.head_ref }}
@@ -38,13 +47,52 @@ jobs:
       sha: ${{ steps.target.outputs.sha }}
       url: ${{ steps.target.outputs.url }}
     steps:
+      - name: Wait for exact-head Workspace preview
+        id: pull-request-preview
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 100); do
+            deployments="$(gh api -H 'Accept: application/vnd.github+json' \
+              "repos/$GITHUB_REPOSITORY/deployments?sha=$TARGET_SHA&environment=Preview%20%E2%80%93%20deskohub-workspace-site&per_page=100")"
+            while IFS= read -r deployment_id; do
+              [[ -z "$deployment_id" ]] && continue
+              statuses="$(gh api -H 'Accept: application/vnd.github+json' \
+                "repos/$GITHUB_REPOSITORY/deployments/$deployment_id/statuses")"
+              while IFS= read -r candidate_url; do
+                [[ -z "$candidate_url" ]] && continue
+                normalized_url="$({ TARGET_URL="$candidate_url" node <<'NODE'
+          const url = new URL(process.env.TARGET_URL);
+          const host = url.hostname.toLowerCase();
+          if (
+            url.protocol !== "https:" || url.username || url.password || url.port ||
+            url.pathname !== "/" || url.search || url.hash ||
+            !/^[a-z0-9-]+\.vercel\.app$/.test(host) || host.includes("-git-")
+          ) process.exit(1);
+          process.stdout.write(`https://${host}`);
+          NODE
+                } 2>/dev/null)" || continue
+                echo "url=$normalized_url" >> "$GITHUB_OUTPUT"
+                exit 0
+              done < <(jq -r '.[] | select(.state == "success") | .environment_url // empty' <<<"$statuses")
+            done < <(jq -r '.[].id' <<<"$deployments")
+            echo "Exact-head Workspace preview is not ready; waiting ($attempt/100)"
+            sleep 30
+          done
+          echo "Timed out waiting for the exact-head Workspace preview" >&2
+          exit 1
+
       - name: Resolve exact internal PR preview
         id: target
         env:
           GH_TOKEN: ${{ github.token }}
-          TARGET_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
-          TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
-          TARGET_URL: ${{ github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
+          TARGET_REF: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.event_name == 'workflow_dispatch' && inputs.ref || github.event.client_payload.git.ref }}
+          TARGET_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'workflow_dispatch' && inputs.sha || github.event.client_payload.git.sha }}
+          TARGET_URL: ${{ github.event_name == 'pull_request' && steps.pull-request-preview.outputs.url || github.event_name == 'workflow_dispatch' && inputs.url || github.event.client_payload.url }}
         run: |
           set -euo pipefail
 

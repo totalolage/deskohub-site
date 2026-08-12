@@ -1,6 +1,28 @@
 import { expect, test } from "bun:test";
 import { resolve } from "node:path";
 
+test("starts a preview APK run from the exact internal PR head", async () => {
+  const workflow = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../../../.github/workflows/workspace-mobile-preview.yml"
+    )
+  ).text();
+
+  expect(workflow).toContain("pull_request:");
+  expect(workflow).toContain(
+    "types: [opened, reopened, synchronize, ready_for_review]"
+  );
+  expect(workflow).toContain("github.event.pull_request.head.repo.full_name");
+  expect(workflow).toContain("github.event.pull_request.head.sha");
+  expect(workflow).toContain("Wait for exact-head Workspace preview");
+  expect(workflow).toContain(
+    "environment=Preview%20%E2%80%93%20deskohub-workspace-site"
+  );
+  expect(workflow).toContain("No successful exact-SHA Workspace deployment");
+  expect(workflow).toContain("Wait for exact-SHA preview migration and E2E");
+});
+
 test("reuses a verified immutable APK when a production release is rerun", async () => {
   const workflow = await Bun.file(
     resolve(
