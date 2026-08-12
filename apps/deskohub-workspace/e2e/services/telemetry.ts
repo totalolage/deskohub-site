@@ -24,6 +24,7 @@ export type E2EPhaseId =
   | "cowork-availability-preparation"
   | "fixture-seeding"
   | "independent-case-phase"
+  | "invoice-persistence"
   | "meeting-room-availability-preparation"
   | "office-availability-preparation"
   | "preview-readiness"

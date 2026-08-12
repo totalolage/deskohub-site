@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,

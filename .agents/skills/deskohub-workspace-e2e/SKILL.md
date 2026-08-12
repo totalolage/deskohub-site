@@ -25,6 +25,11 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 ## Preserve E2E invariants
 
 - Before trusting generated copy or changing assertions based on message text, run `bun turbo i18n:compile --filter=deskohub-workspace` from the repository root. Paraglide output can be stale relative to `features/i18n/messages/*.json`.
+- Put database integration assertions inside the normal E2E runner and use its
+  scoped `E2EDatabase` service, which connects to the workflow-injected direct
+  preview URL. Do not add a dedicated package script, Turbo task, test-file
+  naming convention, environment switch, or case-specific database allowlist
+  for those assertions.
 - Treat email-provider secrets that exist only in Vercel as intentionally unavailable to local E2E. Validate delivery through Vercel runtime or webhook evidence, and validate email body content with the fake transport renderer.
 - Run full E2E only against the ordinary protected Vercel Git preview for the exact committed and pushed SHA. Use the immutable deployment URL from `vercel.deployment.success` or an explicitly supplied workflow-dispatch input; never scrape the PR comment or substitute a mutable branch/custom-domain alias. For manual dispatch, fail before the test job unless GitHub deployment metadata records that origin as a successful Workspace deployment for the exact target SHA.
 - Treat `WORKSPACE_E2E_BASE_URL` and its integration-created Neon preview branch as one target. Resolve and migrate the validated `preview/<internal-head-ref>` branch after the preview succeeds, pass its pooled URL to runtime checks and its direct URL to migrations, assertions, and the allowlist, and fail closed rather than falling back to production or shared development.
@@ -179,7 +184,8 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one
   root run span, fixed phase spans, one child span for every case, and one child
-  span for every semantic step. Phase IDs cover readiness, fixture seeding,
+  span for every semantic step. Phase IDs cover readiness, database
+  persistence, fixture seeding,
   cowork, meeting-room, and office availability preparation, case construction, independent/shared phases,
   per-case finalization, and suite cleanup. Use fixed low-cardinality span names, native span duration,
   the configured timeout as a numeric attribute, closed outcome/failure-kind

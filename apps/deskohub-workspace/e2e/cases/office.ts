@@ -18,6 +18,7 @@ import {
   type WorkspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
+import { isPreviewPageAvailable } from "../preview-readiness";
 import type { Runner } from "../runtime";
 import { assert, log } from "../runtime";
 import { workspaceE2EPollIntervalMs } from "../timeouts";
@@ -36,13 +37,24 @@ export const prepareOfficeE2E = (
   config: WorkspaceE2EConfig,
   allocation: WorkspaceE2EDateAllocation
 ): Effect.Effect<
-  OfficeE2EPreparation,
+  OfficeE2EPreparation | undefined,
   WorkspaceE2EError,
   HttpClient.HttpClient
 > =>
-  selectAvailableOfficeSlot(config, allocation).pipe(
-    Effect.map((slot) => ({ slot }))
-  );
+  Effect.gen(function* () {
+    const pageAvailable = yield* isPreviewPageAvailable(
+      config,
+      "/en-US/reservation/office",
+      "data-office-base-price"
+    );
+    if (!pageAvailable) {
+      log("Office checkout e2e skipped because the office page is disabled");
+      return undefined;
+    }
+
+    const slot = yield* selectAvailableOfficeSlot(config, allocation);
+    return { slot };
+  });
 
 export const makeOfficeE2ECases = ({
   config,
@@ -54,7 +66,7 @@ export const makeOfficeE2ECases = ({
   readonly config: WorkspaceE2EConfig;
   readonly datasourceConfig: DatasourceConfig;
   readonly flowStates: CheckoutFlowState[];
-  readonly preparation: OfficeE2EPreparation;
+  readonly preparation: OfficeE2EPreparation | undefined;
   readonly run: Runner;
 }): Effect.Effect<
   readonly WorkspaceE2ECase[],
@@ -62,6 +74,8 @@ export const makeOfficeE2ECases = ({
   HttpClient.HttpClient
 > =>
   Effect.gen(function* () {
+    if (!preparation) return [];
+
     const httpClient = yield* HttpClient.HttpClient;
     const data = makeOfficeCheckoutData(
       config.baseUrl,

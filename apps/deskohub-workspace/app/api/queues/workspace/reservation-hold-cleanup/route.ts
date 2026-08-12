@@ -1,6 +1,6 @@
 import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   processReservationHoldCleanupScheduleMessage,
   ReservationHoldCleanupServiceLiveWithDependencies,

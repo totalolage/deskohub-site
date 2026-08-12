@@ -1,7 +1,7 @@
 import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import { Resend } from "resend";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database-live.server";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
