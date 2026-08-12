@@ -66,10 +66,12 @@ export const e2eEnvironmentSchema = Schema.Struct({
   GITHUB_RUN_ID: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[1-9][0-9]*$/)))
   ),
+  GITHUB_STEP_SUMMARY: optionalNonEmptyString,
   HOME: optionalNonEmptyString,
   LANG: optionalNonEmptyString,
   NEXI_API_ORIGIN: url,
   PATH: optionalNonEmptyString,
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalNonEmptyString,
   TARGET_SHA: toEnvironmentSchema(
     Schema.optional(Schema.String.check(Schema.isPattern(/^[0-9a-f]{40}$/)))
   ),
@@ -90,6 +92,8 @@ export const e2eEnvironmentSchema = Schema.Struct({
   WORKSPACE_E2E_POSTHOG_HOST: optionalUrl,
   WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN: optionalNonEmptyString,
   WORKSPACE_E2E_PR_NUMBER: optionalPositiveInteger,
+  WORKSPACE_E2E_RUN_CONTEXT: optionalNonEmptyString,
+  WORKSPACE_E2E_TRACE_PARENT: optionalNonEmptyString,
 });
 
 export const makeE2EEnvironment = (
@@ -114,10 +118,13 @@ export const makeE2EEnvironment = (
       GITHUB_EVENT_NAME: runtimeEnvironment.GITHUB_EVENT_NAME,
       GITHUB_RUN_ATTEMPT: runtimeEnvironment.GITHUB_RUN_ATTEMPT,
       GITHUB_RUN_ID: runtimeEnvironment.GITHUB_RUN_ID,
+      GITHUB_STEP_SUMMARY: runtimeEnvironment.GITHUB_STEP_SUMMARY,
       HOME: runtimeEnvironment.HOME,
       LANG: runtimeEnvironment.LANG,
       NEXI_API_ORIGIN: runtimeEnvironment.NEXI_API_ORIGIN,
       PATH: runtimeEnvironment.PATH,
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH:
+        runtimeEnvironment.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
       TARGET_SHA: runtimeEnvironment.TARGET_SHA,
       TMPDIR: runtimeEnvironment.TMPDIR,
       USER: runtimeEnvironment.USER,
@@ -140,25 +147,24 @@ export const makeE2EEnvironment = (
       WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN:
         runtimeEnvironment.WORKSPACE_E2E_POSTHOG_PROJECT_TOKEN,
       WORKSPACE_E2E_PR_NUMBER: runtimeEnvironment.WORKSPACE_E2E_PR_NUMBER,
+      WORKSPACE_E2E_RUN_CONTEXT: runtimeEnvironment.WORKSPACE_E2E_RUN_CONTEXT,
+      WORKSPACE_E2E_TRACE_PARENT: runtimeEnvironment.WORKSPACE_E2E_TRACE_PARENT,
     },
     server: e2eEnvironmentSchema.fields,
   });
 
 export type E2EEnvironment = ReturnType<typeof makeE2EEnvironment>;
 
-export const makeWorkspaceE2EEnvironment = (
-  runtimeEnvironment: RuntimeEnvironment = process.env
-) => {
-  const environment = makeE2EEnvironment(runtimeEnvironment);
-  if (
-    environment.WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED === "true" &&
-    !environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-  ) {
-    throw new Error("Invalid workspace E2E environment variables.");
-  }
-  return environment;
+export type WorkspaceE2EEnvironment = E2EEnvironment & {
+  readonly WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: string;
 };
 
-export type WorkspaceE2EEnvironment = ReturnType<
-  typeof makeWorkspaceE2EEnvironment
->;
+export const makeWorkspaceE2EEnvironment = (
+  runtimeEnvironment: RuntimeEnvironment = process.env
+): WorkspaceE2EEnvironment => {
+  const environment = makeE2EEnvironment(runtimeEnvironment);
+  if (!environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL) {
+    throw new Error("Invalid workspace E2E environment variables.");
+  }
+  return environment as WorkspaceE2EEnvironment;
+};

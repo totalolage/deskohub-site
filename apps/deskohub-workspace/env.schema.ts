@@ -21,7 +21,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID: toEnvSchema(
     Schema.String.check(Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/))
   ),
-  AGENT_BROWSER_EXECUTABLE_PATH: optionalStringSchema,
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
   DATABASE_URL: urlEnvSchema,
@@ -46,6 +45,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   GOOGLE_CALENDAR_SALES_ID: nonEmptyStringSchema,
   GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL: nonEmptyStringSchema,
   GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID: nonEmptyStringSchema,
+  GITHUB_STEP_SUMMARY: optionalStringSchema,
   RESEND_WEBHOOK_SECRET: optionalStringSchema,
   CHECKOUT_PAY_STATE_KEYS: nonEmptyStringSchema,
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: toEnvSchema(
@@ -73,6 +73,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   POSTHOG_HOST: optionalUrlEnvSchema,
   POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(PostHogProjectId)),
   POSTHOG_HISTORY_API_KEY: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: optionalStringSchema,
   VERCEL_ENV: toEnvSchema(vercelEnvironmentSchema),
   VERCEL_GIT_COMMIT_SHA: optionalStringSchema,
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,

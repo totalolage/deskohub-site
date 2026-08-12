@@ -87,7 +87,7 @@ export const makeOfficeE2ECases = ({
     return [
       {
         checkoutStates: [state],
-        execute: ({ resources, runStep, session }) =>
+        execute: ({ runStep, session }) =>
           executeCheckoutFlow({
             config,
             data,
@@ -96,7 +96,6 @@ export const makeOfficeE2ECases = ({
               id: "office-paid-multi-day",
               submitReservationScript: getSubmitOfficeReservationScript,
             },
-            resources,
             payPageSteps: () => [
               {
                 execute: assertOfficePayPage(config, data, run, session),

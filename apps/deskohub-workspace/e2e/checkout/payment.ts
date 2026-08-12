@@ -5,12 +5,14 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
+  clickBrowserElement,
   findEnabledSnapshotRef,
   findFirstEnabledTextFieldRef,
   findFirstTextFieldRef,
   findSnapshotRef,
   focusBrowserElement,
   getSnapshotRef,
+  isFrameSnapshotRef,
   openBrowserPage,
   pressBrowserKey,
   readActiveBrowserTabId,
@@ -69,7 +71,7 @@ const runBrowserCommand = (
   options?: Parameters<Runner>[2]
 ) =>
   tryWorkspaceE2EPromise(operation, (signal) =>
-    run("agent-browser", ["--session", session, ...args], {
+    run("playwright", ["--session", session, ...args], {
       ...options,
       signal,
     })
@@ -732,7 +734,8 @@ export const completeNexiHostedPayment = ({
         { value: "AUTENTICAZIONE RIUSCITA" },
         { value: "Authentication successful" },
       ],
-      timeouts
+      timeouts,
+      { activation: "pointer" }
     );
     if (isCheckoutStatusUrl(yield* readBrowserUrl(run, session))) {
       log(
@@ -801,11 +804,7 @@ const waitForReturnedPaymentTabToClose = ({
         timeoutMs,
       }
     );
-    yield* switchToBrowserTab(
-      run,
-      session,
-      hostedPaymentPage.checkoutTabId
-    );
+    yield* switchToBrowserTab(run, session, hostedPaymentPage.checkoutTabId);
   });
 
 const fillHostedPaymentField = (
@@ -984,14 +983,19 @@ const findHostedPaymentRef = (
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
-  options: { readonly enabledOnly?: boolean } = {}
+  options: {
+    readonly enabledOnly?: boolean;
+    readonly role?: string;
+  } = {}
 ): Effect.Effect<HostedPaymentRef | undefined, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const snapshot = yield* readInteractiveSnapshot(run, session);
     const directRef = options.enabledOnly
-      ? findEnabledSnapshotRef(snapshot, labels)
-      : findSnapshotRef(snapshot, labels);
-    if (directRef) return { framed: false, ref: directRef };
+      ? findEnabledSnapshotRef(snapshot, labels, options.role)
+      : findSnapshotRef(snapshot, labels, options.role);
+    if (directRef && !isFrameSnapshotRef(directRef)) {
+      return { framed: false, ref: directRef };
+    }
 
     for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
       const switched = yield* runBrowserCommand(
@@ -1007,16 +1011,16 @@ const findHostedPaymentRef = (
       const frameResult = yield* Effect.gen(function* () {
         const frameSnapshot = yield* readInteractiveSnapshot(run, session);
         const frameFieldRef = options.enabledOnly
-          ? (findEnabledSnapshotRef(frameSnapshot, labels) ??
+          ? (findEnabledSnapshotRef(frameSnapshot, labels, options.role) ??
             (frame.exact
               ? findFirstEnabledTextFieldRef(frameSnapshot)
               : undefined))
-          : (findSnapshotRef(frameSnapshot, labels) ??
+          : (findSnapshotRef(frameSnapshot, labels, options.role) ??
             (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined));
         if (!frameFieldRef) return undefined;
 
         shouldRestoreMainFrame = false;
-        return { framed: true, ref: frameFieldRef };
+        return { framed: true, ref: "input" };
       }).pipe(
         Effect.ensuring(
           Effect.suspend(() =>
@@ -1067,7 +1071,11 @@ const clickHostedPaymentTarget = (
   label: string,
   targets: readonly HostedPaymentClickTarget[],
   timeouts: WorkspaceE2ETimeouts,
-  options: { readonly optional?: boolean; readonly timeoutMs?: number } = {}
+  options: {
+    readonly activation?: "keyboard" | "pointer";
+    readonly optional?: boolean;
+    readonly timeoutMs?: number;
+  } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const labels = targets.map((target) => target.value);
@@ -1080,12 +1088,18 @@ const clickHostedPaymentTarget = (
 
     if (!target) return;
 
-    yield* Effect.gen(function* () {
-      yield* focusBrowserElement(run, session, target.ref, {
-        timeoutMs: 30_000,
-      });
-      yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
-    }).pipe(
+    yield* (
+      options.activation === "pointer"
+        ? clickBrowserElement(run, session, target.ref, { timeoutMs: 30_000 })
+        : Effect.gen(function* () {
+            yield* focusBrowserElement(run, session, target.ref, {
+              timeoutMs: 30_000,
+            });
+            yield* pressBrowserKey(run, session, "Enter", {
+              timeoutMs: 30_000,
+            });
+          })
+    ).pipe(
       Effect.ensuring(
         target.framed
           ? switchToMainFrame(run, session).pipe(Effect.ignore)
@@ -1125,11 +1139,14 @@ const waitForHostedPaymentClickTarget = (
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  pollUntil(findHostedPaymentRef(run, session, labels, []), {
-    intervalMs: workspaceE2EPollIntervalMs.browser,
-    label: `Nexi target ${labels.join(" / ")}`,
-    timeoutMs,
-  });
+  pollUntil(
+    findHostedPaymentRef(run, session, labels, [], { role: "button" }),
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: `Nexi target ${labels.join(" / ")}`,
+      timeoutMs,
+    }
+  );
 
 const waitForHostedPaymentTargetToChange = (
   run: Runner,
@@ -1144,7 +1161,14 @@ const waitForHostedPaymentTargetToChange = (
         run,
         session,
         labels,
-        []
+        [],
+        { role: "button" }
+      ).pipe(
+        Effect.catch((error) =>
+          error.message.includes("Execution context was destroyed")
+            ? Effect.succeed(undefined)
+            : Effect.fail(error)
+        )
       );
       if (stillPresent?.framed) yield* switchToMainFrame(run, session);
       return stillPresent ? undefined : true;

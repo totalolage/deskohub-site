@@ -1,3 +1,4 @@
+import { isNativeError } from "node:util/types";
 import {
   type AnyValue,
   type AnyValueMap,
@@ -369,7 +370,7 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (Error.isError(value)) {
+  if (isNativeError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
 

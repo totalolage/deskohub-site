@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Deferred, Effect, Exit, Option, Semaphore } from "effect";
+import { Cause, Effect, Exit, Option } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -39,7 +39,6 @@ import {
 } from "./timeouts";
 import type {
   WorkspaceE2ECase,
-  WorkspaceE2ECaseResources,
   WorkspaceE2EStep,
   WorkspaceE2EStepRunner,
 } from "./types";
@@ -51,24 +50,7 @@ const e2eOutcomeStatus: Record<E2EOutcome, string> = {
   timed_out: "TIMEOUT",
 };
 
-export const workspaceE2EReservationStartConcurrency = 6;
-export const workspaceE2EHostedPaymentConcurrency = 3;
 export { workspaceE2EProviderVerificationConcurrency };
-
-type ReservationStartPermit = {
-  readonly deferred: Deferred.Deferred<void>;
-  granted: boolean;
-  readonly priority: number;
-  released: boolean;
-  readonly sequence: number;
-};
-
-interface ReservationStartPermitPool {
-  readonly withPermit: <A, E, R>(
-    priority: number,
-    effect: Effect.Effect<A, E, R>
-  ) => Effect.Effect<A, E, R>;
-}
 
 export type WorkspaceE2EFailureDiagnostic = {
   readonly caseId: string;
@@ -94,21 +76,21 @@ type WorkspaceE2ECaseRuntime = {
   readonly testCase: WorkspaceE2ECase;
 };
 
-export const runWorkspaceE2ECases = ({
+export const runWorkspaceE2ECase = ({
   artifactRoot,
-  cases,
   datasourceConfig,
   reportFailure,
   run,
   sessionPrefix,
+  testCase,
   timeouts,
 }: {
   artifactRoot: string;
-  cases: readonly WorkspaceE2ECase[];
   datasourceConfig: DatasourceConfig;
   reportFailure?: WorkspaceE2EFailureReporter;
   run: Runner;
   sessionPrefix: string;
+  testCase: WorkspaceE2ECase;
   timeouts: WorkspaceE2ETimeouts;
 }): Effect.Effect<
   void,
@@ -122,191 +104,87 @@ export const runWorkspaceE2ECases = ({
     Effect.gen(function* () {
       const telemetry = yield* E2ETelemetryService;
       const cleanup = yield* WorkspaceE2ECleanupService;
-      const reservationStartPermitPool = yield* makeReservationStartPermitPool(
-        workspaceE2EReservationStartConcurrency
-      );
-      const hostedPaymentSemaphore = yield* Semaphore.make(
-        workspaceE2EHostedPaymentConcurrency
-      );
-      const resources: WorkspaceE2ECaseResources = {
-        withHostedPaymentSession: (effect) =>
-          hostedPaymentSemaphore.withPermit(effect),
-      };
       const providerVerificationPermit =
         yield* WorkspaceE2EProviderVerificationPermitService;
-      const indexedCases = [...cases.entries()];
-      const independentFailure = yield* Deferred.make<number>();
-      const parallelCases = indexedCases
-        .filter(([, testCase]) => !testCase.runAfterParallel)
-        .sort(([, left], [, right]) => left.timeoutMs - right.timeoutMs);
-      const sharedFixtureCases = indexedCases.filter(
-        ([, testCase]) => testCase.runAfterParallel
-      );
-      const runCaseEntry = (
-        [caseIndex, testCase]: (typeof indexedCases)[number],
-        failureSignal?: Deferred.Deferred<number>
-      ) => {
-        let caseRuntime: WorkspaceE2ECaseRuntime | undefined;
-        const tracedCase = telemetry.traceCase({
-          caseId: testCase.id,
-          effect: Effect.acquireUseRelease(
-            Effect.sync((): WorkspaceE2ECaseRuntime => {
-              const runtime: WorkspaceE2ECaseRuntime = {
-                artifactDir: resolve(artifactRoot, testCase.id),
-                browserHarStarted: false,
-                browserHarStopped: false,
-                session: `${sessionPrefix}-${caseIndex}`,
-                testCase,
-              };
-              caseRuntime = runtime;
-              return runtime;
-            }),
-            (runtime) => {
-              const execution = runCase(
+      let caseRuntime: WorkspaceE2ECaseRuntime | undefined;
+      const tracedCase = telemetry.traceCase({
+        caseId: testCase.id,
+        effect: Effect.acquireUseRelease(
+          Effect.sync((): WorkspaceE2ECaseRuntime => {
+            const runtime: WorkspaceE2ECaseRuntime = {
+              artifactDir: resolve(artifactRoot, testCase.id),
+              browserHarStarted: false,
+              browserHarStopped: false,
+              session: `${sessionPrefix}-${testCase.id}`,
+              testCase,
+            };
+            caseRuntime = runtime;
+            return runtime;
+          }),
+          (runtime) =>
+            runCase(
+              runtime,
+              run,
+              telemetry,
+              timeouts,
+              providerVerificationPermit
+            ).pipe(
+              Effect.tapCause(() =>
+                runtime.failureCause
+                  ? captureFailureArtifacts(runtime, run, timeouts)
+                  : Effect.void
+              )
+            ),
+          (runtime) =>
+            telemetry.tracePhase({
+              caseId: testCase.id,
+              effect: finalizeCaseRuntime(
                 runtime,
                 run,
-                telemetry,
                 timeouts,
-                reservationStartPermitPool,
-                providerVerificationPermit,
-                resources
-              ).pipe(
-                Effect.tapCause((cause) =>
-                  failureSignal && !Cause.hasInterruptsOnly(cause)
-                    ? Deferred.succeed(failureSignal, caseIndex).pipe(
-                        Effect.asVoid
-                      )
-                    : Effect.void
-                ),
-                Effect.tapCause(() =>
-                  runtime.failureCause
-                    ? captureFailureArtifacts(runtime, run, timeouts)
-                    : Effect.void
-                )
-              );
-
-              if (!failureSignal) return execution;
-
-              const interruptOnSiblingFailure = Deferred.await(
-                failureSignal
-              ).pipe(
-                Effect.flatMap((failingCaseIndex) =>
-                  failingCaseIndex === caseIndex
-                    ? Effect.never
-                    : Effect.interrupt
-                )
-              );
-
-              return Effect.raceFirst(execution, interruptOnSiblingFailure);
-            },
-            (runtime) =>
-              telemetry.tracePhase({
-                caseId: testCase.id,
-                effect: finalizeCaseRuntime(
-                  runtime,
-                  run,
-                  timeouts,
-                  cleanup,
-                  datasourceConfig
-                ),
-                phaseId: "case-finalization",
-              })
-          ),
-          timeoutMs: testCase.timeoutMs,
-        });
-
-        const diagnosedCase = reportFailure
-          ? tracedCase.pipe(
-              Effect.tapCause((cause) =>
-                Effect.sync(() => {
-                  if (Cause.hasInterruptsOnly(cause)) return;
-                  const result = toE2EResult(Exit.failCause(cause));
-                  if (
-                    result.outcome !== "failed" &&
-                    result.outcome !== "timed_out"
-                  )
-                    return;
-                  const error = Cause.findErrorOption(cause);
-                  const diagnosticCode =
-                    Option.isSome(error) &&
-                    error.value instanceof WorkspaceE2EError
-                      ? error.value.diagnosticCode
-                      : undefined;
-                  try {
-                    reportFailure({
-                      caseId: testCase.id,
-                      ...(diagnosticCode ? { diagnosticCode } : {}),
-                      failureKind: result.failureKind,
-                      outcome: result.outcome,
-                      ...(caseRuntime?.terminalStepId
-                        ? { stepId: caseRuntime.terminalStepId }
-                        : {}),
-                    });
-                  } catch {
-                    log("Workspace E2E failure reporter failed");
-                  }
-                })
-              )
-            )
-          : tracedCase;
-
-        if (!failureSignal) return diagnosedCase;
-
-        return diagnosedCase.pipe(
-          Effect.catchCause((cause) => {
-            if (!Cause.hasInterruptsOnly(cause)) return Effect.failCause(cause);
-
-            return Deferred.isDone(failureSignal).pipe(
-              Effect.flatMap((isDone) =>
-                isDone
-                  ? Deferred.await(failureSignal).pipe(
-                      Effect.flatMap((failingCaseIndex) =>
-                        failingCaseIndex === caseIndex
-                          ? Effect.failCause(cause)
-                          : Effect.void
-                      )
-                    )
-                  : Effect.failCause(cause)
-              )
-            );
-          })
-        );
-      };
-
-      log(
-        `Running ${parallelCases.length} workspace e2e cases in parallel: ${parallelCases
-          .map(([, testCase]) => testCase.id)
-          .join(", ")}`
-      );
-      yield* telemetry.tracePhase({
-        effect: Effect.forEach(
-          parallelCases,
-          (entry) => runCaseEntry(entry, independentFailure),
-          {
-            concurrency: "unbounded",
-            discard: true,
-          }
+                cleanup,
+                datasourceConfig
+              ),
+              phaseId: "case-finalization",
+            })
         ),
-        phaseId: "independent-case-phase",
+        timeoutMs: testCase.timeoutMs,
       });
-      if (sharedFixtureCases.length > 0) {
-        log(
-          `Running ${sharedFixtureCases.length} shared-fixture workspace e2e cases after the parallel phase: ${sharedFixtureCases
-            .map(([, testCase]) => testCase.id)
-            .join(", ")}`
-        );
-        yield* telemetry.tracePhase({
-          effect: Effect.forEach(
-            sharedFixtureCases,
-            (entry) => runCaseEntry(entry),
-            {
-              concurrency: 1,
-              discard: true,
-            }
-          ),
-          phaseId: "shared-fixture-phase",
-        });
-      }
+
+      yield* reportFailure
+        ? tracedCase.pipe(
+            Effect.tapCause((cause) =>
+              Effect.sync(() => {
+                if (Cause.hasInterruptsOnly(cause)) return;
+                const result = toE2EResult(Exit.failCause(cause));
+                if (
+                  result.outcome !== "failed" &&
+                  result.outcome !== "timed_out"
+                )
+                  return;
+                const error = Cause.findErrorOption(cause);
+                const diagnosticCode =
+                  Option.isSome(error) &&
+                  error.value instanceof WorkspaceE2EError
+                    ? error.value.diagnosticCode
+                    : undefined;
+                try {
+                  reportFailure({
+                    caseId: testCase.id,
+                    ...(diagnosticCode ? { diagnosticCode } : {}),
+                    failureKind: result.failureKind,
+                    outcome: result.outcome,
+                    ...(caseRuntime?.terminalStepId
+                      ? { stepId: caseRuntime.terminalStepId }
+                      : {}),
+                  });
+                } catch {
+                  log("Workspace E2E failure reporter failed");
+                }
+              })
+            )
+          )
+        : tracedCase;
     })
   );
 
@@ -315,17 +193,13 @@ const runCase = (
   run: Runner,
   telemetry: E2ETelemetry,
   timeouts: WorkspaceE2ETimeouts,
-  reservationStartPermitPool: ReservationStartPermitPool,
-  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit,
-  resources: WorkspaceE2ECaseResources
+  providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
 ): Effect.Effect<void, WorkspaceE2EError, E2EDatabase> => {
   const startedAt = Date.now();
   const runStep = makeStepRunner(
     runtime,
     telemetry,
-    reservationStartPermitPool,
-    providerVerificationPermit,
-    runtime.testCase.timeoutMs
+    providerVerificationPermit
   );
 
   return Effect.gen(function* () {
@@ -346,7 +220,6 @@ const runCase = (
       })
     );
     yield* runtime.testCase.execute({
-      resources,
       runStep,
       session: runtime.session,
     });
@@ -379,9 +252,7 @@ const makeStepRunner =
   (
     runtime: WorkspaceE2ECaseRuntime,
     telemetry: E2ETelemetry,
-    reservationStartPermitPool: ReservationStartPermitPool,
-    providerVerificationPermit: WorkspaceE2EProviderVerificationPermit,
-    caseTimeoutMs: number
+    providerVerificationPermit: WorkspaceE2EProviderVerificationPermit
   ): WorkspaceE2EStepRunner =>
   <A, R>({ capacity, execute, id, timeoutMs }: WorkspaceE2EStep<A, R>) => {
     const caseId = runtime.testCase.id;
@@ -398,18 +269,10 @@ const makeStepRunner =
           ),
       })
     );
-    const capacityLimitedExecution = (() => {
-      if (capacity === "reservation-start") {
-        return reservationStartPermitPool.withPermit(
-          caseTimeoutMs,
-          timedExecution
-        );
-      }
-      if (capacity === "provider-verification") {
-        return providerVerificationPermit.withPermit(timedExecution);
-      }
-      return timedExecution;
-    })();
+    const capacityLimitedExecution =
+      capacity === "provider-verification"
+        ? providerVerificationPermit.withPermit(timedExecution)
+        : timedExecution;
 
     return telemetry.traceStep({
       caseId,
@@ -434,104 +297,6 @@ const makeStepRunner =
       timeoutMs,
     });
   };
-
-export const makeReservationStartPermitPool = (
-  capacity: number
-): Effect.Effect<ReservationStartPermitPool> =>
-  Effect.sync(() => {
-    let activePermits = 0;
-    let nextSequence = 0;
-    const waiters: ReservationStartPermit[] = [];
-
-    const releaseSlot = (): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const next = yield* Effect.sync(() => {
-          if (waiters.length === 0) {
-            activePermits -= 1;
-            return undefined;
-          }
-
-          let nextIndex = 0;
-          for (let index = 1; index < waiters.length; index += 1) {
-            const candidate = waiters[index]!;
-            const selected = waiters[nextIndex]!;
-            if (
-              candidate.priority < selected.priority ||
-              (candidate.priority === selected.priority &&
-                candidate.sequence < selected.sequence)
-            ) {
-              nextIndex = index;
-            }
-          }
-
-          const [selected] = waiters.splice(nextIndex, 1);
-          selected!.granted = true;
-          return selected;
-        });
-
-        if (next) yield* Deferred.succeed(next.deferred, undefined);
-      });
-
-    const releasePermit = (
-      permit: ReservationStartPermit
-    ): Effect.Effect<void> =>
-      Effect.gen(function* () {
-        const granted = yield* Effect.sync(() => {
-          if (permit.released) return false;
-          permit.released = true;
-          if (permit.granted) return true;
-
-          const index = waiters.indexOf(permit);
-          if (index >= 0) waiters.splice(index, 1);
-          return false;
-        });
-
-        if (granted) yield* releaseSlot();
-      });
-
-    const acquirePermit = (
-      priority: number
-    ): Effect.Effect<ReservationStartPermit> =>
-      Effect.gen(function* () {
-        const deferred = yield* Deferred.make<void>();
-        const permit: ReservationStartPermit = {
-          deferred,
-          granted: false,
-          priority,
-          released: false,
-          sequence: nextSequence,
-        };
-        nextSequence += 1;
-        const granted = yield* Effect.sync(() => {
-          if (activePermits < capacity) {
-            activePermits += 1;
-            permit.granted = true;
-            return true;
-          }
-
-          waiters.push(permit);
-          return false;
-        });
-
-        if (!granted) {
-          yield* Deferred.await(deferred).pipe(
-            Effect.onInterrupt(() => releasePermit(permit))
-          );
-        }
-        return permit;
-      });
-
-    return {
-      withPermit: (priority, effect) =>
-        Effect.uninterruptibleMask((restore) =>
-          restore(acquirePermit(priority)).pipe(
-            Effect.flatMap((permit) =>
-              restore(effect).pipe(Effect.ensuring(releasePermit(permit)))
-            )
-          )
-        ),
-    };
-  });
 
 const captureFailureArtifacts = (
   runtime: WorkspaceE2ECaseRuntime,
@@ -578,7 +343,7 @@ const finalizeCaseRuntime = (
 ): Effect.Effect<void, never, E2EDatabase> =>
   Effect.gen(function* () {
     const failures: unknown[] = [];
-    yield* collectFinalizerFailure(
+    const reservationCleanup = collectFinalizerFailure(
       failures,
       `${runtime.testCase.id} reservation cleanup`,
       runFinalizer(
@@ -599,26 +364,32 @@ const finalizeCaseRuntime = (
         timeouts
       )
     );
-    if (runtime.browserHarStarted && !runtime.browserHarStopped) {
+    const browserFinalization = Effect.gen(function* () {
+      if (runtime.browserHarStarted && !runtime.browserHarStopped) {
+        yield* collectFinalizerFailure(
+          failures,
+          `${runtime.testCase.id} HAR stop`,
+          runFinalizer(
+            `${runtime.testCase.id} HAR stop`,
+            stopBrowserHar(run, runtime.session, devNull),
+            timeouts
+          )
+        );
+      }
       yield* collectFinalizerFailure(
         failures,
-        `${runtime.testCase.id} HAR stop`,
+        `${runtime.testCase.id} browser close`,
         runFinalizer(
-          `${runtime.testCase.id} HAR stop`,
-          stopBrowserHar(run, runtime.session, devNull),
+          `${runtime.testCase.id} browser close`,
+          closeBrowserSession(run, runtime.session),
           timeouts
         )
       );
-    }
-    yield* collectFinalizerFailure(
-      failures,
-      `${runtime.testCase.id} browser close`,
-      runFinalizer(
-        `${runtime.testCase.id} browser close`,
-        closeBrowserSession(run, runtime.session),
-        timeouts
-      )
-    );
+    });
+    yield* Effect.all([reservationCleanup, browserFinalization], {
+      concurrency: "unbounded",
+      discard: true,
+    });
 
     const durationMs = runtime.durationMs ?? 0;
     const result: E2EResult =

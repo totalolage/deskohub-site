@@ -47,7 +47,7 @@ test("reads persisted reservation details without legacy product columns", async
   expect(source).not.toContain("workspaceReservations.productMonitorOption");
 });
 
-test("uses one scoped Drizzle client for the exact preview datasource", async () => {
+test("uses one worker-scoped Drizzle client for the exact preview datasource", async () => {
   const databaseServiceSource = await Bun.file(
     fileURLToPath(new URL("./database.service.ts", import.meta.url))
   ).text();
@@ -61,8 +61,9 @@ test("uses one scoped Drizzle client for the exact preview datasource", async ()
   expect(databaseServiceSource).not.toContain(
     "connectionString: config.databaseUrl,"
   );
+  expect(runnerSource).toContain("E2EDatabase.layer(datasourceConfig)");
   expect(runnerSource).toContain(
-    "Effect.provide(E2EDatabase.layer(datasourceConfig))"
+    "WorkspaceE2ECaseService.Live.pipe(Layer.provideMerge(support))"
   );
 });
 
