@@ -770,7 +770,7 @@ describe("CheckoutStatusService", () => {
     });
   });
 
-  test("resolves the current PIN only for an authorized active reservation", async () => {
+  test("resolves the current PIN for an authorized active reservation without a displayable payment attempt", async () => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
     const { ProviderPaymentFinalizationService } = await import(
       "../payment/provider-payment-finalization.service"
@@ -810,9 +810,7 @@ describe("CheckoutStatusService", () => {
       ),
     } as unknown as WorkspaceReservationRepositoryType;
     const paymentAttempts = {
-      findDisplayableForReservation: mock(() =>
-        Effect.succeed(makePaymentAttempt({ workspaceReservationId: orderId }))
-      ),
+      findDisplayableForReservation: mock(() => Effect.succeed(null)),
     } as unknown as PaymentAttemptRepositoryType;
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.die("not used")),

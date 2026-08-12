@@ -362,21 +362,27 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary attempt lookup completed"
       );
 
-      if (!attempt) {
+      if (attempt) {
+        yield* Effect.annotateLogsScoped({
+          paymentAttemptId: attempt.id,
+          paymentAttemptState: attempt.state,
+        });
+      } else {
         yield* Effect.logWarning(
           "Checkout status summary missing payment attempt"
         );
-        return emptyReconstruction;
       }
-      yield* Effect.annotateLogsScoped({
-        paymentAttemptId: attempt.id,
-        paymentAttemptState: attempt.state,
-      });
 
-      if (!canUseAttemptForSummary(attempt, reservation)) {
+      const usableAttempt =
+        attempt && canUseAttemptForSummary(attempt, reservation)
+          ? attempt
+          : undefined;
+      if (attempt && !usableAttempt) {
         yield* Effect.logWarning(
           "Checkout status summary unusable payment attempt"
         );
+      }
+      if (!usableAttempt && !input.accessAuthorized) {
         return emptyReconstruction;
       }
 
@@ -402,22 +408,27 @@ const implementation = Effect.gen(function* () {
         "Checkout status summary Dotypos reservation loaded"
       );
 
-      const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("Checkout status table map load failed", {
-            cause,
-          })
-        ),
-        Effect.option,
-        Effect.when(seatingMapFeatureFlag.isEnabled),
-        Effect.map(Option.flatten),
-        Effect.map(
-          Option.map((tables) =>
-            getWorkspaceTableMap(dotyposReservation.reservation, tables)
+      const supportContactPrefill = input.accessAuthorized
+        ? getSupportContactPrefill(dotyposReservation.customer)
+        : undefined;
+      const tableMap = yield* usableAttempt
+        ? Effect.suspend(() => dotypos.getTables()).pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Checkout status table map load failed", {
+                cause,
+              })
+            ),
+            Effect.option,
+            Effect.when(seatingMapFeatureFlag.isEnabled),
+            Effect.map(Option.flatten),
+            Effect.map(
+              Option.map((tables) =>
+                getWorkspaceTableMap(dotyposReservation.reservation, tables)
+              )
+            ),
+            Effect.map(Option.getOrUndefined)
           )
-        ),
-        Effect.map(Option.getOrUndefined)
-      );
+        : Effect.succeed(undefined);
 
       const timing = yield* getDotyposReservationTiming({
         reservationId: reservation.id,
@@ -436,16 +447,26 @@ const implementation = Effect.gen(function* () {
         const reconstruction: CheckoutStatusReconstruction = {
           reservation: emptyReconstruction.reservation,
           ...(tableMap ? { tableMap } : {}),
-          ...(input.accessAuthorized
-            ? {
-                supportContactPrefill: getSupportContactPrefill(
-                  dotyposReservation.customer
-                ),
-              }
-            : {}),
+          ...(supportContactPrefill ? { supportContactPrefill } : {}),
         };
 
         return reconstruction;
+      }
+
+      const accessCode = yield* getAccessCode({
+        authorized: input.accessAuthorized,
+        now: input.now,
+        reservation,
+        providerStatus: dotyposReservation.reservation.status,
+        timing,
+      });
+
+      if (!usableAttempt) {
+        return {
+          reservation: emptyReconstruction.reservation,
+          ...(accessCode ? { accessCode } : {}),
+          ...(supportContactPrefill ? { supportContactPrefill } : {}),
+        } satisfies CheckoutStatusReconstruction;
       }
 
       const statusReservation = Match.value(
@@ -457,7 +478,7 @@ const implementation = Effect.gen(function* () {
             summary: {
               ...details,
               ...timing,
-              price: attempt.amount,
+              price: usableAttempt.amount,
             },
           }),
           "meeting-room": (details) => ({
@@ -465,7 +486,7 @@ const implementation = Effect.gen(function* () {
             summary: {
               ...details,
               ...timing,
-              price: attempt.amount,
+              price: usableAttempt.amount,
             },
           }),
           office: (details) => {
@@ -481,7 +502,7 @@ const implementation = Effect.gen(function* () {
               summary: {
                 ...details,
                 ...timing,
-                price: attempt.amount,
+                price: usableAttempt.amount,
                 seats,
               },
             };
@@ -491,25 +512,11 @@ const implementation = Effect.gen(function* () {
 
       yield* Effect.logDebug("Checkout status summary reconstructed");
 
-      const accessCode = yield* getAccessCode({
-        authorized: input.accessAuthorized,
-        now: input.now,
-        reservation,
-        providerStatus: dotyposReservation.reservation.status,
-        timing,
-      });
-
       const reconstruction: CheckoutStatusReconstruction = {
         reservation: statusReservation,
         ...(tableMap ? { tableMap } : {}),
         ...(accessCode ? { accessCode } : {}),
-        ...(input.accessAuthorized
-          ? {
-              supportContactPrefill: getSupportContactPrefill(
-                dotyposReservation.customer
-              ),
-            }
-          : {}),
+        ...(supportContactPrefill ? { supportContactPrefill } : {}),
       };
 
       return reconstruction;
