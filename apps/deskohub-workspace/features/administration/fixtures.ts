@@ -15,6 +15,7 @@ import type {
   AdministrationReservationListInput,
   AdministrationReservationSummary,
 } from "./administration.service";
+import { getAdministrationReservationDateRange } from "./reservation-date-range";
 import { getAdministrationReservationLifecycle } from "./reservation-status";
 
 const timeZone = "Europe/Prague";
@@ -256,12 +257,16 @@ const getFixtureLifecycle = (reservation: AdministrationReservationSummary) => {
 export const loadFixtureReservations = (
   input: AdministrationReservationListInput
 ) => {
+  const dateRange = getAdministrationReservationDateRange(input);
   const items = makeReservations().filter(
     (reservation) =>
       (!input.customerId || reservation.customerId === input.customerId) &&
       (!input.status || reservation.status.group === input.status) &&
       (!input.type || reservation.type === input.type) &&
-      (!input.date || reservation.date === input.date)
+      (!dateRange ||
+        (reservation.date !== null &&
+          reservation.date >= dateRange.from &&
+          reservation.date <= dateRange.to))
   );
   return {
     items,

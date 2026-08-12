@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 import {
   AdministrationAlert,
   AdministrationFilterField,
@@ -22,13 +23,15 @@ export default async function ReservationsAdministrationPage({
 }: {
   readonly searchParams: AdministrationSearchParams;
 }) {
+  await connection();
   const { input, result } = await loadAdministrationReservations(searchParams);
   const clearCustomerSearch = new URLSearchParams();
   for (const [key, value] of Object.entries({
-    date: input.date,
     direction: input.direction,
+    from: input.from,
     sort: input.sort,
     status: input.status,
+    to: input.to,
     type: input.type,
   })) {
     if (value) clearCustomerSearch.set(key, value);
@@ -43,7 +46,7 @@ export default async function ReservationsAdministrationPage({
       <AdministrationTableToolbar
         count={result.total}
         filters={
-          <AdministrationFilterForm className="2xl:grid-cols-[11rem_13rem_12rem_auto_auto]">
+          <AdministrationFilterForm className="2xl:grid-cols-[10rem_12rem_10rem_10rem]">
             <AdministrationFilterField
               htmlFor="reservation-status"
               label="Deskohub status"
@@ -74,13 +77,24 @@ export default async function ReservationsAdministrationPage({
               </AdministrationFilterSelect>
             </AdministrationFilterField>
             <AdministrationFilterField
-              htmlFor="reservation-date"
-              label="Start date"
+              htmlFor="reservation-date-from"
+              label="Start date from"
             >
               <AdministrationFilterInput
-                defaultValue={input.date ?? ""}
-                id="reservation-date"
-                name="date"
+                defaultValue={input.from ?? ""}
+                id="reservation-date-from"
+                name="from"
+                type="date"
+              />
+            </AdministrationFilterField>
+            <AdministrationFilterField
+              htmlFor="reservation-date-to"
+              label="Start date to"
+            >
+              <AdministrationFilterInput
+                defaultValue={input.to ?? ""}
+                id="reservation-date-to"
+                name="to"
                 type="date"
               />
             </AdministrationFilterField>
@@ -92,7 +106,11 @@ export default async function ReservationsAdministrationPage({
             <Button className="min-h-10" size="sm" type="submit">
               Apply filters
             </Button>
-            {(input.customerId || input.date || input.status || input.type) && (
+            {(input.customerId ||
+              input.from ||
+              input.status ||
+              input.to ||
+              input.type) && (
               <Button asChild className="min-h-10" size="sm" variant="ghost">
                 <Link href="/admin/reservations">Clear</Link>
               </Button>
@@ -133,7 +151,8 @@ export default async function ReservationsAdministrationPage({
           direction: input.direction ?? "desc",
           field: input.sort ?? "created",
           params: {
-            date: input.date,
+            from: input.from,
+            to: input.to,
             customerId: input.customerId,
             status: input.status,
             type: input.type,
@@ -145,11 +164,12 @@ export default async function ReservationsAdministrationPage({
         page={result.page}
         pageCount={result.pageCount}
         params={{
-          date: input.date,
           customerId: input.customerId,
           direction: input.direction,
+          from: input.from,
           sort: input.sort,
           status: input.status,
+          to: input.to,
           type: input.type,
         }}
       />

@@ -16,6 +16,7 @@ import {
   getAdministrationOrderDateTimeBounds,
   getAdministrationPaymentDateTimeBounds,
 } from "./payment-administration-filters";
+import { getAdministrationReservationDateRange } from "./reservation-date-range";
 import {
   getDotyposCustomerRouteId,
   requireDotyposCustomerRouteId,
@@ -98,9 +99,14 @@ export const loadAdministrationReservations = async (
   await authorizeAdministrationPage();
   const params = await searchParams;
   const typeValue = firstParam(params.type);
+  const dateRange = getAdministrationReservationDateRange({
+    date: firstParam(params.date),
+    from: firstParam(params.from),
+    to: firstParam(params.to),
+  });
   const input: AdministrationReservationListInput = {
     customerId: getDotyposCustomerRouteId(firstParam(params.customerId)),
-    date: firstParam(params.date),
+    ...dateRange,
     direction: parseSortDirection(firstParam(params.direction)),
     page: parsePage(firstParam(params.page)),
     sort: parseReservationSort(firstParam(params.sort)),

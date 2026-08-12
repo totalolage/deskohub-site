@@ -1,11 +1,16 @@
+import Link from "next/link";
+import { connection } from "next/server";
 import type { AdministrationOverviewMetric } from "@/features/administration/administration.service";
 import { AdministrationPage } from "@/features/administration/components";
 import { loadAdministrationOverview } from "@/features/administration/page-data.server";
+import { getAdministrationOverviewDateRanges } from "@/features/administration/reservation-date-range";
 import { ReservationLookup } from "@/features/administration/reservation-lookup";
 import { CustomerSearch } from "@/features/discounts/admin/customer-admin-client";
 
 export default async function AdminPage() {
+  await connection();
   const overview = await loadAdministrationOverview();
+  const ranges = getAdministrationOverviewDateRanges();
   return (
     <AdministrationPage>
       <section aria-labelledby="reservation-activity-heading">
@@ -16,16 +21,19 @@ export default async function AdminPage() {
         </div>
         <dl className="grid gap-3 lg:grid-cols-3">
           <OverviewMetric
+            href={getReservationRangeHref(ranges.today)}
             label="Today"
             metric={overview.today}
             note="Reservations starting today"
           />
           <OverviewMetric
+            href={getReservationRangeHref(ranges.upcoming)}
             label="Upcoming"
             metric={overview.upcoming}
             note="Starting in the next 30 days"
           />
           <OverviewMetric
+            href={getReservationRangeHref(ranges.lastSevenDays)}
             label="Last 7 days"
             metric={overview.lastSevenDays}
             note="Started during this period"
@@ -49,23 +57,40 @@ export default async function AdminPage() {
 }
 
 function OverviewMetric({
+  href,
   label,
   metric,
   note,
 }: {
+  readonly href: string;
   readonly label: string;
   readonly metric: AdministrationOverviewMetric;
   readonly note: string;
 }) {
   return (
-    <div className="rounded-xl border border-navy-blue/10 bg-white px-5 py-5 sm:px-6">
-      <dt className="text-sm font-semibold text-navy-blue/72">{label}</dt>
+    <div className="relative rounded-xl border border-navy-blue/10 bg-white px-5 py-5 sm:px-6">
+      <dt className="text-sm font-semibold text-navy-blue/72">
+        <Link
+          className="before:absolute before:inset-0 before:rounded-xl before:content-[''] hover:underline focus-visible:outline-none focus-visible:before:ring-2 focus-visible:before:ring-inset focus-visible:before:ring-navy-blue/40"
+          href={href}
+        >
+          {label}
+        </Link>
+      </dt>
       <dd className="mt-4 text-4xl leading-none tracking-[-0.03em]">
         {metric.unavailable ? "—" : metric.value}
       </dd>
-      <p className="mt-3 text-xs leading-5 text-navy-blue/58">
+      <dd className="mt-3 text-xs leading-5 text-navy-blue/58">
         {metric.unavailable ? "Live booking dates unavailable" : note}
-      </p>
+      </dd>
     </div>
   );
 }
+
+const getReservationRangeHref = ({
+  from,
+  to,
+}: {
+  readonly from: string;
+  readonly to: string;
+}) => `/admin/reservations?from=${from}&to=${to}`;
