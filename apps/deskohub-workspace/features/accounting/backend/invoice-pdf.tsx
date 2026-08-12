@@ -220,8 +220,9 @@ const styles = StyleSheet.create({
     marginBottom: 26,
   },
   factColumn: {
+    flexBasis: 0,
+    flexGrow: 1,
     gap: 13,
-    width: "50%",
   },
   fact: {
     paddingRight: 18,
