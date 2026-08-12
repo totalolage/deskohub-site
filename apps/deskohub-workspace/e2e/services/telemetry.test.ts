@@ -195,7 +195,7 @@ test("exports one run trace with nested phase, case, and step spans", async () =
               }),
               timeoutMs: 120_000,
             }),
-            phaseId: "independent-case-phase",
+            phaseId: "case-construction",
           })
         );
       }).pipe(Effect.provide(layer))

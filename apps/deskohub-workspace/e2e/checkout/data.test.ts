@@ -3,7 +3,7 @@ import "../../shared/polyfills/temporal";
 import { afterEach, expect, mock, setSystemTime, test } from "bun:test";
 import { Cause, Effect, Exit, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
-import isEmail from "validator/lib/isEmail";
+import isEmail from "validator/lib/isEmail.js";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { makeWorkspaceE2EDateAllocation } from "../allocation";
 import type { WorkspaceE2EConfig } from "../config";

@@ -26,7 +26,7 @@
     "lint:eslint": "eslint --ext .ts,.tsx app db emails features scripts shared proxy.ts",
     "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
     "test:admin-cli": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1 features/admin-cli/workspace-admin-api.server.test.ts 'app/api/v1/cli/[...path]/route.test.ts'",
-    "test:instant-navigation": "playwright test --config playwright.instant.config.ts",
+    "test:instant-navigation": "playwright test --config playwright.e2e.config.ts --project=instant-navigation",
     "test:accessibility": "playwright test --config playwright.accessibility.config.ts",
     "typecheck": "tsc --noEmit",
     "typegen": "next typegen",

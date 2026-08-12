@@ -10,6 +10,8 @@ describe("Workspace E2E environment", () => {
     const environment = makeTestE2EEnvironment({
       GITHUB_RUN_ATTEMPT: "2",
       GITHUB_RUN_ID: "12345",
+      GITHUB_STEP_SUMMARY: "/tmp/github-step-summary",
+      PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH: "/usr/bin/google-chrome",
       TARGET_SHA: "a".repeat(40),
       WORKSPACE_E2E_EXECUTION_CONTEXT: "ci",
       WORKSPACE_E2E_ALLOCATION_SHARD: "2",
@@ -19,6 +21,10 @@ describe("Workspace E2E environment", () => {
 
     expect(environment.GITHUB_RUN_ATTEMPT).toBe(2);
     expect(environment.GITHUB_RUN_ID).toBe("12345");
+    expect(environment.GITHUB_STEP_SUMMARY).toBe("/tmp/github-step-summary");
+    expect(environment.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH).toBe(
+      "/usr/bin/google-chrome"
+    );
     expect(environment.TARGET_SHA).toBe("a".repeat(40));
     expect(environment.WORKSPACE_E2E_EXECUTION_CONTEXT).toBe("ci");
     expect(environment.WORKSPACE_E2E_ALLOCATION_SHARD).toBe(2);
@@ -105,16 +111,14 @@ describe("Workspace E2E environment", () => {
     ).toThrow("Invalid workspace E2E environment variables.");
   });
 
-  test("supports the globally locked default-branch workflow during rollout", () => {
-    const environment = makeWorkspaceE2EEnvironment({
-      ...validE2ERuntimeEnvironment,
-      WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
-      WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: undefined,
-    });
-
-    expect(
-      environment.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL
-    ).toBeUndefined();
+  test("requires cross-worker provider coordination for Playwright", () => {
+    expect(() =>
+      makeWorkspaceE2EEnvironment({
+        ...validE2ERuntimeEnvironment,
+        WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: undefined,
+        WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED: undefined,
+      })
+    ).toThrow("Invalid workspace E2E environment variables.");
   });
 
   test.each([

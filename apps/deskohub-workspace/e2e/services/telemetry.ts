@@ -23,12 +23,11 @@ export type E2EPhaseId =
   | "case-finalization"
   | "cowork-availability-preparation"
   | "fixture-seeding"
-  | "independent-case-phase"
   | "invoice-persistence"
   | "meeting-room-availability-preparation"
   | "office-availability-preparation"
   | "preview-readiness"
-  | "shared-fixture-phase"
+  | "provider-preparation"
   | "suite-cleanup";
 
 export type E2EResult =
@@ -87,6 +86,8 @@ export class E2ERunContextService extends Context.Service<
     Layer.sync(this, () => ({
       value: makeE2ERunContext(environment),
     }));
+
+  static layerValue = (value: E2ERunContext) => Layer.succeed(this, { value });
 }
 
 export interface E2ETelemetry {

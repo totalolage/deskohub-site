@@ -20,6 +20,12 @@ export const workspaceE2ETimeouts = {
   zeroTotalCheckoutCase: 5 * MINUTE,
 } as const;
 
+export const workspaceE2EPlaywrightCheckoutTimeout =
+  workspaceE2ETimeouts.checkoutCase * 2 +
+  workspaceE2ETimeouts.artifactCapture +
+  workspaceE2ETimeouts.cleanupAction +
+  workspaceE2ETimeouts.datasource;
+
 export type WorkspaceE2ETimeouts = Readonly<
   Record<keyof typeof workspaceE2ETimeouts, number>
 >;

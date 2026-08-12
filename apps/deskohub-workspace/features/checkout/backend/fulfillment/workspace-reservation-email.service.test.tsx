@@ -228,6 +228,11 @@ describe("workspace reservation email details", () => {
 
     expect(sentMessages).toHaveLength(2);
     const customerMessage = sentMessages[0];
+    expect(customerMessage?.attachments).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ contentType: "application/pdf" }),
+      ])
+    );
     expect(customerMessage?.html).toContain("Sunday, March 28, 2027");
     expect(customerMessage?.html).toContain("whole day");
     expect(customerMessage?.text).toContain("Sunday, March 28, 2027");

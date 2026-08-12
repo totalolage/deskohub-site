@@ -65,6 +65,8 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
     expect(isSensitiveLogKey("lastName")).toBe(true);
+    expect(isSensitiveLogKey("recipient")).toBe(true);
+    expect(isSensitiveLogKey("subject")).toBe(true);
     expect(isSensitiveLogKey("db.namespace")).toBe(true);
     expect(isSensitiveLogKey("server.address")).toBe(true);
   });
@@ -103,6 +105,27 @@ describe("isSensitiveLogKey", () => {
 });
 
 describe("censorLogValue", () => {
+  test("censors email attachment payloads without hiding safe metadata", () => {
+    const value = censorLogValue({
+      attachments: [
+        {
+          filename: "WS-FV-2026-000001.pdf",
+          content: Buffer.from("private invoice bytes"),
+        },
+      ],
+      recipient: "synthetic@example.test",
+      subject: "Invoice for Synthetic Customer",
+      invoiceId: "safe-invoice-id",
+    });
+
+    expect(value).toEqual({
+      attachments: CENSORED_LOG_VALUE,
+      recipient: CENSORED_LOG_VALUE,
+      subject: CENSORED_LOG_VALUE,
+      invoiceId: "safe-invoice-id",
+    });
+  });
+
   test("redacts nested sensitive object keys without mutating input", () => {
     const input = {
       user: "deskohub",
@@ -292,6 +315,28 @@ describe("censorLogValue", () => {
       errorType: "Error",
       message: CENSORED_LOG_VALUE,
     });
+  });
+
+  test("projects errors when the runtime does not provide Error.isError", () => {
+    const nativeIsError = Error.isError;
+    Object.defineProperty(Error, "isError", {
+      configurable: true,
+      value: undefined,
+      writable: true,
+    });
+
+    try {
+      expect(censorLogValue(new Error("private value"))).toEqual({
+        errorType: "Error",
+        message: CENSORED_LOG_VALUE,
+      });
+    } finally {
+      Object.defineProperty(Error, "isError", {
+        configurable: true,
+        value: nativeIsError,
+        writable: true,
+      });
+    }
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {

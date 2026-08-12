@@ -18,9 +18,10 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   expect(workflow).toContain(
     `database-url: \${{ secrets.WORKSPACE_E2E_COORDINATOR_DATABASE_URL }}`
   );
+  const runE2EIndex = workflow.indexOf("- name: Run checkout E2E");
   const runE2EStep = workflow.slice(
-    workflow.indexOf("- name: Run checkout E2E"),
-    workflow.indexOf("- uses: actions/upload-artifact@v4")
+    runE2EIndex,
+    workflow.indexOf("- uses: actions/upload-artifact@v4", runE2EIndex)
   );
   expect(runE2EStep).toContain(
     `WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL: \${{ secrets.WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL }}`
@@ -69,7 +70,7 @@ test("keeps the atomic allocator isolated from exact-SHA test code", async () =>
   );
   const capacityStep = workflow.slice(
     workflow.indexOf("Validate aggregate Dotypos capacity"),
-    workflow.indexOf("Migrate preview database")
+    workflow.indexOf("Verify hosted browser runtime")
   );
   expect(capacityStep).not.toContain(
     "WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL"
@@ -134,6 +135,8 @@ test("passes allocated shard and provider coordination through Turborepo", async
   const environment = turbo.tasks["test:e2e"].passThroughEnv as string[];
 
   expect(environment).toContain("WORKSPACE_E2E_ALLOCATION_SHARD");
+  expect(environment).toContain("GITHUB_STEP_SUMMARY");
+  expect(environment).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_DATABASE_URL");
   expect(environment).toContain("WORKSPACE_E2E_PROVIDER_PERMIT_REQUIRED");
   expect(environment).toContain("WORKSPACE_E2E_NEON_API_KEY");
@@ -154,7 +157,7 @@ test("pins and verifies the Auth webhook tunnel client", async () => {
   expect(workflow).toContain("cloudflared --version");
 });
 
-test("runs invoice persistence inside the normal exact-SHA E2E runner", async () => {
+test("runs invoice persistence inside the normal exact-SHA Playwright graph", async () => {
   const packageJson = await Bun.file(
     resolve(import.meta.dir, "../package.json")
   ).json();
@@ -163,8 +166,14 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   const turbo = await Bun.file(
     resolve(import.meta.dir, "../turbo.json")
   ).json();
-  const runner = await Bun.file(
-    resolve(import.meta.dir, "../e2e/services/runner.ts")
+  const playwrightConfig = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
+  const invoicePersistenceProject = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../e2e/playwright-checkout/invoice-persistence.pw.ts"
+    )
   ).text();
   const invoicePersistence = await Bun.file(
     resolve(import.meta.dir, "../e2e/integrations/invoice-persistence.ts")
@@ -185,8 +194,10 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   expect(testUnit).not.toContain("e2e.test.ts");
   expect(turbo.tasks["test:accounting-persistence"]).toBeUndefined();
   expect(turbo.tasks["test:e2e"]).toBeUndefined();
-  expect(runner).toContain("assertInvoicePersistence");
-  expect(runner).toContain('phaseId: "invoice-persistence"');
+  expect(playwrightConfig).toContain('name: "checkout-invoice-persistence"');
+  expect(playwrightConfig).toContain('"checkout-invoice-persistence"');
+  expect(invoicePersistenceProject).toContain("assertInvoicePersistence");
+  expect(invoicePersistenceProject).toContain('phaseId: "invoice-persistence"');
   expect(invoicePersistence).toContain("yield* E2EDatabase");
   expect(invoicePersistence).toContain(
     "temporalInstantToIsoString(Temporal.Now.instant())"
@@ -197,36 +208,99 @@ test("runs invoice persistence inside the normal exact-SHA E2E runner", async ()
   expect(accountingKeyContract).not.toContain('import "server-only"');
 });
 
-test("uses the hosted runner browser without downloading another browser", async () => {
+test("uses Playwright with the hosted runner browser without downloading another browser", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
 
-  expect(workflow).not.toContain("agent-browser install --with-deps");
+  expect(workflow).not.toContain("playwright install --with-deps");
   expect(workflow).toContain("command -v google-chrome");
-  expect(workflow).toContain("AGENT_BROWSER_EXECUTABLE_PATH");
-  expect(workflow).toContain("Hosted browser verification");
+  expect(workflow).toContain("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH");
+  expect(workflow).toContain("Verify hosted browser runtime");
 });
 
-test("reports the complete test job setup critical path", async () => {
+test("lets Playwright own checkout preparation, scheduling, and parallelism", async () => {
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
+  const entry = await Bun.file(
+    resolve(import.meta.dir, "workspace-e2e.ts")
+  ).text();
+  const suite = await Bun.file(
+    resolve(import.meta.dir, "../e2e/suite.ts")
+  ).text();
+  const cleanupProject = await Bun.file(
+    resolve(import.meta.dir, "../e2e/playwright-checkout/cleanup.pw.ts")
+  ).text();
+  const cleanupRuntime = await Bun.file(
+    resolve(
+      import.meta.dir,
+      "../e2e/playwright-checkout/cleanup-runtime-fixtures.ts"
+    )
+  ).text();
+
+  expect(entry).toContain("playwright.e2e.config.ts");
+  expect(config).toContain("fullyParallel: true");
+  expect(config).toContain("maxFailures: 1");
+  expect(config).toContain("workers: 6");
+  expect(config).toContain('teardown: "checkout-cleanup"');
+  expect(config).toContain('name: "checkout-availability"');
+  expect(config).toContain('name: "checkout-plan"');
+  expect(config).toContain("dependencies: [...checkoutCaseProjects]");
+  expect(config).toContain("workspaceE2EPlaywrightCheckoutTimeout");
+  expect(config).toContain("resolvePlaywrightChromiumExecutable");
+  expect(entry).toContain("playwrightEnvironment");
+  expect(entry).not.toContain("...process.env");
+  expect(suite).not.toContain("Effect.forEach");
+  expect(suite).not.toContain("Semaphore");
+  expect(suite).not.toContain("Deferred");
+  expect(cleanupProject).toContain('phaseId: "suite-cleanup"');
+  expect(cleanupRuntime).not.toContain(
+    "makeWorkspaceE2EProviderVerificationPermitLive"
+  );
+  expect(cleanupRuntime).not.toContain("makeWorkspaceE2ECaseRuntimeLive");
+});
+
+test("lets Playwright schedule read-only navigation beside checkout cases", async () => {
   const workflow = await Bun.file(
     resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
   ).text();
-  const testJob = workflow.slice(
+  const checkoutJob = workflow.slice(
     workflow.indexOf("  test-e2e:"),
     workflow.indexOf("  publish-final-status:")
   );
-  const setupClockIndex = testJob.indexOf("Start test job setup timing");
-  const checkoutIndex = testJob.indexOf("Checkout exact target");
-  const postAllocationClockIndex = testJob.indexOf(
-    "Start post-allocation setup timing"
+  const finalStatusJob = workflow.slice(
+    workflow.indexOf("  publish-final-status:")
   );
-  const runIndex = testJob.indexOf("Run checkout E2E");
+  const packageJson = await Bun.file(
+    resolve(import.meta.dir, "../package.json")
+  ).json();
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
 
-  expect(setupClockIndex).toBeGreaterThan(-1);
-  expect(setupClockIndex).toBeLessThan(checkoutIndex);
-  expect(checkoutIndex).toBeLessThan(postAllocationClockIndex);
-  expect(postAllocationClockIndex).toBeLessThan(runIndex);
-  expect(testJob).toContain("Post-allocation setup critical path");
-  expect(testJob).toContain("Total test job setup critical path");
+  expect(workflow).not.toContain("  test-instant-navigation:");
+  expect(workflow).not.toContain("Run instant navigation E2E");
+  expect(checkoutJob).toContain("needs: [resolve-target, migrate-preview]");
+  expect(checkoutJob).not.toContain("Migrate preview database");
+  expect(finalStatusJob).toContain("needs: [resolve-target, test-e2e]");
+  expect(config).toContain('name: "instant-navigation"');
+  expect(config).toContain('testDir: "./e2e/instant-navigation"');
+  expect(config).toContain("fullyParallel: true");
+  expect(config).toContain("workers: 6");
+  expect(packageJson.scripts["test:instant-navigation"]).toContain(
+    "--project=instant-navigation"
+  );
+});
+
+test("lets Playwright write complete GitHub job summaries", async () => {
+  const workflow = await Bun.file(
+    resolve(import.meta.dir, "../../../.github/workflows/workspace-e2e.yml")
+  ).text();
+  const config = await Bun.file(
+    resolve(import.meta.dir, "../playwright.e2e.config.ts")
+  ).text();
+
+  expect(workflow).not.toContain("GITHUB_STEP_SUMMARY");
+  expect(config).toContain("playwright-github-summary.ts");
 });

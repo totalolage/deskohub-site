@@ -125,9 +125,9 @@ describe("workspace environment schemas", () => {
     expect(error).not.toContain("synthetic-too-short");
   });
 
-  test("accepts an optional hosted browser executable", () => {
+  test("accepts an optional Playwright Chromium executable", () => {
     const decodeExecutablePath = Schema.decodeUnknownSync(
-      workspaceServerEnvSchema.fields.AGENT_BROWSER_EXECUTABLE_PATH
+      workspaceServerEnvSchema.fields.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
     );
 
     expect(decodeExecutablePath(undefined)).toBeUndefined();

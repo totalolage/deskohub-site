@@ -12,7 +12,7 @@ description: Workspace protected-preview, checkout, Nexi, webhook, database, and
 
 ## Establish the workflow
 
-Treat [the Workspace E2E entry point](../../../apps/deskohub-workspace/scripts/workspace-e2e.ts), [orchestrator](../../../apps/deskohub-workspace/e2e/workspace-e2e.ts), and nearby `e2e/**` cases and services as the executable source of truth for automated runs. Inspect the relevant case and service before running or changing the suite.
+Treat [the Workspace E2E entry point](../../../apps/deskohub-workspace/scripts/workspace-e2e.ts), [Playwright configuration](../../../apps/deskohub-workspace/playwright.e2e.config.ts), and nearby `e2e/playwright-checkout/**` projects, cases, and services as the executable source of truth for automated runs. Inspect the relevant project, case, and service before running or changing the suite.
 
 Read only the supporting documentation needed for the scenario:
 
@@ -57,7 +57,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Keep Vercel Deployment Protection enabled. Use its automation-bypass cookie/header/query flow for browser navigation, preview callbacks, readiness checks, and webhook replays. BotID is a separate production-only application concern; read the BotID skill before changing that boundary.
 - When priming the Vercel automation-bypass cookie, request a stable public asset that the app actually ships and require a successful response. A missing asset returns 404 even after a valid bypass, so it cannot distinguish protection failure from an invalid probe path.
 - Use ordinary document links for cross-locale switching rather than Next.js client-router links. Locale is server-owned global context and the Workspace proxy persists its cookie for localized requests; cross-locale RSC prefetches and client transitions can race or fail to commit the selected locale. Keep this invariant shared across full, mobile, and minimal headers rather than fixing one presentation in isolation.
-- For dynamically rendered forms, wait for the relevant framework handler to be hydrated before interacting; do not use network idle as the readiness signal because analytics traffic can keep it open. Then use browser-native fill commands and semantic accessibility locators so framework handlers receive trusted interactions. Select the actual control by accessibility role rather than a wrapping `LabelText`, and parse its snapshot reference independently of attribute order because state such as `checked` may precede `ref`. Prefer a stable app-owned id or form-scoped selector for critical activation when one exists: parallel browser sessions can invalidate an accessibility reference between snapshot capture and activation. Focus that stable selector and activate it with the native keyboard because agent-browser's combined `click` can return successfully without emitting a form submission. When no stable selector exists, capture a fresh accessibility snapshot after hydration, immediately focus that reference, and activate it with the native keyboard. Do not capture references before hydration or reuse them after intervening DOM changes, and do not replace native form submission or link navigation with an evaluated DOM click.
+- For dynamically rendered forms, wait for the relevant framework handler to be hydrated before interacting; do not use network idle as the readiness signal because analytics traffic can keep it open. Then use Playwright locators and browser-native fill or keyboard operations so framework handlers receive trusted interactions. Select the actual control by accessibility role rather than a wrapping label. Prefer a stable app-owned id or form-scoped selector for critical activation when one exists. When a provider page requires an accessibility snapshot fallback, capture a fresh Playwright AI snapshot after hydration, resolve its `aria-ref` immediately, and do not reuse the reference after intervening DOM changes. Do not replace native form submission or link navigation with an evaluated DOM click.
 - For tooltip assertions, wait for the trigger's focus handler, center it
   instantly in the viewport, wait for layout to settle, and focus it with the
   browser's native focus command. Assert Radix tooltip content through the
@@ -68,48 +68,47 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   missing interaction by increasing the overlay wait.
 - Keep evaluated browser scripts that prepare navigation-producing forms side-effect free with respect to submission. An evaluated DOM click can navigate successfully while leaving the driver command blocked on the destroyed execution context. Return from preparation first, then focus the hydrated form-scoped submit control and activate it with a separate native keyboard command before polling the destination URL. A bounded preparation script may activate the existing production advertised-price retry control when that selected-query error control is rendered: the retry is read-only, must not reset the preparation deadline, and must never become a retry of reservation submission or another state-creating operation.
 - For client-rendered hover or focus interactions, wait for the specific React event handler used by the component, not merely for a React props marker. A partially hydrated element can expose React metadata before Radix or another composed primitive has installed the handler that opens its transient content.
-- Do not await a long UI- or provider-backed preparation promise inside one `agent-browser eval`: agent-browser's CDP `Runtime.evaluate` response can time out before the semantic E2E deadline. Start only side-effect-free preparation in a short synchronous evaluation, retain its bounded status in the page, poll that status with short evaluations under the existing semantic timeout, and perform the state-creating native activation only after preparation succeeds. Agent-browser JSON-serializes structured evaluation results, so return the state object directly and parse stdout once; returning `JSON.stringify(state)` double-encodes it. Preserve preparation errors and do not increase timeouts or retry checkout/payment creation to hide a CDP transport limit.
-- Run every independent E2E case with raw, fail-fast Effect concurrency. Do not
-  convert case effects to `Exit` before the parallel aggregate; doing so makes
-  failures look successful to the parent and prevents sibling interruption.
-  Expected interrupt-only sibling exits must remain cancelled in telemetry but
-  must not become the aggregate's failure while the genuine failing case is
-  capturing artifacts or finalizing. Keep read-only case preparation concurrent.
-  Reservation page navigation through pay-page arrival is one measured in-run
-  capacity boundary: admit the checked-in number of starts with one suite-owned
-  interruption-safe priority permit pool, beginning before navigation and
-  releasing before hosted payment. Prioritize queued starts by the case watchdog,
-  keep equal-deadline starts FIFO, remove interrupted waiters, and release a
-  granted permit when interruption races admission. A three-way exact-SHA soak
-  with unbounded hosted sessions produced Nexi error pages in multiple runs;
-  keep at most three interruption-safe hosted-payment sessions per suite from
-  payment submission through the return to the checkout status page. One
-  session per suite made the independent phase take 5.7--5.9 minutes and caused
-  a case-watchdog failure, so the checked-in bound is three per suite and nine
-  across the supported three-run load. This narrow suite-local Effect semaphore
-  does not serialize unrelated cases or jobs. The synthetic
-  `replay-payment-webhook` step is the other measured boundary. A three-way
+- Keep UI- or provider-backed preparation separate from the state-creating native activation. Start only side-effect-free preparation in a short Playwright evaluation, retain its bounded status in the page, poll that status under the existing semantic timeout, and activate the form only after preparation succeeds. Preserve preparation errors and do not increase timeouts or retry checkout/payment creation to hide a browser transport limit.
+- Let Playwright Test own preparation ordering, case scheduling, worker
+  processes, browser processes, fail-fast admission, and the shared-fixture
+  tail. Register every case statically in the checked-in catalog and assert the
+  prepared case plan matches it before execution. Use project dependencies for
+  readiness, fixture seeding, parallel availability and provider preparation,
+  plan construction, independent cases, the Calendar mutation case, and final
+  reconciliation. Keep the global worker ceiling at six: it replaces the old
+  reservation-start permit pool with a stricter whole-case bound. Put every
+  hosted-payment case in one of exactly three serial Playwright lanes so at most
+  three hosted sessions run per suite while non-payment work can use the other
+  workers. Do not reintroduce an Effect case aggregate, suite-local hosted
+  semaphore, reservation priority pool, or browser launcher. Effect remains
+  inside each Playwright test for domain workflows, semantic steps, tracing,
+  provider coordination, cleanup, and interruption-safe finalizers. The
+  synthetic `replay-payment-webhook` step is the remaining measured distributed
+  boundary. A three-way
   exact-SHA round failed all runs when a suite-local semaphore still allowed
   three aggregate Nexi replays, so admit one replay globally with a
   transaction-scoped PostgreSQL advisory lock in the dedicated coordination
-  database. Keep a suite-local Effect semaphore so only one lock query per
-  process can block and a second SQL-pool connection remains available for
-  interruption cancellation. Use a separate direct URL whose SQL-created role
+  database. Every parallel Playwright checkout run, including manual runs, must
+  fail closed without the direct coordination URL; a worker-local fallback
+  cannot enforce a suite-wide limit across Playwright processes. Keep a
+  worker-local Effect semaphore so each worker issues only one
+  lock query at a time and a second SQL-pool connection remains available for
+  interruption cancellation; the three payment lanes bound the run-wide queue.
+  Use a separate direct URL whose SQL-created role
   has database connectivity only and no schema or table privileges;
   never expose the allocator URL or role to exact-SHA code. The five-round
-  three-way soak completed with the distributed permit required on every run,
-  so concurrent CI must set the permit-required flag and fail closed without
-  its URL. Sustained three-way replay queues later
+  three-way soak completed with the distributed permit required on every run.
+  Sustained three-way replay queues later
   produced sequential HTTP 500 responses even though the advisory lock proved
   there was no overlap. Keep a one-second quiet cooldown inside the permit after
   every replay exit so the synchronous fulfillment's two email sends cannot
   turn multiple suites into a shared-team rate burst. The cooldown must also run
   after failure or interruption; do not retry the webhook. Do not include
   hosted-page payment, genuine webhook delivery, work after the synthetic replay
-  response, or unrelated provider work in that boundary. For both boundaries,
-  the semantic step timeout begins after
+  response, or unrelated provider work in that boundary. The semantic step
+  timeout begins after
   admission while its trace duration includes permit wait and the case watchdog
-  bounds both. Do not key either boundary from step-name strings, expand it to
+  bounds both wait and execution. Do not key this boundary from step-name strings, expand it to
   later checkout stages, or change its capacity without exact-run evidence.
   Deduplicate cleanup targets and cancel independent Dotypos reservations
   concurrently while collecting every cleanup exit. Preserve parallel payment
@@ -119,15 +118,20 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   reservation inventory consumed by availability until every successfully
   cancelled ID is absent or cancelled. Include case-finalizer cancellations in
   this bounded convergence check without cancelling them a second time.
-- Signal the first independent-case failure before that case enters its finalizer,
-  so sibling browser and provider work is interrupted promptly and case
-  finalizers can overlap. Each case owns the `CheckoutFlowState` values it
-  creates and may cancel only captured reservation IDs or an exact-order lookup
-  in its finalizer. Never run the broad locale/product/time fallback while
-  sibling cases are active; reserve it for suite reconciliation after the case
-  aggregate, including interrupted states that did not capture an order ID.
+- Configure Playwright with `maxFailures: 1` and no retries so it stops admitting
+  new cases after the first failure. Each already-running Playwright test owns
+  its `CheckoutFlowState` values and may cancel only captured reservation IDs or
+  an exact-order lookup in its finalizer. Write a private per-case cleanup
+  journal before execution, then persist exact-finalizer completion before the
+  test settles. The teardown project must use a minimal runtime independent of
+  provider-permit connectivity, skip a second cancellation for journaled
+  completions, and still wait for their convergence. Reserve the broad
+  locale/product/time fallback for states whose exact finalizer did not finish,
+  after every dependent project has stopped. Keep Playwright's outer watchdog
+  longer than the longest semantic case plus artifact and cleanup budgets so
+  Effect finalizers win every timeout race.
 - Keep interval-based availability pending while a user is rapidly editing its inputs, and coalesce intermediate queries before they reach the provider-backed route. Parallel meeting-room browsers can otherwise multiply a date, time, and duration change into enough overlapping Dotypos and Calendar inventory loads to strand the final availability request. Preserve the immediate initial query and the final selected interval rather than serializing whole E2E cases or weakening the readiness assertion.
-- Seed source-neutral discount definitions and codes only in the exact preview database before availability preparation and parallel cases start. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed transaction commits, cowork, meeting-room, and office availability preparation may overlap. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, mark the top-level case to run after the independent parallel phase, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
+- Seed source-neutral discount definitions and codes only in the exact preview database before Playwright admits availability preparation or cases. Calendar-backed availability resolves the long-lived event's stored discount definition, so it reads those seeded rows even though provider discovery itself is read-only. After the seed project commits, let Playwright run cowork, meeting-room, and office availability tests in parallel while provider preparation runs in its sibling project. Keep the dedicated long-lived Calendar event immutable. When a pricing-change case must mutate its stored definition, isolate it on a product identity unused by happy paths, keep it in the Playwright project that depends on every independent-case project, serialize the related mutations inside that case, and restore the target with an interruption-safe finalizer. Calendar discovery caches resolved definitions by date, so a concurrent request for another product can otherwise preserve the transient target state. Never mutate a target consumed by another parallel case.
 - Lease one partition of the fixed 14-to-90-day candidate range before
   constructing cases. Coordinate owners through the dedicated long-lived Neon
   coordination database, never an application production, development, or
@@ -178,17 +182,17 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   date so runs crossing midnight retain the same owner. Use round-robin weekday
   sequences rather than contiguous date bands so clustered unavailability does
   not starve a run that the full candidate range could support.
-- Own browser sessions in the suite's Scope. Capture diagnostics for the genuine failure before closing sessions, and use bounded finalizers to stop HAR capture and close every failed, completed, or interrupted case.
+- Let Playwright own one browser per worker. The compatibility runner may create one isolated context for the current Playwright test, but it must never launch or close the worker browser. Capture diagnostics for the genuine failure before closing its context. Playwright flushes HAR when the context closes, so use bounded finalizers to close every failed, completed, or interrupted context before sanitizing or discarding its raw HAR. Keep read-only instant navigation as an independent fully parallel project in the same Playwright graph so it shares CI setup and runs alongside checkout preparation without depending on it. Within checkout case finalization, let owned-reservation cleanup overlap the browser branch while preserving HAR stop before context close.
 - Confirm Dotypos cancellation convergence through the same active-overlap read
   model used by capacity validation. Absence from the generic reservation list
   is not sufficient evidence that provider availability has released the seats.
 - Express each case as named semantic steps with a focused timeout (navigation, UI transition, provider transition, or datasource convergence), plus a generous case watchdog. Avoid using a single checkout-wide timeout for every browser command and poll.
 - Preserve the E2E OTLP trace contract when changing orchestration. Emit one
   root run span, fixed phase spans, one child span for every case, and one child
-  span for every semantic step. Phase IDs cover readiness, database
-  persistence, fixture seeding,
-  cowork, meeting-room, and office availability preparation, case construction, independent/shared phases,
-  per-case finalization, and suite cleanup. Use fixed low-cardinality span names, native span duration,
+  span for every semantic step. Phase IDs cover readiness, fixture seeding,
+  invoice persistence, provider preparation, cowork, meeting-room, and office
+  availability preparation, case construction, per-case finalization, and
+  suite cleanup. Use fixed low-cardinality span names, native span duration,
   the configured timeout as a numeric attribute, closed outcome/failure-kind
   values, and the same shared censoring boundary as normal Workspace logs. Keep
   the execution context a closed `manual | ci` value, use only code-owned
@@ -216,10 +220,13 @@ Distinguish automated-runner behavior from manual procedures before treating a d
   Never annotate interrupted siblings, unknown diagnostic values, raw errors,
   provider data, customer data, URLs, or identifiers that fail the checked
   low-cardinality format.
+- Let the shared Playwright reporter write each job's complete test summary in
+  the Playwright step. Do not assemble Markdown across steps because GitHub
+  gives every step an isolated `GITHUB_STEP_SUMMARY` file.
 - Configure the public PostHog project ingest token and ingest host as
   variables in the `workspace-checkout-e2e` GitHub Actions environment, not
   secrets; management and trace-read API keys remain secrets.
-- Propagate Effect's `AbortSignal` through command runners into spawned processes so interruption actually cancels in-flight browser work. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
+- Propagate Effect's `AbortSignal` through the Playwright runner and close the interrupted case's context so in-flight browser work is cancelled. Do not retry state-creating checkout submission as a whole; a retry can create duplicate orders and leak cleanup state. The reservation-preparation UI action may retry once after its recognized generic error only when it reuses the same `checkoutAttemptId` within the same `checkoutSessionId`; the backend attempt key is the immediate-retry idempotency boundary. Never extend that retry to provider payment creation.
 - Treat arrival at the Nexi hosted page as the provider-session creation
   barrier: production creates and links the attempt, awaits provider-session
   attachment, and only then returns the redirect URL. Database visibility can

@@ -247,8 +247,9 @@ fulfillment sends at most two sequential email API requests, so this bounds the
 sustained shared-team email rate without retrying a webhook or serializing
 hosted payment. Resend documents a per-team, per-second limit with no extra
 burst allowance: <https://resend.com/docs/api-reference/rate-limit>.
-An independent suite-local Effect semaphore bounds the hosted-payment session;
-it does not use the coordination database or serialize unrelated cases.
+Three serial Playwright payment-lane projects bound hosted-payment sessions;
+they do not use the coordination database, and the remaining Playwright workers
+continue running non-payment cases.
 
 ### Dotypos capacity checklist
 
@@ -381,7 +382,8 @@ creation; payment must return `pricing_changed`.
 
 The stable Calendar definition targets the cowork and meeting-room families.
 Calendar pricing-change edge cases use Profi while Calendar happy paths use
-Plus. After all parallel cases finish, one serialized top-level case removes
+Plus. After every independent Playwright project finishes, the dependent
+shared-fixture project runs one serialized top-level case that removes
 the cowork target after reservation-page advertisement and again after
 signed-summary creation. Each scenario restores the cowork target in an
 interruption-safe finalizer. Both must show the normal pricing-change state with
@@ -403,29 +405,18 @@ on reruns; the suite never deletes application or redemption records.
 Every case uses a unique customer. Dates come from the run's deterministic
 allocation shard. Basic cases may share a date up to the documented capacity
 of four; Plus and Profi Calendar dates stay disjoint from Basic and from one
-another. The suite runs independent case fibers with uncapped fail-fast Effect
-concurrency. Reservation-start steps alone share six runner-owned permits from
-navigation through pay-page arrival. Two exact-SHA runs with unbounded starts
-showed provider-backed availability responses queueing beyond the existing UI
-boundary in different cases. Reducing the boundary from six to four repeated
-the same pre-submit meeting-room readiness failure while leaving fourteen cases
-queued after 4.8 minutes, so four did not improve reliability and could not meet
-the existing case watchdogs. The checked-in limit is therefore six. The narrow
-boundary releases at pay-page arrival, before the separate hosted-payment and
-webhook boundaries; fulfillment, assertions, and cleanup remain parallel. The
-permit pool prioritizes queued starts by the owning case watchdog and keeps equal
-deadlines FIFO, so shorter terminal scenarios cannot be stranded behind longer
-checkout cases when browser diagnostics make them reach the pool later. All
-case fibers still launch immediately and participate in the same fail-fast
-aggregate. After pay-page assertions, payment cases enter the suite's
-interruption-safe hosted-payment session permit. That permit covers payment
-submission, the retry-safe exact-attempt row read, hosted-page interaction, and
-the normal return page; it does not retry any state-creating operation. Direct
-database assertions share one runner-owned pool capped at ten connections.
-Before allowing three concurrent runs, revalidate the aggregate eighteen-start
-ceiling in the required soak and lower the per-run limit if provider p95 or
-throttling regresses. Do not make an edge case mutate a fixture consumed by
-another case.
+another. Playwright owns case scheduling with six workers, so at most six cases
+can enter reservation start at once. The 14 hosted-payment cases are distributed
+across three serial Playwright lanes, keeping at most three hosted sessions
+active while non-payment cases use the remaining workers. Playwright project
+dependencies run the Calendar mutation only after every independent project.
+Each worker owns a database pool capped at two connections. `maxFailures: 1`
+stops new case admission after the first failure; already-running tests finish
+their exact cleanup, and the teardown project reconciles their private cleanup
+journals. Before allowing three concurrent runs, revalidate the aggregate
+eighteen-case ceiling in the required soak and lower the Playwright worker limit
+if provider p95 or throttling regresses. Do not make an edge case mutate a
+fixture consumed by another case.
 
 ### Discount coverage matrix
 
@@ -503,11 +494,12 @@ or mutate aliases/domains.
 
 The runner relies on Bun to load dotenv files before the entry module executes.
 `e2e/e2e-env.ts` is the only E2E boundary that reads `process.env`: it selects,
-validates, and decodes the exact runner configuration once, before telemetry or
-Effect Layers are constructed. Other E2E modules receive that immutable typed
-configuration and must not read ambient environment variables. Application-only
-variables are not projected into the E2E configuration, and E2E telemetry uses
-only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
+validates, and decodes the exact runner configuration and the wrapper-propagated
+run/trace context before telemetry or Effect Layers are constructed. Playwright
+workers receive that immutable typed configuration and read shared preparation
+only from private, versioned and shape-checked files under the ignored checkout artifact
+root. Application-only variables are not projected into the E2E configuration,
+and E2E telemetry uses only the dedicated `WORKSPACE_E2E_POSTHOG_*` variables.
 
 In-process database assertions may reuse application repositories only through
 their injectable service contracts. Keep environment-backed live layers and
@@ -535,14 +527,15 @@ Two three-way rounds passed with a suite-local Effect semaphore, but the next
 round failed all three runs on synthetic webhook replay: suite-local capacity
 one still allowed aggregate capacity three. The runner therefore admits one
 synthetic `replay-payment-webhook` step globally with a transaction-scoped
-PostgreSQL advisory lock in the coordination database. A suite-local semaphore
-allows only one blocked lock query per process, while the dedicated direct SQL
-pool retains a second connection for interruption cancellation. Transaction
+PostgreSQL advisory lock in the coordination database. Each Playwright worker
+allows only one blocked lock query at a time, while its dedicated direct SQL
+pool retains a second connection for interruption cancellation; the three
+payment lanes bound the run-wide queue. Transaction
 commit, rollback, interruption, or connection loss releases the lock.
 
-Hosted payment is bounded only within each suite after an exact three-way
-round produced two hosted-provider error pages; genuine webhook delivery,
-fulfillment, and unrelated provider work remain parallel. Provider-verification
+Hosted payment is bounded by three Playwright payment lanes after an exact
+three-way round produced two hosted-provider error pages; genuine webhook
+delivery, fulfillment, and unrelated provider work remain parallel. Provider-verification
 permit wait is included in the step trace duration, the semantic step timeout
 begins after admission, and the case watchdog bounds the complete wait and
 execution. SQL connection and acquisition failures prevent the replay from
@@ -578,24 +571,24 @@ For a real run, record only non-secret evidence:
 6. Browser navigation succeeds through Vercel Deployment Protection.
 7. Nexi returns to the same preview host.
 8. Replay reaches that preview's `/api/webhooks/nexi`, whose handler verifies authoritative Nexi state.
-9. An intentionally induced case failure interrupts siblings and closes their browser sessions.
+9. An intentionally induced case failure stops new Playwright admission while
+   every already-running test closes its own browser session and performs exact cleanup.
 10. Deleting the test PR's Git branch lets the Neon/Vercel integration remove
     its obsolete preview branch without a repository cleanup workflow.
 
 Failure artifacts remain available for seven days. The suite must retain
-fail-fast concurrency, scoped browser sessions,
-cancellation propagation, bounded finalizers, case watchdogs, and discrete
-semantic-step timeouts.
+Playwright-owned fail-fast admission, scoped browser sessions, bounded
+finalizers, case watchdogs, and discrete semantic-step timeouts.
 
 ## Suite telemetry
 
-The Bun E2E process exports an OTLP trace to PostHog under its own
-`deskohub-workspace-e2e` service name. One root `e2e.run` span contains fixed
-`e2e.phase` spans for preview readiness, fixture seeding, cowork/meeting-room/office
-availability preparation, case construction, the independent and
-shared-fixture phases, per-case finalization, and suite cleanup. It also
-contains an `e2e.case` child for every case, and every semantic step is an
-`e2e.step` child of its case. Span names are fixed and low-cardinality; phase,
+The Bun E2E wrapper exports an OTLP trace to PostHog under its own
+`deskohub-workspace-e2e` service name and propagates its root context to every
+Playwright worker. One root `e2e.run` trace contains fixed `e2e.phase` spans for
+preview readiness, fixture seeding, provider and cowork/meeting-room/office
+availability preparation, case construction, per-case finalization, and suite
+cleanup. It also contains an `e2e.case` span for every case, and every semantic
+step is an `e2e.step` child of its case. Span names are fixed and low-cardinality; phase,
 case, and step IDs are code-owned attributes. The allocation shard and shard
 count are bounded numeric attributes; provider identifiers, selected dates,
 and preview URLs are not trace attributes.
@@ -681,8 +674,8 @@ installation, preview-database resolution, capacity validation, or
 migration—do not produce suite spans. Diagnose those from the responsible
 GitHub Actions step. The workflow adds a setup timing table to its Actions
 summary for Bun setup, repository dependencies, Neon resolution, aggregate
-Dotypos capacity validation, migration, the pinned `agent-browser` CLI, and
-browser/system dependencies. It reports both the post-allocation setup path and
+Dotypos capacity validation, migration, Playwright, and hosted browser/system
+dependencies. It reports both the post-allocation setup path and
 the complete `test-e2e` job setup path from before the exact-SHA checkout. The
 separate target-resolution job remains visible in native Actions timings. These
 operations remain sequential until a supported prepared runner image or cache

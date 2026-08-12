@@ -176,9 +176,44 @@ test("case-owned cleanup uses only captured IDs and exact-order lookups", async 
   expect(readCheckoutRow).toHaveBeenCalledTimes(1);
   expect(cancellationBarrier.maximumActive()).toBe(3);
   expect(capturedState.cleanupComplete).toBe(true);
+  expect(capturedState.completedDotyposReservationId).toBe(
+    "dotypos-reservation-1"
+  );
   expect(exactOrderState.cleanupComplete).toBe(true);
   expect(secondCapturedState.cleanupComplete).toBe(true);
   expect(unresolvedInterruptedState.cleanupComplete).toBeUndefined();
+});
+
+test("does not cancel a journaled case reservation twice", async () => {
+  const state: CheckoutFlowState = {
+    cleanupComplete: true,
+    completedDotyposReservationId: "dotypos-reservation-1",
+    data: checkoutData(),
+    startedAt: new Date("2026-07-26T12:00:00.000Z"),
+  };
+  const cancelDotyposReservation = mock(() => Effect.void);
+  const waitForCancelledDotyposReservations = mock(() => Effect.void);
+
+  const cleanupError = await Effect.runPromise(
+    cleanupCheckoutFlowStates(
+      {
+        datasourceConfig: {} as DatasourceConfig,
+        flowStates: [state],
+        workflowError: undefined,
+      },
+      {
+        cancelDotyposReservation,
+        readCheckoutRow: () => Effect.succeed(undefined),
+        readCleanupCheckoutRows: () =>
+          Effect.succeed([checkoutRow("dotypos-reservation-1")]),
+        waitForCancelledDotyposReservations,
+      }
+    )
+  );
+
+  expect(cleanupError).toBeUndefined();
+  expect(cancelDotyposReservation).not.toHaveBeenCalled();
+  expect(waitForCancelledDotyposReservations).toHaveBeenCalledTimes(1);
 });
 
 test("case-owned cleanup leaves failed cancellations for suite reconciliation", async () => {

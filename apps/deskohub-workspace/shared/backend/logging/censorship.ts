@@ -1,3 +1,4 @@
+import { isNativeError } from "node:util/types";
 import {
   type AnyValue,
   type AnyValueMap,
@@ -42,11 +43,14 @@ const sensitiveLogKeyFragments = [
 ] as const;
 
 const sensitiveLogExactKeys = new Set([
+  "attachments",
   "db.namespace",
   "discountcode",
   "exception.stacktrace",
+  "recipient",
   "server.address",
   "submittedcode",
+  "subject",
   "x-vercel-sc-headers",
 ]);
 
@@ -369,7 +373,7 @@ const censorLogValueInternal = (
     return result;
   }
 
-  if (Error.isError(value)) {
+  if (isNativeError(value)) {
     const existing = seen.get(value);
     if (existing) return existing;
 

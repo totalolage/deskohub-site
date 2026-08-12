@@ -41,6 +41,14 @@ export const relations = defineRelations(schema, (r) => ({
       to: r.workspaceReservations.id,
       optional: false,
     }),
+    emailDeliveries: r.many.invoiceEmailDeliveries(),
+  },
+  invoiceEmailDeliveries: {
+    invoice: r.one.invoices({
+      from: r.invoiceEmailDeliveries.invoiceId,
+      to: r.invoices.id,
+      optional: false,
+    }),
   },
   discounts: {
     productTargets: r.many.discountProductTargets(),
