@@ -34,11 +34,8 @@ The office is exclusive for the complete selected date range. Any existing occup
 
 ## Cross-family rules
 
+- The customer confirmation email contains a protected status link, never the door PIN itself. The status page resolves the current PIN on each request and displays it only from 30 minutes before the reservation starts until 30 minutes after it ends. This display grace period does not extend the reserved use of the space.
 - Product identity includes the reservation family and every choice that changes the purchased product.
 - Discount configuration may target a whole reservation family, while quotes and completed purchases preserve the exact selected product.
 - Availability, pricing, summaries, persistence, confirmation, email, and status views dispatch each family explicitly.
 - Adding a reservation family requires complete support at every issuing and consuming boundary before it becomes publicly selectable.
-
-## Customer cancellation policy
-
-A customer may request cancellation by email. Meeting-room and office reservations receive a full refund when the request arrives at least 24 hours before the reservation begins. A same-day meeting-room or office reservation also has a five-minute full-refund grace period after the contract is concluded, provided the reservation has not begun. A cowork reservation receives a full contractual refund until its access PIN is delivered. These contractual benefits do not replace any mandatory consumer withdrawal or defective-performance rights.

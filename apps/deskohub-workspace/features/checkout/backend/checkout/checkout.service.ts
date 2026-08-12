@@ -277,13 +277,11 @@ const toCheckoutLegalDocuments = (
 ) => ({
   termsAndConditions: {
     path: documents.termsAndConditions.path,
-    content: documents.termsAndConditions.content,
     hash: documents.termsAndConditions.hash,
     hashAlgorithm: documents.termsAndConditions.hashAlgorithm,
   },
   operatingRules: {
     path: documents.operatingRules.path,
-    content: documents.operatingRules.content,
     hash: documents.operatingRules.hash,
     hashAlgorithm: documents.operatingRules.hashAlgorithm,
   },

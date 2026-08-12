@@ -6,9 +6,15 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import {
+  WorkspaceCheckoutAccessCodeService,
+  type WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
+} from "../reservation/access-code.service";
+import { createReservationStatusAccessToken } from "./reservation-status-access-token";
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
   Temporal.Instant.from(value);
@@ -91,6 +97,14 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as typeof DotyposService.Service;
 
+const makeAccessCodes = (
+  overrides: Partial<WorkspaceCheckoutAccessCodeServiceType> = {}
+): WorkspaceCheckoutAccessCodeServiceType => ({
+  generateCustomerAccessCode: Effect.succeed("7915"),
+  resolveCustomerAccessCode: mock(() => Effect.succeed("7915")),
+  ...overrides,
+});
+
 describe("CheckoutStatusService", () => {
   test("refreshes successful payment status before reading status", async () => {
     const { CheckoutStatusService } = await import("./checkout-status.service");
@@ -150,6 +164,10 @@ describe("CheckoutStatusService", () => {
               Layer.succeed(PaymentAttemptRepository, paymentAttempts),
               Layer.succeed(DotyposService, makeDotypos()),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -219,6 +237,10 @@ describe("CheckoutStatusService", () => {
               Layer.succeed(PaymentAttemptRepository, paymentAttempts),
               Layer.succeed(DotyposService, makeDotypos()),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -348,6 +370,10 @@ describe("CheckoutStatusService", () => {
                 Layer.succeed(PaymentAttemptRepository, paymentAttempts),
                 Layer.succeed(DotyposService, dotypos),
                 Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+                Layer.succeed(
+                  WorkspaceCheckoutAccessCodeService,
+                  makeAccessCodes()
+                ),
                 SeatingMapFeatureFlagServiceMock({
                   isEnabled: Effect.succeed(seatingMapEnabled),
                 })
@@ -495,6 +521,10 @@ describe("CheckoutStatusService", () => {
               Layer.succeed(PaymentAttemptRepository, paymentAttempts),
               Layer.succeed(DotyposService, dotypos),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -600,6 +630,10 @@ describe("CheckoutStatusService", () => {
               Layer.succeed(PaymentAttemptRepository, paymentAttempts),
               Layer.succeed(DotyposService, dotypos),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(false),
               })
@@ -667,11 +701,17 @@ describe("CheckoutStatusService", () => {
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
 
+    const statusToken = await createReservationStatusAccessToken({
+      orderId: workspaceReservationIdSchema.make("reservation-provider-return"),
+      locale: "en-US",
+      expiresAt: Temporal.Instant.from("2099-06-20T22:30:00Z"),
+    }).pipe(Effect.runPromise);
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
       return yield* service.getStatus({
         orderId: "reservation-provider-return",
         returnOutcome: "success",
+        statusToken,
       });
     }).pipe(
       Effect.provide(
@@ -706,6 +746,10 @@ describe("CheckoutStatusService", () => {
                 })
               ),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -724,6 +768,120 @@ describe("CheckoutStatusService", () => {
         phone: "+420777777777",
       },
     });
+  });
+
+  test("resolves the current PIN only for an authorized active reservation", async () => {
+    const { CheckoutStatusService } = await import("./checkout-status.service");
+    const { ProviderPaymentFinalizationService } = await import(
+      "../payment/provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "../holds/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "../repositories/payment-attempt.repository"
+    );
+
+    const now = Temporal.Now.instant();
+    const reservedFrom = now.subtract({ minutes: 10 });
+    const reservedUntil = now.add({ minutes: 50 });
+    const orderId = workspaceReservationIdSchema.make(
+      "reservation-active-access"
+    );
+    const statusToken = await createReservationStatusAccessToken({
+      orderId,
+      locale: "en-US",
+      expiresAt: reservedUntil.add({ minutes: 30 }),
+    }).pipe(Effect.runPromise);
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            id: orderId,
+            paymentState: "paid",
+            reservationState: "confirmed",
+            reservationConfirmedAt: now,
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt({ workspaceReservationId: orderId }))
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const resolveCustomerAccessCode = mock(() =>
+      Effect.succeed("CURRENT-2468")
+    );
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            startDate: reservedFrom.toString(),
+            endDate: reservedUntil.toString(),
+            seats: "1",
+            status: "CONFIRMED",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+    });
+
+    const [authorized, unauthorized] = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* Effect.all([
+        service.getStatus({
+          orderId,
+          returnOutcome: "success",
+          statusToken,
+        }),
+        service.getStatus({ orderId, returnOutcome: "success" }),
+      ]);
+    }).pipe(
+      Effect.provide(
+        CheckoutStatusService.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProviderPaymentFinalizationService, finalization),
+              Layer.succeed(WorkspaceReservationRepository, reservations),
+              Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+              Layer.succeed(DotyposService, dotypos),
+              Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes({ resolveCustomerAccessCode })
+              ),
+              SeatingMapFeatureFlagServiceMock({
+                isEnabled: Effect.succeed(false),
+              })
+            )
+          )
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(authorized).toMatchObject({
+      accessCode: {
+        state: "available",
+        code: "CURRENT-2468",
+      },
+    });
+    expect(unauthorized).not.toHaveProperty("accessCode");
+    expect(resolveCustomerAccessCode).toHaveBeenCalledTimes(1);
   });
 
   test("omits summary when only a failed payment attempt is available", async () => {
@@ -789,6 +947,10 @@ describe("CheckoutStatusService", () => {
               Layer.succeed(PaymentAttemptRepository, paymentAttempts),
               Layer.succeed(DotyposService, makeDotypos({ getReservation })),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })
@@ -863,6 +1025,10 @@ describe("CheckoutStatusService", () => {
                 })
               ),
               Layer.succeed(ReservationHoldCleanupService, holdCleanup),
+              Layer.succeed(
+                WorkspaceCheckoutAccessCodeService,
+                makeAccessCodes()
+              ),
               SeatingMapFeatureFlagServiceMock({
                 isEnabled: Effect.succeed(true),
               })

@@ -17,9 +17,6 @@ describe("WorkspacePaidFulfillmentService", () => {
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
-    const { LegalEvidenceEventRepository } = await import(
-      "../repositories/legal-evidence-event.repository"
-    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -93,9 +90,6 @@ describe("WorkspacePaidFulfillmentService", () => {
               Layer.succeed(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(LegalEvidenceEventRepository, {
-                findByWorkspaceReservationId: mock(() => Effect.succeed([])),
-              } as never),
               Layer.succeed(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
@@ -115,7 +109,6 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(confirmReservation).not.toHaveBeenCalled();
     expect(markReservationConfirmed).not.toHaveBeenCalled();
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
-      legalEvidence: [],
       reservation: emailReservation,
     });
     expect(markFulfilled).toHaveBeenCalledWith(
@@ -130,9 +123,6 @@ describe("WorkspacePaidFulfillmentService", () => {
     } = await import("./paid-fulfillment.service");
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
-    );
-    const { LegalEvidenceEventRepository } = await import(
-      "../repositories/legal-evidence-event.repository"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
@@ -201,9 +191,6 @@ describe("WorkspacePaidFulfillmentService", () => {
               Layer.succeed(WorkspaceReservationEmailService, {
                 sendPaidReservationEmails,
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(LegalEvidenceEventRepository, {
-                findByWorkspaceReservationId: mock(() => Effect.succeed([])),
-              } as never),
               Layer.succeed(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })
@@ -219,7 +206,6 @@ describe("WorkspacePaidFulfillmentService", () => {
       expect.objectContaining({ id: "reservation-id" })
     );
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
-      legalEvidence: [],
       reservation: emailReservation,
     });
     expect(markFulfilled).toHaveBeenCalledWith(
@@ -234,9 +220,6 @@ describe("WorkspacePaidFulfillmentService", () => {
     } = await import("./paid-fulfillment.service");
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
-    );
-    const { LegalEvidenceEventRepository } = await import(
-      "../repositories/legal-evidence-event.repository"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
@@ -297,11 +280,6 @@ describe("WorkspacePaidFulfillmentService", () => {
                   Effect.die("email flow should not start")
                 ),
               } satisfies IWorkspaceReservationEmailService),
-              Layer.succeed(LegalEvidenceEventRepository, {
-                findByWorkspaceReservationId: mock(() =>
-                  Effect.die("email flow should not start")
-                ),
-              } as never),
               Layer.succeed(PostHogEventService, {
                 capture: mock(() => Effect.void),
               })

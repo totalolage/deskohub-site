@@ -58,7 +58,7 @@ const termsAndConditionsSections: LegalSection[] = [
       "2.3 Prostory jsou coworkingové prostory, zasedací místnost, soukromá kancelář a eventové prostory provozované Poskytovatelem.",
       "2.4 Službami se rozumí časově omezené umožnění užívání zvolených Prostor a související služby uvedené v objednávce.",
       "2.5 Tarifem se rozumí konkrétní rozsah coworkingových služeb a podmínek jejich čerpání dle aktuálního Ceníku Poskytovatele.",
-      "2.6 Přístupovým PIN kódem se rozumí jedinečný kód umožňující vstup do prostor Poskytovatele.",
+      "2.6 Přístupovým PIN kódem se rozumí aktuální kód umožňující vstup do prostor Poskytovatele.",
       "2.7 Rezervací se rozumí objednávka konkrétního coworkingového vstupu, termínu zasedací místnosti nebo termínu, počtu dnů a počtu míst v soukromé kanceláři.",
     ],
   },
@@ -77,7 +77,7 @@ const termsAndConditionsSections: LegalSection[] = [
     heading: "4. Uzavření smlouvy",
     body: [
       "4.1 Údaje o Službách na webu představují výzvu k podání objednávky. Klient před odesláním objednávky zkontroluje vybranou Službu, termín, rozsah, konečnou cenu a kontaktní nebo fakturační údaje a aktivně přijme tyto VOP a Provozní řád.",
-      "4.2 Kliknutím na tlačítko „Objednat a zaplatit“ Klient odesílá závaznou objednávku s povinností zaplatit uvedenou konečnou cenu. Smlouva je uzavřena doručením potvrzení Poskytovatele po úspěšné platbě, nebo u objednávky s nulovou konečnou cenou doručením potvrzení jejího dokončení. Potvrzení obsahuje sjednané údaje Rezervace, přístupové informace a přijaté znění VOP a Provozního řádu v podobě, kterou si Klient může uchovat.",
+      "4.2 Kliknutím na tlačítko „Objednat a zaplatit“ Klient odesílá závaznou objednávku s povinností zaplatit uvedenou konečnou cenu. Smlouva je uzavřena doručením potvrzení Poskytovatele po úspěšné platbě, nebo u objednávky s nulovou konečnou cenou doručením potvrzení jejího dokončení. Potvrzení obsahuje sjednané údaje Rezervace a bezpečný odkaz na její stav a přístupové informace.",
       "4.3 Do uzavření smlouvy jde pouze o dočasné držení kapacity. Poskytovatel může objednávku odmítnout zejména při nedostupnosti, zjevné chybě v ceně, podezření na podvod nebo nesplnění podmínek Rezervace; přijatou platbu v takovém případě vrátí bez zbytečného odkladu.",
       "4.4 Požadavky na kávu, konkrétní pracovní místo, monitor, vybavení nebo jiné doplňky podléhají dostupnosti a jsou závazné pouze tehdy, jsou-li uvedeny v potvrzení.",
       "4.5 Smlouva o prostoru pro individuálně sjednanou akci je uzavřena přijetím konkrétní nabídky Poskytovatele Klientem.",
@@ -105,8 +105,8 @@ const termsAndConditionsSections: LegalSection[] = [
   {
     heading: "7. Přístup a užívání služeb",
     body: [
-      "7.1 Přístup do prostor je umožněn prostřednictvím přístupového PIN kódu zaslaného Klientovi elektronicky.",
-      "7.2 Časová platnost přístupového PIN kódu se řídí potvrzenou Rezervací. Přístup mimo potvrzený čas nebo do jiných prostor není součástí Služby.",
+      "7.1 Potvrzovací email obsahuje bezpečný odkaz na stránku stavu Rezervace. Aktuální přístupový PIN kód se na této stránce zobrazuje od 30 minut před začátkem Rezervace do 30 minut po jejím skončení. PIN není obsažen přímo v potvrzovacím emailu.",
+      "7.2 Poskytovatel může přístupový PIN změnit; Klient použije kód aktuálně zobrazený na stránce Rezervace. Doba zobrazení PIN kódu je pouze technickou rezervou pro příchod a odchod, neprodlužuje potvrzenou dobu užívání Prostor a nezakládá právo na přístup mimo tuto dobu nebo do jiných prostor.",
       "7.3 Klient smí PIN kód sdělit pouze osobám oprávněným účastnit se jeho Rezervace, musí jej chránit před dalšími osobami a odpovídá za jeho použití svými hosty. Podezření na zneužití neprodleně oznámí Poskytovateli.",
       "7.4 Klient a jeho hosté jsou povinni dodržovat kapacitu, účel Rezervace, potvrzený čas a Provozní řád. Klient zajistí, aby hosté Prostory opustili nejpozději na konci Rezervace.",
     ],
@@ -122,13 +122,13 @@ const termsAndConditionsSections: LegalSection[] = [
         >
           {contactEmail}
         </a>
-        . U online rezervace zasedací místnosti nebo soukromé kanceláře vrátí
-        Poskytovatel celou cenu, obdrží-li žádost alespoň 24 hodin před jejím
-        začátkem.
+        . Poskytovatel žádost zpracuje podle podmínek uvedených v souhrnu
+        objednávky nebo individuální nabídce a podle kogentních právních
+        předpisů.
       </>,
-      "8.2 Rezervaci zasedací místnosti nebo soukromé kanceláře vytvořenou v den jejího začátku lze zrušit s vrácením celé ceny do pěti minut od uzavření smlouvy, nejpozději však před začátkem Rezervace. Při pozdějším zrušení nevzniká smluvní nárok na vrácení ceny, není-li v souhrnu objednávky uvedena výhodnější podmínka nebo nestanoví-li kogentní právní předpis jinak.",
-      "8.3 Coworkingový vstup lze smluvně zrušit s vrácením celé ceny do doručení přístupového PIN kódu. Individuálně sjednané akce se ruší podle podmínek konkrétní nabídky.",
-      "8.4 Klient není oprávněn k vrácení ceny za dobu, kdy Prostory nevyužil, při pozdním příchodu nebo předčasném odchodu. Tím nejsou dotčena práva z vadného plnění, zákonné právo Spotřebitele odstoupit od smlouvy ani případ, kdy Službu neposkytl Poskytovatel.",
+      "8.2 Není-li v souhrnu objednávky nebo individuální nabídce uvedeno jinak, samotné storno nezakládá zvláštní smluvní nárok na vrácení ceny. Tím nejsou dotčena práva z vadného plnění, zákonné právo Spotřebitele odstoupit od smlouvy ani případ, kdy Službu neposkytl Poskytovatel.",
+      "8.3 Individuálně sjednané akce se ruší podle podmínek konkrétní nabídky.",
+      "8.4 Klient není oprávněn k vrácení ceny pouze proto, že Prostory nevyužil, přišel pozdě nebo odešel předčasně, nejsou-li splněny podmínky pro vrácení podle tohoto článku nebo kogentního právního předpisu.",
     ],
   },
   {
@@ -149,7 +149,7 @@ const termsAndConditionsSections: LegalSection[] = [
       </>,
       "9.4 Po platném odstoupení vrátí Poskytovatel přijaté peněžní prostředky bez zbytečného odkladu, nejpozději do 14 dnů, stejným způsobem, kterým byly přijaty, nedohodnou-li se strany jinak bez vzniku dalších nákladů Spotřebitele.",
       "9.5 Vzor oznámení: „Oznamuji, že odstupuji od smlouvy na tuto Službu: [popis a číslo Rezervace], objednanou dne [datum]. Jméno a příjmení Spotřebitele: [doplnit]. Adresa Spotřebitele: [doplnit]. Datum: [doplnit]. Podpis pouze při listinném podání.“ Použití vzoru není povinné.",
-      "9.6 Práva podle tohoto článku náleží pouze Spotřebiteli a platí vedle výhodnějších storno podmínek podle článku 8.",
+      "9.6 Práva podle tohoto článku náleží pouze Spotřebiteli a platí vedle případných výhodnějších storno podmínek uvedených v souhrnu objednávky nebo individuální nabídce.",
     ],
   },
   {
@@ -285,9 +285,10 @@ const operatingRulesSections: LegalSection[] = [
       "6.2 Uživatel nesmí blokovat únikové cesty ani jinak ohrožovat bezpečný provoz prostor.",
       "6.3 Uživatel je povinen bez zbytečného odkladu upozornit Provozovatele na vznik nebezpečné situace nebo závady.",
       "6.4 Přístupový PIN kód smí Klient sdělit pouze osobám oprávněným účastnit se jeho rezervace. Uživatelé jej chrání před zpřístupněním nebo odpozorováním neoprávněnou osobou a při zadávání dbají zvýšené opatrnosti.",
-      "6.5 Dveře ani jiné zabezpečené vstupy nesmějí být ponechány otevřené. Podezření na zneužití kódu nebo vstup neoprávněné osoby Uživatel neprodleně oznámí Provozovateli.",
-      "6.6 Klient zajistí bezpečný příchod a odchod svých hostů a nesmí jim umožnit přístup mimo potvrzenou dobu nebo do jiných než oprávněně užívaných prostor.",
-      "6.7 Provozovatel nebo jím pověřená osoba může vstoupit do rezervovaného prostoru, je-li to nutné kvůli mimořádné události, bezpečnosti, odvrácení škody nebo nezbytné údržbě; pokud to okolnosti dovolují, Klienta předem informuje.",
+      "6.5 Doba, po kterou rezervační stránka PIN zobrazuje, neprodlužuje dobu oprávněného užívání prostor. Uživatelé smějí vstoupit a pobývat v prostorách pouze v potvrzené době Rezervace.",
+      "6.6 Dveře ani jiné zabezpečené vstupy nesmějí být ponechány otevřené. Podezření na zneužití kódu nebo vstup neoprávněné osoby Uživatel neprodleně oznámí Provozovateli.",
+      "6.7 Klient zajistí bezpečný příchod a odchod svých hostů a nesmí jim umožnit přístup mimo potvrzenou dobu nebo do jiných než oprávněně užívaných prostor.",
+      "6.8 Provozovatel nebo jím pověřená osoba může vstoupit do rezervovaného prostoru, je-li to nutné kvůli mimořádné události, bezpečnosti, odvrácení škody nebo nezbytné údržbě; pokud to okolnosti dovolují, Klienta předem informuje.",
     ],
   },
   {
@@ -344,7 +345,7 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
       "2.3 Premises means the coworking spaces, meeting room, private office, and event spaces operated by the Provider.",
       "2.4 Services means time-limited use of the selected Premises and the related services stated in the order.",
       "2.5 Tariff means the specific scope of coworking services and the conditions for their use according to the Provider's current Price List.",
-      "2.6 Access PIN Code means a unique code enabling entry into the Provider's premises.",
+      "2.6 Access PIN Code means the current code enabling entry into the Provider's premises.",
       "2.7 Booking means an order for a specific coworking entry, a meeting-room time slot, or a private-office date range, day count, and seat count.",
     ],
   },
@@ -363,7 +364,7 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
     heading: "4. Conclusion of the Contract",
     body: [
       "4.1 Service information on the website is an invitation to place an order. Before submitting the order, the Client reviews the selected Service, time, scope, final price, and contact or billing details and actively accepts these GTC and the House Rules.",
-      '4.2 By selecting the "Order and pay" button, the Client submits a binding order with an obligation to pay the stated final price. The contract is concluded when the Provider sends confirmation after successful payment or, for an order with a zero final price, confirmation that the order has been completed. The confirmation contains the agreed Booking details, access information, and the accepted Terms and Operating Rules in a form the Client can retain.',
+      '4.2 By selecting the "Order and pay" button, the Client submits a binding order with an obligation to pay the stated final price. The contract is concluded when the Provider sends confirmation after successful payment or, for an order with a zero final price, confirmation that the order has been completed. The confirmation contains the agreed Booking details and a secure link to its status and access information.',
       "4.3 Until the contract is concluded, capacity is held only temporarily. The Provider may reject an order in particular because of unavailability, an obvious pricing error, suspected fraud, or failure to meet the Booking conditions; any payment received will then be refunded without undue delay.",
       "4.4 Requests for coffee, a particular workstation, monitor, equipment, or other extras are subject to availability and are binding only if stated in the confirmation.",
       "4.5 A contract for an individually arranged event space is concluded when the Client accepts the Provider's specific offer.",
@@ -391,8 +392,8 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
   {
     heading: "7. Access and Use of Services",
     body: [
-      "7.1 Access to the premises is enabled via an access PIN code sent to the Client electronically.",
-      "7.2 The Access PIN Code is valid for the confirmed Booking. Access outside the confirmed time or to other premises is not part of the Service.",
+      "7.1 The confirmation email contains a secure link to the Booking status page. The current Access PIN Code is displayed on that page from 30 minutes before the Booking starts until 30 minutes after it ends. The PIN is not included directly in the confirmation email.",
+      "7.2 The Provider may change the Access PIN Code; the Client must use the code currently displayed on the Booking page. The PIN display period is only a technical grace period for arrival and departure, does not extend the confirmed use of the Premises, and creates no right to enter outside the confirmed time or into other premises.",
       "7.3 The Client may disclose the PIN Code only to people authorized to attend the Booking, must protect it from everyone else, and is responsible for its use by the Client's guests. Suspected misuse must be reported to the Provider without delay.",
       "7.4 The Client and guests must observe the capacity, Booking purpose, confirmed time, and House Rules. The Client must ensure that guests leave the Premises by the end of the Booking.",
     ],
@@ -408,13 +409,12 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
         >
           {contactEmail}
         </a>
-        . For an online meeting-room or private-office Booking, the Provider
-        will refund the full price if it receives the request at least 24 hours
-        before the Booking starts.
+        . The Provider will process the request under the conditions shown in
+        the order summary or individual offer and under mandatory law.
       </>,
-      "8.2 A meeting-room or private-office Booking made on its start date may be cancelled for a full refund within five minutes after the contract is concluded and before the Booking starts. A later cancellation does not create a contractual right to a refund unless the order summary states a more favorable condition or mandatory law provides otherwise.",
-      "8.3 A coworking entry may be contractually cancelled for a full refund until the Access PIN Code is delivered. Individually arranged events are cancelled under the conditions of the specific offer.",
-      "8.4 The Client is not entitled to a refund for time when the Premises were not used, late arrival, or early departure. This does not affect rights arising from defective performance, a Consumer's statutory withdrawal right, or a failure by the Provider to supply the Service.",
+      "8.2 Unless the order summary or individual offer states otherwise, cancellation alone does not create a separate contractual right to a refund. This does not affect rights arising from defective performance, a Consumer's statutory withdrawal right, or a failure by the Provider to supply the Service.",
+      "8.3 Individually arranged events are cancelled under the conditions of the specific offer.",
+      "8.4 The Client is not entitled to a refund merely because the Premises were not used, the Client arrived late, or the Client left early, unless the refund conditions under this article or mandatory law are met.",
     ],
   },
   {
@@ -435,7 +435,7 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
       </>,
       "9.4 Following a valid withdrawal, the Provider will reimburse payments received without undue delay and no later than 14 days, using the same payment method unless the parties agree otherwise without additional cost to the Consumer.",
       "9.5 Model notice: “I hereby give notice that I withdraw from my contract for the following Service: [description and Booking number], ordered on [date]. Consumer name: [complete]. Consumer address: [complete]. Date: [complete]. Signature only if submitted on paper.” Use of the model is optional.",
-      "9.6 The rights in this article apply only to a Consumer and operate alongside any more favorable cancellation terms under Article 8.",
+      "9.6 The rights in this article apply only to a Consumer and operate alongside any more favorable cancellation terms stated in the order summary or individual offer.",
     ],
   },
   {
@@ -574,9 +574,10 @@ const operatingRulesSectionsEn: LegalSection[] = [
       "6.2 The User must not block escape routes or otherwise jeopardize the safe operation of the premises.",
       "6.3 The User is obliged to notify the Operator of any dangerous situation or defect without undue delay.",
       "6.4 The Client may disclose an Access PIN Code only to people authorized to attend the Booking. Users must protect it from disclosure to or observation by an unauthorized person and take particular care when entering it.",
-      "6.5 Doors and other secured entrances must not be left open. Suspected code misuse or entry by an unauthorized person must be reported to the Operator without delay.",
-      "6.6 The Client must ensure guests arrive and leave safely and must not grant them access outside the confirmed time or to other premises.",
-      "6.7 The Operator or its authorized representative may enter a booked space when necessary for an emergency, safety, damage prevention, or essential maintenance and will inform the Client in advance where circumstances allow.",
+      "6.5 The period during which the Booking page displays the PIN does not extend the authorized use of the Premises. Users may enter and remain only during the confirmed Booking time.",
+      "6.6 Doors and other secured entrances must not be left open. Suspected code misuse or entry by an unauthorized person must be reported to the Operator without delay.",
+      "6.7 The Client must ensure guests arrive and leave safely and must not grant them access outside the confirmed time or to other premises.",
+      "6.8 The Operator or its authorized representative may enter a booked space when necessary for an emergency, safety, damage prevention, or essential maintenance and will inform the Client in advance where circumstances allow.",
     ],
   },
   {
@@ -651,11 +652,11 @@ const legalDocuments: Record<
             <>
               When you continue to checkout, we also process the quoted and paid
               amount, currency, applied discounts, payment and reservation
-              identifiers and status, accepted legal-document copies and hashes,
-              related checkout acknowledgements, access and fulfillment status,
-              and any optional billing details you request us to use for an
-              accounting document. We do not receive your complete payment-card
-              details from the payment provider.
+              identifiers and status, accepted legal-document references and
+              hashes, related checkout acknowledgements, access and fulfillment
+              status, and any optional billing details you request us to use for
+              an accounting document. We do not receive your complete
+              payment-card details from the payment provider.
             </>,
             <>
               For website operation and abuse prevention, we may also process
@@ -1014,7 +1015,7 @@ const legalDocuments: Record<
             <>
               Při pokračování k objednávce zpracováváme také nabízenou a
               zaplacenou částku, měnu, použité slevy, identifikátory a stav
-              platby a rezervace, přijaté kopie a otisky právních dokumentů,
+              platby a rezervace, odkazy a otisky přijatých právních dokumentů,
               související potvrzení učiněná při objednávce, stav přístupu a
               dokončení Služby a volitelné fakturační údaje, které požadujete
               použít na účetním dokladu. Od poskytovatele plateb nezískáváme

@@ -875,7 +875,7 @@ export const getAssertFulfillmentFailedSupportScript = (
 (() => {
   const expected = ${JSON.stringify({ locale: data.locale, orderId })};
   const text = document.body?.textContent ?? '';
-  if (!/couldn't deliver your access codes/i.test(text)) {
+  if (!/couldn't deliver your confirmation/i.test(text)) {
     throw new Error('fulfillment failed status copy not visible');
   }
   const link = [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));

@@ -53,13 +53,11 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
     Effect.succeed({
       termsAndConditions: {
         path: "/legal/terms.md",
-        content: "Terms test content",
         hash: "terms-test-hash",
         hashAlgorithm: "sha256",
       },
       operatingRules: {
         path: "/legal/rules.md",
-        content: "Rules test content",
         hash: "rules-test-hash",
         hashAlgorithm: "sha256",
       },
@@ -624,9 +622,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
               capture,
             }),
             Layer.succeed(LegalEvidenceEventRepository, {
-              findByWorkspaceReservationId: mock(() => Effect.succeed([])),
               recordMany: recordLegalEvidence,
-            } as never)
+            })
           )
         )
       )
@@ -679,9 +676,6 @@ describe("CheckoutService", () => {
       expect.objectContaining({
         evidence: expect.objectContaining({
           documentKey: "termsAndConditions",
-          document: expect.objectContaining({
-            content: "Terms test content",
-          }),
           acknowledgements: {
             performanceBeforeWithdrawalPeriodEndRequested: true,
             withdrawalRightLossAfterFullPerformanceAcknowledged: true,
@@ -691,9 +685,6 @@ describe("CheckoutService", () => {
       expect.objectContaining({
         evidence: expect.objectContaining({
           documentKey: "operatingRules",
-          document: expect.objectContaining({
-            content: "Rules test content",
-          }),
         }),
       }),
     ]);

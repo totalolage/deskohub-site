@@ -20,6 +20,9 @@ import { isDiscountAdminAuthorizationValid } from "./features/discounts/admin/ba
 const isAdministrationPath = (pathname: string) =>
   pathname === "/admin" || pathname.startsWith("/admin/");
 
+const isReservationStatusPath = (pathname: string) =>
+  pathname.includes("/reservation/status/");
+
 export function proxy(request: NextRequest) {
   if (isAdministrationPath(request.nextUrl.pathname)) {
     if (
@@ -53,6 +56,9 @@ export function proxy(request: NextRequest) {
 
   if (localeFromUrl) {
     const response = NextResponse.next();
+    if (isReservationStatusPath(request.nextUrl.pathname)) {
+      response.headers.set("Cache-Control", "private, no-store");
+    }
     setLocaleCookie(response, localeCookieName, localeFromUrl);
     return response;
   }

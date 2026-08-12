@@ -1,6 +1,5 @@
 import "server-only";
 
-import { asc, eq } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
@@ -37,9 +36,6 @@ export interface LegalEvidenceEventRepository {
     readonly LegalEvidenceEvent[],
     EffectDrizzleQueryError | LegalEvidenceEventInputError
   >;
-  readonly findByWorkspaceReservationId: (
-    workspaceReservationId: typeof workspaceReservationIdSchema.Type
-  ) => Effect.Effect<readonly LegalEvidenceEvent[], EffectDrizzleQueryError>;
 }
 
 export const LegalEvidenceEventRepository =
@@ -51,14 +47,12 @@ const getLegalEvidenceEventRecord = (
   workspaceReservationId: parsed.workspaceReservationId,
   documentKey: parsed.evidence.documentKey,
   documentPath: parsed.evidence.document.path,
-  documentContent: parsed.evidence.document.content,
   documentHash: parsed.evidence.documentHash,
   hashAlgorithm: parsed.evidence.document.hashAlgorithm,
   accepted: parsed.evidence.accepted,
   acceptedAt: Temporal.Instant.from(parsed.evidence.acceptedAt),
   locale: parsed.evidence.locale,
   source: parsed.evidence.source,
-  acknowledgements: parsed.evidence.acknowledgements,
 });
 
 export const LegalEvidenceEventRepositoryLive = Layer.effect(
@@ -106,20 +100,6 @@ export const LegalEvidenceEventRepositoryLive = Layer.effect(
 
     return LegalEvidenceEventRepository.of({
       record,
-      findByWorkspaceReservationId: Effect.fn(
-        "legalEvidenceEvents.findByWorkspaceReservationId"
-      )(function* (workspaceReservationId) {
-        return yield* db
-          .select()
-          .from(legalEvidenceEvents)
-          .where(
-            eq(
-              legalEvidenceEvents.workspaceReservationId,
-              workspaceReservationId
-            )
-          )
-          .orderBy(asc(legalEvidenceEvents.acceptedAt));
-      }),
       recordMany: Effect.fn("legalEvidenceEvents.recordMany")(
         function* (input) {
           const inserted: LegalEvidenceEvent[] = [];

@@ -93,6 +93,46 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("shows the authorized current PIN without exposing it to capture", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          accessCode: {
+            state: "available",
+            code: "CURRENT-2468",
+            unavailableAt: Temporal.Instant.from("2026-06-20T11:30:00Z"),
+          },
+        }}
+      />
+    );
+
+    const code = view.getByText("CURRENT-2468");
+    expect(code.getAttribute("data-ph-mask")).toBe("");
+    expect(code.getAttribute("data-ph-no-capture")).toBe("");
+    expect(view.getByText("Your current access PIN")).toBeDefined();
+  });
+
+  test("shows the opening time without serializing a PIN before the window", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          accessCode: {
+            state: "upcoming",
+            availableAt: Temporal.Instant.from("2026-06-20T06:30:00Z"),
+            unavailableAt: Temporal.Instant.from("2026-06-20T11:30:00Z"),
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Your access PIN will appear here")).toBeDefined();
+    expect(view.queryByText("CURRENT-2468")).toBeNull();
+  });
+
   test("renders meeting-room timing and links to its current entry point", () => {
     const view = render(
       <CheckoutStatusPage
@@ -264,12 +304,12 @@ describe("CheckoutStatusPage", () => {
       [
         "Hi Deskohub Workspace,",
         "",
-        "My payment was received, but the access-code email did not arrive.",
+        "My payment was received, but the reservation confirmation email did not arrive.",
         "",
         "Order reference: reservation-status-page",
         "Reservation: Basic Day Pass on Saturday, June 20, 2026",
         "",
-        "Please help me get my workspace access codes.",
+        "Please help me get my secure reservation link.",
       ].join("\n")
     );
   });

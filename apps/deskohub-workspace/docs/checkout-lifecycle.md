@@ -53,7 +53,9 @@ A positive payable amount uses the external payment flow. A total of exactly zer
 
 Payment notifications are triggers, not sole proof. Workspace confirms the current payment facts before changing a reservation to paid. A duplicate notification must not repeat payment, redemption, confirmation, or delivery work.
 
-After payment succeeds, Workspace confirms the reservation and delivers the required customer access information. A paid reservation remains paid if fulfillment is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
+After payment succeeds, Workspace confirms the reservation and sends a customer confirmation containing a protected link to the reservation status page. The email never contains the door PIN. A paid reservation remains paid if confirmation is delayed or fails; the outstanding work is retried or surfaced for operator recovery. In production, required customer delivery is complete only after delivery is confirmed.
+
+The protected status page resolves the current PIN on each request. It discloses the PIN only for a paid reservation that is confirmed both locally and by the reservation provider, during the half-open interval from 30 minutes before the reserved start until 30 minutes after the reserved end. The display grace period does not extend the customer's right to use the space. Today the resolver returns a static PIN; a future provider may return a time-bound PIN without changing the email or status-page contract.
 
 ## Customer choices and legal evidence
 
@@ -63,7 +65,7 @@ Marketing consent is optional and belongs to the customer rather than one reserv
 
 Payment requires two separate choices: acceptance of the current terms and operating rules, and an express request to begin a service at its scheduled time when that time falls inside the statutory withdrawal period. The second choice records the customer's acknowledgement that the withdrawal right ends after full performance and that a proportionate amount may be due after partial performance.
 
-The exact plain-text terms and operating rules accepted for payment, their hashes, and the separate acknowledgements are preserved as immutable evidence without storing customer contact details alongside that evidence. The accepted document copies accompany the paid customer confirmation so that the customer can retain the contract terms independently of the website.
+The paths and hashes of the terms and operating rules accepted for payment are preserved as immutable evidence without storing rendered legal-document copies or customer contact details alongside that evidence. The separate early-performance request is carried with the checkout evidence without adding a new database document store.
 
 ## Privacy and accounting
 

@@ -364,6 +364,7 @@ const runReusableReservationScenario = async (input: {
     } as unknown as WorkspaceReservationRepositoryType),
     Layer.succeed(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+      resolveCustomerAccessCode: () => Effect.die("not used"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.succeed(CustomerMarketingConsentRepository, {
       grant: grantMarketingConsent,
@@ -535,6 +536,7 @@ const runMeetingRoomNewHoldScenario = async (
     } as unknown as WorkspaceReservationRepositoryType),
     Layer.succeed(WorkspaceCheckoutAccessCodeService, {
       generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+      resolveCustomerAccessCode: () => Effect.die("not used"),
     } satisfies WorkspaceCheckoutAccessCodeServiceType),
     Layer.succeed(CustomerMarketingConsentRepository, {
       grant: mock(() => Effect.void),
@@ -897,6 +899,7 @@ describe("prepareWorkspacePayState", () => {
       } as unknown as WorkspaceReservationRepositoryType),
       Layer.succeed(WorkspaceCheckoutAccessCodeService, {
         generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+        resolveCustomerAccessCode: () => Effect.die("not used"),
       } satisfies WorkspaceCheckoutAccessCodeServiceType),
       Layer.succeed(CustomerMarketingConsentRepository, {
         grant: grantMarketingConsent,

@@ -21,4 +21,17 @@ describe("reservation status URL", () => {
       })
     ).toBe("/cs-CZ/reservation/status/reservation-id");
   });
+
+  test("adds the protected customer status capability", () => {
+    expect(
+      getReservationStatusPath({
+        locale: "en-US",
+        orderId: "reservation-id",
+        statusToken: "signed-status-token",
+        skipPreviewProtectionBypass: true,
+      })
+    ).toBe(
+      "/en-US/reservation/status/reservation-id?statusToken=signed-status-token"
+    );
+  });
 });

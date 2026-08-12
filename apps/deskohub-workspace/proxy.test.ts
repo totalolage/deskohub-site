@@ -114,6 +114,16 @@ test("continues to persist the locale for ordinary localized requests", () => {
   expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
 });
 
+test("prevents reservation status responses from being cached", () => {
+  const response = proxy(
+    new NextRequest(
+      "https://workspace.example/en-US/reservation/status/reservation-id?statusToken=sensitive"
+    )
+  );
+
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+});
+
 test("does not treat a GET with a spoofed action header as a Server Action", () => {
   const request = new NextRequest("https://workspace.example/", {
     headers: {

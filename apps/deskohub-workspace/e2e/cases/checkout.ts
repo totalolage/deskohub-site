@@ -615,7 +615,7 @@ const assertFulfillmentFailedSupportPath = ({
       execute: waitForBrowserText({
         description: "fulfillment failed support link",
         matches: (text) =>
-          /couldn't deliver your access codes/i.test(text) &&
+          /couldn't deliver your confirmation/i.test(text) &&
           /Send support request/i.test(text),
         run,
         session,

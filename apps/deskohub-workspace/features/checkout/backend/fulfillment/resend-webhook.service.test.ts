@@ -502,7 +502,6 @@ describe("ResendWebhookService", () => {
     await Effect.gen(function* () {
       const service = yield* WorkspaceReservationEmailService;
       return yield* service.sendPaidReservationEmails({
-        legalEvidence: [],
         reservation: {
           id: "reservation-id",
           locale: "en-US",
@@ -619,7 +618,9 @@ describe("ResendWebhookService", () => {
         m.checkoutEmailAccessCodeLabel({}, { locale })
       );
       const accessCodeTable = accessCodeLabel.closest("table");
-      const accessCode = accessCodeLabel.nextElementSibling;
+      const accessLink = emailView.getByRole("link", {
+        name: m.checkoutEmailCustomerAccessButton({}, { locale }),
+      });
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
@@ -652,14 +653,17 @@ describe("ResendWebhookService", () => {
       ).toBeNull();
       expect(emailView.queryByText("Ada Lovelace")).toBeNull();
       expect(emailView.queryByText("123456789")).toBeNull();
-      expect(accessCode?.textContent).toBe("ACCESS-123");
+      expect(customerHtml).not.toContain("ACCESS-123");
+      expect(customerText).not.toContain("ACCESS-123");
+      expect(accessLink.getAttribute("href")).toContain(
+        "/en-US/reservation/status/reservation-id?statusToken="
+      );
       expect(accessCodeTable?.getAttribute("bgcolor")).toBe("#00024f");
-      expect(accessCodeTable?.contains(accessCode ?? null)).toBe(true);
+      expect(accessCodeTable?.contains(accessLink)).toBe(true);
       expect(accessCodeTable?.getAttribute("style")).toContain(
         "background-color:#00024f"
       );
       expect(accessCodeLabel.getAttribute("style")).toContain("color:#00df99");
-      expect(accessCode?.getAttribute("style")).toContain("color:#fff");
       expect(networkHeading).toBeTruthy();
       expect(
         emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.ssid)
@@ -711,7 +715,7 @@ describe("ResendWebhookService", () => {
       );
       expect(
         emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
-      ).toBeNull();
+      ).toBeTruthy();
     } finally {
       unregisterWorkspaceComponentTestEnv();
     }
@@ -768,9 +772,6 @@ describe("ResendWebhookService", () => {
     );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
-    );
-    const { LegalEvidenceEventRepository } = await import(
-      "../repositories/legal-evidence-event.repository"
     );
     const { WorkspaceReservationService } = await import(
       "@/features/reservation/backend/workspace-reservation.service"
@@ -841,9 +842,6 @@ describe("ResendWebhookService", () => {
                 WorkspaceReservationEmailService,
                 reservationEmails
               ),
-              Layer.succeed(LegalEvidenceEventRepository, {
-                findByWorkspaceReservationId: mock(() => Effect.succeed([])),
-              } as never),
               Layer.succeed(PostHogEventService, {
                 capture: () => Effect.void,
               })
@@ -859,7 +857,6 @@ describe("ResendWebhookService", () => {
     );
     expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
-      legalEvidence: [],
       reservation: emailReservation,
     });
     expect(markFulfilled).toHaveBeenCalledWith(

@@ -8,6 +8,8 @@ const accountingSnapshotKey = "synthetic accounting snapshot secret!";
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_ACTIVE_KEY_ID ??= "K202608";
 process.env.ACCOUNTING_DOCUMENT_SNAPSHOT_KEY_K202608 ??= accountingSnapshotKey;
 process.env.CHECKOUT_PAY_STATE_KEYS ??= `test:${checkoutKey}`;
+process.env.CHECKOUT_RETURN_STATE_TOKEN_SECRET ??=
+  "synthetic-reservation-status-token-secret";
 process.env.CLOUDINARY_API_KEY ??= "test";
 process.env.CLOUDINARY_API_SECRET ??= "test";
 process.env.DATABASE_URL ??= "postgres://user:pass@localhost:5432/test";

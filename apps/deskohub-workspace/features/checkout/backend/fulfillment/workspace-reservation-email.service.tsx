@@ -12,11 +12,12 @@ import type {
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer, Match } from "effect";
-import type { LegalEvidenceEvent } from "@/db/schema";
 import { CustomerReservationEmail } from "@/emails/customer-reservation";
 import { ReservationNotificationEmail } from "@/emails/reservation-notification";
 import type { WorkspaceEmailDetail } from "@/emails/workspace-email-detail";
 import { env } from "@/env";
+import { createReservationStatusAccessToken } from "@/features/checkout/backend/checkout/reservation-status-access-token";
+import { getReservationStatusPath } from "@/features/checkout/backend/checkout/reservation-status-url";
 import {
   getWorkspaceOfficeProductTitle,
   getWorkspaceProductMonitorTitle,
@@ -25,10 +26,12 @@ import {
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import type { StoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
+import { reservationAccessCodeGraceMinutes } from "@/features/reservation/reservation-access-code";
 import {
   formatReservationDisplayDate,
   formatReservationDisplayDateRange,
 } from "@/features/reservation/reservation-date";
+import { getWorkspaceRuntimeCallbackOrigin } from "@/shared/backend/config/workspace-url.config";
 import { renderWorkspaceEmail } from "@/shared/backend/email/render-react-email";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
@@ -49,7 +52,6 @@ import { createWorkspaceMeetingRoomEmailDetailRows } from "./workspace-meeting-r
 export interface IWorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservationDetails;
-    readonly legalEvidence: readonly LegalEvidenceEvent[];
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
@@ -168,50 +170,6 @@ const createWorkspaceNetworkQrAttachment = (
         cause
       ),
   });
-
-const acceptedLegalDocumentFilenames = {
-  termsAndConditions: "terms-and-conditions.txt",
-  operatingRules: "operating-rules.txt",
-} as const;
-
-export const createAcceptedLegalDocumentAttachments = (
-  evidenceEvents: readonly LegalEvidenceEvent[]
-): EmailAttachment[] => {
-  const latestAcceptedByDocument = new Map<
-    keyof typeof acceptedLegalDocumentFilenames,
-    LegalEvidenceEvent
-  >();
-
-  for (const evidence of evidenceEvents) {
-    if (
-      evidence.accepted &&
-      evidence.documentContent &&
-      evidence.documentKey in acceptedLegalDocumentFilenames
-    ) {
-      latestAcceptedByDocument.set(
-        evidence.documentKey as keyof typeof acceptedLegalDocumentFilenames,
-        evidence
-      );
-    }
-  }
-
-  return Object.entries(acceptedLegalDocumentFilenames).flatMap(
-    ([documentKey, filename]) => {
-      const evidence = latestAcceptedByDocument.get(
-        documentKey as keyof typeof acceptedLegalDocumentFilenames
-      );
-      return evidence?.documentContent
-        ? [
-            {
-              filename,
-              content: evidence.documentContent,
-              contentType: "text/plain; charset=utf-8",
-            },
-          ]
-        : [];
-    }
-  );
-};
 
 const createCoworkReservationDetails = (
   reservation: WorkspaceReservationDetails,
@@ -348,6 +306,7 @@ const createInternalReservationDetails = (
 const createCustomerReservationEmail = (input: {
   readonly reservation: WorkspaceReservationDetails;
   readonly locale: Locale;
+  readonly statusUrl: string;
   readonly networkDetails: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly locationMapImageSrc?: string;
@@ -359,7 +318,14 @@ const createCustomerReservationEmail = (input: {
 
   return (
     <CustomerReservationEmail
-      accessCode={input.reservation.customerAccessCode}
+      access={{
+        body: m.checkoutEmailCustomerAccessBody({}, { locale: input.locale }),
+        button: m.checkoutEmailCustomerAccessButton(
+          {},
+          { locale: input.locale }
+        ),
+        url: input.statusUrl,
+      }}
       details={createReservationRows(input.reservation, input.locale)}
       followUp={m.reservationEmailCustomerFollowUp(
         { email: workspaceSiteConstants.contact.infoEmail },
@@ -445,6 +411,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = Effect.fn(
         createCustomerReservationEmail({
           reservation: input.reservation,
           locale,
+          statusUrl: `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation/status/${input.reservation.id}?statusToken=preview-token`,
           networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
           networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
           locationMapImageSrc: `https://${workspaceSiteConstants.brand.domain}${workspaceLocationMapImagePath}`,
@@ -497,10 +464,33 @@ export class WorkspaceReservationEmailService extends Context.Service<
       const networkDetailsService =
         yield* WorkspaceCheckoutNetworkDetailsService;
 
+      const createCustomerStatusUrl = Effect.fn(
+        "WorkspaceReservationEmailService.createCustomerStatusUrl"
+      )(function* (reservation: WorkspaceReservationDetails, locale: Locale) {
+        const statusToken = yield* createReservationStatusAccessToken({
+          orderId: reservation.id,
+          locale,
+          expiresAt: reservation.reservedUntil.add({
+            minutes: reservationAccessCodeGraceMinutes,
+          }),
+        });
+        const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
+        return new URL(
+          getReservationStatusPath({
+            locale,
+            orderId: reservation.id,
+            statusToken,
+            skipPreviewProtectionBypass: true,
+          }),
+          origin
+        ).toString();
+      });
+
       return {
         sendPaidReservationEmails: Effect.fn(
           "WorkspaceReservationEmailService.sendPaidReservationEmails"
-        )(function* ({ legalEvidence, reservation }) {
+        )(function* ({ reservation }) {
           const locale = getReservationLocale(reservation.locale);
           const customer = reservation.customer;
           const customerName = getCustomerName(customer);
@@ -509,6 +499,18 @@ export class WorkspaceReservationEmailService extends Context.Service<
             yield* networkDetailsService.resolveCustomerNetworkDetails({
               reservation,
             });
+          const statusUrl = yield* createCustomerStatusUrl(
+            reservation,
+            locale
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new EmailServiceError(
+                  "Workspace reservation status URL could not be created.",
+                  cause
+                )
+            )
+          );
           const metadata = {
             deploymentEnvironment: env.VERCEL_ENV,
             source: "workspace-paid-fulfillment",
@@ -560,6 +562,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             createCustomerReservationEmail({
               reservation,
               locale,
+              statusUrl,
               networkDetails,
               ...(networkQrAttachment
                 ? { networkQrImageSrc: `cid:${networkQrAttachment.contentId}` }
@@ -578,12 +581,8 @@ export class WorkspaceReservationEmailService extends Context.Service<
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: renderedCustomerEmail.html,
             text: renderedCustomerEmail.text,
-            attachments: [
-              locationMapAttachment,
-              networkQrAttachment,
-              ...createAcceptedLegalDocumentAttachments(legalEvidence),
-            ].filter((attachment): attachment is EmailAttachment =>
-              Boolean(attachment)
+            attachments: [locationMapAttachment, networkQrAttachment].filter(
+              (attachment): attachment is EmailAttachment => Boolean(attachment)
             ),
             tags: ["workspace-paid-reservation-access"],
             metadata,

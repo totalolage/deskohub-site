@@ -14,7 +14,11 @@ export type CustomerReservationEmailProps = {
   readonly locale: WorkspaceEmailLocale;
   readonly preview: string;
   readonly heading: string;
-  readonly accessCode: string;
+  readonly access: {
+    readonly body: string;
+    readonly button: string;
+    readonly url: string;
+  };
   readonly labels: {
     readonly accessCode: string;
     readonly location: string;
@@ -45,7 +49,7 @@ export function CustomerReservationEmail({
   locale,
   preview,
   heading,
-  accessCode,
+  access,
   labels,
   location,
   table,
@@ -71,12 +75,16 @@ export function CustomerReservationEmail({
           >
             {labels.accessCode}
           </Text>
-          <Text
-            className="m-0 mt-2 text-[50px] font-bold leading-[56px] tracking-[4px] text-white sm:text-[58px] sm:leading-[64px] sm:tracking-[6px]"
-            style={{ color: "#ffffff" }}
-          >
-            {accessCode}
+          <Text className="m-0 mt-3 text-[16px] leading-[25px] text-white">
+            {access.body}
           </Text>
+          <Link
+            className="mt-5 inline-block rounded-full bg-aquamarine px-7 py-3 text-[14px] font-bold leading-[20px] text-navy no-underline"
+            href={access.url}
+            style={{ backgroundColor: "#00df99", color: "#00024f" }}
+          >
+            {access.button}
+          </Link>
         </Section>
         {table && (
           <Section className="border-t-4 border-aquamarine bg-[#e9fff6] px-5 py-5 text-center">
