@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 import { NextResponse } from "next/server";
+import { MobileSessionHandoffRepository } from "@/features/account/backend/mobile-session-handoff.repository";
 import {
   createMobileSessionHandoff,
   exchangeMobileSessionHandoff,
@@ -64,6 +65,7 @@ export const GET = defineWorkspaceRoute(
       callback.searchParams.set("code", code);
       return NextResponse.redirect(callback, 303);
     }).pipe(
+      Effect.provide(MobileSessionHandoffRepository.LiveWithDependencies),
       Effect.catchTag("MobileSessionHandoffError", () =>
         Effect.succeed(invalidHandoff())
       ),
@@ -93,6 +95,7 @@ export const POST = defineWorkspaceRoute(
         { headers: noStore }
       );
     }).pipe(
+      Effect.provide(MobileSessionHandoffRepository.LiveWithDependencies),
       Effect.catchTag("MobileSessionHandoffError", () =>
         Effect.succeed(invalidHandoff())
       ),
