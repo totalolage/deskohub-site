@@ -108,8 +108,13 @@ export const accountingDocumentIdentitySchema = Schema.Struct({
   buyer: accountingBuyerSchema,
 });
 
+const accountingDocumentDeliverySchema = Schema.Struct({
+  email: Schema.Trim.check(Schema.isNonEmpty()),
+});
+
 export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
     date: plainDateStringSchema,
@@ -119,6 +124,7 @@ export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
 
 export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),
     startsAt: instantStringSchema,
@@ -129,6 +135,7 @@ export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
 
 export const officeAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: officeReservationDetailsSchema,
   quote: officeReservationQuoteSchema,
 });
@@ -186,6 +193,7 @@ export const makeAccountingDocumentSnapshot = (input: {
       kind: "person" as const,
       legalName: input.prepared.reservation.name,
     },
+    delivery: { email: input.prepared.reservation.email },
   };
 
   return Match.value(input.prepared).pipe(

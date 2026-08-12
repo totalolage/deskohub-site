@@ -4,6 +4,7 @@ import {
   DotyposCustomerIdSchema,
   DotyposReservationIdSchema,
 } from "@deskohub/dotypos";
+import { EmailDeliveryIdSchema } from "@deskohub/email";
 import { NexiCorrelationIdSchema, NexiOrderIdSchema } from "@deskohub/nexi";
 import { asc, eq } from "drizzle-orm";
 import { Effect, Layer } from "effect";
@@ -11,6 +12,7 @@ import { WorkspaceDatabase } from "@/db/database.service";
 import type { DatabaseClient } from "@/db/database-client";
 import {
   accountingDocumentSnapshots,
+  invoiceEmailDeliveries,
   invoiceNumberCounters,
   invoices,
   paymentAttempts,
@@ -34,6 +36,10 @@ import {
   type IInvoiceRepository,
   InvoiceRepository,
 } from "@/features/accounting/backend/invoice.repository";
+import {
+  type IInvoiceEmailDeliveryRepository,
+  InvoiceEmailDeliveryRepository,
+} from "@/features/accounting/backend/invoice-email-delivery.repository";
 import {
   getInvoiceNumberingYear,
   type InvoiceBuyer,
@@ -91,8 +97,10 @@ export const assertInvoicePersistence = Effect.gen(function* () {
     db,
     keys: makeKeyService(),
   });
+  const deliveryRepository = yield* makeInvoiceEmailDeliveryRepository(db);
 
   yield* assertIdempotentIssuance(db, repository);
+  yield* assertEmailDeliveryPersistence(db, repository, deliveryRepository);
   yield* assertUniqueNumbering(db, repository);
   yield* assertIneligiblePayment(db, repository);
   yield* assertUnfulfilledReservation(db, repository);
@@ -103,6 +111,97 @@ export const assertInvoicePersistence = Effect.gen(function* () {
     toWorkspaceE2EError("assert invoice persistence", cause)
   )
 );
+
+const assertEmailDeliveryPersistence = (
+  db: DatabaseClient,
+  invoiceRepository: IInvoiceRepository,
+  deliveryRepository: IInvoiceEmailDeliveryRepository
+) =>
+  Effect.gen(function* () {
+    const fixture = yield* createPaidFixture(db);
+    const { invoice } = yield* invoiceRepository.issue({
+      paymentAttemptId: fixture.paymentAttemptId,
+      buyer: personalInvoiceBuyer,
+    });
+    const staleProcessingBefore = Temporal.Now.instant().subtract({
+      minutes: 5,
+    });
+    const claims = yield* Effect.all(
+      Array.from({ length: 10 }, () =>
+        deliveryRepository.claim({
+          invoiceId: invoice.id,
+          audience: "customer",
+          staleProcessingBefore,
+        })
+      ),
+      { concurrency: "unbounded" }
+    );
+    const customerClaim = claims.find((claim) => claim !== null);
+
+    equal(claims.filter((claim) => claim !== null).length, 1);
+    ok(customerClaim);
+    equal(customerClaim.attemptNumber, 1);
+    yield* deliveryRepository.markAccepted({
+      invoiceId: invoice.id,
+      audience: "customer",
+      attemptNumber: customerClaim.attemptNumber,
+      providerDeliveryId: EmailDeliveryIdSchema.make(
+        "synthetic-customer-email"
+      ),
+      acceptedAt: Temporal.Now.instant(),
+    });
+    equal(
+      yield* deliveryRepository.claim({
+        invoiceId: invoice.id,
+        audience: "customer",
+        staleProcessingBefore,
+      }),
+      null
+    );
+
+    const internalClaim = yield* deliveryRepository.claim({
+      invoiceId: invoice.id,
+      audience: "internal",
+      staleProcessingBefore,
+    });
+    ok(internalClaim);
+    yield* deliveryRepository.markFailed({
+      invoiceId: invoice.id,
+      audience: "internal",
+      attemptNumber: internalClaim.attemptNumber,
+      failureCode: "email_send_failed",
+    });
+    const internalRetry = yield* deliveryRepository.claim({
+      invoiceId: invoice.id,
+      audience: "internal",
+      staleProcessingBefore,
+    });
+    ok(internalRetry);
+    equal(internalRetry.attemptNumber, 2);
+    yield* deliveryRepository.markAccepted({
+      invoiceId: invoice.id,
+      audience: "internal",
+      attemptNumber: internalRetry.attemptNumber,
+      providerDeliveryId: EmailDeliveryIdSchema.make(
+        "synthetic-internal-email"
+      ),
+      acceptedAt: Temporal.Now.instant(),
+    });
+
+    const rows = yield* db
+      .select()
+      .from(invoiceEmailDeliveries)
+      .where(eq(invoiceEmailDeliveries.invoiceId, invoice.id));
+    equal(rows.length, 2);
+    ok(rows.every((row) => row.state === "accepted"));
+    deepStrictEqual(
+      rows.map((row) => [row.audience, row.attemptCount]).sort(),
+      [
+        ["customer", 1],
+        ["internal", 2],
+      ]
+    );
+  });
 
 const assertIdempotentIssuance = (
   db: DatabaseClient,
@@ -393,6 +492,17 @@ const makeInvoiceRepository = (input: {
 
   return InvoiceRepository.pipe(Effect.provide(repositoryLayer));
 };
+
+const makeInvoiceEmailDeliveryRepository = (db: DatabaseClient) =>
+  InvoiceEmailDeliveryRepository.pipe(
+    Effect.provide(
+      InvoiceEmailDeliveryRepository.Live.pipe(
+        Layer.provide(
+          Layer.succeed(WorkspaceDatabase, WorkspaceDatabase.of({ db }))
+        )
+      )
+    )
+  );
 
 const createPaidFixture = (
   db: DatabaseClient,
