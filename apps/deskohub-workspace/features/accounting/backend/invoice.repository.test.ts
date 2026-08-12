@@ -42,6 +42,8 @@ describe("invoice repository persistence contract", () => {
     expect(issue).toContain('locked.paymentAttemptState !== "paid"');
     expect(issue).toContain('locked.reservationPaymentState !== "paid"');
     expect(issue).toContain("locked.activePaymentAttemptId");
+    expect(issue).toContain("locked.paidAt === null");
+    expect(issue).toContain("paidAt: locked.paidAt");
     expect(issue.indexOf("invoiceDocumentSchema")).toBeLessThan(
       issue.indexOf("encryptAccountingSnapshot(")
     );
@@ -55,5 +57,16 @@ describe("invoice repository persistence contract", () => {
     );
 
     expect(issue).toContain("existing.paymentAttemptId !== paymentAttemptId");
+  });
+
+  test("requires and validates complete buyer details instead of using the source buyer", async () => {
+    const source = await readRepository();
+    const issue = source.slice(
+      source.indexOf('const issue = Effect.fn("InvoiceRepository.issue")')
+    );
+
+    expect(issue).toContain("readonly buyer: InvoiceBuyer");
+    expect(issue).toContain("Schema.decodeUnknownEffect(invoiceBuyerSchema");
+    expect(issue).not.toContain("input.buyer ?? source.buyer");
   });
 });

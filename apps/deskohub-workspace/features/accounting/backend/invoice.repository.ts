@@ -10,15 +10,13 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import {
-  type AccountingBuyer,
-  accountingBuyerSchema,
-} from "@/features/accounting/accounting-document-snapshot";
-import {
   decodeInvoiceDocument,
   formatInvoiceNumber,
   getInvoiceNumberingYear,
+  type InvoiceBuyer,
   type InvoiceDocument,
   type InvoiceNumber,
+  invoiceBuyerSchema,
   invoiceDocumentSchema,
   makeInvoiceDocument,
 } from "@/features/accounting/invoice";
@@ -82,7 +80,7 @@ export interface IInvoiceRepository {
   >;
   readonly issue: (input: {
     readonly paymentAttemptId: string;
-    readonly buyer?: AccountingBuyer;
+    readonly buyer: InvoiceBuyer;
   }) => Effect.Effect<InvoiceIssuance, InvoiceRepositoryError>;
 }
 
@@ -194,7 +192,7 @@ export class InvoiceRepository extends Context.Service<
 
       const issue = Effect.fn("InvoiceRepository.issue")(function* (input: {
         readonly paymentAttemptId: string;
-        readonly buyer?: AccountingBuyer;
+        readonly buyer: InvoiceBuyer;
       }) {
         const paymentAttemptId = paymentAttemptIdSchema.make(
           input.paymentAttemptId
@@ -213,15 +211,14 @@ export class InvoiceRepository extends Context.Service<
           });
         }
 
-        const buyer = yield* Schema.decodeUnknownEffect(accountingBuyerSchema, {
+        const buyer = yield* Schema.decodeUnknownEffect(invoiceBuyerSchema, {
           onExcessProperty: "error",
-        })(input.buyer ?? source.buyer).pipe(
+        })(input.buyer).pipe(
           Effect.mapError(
             () =>
-              new InvoiceStorageError({
-                operation: "validate",
+              new InvoiceEligibilityError({
                 paymentAttemptId,
-                message: "Invoice buyer details are invalid.",
+                message: "Complete invoice buyer billing details are required.",
               })
           )
         );
@@ -237,6 +234,7 @@ export class InvoiceRepository extends Context.Service<
                 dotyposCustomerId: workspaceReservations.dotyposCustomerId,
                 dotyposReservationId:
                   workspaceReservations.dotyposReservationId,
+                paidAt: workspaceReservations.paidAt,
                 paymentAttemptState: paymentAttempts.state,
               })
               .from(paymentAttempts)
@@ -281,7 +279,8 @@ export class InvoiceRepository extends Context.Service<
             if (
               locked.paymentAttemptState !== "paid" ||
               locked.reservationPaymentState !== "paid" ||
-              locked.activePaymentAttemptId !== paymentAttemptId
+              locked.activePaymentAttemptId !== paymentAttemptId ||
+              locked.paidAt === null
             ) {
               return yield* wrapInvoiceEligibilityError(
                 paymentAttemptId,
@@ -348,6 +347,7 @@ export class InvoiceRepository extends Context.Service<
                 paymentAttemptId,
                 invoiceNumber,
                 issuedAt,
+                paidAt: locked.paidAt,
               })
             ).pipe(
               Effect.mapError(

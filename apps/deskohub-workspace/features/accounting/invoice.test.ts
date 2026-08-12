@@ -45,6 +45,19 @@ const source = makeAccountingDocumentSnapshot({
   prepared,
 });
 
+const paidAt = Temporal.Instant.from("2026-08-10T12:30:00Z");
+
+const personalInvoiceBuyer = {
+  kind: "person" as const,
+  legalName: "Original Buyer",
+  address: {
+    line1: "Synthetic 1",
+    city: "Praha",
+    postalCode: "100 00",
+    country: "CZ",
+  },
+};
+
 describe("invoice", () => {
   test("formats positive annual sequences without arbitrary upper bounds", () => {
     expect(formatInvoiceNumber({ year: 2026, sequence: 1 })).toBe(
@@ -91,6 +104,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 42 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     expect(document).toMatchObject({
@@ -98,6 +112,7 @@ describe("invoice", () => {
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: "WS-FV-2026-000042",
       issuedAt: "2026-08-10T12:34:56.789Z",
+      paidAt: "2026-08-10T12:30:00.000Z",
       supplier: source.supplier,
       reservation: source.reservation,
       quote: source.quote,
@@ -116,10 +131,11 @@ describe("invoice", () => {
   test("round-trips strictly through the document schema", async () => {
     const document = makeInvoiceDocument({
       source,
-      buyer: source.buyer,
+      buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
     const decode = Schema.decodeUnknownEffect(invoiceDocumentSchema, {
       onExcessProperty: "error",
@@ -133,13 +149,33 @@ describe("invoice", () => {
     ).rejects.toBeDefined();
   });
 
-  test("rejects schema-version fields", async () => {
+  test("decodes invoices issued before rendering facts were added", async () => {
     const document = makeInvoiceDocument({
       source,
-      buyer: source.buyer,
+      buyer: personalInvoiceBuyer,
       paymentAttemptId: "payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
+    });
+    const { paidAt: _paidAt, supplier, ...identity } = document;
+    const { commercialRegister: _commercialRegister, ...legacySupplier } =
+      supplier;
+    const legacyDocument = { ...identity, supplier: legacySupplier };
+
+    await expect(
+      Effect.runPromise(decodeInvoiceDocument(legacyDocument))
+    ).resolves.toEqual(legacyDocument);
+  });
+
+  test("rejects schema-version fields", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: personalInvoiceBuyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     for (const schemaVersion of [1, 2]) {
@@ -147,6 +183,45 @@ describe("invoice", () => {
         Effect.runPromise(decodeInvoiceDocument({ ...document, schemaVersion }))
       ).rejects.toBeDefined();
     }
+  });
+
+  test("rejects issued invoices without complete buyer billing details", async () => {
+    const document = makeInvoiceDocument({
+      source,
+      buyer: personalInvoiceBuyer,
+      paymentAttemptId: "payment-attempt-id",
+      invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+      issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
+    });
+    const { address: _address, ...nameOnlyBuyer } = document.buyer;
+
+    await expect(
+      Effect.runPromise(
+        decodeInvoiceDocument({ ...document, buyer: nameOnlyBuyer })
+      )
+    ).rejects.toBeDefined();
+    expect(() =>
+      makeInvoiceDocument({
+        source,
+        buyer: nameOnlyBuyer as never,
+        paymentAttemptId: "payment-attempt-id",
+        invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 1 }),
+        issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+        paidAt,
+      })
+    ).toThrow();
+    await expect(
+      Effect.runPromise(
+        decodeInvoiceDocument({
+          ...document,
+          buyer: {
+            ...document.buyer,
+            address: { ...document.buyer.address, line1: "   " },
+          },
+        })
+      )
+    ).rejects.toBeDefined();
   });
 
   test("issues from an office reservation snapshot", async () => {
@@ -172,10 +247,11 @@ describe("invoice", () => {
     });
     const document = makeInvoiceDocument({
       source: officeSource,
-      buyer: officeSource.buyer,
+      buyer: personalInvoiceBuyer,
       paymentAttemptId: "office-payment-attempt-id",
       invoiceNumber: formatInvoiceNumber({ year: 2026, sequence: 2 }),
       issuedAt: Temporal.Instant.from("2026-08-10T12:34:56.789Z"),
+      paidAt,
     });
 
     expect(document).toMatchObject({

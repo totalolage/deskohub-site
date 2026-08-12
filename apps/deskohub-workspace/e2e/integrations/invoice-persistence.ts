@@ -36,6 +36,7 @@ import {
 } from "@/features/accounting/backend/invoice.repository";
 import {
   getInvoiceNumberingYear,
+  type InvoiceBuyer,
   invoiceNumberSchema,
 } from "@/features/accounting/invoice";
 import type { PreparedCustomerQuote } from "@/features/checkout/backend/checkout/checkout-pricing.service";
@@ -72,6 +73,16 @@ const prepared = {
   },
   quote: buildCoworkReservationQuote(coworkOrder),
 } as PreparedCustomerQuote;
+const personalInvoiceBuyer = {
+  kind: "person",
+  legalName: "Synthetic Invoice Customer",
+  address: {
+    line1: "Synthetic 1",
+    city: "Praha",
+    postalCode: "100 00",
+    country: "CZ",
+  },
+} satisfies InvoiceBuyer;
 
 export const assertInvoicePersistence = Effect.gen(function* () {
   const { db } = yield* E2EDatabase;
@@ -147,7 +158,10 @@ const assertIdempotentIssuance = (
 
     const retry = yield* repository.issue({
       paymentAttemptId: fixture.paymentAttemptId,
-      buyer: { kind: "person", legalName: "Different Synthetic Buyer" },
+      buyer: {
+        ...personalInvoiceBuyer,
+        legalName: "Different Synthetic Buyer",
+      },
     });
     equal(retry.changed, false);
     equal(retry.invoice.id, issued.id);
@@ -177,7 +191,7 @@ const assertUniqueNumbering = (
     const countersBefore = yield* readCounters(db);
     const results = yield* Effect.all(
       fixtures.map(({ paymentAttemptId }) =>
-        repository.issue({ paymentAttemptId })
+        repository.issue({ paymentAttemptId, buyer: personalInvoiceBuyer })
       ),
       { concurrency: "unbounded" }
     );
@@ -215,7 +229,10 @@ const assertIneligiblePayment = (
     const fixture = yield* createPaidFixture(db, { paid: false });
     const before = yield* readCounters(db);
     const error = yield* Effect.flip(
-      repository.issue({ paymentAttemptId: fixture.paymentAttemptId })
+      repository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(isTaggedError("InvoiceEligibilityError")(error));
@@ -228,13 +245,19 @@ const assertDifferentAttemptRejected = (
 ) =>
   Effect.gen(function* () {
     const fixture = yield* createPaidFixture(db);
-    yield* repository.issue({ paymentAttemptId: fixture.paymentAttemptId });
+    yield* repository.issue({
+      paymentAttemptId: fixture.paymentAttemptId,
+      buyer: personalInvoiceBuyer,
+    });
     const otherPaymentAttemptId = yield* createAdditionalFailedAttempt(
       db,
       fixture
     );
     const error = yield* Effect.flip(
-      repository.issue({ paymentAttemptId: otherPaymentAttemptId })
+      repository.issue({
+        paymentAttemptId: otherPaymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(
@@ -261,7 +284,10 @@ const assertFailedInsertionRollsBackNumber = (
     });
     const before = yield* readCounters(db);
     const insertError = yield* Effect.flip(
-      badRepository.issue({ paymentAttemptId: fixture.paymentAttemptId })
+      badRepository.issue({
+        paymentAttemptId: fixture.paymentAttemptId,
+        buyer: personalInvoiceBuyer,
+      })
     );
 
     ok(
@@ -271,6 +297,7 @@ const assertFailedInsertionRollsBackNumber = (
 
     const successful = yield* repository.issue({
       paymentAttemptId: fixture.paymentAttemptId,
+      buyer: personalInvoiceBuyer,
     });
     const numberingYear = getInvoiceNumberingYear(successful.invoice.issuedAt);
     equal(
