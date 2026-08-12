@@ -296,8 +296,39 @@ describe("CheckoutPayPage payment navigation", () => {
     );
 
     expect(view.getAllByRole("checkbox")).toHaveLength(1);
-    await act(async () => jest.advanceTimersByTime(1000));
+    act(() => jest.advanceTimersByTime(1000));
     expect(view.getAllByRole("checkbox")).toHaveLength(2);
+    view.unmount();
+  });
+
+  test("schedules bounded checks for a distant early-performance boundary", async () => {
+    const now = Date.now();
+    const setTimeoutSpy = spyOn(globalThis, "setTimeout");
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutPayPage
+        earlyPerformanceRequestRequired={false}
+        earlyPerformanceRequestRequiredAt={new Date(
+          now + 50 * 24 * 60 * 60 * 1000
+        ).toISOString()}
+        locale="en-US"
+        payStateToken="signed-summary"
+        summary={quote.summary}
+        variant="pay"
+      />
+    );
+
+    expect(view.getAllByRole("checkbox")).toHaveLength(1);
+    expect(
+      setTimeoutSpy.mock.calls.some(
+        ([, delay]) => delay === 24 * 60 * 60 * 1000
+      )
+    ).toBe(true);
+    view.unmount();
   });
 
   test("closes the pre-opened payment tab when checkout unmounts", async () => {

@@ -46,7 +46,7 @@ type CheckoutPayPageProps = {
 };
 
 type CheckoutPayActionVariant = "pay" | "retry";
-const MAX_BROWSER_TIMEOUT_MS = 2_147_483_647;
+const CONSENT_CUTOFF_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 export function CheckoutPayPage({
   changedKeys,
@@ -88,14 +88,32 @@ export function CheckoutPayPage({
     }
     if (!earlyPerformanceRequestRequiredAt) return;
 
-    const remainingMs =
-      Date.parse(earlyPerformanceRequestRequiredAt) - Date.now();
-    if (remainingMs > MAX_BROWSER_TIMEOUT_MS) return;
-    const timeoutId = globalThis.setTimeout(
-      () => setEarlyPerformanceRequestRequired(true),
-      Math.max(0, remainingMs)
-    );
-    return () => globalThis.clearTimeout(timeoutId);
+    const requiredAtMs = Date.parse(earlyPerformanceRequestRequiredAt);
+    if (!Number.isFinite(requiredAtMs)) return;
+
+    let timeoutId: ReturnType<typeof globalThis.setTimeout> | undefined;
+    let cancelled = false;
+    const scheduleCheck = () => {
+      if (cancelled) return;
+      const remainingMs = requiredAtMs - Date.now();
+      const isFinalCheck = remainingMs <= CONSENT_CUTOFF_CHECK_INTERVAL_MS;
+      timeoutId = globalThis.setTimeout(
+        () => {
+          if (cancelled) return;
+          if (isFinalCheck) {
+            setEarlyPerformanceRequestRequired(true);
+            return;
+          }
+          scheduleCheck();
+        },
+        Math.max(0, Math.min(remainingMs, CONSENT_CUTOFF_CHECK_INTERVAL_MS))
+      );
+    };
+    scheduleCheck();
+    return () => {
+      cancelled = true;
+      if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
+    };
   }, [initiallyEarlyPerformanceRequired, earlyPerformanceRequestRequiredAt]);
   const {
     execute,
