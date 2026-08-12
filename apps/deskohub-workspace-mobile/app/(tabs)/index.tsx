@@ -1,11 +1,3 @@
-/*
-THESIS: The shop behaves like an honest fridge ticket—immediate, legible, and finished in a few taps, never a generic delivery marketplace.
-OWN-WORLD: Deskohub navy anchors the frame; aquamarine means access and completion; tactile paper surfaces hold the working menu.
-STORY: Confirm access, mark exactly what was taken, review the server-confirmed amount, then pay securely.
-FIRST VIEWPORT: A compact brand bar gives way to today’s access ticket and the question “What are you taking?” with search immediately below.
-FORM: An established-brand Operate surface using a compact Android navigation bar, responsive product ledger, and persistent cart action.
-*/
-
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -14,7 +6,6 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
 } from "react-native";
 import { AppIcon } from "@/components/AppIcon";
@@ -28,6 +19,7 @@ import {
   StatusBanner,
 } from "@/components/Controls";
 import { ProductCard } from "@/components/ProductCard";
+import { SignInHandoff } from "@/components/SignInHandoff";
 import { palette, radii, spacing, type } from "@/constants/Theme";
 import { formatPragueDay, localizeText } from "@/src/domain/format";
 import { useShop } from "@/src/state/shop-provider";
@@ -36,7 +28,7 @@ function LaunchState() {
   const { t } = useShop();
   return (
     <View style={styles.launch}>
-      <Brand inverse />
+      <Brand />
       <View style={styles.launchCopy}>
         <Text accessibilityRole="header" style={styles.launchTitle}>
           {t("loadingTitle")}
@@ -50,43 +42,28 @@ function SignInState() {
   const { actionError, beginSignIn, isActionPending, t } = useShop();
 
   return (
-    <AppScreen>
-      <View style={styles.signInShell}>
-        <View style={styles.signInMark}>
-          <AppIcon
-            color={palette.navy}
-            name={{
-              ios: "basket",
-              android: "shopping_basket",
-              web: "shopping_basket",
-            }}
-            size={34}
-          />
-        </View>
-        <View style={styles.signInHero}>
-          <Text accessibilityRole="header" style={styles.signInTitle}>
-            {t("signInTitle")}
-          </Text>
-          <Text style={styles.signInBody}>{t("signInBody")}</Text>
-        </View>
-        <View style={styles.signInForm}>
-          {actionError === "native_auth_unavailable" && (
-            <StatusBanner
-              body={t("nativeAuthUnavailableBody")}
-              title={t("nativeAuthUnavailableTitle")}
-              tone="warning"
-            />
-          )}
-          {actionError && actionError !== "native_auth_unavailable" && (
-            <StatusBanner title={t("errorTitle")} tone="error" />
-          )}
-          <ActionButton
-            label={t("continueToSignIn")}
-            loading={isActionPending}
-            onPress={() => void beginSignIn()}
-          />
-        </View>
-      </View>
+    <AppScreen header={false}>
+      <SignInHandoff
+        actionLabel={t("continueToSignIn")}
+        body={t("signInBody")}
+        loading={isActionPending}
+        notice={
+          <>
+            {actionError === "native_auth_unavailable" && (
+              <StatusBanner
+                body={t("nativeAuthUnavailableBody")}
+                title={t("nativeAuthUnavailableTitle")}
+                tone="warning"
+              />
+            )}
+            {actionError && actionError !== "native_auth_unavailable" && (
+              <StatusBanner title={t("errorTitle")} tone="error" />
+            )}
+          </>
+        }
+        onContinue={() => void beginSignIn()}
+        title={t("signInTitle")}
+      />
     </AppScreen>
   );
 }
@@ -119,7 +96,6 @@ function LockedState() {
 }
 
 function CatalogState() {
-  const { width } = useWindowDimensions();
   const {
     actionError,
     cart,
@@ -134,7 +110,6 @@ function CatalogState() {
   } = useShop();
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState<string | null>(null);
-  const columns = width >= 680 ? 2 : 1;
 
   const products = useMemo(() => {
     if (!catalog) return [];
@@ -165,47 +140,51 @@ function CatalogState() {
       refreshing={isActionPending}
     >
       {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
-      <View style={styles.searchWrap}>
-        <AppIcon
-          color={palette.navyMuted}
-          name={{ ios: "magnifyingglass", android: "search", web: "search" }}
-          size={22}
-        />
-        <TextInput
-          accessibilityLabel={t("searchLabel")}
-          onChangeText={setSearch}
-          placeholder={t("searchPlaceholder")}
-          placeholderTextColor="#737493"
-          returnKeyType="search"
-          style={styles.search}
-          value={search}
-        />
-      </View>
-      <ScrollView
-        contentContainerStyle={styles.categories}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={styles.categoriesScroller}
-      >
-        <Pressable
-          accessibilityRole="button"
-          onPress={() => setCategoryId(null)}
+      <View style={styles.catalogControls}>
+        <View style={styles.searchWrap}>
+          <AppIcon
+            color={palette.secondaryInk}
+            name={{ ios: "magnifyingglass", android: "search", web: "search" }}
+            size={18}
+          />
+          <TextInput
+            accessibilityLabel={t("searchLabel")}
+            onChangeText={setSearch}
+            placeholder={t("searchPlaceholder")}
+            placeholderTextColor={palette.secondaryInk}
+            returnKeyType="search"
+            style={styles.search}
+            value={search}
+          />
+        </View>
+        <ScrollView
+          contentContainerStyle={styles.categories}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.categoriesScroller}
         >
-          <Pill label={t("allCategory")} selected={categoryId === null} />
-        </Pressable>
-        {catalog.categories.map((category) => (
           <Pressable
             accessibilityRole="button"
-            key={category.id}
-            onPress={() => setCategoryId(category.id)}
+            accessibilityState={{ selected: categoryId === null }}
+            onPress={() => setCategoryId(null)}
           >
-            <Pill
-              label={localizeText(category.name, locale)}
-              selected={categoryId === category.id}
-            />
+            <Pill label={t("allCategory")} selected={categoryId === null} />
           </Pressable>
-        ))}
-      </ScrollView>
+          {catalog.categories.map((category) => (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ selected: categoryId === category.id }}
+              key={category.id}
+              onPress={() => setCategoryId(category.id)}
+            >
+              <Pill
+                label={localizeText(category.name, locale)}
+                selected={categoryId === category.id}
+              />
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
       {catalogIsStale && <StatusBanner title={t("savedMenu")} tone="warning" />}
       {catalog.products.length === 0 && (
         <StatePanel
@@ -223,22 +202,21 @@ function CatalogState() {
       {catalog.products.length > 0 && products.length === 0 && (
         <StatePanel mark="?" title={t("noSearchTitle")} />
       )}
-      <View style={styles.products}>
-        {products.map((product) => (
-          <View
-            key={product.id}
-            style={{ width: columns === 2 ? "48.8%" : "100%" }}
-          >
-            <ProductCard
-              product={product}
-              quantity={
-                cart.find((line) => line.productId === product.id)?.quantity ??
-                0
-              }
-            />
-          </View>
-        ))}
-      </View>
+      {products.length > 0 && (
+        <View style={styles.products}>
+          {products.map((product) => (
+            <View key={product.id} style={styles.productRow}>
+              <ProductCard
+                product={product}
+                quantity={
+                  cart.find((line) => line.productId === product.id)
+                    ?.quantity ?? 0
+                }
+              />
+            </View>
+          ))}
+        </View>
+      )}
     </AppScreen>
   );
 }
@@ -277,7 +255,7 @@ export default function ShopScreen() {
 
 const styles = StyleSheet.create({
   launch: {
-    backgroundColor: palette.navy,
+    backgroundColor: palette.canvas,
     flex: 1,
     justifyContent: "space-between",
     padding: spacing.lg,
@@ -285,31 +263,7 @@ const styles = StyleSheet.create({
     paddingTop: 64,
   },
   launchCopy: { maxWidth: 560 },
-  launchTitle: { ...type.display, color: palette.white },
-  signInShell: {
-    alignSelf: "center",
-    flex: 1,
-    justifyContent: "center",
-    maxWidth: 620,
-    paddingVertical: spacing.xl,
-    width: "100%",
-  },
-  signInMark: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    backgroundColor: palette.warningSurface,
-    borderRadius: radii.full,
-    height: 64,
-    justifyContent: "center",
-    marginBottom: spacing.lg,
-    width: 64,
-  },
-  signInHero: {
-    gap: spacing.sm,
-  },
-  signInTitle: { ...type.display, color: palette.navy },
-  signInBody: { ...type.body, color: palette.navyMuted },
-  signInForm: { gap: spacing.sm, marginTop: spacing.lg },
+  launchTitle: { ...type.display, color: palette.ink },
   lockedTicket: {
     alignItems: "center",
     backgroundColor: palette.surface,
@@ -330,8 +284,8 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     width: 72,
   },
-  lockedMarkText: { color: palette.orangeInk, fontSize: 34, fontWeight: "700" },
-  lockedTitle: { ...type.display, color: palette.navy, textAlign: "center" },
+  lockedMarkText: { color: palette.actionInk, fontSize: 34, fontWeight: "700" },
+  lockedTitle: { ...type.display, color: palette.ink, textAlign: "center" },
   nextReservation: {
     alignSelf: "flex-start",
     backgroundColor: palette.warningSurface,
@@ -340,31 +294,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  nextReservationText: { ...type.label, color: palette.navy },
+  nextReservationText: { ...type.label, color: palette.ink },
   searchWrap: {
     alignItems: "center",
     backgroundColor: palette.surface,
     borderColor: palette.outline,
-    borderRadius: radii.md,
+    borderRadius: 0,
     borderWidth: 1,
     flexDirection: "row",
-    paddingLeft: spacing.md,
+    minHeight: 40,
+    paddingLeft: spacing.sm,
   },
   search: {
-    ...type.body,
-    color: palette.navy,
+    ...type.caption,
+    color: palette.ink,
     flex: 1,
-    height: 54,
+    height: 38,
     paddingHorizontal: spacing.sm,
     paddingVertical: 0,
     textAlignVertical: "center",
   },
-  categories: { gap: spacing.xs, paddingVertical: spacing.md },
+  catalogControls: {
+    alignSelf: "center",
+    gap: spacing.md,
+    maxWidth: 768,
+    width: "100%",
+  },
+  categories: { gap: spacing.xs },
   categoriesScroller: { flexGrow: 0 },
   products: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.sm,
-    marginTop: spacing.md,
+    alignSelf: "center",
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.lg,
+    maxWidth: 768,
+    overflow: "hidden",
+    width: "100%",
   },
+  productRow: { width: "100%" },
 });

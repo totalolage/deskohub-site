@@ -1,10 +1,10 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
-import { StatePanel, StatusBanner } from "@/components/Controls";
+import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
 import {
   OrderLines,
   PurchaseStatusBadge,
@@ -28,8 +28,9 @@ export default function PurchaseDetailScreen() {
   if (!purchase) {
     return (
       <AppScreen
+        contentStyle={styles.content}
         header={false}
-        navigationHeader={<BackHeader title={t("orderDetailTitle")} />}
+        navigationHeader={<BackHeader title={t("appName")} trailingShopIcon />}
       >
         {actionError && <StatePanel mark="!" title={t("errorTitle")} />}
         {!actionError && <StatePanel mark="…" title={t("loadingTitle")} />}
@@ -37,60 +38,142 @@ export default function PurchaseDetailScreen() {
     );
   }
 
+  const itemCount = purchase.lines.reduce(
+    (count, line) => count + line.quantity,
+    0
+  );
+
   return (
     <AppScreen
+      contentStyle={styles.content}
       header={false}
-      navigationHeader={<BackHeader title={t("orderDetailTitle")} />}
+      navigationHeader={<BackHeader title={t("appName")} trailingShopIcon />}
     >
-      <Text style={styles.purchaseDate}>
-        {t("purchasedAt", {
-          date: formatPragueDateTime(purchase.createdAt, locale),
-        })}
-      </Text>
-      <View style={styles.summary}>
-        <View style={styles.summaryTopline}>
-          <Text style={styles.orderId}>
+      <View style={styles.heading}>
+        <View style={styles.headingCopy}>
+          <Text accessibilityRole="header" style={styles.orderId}>
             {t("orderNumber", { id: purchase.publicReference })}
           </Text>
-          <PurchaseStatusBadge status={purchase.status} />
+          <Text style={styles.purchaseDate}>
+            {t("purchasedAt", {
+              date: formatPragueDateTime(purchase.createdAt, locale),
+            })}
+          </Text>
         </View>
-        <Text style={styles.total}>{formatMoney(purchase.total, locale)}</Text>
+        <PurchaseStatusBadge status={purchase.status} />
       </View>
-      <OrderLines lines={purchase.lines} />
-      <View style={styles.gap} />
+
+      <View style={styles.receipt}>
+        <View style={styles.receiptHeader}>
+          <Text accessibilityRole="header" style={styles.receiptTitle}>
+            {itemCount === 1
+              ? t("cartItem")
+              : t("cartItems", { count: itemCount })}
+          </Text>
+        </View>
+        <OrderLines lines={purchase.lines} />
+        <View style={styles.summary}>
+          {purchase.seller.taxTreatment.kind === "vat_included" && (
+            <View style={styles.summaryRow}>
+              <Text style={styles.summaryLabel}>
+                {t("vatIncluded", {
+                  rate: purchase.seller.taxTreatment.rateBasisPoints / 100,
+                })}
+              </Text>
+              <Text style={styles.summaryValue}>
+                {formatMoney(
+                  {
+                    currency: "CZK",
+                    minorUnits: purchase.seller.taxTreatment.taxMinorUnits,
+                  },
+                  locale
+                )}
+              </Text>
+            </View>
+          )}
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t("confirmedTotal")}</Text>
+            <Text style={styles.total}>
+              {formatMoney(purchase.total, locale)}
+            </Text>
+          </View>
+        </View>
+      </View>
+
       {purchase.receiptStatus === "sent" && (
         <StatusBanner title={t("receiptSentGeneric")} tone="success" />
       )}
       {purchase.receiptStatus !== "sent" && (
         <StatusBanner title={t("receiptPending")} tone="info" />
       )}
-      <View style={styles.gap} />
       <SellerDetails seller={purchase.seller} />
+      {(purchase.status === "not_started" ||
+        purchase.status === "payment_pending") && (
+        <ActionButton
+          label={t("checkPayment")}
+          onPress={() =>
+            router.push(`/payment/${encodeURIComponent(purchase.id)}`)
+          }
+          variant="payment"
+        />
+      )}
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  summary: {
+  content: {
+    alignSelf: "center",
+    gap: spacing.lg,
+    maxWidth: 768,
+    width: "100%",
+  },
+  heading: {
+    alignItems: "flex-end",
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
+  },
+  headingCopy: { flex: 1, gap: spacing.xs },
+  orderId: { ...type.headline, color: palette.ink },
+  purchaseDate: { ...type.body, color: palette.secondaryInk },
+  receipt: {
     backgroundColor: palette.surface,
     borderColor: palette.outline,
-    borderRadius: radii.md,
+    borderRadius: radii.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.lg,
-    marginBottom: spacing.md,
-    padding: spacing.lg,
+    overflow: "hidden",
   },
-  summaryTopline: {
+  receiptHeader: {
+    backgroundColor: palette.surfaceMuted,
+    borderBottomColor: palette.outline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    padding: spacing.md,
+  },
+  receiptTitle: { ...type.title, color: palette.ink },
+  summary: {
+    backgroundColor: palette.canvas,
+    borderTopColor: palette.outline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    gap: spacing.xs,
+    padding: spacing.md,
+  },
+  summaryRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
   },
-  orderId: { ...type.bodyStrong, color: palette.navy },
-  total: { ...type.display, color: palette.navy },
-  purchaseDate: {
-    ...type.body,
-    color: palette.navyMuted,
-    marginBottom: spacing.md,
+  summaryLabel: { ...type.body, color: palette.secondaryInk },
+  summaryValue: { ...type.body, color: palette.ink },
+  totalRow: {
+    alignItems: "center",
+    borderTopColor: palette.outline,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: spacing.xs,
+    paddingTop: spacing.md,
   },
-  gap: { height: spacing.md },
+  totalLabel: { ...type.title, color: palette.ink },
+  total: { ...type.title, color: palette.action },
 });

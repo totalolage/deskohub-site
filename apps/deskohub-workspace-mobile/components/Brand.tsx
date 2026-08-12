@@ -1,17 +1,10 @@
 import { Image, StyleSheet, Text, View } from "react-native";
 
-import { palette, spacing } from "@/constants/Theme";
+import { palette, spacing, type } from "@/constants/Theme";
 
-const logo = require("../assets/images/icon.png");
+const logo = require("../assets/images/brand-mark.png");
 
-export function Brand({
-  inverse = false,
-  compact = false,
-}: {
-  inverse?: boolean;
-  compact?: boolean;
-}) {
-  const foreground = inverse ? palette.white : palette.navy;
+export function Brand() {
   return (
     <View
       accessible
@@ -25,12 +18,9 @@ export function Brand({
         source={logo}
         style={styles.mark}
       />
-      {!compact && (
-        <View>
-          <Text style={[styles.name, { color: foreground }]}>Deskohub</Text>
-          <Text style={[styles.subname, { color: foreground }]}>Workspace</Text>
-        </View>
-      )}
+      <View style={styles.copy}>
+        <Text style={styles.name}>Deskohub</Text>
+      </View>
     </View>
   );
 }
@@ -42,20 +32,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   mark: {
-    height: 44,
-    width: 44,
+    height: 22,
+    width: 22,
   },
+  copy: { justifyContent: "center" },
   name: {
-    fontSize: 18,
-    fontWeight: "800",
-    letterSpacing: -0.2,
-    lineHeight: 20,
-  },
-  subname: {
-    fontSize: 11,
+    ...type.title,
+    color: palette.action,
     fontWeight: "700",
-    letterSpacing: 1.35,
-    lineHeight: 14,
-    textTransform: "uppercase",
   },
 });

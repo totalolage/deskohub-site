@@ -36,7 +36,7 @@ Deskohub Workspace lets a customer with any confirmed Deskohub reservation recor
 ## Experience principles
 
 - **A quick visit, not a marketplace.** Favor a shallow path, large targets, and an always-obvious cart.
-- **Warm Workspace identity.** Reuse the Deskohub mark, Sculpin typography, and existing navy, orange, yellow, aquamarine, and neutral assets without inventing a sub-brand.
+- **Workspace App identity.** The approved Figma file is the sole visual source of truth. Reuse the Deskohub mark with Hanken Grotesk, warm neutrals, brown actions, orange navigation emphasis, and semantic status colors.
 - **Confident payment states.** Pending, failed, and paid states must be unmistakable without sounding alarming.
 - **No false inventory promises.** Never display “in stock,” remaining quantities, or customer-facing stock synchronization.
 - **Useful when locked.** Purchase history and account management remain available when new purchases are not.

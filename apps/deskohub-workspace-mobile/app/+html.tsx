@@ -16,7 +16,7 @@ export default function Root({ children }: { children: ReactNode }) {
           name="viewport"
           content="width=device-width, initial-scale=1, shrink-to-fit=no"
         />
-        <meta name="theme-color" content="#00024F" />
+        <meta name="theme-color" content="#9C4400" />
         <meta name="application-name" content="Deskohub Workspace" />
         <link rel="manifest" href="/manifest.webmanifest" />
         <link rel="apple-touch-icon" href="/icon-256.png" />
@@ -40,7 +40,7 @@ html, body, #root {
   width: 100%;
 }
 body {
-  background-color: #F5F4EF;
+  background-color: #F8F9FA;
 }
 input[role="switch"] {
   -webkit-appearance: none !important;

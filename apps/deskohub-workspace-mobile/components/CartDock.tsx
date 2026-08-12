@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { AppIcon } from "@/components/AppIcon";
-import { elevation, palette, radii, spacing, type } from "@/constants/Theme";
+import { palette, radii, spacing, type } from "@/constants/Theme";
 import { getLocalCartTotal } from "@/src/domain/cart";
 import { formatMoney } from "@/src/domain/format";
 import { useShop } from "@/src/state/shop-provider";
@@ -13,32 +13,24 @@ export function CartDock({ onPress }: { onPress: () => void }) {
 
   return (
     <View style={styles.wrap}>
+      <View style={styles.summary}>
+        <Text style={styles.title}>
+          {t("confirmedTotal")} ·{" "}
+          {cartQuantity === 1
+            ? t("cartItem")
+            : t("cartItems", { count: cartQuantity })}
+        </Text>
+        <Text style={styles.total}>
+          {formatMoney({ currency: "CZK", minorUnits: total }, locale)}
+        </Text>
+      </View>
       <Pressable
         accessibilityLabel={`${t("cartView")}, ${cartQuantity === 1 ? t("cartItem") : t("cartItems", { count: cartQuantity })}`}
         accessibilityRole="button"
         onPress={onPress}
-        style={({ pressed }) => [styles.dock, pressed && styles.pressed]}
+        style={({ pressed }) => [styles.checkout, pressed && styles.pressed]}
       >
-        <View style={styles.cartIcon}>
-          <AppIcon
-            color={palette.white}
-            name={{
-              ios: "basket",
-              android: "shopping_basket",
-              web: "shopping_basket",
-            }}
-            size={27}
-          />
-          <View style={styles.count}>
-            <Text style={styles.countText}>{cartQuantity}</Text>
-          </View>
-        </View>
-        <View style={styles.copy}>
-          <Text style={styles.title}>{t("cartView")}</Text>
-        </View>
-        <Text style={styles.total}>
-          {formatMoney({ currency: "CZK", minorUnits: total }, locale)}
-        </Text>
+        <Text style={styles.checkoutLabel}>{t("cartView")}</Text>
         <AppIcon
           color={palette.white}
           name={{
@@ -46,7 +38,7 @@ export function CartDock({ onPress }: { onPress: () => void }) {
             android: "chevron_right",
             web: "chevron_right",
           }}
-          size={24}
+          size={18}
         />
       </Pressable>
     </View>
@@ -55,42 +47,29 @@ export function CartDock({ onPress }: { onPress: () => void }) {
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: palette.paper,
+    alignItems: "center",
+    backgroundColor: palette.canvas,
+    borderTopColor: palette.outline,
+    borderTopWidth: 1,
+    flexDirection: "row",
+    gap: spacing.md,
+    justifyContent: "space-between",
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  dock: {
-    ...elevation.floating,
+  summary: { flex: 1 },
+  checkout: {
     alignItems: "center",
-    backgroundColor: palette.navy,
-    borderRadius: radii.md,
+    backgroundColor: palette.action,
+    borderRadius: radii.sm,
     flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: 68,
-    paddingHorizontal: spacing.md,
-  },
-  cartIcon: {
-    alignItems: "center",
-    height: 44,
+    gap: spacing.xs,
+    minHeight: 44,
     justifyContent: "center",
-    position: "relative",
-    width: 44,
+    paddingHorizontal: spacing.lg,
   },
-  count: {
-    alignItems: "center",
-    backgroundColor: palette.aquamarine,
-    borderRadius: radii.full,
-    height: 22,
-    justifyContent: "center",
-    minWidth: 22,
-    paddingHorizontal: 5,
-    position: "absolute",
-    right: -2,
-    top: 0,
-  },
-  countText: { color: palette.navy, fontSize: 11, fontWeight: "800" },
-  copy: { flex: 1 },
-  title: { ...type.label, color: palette.white },
-  total: { ...type.bodyStrong, color: palette.white },
+  title: { ...type.caption, color: palette.secondaryInk },
+  total: { ...type.title, color: palette.ink },
+  checkoutLabel: { ...type.caption, color: palette.white, fontWeight: "700" },
   pressed: { opacity: 0.82 },
 });

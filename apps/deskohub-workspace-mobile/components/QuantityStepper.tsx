@@ -32,17 +32,21 @@ export function QuantityStepper({
         onPress={() => onChange(quantity - 1)}
         style={({ pressed }) => [
           styles.button,
+          compact && styles.buttonCompact,
           pressed && styles.pressed,
           quantity === 0 && styles.disabled,
         ]}
       >
         <AppIcon
-          color={palette.navy}
+          color={palette.ink}
           name={{ ios: "minus", android: "remove", web: "remove" }}
-          size={24}
+          size={compact ? 14 : 24}
         />
       </Pressable>
-      <Text accessibilityLiveRegion="polite" style={styles.quantity}>
+      <Text
+        accessibilityLiveRegion="polite"
+        style={[styles.quantity, compact && styles.quantityCompact]}
+      >
         {quantity}
       </Text>
       <Pressable
@@ -53,14 +57,15 @@ export function QuantityStepper({
         onPress={() => onChange(quantity + 1)}
         style={({ pressed }) => [
           styles.button,
+          compact && styles.buttonCompact,
           pressed && styles.pressed,
           quantity >= 10 && styles.disabled,
         ]}
       >
         <AppIcon
-          color={palette.navy}
+          color={palette.ink}
           name={{ ios: "plus", android: "add", web: "add" }}
-          size={24}
+          size={compact ? 14 : 24}
         />
       </Pressable>
     </View>
@@ -77,7 +82,14 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: spacing.xxs,
   },
-  containerCompact: { alignSelf: "flex-start" },
+  containerCompact: {
+    alignSelf: "flex-start",
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.outline,
+    borderRadius: 4,
+    height: 28,
+    overflow: "hidden",
+  },
   button: {
     alignItems: "center",
     borderRadius: radii.sm,
@@ -87,9 +99,20 @@ const styles = StyleSheet.create({
   },
   quantity: {
     ...type.bodyStrong,
-    color: palette.navy,
+    color: palette.ink,
     minWidth: 24,
     textAlign: "center",
+  },
+  buttonCompact: {
+    borderRadius: 0,
+    height: 26,
+    width: 30,
+  },
+  quantityCompact: {
+    ...type.caption,
+    color: palette.ink,
+    fontWeight: "700",
+    minWidth: 24,
   },
   pressed: { backgroundColor: palette.surfaceMuted },
   disabled: { opacity: 0.35 },

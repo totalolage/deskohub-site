@@ -1,4 +1,4 @@
-import { Tabs } from "expo-router";
+import { Tabs, usePathname } from "expo-router";
 import {
   type ColorValue,
   StyleSheet,
@@ -12,13 +12,15 @@ import { useShop } from "@/src/state/shop-provider";
 
 function TabIcon({
   color,
+  focused,
   name,
 }: {
   color: ColorValue;
+  focused: boolean;
   name: React.ComponentProps<typeof AppIcon>["name"];
 }) {
   return (
-    <View style={styles.tabIcon}>
+    <View style={[styles.tabIcon, focused && styles.tabIconFocused]}>
       <AppIcon color={color} name={name} size={24} />
     </View>
   );
@@ -26,31 +28,42 @@ function TabIcon({
 
 export default function TabLayout() {
   const { width } = useWindowDimensions();
+  const pathname = usePathname();
   const { loadState, session, t } = useShop();
-  const hideNavigation = loadState !== "ready" || session.kind === "signed_out";
+  const hideNavigation =
+    loadState !== "ready" ||
+    session.kind === "signed_out" ||
+    pathname.includes("/payment/");
   const wide = width >= 840;
 
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        sceneStyle: { backgroundColor: palette.paper },
-        tabBarActiveTintColor: wide ? palette.sunset : palette.navy,
-        tabBarInactiveTintColor: wide ? "#D7D7E5" : palette.navyMuted,
-        tabBarItemStyle: wide ? { minHeight: 76 } : undefined,
+        sceneStyle: { backgroundColor: palette.canvas },
+        tabBarActiveTintColor: palette.navigationActive,
+        tabBarInactiveTintColor: wide
+          ? palette.disabledInk
+          : palette.neutralInk,
+        tabBarItemStyle: wide ? { minHeight: 64 } : undefined,
         tabBarLabelPosition: "below-icon",
-        tabBarLabelStyle: { fontSize: 12, fontWeight: "700" },
+        tabBarLabelStyle: {
+          fontFamily: "HankenGrotesk",
+          fontSize: 12,
+          fontWeight: "600",
+          lineHeight: 16,
+        },
         tabBarPosition: wide ? "left" : "bottom",
         tabBarVariant: wide ? "material" : "uikit",
         tabBarStyle: {
-          backgroundColor: wide ? palette.navy : palette.surface,
-          borderRightColor: wide ? palette.navy : undefined,
+          backgroundColor: palette.surfaceMuted,
+          borderRightColor: wide ? palette.outline : undefined,
           borderTopColor: wide ? undefined : palette.outline,
           display: hideNavigation ? "none" : "flex",
-          height: wide ? undefined : 76,
-          paddingBottom: wide ? undefined : 10,
-          paddingTop: wide ? 24 : 8,
-          width: wide ? 144 : undefined,
+          height: wide ? undefined : 64,
+          paddingBottom: wide ? undefined : 4,
+          paddingTop: wide ? 16 : 4,
+          width: wide ? 128 : undefined,
         },
       }}
     >
@@ -58,9 +71,10 @@ export default function TabLayout() {
         name="index"
         options={{
           title: t("shopTab"),
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <TabIcon
               color={color}
+              focused={focused}
               name={{
                 ios: "basket",
                 android: "shopping_basket",
@@ -74,9 +88,10 @@ export default function TabLayout() {
         name="history"
         options={{
           title: t("historyTab"),
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <TabIcon
               color={color}
+              focused={focused}
               name={{
                 ios: "receipt",
                 android: "receipt_long",
@@ -90,9 +105,10 @@ export default function TabLayout() {
         name="account"
         options={{
           title: t("accountTab"),
-          tabBarIcon: ({ color }) => (
+          tabBarIcon: ({ color, focused }) => (
             <TabIcon
               color={color}
+              focused={focused}
               name={{
                 ios: "person.crop.circle",
                 android: "account_circle",
@@ -112,8 +128,10 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabIcon: {
     alignItems: "center",
-    height: 32,
+    borderRadius: 999,
+    height: 28,
     justifyContent: "center",
-    width: 32,
+    width: 48,
   },
+  tabIconFocused: { backgroundColor: palette.warningSurface },
 });

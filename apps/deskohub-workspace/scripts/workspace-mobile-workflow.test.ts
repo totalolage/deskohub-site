@@ -21,7 +21,9 @@ test("reuses a verified immutable APK when a production release is rerun", async
     workflow.indexOf("- name: Publish signed small update")
   );
   const promotionGuardStep = workflow.slice(
-    workflow.indexOf("- name: Confirm this is the latest successful production deployment"),
+    workflow.indexOf(
+      "- name: Confirm this is the latest successful production deployment"
+    ),
     workflow.indexOf("- name: Attest production APK provenance")
   );
 
@@ -51,7 +53,7 @@ test("reuses a verified immutable APK when a production release is rerun", async
   );
   expect(promotionGuardStep).toContain("max_by(.run_number)");
   expect(promotionGuardStep).toContain("github.event.workflow_run.id");
-  expect(workflow.indexOf("latest successful production deployment")).toBeLessThan(
-    workflow.indexOf("Publish signed small update")
-  );
+  expect(
+    workflow.indexOf("latest successful production deployment")
+  ).toBeLessThan(workflow.indexOf("Publish signed small update"));
 });

@@ -4,7 +4,6 @@ import { StyleSheet, Text, View } from "react-native";
 
 import { AppIcon } from "@/components/AppIcon";
 import { AppScreen } from "@/components/AppScreen";
-import { BackHeader } from "@/components/BackHeader";
 import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
 import { PurchaseStatusBadge } from "@/components/PurchaseComponents";
 import { palette, radii, spacing, type } from "@/constants/Theme";
@@ -41,10 +40,7 @@ export default function PaymentScreen() {
 
   if (!normalizedOrderId) {
     return (
-      <AppScreen
-        header={false}
-        navigationHeader={<BackHeader title={t("paymentKicker")} />}
-      >
+      <AppScreen contentStyle={styles.content}>
         <StatePanel mark="!" title={t("errorTitle")} />
       </AppScreen>
     );
@@ -59,43 +55,51 @@ export default function PaymentScreen() {
     if (paymentHandoff?.orderId !== normalizedOrderId) return t("checkPayment");
     return apiMode === "demo" ? t("demoPayment") : t("openPayment");
   })();
+  const reference = getPurchaseReference(purchase, normalizedOrderId);
 
   if (purchase?.status === "paid") {
     return (
-      <AppScreen
-        header={false}
-        navigationHeader={<BackHeader title={t("paymentKicker")} />}
-      >
-        <View style={styles.paidHero}>
-          <View style={styles.paidMark}>
+      <AppScreen contentStyle={styles.content}>
+        <View style={styles.statusCard}>
+          <View style={[styles.statusMark, styles.successMark]}>
             <AppIcon
-              color={palette.white}
+              color={palette.positiveInk}
               name={{ ios: "checkmark", android: "check", web: "check" }}
-              size={52}
+              size={30}
             />
           </View>
-          <Text accessibilityRole="header" style={styles.paidTitle}>
+          <Text accessibilityRole="header" style={styles.statusTitle}>
             {t("paymentPaidTitle")}
           </Text>
-          <Text style={styles.paidAmount}>
-            {formatMoney(purchase.total, locale)}
-          </Text>
-          <Text style={styles.paidBody}>{t("receiptSentGeneric")}</Text>
-        </View>
-        <View style={styles.actions}>
-          <ActionButton
-            label={t("viewPurchase")}
-            onPress={() =>
-              router.replace(
-                `/purchase/${encodeURIComponent(normalizedOrderId)}`
-              )
-            }
-          />
-          <ActionButton
-            label={t("returnToShop")}
-            onPress={() => router.replace("/")}
-            variant="secondary"
-          />
+          <View style={styles.statusCopy}>
+            <Text style={styles.orderReference}>
+              {t("orderNumber", { id: reference })}
+            </Text>
+            <Text style={styles.statusBody}>{t("receiptSentGeneric")}</Text>
+          </View>
+          <View style={styles.amountPanel}>
+            <Text style={styles.amountLabel}>{t("confirmedTotal")}</Text>
+            <Text style={styles.amount}>
+              {formatMoney(purchase.total, locale)}
+            </Text>
+          </View>
+          <View style={styles.actions}>
+            <ActionButton
+              label={t("viewPurchase")}
+              onPress={() =>
+                router.replace(
+                  `/purchase/${encodeURIComponent(normalizedOrderId)}`
+                )
+              }
+              variant="payment"
+            />
+            <ActionButton
+              label={t("returnToShop")}
+              onPress={() => router.replace("/")}
+              style={styles.secondaryAction}
+              variant="secondary"
+            />
+          </View>
         </View>
       </AppScreen>
     );
@@ -107,103 +111,146 @@ export default function PaymentScreen() {
     purchase?.status === "expired"
   ) {
     return (
-      <AppScreen
-        header={false}
-        navigationHeader={<BackHeader title={t("paymentKicker")} />}
-      >
-        <StatePanel
-          action={
+      <AppScreen contentStyle={styles.content}>
+        <View style={styles.statusCard}>
+          <View style={[styles.statusMark, styles.failedMark]}>
+            <AppIcon
+              color={palette.danger}
+              name={{ ios: "xmark", android: "close", web: "close" }}
+              size={30}
+            />
+          </View>
+          <Text accessibilityRole="header" style={styles.statusTitle}>
+            {t("paymentFailedTitle")}
+          </Text>
+          <Text style={styles.orderReference}>
+            {t("orderNumber", { id: reference })}
+          </Text>
+          <PurchaseStatusBadge status={purchase.status} />
+          <View style={styles.amountPanel}>
+            <Text style={styles.amountLabel}>{t("confirmedTotal")}</Text>
+            <Text style={styles.amount}>
+              {formatMoney(purchase.total, locale)}
+            </Text>
+          </View>
+          <View style={styles.actions}>
             <ActionButton
               label={t("returnToCart")}
               onPress={() => router.replace("/cart")}
+              variant="payment"
             />
-          }
-          mark="×"
-          title={t("paymentFailedTitle")}
-        />
+          </View>
+        </View>
       </AppScreen>
     );
   }
 
   return (
-    <AppScreen
-      header={false}
-      navigationHeader={<BackHeader title={t("paymentKicker")} />}
-    >
-      {actionError && <StatusBanner title={t("errorTitle")} tone="error" />}
-      <View style={styles.paymentCard}>
-        <View style={styles.paymentTopline}>
-          <Text style={styles.orderId}>
-            {t("orderNumber", {
-              id: getPurchaseReference(purchase, normalizedOrderId),
-            })}
-          </Text>
-          <PurchaseStatusBadge status={purchase?.status ?? "payment_pending"} />
+    <AppScreen contentStyle={styles.content}>
+      <View style={styles.statusCard}>
+        <View style={[styles.statusMark, styles.pendingMark]}>
+          <AppIcon
+            color={palette.action}
+            name={{ ios: "clock", android: "schedule", web: "schedule" }}
+            size={30}
+          />
         </View>
-        {purchase && (
-          <Text style={styles.amount}>
-            {formatMoney(purchase.total, locale)}
-          </Text>
+        <Text accessibilityRole="header" style={styles.statusTitle}>
+          {t("paymentPending")}
+        </Text>
+        <Text style={styles.orderReference}>
+          {t("orderNumber", { id: reference })}
+        </Text>
+        {actionError && (
+          <View style={styles.banner}>
+            <StatusBanner title={t("errorTitle")} tone="error" />
+          </View>
         )}
+        {purchase && (
+          <View style={styles.amountPanel}>
+            <Text style={styles.amountLabel}>{t("confirmedTotal")}</Text>
+            <Text style={styles.amount}>
+              {formatMoney(purchase.total, locale)}
+            </Text>
+          </View>
+        )}
+        <View style={styles.actions}>
+          <ActionButton
+            disabled={!isOnline}
+            label={paymentActionLabel}
+            loading={isActionPending}
+            onPress={() => void check()}
+            variant="payment"
+          />
+        </View>
       </View>
-      <ActionButton
-        disabled={!isOnline}
-        label={paymentActionLabel}
-        loading={isActionPending}
-        onPress={() => void check()}
-        style={styles.primaryAction}
-        variant="payment"
-      />
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  paymentCard: {
+  content: {
+    alignSelf: "center",
+    justifyContent: "center",
+    maxWidth: 448,
+    width: "100%",
+  },
+  statusCard: {
+    alignItems: "center",
     backgroundColor: palette.surface,
     borderColor: palette.outline,
     borderRadius: radii.md,
     borderWidth: StyleSheet.hairlineWidth,
-    gap: spacing.sm,
     padding: spacing.lg,
-  },
-  paymentTopline: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  orderId: { ...type.bodyStrong, color: palette.navy },
-  amount: { ...type.display, color: palette.navy, marginTop: spacing.md },
-  primaryAction: { marginTop: spacing.md },
-  actions: {
-    alignSelf: "center",
-    gap: spacing.sm,
-    maxWidth: 560,
     width: "100%",
   },
-  paidHero: {
+  statusMark: {
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xl,
-  },
-  paidMark: {
-    alignItems: "center",
-    backgroundColor: palette.success,
     borderRadius: radii.full,
-    height: 104,
+    height: 80,
     justifyContent: "center",
     marginBottom: spacing.lg,
-    width: 104,
+    width: 80,
   },
-  paidTitle: { ...type.display, color: palette.navy, textAlign: "center" },
-  paidAmount: {
+  successMark: { backgroundColor: palette.successSurface },
+  pendingMark: { backgroundColor: palette.warningSurface },
+  failedMark: { backgroundColor: palette.dangerSurface },
+  statusTitle: {
     ...type.headline,
-    color: palette.navy,
-    marginTop: spacing.sm,
+    color: palette.ink,
+    textAlign: "center",
   },
-  paidBody: {
-    ...type.caption,
-    color: palette.navyMuted,
+  statusCopy: { alignItems: "center", marginTop: spacing.xs },
+  orderReference: {
+    ...type.body,
+    color: palette.secondaryInk,
+    textAlign: "center",
+  },
+  statusBody: {
+    ...type.body,
+    color: palette.secondaryInk,
     marginTop: spacing.xs,
+    textAlign: "center",
+  },
+  amountPanel: {
+    alignItems: "center",
+    backgroundColor: palette.surfaceMuted,
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: spacing.xl,
+    padding: spacing.md,
+    width: "100%",
+  },
+  amountLabel: { ...type.body, color: palette.secondaryInk },
+  amount: { ...type.title, color: palette.ink },
+  banner: { marginTop: spacing.lg, width: "100%" },
+  actions: { gap: spacing.md, marginTop: spacing.xl, width: "100%" },
+  secondaryAction: {
+    backgroundColor: palette.surface,
+    borderColor: palette.secondaryInk,
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });

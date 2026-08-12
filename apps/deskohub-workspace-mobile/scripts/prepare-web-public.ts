@@ -32,8 +32,8 @@ const webManifest = {
   start_url: "/",
   scope: "/",
   display: "standalone",
-  background_color: "#F5F4EF",
-  theme_color: "#00024F",
+  background_color: "#F8F9FA",
+  theme_color: "#9C4400",
   lang: "cs",
   categories: ["business", "food"],
   icons: [

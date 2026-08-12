@@ -59,7 +59,7 @@ export function ActionButton({
           color={
             variant === "primary" || variant === "payment"
               ? palette.white
-              : palette.navy
+              : palette.ink
           }
         />
       )}
@@ -78,14 +78,14 @@ export function StatusBanner({
   tone?: "info" | "warning" | "success" | "error";
 }) {
   const tones = {
-    info: { backgroundColor: palette.infoSurface, color: palette.navy },
+    info: { backgroundColor: palette.infoSurface, color: palette.ink },
     warning: {
       backgroundColor: palette.warningSurface,
-      color: palette.orangeInk,
+      color: palette.actionInk,
     },
     success: {
       backgroundColor: palette.successSurface,
-      color: palette.aquamarineInk,
+      color: palette.positiveInk,
     },
     error: { backgroundColor: palette.dangerSurface, color: palette.danger },
   } as const;
@@ -200,10 +200,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
   },
   buttonPrimary: {
-    backgroundColor: palette.navy,
+    backgroundColor: palette.action,
   },
   buttonPayment: {
-    backgroundColor: palette.orange,
+    backgroundColor: palette.action,
   },
   buttonSecondary: {
     backgroundColor: palette.surfaceMuted,
@@ -219,8 +219,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   buttonTextPrimary: { color: palette.white },
-  buttonTextSecondary: { color: palette.navy },
-  buttonTextDanger: { color: palette.danger },
+  buttonTextSecondary: { color: palette.ink },
+  buttonTextDanger: { color: palette.dangerInk },
   pressed: { opacity: 0.74 },
   disabled: { opacity: 0.42 },
   banner: {
@@ -249,19 +249,19 @@ const styles = StyleSheet.create({
     width: 88,
   },
   stateMarkText: {
-    color: palette.navy,
+    color: palette.ink,
     fontSize: 32,
     fontWeight: "800",
   },
   stateTitle: {
     ...type.headline,
-    color: palette.navy,
+    color: palette.ink,
     maxWidth: 540,
     textAlign: "center",
   },
   stateBody: {
     ...type.body,
-    color: palette.navyMuted,
+    color: palette.secondaryInk,
     marginTop: spacing.xs,
     maxWidth: 560,
     textAlign: "center",
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...type.title,
-    color: palette.navy,
+    color: palette.ink,
   },
   pill: {
     alignItems: "center",
@@ -291,8 +291,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.md,
   },
-  pillSelected: { backgroundColor: palette.navy, borderColor: palette.navy },
-  pillText: { ...type.label, color: palette.navyMuted },
+  pillSelected: { backgroundColor: palette.ink, borderColor: palette.ink },
+  pillText: { ...type.label, color: palette.secondaryInk },
   pillTextSelected: { color: palette.white },
   skeletonList: { gap: spacing.sm },
   skeletonRow: {

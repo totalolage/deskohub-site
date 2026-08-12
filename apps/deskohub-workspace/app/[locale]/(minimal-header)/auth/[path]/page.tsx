@@ -1,10 +1,16 @@
 import { AuthView } from "@neondatabase/auth-ui";
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import { type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 
 const authPaths = ["sign-in", "sign-out"] as const;
+
+const hankenGrotesk = localFont({
+  src: "../../../../../../deskohub-workspace-mobile/assets/fonts/HankenGrotesk-Variable.ttf",
+  display: "swap",
+});
 
 export function generateStaticParams() {
   return authPaths.map((path) => ({ path }));
@@ -34,13 +40,33 @@ export default async function AuthPage({
   return runWithRequestLocale((locale) => {
     const redirectTo = getSafeAuthRedirect(requestedRedirect, locale);
     return (
-      <main className="relative min-h-[calc(100vh-var(--site-header-height))] overflow-hidden bg-[#f7f5ee] px-4 pb-20 pt-[calc(var(--site-header-height)+4rem)] sm:px-6">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_15%,rgba(236,164,35,0.22),transparent_34%),radial-gradient(circle_at_85%_75%,rgba(0,223,153,0.12),transparent_30%)]" />
-        <div className="relative mx-auto flex max-w-lg justify-center">
+      <main
+        className={`${hankenGrotesk.className} min-h-screen bg-[#F8F9FA] px-4 pb-12 pt-[calc(var(--site-header-height)+2rem)] text-[#191C1D] sm:px-6 sm:pb-16`}
+      >
+        <div className="mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-4rem)] w-full max-w-lg items-center justify-center">
           <AuthView
             path={path}
             redirectTo={redirectTo}
-            className="border-[#cbc8bf] bg-[#fffefa]/96 shadow-[0_32px_100px_-48px_rgba(0,2,79,0.55)]"
+            className="w-full max-w-[24.375rem] gap-0 rounded-lg border-[#E0C0B0] bg-white py-0 text-[#191C1D] shadow-none [--neon-border:#E0C0B0] [--neon-card:#FFFFFF] [--neon-card-foreground:#191C1D] [--neon-input:#E0C0B0] [--neon-muted:#F3F4F5] [--neon-muted-foreground:#584236] [--neon-primary-foreground:#FFFFFF] [--neon-primary:#9C4400] [--neon-ring:#9C4400]"
+            classNames={{
+              header:
+                "justify-items-center gap-2 px-6 pb-0 pt-8 text-center sm:px-8",
+              title:
+                "!text-[2rem] !font-medium !leading-[1.15] tracking-[-0.02em] text-[#191C1D]",
+              description: "max-w-[19rem] !text-sm !leading-5 text-[#584236]",
+              content: "!gap-0 px-6 pb-8 pt-6 sm:px-8",
+              form: {
+                base: "!gap-5",
+                label: "text-sm font-semibold text-[#191C1D]",
+                input:
+                  "!h-12 !rounded-sm !border-[#E0C0B0] !bg-white !px-4 !py-2 !text-base !text-[#191C1D] !shadow-none placeholder:!text-[#584236]/70 focus-visible:!border-[#9C4400] focus-visible:!ring-[#9C4400]/20",
+                button:
+                  "!h-12 !rounded-sm !text-base !font-semibold !shadow-none",
+                primaryButton:
+                  "!bg-[#9C4400] !text-white hover:!bg-[#7B3500] focus-visible:!border-[#9C4400] focus-visible:!ring-[#9C4400]/25",
+                error: "text-sm text-[#BA1A1A]",
+              },
+            }}
           />
         </div>
       </main>

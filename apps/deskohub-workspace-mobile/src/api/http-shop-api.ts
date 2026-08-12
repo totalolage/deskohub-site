@@ -11,7 +11,6 @@ import type {
   Locale,
   LocalizedText,
   Money,
-  Product,
   Purchase,
   PurchaseStatus,
   Seller,
@@ -167,10 +166,6 @@ function mapSeller(
   };
 }
 
-function productColor(index: number): Product["color"] {
-  return (["aqua", "orange", "yellow", "navy"] as const)[index % 4] ?? "navy";
-}
-
 function mapCatalog(value: ApiCatalog): Catalog {
   if (!Array.isArray(value.categories) || !Array.isArray(value.products))
     return invalidResponse();
@@ -180,7 +175,7 @@ function mapCatalog(value: ApiCatalog): Catalog {
       id: category.id,
       name: localized(category.name),
     })),
-    products: value.products.map((product, index) => ({
+    products: value.products.map((product) => ({
       id: product.id,
       categoryId: product.categoryId,
       name: localized(product.name),
@@ -189,8 +184,6 @@ function mapCatalog(value: ApiCatalog): Catalog {
       ),
       ...(product.imageUrl ? { imageUrl: product.imageUrl } : {}),
       price: mapMoney(product.price),
-      color: productColor(index),
-      initials: product.name.trim().slice(0, 2).toLocaleUpperCase() || "DW",
     })),
   };
 }

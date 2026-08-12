@@ -4,7 +4,7 @@ import { StyleSheet, View } from "react-native";
 import { AppScreen, ScreenIntro } from "@/components/AppScreen";
 import { ActionButton, StatePanel, StatusBanner } from "@/components/Controls";
 import { PurchaseRow } from "@/components/PurchaseComponents";
-import { spacing } from "@/constants/Theme";
+import { palette, radii } from "@/constants/Theme";
 import { useShop } from "@/src/state/shop-provider";
 
 export default function HistoryScreen() {
@@ -34,8 +34,9 @@ export default function HistoryScreen() {
       )}
       {session.kind === "signed_in" && purchases.length > 0 && (
         <View style={styles.list}>
-          {purchases.map((purchase) => (
+          {purchases.map((purchase, index) => (
             <PurchaseRow
+              divided={index > 0}
               key={purchase.id}
               purchase={purchase}
               onPress={() =>
@@ -50,5 +51,10 @@ export default function HistoryScreen() {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: spacing.sm },
+  list: {
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+  },
 });

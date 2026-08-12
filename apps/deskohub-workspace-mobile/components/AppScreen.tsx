@@ -38,7 +38,6 @@ export function AppScreen({
   const { width } = useWindowDimensions();
   const pathname = usePathname();
   const { isOnline, t } = useShop();
-  const pageWidth = Math.min(width, 1120);
   const wide = width >= 840;
   const compact = width < 480;
 
@@ -48,13 +47,13 @@ export function AppScreen({
         <title>{t("appName")}</title>
       </Head>
       <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
-        <View style={[styles.page, { width: pageWidth }]}>
+        <View style={styles.page}>
           {header && (
             <View
               role="banner"
               style={[styles.header, compact && styles.headerCompact]}
             >
-              <Brand inverse />
+              <Brand />
             </View>
           )}
           {navigationHeader}
@@ -108,22 +107,25 @@ export function ScreenIntro({ title }: { title: string }) {
 const styles = StyleSheet.create({
   safeArea: {
     alignItems: "center",
-    backgroundColor: palette.navy,
+    backgroundColor: palette.surfaceMuted,
     flex: 1,
   },
   page: {
-    backgroundColor: palette.paper,
+    backgroundColor: palette.canvas,
     flex: 1,
     maxWidth: 1120,
+    width: "100%",
   },
   header: {
     alignItems: "center",
-    backgroundColor: palette.navy,
+    backgroundColor: palette.surfaceMuted,
+    borderBottomColor: palette.outline,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     flexDirection: "row",
-    minHeight: 72,
+    minHeight: 56,
     paddingHorizontal: spacing.md,
   },
-  headerCompact: { minHeight: 64 },
+  headerCompact: { minHeight: 56 },
   bannerWrap: {
     paddingBottom: spacing.xs,
     paddingHorizontal: spacing.md,
@@ -132,7 +134,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     paddingBottom: spacing.xxl,
     paddingHorizontal: spacing.md,
-    paddingTop: spacing.lg,
+    paddingTop: spacing.md,
   },
   contentCompact: { paddingTop: spacing.md },
   contentWide: {
@@ -147,8 +149,8 @@ const styles = StyleSheet.create({
   },
   introCompact: { gap: spacing.xxs, marginBottom: spacing.sm },
   title: {
-    ...type.display,
-    color: palette.navy,
+    ...type.headline,
+    color: palette.ink,
   },
   titleCompact: { ...type.headline },
 });

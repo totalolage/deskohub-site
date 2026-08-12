@@ -19,18 +19,18 @@ const navigationTheme = {
   ...DefaultTheme,
   colors: {
     ...DefaultTheme.colors,
-    primary: palette.navy,
-    background: palette.paper,
-    card: palette.navy,
-    text: palette.navy,
+    primary: palette.ink,
+    background: palette.canvas,
+    card: palette.ink,
+    text: palette.ink,
     border: palette.outline,
-    notification: palette.orange,
+    notification: palette.action,
   },
 };
 
 export default function RootLayout() {
   const [fontsLoaded, fontError] = useFonts({
-    Sculpin: require("../assets/fonts/Sculpin-Regular.ttf"),
+    HankenGrotesk: require("../assets/fonts/HankenGrotesk-Variable.ttf"),
   });
 
   useEffect(() => {
@@ -42,11 +42,11 @@ export default function RootLayout() {
   return (
     <ShopProvider>
       <ThemeProvider value={navigationTheme}>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: palette.paper },
+            contentStyle: { backgroundColor: palette.canvas },
           }}
         >
           <Stack.Screen name="(tabs)" />

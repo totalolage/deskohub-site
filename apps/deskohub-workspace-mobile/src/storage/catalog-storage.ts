@@ -1,15 +1,8 @@
-import type { Catalog, Locale, Product } from "@/src/domain/shop";
+import type { Catalog, Locale } from "@/src/domain/shop";
 import type { DeviceStorage } from "./device-storage";
 
 const CATALOG_KEY_PREFIX = "deskohub-workspace:shop-catalog:v1";
 const maximumSerializedCatalogLength = 1_000_000;
-const productColors = new Set<Product["color"]>([
-  "aqua",
-  "orange",
-  "yellow",
-  "navy",
-]);
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -52,10 +45,6 @@ const isCatalog = (value: unknown): value is Catalog => {
       typeof product.price.minorUnits === "number" &&
       Number.isSafeInteger(product.price.minorUnits) &&
       product.price.minorUnits > 0 &&
-      typeof product.color === "string" &&
-      productColors.has(product.color as Product["color"]) &&
-      typeof product.initials === "string" &&
-      product.initials.length > 0 &&
       (product.imageUrl === undefined ||
         (typeof product.imageUrl === "string" &&
           product.imageUrl.startsWith("https://")))

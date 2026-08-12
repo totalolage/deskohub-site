@@ -28,8 +28,6 @@ const products: readonly Product[] = [
       en: "Mineral water · 500 ml",
     },
     price: { currency: "CZK", minorUnits: 3900 },
-    color: "aqua",
-    initials: "M",
   },
   {
     id: "coca-cola-zero",
@@ -37,8 +35,6 @@ const products: readonly Product[] = [
     name: { cs: "Coca-Cola Zero", en: "Coca-Cola Zero" },
     description: { cs: "Plechovka · 330 ml", en: "Can · 330 ml" },
     price: { currency: "CZK", minorUnits: 4900 },
-    color: "navy",
-    initials: "0",
   },
   {
     id: "kombucha-ginger",
@@ -46,8 +42,6 @@ const products: readonly Product[] = [
     name: { cs: "Kombucha zázvor", en: "Ginger kombucha" },
     description: { cs: "Chlazená · 330 ml", en: "Chilled · 330 ml" },
     price: { currency: "CZK", minorUnits: 7900 },
-    color: "yellow",
-    initials: "K",
   },
   {
     id: "oat-bar-cocoa",
@@ -55,8 +49,6 @@ const products: readonly Product[] = [
     name: { cs: "Ovesná tyčinka kakao", en: "Cocoa oat bar" },
     description: { cs: "Rychlá svačina · 50 g", en: "Quick snack · 50 g" },
     price: { currency: "CZK", minorUnits: 4500 },
-    color: "orange",
-    initials: "O",
   },
   {
     id: "cashews-roasted",
@@ -64,8 +56,6 @@ const products: readonly Product[] = [
     name: { cs: "Pražené kešu", en: "Roasted cashews" },
     description: { cs: "Lehce solené · 60 g", en: "Lightly salted · 60 g" },
     price: { currency: "CZK", minorUnits: 6900 },
-    color: "yellow",
-    initials: "C",
   },
   {
     id: "filter-coffee",
@@ -73,8 +63,6 @@ const products: readonly Product[] = [
     name: { cs: "Filtrovaná káva", en: "Filter coffee" },
     description: { cs: "Jeden hrnek", en: "One cup" },
     price: { currency: "CZK", minorUnits: 5500 },
-    color: "orange",
-    initials: "F",
   },
 ];
 

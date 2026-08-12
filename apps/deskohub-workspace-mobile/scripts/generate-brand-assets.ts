@@ -12,10 +12,12 @@ const sourcePath = path.resolve(
 const markSvg = await readFile(sourcePath, "utf8");
 await mkdir(imageDirectory, { recursive: true });
 
-const navy = "#00024f";
+const canvas = "#F8F9FA";
+const ink = "#191C1D";
+const orange = "#9C4400";
 const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
 
-async function mark(size: number, color = "#efefef") {
+async function mark(size: number, color = orange) {
   return sharp(Buffer.from(markSvg.replace("rgb(239,239,239)", color)), {
     density: 600,
   })
@@ -29,9 +31,10 @@ async function squareIcon(
   filename: string,
   canvasSize: number,
   markSize: number,
-  background: string | typeof transparent
+  background: string | typeof transparent,
+  color = orange
 ) {
-  const logo = await mark(markSize);
+  const logo = await mark(markSize, color);
   await sharp({
     create: {
       width: canvasSize,
@@ -46,12 +49,17 @@ async function squareIcon(
 }
 
 await Promise.all([
-  squareIcon("icon.png", 1024, 620, navy),
-  squareIcon("favicon.png", 256, 164, navy),
+  mark(128).then((logo) =>
+    sharp(logo).toFile(path.join(imageDirectory, "brand-mark.png"))
+  ),
+  squareIcon("icon.png", 1024, 620, canvas),
+  squareIcon("favicon.png", 256, 164, canvas),
   squareIcon("splash-icon.png", 512, 360, transparent),
   squareIcon("android-icon-foreground.png", 1024, 440, transparent),
-  squareIcon("android-icon-monochrome.png", 432, 248, transparent),
-  sharp({ create: { width: 432, height: 432, channels: 4, background: navy } })
+  squareIcon("android-icon-monochrome.png", 432, 248, transparent, ink),
+  sharp({
+    create: { width: 432, height: 432, channels: 4, background: canvas },
+  })
     .png()
     .toFile(path.join(imageDirectory, "android-icon-background.png")),
 ]);

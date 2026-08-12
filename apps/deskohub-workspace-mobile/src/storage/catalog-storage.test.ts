@@ -14,8 +14,6 @@ const catalog: Catalog = {
       description: { cs: "500 ml", en: "500 ml" },
       imageUrl: "https://images.example/water.png",
       price: { currency: "CZK", minorUnits: 3900 },
-      color: "aqua",
-      initials: "V",
     },
   ],
 };

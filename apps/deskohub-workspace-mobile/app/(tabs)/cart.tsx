@@ -1,8 +1,8 @@
 import { router } from "expo-router";
 import { useEffect } from "react";
-import { StyleSheet, Text, View } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 
+import { AppIcon } from "@/components/AppIcon";
 import { AppScreen } from "@/components/AppScreen";
 import { BackHeader } from "@/components/BackHeader";
 import {
@@ -22,6 +22,7 @@ export default function CartScreen() {
   const {
     actionError,
     cart,
+    cartQuantity,
     catalog,
     isActionPending,
     isOnline,
@@ -77,19 +78,7 @@ export default function CartScreen() {
 
   return (
     <AppScreen
-      footer={
-        <SafeAreaView edges={["bottom"]} style={styles.checkoutSafeArea}>
-          <View style={styles.checkoutDock}>
-            <ActionButton
-              disabled={!quote || !isOnline}
-              label={t("startPayment")}
-              loading={isActionPending && Boolean(quote)}
-              onPress={() => void beginPayment()}
-              variant="payment"
-            />
-          </View>
-        </SafeAreaView>
-      }
+      contentStyle={styles.content}
       header={false}
       navigationHeader={<BackHeader title={t("cartTitle")} />}
     >
@@ -97,11 +86,19 @@ export default function CartScreen() {
       <View style={styles.editLines}>
         {cartProducts.map(({ product, quantity }) => {
           const name = localizeText(product.name, locale);
+          const description = localizeText(product.description, locale);
           return (
             <View key={product.id} style={styles.editLine}>
-              <ProductThumbnail product={product} size={54} />
+              <ProductThumbnail product={product} size={80} />
               <View style={styles.editCopy}>
-                <Text style={styles.editName}>{name}</Text>
+                <Text numberOfLines={2} style={styles.editName}>
+                  {name}
+                </Text>
+                {description && (
+                  <Text numberOfLines={2} style={styles.editDescription}>
+                    {description}
+                  </Text>
+                )}
                 <Text style={styles.editPrice}>
                   {formatMoney(
                     quote?.lines.find((line) => line.productId === product.id)
@@ -110,25 +107,35 @@ export default function CartScreen() {
                   )}
                 </Text>
               </View>
-              <QuantityStepper
-                compact
-                productName={name}
-                quantity={quantity}
-                onChange={(nextQuantity) =>
-                  setProductQuantity(product.id, nextQuantity)
-                }
-              />
+              <View style={styles.lineActions}>
+                <Pressable
+                  accessibilityLabel={t("removeItem", { product: name })}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() => setProductQuantity(product.id, 0)}
+                  style={({ pressed }) => [
+                    styles.removeButton,
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <AppIcon
+                    color={palette.danger}
+                    name={{ ios: "trash", android: "delete", web: "delete" }}
+                    size={18}
+                  />
+                </Pressable>
+                <QuantityStepper
+                  compact
+                  productName={name}
+                  quantity={quantity}
+                  onChange={(nextQuantity) =>
+                    setProductQuantity(product.id, nextQuantity)
+                  }
+                />
+              </View>
             </View>
           );
         })}
-      </View>
-      <View key={displayedTotal.minorUnits} style={styles.estimate}>
-        <Text style={styles.estimateLabel}>
-          {quote ? t("confirmedTotal") : t("localEstimate")}
-        </Text>
-        <Text style={styles.estimateValue}>
-          {formatMoney(displayedTotal, locale)}
-        </Text>
       </View>
       {isActionPending && !quote && (
         <View style={styles.quoteLoading}>
@@ -136,50 +143,98 @@ export default function CartScreen() {
           <LoadingSkeleton label={t("loadingTitle")} rows={1} />
         </View>
       )}
+      <View style={styles.summaryCard}>
+        <View key={displayedTotal.minorUnits} style={styles.estimate}>
+          <View>
+            <Text style={styles.estimateLabel}>
+              {quote ? t("confirmedTotal") : t("localEstimate")}
+            </Text>
+            <Text style={styles.itemCount}>
+              {cartQuantity === 1
+                ? t("cartItem")
+                : t("cartItems", { count: cartQuantity })}
+            </Text>
+          </View>
+          <Text style={styles.estimateValue}>
+            {formatMoney(displayedTotal, locale)}
+          </Text>
+        </View>
+        <ActionButton
+          disabled={!quote || !isOnline}
+          label={t("startPayment")}
+          loading={isActionPending && Boolean(quote)}
+          onPress={() => void beginPayment()}
+          variant="payment"
+        />
+      </View>
     </AppScreen>
   );
 }
 
 const styles = StyleSheet.create({
+  content: {
+    alignSelf: "center",
+    gap: spacing.lg,
+    maxWidth: 896,
+    width: "100%",
+  },
   editLines: {
-    backgroundColor: palette.surface,
-    borderColor: palette.outline,
-    borderRadius: radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    overflow: "hidden",
+    gap: spacing.xs,
   },
   editLine: {
     alignItems: "center",
-    borderBottomColor: palette.surfaceMuted,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderWidth: 1,
     flexDirection: "row",
-    gap: spacing.sm,
-    minHeight: 96,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm,
+    gap: spacing.md,
+    minHeight: 138,
+    padding: spacing.md,
   },
-  editCopy: { flex: 1 },
-  editName: { ...type.bodyStrong, color: palette.navy },
-  editPrice: { ...type.caption, color: palette.navyMuted },
-  estimate: {
+  editCopy: { flex: 1, minWidth: 0 },
+  editName: { ...type.title, color: palette.ink },
+  editDescription: {
+    ...type.caption,
+    color: palette.secondaryInk,
+    marginTop: spacing.xxs,
+  },
+  editPrice: {
+    ...type.bodyStrong,
+    color: palette.action,
+    marginTop: spacing.xxs,
+  },
+  lineActions: {
+    alignItems: "flex-end",
+    alignSelf: "stretch",
+    justifyContent: "space-between",
+  },
+  removeButton: {
     alignItems: "center",
+    height: 32,
+    justifyContent: "center",
+    width: 32,
+  },
+  pressed: { opacity: 0.65 },
+  summaryCard: {
+    backgroundColor: palette.surface,
+    borderColor: palette.outline,
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    gap: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.lg,
+  },
+  estimate: {
+    alignItems: "flex-end",
     borderBottomColor: palette.outline,
-    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: 1,
     flexDirection: "row",
     justifyContent: "space-between",
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  estimateLabel: { ...type.label, color: palette.navyMuted },
-  estimateValue: { ...type.headline, color: palette.navy },
-  quoteLoading: { gap: spacing.sm, marginTop: spacing.md },
-  quoteLoadingText: { ...type.caption, color: palette.navyMuted },
-  checkoutSafeArea: { backgroundColor: palette.paper },
-  checkoutDock: {
-    backgroundColor: palette.paper,
-    borderTopColor: palette.outline,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
+  estimateLabel: { ...type.label, color: palette.secondaryInk },
+  itemCount: { ...type.caption, color: palette.secondaryInk },
+  estimateValue: { ...type.headline, color: palette.action },
+  quoteLoading: { gap: spacing.sm },
+  quoteLoadingText: { ...type.caption, color: palette.secondaryInk },
 });

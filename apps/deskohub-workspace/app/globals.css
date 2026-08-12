@@ -113,3 +113,30 @@ main section[id],
 footer[id] {
   scroll-margin-top: var(--anchor-scroll-offset);
 }
+
+.neon-auth-ui [data-sonner-toaster] {
+  --border-radius: 0.5rem;
+  font-family: var(--font-body);
+}
+
+.neon-auth-ui [data-sonner-toast][data-styled="true"] {
+  min-height: 3.5rem;
+  border-color: #e0c0b0;
+  background: #ffffff;
+  color: #191c1d;
+  box-shadow: none;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.neon-auth-ui [data-sonner-toast][data-type="success"] {
+  border-color: #c8e6d0;
+  background: #e6f4ea;
+  color: #137333;
+}
+
+.neon-auth-ui [data-sonner-toast][data-type="error"] {
+  border-color: #ffdad6;
+  background: #ffdad6;
+  color: #93000a;
+}

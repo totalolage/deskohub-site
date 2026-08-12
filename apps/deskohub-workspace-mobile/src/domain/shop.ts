@@ -34,8 +34,6 @@ export type Product = Readonly<{
   description: LocalizedText;
   price: Money;
   imageUrl?: string;
-  color: "aqua" | "orange" | "yellow" | "navy";
-  initials: string;
 }>;
 
 export type Catalog = Readonly<{

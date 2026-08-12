@@ -1,38 +1,28 @@
-/*
-Warm Ledger makes a small fridge purchase feel like a trusted Workspace tab:
-warm paper carries the catalog, Deskohub navy supplies structure, yellow makes
-adding an item immediate, and green appears only for verified access or payment.
-The interface stays compact enough for a quick visit while preserving Material
-3 navigation, touch targets, and status behavior. Product photography is the
-catalog's visual focus; decoration never competes with price, quantity, or the
-next action. The generated reference is a north star, so live copy, accessibility,
-safe areas, responsive layout, and authoritative commerce state remain primary.
-*/
+/* The shared tokens mirror the approved Workspace App Figma system. */
 
-import { Platform, type TextStyle, type ViewStyle } from "react-native";
+import type { TextStyle } from "react-native";
 
 export const palette = {
-  navy: "#00024F",
-  navyRaised: "#0C0E63",
-  navyMuted: "#4A4B70",
-  paper: "#F7F5EE",
-  surface: "#FFFEFA",
-  surfaceMuted: "#EEECE4",
-  silver: "#D6D2C7",
-  sunset: "#ECA423",
-  orange: "#C43E07",
-  orangeInk: "#7A2E0A",
-  aquamarine: "#00DF99",
-  aquamarineInk: "#004C3B",
-  success: "#00845F",
-  danger: "#B3261E",
-  dangerSurface: "#F9DEDC",
-  warningSurface: "#FFF0D1",
-  successSurface: "#DDF5E9",
-  infoSurface: "#E9EAF5",
-  outline: "#CBC8BF",
+  ink: "#191C1D",
+  secondaryInk: "#584236",
+  neutralInk: "#454749",
+  canvas: "#F8F9FA",
+  surface: "#FFFFFF",
+  surfaceMuted: "#F3F4F5",
+  disabledInk: "#D9DADB",
+  navigationActive: "#EF6C00",
+  action: "#9C4400",
+  actionInk: "#4D1E00",
+  warningInk: "#B06000",
+  positiveInk: "#137333",
+  danger: "#BA1A1A",
+  dangerInk: "#93000A",
+  dangerSurface: "#FFDAD6",
+  warningSurface: "#FEF7E0",
+  successSurface: "#E6F4EA",
+  infoSurface: "#E7E8E9",
+  outline: "#E0C0B0",
   white: "#FFFFFF",
-  black: "#11111A",
 } as const;
 
 export const spacing = {
@@ -46,73 +36,55 @@ export const spacing = {
 } as const;
 
 export const radii = {
-  sm: 8,
-  md: 12,
-  lg: 16,
+  sm: 4,
+  md: 8,
+  lg: 12,
   full: 999,
 } as const;
 
 export const type = {
   display: {
-    fontFamily: "Sculpin",
-    fontSize: 34,
+    fontFamily: "HankenGrotesk",
+    fontSize: 32,
     lineHeight: 40,
-    fontWeight: "400",
-    letterSpacing: -0.7,
+    fontWeight: "700",
+    letterSpacing: -0.64,
   } satisfies TextStyle,
   headline: {
-    fontFamily: "Sculpin",
-    fontSize: 26,
+    fontFamily: "HankenGrotesk",
+    fontSize: 24,
     lineHeight: 32,
-    fontWeight: "400",
-    letterSpacing: -0.4,
-  } satisfies TextStyle,
-  title: {
-    fontSize: 19,
-    lineHeight: 25,
     fontWeight: "700",
   } satisfies TextStyle,
+  title: {
+    fontFamily: "HankenGrotesk",
+    fontSize: 20,
+    lineHeight: 28,
+    fontWeight: "600",
+  } satisfies TextStyle,
   body: {
+    fontFamily: "HankenGrotesk",
     fontSize: 16,
     lineHeight: 24,
     fontWeight: "400",
   } satisfies TextStyle,
   bodyStrong: {
+    fontFamily: "HankenGrotesk",
     fontSize: 16,
     lineHeight: 24,
-    fontWeight: "700",
+    fontWeight: "600",
   } satisfies TextStyle,
   label: {
-    fontSize: 14,
-    lineHeight: 18,
-    fontWeight: "700",
+    fontFamily: "HankenGrotesk",
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "600",
+    letterSpacing: 0.6,
   } satisfies TextStyle,
   caption: {
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: "500",
+    fontFamily: "HankenGrotesk",
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
   } satisfies TextStyle,
-} as const;
-
-export const elevation = {
-  card: Platform.select<ViewStyle>({
-    web: { boxShadow: "0 3px 12px rgba(0, 2, 79, 0.07)" },
-    default: {
-      shadowColor: palette.navy,
-      shadowOffset: { width: 0, height: 3 },
-      shadowOpacity: 0.07,
-      shadowRadius: 10,
-      elevation: 1,
-    },
-  }),
-  floating: Platform.select<ViewStyle>({
-    web: { boxShadow: "0 10px 28px rgba(0, 2, 79, 0.16)" },
-    default: {
-      shadowColor: palette.navy,
-      shadowOffset: { width: 0, height: 10 },
-      shadowOpacity: 0.16,
-      shadowRadius: 22,
-      elevation: 6,
-    },
-  }),
 } as const;

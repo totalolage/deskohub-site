@@ -1,6 +1,7 @@
 import type { ConfigContext, ExpoConfig } from "expo/config";
 
 const appOrigin = "https://app.workspace.deskohub.cz";
+const siteOrigin = "https://workspace.deskohub.cz";
 const productionApplicationId = "cz.deskohub.workspace";
 const baseVersion = "0.1.0";
 const productionReleaseManifestUrl = `${appOrigin}/mobile/android/releases/latest.json`;
@@ -68,7 +69,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       package: applicationId,
       versionCode: readPositiveInteger(process.env.DW_ANDROID_VERSION_CODE, 1),
       adaptiveIcon: {
-        backgroundColor: "#00024f",
+        backgroundColor: "#F8F9FA",
         foregroundImage: "./assets/images/android-icon-foreground.png",
         monochromeImage: "./assets/images/android-icon-monochrome.png",
       },
@@ -109,8 +110,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       name: "Deskohub Workspace",
       shortName: "DW",
       lang: "cs",
-      themeColor: "#00024f",
-      backgroundColor: "#f4f1ea",
+      themeColor: "#9C4400",
+      backgroundColor: "#F8F9FA",
     },
     plugins: [
       "expo-router",
@@ -122,7 +123,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           image: "./assets/images/splash-icon.png",
           imageWidth: 180,
           resizeMode: "contain",
-          backgroundColor: "#00024f",
+          backgroundColor: "#F8F9FA",
         },
       ],
       [
@@ -144,6 +145,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       ...config.extra,
       appOrigin,
+      siteOrigin,
       applicationId,
       scheme,
       buildTag,
