@@ -1163,6 +1163,12 @@ const waitForHostedPaymentTargetToChange = (
         labels,
         [],
         { role: "button" }
+      ).pipe(
+        Effect.catch((error) =>
+          error.message.includes("Execution context was destroyed")
+            ? Effect.succeed(undefined)
+            : Effect.fail(error)
+        )
       );
       if (stillPresent?.framed) yield* switchToMainFrame(run, session);
       return stillPresent ? undefined : true;

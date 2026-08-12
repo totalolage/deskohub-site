@@ -415,6 +415,7 @@ test("returns through back to shop and restores the single original status tab",
   ];
   let buttonIndex = 0;
   let tabListReads = 0;
+  let transitionSnapshotPending = true;
   const run: Runner = async (_command, args) => {
     const commandArgs = args.slice(2);
     calls.push(commandArgs);
@@ -441,6 +442,12 @@ test("returns through back to shop and restores the single original status tab",
     if (commandArgs[0] === "tab") return success();
 
     if (commandArgs[0] === "snapshot") {
+      if (buttonIndex === 3 && transitionSnapshotPending) {
+        transitionSnapshotPending = false;
+        throw new Error(
+          "locator.ariaSnapshot: Execution context was destroyed, most likely because of a navigation"
+        );
+      }
       return success(
         [
           '- textbox "Card number" [ref=e1]',
