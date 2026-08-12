@@ -5,6 +5,7 @@ import {
 } from "@/features/reservation/persistence-contracts";
 import {
   activateHydratedBrowserElement,
+  clickBrowserElement,
   findEnabledSnapshotRef,
   findFirstEnabledTextFieldRef,
   findFirstTextFieldRef,
@@ -732,7 +733,8 @@ export const completeNexiHostedPayment = ({
         { value: "AUTENTICAZIONE RIUSCITA" },
         { value: "Authentication successful" },
       ],
-      timeouts
+      timeouts,
+      { activation: "pointer" }
     );
     if (isCheckoutStatusUrl(yield* readBrowserUrl(run, session))) {
       log(
@@ -1063,7 +1065,11 @@ const clickHostedPaymentTarget = (
   label: string,
   targets: readonly HostedPaymentClickTarget[],
   timeouts: WorkspaceE2ETimeouts,
-  options: { readonly optional?: boolean; readonly timeoutMs?: number } = {}
+  options: {
+    readonly activation?: "keyboard" | "pointer";
+    readonly optional?: boolean;
+    readonly timeoutMs?: number;
+  } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const labels = targets.map((target) => target.value);
@@ -1076,12 +1082,17 @@ const clickHostedPaymentTarget = (
 
     if (!target) return;
 
-    yield* Effect.gen(function* () {
-      yield* focusBrowserElement(run, session, target.ref, {
-        timeoutMs: 30_000,
-      });
-      yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
-    }).pipe(
+    yield* (options.activation === "pointer"
+      ? clickBrowserElement(run, session, target.ref, { timeoutMs: 30_000 })
+      : Effect.gen(function* () {
+          yield* focusBrowserElement(run, session, target.ref, {
+            timeoutMs: 30_000,
+          });
+          yield* pressBrowserKey(run, session, "Enter", {
+            timeoutMs: 30_000,
+          });
+        })
+    ).pipe(
       Effect.ensuring(
         target.framed
           ? switchToMainFrame(run, session).pipe(Effect.ignore)

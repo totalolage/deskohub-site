@@ -346,9 +346,12 @@ test("types into a hosted payment field when fill does not stick", async () => {
         phase = "pay";
       } else if (focusedRef === "@e7") {
         phase = "three-d-secure";
-      } else if (focusedRef === "@e8") {
-        phase = "status";
       }
+      return success();
+    }
+
+    if (commandArgs[0] === "click" && commandArgs[1] === "@e8") {
+      phase = "status";
       return success();
     }
 
@@ -467,15 +470,15 @@ test("returns through back to shop and restores the single original status tab",
     })
   );
 
-  expect(calls.filter(([command]) => command === "click")).toEqual([]);
+  expect(calls.filter(([command]) => command === "click")).toEqual([
+    ["click", "@e8"],
+  ]);
   expect(calls.filter(([command]) => command === "focus")).toEqual([
     ["focus", "@e6"],
     ["focus", "@e7"],
-    ["focus", "@e8"],
     ["focus", "@e9"],
   ]);
   expect(calls.filter(([command]) => command === "press")).toEqual([
-    ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
     ["press", "Enter"],
