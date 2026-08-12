@@ -10,7 +10,7 @@ Each payment attempt receives one protected, immutable source snapshot at the sa
 
 An unsuccessful terminal payment no longer needs accounting evidence and may discard its snapshot. A paid snapshot is retained and cannot be rewritten. Historical payments are not reconstructed from current customer or catalog data.
 
-The current reservation experience does not yet collect a complete reservation-specific business billing identity or issue customer invoices. Until that experience is introduced, a source snapshot must not be presented as an invoice.
+The reservation experience records personal or business purpose and collects complete billing details whenever an invoice is required or requested. The encrypted source snapshot freezes that instruction, while the separate issued record remains the only proof that an invoice exists.
 
 ## Invoice requirements
 

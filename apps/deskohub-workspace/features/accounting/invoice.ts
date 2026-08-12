@@ -7,12 +7,20 @@ import {
 import {
   type AccountingDocumentSnapshot,
   accountingDocumentIdentitySchema,
-  companyRegistrationIdSchema,
   coworkAccountingDocumentSnapshotSchema,
   meetingRoomAccountingDocumentSnapshotSchema,
   officeAccountingDocumentSnapshotSchema,
-  vatRegistrationIdSchema,
 } from "./accounting-document-snapshot";
+import { type InvoiceBuyer, invoiceBuyerSchema } from "./billing-identity";
+
+export {
+  type BusinessInvoiceBuyer,
+  businessInvoiceBuyerSchema,
+  type InvoiceBuyer,
+  invoiceBuyerSchema,
+  type PersonalInvoiceBuyer,
+  personalInvoiceBuyerSchema,
+} from "./billing-identity";
 
 export const invoiceNumberSchema = Schema.String.pipe(
   Schema.brand("InvoiceNumber")
@@ -22,36 +30,6 @@ export const invoiceNumberSchema = Schema.String.pipe(
 });
 
 export type InvoiceNumber = typeof invoiceNumberSchema.Type;
-
-const invoiceBillingTextSchema = Schema.Trim.check(Schema.isNonEmpty());
-
-const invoiceBuyerAddressSchema = Schema.Struct({
-  line1: invoiceBillingTextSchema,
-  line2: Schema.optionalKey(invoiceBillingTextSchema),
-  city: invoiceBillingTextSchema,
-  postalCode: invoiceBillingTextSchema,
-  country: invoiceBillingTextSchema,
-});
-
-export const invoiceBuyerSchema = Schema.Union([
-  Schema.Struct({
-    kind: Schema.Literal("person"),
-    legalName: invoiceBillingTextSchema,
-    address: invoiceBuyerAddressSchema,
-  }),
-  Schema.Struct({
-    kind: Schema.Literal("business"),
-    legalName: invoiceBillingTextSchema,
-    companyId: companyRegistrationIdSchema,
-    vatId: Schema.optionalKey(vatRegistrationIdSchema),
-    address: invoiceBuyerAddressSchema,
-  }),
-]).annotate({
-  identifier: "InvoiceBuyer",
-  description: "Complete immutable billing identity of an issued invoice.",
-});
-
-export type InvoiceBuyer = typeof invoiceBuyerSchema.Type;
 
 const invoiceIdentitySchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
@@ -138,7 +116,7 @@ export const makeInvoiceDocument = (input: {
   readonly fulfilledAt: Temporal.Instant;
   readonly paidAt: Temporal.Instant;
 }): InvoiceDocument => {
-  const { delivery: _delivery, ...source } = input.source;
+  const { billing: _billing, delivery: _delivery, ...source } = input.source;
 
   return invoiceDocumentSchema.make({
     ...source,

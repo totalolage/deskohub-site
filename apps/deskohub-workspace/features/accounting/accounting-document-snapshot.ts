@@ -15,11 +15,27 @@ import {
   type WorkspaceReservationId,
   workspaceReservationIdSchema,
 } from "@/features/reservation/persistence-contracts";
+import {
+  defaultReservationBillingSelection,
+  getReservationInvoiceBuyer,
+  reservationBillingSelectionSchema,
+} from "@/features/reservation/reservation-billing";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
+import {
+  companyRegistrationIdSchema,
+  vatRegistrationIdSchema,
+} from "./billing-identity";
+
+export {
+  type CompanyRegistrationId,
+  companyRegistrationIdSchema,
+  type VatRegistrationId,
+  vatRegistrationIdSchema,
+} from "./billing-identity";
 
 export const accountingSnapshotKeyIdSchema = Schema.NonEmptyString.check(
   Schema.isPattern(/^[A-Z][A-Z0-9_]{2,31}$/)
@@ -31,24 +47,6 @@ export const accountingSnapshotKeyIdSchema = Schema.NonEmptyString.check(
   });
 
 export type AccountingSnapshotKeyId = typeof accountingSnapshotKeyIdSchema.Type;
-
-export const companyRegistrationIdSchema = Schema.Trim.check(
-  Schema.isNonEmpty()
-)
-  .pipe(Schema.brand("CompanyRegistrationId"))
-  .annotate({
-    identifier: "CompanyRegistrationId",
-    description: "Company registration identifier used on accounting records.",
-  });
-export type CompanyRegistrationId = typeof companyRegistrationIdSchema.Type;
-
-export const vatRegistrationIdSchema = Schema.Trim.check(Schema.isNonEmpty())
-  .pipe(Schema.brand("VatRegistrationId"))
-  .annotate({
-    identifier: "VatRegistrationId",
-    description: "VAT registration identifier used on accounting records.",
-  });
-export type VatRegistrationId = typeof vatRegistrationIdSchema.Type;
 
 const accountingBuyerAddressSchema = Schema.Struct({
   line1: Schema.optionalKey(Schema.NonEmptyString),
@@ -114,6 +112,7 @@ const accountingDocumentDeliverySchema = Schema.Struct({
 
 export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
   delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("cowork"),
@@ -124,6 +123,7 @@ export const coworkAccountingDocumentSnapshotSchema = Schema.Struct({
 
 export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
   delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: Schema.Struct({
     kind: Schema.Literal("meeting-room"),
@@ -135,6 +135,7 @@ export const meetingRoomAccountingDocumentSnapshotSchema = Schema.Struct({
 
 export const officeAccountingDocumentSnapshotSchema = Schema.Struct({
   ...accountingDocumentIdentitySchema.fields,
+  billing: Schema.optionalKey(reservationBillingSelectionSchema),
   delivery: Schema.optionalKey(accountingDocumentDeliverySchema),
   reservation: officeReservationDetailsSchema,
   quote: officeReservationQuoteSchema,
@@ -181,18 +182,24 @@ export const makeAccountingDocumentSnapshot = (input: {
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly prepared: PreparedCustomerQuote;
-  readonly buyer?: AccountingBuyer;
 }): AccountingDocumentSnapshot => {
+  const billing =
+    input.prepared.reservation.billing ?? defaultReservationBillingSelection;
+  const buyer = getReservationInvoiceBuyer({
+    billing,
+    customerName: input.prepared.reservation.name,
+  });
   const identity = {
     workspaceReservationId: input.workspaceReservationId,
     dotyposReservationId: input.dotyposReservationId,
     dotyposCustomerId: input.dotyposCustomerId,
     locale: input.locale,
     supplier,
-    buyer: input.buyer ?? {
+    buyer: buyer ?? {
       kind: "person" as const,
       legalName: input.prepared.reservation.name,
     },
+    billing,
     delivery: { email: input.prepared.reservation.email },
   };
 

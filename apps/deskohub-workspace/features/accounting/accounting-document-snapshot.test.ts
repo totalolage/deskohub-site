@@ -137,28 +137,8 @@ describe("accounting document snapshot", () => {
   });
 
   test("supports a reservation-specific business billing identity", () => {
-    const snapshot = makeAccountingDocumentSnapshot({
-      workspaceReservationId: "business-reservation",
-      dotyposReservationId: "dotypos-reservation-id",
-      dotyposCustomerId: "dotypos-customer-id",
-      locale: "cs-CZ",
-      prepared,
-      buyer: {
-        kind: "business",
-        legalName: "Analytical Engines s.r.o.",
-        companyId: "12345678",
-        vatId: "CZ12345678",
-        address: {
-          line1: "Počernická 1",
-          city: "Praha",
-          postalCode: "100 00",
-          country: "CZ",
-        },
-      },
-    });
-
-    expect(snapshot.buyer).toEqual({
-      kind: "business",
+    const buyer = {
+      kind: "business" as const,
       legalName: "Analytical Engines s.r.o.",
       companyId: "12345678",
       vatId: "CZ12345678",
@@ -168,7 +148,22 @@ describe("accounting document snapshot", () => {
         postalCode: "100 00",
         country: "CZ",
       },
+    };
+    const snapshot = makeAccountingDocumentSnapshot({
+      workspaceReservationId: "business-reservation",
+      dotyposReservationId: "dotypos-reservation-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      locale: "cs-CZ",
+      prepared: {
+        ...prepared,
+        reservation: {
+          ...prepared.reservation,
+          billing: { purpose: "business", invoice: "required", buyer },
+        },
+      },
     });
+
+    expect(snapshot.buyer).toEqual(buyer);
   });
 
   test("round-trips strictly through the schema", async () => {
@@ -189,6 +184,16 @@ describe("accounting document snapshot", () => {
     await expect(
       Effect.runPromise(decode({ ...snapshot, schemaVersion: 1 }))
     ).rejects.toBeDefined();
+  });
+
+  test("decodes historical snapshots without an invoice instruction", async () => {
+    const { billing: _billing, ...historicalSnapshot } = makeSnapshot();
+
+    const decoded = await Effect.runPromise(
+      decodeStoredAccountingDocumentSnapshot(historicalSnapshot)
+    );
+
+    expect(decoded.billing).toBeUndefined();
   });
 
   test("rejects schema-version metadata from stored snapshots", async () => {

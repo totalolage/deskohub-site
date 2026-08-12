@@ -22,6 +22,7 @@ import {
   storedWorkspaceReservationDetailsSchema,
   type WorkspaceReservationId,
 } from "@/features/reservation/persistence-contracts";
+import type { ReservationPurpose } from "@/features/reservation/reservation-billing";
 import { supersedableReservationPaymentStates } from "./reservation-supersession";
 
 const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
@@ -53,6 +54,7 @@ export interface CreateWorkspaceReservationInput {
   readonly checkoutSessionKey: CheckoutSessionKey;
   readonly checkoutAttemptKey: CheckoutAttemptKey;
   readonly dotyposCustomerId: DotyposCustomerId;
+  readonly reservationPurpose: ReservationPurpose;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
   readonly reservationHoldExpiresAt?: Temporal.Instant;
@@ -263,6 +265,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             checkoutAttemptKey: input.checkoutAttemptKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
+            reservationPurpose: input.reservationPurpose,
             reservationState: "draft" as const,
             paymentState: "not_started" as const,
             fulfillmentState: "not_started" as const,
@@ -600,6 +603,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 checkoutAttemptKey: input.replacement.checkoutAttemptKey,
                 correlationId: postgresUuidV7,
                 dotyposCustomerId: input.replacement.dotyposCustomerId,
+                reservationPurpose: input.replacement.reservationPurpose,
                 reservationState: "draft",
                 paymentState: "not_started",
                 fulfillmentState: "not_started",
