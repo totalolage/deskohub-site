@@ -208,23 +208,34 @@ describe("workspace reservation email details", () => {
       },
     };
 
-    await Effect.gen(function* () {
-      const service = yield* WorkspaceReservationEmailService;
-      yield* service.sendPaidReservationEmails({ reservation });
-    }).pipe(
-      Effect.provide(
-        WorkspaceReservationEmailService.Live.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              Layer.succeed(EmailServiceTag, emailService),
-              Layer.succeed(EmailConfigTag, emailConfig),
-              WorkspaceCheckoutNetworkDetailsService.Live
+    const { env } = await import("@/env");
+    const previousPreviewBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    Object.assign(env, {
+      VERCEL_AUTOMATION_BYPASS_SECRET: "synthetic-preview-bypass",
+    });
+    try {
+      await Effect.gen(function* () {
+        const service = yield* WorkspaceReservationEmailService;
+        yield* service.sendPaidReservationEmails({ reservation });
+      }).pipe(
+        Effect.provide(
+          WorkspaceReservationEmailService.Live.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(EmailServiceTag, emailService),
+                Layer.succeed(EmailConfigTag, emailConfig),
+                WorkspaceCheckoutNetworkDetailsService.Live
+              )
             )
           )
-        )
-      ),
-      Effect.runPromise
-    );
+        ),
+        Effect.runPromise
+      );
+    } finally {
+      Object.assign(env, {
+        VERCEL_AUTOMATION_BYPASS_SECRET: previousPreviewBypassSecret,
+      });
+    }
 
     expect(sentMessages).toHaveLength(2);
     const customerMessage = sentMessages[0];
@@ -236,6 +247,10 @@ describe("workspace reservation email details", () => {
     expect(customerMessage?.text).not.toContain("12:00 AM");
     expect(customerMessage?.html).toContain("statusToken=");
     expect(customerMessage?.text).toContain("statusToken=");
+    expect(customerMessage?.html).toContain("x-vercel-protection-bypass=");
+    expect(customerMessage?.text).toContain("x-vercel-protection-bypass=");
+    expect(customerMessage?.html).toContain("x-vercel-set-bypass-cookie=true");
+    expect(customerMessage?.text).toContain("x-vercel-set-bypass-cookie=true");
     expect(customerMessage?.html).not.toContain(">1234<");
     expect(customerMessage?.text).not.toContain("1234");
 

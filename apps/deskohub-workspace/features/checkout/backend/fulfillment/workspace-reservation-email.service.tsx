@@ -481,7 +481,7 @@ export class WorkspaceReservationEmailService extends Context.Service<
             locale,
             orderId: reservation.id,
             statusToken,
-            skipPreviewProtectionBypass: true,
+            setBypassCookie: true,
           }),
           origin
         ).toString();
